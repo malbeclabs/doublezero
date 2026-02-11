@@ -6,6 +6,45 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FlatPerEpochConfig {
+    pub rate: u64,
+    pub last_deduction_dz_epoch: u64,
+}
+
+impl fmt::Display for FlatPerEpochConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "FlatPerEpochConfig<rate={},last_deduction_dz_epoch={}>",
+            self.rate, self.last_deduction_dz_epoch
+        )
+    }
+}
+
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum TenantBillingConfig {
+    FlatPerEpoch(FlatPerEpochConfig),
+}
+
+impl Default for TenantBillingConfig {
+    fn default() -> Self {
+        Self::FlatPerEpoch(FlatPerEpochConfig::default())
+    }
+}
+
+impl fmt::Display for TenantBillingConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TenantBillingConfig::FlatPerEpoch(config) => write!(f, "{}", config),
+        }
+    }
+}
+
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
@@ -68,14 +107,17 @@ pub struct Tenant {
         )
     )]
     pub token_account: Pubkey, // 32 bytes — Solana 2Z token account to monitor
+    pub metro_route: bool, // 1 byte - enables tenant to be routed through metro for VRF requests
+    pub route_liveness: bool, // 1 byte - enables tenant to be check for aliveness before routing
+    pub billing: TenantBillingConfig, // 17 bytes (1 discriminant + 8 rate + 8 last_deduction_dz_epoch)
 }
 
 impl fmt::Display for Tenant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, bump_seed: {}, code: {}, vrf_id: {}, administrators: {:?}, payment_status: {}, token_account: {}",
-            self.account_type, self.owner, self.bump_seed, self.code, self.vrf_id, self.administrators, self.payment_status, self.token_account
+            "account_type: {}, owner: {}, bump_seed: {}, code: {}, vrf_id: {}, administrators: {:?}, payment_status: {}, token_account: {}, metro_route: {}, route_liveness: {}, billing: {}",
+            self.account_type, self.owner, self.bump_seed, self.code, self.vrf_id, self.administrators, self.payment_status, self.token_account, self.metro_route, self.route_liveness, self.billing
         )
     }
 }
@@ -94,6 +136,9 @@ impl TryFrom<&[u8]> for Tenant {
             administrators: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             payment_status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             token_account: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            metro_route: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            route_liveness: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            billing: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Tenant {
@@ -165,6 +210,9 @@ mod tests {
             administrators: vec![Pubkey::default()],
             payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
+            metro_route: true,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -204,6 +252,9 @@ mod tests {
             administrators: vec![],
             payment_status: TenantPaymentStatus::Delinquent,
             token_account: Pubkey::default(),
+            metro_route: true,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -222,6 +273,9 @@ mod tests {
             administrators: vec![],
             payment_status: TenantPaymentStatus::Delinquent,
             token_account: Pubkey::default(),
+            metro_route: true,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
         let err = val.validate();
         assert!(err.is_err());

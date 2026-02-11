@@ -19,6 +19,12 @@ pub struct CreateTenantCliCommand {
     /// Solana 2Z token account to monitor for billing
     #[arg(long)]
     pub token_account: Option<String>,
+    /// Enable metro routing for this tenant
+    #[arg(long, default_value = "false")]
+    pub metro_route: bool,
+    /// Enable route aliveness checks for this tenant
+    #[arg(long, default_value = "false")]
+    pub route_liveness: bool,
 }
 
 impl CreateTenantCliCommand {
@@ -51,6 +57,8 @@ impl CreateTenantCliCommand {
             code: self.code.clone(),
             administrator,
             token_account,
+            metro_route: self.metro_route,
+            route_liveness: self.route_liveness,
         })?;
 
         writeln!(out, "Signature: {signature}")?;

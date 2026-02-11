@@ -322,9 +322,13 @@ impl ListUserCliCommand {
                     None => "".to_string(),
                 };
 
-                let tenant_name = tenants
-                    .get(&user.tenant_pk)
-                    .map_or_else(|| user.tenant_pk.to_string(), |t| t.code.clone());
+                let tenant_name = if user.tenant_pk == Pubkey::default() {
+                    "".to_string()
+                } else {
+                    tenants
+                        .get(&user.tenant_pk)
+                        .map_or_else(|| user.tenant_pk.to_string(), |t| t.code.clone())
+                };
 
                 UserDisplay {
                     account: *pubkey,
@@ -407,19 +411,19 @@ mod tests {
         doublezerocommand::CliCommand,
         tests::utils::create_test_client,
         user::list::{
-            ListUserCliCommand, UserCYOA, UserCYOA::GREOverDIA, UserStatus, UserStatus::Activated,
-            UserType::IBRL,
+            ListUserCliCommand, UserCYOA::GREOverDIA, UserStatus::Activated, UserType::IBRL,
         },
     };
     use doublezero_sdk::{
         AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
-        LocationStatus, MulticastGroup, MulticastGroupStatus, Tenant, User, UserType,
+        LocationStatus, MulticastGroup, MulticastGroupStatus, Tenant, User, UserCYOA, UserStatus,
+        UserType,
     };
     use doublezero_serviceability::{
         pda::get_accesspass_pda,
         state::{
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
-            tenant::TenantPaymentStatus,
+            tenant::{TenantBillingConfig, TenantPaymentStatus},
         },
     };
     use solana_sdk::pubkey::Pubkey;
@@ -587,13 +591,15 @@ mod tests {
             Ok(mgroups)
         });
 
+        let tenant_pk = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9");
+
         let user1 = User {
             account_type: AccountType::User,
             index: 1,
             bump_seed: 2,
             owner: user1_pubkey,
             user_type: IBRL,
-            tenant_pk: Pubkey::default(),
+            tenant_pk,
             device_pk: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             cyoa_type: GREOverDIA,
             client_ip: [1, 2, 3, 4].into(),
@@ -631,7 +637,7 @@ mod tests {
             bump_seed: 3,
             owner: user2_pubkey,
             user_type: UserType::Multicast,
-            tenant_pk: Pubkey::default(),
+            tenant_pk,
             device_pk: device1_pubkey,
             cyoa_type: GREOverDIA,
             client_ip: [1, 2, 3, 4].into(),
@@ -706,7 +712,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | tenant                           | user_type | groups   | device       | location       | cyoa_type  | client_ip | dz_ip   | accesspass                  | tunnel_id | tunnel_net | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | 11111111111111111111111111111111 | Multicast | S:m_code | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | Prepaid: (expires epoch 10) | 500       | 1.2.3.5/32 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | tenant                                    | user_type | groups   | device       | location       | cyoa_type  | client_ip | dz_ip   | accesspass                  | tunnel_id | tunnel_net | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | Multicast | S:m_code | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | Prepaid: (expires epoch 10) | 500       | 1.2.3.5/32 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -732,7 +738,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"tenant\":\"11111111111111111111111111111111\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"S:m_code\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"Prepaid: (expires epoch 10)\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"tenant\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"S:m_code\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"Prepaid: (expires epoch 10)\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
     }
 
     #[test]
@@ -1370,6 +1376,9 @@ mod tests {
             administrators: vec![],
             payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
+            metro_route: false,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         let tenant2 = Tenant {
@@ -1382,6 +1391,9 @@ mod tests {
             administrators: vec![],
             payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
+            metro_route: false,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
@@ -1529,6 +1541,9 @@ mod tests {
             administrators: vec![],
             payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
+            metro_route: false,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         let tenant2 = Tenant {
@@ -1541,6 +1556,9 @@ mod tests {
             administrators: vec![],
             payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
+            metro_route: false,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");

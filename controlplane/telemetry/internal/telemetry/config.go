@@ -6,6 +6,9 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
 
@@ -45,6 +48,18 @@ type Config struct {
 
 	// SubmitterMaxConcurrency is the maximum number of concurrent submissions.
 	SubmitterMaxConcurrency int
+
+	// InitialChildGeoProbes is the startup probe list from CLI; runtime updates happen via channel.
+	InitialChildGeoProbes []geoprobe.ProbeAddress
+
+	// ServiceabilityProgramClient is the client to the serviceability program (for fetching Device/Location).
+	ServiceabilityProgramClient *serviceability.Client
+
+	// RPCClient is the Solana RPC client (for fetching slot).
+	RPCClient *solanarpc.Client
+
+	// Keypair is the metrics publisher keypair (for signing offsets).
+	Keypair solana.PrivateKey
 }
 
 func (c *Config) Validate() error {
@@ -83,5 +98,18 @@ func (c *Config) Validate() error {
 	if c.SubmitterMaxConcurrency <= 0 {
 		return errors.New("submitter max concurrency must be greater than 0")
 	}
+
+	if len(c.InitialChildGeoProbes) > 0 {
+		if c.ServiceabilityProgramClient == nil {
+			return errors.New("serviceability client is required when geoprobe is enabled")
+		}
+		if c.RPCClient == nil {
+			return errors.New("rpc client is required when geoprobe is enabled")
+		}
+		if c.Keypair == nil {
+			return errors.New("keypair is required when geoprobe is enabled")
+		}
+	}
+
 	return nil
 }

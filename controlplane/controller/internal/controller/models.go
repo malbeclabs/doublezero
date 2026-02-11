@@ -42,6 +42,8 @@ type Interface struct {
 	Metric               uint32
 	IsLink               bool
 	LinkStatus           serviceability.LinkStatus
+	IsCYOA               bool
+	IsDIA                bool
 }
 
 // toInterface validates onchain data for a serviceability interface and converts it to a controller interface.
@@ -94,6 +96,8 @@ func toInterface(iface serviceability.Interface) (Interface, error) {
 		InterfaceType:        ifType,
 		LoopbackType:         loopbackType,
 		IsLink:               false,
+		IsCYOA:               iface.InterfaceCYOA != serviceability.InterfaceCYOANone,
+		IsDIA:                iface.InterfaceDIA != serviceability.InterfaceDIANone,
 	}, nil
 
 }

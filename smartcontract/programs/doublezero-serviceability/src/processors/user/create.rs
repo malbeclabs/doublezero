@@ -193,6 +193,13 @@ pub fn process_create_user(
             );
             return Err(DoubleZeroError::TenantNotInAccessPassAllowlist.into());
         }
+    } else if let Some(tenant_account) = tenant_account {
+        let tenant = Tenant::try_from(tenant_account)?;
+        msg!(
+            "Access-pass has no tenant_allowlist, but user creation specifies tenant {}",
+            tenant.code
+        );
+        return Err(DoubleZeroError::TenantNotInAccessPassAllowlist.into());
     }
 
     // Check Initial epoch

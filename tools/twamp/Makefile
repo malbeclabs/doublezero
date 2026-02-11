@@ -21,7 +21,7 @@ bench: docker-build-reflector
 
 .PHONY: fuzz
 fuzz:
-	go test -fuzz=FuzzTWAMP_NTPTimestamp -fuzztime=10s -timeout=60s ./pkg/light
+	go test -run=^$$ -fuzz=FuzzTWAMP_NTPTimestamp -fuzztime=10s -timeout=60s ./pkg/light
 
 .PHONY: docker-build-reflector
 docker-build-reflector:

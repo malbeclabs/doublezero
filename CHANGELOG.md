@@ -10,9 +10,22 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.8.7](https://github.com/malbeclabs/doublezero/compare/client/v0.8.6...client/v0.8.7) – 2026-02-10
+
+### Breaking
+
+- None for this release
+
+### Changes
+
+- Telemetry
+  - extend device telemetry agent to measure RTT to child geoProbes via TWAMP, generate signed LocationOffset structures, and deliver them via UDP as per rfcs/rfc16-geolocation-verification.md
+  - geoprobe-target: example target listener for geolocation verification with TWAMP reflector, UDP offset receiver, signature chain verification, distance calculation logging, and DoS protections (5-reference depth limit and per-source-IP rate limiting) (#2901)
 - Onchain programs
+  - feat(serviceability): add TenantBillingConfig and epoch tracking to UpdatePaymentStatus ([#2922](https://github.com/malbeclabs/doublezero/pull/2922))
   - feat(smartcontract): add payment_status, token_account fields and UpdatePaymentStatus instruction ([#2880](https://github.com/malbeclabs/doublezero/pull/2880))
   - fix(smartcontract): correctly ser/deser ops_manager_pk ([#2887](https://github.com/malbeclabs/doublezero/pull/2887))
+  - Serviceability: add metro_route and route_liveness boolean fields to Tenant for routing configuration
   - Serviceability: add Tenant account type with immutable code-based PDA derivation, VRF ID, administrator management, and reference counting for safe deletion
   - Serviceability: add TenantAddAdministrator and TenantRemoveAdministrator instructions for foundation-managed administrator lists
   - Serviceability: extend UserUpdate instruction to support tenant_pk field updates with automatic reference count management on old and new tenants (backward compatible with old format)
@@ -21,12 +34,14 @@ All notable changes to this project will be documented in this file.
   - Serviceability: fix multicast group closeaccount to use InvalidStatus error and remove redundant publisher/subscriber count check
   - Serviceability: add tenant_allowlist field to AccessPass to restrict which tenants can use specific access passes (backward compatible with existing accounts)
 - SDK
+  - Add metro_route and route_liveness fields to CreateTenantCommand and UpdateTenantCommand
   - Add CreateTenant, UpdateTenant (vrf_id only), DeleteTenant, GetTenant, and ListTenant commands with support for code or pubkey lookup
   - Add AddAdministratorTenant and RemoveAdministratorTenant commands for tenant administrator management
   - UpdateUserCommand extended with tenant_pk field and automatic tenant account resolution for reference counting
   - SetAccessPassCommand extended with tenant field to specify allowed tenant for access pass
   - TypeScript SDK updated with tenantAllowlist field in AccessPass interface and deserialization
 - CLI
+  - Add --metro-route and --route-aliveness flags to tenant create and update commands
   - Add tenant subcommands (create, update, delete, get, list, add-administrator, remove-administrator) to doublezero and doublezero-admin CLIs
   - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
   - Added activation check for existing users before subscribing to new groups (#2782)
@@ -43,6 +58,7 @@ All notable changes to this project will be documented in this file.
 - Device controller
   - Record successful GetConfig gRPC calls to ClickHouse for device telemetry tracking
   - Multi-tenancy vrf support added
+  - Skip isis and pim config for CYOA/DIA tagged interfaces
 - Onchain programs
   - Enforce that `CloseAccessPass` only closes AccessPass accounts when `connection_count == 0`, preventing closure while active connections are present.
 - Monitor
@@ -50,6 +66,7 @@ All notable changes to this project will be documented in this file.
 - E2E tests
   - e2e: add multi-tenancy VRF isolation test ([#2891](https://github.com/malbeclabs/doublezero/pull/2891))
   - Add backward compatibility test that validates older CLI versions against the current onchain program by cloning live state from testnet and mainnet-beta
+  - QA multicast tests: add diagnostic dumps on failure (status, routes, latency, multicast reports, onchain user/device state), cleanup stale test groups at test start, and fix disconnect blocking on stuck daemon status
 
 ## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
 
@@ -69,6 +86,7 @@ All notable changes to this project will be documented in this file.
   - Deprecated the user suspend status, as it is no longer used.
   - Serviceability: enforce that CloseAccountUser instructions verify the target user has no multicast publishers or subscribers (both `publishers` and `subscribers` are empty) before closing, and add regression coverage for this behavior.
   - Enhance access pass functionality with new Solana-specific types
+  - fix default desired status
 - Telemetry
   - Fix goroutine leak in TWAMP sender — `cleanUpReceived` goroutines now exit on `Close()` instead of living until process shutdown
 - Client

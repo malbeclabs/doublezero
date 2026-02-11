@@ -312,6 +312,151 @@ func (c *Client) WaitForRoutes(ctx context.Context, expectedIPs []net.IP) error 
 	return nil
 }
 
+// DumpDiagnostics collects and logs diagnostic information from the client.
+// It uses a fresh context since the caller's context may have been cancelled.
+// If groups is provided, multicast reports are included in the output.
+func (c *Client) DumpDiagnostics(groups []*MulticastGroup) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	c.log.Info("--- DIAGNOSTICS ---", "host", c.Host, "publicIP", c.publicIP)
+
+	// Tunnel status.
+	resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
+	if err != nil {
+		c.log.Info("diagnostics: status error", "host", c.Host, "error", err)
+	} else if len(resp.Status) == 0 {
+		c.log.Info("diagnostics: no status entries", "host", c.Host)
+	} else {
+		for _, s := range resp.Status {
+			c.log.Info("diagnostics: status",
+				"host", c.Host,
+				"sessionStatus", s.SessionStatus,
+				"tunnelName", s.TunnelName,
+				"doubleZeroIP", s.DoubleZeroIp,
+				"userType", s.UserType,
+				"currentDevice", s.CurrentDevice,
+			)
+		}
+	}
+
+	// Installed routes.
+	routes, err := c.GetInstalledRoutes(ctx)
+	if err != nil {
+		c.log.Info("diagnostics: routes error", "host", c.Host, "error", err)
+	} else {
+		routeIPs := Map(routes, func(r *pb.Route) string { return r.DstIp })
+		c.log.Info("diagnostics: routes", "host", c.Host, "count", len(routes), "destinations", routeIPs)
+	}
+
+	// Device latency.
+	latencies, err := c.GetLatency(ctx)
+	if err != nil {
+		c.log.Info("diagnostics: latency error", "host", c.Host, "error", err)
+	} else {
+		for _, l := range latencies {
+			c.log.Info("diagnostics: latency",
+				"host", c.Host,
+				"deviceCode", l.DeviceCode,
+				"deviceIP", l.DeviceIp,
+				"avgLatencyNs", l.AvgLatencyNs,
+				"reachable", l.Reachable,
+			)
+		}
+	}
+
+	// Multicast reports.
+	var validGroups []*MulticastGroup
+	for _, g := range groups {
+		if g != nil {
+			validGroups = append(validGroups, g)
+		}
+	}
+	if len(validGroups) > 0 {
+		pbGroups := make([]*pb.MulticastGroup, len(validGroups))
+		for i, g := range validGroups {
+			pbGroups[i] = &pb.MulticastGroup{
+				Group: g.IP.String(),
+				Port:  multicastConnectivityPort,
+				Iface: multicastInterfaceName,
+			}
+		}
+		reportResp, err := c.grpcClient.MulticastReport(ctx, &pb.MulticastReportRequest{Groups: pbGroups})
+		if err != nil {
+			c.log.Info("diagnostics: multicast report error", "host", c.Host, "error", err)
+		} else {
+			for _, g := range validGroups {
+				report := reportResp.Reports[g.IP.String()]
+				var packetCount uint64
+				if report != nil {
+					packetCount = report.PacketCount
+				}
+				c.log.Info("diagnostics: multicast report",
+					"host", c.Host,
+					"groupCode", g.Code,
+					"groupIP", g.IP,
+					"iface", multicastInterfaceName,
+					"packetCount", packetCount,
+				)
+			}
+		}
+	}
+
+	// Onchain user and device state.
+	data, err := getProgramDataWithRetry(ctx, c.serviceability)
+	if err != nil {
+		c.log.Info("diagnostics: onchain state error", "host", c.Host, "error", err)
+	} else {
+		publicIP := c.publicIP.To4().String()
+		userFound := false
+		for _, user := range data.Users {
+			userClientIP := net.IP(user.ClientIp[:]).String()
+			if userClientIP != publicIP {
+				continue
+			}
+			userFound = true
+
+			// Resolve device code.
+			deviceCode := "unknown"
+			for _, d := range data.Devices {
+				if d.PubKey == user.DevicePubKey {
+					deviceCode = d.Code
+					break
+				}
+			}
+
+			c.log.Info("diagnostics: onchain user",
+				"host", c.Host,
+				"status", user.Status,
+				"userType", user.UserType,
+				"deviceCode", deviceCode,
+				"dzIP", net.IP(user.DzIp[:]).String(),
+				"publishers", len(user.Publishers),
+				"subscribers", len(user.Subscribers),
+			)
+
+			// Log health of the assigned device.
+			for _, d := range data.Devices {
+				if d.PubKey == user.DevicePubKey {
+					c.log.Info("diagnostics: onchain device",
+						"host", c.Host,
+						"deviceCode", d.Code,
+						"status", d.Status,
+						"health", d.DeviceHealth,
+						"users", d.UsersCount,
+						"maxUsers", d.MaxUsers,
+					)
+					break
+				}
+			}
+			break
+		}
+		if !userFound {
+			c.log.Info("diagnostics: no onchain user found", "host", c.Host, "clientIP", publicIP)
+		}
+	}
+}
+
 func (c *Client) getConnectedDevice(ctx context.Context) (*Device, error) {
 	status, err := c.GetUserStatus(ctx)
 	if err != nil {

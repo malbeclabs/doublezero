@@ -99,7 +99,7 @@ mod tests {
         state::{
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
             device::{DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
-            tenant::{Tenant, TenantPaymentStatus},
+            tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
         },
     };
     use mockall::predicate;
@@ -128,6 +128,9 @@ mod tests {
             administrators: vec![],
             token_account: Pubkey::default(),
             payment_status: TenantPaymentStatus::Paid,
+            metro_route: false,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         let device_pubkey = Pubkey::new_unique();

@@ -989,7 +989,7 @@ mod tests {
             device::{Device, DeviceStatus, DeviceType},
             globalconfig::GlobalConfig,
             multicastgroup::{MulticastGroup, MulticastGroupStatus},
-            tenant::{Tenant, TenantPaymentStatus},
+            tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
         },
     };
     use mockall::predicate;
@@ -1040,6 +1040,9 @@ mod tests {
                 administrators: vec![],
                 payment_status: TenantPaymentStatus::Paid,
                 token_account: Pubkey::default(),
+                metro_route: false,
+                route_liveness: false,
+                billing: TenantBillingConfig::default(),
             };
 
             let mut tenants = HashMap::new();
@@ -1284,6 +1287,9 @@ mod tests {
                 administrators: vec![],
                 payment_status: TenantPaymentStatus::Paid,
                 token_account: Pubkey::default(),
+                metro_route: false,
+                route_liveness: false,
+                billing: TenantBillingConfig::default(),
             };
             tenants.insert(pk, tenant.clone());
             (pk, tenant)

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
@@ -27,6 +28,9 @@ type Collector struct {
 	reflector twamplight.Reflector
 	pinger    *Pinger
 	submitter *Submitter
+
+	// Geoprobe coordinator for measuring RTT to child probes
+	geoprobeCoordinator *geoprobe.Coordinator
 
 	senders   map[string]*senderEntry
 	sendersMu sync.Mutex
@@ -73,6 +77,26 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		GetSender:       c.getOrCreateSender,
 		GetCurrentEpoch: cfg.GetCurrentEpochFunc,
 	})
+
+	// Initialize geoprobe coordinator if child probes are configured
+	if len(cfg.InitialChildGeoProbes) > 0 {
+		probeUpdateCh := make(chan []geoprobe.ProbeAddress, 1)
+		c.geoprobeCoordinator, err = geoprobe.NewCoordinator(&geoprobe.CoordinatorConfig{
+			Logger:               log,
+			InitialProbes:        cfg.InitialChildGeoProbes,
+			ProbeUpdateCh:        probeUpdateCh,
+			Interval:             cfg.ProbeInterval,
+			ProbeTimeout:         cfg.TWAMPSenderTimeout,
+			Keypair:              cfg.Keypair,
+			LocalDevicePK:        cfg.LocalDevicePK,
+			ServiceabilityClient: cfg.ServiceabilityProgramClient,
+			RPCClient:            cfg.RPCClient,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create geoprobe coordinator: %w", err)
+		}
+		log.Info("Initialized geoprobe coordinator", "probeCount", len(cfg.InitialChildGeoProbes))
+	}
 
 	return c, nil
 }
@@ -148,6 +172,17 @@ func (c *Collector) Run(ctx context.Context) error {
 		}
 	}()
 
+	// Start the geoprobe coordinator if configured.
+	if c.geoprobeCoordinator != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := c.geoprobeCoordinator.Run(runCtx); err != nil {
+				errCh <- fmt.Errorf("failed to run geoprobe coordinator: %w", err)
+			}
+		}()
+	}
+
 	// Wait for the context to be done or an error to be returned.
 	var err error
 	select {
@@ -175,6 +210,13 @@ func (c *Collector) Close() error {
 	// Close the TWAMP reflector.
 	if err := c.reflector.Close(); err != nil {
 		c.log.Warn("Failed to close TWAMP reflector", "error", err)
+	}
+
+	// Close the geoprobe coordinator if initialized.
+	if c.geoprobeCoordinator != nil {
+		if err := c.geoprobeCoordinator.Close(); err != nil {
+			c.log.Warn("Failed to close geoprobe coordinator", "error", err)
+		}
 	}
 
 	// Close the TWAMP senders.

@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 
 - SDK
   - Added Tenant to all sdks
+- E2E tests
+  - Added multi-tenancy deletion test coverage
 
 ## [v0.8.7](https://github.com/malbeclabs/doublezero/compare/client/v0.8.6...client/v0.8.7) – 2026-02-10
 

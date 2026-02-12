@@ -26,7 +26,8 @@ test-programs: test-sbf
 		-p doublezero-program-common \
 		-p doublezero-record \
 		-p doublezero-telemetry \
-		-p doublezero-serviceability
+		-p doublezero-serviceability \
+		-p doublezero-geolocation
 
 .PHONY: test-sbf
 test-sbf:
@@ -34,7 +35,8 @@ test-sbf:
 		-p doublezero-program-common \
 		-p doublezero-record \
 		-p doublezero-telemetry \
-		-p doublezero-serviceability
+		-p doublezero-serviceability \
+		-p doublezero-geolocation
 
 .PHONY: lint
 lint: lint-programs
@@ -48,6 +50,7 @@ lint-programs:
 		-p doublezero-record \
 		-p doublezero-telemetry \
 		-p doublezero-serviceability \
+		-p doublezero-geolocation \
 		$(CLIPPY_FLAGS)
 
 .PHONY: build
@@ -60,3 +63,4 @@ build-programs:
 	cd programs/doublezero-record && cargo build-sbf
 	cd programs/doublezero-serviceability && cargo build-sbf
 	cd programs/doublezero-telemetry && cargo build-sbf --features $(env)
+	cd programs/doublezero-geolocation && cargo build-sbf

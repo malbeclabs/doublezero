@@ -310,7 +310,8 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 
 	log.Info("received LocationOffset",
 		"from", addr,
-		"probe_pubkey", output.ProbePubkey,
+		"authority_pubkey", output.AuthorityPubkey,
+		"sender_pubkey", output.SenderPubkey,
 		"rtt_ms", output.RttMs,
 		"max_distance_miles", output.MaxDistanceMiles,
 		"signature_valid", signatureValid,
@@ -320,7 +321,8 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 type OffsetOutput struct {
 	Timestamp         string            `json:"timestamp"`
 	SourceAddr        string            `json:"source_addr"`
-	ProbePubkey       string            `json:"probe_pubkey"`
+	AuthorityPubkey   string            `json:"authority_pubkey"`
+	SenderPubkey      string            `json:"sender_pubkey"`
 	ReferencePoint    CoordinateOutput  `json:"reference_point"`
 	RttMs             float64           `json:"rtt_ms"`
 	MeasuredRttMs     float64           `json:"measured_rtt_ms"`
@@ -339,10 +341,11 @@ type CoordinateOutput struct {
 }
 
 type ReferenceOutput struct {
-	Pubkey        string           `json:"pubkey"`
-	Location      CoordinateOutput `json:"location"`
-	RttMs         float64          `json:"rtt_ms"`
-	MeasuredRttMs float64          `json:"measured_rtt_ms"`
+	AuthorityPubkey string           `json:"authority_pubkey"`
+	SenderPubkey    string           `json:"sender_pubkey"`
+	Location        CoordinateOutput `json:"location"`
+	RttMs           float64          `json:"rtt_ms"`
+	MeasuredRttMs   float64          `json:"measured_rtt_ms"`
 }
 
 func formatLocationOffset(offset *geoprobe.LocationOffset, addr *net.UDPAddr, signatureValid bool, verifyError error) OffsetOutput {
@@ -354,7 +357,8 @@ func formatLocationOffset(offset *geoprobe.LocationOffset, addr *net.UDPAddr, si
 	output := OffsetOutput{
 		Timestamp:        time.Now().UTC().Format("2006-01-02 15:04:05 MST"),
 		SourceAddr:       addr.String(),
-		ProbePubkey:      formatPubkey(offset.Pubkey[:]),
+		AuthorityPubkey:  formatPubkey(offset.AuthorityPubkey[:]),
+		SenderPubkey:     formatPubkey(offset.SenderPubkey[:]),
 		ReferencePoint:   formatCoordinate(offset.Lat, offset.Lng),
 		RttMs:            rttMs,
 		MeasuredRttMs:    measuredRttMs,
@@ -372,10 +376,11 @@ func formatLocationOffset(offset *geoprobe.LocationOffset, addr *net.UDPAddr, si
 		refRttMs := float64(ref.RttNs) / nanosecondsPerMs
 		refMeasuredRttMs := float64(ref.MeasuredRttNs) / nanosecondsPerMs
 		output.DZDReferenceChain = append(output.DZDReferenceChain, ReferenceOutput{
-			Pubkey:        formatPubkey(ref.Pubkey[:]),
-			Location:      formatCoordinate(ref.Lat, ref.Lng),
-			RttMs:         refRttMs,
-			MeasuredRttMs: refMeasuredRttMs,
+			AuthorityPubkey: formatPubkey(ref.AuthorityPubkey[:]),
+			SenderPubkey:    formatPubkey(ref.SenderPubkey[:]),
+			Location:        formatCoordinate(ref.Lat, ref.Lng),
+			RttMs:           refRttMs,
+			MeasuredRttMs:   refMeasuredRttMs,
 		})
 	}
 
@@ -387,7 +392,8 @@ func formatTextOutput(output OffsetOutput) string {
 
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("[%s] Received LocationOffset from Probe\n", output.Timestamp))
-	sb.WriteString(fmt.Sprintf("  Probe: %s\n", output.ProbePubkey))
+	sb.WriteString(fmt.Sprintf("  Authority: %s\n", output.AuthorityPubkey))
+	sb.WriteString(fmt.Sprintf("  Sender:    %s\n", output.SenderPubkey))
 	sb.WriteString(fmt.Sprintf("  Reference Point: %s\n", output.ReferencePoint.Formatted))
 	sb.WriteString(fmt.Sprintf("  RTT to Target: %.2fms\n", output.RttMs))
 	sb.WriteString(fmt.Sprintf("  Max Distance: %.0f miles (%.0f km)\n", output.MaxDistanceMiles, output.MaxDistanceKm))
@@ -397,7 +403,8 @@ func formatTextOutput(output OffsetOutput) string {
 	if len(output.DZDReferenceChain) > 0 {
 		sb.WriteString("  DZD Reference Chain:\n")
 		for i, ref := range output.DZDReferenceChain {
-			sb.WriteString(fmt.Sprintf("    [%d] DZD: %s\n", i+1, ref.Pubkey))
+			sb.WriteString(fmt.Sprintf("    [%d] Authority: %s\n", i+1, ref.AuthorityPubkey))
+			sb.WriteString(fmt.Sprintf("        Sender:    %s\n", ref.SenderPubkey))
 			sb.WriteString(fmt.Sprintf("        Location: %s\n", ref.Location.Formatted))
 			sb.WriteString(fmt.Sprintf("        DZD→Probe RTT: %.2fms\n", ref.MeasuredRttMs))
 		}

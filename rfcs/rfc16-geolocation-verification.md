@@ -43,8 +43,9 @@ A signed data structure representing the latency relationship between two entiti
 ```go
 type LocationOffset struct {
     Signature       [64]byte  // Ed25519 signature
-    Pubkey          [32]byte  // Signer's public key (DZD or Probe)
-    MeasurementSlot uint64    // Current DoubleZero Slot 
+    AuthorityPubkey [32]byte  // Signer's public key (metrics publisher key or probe signing key)
+    SenderPubkey    [32]byte  // Device public key (DZD or Probe)
+    MeasurementSlot uint64    // Current DoubleZero Slot
     Lat             float64   // Reference point latitude (WGS84)
     Lng             float64   // Reference point longitude (WGS84)
     MeasuredRttNs   uint64    // Measured RTT in nanoseconds, minimum

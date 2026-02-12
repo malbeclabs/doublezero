@@ -9,9 +9,9 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
 )
 
-func makeTestOffset(pubkey [32]byte, rttNs uint64) *geoprobe.LocationOffset {
+func makeTestOffset(senderPubkey [32]byte, rttNs uint64) *geoprobe.LocationOffset {
 	return &geoprobe.LocationOffset{
-		Pubkey:          pubkey,
+		SenderPubkey:    senderPubkey,
 		MeasurementSlot: 12345,
 		MeasuredRttNs:   rttNs,
 		Lat:             52.3676,
@@ -97,8 +97,8 @@ func TestOffsetCache_GetBest(t *testing.T) {
 	if best.RttNs != 1000 {
 		t.Errorf("expected best RttNs=1000, got %d", best.RttNs)
 	}
-	if best.Pubkey != [32]byte{2} {
-		t.Errorf("expected pubkey {2}, got %v", best.Pubkey)
+	if best.SenderPubkey != [32]byte{2} {
+		t.Errorf("expected sender pubkey {2}, got %v", best.SenderPubkey)
 	}
 }
 
@@ -193,67 +193,74 @@ func TestOffsetCache_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
-func TestParseParentDZDs_Empty(t *testing.T) {
-	parents, err := parseParentDZDs("")
+func TestParseParentDZD_Empty(t *testing.T) {
+	parent, err := parseParentDZD("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(parents) != 0 {
-		t.Errorf("expected 0 parents, got %d", len(parents))
+	if parent != nil {
+		t.Errorf("expected nil for empty input, got %+v", parent)
 	}
 }
 
-func TestParseParentDZDs_Valid(t *testing.T) {
-	kp1 := solana.NewWallet()
-	kp2 := solana.NewWallet()
+func TestParseParentDZD_Valid(t *testing.T) {
+	parentWallet := solana.NewWallet()
+	authorityWallet := solana.NewWallet()
 
-	input := kp1.PublicKey().String() + "," + kp2.PublicKey().String()
+	input := parentWallet.PublicKey().String() + "," + authorityWallet.PublicKey().String()
 
-	parents, err := parseParentDZDs(input)
+	parent, err := parseParentDZD(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(parents) != 2 {
-		t.Fatalf("expected 2 parents, got %d", len(parents))
+	if parent == nil {
+		t.Fatal("expected parent, got nil")
 	}
 
-	var expectedPK1, expectedPK2 [32]byte
-	pk1 := kp1.PublicKey()
-	copy(expectedPK1[:], pk1[:])
-	pk2 := kp2.PublicKey()
-	copy(expectedPK2[:], pk2[:])
+	var expectedParent, expectedAuthority [32]byte
+	pk := parentWallet.PublicKey()
+	copy(expectedParent[:], pk[:])
+	ak := authorityWallet.PublicKey()
+	copy(expectedAuthority[:], ak[:])
 
-	if parents[0].pubkey != expectedPK1 {
-		t.Errorf("unexpected first parent pubkey")
+	if parent.pubkey != expectedParent {
+		t.Errorf("unexpected parent pubkey")
 	}
-	if parents[1].pubkey != expectedPK2 {
-		t.Errorf("unexpected second parent pubkey")
-	}
-}
-
-func TestParseParentDZDs_InvalidPubkeyFormat(t *testing.T) {
-	_, err := parseParentDZDs("not-a-valid-base58-pubkey")
-	if err == nil {
-		t.Fatal("expected error for invalid pubkey")
+	if parent.authorityPubkey != expectedAuthority {
+		t.Errorf("unexpected authority pubkey")
 	}
 }
 
-func TestParseParentDZDs_InvalidPubkey(t *testing.T) {
-	_, err := parseParentDZDs("not-a-pubkey")
-	if err == nil {
-		t.Fatal("expected error for invalid pubkey")
-	}
-}
-
-func TestParseParentDZDs_Dedup(t *testing.T) {
+func TestParseParentDZD_WrongPartCount(t *testing.T) {
 	kp := solana.NewWallet()
-	input := kp.PublicKey().String() + "," + kp.PublicKey().String()
 
-	parents, err := parseParentDZDs(input)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	// Single key (missing authority).
+	_, err := parseParentDZD(kp.PublicKey().String())
+	if err == nil {
+		t.Fatal("expected error for single key")
 	}
-	if len(parents) != 1 {
-		t.Errorf("expected 1 parent after dedup, got %d", len(parents))
+
+	// Three keys.
+	kp2 := solana.NewWallet()
+	kp3 := solana.NewWallet()
+	_, err = parseParentDZD(kp.PublicKey().String() + "," + kp2.PublicKey().String() + "," + kp3.PublicKey().String())
+	if err == nil {
+		t.Fatal("expected error for three keys")
+	}
+}
+
+func TestParseParentDZD_InvalidParentPubkey(t *testing.T) {
+	authority := solana.NewWallet()
+	_, err := parseParentDZD("not-a-pubkey," + authority.PublicKey().String())
+	if err == nil {
+		t.Fatal("expected error for invalid parent pubkey")
+	}
+}
+
+func TestParseParentDZD_InvalidAuthorityPubkey(t *testing.T) {
+	parent := solana.NewWallet()
+	_, err := parseParentDZD(parent.PublicKey().String() + ",not-a-pubkey")
+	if err == nil {
+		t.Fatal("expected error for invalid authority pubkey")
 	}
 }

@@ -12,7 +12,9 @@ func TestSignOffset_Success(t *testing.T) {
 
 	// Generate a keypair for signing
 	keypair := solana.NewWallet().PrivateKey
-	signer := NewOffsetSigner(keypair)
+	senderPubkey := solana.NewWallet().PublicKey()
+	signer, err := NewOffsetSigner(keypair, senderPubkey)
+	require.NoError(t, err)
 
 	// Create an offset
 	offset := &LocationOffset{
@@ -26,15 +28,18 @@ func TestSignOffset_Success(t *testing.T) {
 	}
 
 	// Sign the offset
-	err := signer.SignOffset(offset)
+	err = signer.SignOffset(offset)
 	require.NoError(t, err)
 
 	// Verify signature is not empty
 	require.NotEqual(t, [64]byte{}, offset.Signature)
 
-	// Verify pubkey was set correctly
+	// Verify authority pubkey was set correctly
 	expectedPubkey := keypair.PublicKey()
-	require.Equal(t, expectedPubkey[:], offset.Pubkey[:])
+	require.Equal(t, expectedPubkey[:], offset.AuthorityPubkey[:])
+
+	// Verify sender pubkey was set correctly
+	require.Equal(t, senderPubkey[:], offset.SenderPubkey[:])
 
 	// Verify the signature is valid
 	err = VerifyOffset(offset)
@@ -46,7 +51,9 @@ func TestVerifyOffset_InvalidSignature(t *testing.T) {
 
 	// Generate a keypair and sign an offset
 	keypair := solana.NewWallet().PrivateKey
-	signer := NewOffsetSigner(keypair)
+	senderPubkey := solana.NewWallet().PublicKey()
+	signer, err := NewOffsetSigner(keypair, senderPubkey)
+	require.NoError(t, err)
 
 	offset := &LocationOffset{
 		MeasurementSlot: 99999,
@@ -58,7 +65,7 @@ func TestVerifyOffset_InvalidSignature(t *testing.T) {
 		References:      nil,
 	}
 
-	err := signer.SignOffset(offset)
+	err = signer.SignOffset(offset)
 	require.NoError(t, err)
 
 	// Tamper with the data (invalidates signature)
@@ -75,7 +82,9 @@ func TestVerifyOffset_WrongPublicKey(t *testing.T) {
 
 	// Sign with one keypair
 	keypair1 := solana.NewWallet().PrivateKey
-	signer1 := NewOffsetSigner(keypair1)
+	senderPubkey1 := solana.NewWallet().PublicKey()
+	signer1, err := NewOffsetSigner(keypair1, senderPubkey1)
+	require.NoError(t, err)
 
 	offset := &LocationOffset{
 		MeasurementSlot: 55555,
@@ -87,13 +96,13 @@ func TestVerifyOffset_WrongPublicKey(t *testing.T) {
 		References:      nil,
 	}
 
-	err := signer1.SignOffset(offset)
+	err = signer1.SignOffset(offset)
 	require.NoError(t, err)
 
-	// Replace the public key with a different one
+	// Replace the authority public key with a different one
 	keypair2 := solana.NewWallet().PrivateKey
 	pubkey2 := keypair2.PublicKey()
-	copy(offset.Pubkey[:], pubkey2[:])
+	copy(offset.AuthorityPubkey[:], pubkey2[:])
 
 	// Verification should fail (signature doesn't match new pubkey)
 	err = VerifyOffset(offset)
@@ -105,7 +114,9 @@ func TestSignOffset_WithReferences(t *testing.T) {
 
 	// Create DZD offset
 	dzdKeypair := solana.NewWallet().PrivateKey
-	dzdSigner := NewOffsetSigner(dzdKeypair)
+	dzdSenderPubkey := solana.NewWallet().PublicKey()
+	dzdSigner, err := NewOffsetSigner(dzdKeypair, dzdSenderPubkey)
+	require.NoError(t, err)
 
 	dzdOffset := &LocationOffset{
 		MeasurementSlot: 100,
@@ -117,12 +128,14 @@ func TestSignOffset_WithReferences(t *testing.T) {
 		References:      nil,
 	}
 
-	err := dzdSigner.SignOffset(dzdOffset)
+	err = dzdSigner.SignOffset(dzdOffset)
 	require.NoError(t, err)
 
 	// Create Probe offset that references DZD
 	probeKeypair := solana.NewWallet().PrivateKey
-	probeSigner := NewOffsetSigner(probeKeypair)
+	probeSenderPubkey := solana.NewWallet().PublicKey()
+	probeSigner, err := NewOffsetSigner(probeKeypair, probeSenderPubkey)
+	require.NoError(t, err)
 
 	probeOffset := &LocationOffset{
 		MeasurementSlot: 101,
@@ -151,7 +164,9 @@ func TestVerifyOffsetChain_Success(t *testing.T) {
 
 	// Create a 2-level chain: DZD -> Probe
 	dzdKeypair := solana.NewWallet().PrivateKey
-	dzdSigner := NewOffsetSigner(dzdKeypair)
+	dzdSenderPubkey := solana.NewWallet().PublicKey()
+	dzdSigner, err := NewOffsetSigner(dzdKeypair, dzdSenderPubkey)
+	require.NoError(t, err)
 
 	dzdOffset := &LocationOffset{
 		MeasurementSlot: 100,
@@ -163,11 +178,13 @@ func TestVerifyOffsetChain_Success(t *testing.T) {
 		References:      nil,
 	}
 
-	err := dzdSigner.SignOffset(dzdOffset)
+	err = dzdSigner.SignOffset(dzdOffset)
 	require.NoError(t, err)
 
 	probeKeypair := solana.NewWallet().PrivateKey
-	probeSigner := NewOffsetSigner(probeKeypair)
+	probeSenderPubkey := solana.NewWallet().PublicKey()
+	probeSigner, err := NewOffsetSigner(probeKeypair, probeSenderPubkey)
+	require.NoError(t, err)
 
 	probeOffset := &LocationOffset{
 		MeasurementSlot: 101,
@@ -192,7 +209,9 @@ func TestVerifyOffsetChain_InvalidReference(t *testing.T) {
 
 	// Create DZD offset
 	dzdKeypair := solana.NewWallet().PrivateKey
-	dzdSigner := NewOffsetSigner(dzdKeypair)
+	dzdSenderPubkey := solana.NewWallet().PublicKey()
+	dzdSigner, err := NewOffsetSigner(dzdKeypair, dzdSenderPubkey)
+	require.NoError(t, err)
 
 	dzdOffset := &LocationOffset{
 		MeasurementSlot: 100,
@@ -204,7 +223,7 @@ func TestVerifyOffsetChain_InvalidReference(t *testing.T) {
 		References:      nil,
 	}
 
-	err := dzdSigner.SignOffset(dzdOffset)
+	err = dzdSigner.SignOffset(dzdOffset)
 	require.NoError(t, err)
 
 	// Tamper with the DZD offset after signing
@@ -212,7 +231,9 @@ func TestVerifyOffsetChain_InvalidReference(t *testing.T) {
 
 	// Create Probe offset with tampered reference
 	probeKeypair := solana.NewWallet().PrivateKey
-	probeSigner := NewOffsetSigner(probeKeypair)
+	probeSenderPubkey := solana.NewWallet().PublicKey()
+	probeSigner, err := NewOffsetSigner(probeKeypair, probeSenderPubkey)
+	require.NoError(t, err)
 
 	probeOffset := &LocationOffset{
 		MeasurementSlot: 101,
@@ -237,7 +258,9 @@ func TestOffsetSigner_GetPublicKey(t *testing.T) {
 	t.Parallel()
 
 	keypair := solana.NewWallet().PrivateKey
-	signer := NewOffsetSigner(keypair)
+	senderPubkey := solana.NewWallet().PublicKey()
+	signer, err := NewOffsetSigner(keypair, senderPubkey)
+	require.NoError(t, err)
 
 	pubkey := signer.GetPublicKey()
 	require.Equal(t, keypair.PublicKey(), pubkey)
@@ -247,7 +270,9 @@ func TestOffsetSignaturesEqual(t *testing.T) {
 	t.Parallel()
 
 	keypair := solana.NewWallet().PrivateKey
-	signer := NewOffsetSigner(keypair)
+	senderPubkey := solana.NewWallet().PublicKey()
+	signer, err := NewOffsetSigner(keypair, senderPubkey)
+	require.NoError(t, err)
 
 	offset1 := &LocationOffset{
 		MeasurementSlot: 12345,
@@ -270,7 +295,7 @@ func TestOffsetSignaturesEqual(t *testing.T) {
 	}
 
 	// Sign both with the same data
-	err := signer.SignOffset(offset1)
+	err = signer.SignOffset(offset1)
 	require.NoError(t, err)
 
 	err = signer.SignOffset(offset2)
@@ -293,7 +318,9 @@ func TestSignOffset_RoundTrip(t *testing.T) {
 
 	// Create offset, sign, marshal, unmarshal, verify
 	keypair := solana.NewWallet().PrivateKey
-	signer := NewOffsetSigner(keypair)
+	senderPubkey := solana.NewWallet().PublicKey()
+	signer, err := NewOffsetSigner(keypair, senderPubkey)
+	require.NoError(t, err)
 
 	original := &LocationOffset{
 		MeasurementSlot: 99999,
@@ -306,7 +333,7 @@ func TestSignOffset_RoundTrip(t *testing.T) {
 	}
 
 	// Sign
-	err := signer.SignOffset(original)
+	err = signer.SignOffset(original)
 	require.NoError(t, err)
 
 	// Marshal
@@ -331,7 +358,7 @@ func TestVerifyOffset_EmptySignature(t *testing.T) {
 
 	offset := &LocationOffset{
 		Signature:       [64]byte{}, // Empty signature
-		Pubkey:          [32]byte{1, 2, 3},
+		AuthorityPubkey: [32]byte{1, 2, 3},
 		MeasurementSlot: 1,
 		Lat:             1.0,
 		Lng:             2.0,
@@ -344,4 +371,46 @@ func TestVerifyOffset_EmptySignature(t *testing.T) {
 	// Verification should fail
 	err := VerifyOffset(offset)
 	require.Error(t, err)
+}
+
+func TestVerifyOffset_TamperedSenderPubkey(t *testing.T) {
+	t.Parallel()
+
+	keypair := solana.NewWallet().PrivateKey
+	senderPubkey := solana.NewWallet().PublicKey()
+	signer, err := NewOffsetSigner(keypair, senderPubkey)
+	require.NoError(t, err)
+
+	offset := &LocationOffset{
+		MeasurementSlot: 12345,
+		Lat:             1.0,
+		Lng:             2.0,
+		MeasuredRttNs:   1000,
+		RttNs:           1000,
+		NumReferences:   0,
+		References:      nil,
+	}
+
+	err = signer.SignOffset(offset)
+	require.NoError(t, err)
+
+	// Tamper with SenderPubkey after signing
+	differentPubkey := solana.NewWallet().PublicKey()
+	copy(offset.SenderPubkey[:], differentPubkey[:])
+
+	// Verification should fail (SenderPubkey is covered by the signature)
+	err = VerifyOffset(offset)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "signature verification failed")
+}
+
+func TestNewOffsetSigner_ZeroSenderPubkey(t *testing.T) {
+	t.Parallel()
+
+	keypair := solana.NewWallet().PrivateKey
+	zeroPubkey := solana.PublicKey{}
+
+	_, err := NewOffsetSigner(keypair, zeroPubkey)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "sender pubkey must not be zero")
 }

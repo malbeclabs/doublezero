@@ -5,7 +5,7 @@ use crate::error::GeolocationError;
 pub const MAX_CODE_LENGTH: usize = 32;
 
 pub fn validate_code_length(code: &str) -> Result<(), GeolocationError> {
-    if code.len() > MAX_CODE_LENGTH {
+    if code.is_empty() || code.len() > MAX_CODE_LENGTH {
         return Err(GeolocationError::InvalidCodeLength);
     }
     Ok(())
@@ -74,7 +74,10 @@ mod tests {
 
     #[test]
     fn test_validate_code_length_empty() {
-        assert!(validate_code_length("").is_ok());
+        assert_eq!(
+            validate_code_length(""),
+            Err(GeolocationError::InvalidCodeLength)
+        );
     }
 
     #[test]

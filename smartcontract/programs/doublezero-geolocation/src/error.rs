@@ -33,6 +33,8 @@ pub enum GeolocationError {
     ParentDeviceAlreadyExists,
     #[error("Target already exists")]
     TargetAlreadyExists,
+    #[error("Reference count is not zero")]
+    ReferenceCountNotZero,
 }
 
 impl From<GeolocationError> for ProgramError {
@@ -53,6 +55,7 @@ impl From<GeolocationError> for ProgramError {
             GeolocationError::InvalidAccountCode => ProgramError::Custom(12),
             GeolocationError::ParentDeviceAlreadyExists => ProgramError::Custom(13),
             GeolocationError::TargetAlreadyExists => ProgramError::Custom(14),
+            GeolocationError::ReferenceCountNotZero => ProgramError::Custom(15),
         }
     }
 }
@@ -74,6 +77,7 @@ impl From<u32> for GeolocationError {
             12 => GeolocationError::InvalidAccountCode,
             13 => GeolocationError::ParentDeviceAlreadyExists,
             14 => GeolocationError::TargetAlreadyExists,
+            15 => GeolocationError::ReferenceCountNotZero,
             _ => GeolocationError::Custom(e),
         }
     }
@@ -112,6 +116,7 @@ mod tests {
             (GeolocationError::InvalidAccountCode, 12),
             (GeolocationError::ParentDeviceAlreadyExists, 13),
             (GeolocationError::TargetAlreadyExists, 14),
+            (GeolocationError::ReferenceCountNotZero, 15),
         ]
     }
 

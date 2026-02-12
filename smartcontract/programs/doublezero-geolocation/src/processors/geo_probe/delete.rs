@@ -1,7 +1,11 @@
-use crate::{processors::check_foundation_allowlist, serializer::try_acc_close};
+use crate::{
+    error::GeolocationError, processors::check_foundation_allowlist, serializer::try_acc_close,
+    state::geo_probe::GeoProbe,
+};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 
@@ -26,6 +30,16 @@ pub fn process_delete_geo_probe(program_id: &Pubkey, accounts: &[AccountInfo]) -
         probe_account.owner, program_id,
         "Invalid GeoProbe Account Owner"
     );
+
+    let probe = GeoProbe::try_from(probe_account)?;
+
+    if probe.reference_count > 0 {
+        msg!(
+            "Cannot delete GeoProbe with reference_count={}",
+            probe.reference_count
+        );
+        return Err(GeolocationError::ReferenceCountNotZero.into());
+    }
 
     try_acc_close(probe_account, payer_account)?;
 

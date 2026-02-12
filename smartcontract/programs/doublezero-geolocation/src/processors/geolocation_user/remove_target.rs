@@ -1,6 +1,8 @@
 use crate::{
-    error::GeolocationError, instructions::RemoveTargetArgs, serializer::try_acc_write,
-    state::geolocation_user::GeolocationUser,
+    error::GeolocationError,
+    instructions::RemoveTargetArgs,
+    serializer::try_acc_write,
+    state::{geo_probe::GeoProbe, geolocation_user::GeolocationUser},
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -17,12 +19,21 @@ pub fn process_remove_target(
     let accounts_iter = &mut accounts.iter();
 
     let user_account = next_account_info(accounts_iter)?;
+    let probe_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
 
     assert!(payer_account.is_signer, "Payer must be a signer");
     assert_eq!(
         user_account.owner, program_id,
         "Invalid GeolocationUser Account Owner"
+    );
+    assert_eq!(
+        probe_account.owner, program_id,
+        "Invalid GeoProbe Account Owner"
+    );
+    assert_eq!(
+        probe_account.key, &args.probe_pk,
+        "Probe account does not match probe_pk in args"
     );
 
     let mut user = GeolocationUser::try_from(user_account)?;
@@ -52,7 +63,11 @@ pub fn process_remove_target(
         }
     }
 
+    let mut probe = GeoProbe::try_from(probe_account)?;
+    probe.reference_count = probe.reference_count.saturating_sub(1);
+
     try_acc_write(&user, user_account, payer_account, accounts)?;
+    try_acc_write(&probe, probe_account, payer_account, accounts)?;
 
     Ok(())
 }

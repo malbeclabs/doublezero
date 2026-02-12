@@ -46,6 +46,11 @@
       "name": "NextBgpCommunity",
       "value": "10042",
       "typ": "u16"
+    },
+    {
+      "name": "MulticastPublisherBlock",
+      "value": "147.51.126.0/23",
+      "typ": "networkv4"
     }
   ]
 }

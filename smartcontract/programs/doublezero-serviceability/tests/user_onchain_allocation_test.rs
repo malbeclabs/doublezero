@@ -99,6 +99,8 @@ async fn setup_user_onchain_allocation_test(
     let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
     let (segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     // Initialize global state
@@ -126,6 +128,7 @@ async fn setup_user_onchain_allocation_test(
             device_tunnel_block: "10.100.0.0/24".parse().unwrap(),
             user_tunnel_block: "169.254.0.0/24".parse().unwrap(), // Link-local for user tunnel_net
             multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
             next_bgp_community: None,
         }),
         vec![
@@ -136,6 +139,7 @@ async fn setup_user_onchain_allocation_test(
             AccountMeta::new(multicastgroup_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
             AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
@@ -598,7 +602,8 @@ async fn test_closeaccount_user_with_deallocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
+            dz_prefix_count: 1,
+            multicast_publisher_count: 0, // 1 DzPrefixBlock account provided
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

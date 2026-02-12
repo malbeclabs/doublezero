@@ -27,11 +27,18 @@ pub struct UserCloseAccountArgs {
     /// When 0, legacy behavior is used (no deallocation). When > 0, on-chain deallocation is used.
     #[incremental(default = 0)]
     pub dz_prefix_count: u8,
+    /// Whether MulticastPublisherBlock account is passed (1 = yes, 0 = no).
+    #[incremental(default = 0)]
+    pub multicast_publisher_count: u8,
 }
 
 impl fmt::Debug for UserCloseAccountArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "dz_prefix_count: {}", self.dz_prefix_count)
+        write!(
+            f,
+            "dz_prefix_count: {}, multicast_publisher_count: {}",
+            self.dz_prefix_count, self.multicast_publisher_count
+        )
     }
 }
 
@@ -52,11 +59,19 @@ pub fn process_closeaccount_user(
 
     // Optional: ResourceExtension accounts for on-chain deallocation (before payer)
     // Account layout WITH ResourceExtension (dz_prefix_count > 0):
-    //   [user, owner, device, globalstate, global_resource_ext, device_tunnel_ids_ext, dz_prefix_ext_0..N, payer, system]
+    //   [user, owner, device, globalstate, global_resource_ext, multicast_publisher_block_ext?, device_tunnel_ids_ext, dz_prefix_ext_0..N, payer, system]
     // Account layout WITHOUT (legacy, dz_prefix_count == 0):
     //   [user, owner, device, globalstate, payer, system]
     let resource_extension_accounts = if value.dz_prefix_count > 0 {
         let global_resource_ext = next_account_info(accounts_iter)?; // UserTunnelBlock
+
+        // Optional MulticastPublisherBlock account
+        let multicast_publisher_block_ext = if value.multicast_publisher_count > 0 {
+            Some(next_account_info(accounts_iter)?)
+        } else {
+            None
+        };
+
         let device_tunnel_ids_ext = next_account_info(accounts_iter)?; // TunnelIds
 
         // Collect DzPrefixBlock accounts based on dz_prefix_count from args
@@ -67,6 +82,7 @@ pub fn process_closeaccount_user(
 
         Some((
             global_resource_ext,
+            multicast_publisher_block_ext,
             device_tunnel_ids_ext,
             dz_prefix_accounts,
         ))
@@ -140,8 +156,12 @@ pub fn process_closeaccount_user(
 
     // Deallocate resources from ResourceExtension if accounts provided
     // Deallocation is idempotent - safe to call even if resources weren't allocated
-    if let Some((global_resource_ext, device_tunnel_ids_ext, dz_prefix_accounts)) =
-        resource_extension_accounts
+    if let Some((
+        global_resource_ext,
+        multicast_publisher_block_ext,
+        device_tunnel_ids_ext,
+        dz_prefix_accounts,
+    )) = resource_extension_accounts
     {
         // Validate global_resource_ext (UserTunnelBlock)
         assert_eq!(
@@ -163,6 +183,29 @@ pub fn process_closeaccount_user(
             global_resource_ext.key, &expected_user_tunnel_pda,
             "Invalid ResourceExtension PDA for UserTunnelBlock"
         );
+
+        // Validate multicast_publisher_block_ext (MulticastPublisherBlock) if provided
+        if let Some(multicast_publisher_ext) = multicast_publisher_block_ext {
+            assert_eq!(
+                multicast_publisher_ext.owner, program_id,
+                "Invalid ResourceExtension Account Owner for MulticastPublisherBlock"
+            );
+            assert!(
+                multicast_publisher_ext.is_writable,
+                "ResourceExtension Account for MulticastPublisherBlock is not writable"
+            );
+            assert!(
+                !multicast_publisher_ext.data_is_empty(),
+                "ResourceExtension Account for MulticastPublisherBlock is empty"
+            );
+
+            let (expected_multicast_publisher_pda, _, _) =
+                get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
+            assert_eq!(
+                multicast_publisher_ext.key, &expected_multicast_publisher_pda,
+                "Invalid ResourceExtension PDA for MulticastPublisherBlock"
+            );
+        }
 
         // Validate device_tunnel_ids_ext (TunnelIds)
         assert_eq!(
@@ -237,24 +280,42 @@ pub fn process_closeaccount_user(
             msg!("Deallocated tunnel_id {}: {}", user.tunnel_id, _deallocated);
         }
 
-        // Deallocate dz_ip from device DzPrefixBlock (only if allocated, not client_ip)
-        // Try to deallocate from each DzPrefixBlock until one succeeds
-        // dz_ip is allocated when != client_ip and is a valid global unicast address
+        // Deallocate dz_ip (try MulticastPublisherBlock first, then DzPrefixBlock)
+        // Only deallocate if dz_ip is allocated (not client_ip and not UNSPECIFIED)
         if user.dz_ip != user.client_ip && user.dz_ip != Ipv4Addr::UNSPECIFIED {
             if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
-                for dz_prefix_account in dz_prefix_accounts.iter() {
-                    let mut buffer = dz_prefix_account.data.borrow_mut();
+                let mut deallocated = false;
+
+                // Try MulticastPublisherBlock first (for publishers)
+                if let Some(multicast_publisher_ext) = multicast_publisher_block_ext {
+                    let mut buffer = multicast_publisher_ext.data.borrow_mut();
                     let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-                    let deallocated = resource.deallocate(&IdOrIp::Ip(dz_ip_net));
+                    deallocated = resource.deallocate(&IdOrIp::Ip(dz_ip_net));
                     #[cfg(test)]
                     msg!(
-                        "Deallocated dz_ip {} from {:?}: {}",
+                        "Deallocated dz_ip {} from MulticastPublisherBlock: {}",
                         dz_ip_net,
-                        dz_prefix_account.key,
                         deallocated
                     );
-                    if deallocated {
-                        break; // Successfully deallocated
+                }
+
+                // Fall back to DzPrefixBlock if not in MulticastPublisherBlock
+                if !deallocated {
+                    for dz_prefix_account in dz_prefix_accounts.iter() {
+                        let mut buffer = dz_prefix_account.data.borrow_mut();
+                        let mut resource =
+                            ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+                        deallocated = resource.deallocate(&IdOrIp::Ip(dz_ip_net));
+                        #[cfg(test)]
+                        msg!(
+                            "Deallocated dz_ip {} from DzPrefixBlock {:?}: {}",
+                            dz_ip_net,
+                            dz_prefix_account.key,
+                            deallocated
+                        );
+                        if deallocated {
+                            break; // Successfully deallocated
+                        }
                     }
                 }
             }
@@ -446,6 +507,7 @@ mod tests {
             &accounts,
             &UserCloseAccountArgs {
                 dz_prefix_count: 0, // legacy path - no ResourceExtension accounts
+                multicast_publisher_count: 0,
             },
         );
 

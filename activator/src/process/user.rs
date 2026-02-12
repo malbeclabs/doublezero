@@ -11,7 +11,7 @@ use doublezero_sdk::{
             closeaccount::CloseAccountUserCommand, reject::RejectUserCommand,
         },
     },
-    DoubleZeroClient, Exchange, Location, User, UserStatus,
+    DoubleZeroClient, Exchange, Location, User, UserStatus, UserType,
 };
 use doublezero_serviceability::error::DoubleZeroError;
 use log::{info, warn};
@@ -28,6 +28,7 @@ pub fn process_user_event(
     pubkey: &Pubkey,
     devices: &mut DeviceMap,
     user_tunnel_ips: &mut IPBlockAllocator,
+    publisher_dz_ips: &mut Option<IPBlockAllocator>,
     link_ids: &mut IDAllocator,
     user: &User,
     locations: &HashMap<Pubkey, Location>,
@@ -109,25 +110,67 @@ pub fn process_user_event(
 
             let need_dz_ip = user.needs_allocated_dz_ip();
 
-            let dz_ip = if need_dz_ip {
-                match device_state.get_next_dz_ip() {
-                    Some(ip) => ip,
-                    None => {
+            // Determine allocation strategy for dz_ip:
+            // - Multicast publishers: use publisher_dz_ips pool if available, otherwise onchain
+            // - Other types: respect use_onchain_allocation flag
+            let is_publisher = user.user_type == UserType::Multicast && !user.publishers.is_empty();
+            let use_onchain_dz_ip = if is_publisher {
+                use_onchain_allocation || publisher_dz_ips.is_none()
+            } else {
+                use_onchain_allocation
+            };
+
+            let dz_ip = if need_dz_ip && !use_onchain_dz_ip {
+                // Offchain allocation
+                if is_publisher {
+                    // Publishers: allocate from global publisher pool
+                    if let Some(ref mut publisher_ips) = publisher_dz_ips {
+                        match publisher_ips.next_available_block(1, 1).map(|net| net.ip()) {
+                            Some(ip) => ip,
+                            None => {
+                                let res = reject_user(
+                                    client,
+                                    pubkey,
+                                    "Error: No available publisher dz_ip to allocate",
+                                );
+
+                                match res {
+                                    Ok(signature) => {
+                                        write!(
+                                            &mut log_msg,
+                                            " Reject(No available publisher dz_ip) Rejected {signature}"
+                                        )
+                                        .unwrap();
+                                    }
+                                    Err(e) => {
+                                        write!(
+                                            &mut log_msg,
+                                            " Reject(No available publisher dz_ip) Error: {e}"
+                                        )
+                                        .unwrap();
+                                    }
+                                }
+                                info!("{log_msg}");
+                                return;
+                            }
+                        }
+                    } else {
+                        // Should never happen due to use_onchain_dz_ip check above
                         let res =
-                            reject_user(client, pubkey, "Error: No available dz_ip to allocate");
+                            reject_user(client, pubkey, "Error: Publisher dz_ip pool unavailable");
 
                         match res {
                             Ok(signature) => {
                                 write!(
                                     &mut log_msg,
-                                    " Reject(No available dz_ip to allocate) Rejected {signature}"
+                                    " Reject(Publisher dz_ip pool unavailable) Rejected {signature}"
                                 )
                                 .unwrap();
                             }
                             Err(e) => {
                                 write!(
                                     &mut log_msg,
-                                    " Reject(No available dz_ip to allocate) Error: {e}"
+                                    " Reject(Publisher dz_ip pool unavailable) Error: {e}"
                                 )
                                 .unwrap();
                             }
@@ -135,7 +178,41 @@ pub fn process_user_event(
                         info!("{log_msg}");
                         return;
                     }
+                } else {
+                    // IBRL/EdgeFiltering: allocate from device state
+                    match device_state.get_next_dz_ip() {
+                        Some(ip) => ip,
+                        None => {
+                            let res = reject_user(
+                                client,
+                                pubkey,
+                                "Error: No available dz_ip to allocate",
+                            );
+
+                            match res {
+                                Ok(signature) => {
+                                    write!(
+                                        &mut log_msg,
+                                        " Reject(No available dz_ip to allocate) Rejected {signature}"
+                                    )
+                                    .unwrap();
+                                }
+                                Err(e) => {
+                                    write!(
+                                        &mut log_msg,
+                                        " Reject(No available dz_ip to allocate) Error: {e}"
+                                    )
+                                    .unwrap();
+                                }
+                            }
+                            info!("{log_msg}");
+                            return;
+                        }
+                    }
                 }
+            } else if need_dz_ip {
+                // Onchain allocation: pass UNSPECIFIED so smart contract allocates
+                Ipv4Addr::UNSPECIFIED
             } else {
                 user.client_ip
             };
@@ -143,16 +220,24 @@ pub fn process_user_event(
             write!(&mut log_msg, " tunnel_id: {} dz_ip: {} ", tunnel_id, &dz_ip).unwrap();
 
             // Activate the user
+            // Force onchain allocation for multicast publishers if no local publisher pool
+            let use_onchain_for_activation =
+                use_onchain_allocation || (is_publisher && publisher_dz_ips.is_none());
+
             let res = ActivateUserCommand {
                 user_pubkey: *pubkey,
-                tunnel_id: if use_onchain_allocation { 0 } else { tunnel_id },
-                tunnel_net: if use_onchain_allocation {
+                tunnel_id: if use_onchain_for_activation {
+                    0
+                } else {
+                    tunnel_id
+                },
+                tunnel_net: if use_onchain_for_activation {
                     NetworkV4::default()
                 } else {
                     tunnel_net.into()
                 },
                 dz_ip,
-                use_onchain_allocation,
+                use_onchain_allocation: use_onchain_for_activation,
                 tunnel_endpoint,
             }
             .execute(client);
@@ -206,28 +291,100 @@ pub fn process_user_event(
 
             let need_dz_ip = user.needs_allocated_dz_ip();
 
+            let is_publisher = user.user_type == UserType::Multicast && !user.publishers.is_empty();
+            let use_onchain_dz_ip = if is_publisher {
+                use_onchain_allocation || publisher_dz_ips.is_none()
+            } else {
+                use_onchain_allocation
+            };
+
             let dz_ip = if need_dz_ip && user.dz_ip == user.client_ip {
-                match device_state.get_next_dz_ip() {
-                    Some(ip) => ip,
-                    None => {
+                if use_onchain_dz_ip {
+                    // Onchain allocation: pass UNSPECIFIED so smart contract allocates
+                    Ipv4Addr::UNSPECIFIED
+                } else if is_publisher {
+                    // Publishers: allocate from global publisher pool
+                    if let Some(ref mut publisher_ips) = publisher_dz_ips {
+                        match publisher_ips.next_available_block(1, 1).map(|net| net.ip()) {
+                            Some(ip) => ip,
+                            None => {
+                                let res = reject_user(
+                                    client,
+                                    pubkey,
+                                    "Error: No available publisher dz_ip to allocate",
+                                );
+
+                                match res {
+                                    Ok(signature) => {
+                                        write!(
+                                            &mut log_msg,
+                                            " Reject(No available publisher dz_ip) Rejected {signature}"
+                                        )
+                                        .unwrap();
+                                    }
+                                    Err(e) => {
+                                        write!(
+                                            &mut log_msg,
+                                            " Reject(No available publisher dz_ip) Error: {e}"
+                                        )
+                                        .unwrap();
+                                    }
+                                }
+                                info!("{log_msg}");
+                                return;
+                            }
+                        }
+                    } else {
+                        // Should never happen due to use_onchain_dz_ip check above
                         let res =
-                            reject_user(client, pubkey, "Error: No available dz_ip to allocate");
+                            reject_user(client, pubkey, "Error: Publisher dz_ip pool unavailable");
 
                         match res {
                             Ok(signature) => {
                                 write!(
                                     &mut log_msg,
-                                    " Reject(No available user block) Rejected {signature}"
+                                    " Reject(Publisher dz_ip pool unavailable) Rejected {signature}"
                                 )
                                 .unwrap();
                             }
                             Err(e) => {
-                                write!(&mut log_msg, " Reject(No available user block) Error: {e}")
-                                    .unwrap();
+                                write!(
+                                    &mut log_msg,
+                                    " Reject(Publisher dz_ip pool unavailable) Error: {e}"
+                                )
+                                .unwrap();
                             }
                         }
                         info!("{log_msg}");
                         return;
+                    }
+                } else {
+                    // Non-publisher: allocate from device state
+                    match device_state.get_next_dz_ip() {
+                        Some(ip) => ip,
+                        None => {
+                            let res = reject_user(
+                                client,
+                                pubkey,
+                                "Error: No available dz_ip to allocate",
+                            );
+
+                            match res {
+                                Ok(signature) => {
+                                    write!(
+                                        &mut log_msg,
+                                        " Reject(No available dz_ip) Rejected {signature}"
+                                    )
+                                    .unwrap();
+                                }
+                                Err(e) => {
+                                    write!(&mut log_msg, " Reject(No available dz_ip) Error: {e}")
+                                        .unwrap();
+                                }
+                            }
+                            info!("{log_msg}");
+                            return;
+                        }
                     }
                 }
             } else {
@@ -250,12 +407,15 @@ pub fn process_user_event(
                 };
 
             // Activate the user
+            let use_onchain_for_activation =
+                use_onchain_allocation || (is_publisher && publisher_dz_ips.is_none());
+
             let res = ActivateUserCommand {
                 user_pubkey: *pubkey,
                 tunnel_id: user.tunnel_id,
                 tunnel_net: user.tunnel_net,
                 dz_ip,
-                use_onchain_allocation,
+                use_onchain_allocation: use_onchain_for_activation,
                 tunnel_endpoint,
             }
             .execute(client);
@@ -323,6 +483,7 @@ pub fn process_user_event(
                                     link_ids.unassign(user.tunnel_id);
                                     user_tunnel_ips.unassign_block(user.tunnel_net.into());
                                 }
+                                deallocate_publisher_dz_ip(user, publisher_dz_ips);
                                 if user.dz_ip != Ipv4Addr::UNSPECIFIED {
                                     device_state.release(user.dz_ip, user.tunnel_id).unwrap();
                                 }
@@ -349,11 +510,12 @@ pub fn process_user_event(
                         Ok(signature) => {
                             write!(&mut log_msg, " Banned {signature}").unwrap();
 
-                            if user.has_unicast_tunnel() {
-                                link_ids.unassign(user.tunnel_id);
-                            }
-                            if user.tunnel_net != NetworkV4::default() {
-                                user_tunnel_ips.unassign_block(user.tunnel_net.into());
+                            if !use_onchain_allocation {
+                                if user.has_unicast_tunnel() {
+                                    link_ids.unassign(user.tunnel_id);
+                                    user_tunnel_ips.unassign_block(user.tunnel_net.into());
+                                }
+                                deallocate_publisher_dz_ip(user, publisher_dz_ips);
                             }
                             if user.dz_ip != Ipv4Addr::UNSPECIFIED {
                                 device_state.release(user.dz_ip, user.tunnel_id).unwrap();
@@ -419,6 +581,24 @@ fn resolve_tunnel_endpoint(
                     log_msg,
                 );
                 None
+            }
+        }
+    }
+}
+
+fn deallocate_publisher_dz_ip(user: &User, publisher_dz_ips: &mut Option<IPBlockAllocator>) {
+    if user.user_type == UserType::Multicast
+        && !user.publishers.is_empty()
+        && user.dz_ip != Ipv4Addr::UNSPECIFIED
+        && user.dz_ip != user.client_ip
+    {
+        if let Some(ref mut publisher_ips) = publisher_dz_ips {
+            if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
+                publisher_ips.unassign_block(dz_ip_net.into());
+                info!(
+                    "Deallocated publisher dz_ip {} from global pool",
+                    user.dz_ip
+                );
             }
         }
     }
@@ -660,6 +840,7 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut None, // publisher_dz_ips
                 &mut link_ids,
                 &user,
                 &locations,
@@ -810,6 +991,7 @@ mod tests {
                 flags: 0,
             };
 
+            // ActivateUserCommand internally fetches user and access pass
             let user_cloned = user.clone();
             client
                 .expect_get()
@@ -840,7 +1022,7 @@ mod tests {
                     predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
                         tunnel_id: 500,
                         tunnel_net: "10.0.0.1/29".parse().unwrap(),
-                        dz_ip: [10, 0, 0, 1].into(),
+                        dz_ip: [147, 51, 126, 1].into(),
                         dz_prefix_count: 0, // legacy path
                         tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
                     })),
@@ -854,11 +1036,15 @@ mod tests {
             let locations = HashMap::<Pubkey, Location>::new();
             let exchanges = HashMap::<Pubkey, Exchange>::new();
 
+            let mut publisher_dz_ips =
+                Some(IPBlockAllocator::new("147.51.126.0/23".parse().unwrap()));
+
             process_user_event(
                 &client,
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
                 &locations,
@@ -879,7 +1065,7 @@ mod tests {
                         ("device_pk", device_pk_str.as_str()),
                         ("code", "TestDevice"),
                     ],
-                    1,
+                    0, // publisher IP comes from global pool, not device
                 )
                 .expect_counter(
                     "doublezero_activator_device_total_ips",
@@ -964,6 +1150,7 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut None, // publisher_dz_ips
                 &mut link_ids,
                 &user,
                 &locations,
@@ -1073,6 +1260,7 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut None, // publisher_dz_ips
                 &mut link_ids,
                 &user,
                 &locations,
@@ -1179,6 +1367,7 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut None, // publisher_dz_ips
                 &mut link_ids,
                 &user,
                 &locations,
@@ -1286,6 +1475,7 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut None, // publisher_dz_ips
                 &mut link_ids,
                 &user,
                 &locations,
@@ -1340,6 +1530,7 @@ mod tests {
                         predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                             UserCloseAccountArgs {
                                 dz_prefix_count: 0, // legacy path
+                                multicast_publisher_count: 0,
                             },
                         )),
                         predicate::always(),
@@ -1527,6 +1718,7 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut None,
                 &mut link_ids,
                 &user,
                 &locations,
@@ -1630,6 +1822,7 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut None,
                 &mut link_ids,
                 &user,
                 &locations,
@@ -1766,6 +1959,7 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut None,
                 &mut link_ids,
                 &user,
                 &locations,
@@ -1867,6 +2061,7 @@ mod tests {
                 flags: 0,
             };
 
+            // ActivateUserCommand internally fetches user and access pass
             let user_cloned = user.clone();
             client
                 .expect_get()
@@ -1898,7 +2093,7 @@ mod tests {
                     predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
                         tunnel_id: 500,
                         tunnel_net: "10.0.0.1/29".parse().unwrap(),
-                        dz_ip: [10, 0, 0, 1].into(),
+                        dz_ip: [147, 51, 126, 1].into(),
                         dz_prefix_count: 0,
                         tunnel_endpoint: demanded_endpoint,
                     })),
@@ -1912,11 +2107,15 @@ mod tests {
             let locations = HashMap::<Pubkey, Location>::new();
             let exchanges = HashMap::<Pubkey, Exchange>::new();
 
+            let mut publisher_dz_ips =
+                Some(IPBlockAllocator::new("147.51.126.0/23".parse().unwrap()));
+
             process_user_event(
                 &client,
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
                 &locations,
@@ -1934,7 +2133,7 @@ mod tests {
                         ("device_pk", device_pk_str.as_str()),
                         ("code", "TestDevice"),
                     ],
-                    1,
+                    0, // publisher IP comes from global pool, not device
                 )
                 .expect_counter(
                     "doublezero_activator_device_total_ips",
@@ -2019,6 +2218,7 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut None,
                 &mut link_ids,
                 &user,
                 &locations,

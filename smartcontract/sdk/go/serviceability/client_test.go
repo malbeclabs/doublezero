@@ -14,7 +14,7 @@ import (
 var configPayload = `
 02baae1ce3bce5130ae5f46b6d47884ab60b6d22f55b0c0cfac
 f14abe7ea3118aefd4cfe0000e9fd0000ac10000010a9fe0000
-10df00000004a2aa7d81b23bd270048af6aae3813dea
+10df000000043a2793337e0017
 `
 
 var locationPayload = `
@@ -169,15 +169,17 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			Payload:     strings.TrimSuffix(configPayload, "\n"),
 			Want: &ProgramData{
 				Config: Config{
-					AccountType:         ConfigType,
-					Owner:               getOwner(configPayload),
-					Bump_seed:           253,
-					Local_asn:           65100,
-					Remote_asn:          65001,
-					TunnelTunnelBlock:   [5]byte{172, 16, 0, 0, 16},
-					UserTunnelBlock:     [5]byte{169, 254, 0, 0, 16},
-					MulticastGroupBlock: [5]byte{223, 0, 0, 0, 4},
-					PubKey:              pubkeys[0],
+					AccountType:             ConfigType,
+					Owner:                   getOwner(configPayload),
+					Bump_seed:               253,
+					Local_asn:               65100,
+					Remote_asn:              65001,
+					TunnelTunnelBlock:       [5]byte{172, 16, 0, 0, 16},
+					UserTunnelBlock:         [5]byte{169, 254, 0, 0, 16},
+					MulticastGroupBlock:     [5]byte{223, 0, 0, 0, 4},
+					NextBGPCommunity:        10042,
+					MulticastPublisherBlock: [5]byte{147, 51, 126, 0, 23},
+					PubKey:                  pubkeys[0],
 				},
 				Locations:          []Location{},
 				Devices:            []Device{},

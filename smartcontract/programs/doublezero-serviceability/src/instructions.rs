@@ -599,6 +599,7 @@ mod tests {
                 device_tunnel_block: "1.2.3.4/1".parse().unwrap(),
                 user_tunnel_block: "1.2.3.4/1".parse().unwrap(),
                 multicastgroup_block: "1.2.3.4/1".parse().unwrap(),
+                multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
                 next_bgp_community: None,
             }),
             "SetGlobalConfig",
@@ -800,7 +801,10 @@ mod tests {
             "CloseAccountLink",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs { dz_prefix_count: 0 }),
+            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+                dz_prefix_count: 0,
+                multicast_publisher_count: 0,
+            }),
             "CloseAccountUser",
         );
         test_instruction(

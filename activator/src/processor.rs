@@ -10,6 +10,7 @@ use crate::{
     states::devicestate::DeviceState,
 };
 use backon::{BlockingRetryable, ExponentialBuilder};
+use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::{
         device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
@@ -18,7 +19,7 @@ use doublezero_sdk::{
     },
     doublezeroclient::DoubleZeroClient,
     AccountData, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType, LinkStatus,
-    Location, MulticastGroup, UserStatus,
+    Location, MulticastGroup, UserStatus, UserType,
 };
 use log::{debug, error, info, warn};
 use solana_sdk::pubkey::Pubkey;
@@ -42,6 +43,7 @@ pub struct Processor<T: DoubleZeroClient> {
     link_ips: IPBlockAllocator,
     multicastgroup_tunnel_ips: IPBlockAllocator,
     user_tunnel_ips: IPBlockAllocator,
+    publisher_dz_ips: Option<IPBlockAllocator>,
     devices: DeviceMap,
     locations: LocationMap,
     exchanges: ExchangeMap,
@@ -79,6 +81,9 @@ impl<T: DoubleZeroClient> Processor<T> {
         let mut link_ips = IPBlockAllocator::new(config.device_tunnel_block.into());
         let mut segment_routing_ids = IDAllocator::new(1, vec![]);
         let mut user_tunnel_ips = IPBlockAllocator::new(config.user_tunnel_block.into());
+        let mut publisher_dz_ips = Some(IPBlockAllocator::new(
+            config.multicast_publisher_block.into(),
+        ));
 
         for (_, link) in links
             .iter()
@@ -122,6 +127,23 @@ impl<T: DoubleZeroClient> Processor<T> {
                             )
                         })?;
                     user_tunnel_ips.assign_block(user.tunnel_net.into());
+
+                    // Mark publisher IPs as allocated in the publisher pool
+                    if user.user_type == UserType::Multicast
+                        && !user.publishers.is_empty()
+                        && user.dz_ip != std::net::Ipv4Addr::UNSPECIFIED
+                        && user.dz_ip != user.client_ip
+                    {
+                        if let Some(ref mut publisher_ips) = publisher_dz_ips {
+                            if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
+                                publisher_ips.assign_block(dz_ip_net.into());
+                                info!(
+                                    "Marked publisher dz_ip {} as allocated (loaded from existing user)",
+                                    user.dz_ip
+                                );
+                            }
+                        }
+                    }
                     // Register tunnel endpoint if set
                     if user.has_tunnel_endpoint() {
                         device_state.register_tunnel_endpoint(user.client_ip, user.tunnel_endpoint);
@@ -145,6 +167,7 @@ impl<T: DoubleZeroClient> Processor<T> {
             segment_routing_ids,
             multicastgroup_tunnel_ips: IPBlockAllocator::new(config.multicastgroup_block.into()),
             user_tunnel_ips,
+            publisher_dz_ips,
             devices: device_map,
             locations,
             exchanges,
@@ -194,6 +217,7 @@ impl<T: DoubleZeroClient> Processor<T> {
                     pubkey,
                     &mut self.devices,
                     &mut self.user_tunnel_ips,
+                    &mut self.publisher_dz_ips,
                     &mut self.link_ids,
                     user,
                     &self.locations,

@@ -41,15 +41,17 @@ type Uint128 struct {
 }
 
 type Config struct {
-	AccountType         AccountType
-	Owner               [32]byte
-	Bump_seed           uint8
-	Local_asn           uint32
-	Remote_asn          uint32
-	TunnelTunnelBlock   [5]uint8
-	UserTunnelBlock     [5]uint8
-	MulticastGroupBlock [5]uint8
-	PubKey              [32]byte
+	AccountType             AccountType
+	Owner                   [32]byte
+	Bump_seed               uint8
+	Local_asn               uint32
+	Remote_asn              uint32
+	TunnelTunnelBlock       [5]uint8
+	UserTunnelBlock         [5]uint8
+	MulticastGroupBlock     [5]uint8
+	NextBGPCommunity        uint16
+	MulticastPublisherBlock [5]uint8
+	PubKey                  [32]byte
 }
 
 type Location struct {

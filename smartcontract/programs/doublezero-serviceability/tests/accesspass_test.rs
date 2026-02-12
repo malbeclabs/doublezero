@@ -299,6 +299,8 @@ async fn test_accesspass_with_tenant() {
     // Create tenants for testing
     println!("🟢 1.1. Creating tenants...");
 
+    let (_multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     let tenant_acme_code = "acme";

@@ -44,6 +44,9 @@ pub fn get_resource_extension_range(
         ResourceType::MulticastGroupBlock => {
             ResourceExtensionRange::IpBlock(globalconfig.multicastgroup_block, 1)
         }
+        ResourceType::MulticastPublisherBlock => {
+            ResourceExtensionRange::IpBlock(globalconfig.multicast_publisher_block, 1)
+        }
         ResourceType::DzPrefixBlock(_, index) => {
             assert!(
                 device.is_some(),

@@ -25,6 +25,8 @@ async fn test_tenant() {
     /***********************************************************************************************************************************/
     println!("🟢  Start test_tenant");
 
+    let (_multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     println!("🟢 1. Testing Tenant creation...");
@@ -333,6 +335,8 @@ async fn test_tenant_delete_with_nonzero_reference_count_fails() {
 
     println!("🟢  Start test_tenant_delete_with_nonzero_reference_count_fails");
 
+    let (_multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     // Create a tenant
@@ -407,6 +411,8 @@ async fn test_tenant_add_duplicate_administrator_fails() {
 
     println!("🟢  Start test_tenant_add_duplicate_administrator_fails");
 
+    let (_multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     // Create a tenant
@@ -497,6 +503,8 @@ async fn test_tenant_remove_nonexistent_administrator_fails() {
 
     println!("🟢  Start test_tenant_remove_nonexistent_administrator_fails");
 
+    let (_multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     // Create a tenant

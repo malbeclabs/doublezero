@@ -36,6 +36,7 @@ impl From<AllocateResourceCliCommand> for AllocateResourceCommand {
             ResourceType::DeviceTunnelBlock
             | ResourceType::UserTunnelBlock
             | ResourceType::MulticastGroupBlock
+            | ResourceType::MulticastPublisherBlock
             | ResourceType::DzPrefixBlock => {
                 IdOrIp::Ip(x.parse::<NetworkV4>().expect("Failed to parse IP address"))
             }

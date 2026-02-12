@@ -60,6 +60,8 @@ async fn test_accesspass_allow_multiple_ip() {
     let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
     let (segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     execute_transaction(
@@ -72,6 +74,7 @@ async fn test_accesspass_allow_multiple_ip() {
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             user_tunnel_block: "9.0.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/16".parse().unwrap(),
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
             next_bgp_community: None,
         }),
         vec![
@@ -82,6 +85,7 @@ async fn test_accesspass_allow_multiple_ip() {
             AccountMeta::new(multicastgroup_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
             AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
@@ -500,7 +504,8 @@ async fn test_accesspass_allow_multiple_ip() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-            dz_prefix_count: 0, // legacy path - no ResourceExtension accounts
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0, // legacy path - no ResourceExtension accounts
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

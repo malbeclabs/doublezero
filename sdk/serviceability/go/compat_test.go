@@ -112,6 +112,7 @@ func TestCompatGlobalConfig(t *testing.T) {
 	// offset 47: UserTunnelBlock (5 bytes)
 	// offset 52: MulticastGroupBlock (5 bytes)
 	// offset 57: NextBGPCommunity (u16)
+	// offset 59: MulticastPublisherBlock (5 bytes)
 	compatAssertU8(t, raw, 0, uint8(gc.AccountType), "AccountType")
 	compatAssertPubkey(t, raw, 1, gc.Owner, "Owner")
 	compatAssertU8(t, raw, 33, gc.BumpSeed, "BumpSeed")

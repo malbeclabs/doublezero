@@ -340,16 +340,17 @@ type GlobalState struct {
 }
 
 type GlobalConfig struct {
-	AccountType         AccountType
-	Owner               [32]byte
-	BumpSeed            uint8
-	LocalASN            uint32
-	RemoteASN           uint32
-	DeviceTunnelBlock   [5]uint8
-	UserTunnelBlock     [5]uint8
-	MulticastGroupBlock [5]uint8
-	NextBGPCommunity    uint16
-	PubKey              [32]byte
+	AccountType             AccountType
+	Owner                   [32]byte
+	BumpSeed                uint8
+	LocalASN                uint32
+	RemoteASN               uint32
+	DeviceTunnelBlock       [5]uint8
+	UserTunnelBlock         [5]uint8
+	MulticastGroupBlock     [5]uint8
+	NextBGPCommunity        uint16
+	MulticastPublisherBlock [5]uint8
+	PubKey                  [32]byte
 }
 
 type Location struct {

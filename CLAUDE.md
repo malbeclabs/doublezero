@@ -1,5 +1,9 @@
 # Claude Code Instructions
 
+## RFCs and Documentation
+
+- When asked if a doc is up to date, evaluate it against its intended purpose and scope — not against whatever was most recently worked on. Implementation bug fixes and edge-case handling are not design decisions. Don't inflate docs with implementation details just because they're fresh in context.
+
 ## Style & Terminology
 
 - Use "onchain" (one word, no hyphen) instead of "on-chain"

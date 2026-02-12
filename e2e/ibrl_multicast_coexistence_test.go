@@ -305,100 +305,55 @@ func TestE2E_SingleClient_IBRL_Then_Multicast_Publisher(t *testing.T) {
 	}
 }
 
-// TestE2E_Multicast_PublisherXorSubscriber verifies that a client cannot be both
-// a multicast publisher and subscriber simultaneously. A user must be exclusively
-// a publisher (of one or more groups) XOR a subscriber (of one or more groups).
-// This test uses two separate clients from the same devnet to test both directions:
-// - Client 1 (ibrlClient): subscriber first, then try publisher (should fail)
-// - Client 2 (mcastClient): publisher first, then try subscriber (should fail)
-func TestE2E_Multicast_PublisherXorSubscriber(t *testing.T) {
+// TestE2E_Multicast_PublisherAndSubscriber verifies that a single client can be
+// both a multicast publisher and subscriber simultaneously using the
+// --publish and --subscribe flags.
+func TestE2E_Multicast_PublisherAndSubscriber(t *testing.T) {
 	t.Parallel()
 
-	_, _, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
+	dn, device, _, client := setupCoexistenceTestDevnet(t)
 	log := newTestLoggerForTest(t)
 
-	// Use ibrlClient for "subscriber then publisher" test
-	// Use mcastClient for "publisher then subscriber" test
+	// Connect as both publisher and subscriber using new flags
+	log.Debug("==> Connecting as both publisher and subscriber")
+	cmd := "doublezero connect multicast --publish mg01 --subscribe mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
+	output, err := client.Exec(t.Context(), []string{"bash", "-c", cmd})
+	log.Debug("==> Connect output", "output", string(output))
+	require.NoError(t, err, "should be able to connect as both publisher and subscriber")
 
-	t.Run("subscriber_cannot_add_publisher", func(t *testing.T) {
-		client := ibrlClient
-		log := log.With("subtest", "subscriber_cannot_add_publisher")
+	// Wait for tunnel to come up
+	err = client.WaitForTunnelUp(t.Context(), 90*time.Second)
+	require.NoError(t, err, "tunnel should come up")
+	log.Debug("--> Tunnel is up")
 
-		// First, connect as a multicast subscriber
-		log.Debug("==> Connecting as multicast subscriber first")
-		subCmd := "doublezero connect multicast subscriber mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
-		subOutput, err := client.Exec(t.Context(), []string{"bash", "-c", subCmd})
-		log.Debug("==> Subscriber connect output", "output", string(subOutput))
-		require.NoError(t, err, "should be able to connect as subscriber")
+	// Verify tunnel status shows multicast type
+	tunnelStatus, err := client.GetTunnelStatus(t.Context())
+	require.NoError(t, err)
+	require.Len(t, tunnelStatus, 1, "should have exactly one tunnel")
+	require.Equal(t, devnet.ClientUserTypeMulticast, tunnelStatus[0].UserType)
 
-		// Wait for tunnel to come up
-		err = client.WaitForTunnelUp(t.Context(), 90*time.Second)
-		require.NoError(t, err, "subscriber tunnel should come up")
-		log.Debug("--> Subscriber tunnel is up")
+	// Wait for agent config to be pushed
+	log.Debug("==> Waiting for agent config")
+	waitForAgentConfigWithClient(t, log, dn, device, client)
 
-		// Now try to also connect as a publisher - this should fail
-		log.Debug("==> Attempting to also connect as multicast publisher (should fail)")
-		pubCmd := "doublezero connect multicast publisher mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
-		pubOutput, err := client.Exec(t.Context(), []string{"bash", "-c", pubCmd})
-		log.Debug("==> Publisher connect output", "output", string(pubOutput))
+	// Verify publisher behavior: S,G mroute state
+	log.Debug("==> Verifying publisher mroute state")
+	verifyMulticastPublisherMrouteState(t, log, device, client)
 
-		// The command should fail with an error indicating cannot be both
-		require.Error(t, err, "should not be able to connect as both publisher and subscriber")
-		require.Contains(t, string(pubOutput), "cannot be both a publisher and subscriber",
-			"error message should indicate the constraint violation")
+	// Verify subscriber behavior: PIM adjacency
+	log.Debug("==> Verifying subscriber PIM adjacency")
+	verifyMulticastSubscriberPIMAdjacency(t, log, device)
 
-		log.Debug("--> Correctly rejected attempt to be both publisher and subscriber")
+	log.Debug("--> Both publisher and subscriber verified on single client")
 
-		// Verify we still have exactly one tunnel (the subscriber)
-		tunnelStatus, err := client.GetTunnelStatus(t.Context())
-		require.NoError(t, err)
-		require.Len(t, tunnelStatus, 1, "should still have exactly one tunnel")
-		require.Equal(t, devnet.ClientUserTypeMulticast, tunnelStatus[0].UserType,
-			"tunnel should still be multicast type")
+	// Disconnect
+	log.Debug("==> Disconnecting")
+	disconnectOutput, disconnectErr := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP + " 2>&1"})
+	log.Debug("==> Disconnect output", "output", string(disconnectOutput))
+	require.NoError(t, disconnectErr, "disconnect should succeed")
+	verifyTunnelRemoved(t, client, "doublezero1")
 
-		log.Debug("--> Verified: subscriber cannot add publisher subscription")
-	})
-
-	t.Run("publisher_cannot_add_subscriber", func(t *testing.T) {
-		client := mcastClient
-		log := log.With("subtest", "publisher_cannot_add_subscriber")
-
-		// First, connect as a multicast publisher
-		log.Debug("==> Connecting as multicast publisher first")
-		pubCmd := "doublezero connect multicast publisher mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
-		pubOutput, err := client.Exec(t.Context(), []string{"bash", "-c", pubCmd})
-		log.Debug("==> Publisher connect output", "output", string(pubOutput))
-		require.NoError(t, err, "should be able to connect as publisher")
-
-		// Wait for tunnel to come up
-		err = client.WaitForTunnelUp(t.Context(), 90*time.Second)
-		require.NoError(t, err, "publisher tunnel should come up")
-		log.Debug("--> Publisher tunnel is up")
-
-		// Now try to also connect as a subscriber - this should fail
-		log.Debug("==> Attempting to also connect as multicast subscriber (should fail)")
-		subCmd := "doublezero connect multicast subscriber mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
-		subOutput, err := client.Exec(t.Context(), []string{"bash", "-c", subCmd})
-		log.Debug("==> Subscriber connect output", "output", string(subOutput))
-
-		// The command should fail with an error indicating cannot be both
-		require.Error(t, err, "should not be able to connect as both publisher and subscriber")
-		require.Contains(t, string(subOutput), "cannot be both a publisher and subscriber",
-			"error message should indicate the constraint violation")
-
-		log.Debug("--> Correctly rejected attempt to be both publisher and subscriber")
-
-		// Verify we still have exactly one tunnel (the publisher)
-		tunnelStatus, err := client.GetTunnelStatus(t.Context())
-		require.NoError(t, err)
-		require.Len(t, tunnelStatus, 1, "should still have exactly one tunnel")
-		require.Equal(t, devnet.ClientUserTypeMulticast, tunnelStatus[0].UserType,
-			"tunnel should still be multicast type")
-
-		log.Debug("--> Verified: publisher cannot add subscriber subscription")
-	})
-
-	log.Debug("--> Test completed: user can only be publisher XOR subscriber, not both")
+	log.Debug("--> Test completed successfully")
 }
 
 // setupSingleClientTestDevnet sets up a devnet with a single client for testing

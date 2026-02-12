@@ -1,0 +1,8 @@
+version: v2
+plugins:
+  - protoc_builtin: go
+    out: gen/pb-go
+    opt: paths=source_relative
+  - protoc_builtin: go-grpc
+    out: gen/pb-go
+    opt: paths=source_relative

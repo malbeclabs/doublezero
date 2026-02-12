@@ -55,13 +55,21 @@ pub enum DzMode {
     //EdgeFiltering,
     /// Provision a user in Multicast mode
     Multicast {
-        /// Multicast mode: Publisher or Subscriber
+        /// (Legacy) Multicast mode: Publisher or Subscriber
         #[arg(value_enum)]
-        mode: MulticastMode,
+        mode: Option<MulticastMode>,
 
-        /// Multicast group code(s)
-        #[arg(required = true, num_args = 1..)]
+        /// (Legacy) Multicast group code(s)
+        #[arg(num_args = 0..)]
         multicast_groups: Vec<String>,
+
+        /// Multicast groups to publish to
+        #[arg(long = "publish", num_args = 1..)]
+        pub_groups: Vec<String>,
+
+        /// Multicast groups to subscribe to
+        #[arg(long = "subscribe", num_args = 1..)]
+        sub_groups: Vec<String>,
     },
 }
 
@@ -81,6 +89,14 @@ pub struct ProvisioningCliCommand {
     /// Verbose output
     #[arg(short, long, global = true, default_value_t = false)]
     pub verbose: bool,
+}
+
+enum ParsedDzMode {
+    Ibrl(UserType, Option<String>),
+    Multicast {
+        pub_groups: Vec<String>,
+        sub_groups: Vec<String>,
+    },
 }
 
 impl ProvisioningCliCommand {
@@ -123,41 +139,25 @@ impl ProvisioningCliCommand {
         spinner.println(format!("    DoubleZero ID: {}", client.get_payer()));
         spinner.println(format!("🔍  Provisioning User for IP: {client_ip_str}"));
 
-        match self.parse_dz_mode() {
-            (UserType::IBRL, _, _, tenant) => {
-                self.execute_ibrl(
-                    client,
-                    controller,
-                    UserType::IBRL,
-                    client_ip,
-                    tenant,
-                    &spinner,
-                )
-                .await
+        match self.parse_dz_mode()? {
+            ParsedDzMode::Ibrl(user_type, tenant) => {
+                self.execute_ibrl(client, controller, user_type, client_ip, tenant, &spinner)
+                    .await
             }
-            (UserType::IBRLWithAllocatedIP, _, _, tenant) => {
-                self.execute_ibrl(
-                    client,
-                    controller,
-                    UserType::IBRLWithAllocatedIP,
-                    client_ip,
-                    tenant,
-                    &spinner,
-                )
-                .await
-            }
-            (UserType::Multicast, Some(multicast_mode), Some(multicast_groups), None) => {
+            ParsedDzMode::Multicast {
+                pub_groups,
+                sub_groups,
+            } => {
                 self.execute_multicast(
                     client,
                     controller,
-                    multicast_mode,
-                    multicast_groups,
+                    &pub_groups,
+                    &sub_groups,
                     client_ip,
                     &spinner,
                 )
                 .await
             }
-            _ => eyre::bail!("DzMode not supported"),
         }?;
 
         spinner.println("✅  User Provisioned");
@@ -208,24 +208,54 @@ impl ProvisioningCliCommand {
         &self,
         client: &dyn CliCommand,
         controller: &T,
-        multicast_mode: &MulticastMode,
-        multicast_groups: &Vec<String>,
+        pub_groups: &[String],
+        sub_groups: &[String],
         client_ip: Ipv4Addr,
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {
+        // Check if the daemon already has a multicast service running. The daemon
+        // does not support updating an existing service — both publisher and subscriber
+        // roles must be specified in a single connect command.
+        if let Ok(statuses) = controller.status().await {
+            if statuses.iter().any(|s| {
+                s.user_type
+                    .as_ref()
+                    .is_some_and(|t| t.eq_ignore_ascii_case("multicast"))
+            }) {
+                eyre::bail!(
+                    "A multicast service is already running. Disconnect first with \
+                     `doublezero disconnect multicast`, then reconnect with all desired \
+                     groups in a single command (e.g. --publish and --subscribe)."
+                );
+            }
+        }
+
         let mcast_groups = client.list_multicastgroup(ListMulticastGroupCommand)?;
 
-        // Resolve all group codes to pubkeys
-        let mut mcast_group_pks = Vec::new();
-        for group_code in multicast_groups {
+        // Resolve pub group codes to pubkeys
+        let mut pub_group_pks = Vec::new();
+        for group_code in pub_groups {
             let (pk, _) = mcast_groups
                 .iter()
                 .find(|(_, g)| g.code == *group_code)
                 .ok_or_else(|| eyre::eyre!("Multicast group not found: {}", group_code))?;
-            if mcast_group_pks.contains(pk) {
-                eyre::bail!("Duplicate multicast group: {}", group_code);
+            if pub_group_pks.contains(pk) {
+                eyre::bail!("Duplicate multicast pub group: {}", group_code);
             }
-            mcast_group_pks.push(*pk);
+            pub_group_pks.push(*pk);
+        }
+
+        // Resolve sub group codes to pubkeys
+        let mut sub_group_pks = Vec::new();
+        for group_code in sub_groups {
+            let (pk, _) = mcast_groups
+                .iter()
+                .find(|(_, g)| g.code == *group_code)
+                .ok_or_else(|| eyre::eyre!("Multicast group not found: {}", group_code))?;
+            if sub_group_pks.contains(pk) {
+                eyre::bail!("Duplicate multicast sub group: {}", group_code);
+            }
+            sub_group_pks.push(*pk);
         }
 
         // Look for user and subscribe to all groups
@@ -235,8 +265,8 @@ impl ProvisioningCliCommand {
                 controller,
                 &client_ip,
                 spinner,
-                multicast_mode,
-                &mcast_group_pks,
+                &pub_group_pks,
+                &sub_group_pks,
             )
             .await?;
 
@@ -294,34 +324,58 @@ impl ProvisioningCliCommand {
         Ok(())
     }
 
-    fn parse_dz_mode(
-        &self,
-    ) -> (
-        UserType,
-        Option<&MulticastMode>,
-        Option<&Vec<String>>,
-        Option<String>,
-    ) {
+    fn parse_dz_mode(&self) -> eyre::Result<ParsedDzMode> {
         match &self.dz_mode {
             DzMode::IBRL {
                 tenant,
                 allocate_addr,
             } => {
                 if *allocate_addr {
-                    (UserType::IBRLWithAllocatedIP, None, None, tenant.clone())
+                    Ok(ParsedDzMode::Ibrl(
+                        UserType::IBRLWithAllocatedIP,
+                        tenant.clone(),
+                    ))
                 } else {
-                    (UserType::IBRL, None, None, tenant.clone())
+                    Ok(ParsedDzMode::Ibrl(UserType::IBRL, tenant.clone()))
                 }
-            } //DzMode::EdgeFiltering => UserType::EdgeFiltering,
+            }
             DzMode::Multicast {
                 mode,
                 multicast_groups,
-            } => (
-                UserType::Multicast,
-                Some(mode),
-                Some(multicast_groups),
-                None,
-            ),
+                pub_groups,
+                sub_groups,
+            } => {
+                let has_legacy = mode.is_some() || !multicast_groups.is_empty();
+                let has_new = !pub_groups.is_empty() || !sub_groups.is_empty();
+
+                if has_legacy && has_new {
+                    eyre::bail!("Cannot mix legacy positional args (mode + groups) with --publish/--subscribe flags");
+                }
+
+                if has_legacy {
+                    let mode = mode.as_ref().ok_or_else(|| {
+                        eyre::eyre!("Multicast mode (publisher/subscriber) is required when using positional arguments")
+                    })?;
+                    if multicast_groups.is_empty() {
+                        eyre::bail!("At least one multicast group code is required");
+                    }
+                    let (pg, sg) = match mode {
+                        MulticastMode::Publisher => (multicast_groups.clone(), vec![]),
+                        MulticastMode::Subscriber => (vec![], multicast_groups.clone()),
+                    };
+                    Ok(ParsedDzMode::Multicast {
+                        pub_groups: pg,
+                        sub_groups: sg,
+                    })
+                } else if has_new {
+                    Ok(ParsedDzMode::Multicast {
+                        pub_groups: pub_groups.clone(),
+                        sub_groups: sub_groups.clone(),
+                    })
+                } else {
+                    eyre::bail!("At least one of --publish or --subscribe is required, or use legacy syntax: multicast <publisher|subscriber> <groups...>")
+                }
+            }
         }
     }
 
@@ -523,8 +577,8 @@ impl ProvisioningCliCommand {
         controller: &T,
         client_ip: &Ipv4Addr,
         spinner: &ProgressBar,
-        multicast_mode: &MulticastMode,
-        mcast_group_pks: &[Pubkey],
+        pub_group_pks: &[Pubkey],
+        sub_group_pks: &[Pubkey],
     ) -> eyre::Result<(Pubkey, User)> {
         spinner.set_message("Searching for user account...");
         spinner.inc(1);
@@ -553,10 +607,13 @@ impl ProvisioningCliCommand {
             .find(|(_, u)| u.user_type == UserType::Multicast)
             .copied();
 
-        let (publisher, subscriber) = match multicast_mode {
-            MulticastMode::Publisher => (true, false),
-            MulticastMode::Subscriber => (false, true),
-        };
+        // Combine all group pks (deduplicated) for user creation (first group goes in create_subscribe_user)
+        let mut all_group_pks: Vec<Pubkey> = Vec::new();
+        for pk in pub_group_pks.iter().chain(sub_group_pks.iter()) {
+            if !all_group_pks.contains(pk) {
+                all_group_pks.push(*pk);
+            }
+        }
 
         let user_pubkey = match (ibrl_user, mcast_user) {
             // IBRL user exists but no Multicast user - create a separate Multicast user
@@ -580,8 +637,8 @@ impl ProvisioningCliCommand {
                     device.code
                 ));
 
-                // Create user with first group
-                let first_group_pk = mcast_group_pks
+                // Create user with first group (pick from pub_groups first, then sub_groups)
+                let first_group_pk = all_group_pks
                     .first()
                     .ok_or_else(|| eyre::eyre!("At least one multicast group is required"))?;
 
@@ -591,8 +648,8 @@ impl ProvisioningCliCommand {
                     cyoa_type: ibrl_user.cyoa_type,
                     client_ip: *client_ip,
                     mgroup_pk: *first_group_pk,
-                    publisher,
-                    subscriber,
+                    publisher: pub_group_pks.contains(first_group_pk),
+                    subscriber: sub_group_pks.contains(first_group_pk),
                     tunnel_endpoint,
                 });
 
@@ -609,19 +666,19 @@ impl ProvisioningCliCommand {
                 };
 
                 // Wait for user to be activated before subscribing to additional groups
-                if mcast_group_pks.len() > 1 {
+                if all_group_pks.len() > 1 {
                     self.poll_for_user_activated(client, &user_pk, spinner)?;
                 }
 
                 // Subscribe to remaining groups
-                for mcast_group_pk in mcast_group_pks.iter().skip(1) {
-                    spinner.println(format!("    Subscribing to group: {mcast_group_pk}"));
+                for group_pk in all_group_pks.iter().skip(1) {
+                    spinner.println(format!("    Subscribing to group: {group_pk}"));
                     client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
                         user_pk,
-                        group_pk: *mcast_group_pk,
+                        group_pk: *group_pk,
                         client_ip: *client_ip,
-                        publisher,
-                        subscriber,
+                        publisher: pub_group_pks.contains(group_pk),
+                        subscriber: sub_group_pks.contains(group_pk),
                     })?;
                 }
 
@@ -629,55 +686,66 @@ impl ProvisioningCliCommand {
             }
             // Both IBRL and Multicast users exist - add subscription to existing Multicast user
             (Some(_), Some((user_pk, user))) | (None, Some((user_pk, user))) => {
-                // A user can only be a publisher OR a subscriber, not both
-                // Check if user is trying to add a subscription with a different mode
-                match (multicast_mode, user.is_publisher(), user.is_subscriber()) {
-                    (MulticastMode::Publisher, false, true) => {
-                        let err_msg = "❌ User is already a subscriber. A user cannot be both a publisher and subscriber.";
-                        spinner.println(err_msg);
-                        eyre::bail!(err_msg);
-                    }
-                    (MulticastMode::Subscriber, true, false) => {
-                        let err_msg = "❌ User is already a publisher. A user cannot be both a publisher and subscriber.";
-                        spinner.println(err_msg);
-                        eyre::bail!(err_msg);
-                    }
-                    _ => {}
-                }
-
                 // Ensure user is activated before subscribing to new groups
                 if user.status != UserStatus::Activated {
                     self.poll_for_user_activated(client, user_pk, spinner)?;
                 }
 
-                let existing_groups = match multicast_mode {
-                    MulticastMode::Publisher => &user.publishers,
-                    MulticastMode::Subscriber => &user.subscribers,
-                };
-
-                for mcast_group_pk in mcast_group_pks {
-                    if !existing_groups.contains(mcast_group_pk) {
+                // Subscribe to any pub groups not already subscribed
+                for group_pk in pub_group_pks {
+                    if !user.publishers.contains(group_pk) {
                         spinner.println(format!(
-                            "    Adding multicast subscription to existing Multicast user: {}",
+                            "    Adding publisher subscription to existing Multicast user: {}",
                             user_pk
                         ));
 
                         let res = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
                             user_pk: *user_pk,
-                            group_pk: *mcast_group_pk,
+                            group_pk: *group_pk,
                             client_ip: *client_ip,
-                            publisher,
-                            subscriber,
+                            publisher: true,
+                            subscriber: false,
                         });
 
                         match res {
                             Ok(_) => {
-                                spinner.set_message("Subscription added");
+                                spinner.set_message("Publisher subscription added");
                             }
                             Err(e) => {
-                                spinner.println("❌ Error adding subscription");
+                                spinner.println("❌ Error adding publisher subscription");
                                 spinner.println(format!("\n{}: {:?}\n", "Error", e));
-                                eyre::bail!("Error adding subscription to existing user");
+                                eyre::bail!("Error adding publisher subscription to existing user");
+                            }
+                        }
+                    }
+                }
+
+                // Subscribe to any sub groups not already subscribed
+                for group_pk in sub_group_pks {
+                    if !user.subscribers.contains(group_pk) {
+                        spinner.println(format!(
+                            "    Adding subscriber subscription to existing Multicast user: {}",
+                            user_pk
+                        ));
+
+                        let res = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
+                            user_pk: *user_pk,
+                            group_pk: *group_pk,
+                            client_ip: *client_ip,
+                            publisher: false,
+                            subscriber: true,
+                        });
+
+                        match res {
+                            Ok(_) => {
+                                spinner.set_message("Subscriber subscription added");
+                            }
+                            Err(e) => {
+                                spinner.println("❌ Error adding subscriber subscription");
+                                spinner.println(format!("\n{}: {:?}\n", "Error", e));
+                                eyre::bail!(
+                                    "Error adding subscriber subscription to existing user"
+                                );
                             }
                         }
                     }
@@ -701,8 +769,8 @@ impl ProvisioningCliCommand {
                 ));
                 spinner.inc(1);
 
-                // Create user with first group
-                let first_group_pk = mcast_group_pks
+                // Create user with first group (pick from pub_groups first, then sub_groups)
+                let first_group_pk = all_group_pks
                     .first()
                     .ok_or_else(|| eyre::eyre!("At least one multicast group is required"))?;
 
@@ -712,8 +780,8 @@ impl ProvisioningCliCommand {
                     cyoa_type: UserCYOA::GREOverDIA,
                     client_ip: *client_ip,
                     mgroup_pk: *first_group_pk,
-                    publisher,
-                    subscriber,
+                    publisher: pub_group_pks.contains(first_group_pk),
+                    subscriber: sub_group_pks.contains(first_group_pk),
                     tunnel_endpoint,
                 });
 
@@ -730,19 +798,19 @@ impl ProvisioningCliCommand {
                 };
 
                 // Wait for user to be activated before subscribing to additional groups
-                if mcast_group_pks.len() > 1 {
+                if all_group_pks.len() > 1 {
                     self.poll_for_user_activated(client, &user_pk, spinner)?;
                 }
 
                 // Subscribe to remaining groups
-                for mcast_group_pk in mcast_group_pks.iter().skip(1) {
-                    spinner.println(format!("    Subscribing to group: {mcast_group_pk}"));
+                for group_pk in all_group_pks.iter().skip(1) {
+                    spinner.println(format!("    Subscribing to group: {group_pk}"));
                     client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
                         user_pk,
-                        group_pk: *mcast_group_pk,
+                        group_pk: *group_pk,
                         client_ip: *client_ip,
-                        publisher,
-                        subscriber,
+                        publisher: pub_group_pks.contains(group_pk),
+                        subscriber: sub_group_pks.contains(group_pk),
                     })?;
                 }
 
@@ -1089,6 +1157,11 @@ mod tests {
                 .controller
                 .expect_service_controller_can_open()
                 .return_const(true);
+
+            fixture
+                .controller
+                .expect_status()
+                .returning_st(|| Ok(vec![]));
 
             let latencies = fixture.latencies.clone();
             fixture
@@ -1599,8 +1672,10 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Publisher,
+                mode: Some(MulticastMode::Publisher),
                 multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -1675,8 +1750,10 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Publisher,
+                mode: Some(MulticastMode::Publisher),
                 multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -1879,8 +1956,10 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Publisher,
+                mode: Some(MulticastMode::Publisher),
                 multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -1958,8 +2037,10 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: multicast_mode,
+                mode: Some(multicast_mode),
                 multicast_groups: vec!["test-group2".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -1984,9 +2065,11 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Publisher,
+                mode: Some(MulticastMode::Publisher),
                 // Pass the same group twice — should error
                 multicast_groups: vec!["test-group".to_string(), "test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -2000,29 +2083,49 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("Duplicate multicast group"));
+            .contains("Duplicate multicast pub group"));
     }
 
     #[tokio::test]
-    async fn test_connect_command_multicast_publisher_cannot_become_subscriber() {
+    async fn test_connect_command_multicast_publisher_can_add_subscriber_group() {
         let mut fixture = TestFixture::new();
 
-        let (mcast_group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        let (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
-        let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (mcast_group2_pk, mcast_group2) =
+            fixture.add_multicast_group("test-group2", "239.0.0.2");
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
 
         // Create a user who is already a publisher
         let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         user.publishers.push(mcast_group_pk);
-        fixture.add_user(&user);
+        let user_pk = fixture.add_user(&user);
+
+        // Expect subscribe_multicastgroup call for the new subscriber group
+        fixture.expect_subscribe_multicastgroup(
+            user_pk,
+            mcast_group2_pk,
+            user.client_ip,
+            false,
+            true,
+        );
+
+        fixture.expected_provisioning_request(
+            UserType::Multicast,
+            user.client_ip.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
+            Some(vec![mcast_group.multicast_ip.to_string()]),
+            Some(vec![mcast_group2.multicast_ip.to_string()]),
+        );
 
         println!();
 
-        // Try to add as subscriber - should fail
+        // Add subscriber group to existing publisher - should succeed
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Subscriber,
+                mode: Some(MulticastMode::Subscriber),
                 multicast_groups: vec!["test-group2".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -2032,33 +2135,49 @@ mod tests {
         let result = command
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("User is already a publisher"));
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
-    async fn test_connect_command_multicast_subscriber_cannot_become_publisher() {
+    async fn test_connect_command_multicast_subscriber_can_add_publisher_group() {
         let mut fixture = TestFixture::new();
 
-        let (mcast_group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        let (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
-        let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (mcast_group2_pk, mcast_group2) =
+            fixture.add_multicast_group("test-group2", "239.0.0.2");
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
 
         // Create a user who is already a subscriber
         let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         user.subscribers.push(mcast_group_pk);
-        fixture.add_user(&user);
+        let user_pk = fixture.add_user(&user);
+
+        // Expect subscribe_multicastgroup call for the new publisher group
+        fixture.expect_subscribe_multicastgroup(
+            user_pk,
+            mcast_group2_pk,
+            user.client_ip,
+            true,
+            false,
+        );
+
+        fixture.expected_provisioning_request(
+            UserType::Multicast,
+            user.client_ip.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
+            Some(vec![mcast_group2.multicast_ip.to_string()]),
+            Some(vec![mcast_group.multicast_ip.to_string()]),
+        );
 
         println!();
 
-        // Try to add as publisher - should fail
+        // Add publisher group to existing subscriber - should succeed
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Publisher,
+                mode: Some(MulticastMode::Publisher),
                 multicast_groups: vec!["test-group2".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -2068,11 +2187,7 @@ mod tests {
         let result = command
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("User is already a subscriber"));
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -2120,8 +2235,10 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: multicast_mode,
+                mode: Some(multicast_mode),
                 multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -2171,8 +2288,10 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Subscriber,
+                mode: Some(MulticastMode::Subscriber),
                 multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -2246,8 +2365,10 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Subscriber,
+                mode: Some(MulticastMode::Subscriber),
                 multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -2592,8 +2713,10 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Subscriber,
+                mode: Some(MulticastMode::Subscriber),
                 multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(ibrl_user.client_ip.to_string()),
             device: None,

@@ -57,16 +57,13 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 	isPublisher := len(p.MulticastPubGroups) > 0
 	isSubscriber := len(p.MulticastSubGroups) > 0
 
-	if isPublisher && isSubscriber {
-		return fmt.Errorf("cannot be both publisher and subscriber")
-	}
-
 	nlri := []bgp.NLRI{}
 	if isPublisher {
 		if err = createTunnelWithIP(s.nl, tun, p.DoubleZeroIP); err != nil {
 			return fmt.Errorf("error creating tunnel interface: %v", err)
 		}
 		s.DoubleZeroAddr = p.DoubleZeroIP
+		s.MulticastPubGroups = p.MulticastPubGroups
 		// advertise DZ IP over session
 		rt, err := bgp.NewNLRI([]uint32{p.BgpLocalAsn}, s.Tunnel.LocalOverlay.String(), s.DoubleZeroAddr.String(), 32)
 		if err != nil {
@@ -88,11 +85,17 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 	}
 
 	if isSubscriber {
-		if err = createBaseTunnel(s.nl, tun); err != nil {
-			return fmt.Errorf("error creating tunnel interface: %v", err)
+		if !isPublisher {
+			if err = createBaseTunnel(s.nl, tun); err != nil {
+				return fmt.Errorf("error creating tunnel interface: %v", err)
+			}
 		}
 		s.MulticastSubGroups = p.MulticastSubGroups
 		for _, group := range s.MulticastSubGroups {
+			// Skip groups already routed by the publisher block (which sets Src for correct source IP).
+			if isPublisher && containsIP(p.MulticastPubGroups, group) {
+				continue
+			}
 			_, groupNet, err := net.ParseCIDR(fmt.Sprintf("%s/32", group))
 			if err != nil {
 				return fmt.Errorf("error parsing multicast group address: %v", err)
@@ -193,4 +196,13 @@ func (s *MulticastService) Status() (*api.StatusResponse, error) {
 		DoubleZeroStatus: peerStatus,
 		UserType:         s.UserType(),
 	}, nil
+}
+
+func containsIP(ips []net.IP, target net.IP) bool {
+	for _, ip := range ips {
+		if ip.Equal(target) {
+			return true
+		}
+	}
+	return false
 }

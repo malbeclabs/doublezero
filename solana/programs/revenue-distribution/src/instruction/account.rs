@@ -200,6 +200,7 @@ pub struct InitializeDistributionAccounts {
     pub dz_mint_key: Pubkey,
     pub journal_key: Pubkey,
     pub journal_2z_token_pda_key: Pubkey,
+    pub journal_ata_key: Pubkey,
 }
 
 impl InitializeDistributionAccounts {
@@ -221,6 +222,7 @@ impl InitializeDistributionAccounts {
             dz_mint_key: *dz_mint_key,
             journal_key,
             journal_2z_token_pda_key: find_2z_token_pda_address(&journal_key).0,
+            journal_ata_key: get_associated_token_address(&journal_key, dz_mint_key),
         }
     }
 }
@@ -236,6 +238,7 @@ impl From<InitializeDistributionAccounts> for Vec<AccountMeta> {
             dz_mint_key,
             journal_key,
             journal_2z_token_pda_key,
+            journal_ata_key,
         } = accounts;
 
         vec![
@@ -248,6 +251,7 @@ impl From<InitializeDistributionAccounts> for Vec<AccountMeta> {
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new(journal_key, false),
             AccountMeta::new(journal_2z_token_pda_key, false),
+            AccountMeta::new(journal_ata_key, false),
             AccountMeta::new_readonly(system_program::ID, false),
         ]
     }

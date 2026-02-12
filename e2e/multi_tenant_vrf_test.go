@@ -556,7 +556,7 @@ func TestE2E_TenantDeletionLifecycle(t *testing.T) {
 
 	// Delete tenant — should succeed now.
 	log.Debug("==> Deleting tenant")
-	_, err = dn.Manager.Exec(t.Context(), []string{"doublezero", "tenant", "delete", "--pubkey", tenantCode})
+	_, err = dn.Manager.Exec(t.Context(), []string{"doublezero", "tenant", "delete", "--pubkey", tenantCode, "--allow-delete-users"})
 	require.NoError(t, err)
 	log.Debug("--> Tenant deleted")
 

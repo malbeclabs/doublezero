@@ -15,6 +15,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/multicast"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/config"
@@ -68,7 +69,8 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	}
 
 	pim := pim.NewPIMServer()
-	nlm := manager.NewNetlinkManager(nlr, bgp, db, pim)
+	heartbeat := multicast.NewHeartbeatSender()
+	nlm := manager.NewNetlinkManager(nlr, bgp, db, pim, heartbeat)
 
 	errCh := make(chan error)
 

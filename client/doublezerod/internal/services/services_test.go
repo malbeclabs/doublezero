@@ -4,6 +4,7 @@ import (
 	"net"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/jwhited/corebgp"
@@ -120,6 +121,29 @@ func (m *MockPIMServer) Start(conn pim.RawConner, iface string, tunnelAddr net.I
 }
 
 func (m *MockPIMServer) Close() error {
+	return nil
+}
+
+type MockHeartbeatSender struct {
+	started bool
+	closed  bool
+	iface   string
+	srcIP   net.IP
+	groups  []net.IP
+	ttl     int
+}
+
+func (m *MockHeartbeatSender) Start(iface string, srcIP net.IP, groups []net.IP, ttl int, interval time.Duration) error {
+	m.started = true
+	m.iface = iface
+	m.srcIP = srcIP
+	m.groups = groups
+	m.ttl = ttl
+	return nil
+}
+
+func (m *MockHeartbeatSender) Close() error {
+	m.closed = true
 	return nil
 }
 
@@ -586,8 +610,9 @@ func TestServices(t *testing.T) {
 			mockNetlink := &MockNetlink{}
 			mockDb := &MockDb{}
 			mockPim := &MockPIMServer{}
+			mockHeartbeat := &MockHeartbeatSender{}
 
-			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockDb, mockPim)
+			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockDb, mockPim, mockHeartbeat)
 			if err != nil {
 				t.Fatalf("failed to create service: %v", err)
 			}

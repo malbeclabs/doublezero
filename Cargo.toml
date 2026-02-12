@@ -9,6 +9,7 @@ members = [
     "smartcontract/programs/doublezero-record",
     "smartcontract/programs/doublezero-serviceability",
     "smartcontract/programs/doublezero-telemetry",
+    "smartcontract/programs/doublezero-geolocation",
     "smartcontract/programs/common",
     "e2e/docker/ledger/fork-accounts",
 ]
@@ -108,4 +109,8 @@ features = ["no-entrypoint"]
 
 [workspace.dependencies.doublezero-telemetry]
 path = "smartcontract/programs/doublezero-telemetry"
+features = ["no-entrypoint"]
+
+[workspace.dependencies.doublezero-geolocation]
+path = "smartcontract/programs/doublezero-geolocation"
 features = ["no-entrypoint"]

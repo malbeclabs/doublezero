@@ -1632,6 +1632,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-geolocation"
+version = "0.8.7"
+dependencies = [
+ "borsh 1.5.7",
+ "borsh-incremental",
+ "doublezero-program-common",
+ "doublezero-serviceability",
+ "serde",
+ "serde_bytes",
+ "solana-program",
+ "solana-program-test",
+ "solana-sdk",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "doublezero-program-common"
 version = "0.8.8"
 dependencies = [

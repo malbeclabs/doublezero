@@ -1419,6 +1419,7 @@ async fn test_user_per_type_limits() {
             client_ip: user1_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user1_pubkey, false),
@@ -1478,6 +1479,7 @@ async fn test_user_per_type_limits() {
             client_ip: user2_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user2_pubkey, false),
@@ -1533,6 +1535,7 @@ async fn test_user_per_type_limits() {
             client_ip: mcast1_ip,
             user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(mcast1_pubkey, false),
@@ -1593,6 +1596,7 @@ async fn test_user_per_type_limits() {
             client_ip: mcast2_ip,
             user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(mcast2_pubkey, false),
@@ -1626,6 +1630,7 @@ async fn test_user_per_type_limits() {
             tunnel_net: "169.254.0.0/25".parse().unwrap(),
             dz_ip: [200, 0, 0, 1].into(),
             dz_prefix_count: 0,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user1_pubkey, false),
@@ -1696,6 +1701,7 @@ async fn test_user_per_type_limits() {
             client_ip: user2_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user2_pubkey_new, false),
@@ -1785,6 +1791,7 @@ async fn test_user_per_type_limits() {
             client_ip: user3_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user3_pubkey, false),
@@ -1830,6 +1837,7 @@ async fn test_user_per_type_limits() {
             client_ip: mcast3_ip,
             user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(mcast3_pubkey, false),

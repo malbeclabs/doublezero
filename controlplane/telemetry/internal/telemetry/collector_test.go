@@ -417,6 +417,128 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		require.Len(t, program.GetAccounts(t), 1, "expected only one sender to be used for logically equal peers")
 	})
 
+	t.Run("evicts_sender_after_consecutive_losses", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+		devicePK := stringToPubkey("device-evict")
+		peerPK := stringToPubkey("peer-evict")
+		linkPK := stringToPubkey("link-evict")
+
+		reflector := newTestReflector(t)
+		telemetryProgram := newMemoryTelemetryProgramClient()
+		peerDiscovery := newMockPeerDiscovery()
+
+		// Start with a working peer pointing to the real reflector.
+		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK: peerPK,
+				LinkPK:   linkPK,
+				Tunnel: &netutil.LocalTunnel{
+					Interface: loopbackInterface(t),
+					SourceIP:  net.ParseIP("127.0.0.1"),
+					TargetIP:  reflector.LocalAddr().IP,
+				},
+				TWAMPPort: uint16(reflector.LocalAddr().Port),
+			},
+		})
+
+		maxLosses := 5
+		collector, err := telemetry.New(log, telemetry.Config{
+			LocalDevicePK:              devicePK,
+			ProbeInterval:              50 * time.Millisecond,
+			SubmissionInterval:         200 * time.Millisecond,
+			TWAMPSenderTimeout:         100 * time.Millisecond,
+			SenderTTL:                  10 * time.Minute, // long TTL so eviction is only via losses
+			SubmitterMaxConcurrency:    10,
+			TWAMPReflector:             reflector,
+			PeerDiscovery:              peerDiscovery,
+			TelemetryProgramClient:     telemetryProgram,
+			GetCurrentEpochFunc:        func(ctx context.Context) (uint64, error) { return 100, nil },
+			MaxConsecutiveSenderLosses: maxLosses,
+		})
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		go func() { require.NoError(t, collector.Run(ctx)) }()
+
+		accountKey := telemetry.PartitionKey{
+			OriginDevicePK: devicePK,
+			TargetDevicePK: peerPK,
+			LinkPK:         linkPK,
+			Epoch:          100,
+		}
+
+		// 1) Verify we get successful RTT samples.
+		require.Eventually(t, func() bool {
+			s := telemetryProgram.GetAccounts(t)[accountKey]
+			for _, sample := range s {
+				if !sample.Loss {
+					return true
+				}
+			}
+			return false
+		}, 3*time.Second, 50*time.Millisecond, "should collect successful RTT samples")
+
+		// 2) Switch to a blackhole address to trigger consecutive losses.
+		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK: peerPK,
+				LinkPK:   linkPK,
+				Tunnel: &netutil.LocalTunnel{
+					Interface: loopbackInterface(t),
+					SourceIP:  net.ParseIP("127.0.0.1"),
+					TargetIP:  net.IPv4(203, 0, 113, 1),
+				},
+				TWAMPPort: 9999,
+			},
+		})
+
+		// Wait for losses to accumulate and be submitted.
+		require.Eventually(t, func() bool {
+			s := telemetryProgram.GetAccounts(t)[accountKey]
+			lossCount := 0
+			for _, sample := range s {
+				if sample.Loss {
+					lossCount++
+				}
+			}
+			return lossCount >= maxLosses
+		}, 5*time.Second, 50*time.Millisecond, "should observe losses after switching to blackhole")
+
+		// 3) Switch back to working address. Because the sender was evicted (not
+		// waiting for TTL), a new sender should be created immediately for the
+		// working address, and we should see successful probes resume.
+		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK: peerPK,
+				LinkPK:   linkPK,
+				Tunnel: &netutil.LocalTunnel{
+					Interface: loopbackInterface(t),
+					SourceIP:  net.ParseIP("127.0.0.1"),
+					TargetIP:  reflector.LocalAddr().IP,
+				},
+				TWAMPPort: uint16(reflector.LocalAddr().Port),
+			},
+		})
+
+		// Verify success resumes without needing to wait for TTL.
+		require.Eventually(t, func() bool {
+			s := telemetryProgram.GetAccounts(t)[accountKey]
+			if len(s) == 0 {
+				return false
+			}
+			// Check the tail for a recent non-loss sample.
+			for i := len(s) - 1; i >= 0 && i >= len(s)-6; i-- {
+				if !s[i].Loss {
+					return true
+				}
+			}
+			return false
+		}, 5*time.Second, 50*time.Millisecond, "should resume success after sender eviction and address fix")
+	})
+
 	t.Run("recreates_sender_after_ttl", func(t *testing.T) {
 		t.Parallel()
 

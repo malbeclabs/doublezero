@@ -37,7 +37,7 @@ var (
 	ledgerRPCURL       = flag.String("ledger-rpc-url", "", "The url of the ledger RPC. If env is provided, this flag is ignored.")
 	keypairPath        = flag.String("keypair", "", "The path to the probe's Ed25519 keypair file.")
 	geoProbePubkeyStr  = flag.String("geoprobe-pubkey", "", "The geoprobe device's public key (base58). Identifies this specific probe in offsets.")
-	additionalParents  = flag.String("additional-parents", "", "Comma-separated list of trusted parent DZD pubkeys (base58).")
+	additionalParent   = flag.String("additional-parent", "", "Trusted parent DZD in the format devicekey,metricskey (base58 pubkeys).")
 	additionalTargets  = flag.String("additional-targets", "", "Comma-separated list of target addresses (host:port) to measure and send composite offsets.")
 	twampListenPort    = flag.Uint("twamp-listen-port", defaultTWAMPListenPort, "Port for TWAMP reflector.")
 	udpListenPort      = flag.Uint("udp-listen-port", defaultUDPListenPort, "Port for receiving DZD offset datagrams.")
@@ -54,45 +54,43 @@ var (
 
 // parentDZD represents a trusted parent DZD that sends offsets to this probe.
 type parentDZD struct {
-	pubkey [32]byte
+	pubkey          [32]byte // Parent pubkey (appears as SenderPubkey in received offsets)
+	authorityPubkey [32]byte // Authority pubkey (used to sign offsets)
 }
 
-// parseParentDZDs parses the --additional-parents flag value.
-// Format: "pubkey,pubkey"
-func parseParentDZDs(s string) ([]parentDZD, error) {
+// parseParentDZD parses the --additional-parent flag value.
+// Format: "parentkey,authoritykey"
+func parseParentDZD(s string) (*parentDZD, error) {
 	if s == "" {
 		return nil, nil
 	}
 
 	parts := strings.Split(s, ",")
-	parents := make([]parentDZD, 0, len(parts))
-	seen := make(map[[32]byte]bool)
-
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-
-		pk, err := solana.PublicKeyFromBase58(part)
-		if err != nil {
-			return nil, fmt.Errorf("invalid pubkey %q: %w", part, err)
-		}
-
-		var pubkeyBytes [32]byte
-		copy(pubkeyBytes[:], pk[:])
-
-		if seen[pubkeyBytes] {
-			continue
-		}
-		seen[pubkeyBytes] = true
-
-		parents = append(parents, parentDZD{
-			pubkey: pubkeyBytes,
-		})
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("expected format parentkey,authoritykey, got %q", s)
 	}
 
-	return parents, nil
+	parentStr := strings.TrimSpace(parts[0])
+	authorityStr := strings.TrimSpace(parts[1])
+
+	parentPK, err := solana.PublicKeyFromBase58(parentStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid parent pubkey %q: %w", parentStr, err)
+	}
+
+	authorityPK, err := solana.PublicKeyFromBase58(authorityStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid authority pubkey %q: %w", authorityStr, err)
+	}
+
+	var pubkeyBytes, authorityBytes [32]byte
+	copy(pubkeyBytes[:], parentPK[:])
+	copy(authorityBytes[:], authorityPK[:])
+
+	return &parentDZD{
+		pubkey:          pubkeyBytes,
+		authorityPubkey: authorityBytes,
+	}, nil
 }
 
 // offsetCache stores recent DZD offsets keyed by sender (device) pubkey.
@@ -233,20 +231,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Parse parents.
-	parents, err := parseParentDZDs(*additionalParents)
-	if err != nil {
-		log.Error("Failed to parse additional-parents", "error", err)
-		os.Exit(1)
+	// Parse parent.
+	var parents []parentDZD
+	if *additionalParent != "" {
+		parent, err := parseParentDZD(*additionalParent)
+		if err != nil {
+			log.Error("Failed to parse additional-parent", "error", err)
+			os.Exit(1)
+		}
+		if parent != nil {
+			parents = append(parents, *parent)
+		}
 	}
 
-	// Build trusted pubkey set.
-	trustedPubkeys := make(map[[32]byte]bool, len(parents))
+	// Build parent authority map: parent pubkey (SenderPubkey) → expected authority pubkey.
+	parentAuthorities := make(map[[32]byte][32]byte, len(parents))
 	for _, p := range parents {
-		trustedPubkeys[p.pubkey] = true
+		parentAuthorities[p.pubkey] = p.authorityPubkey
 	}
 
-	if len(trustedPubkeys) == 0 {
+	if len(parentAuthorities) == 0 {
 		log.Warn("No trusted parents configured -- will not accept offsets until parents are added")
 	}
 
@@ -372,7 +376,7 @@ func main() {
 
 	// Run UDP offset listener.
 	go func() {
-		runOffsetListener(ctx, log, offsetListener, cache, trustedPubkeys)
+		runOffsetListener(ctx, log, offsetListener, cache, parentAuthorities)
 	}()
 
 	// Run eviction goroutine.
@@ -414,7 +418,7 @@ func runOffsetListener(
 	log *slog.Logger,
 	conn *net.UDPConn,
 	cache *offsetCache,
-	trustedPubkeys map[[32]byte]bool,
+	parentAuthorities map[[32]byte][32]byte, // parent pubkey → expected authority pubkey
 ) {
 	log.Info("Starting offset listener", "addr", conn.LocalAddr().String())
 
@@ -443,24 +447,32 @@ func runOffsetListener(
 			continue
 		}
 
-		// Verify the offset comes from a trusted parent (check authority pubkey).
-		if !trustedPubkeys[offset.AuthorityPubkey] {
-			authorityPK := solana.PublicKeyFromBytes(offset.AuthorityPubkey[:])
-			log.Debug("Rejecting offset from untrusted authority", "authority_pubkey", authorityPK, "addr", addr)
+		senderPK := solana.PublicKeyFromBytes(offset.SenderPubkey[:])
+		authorityPK := solana.PublicKeyFromBytes(offset.AuthorityPubkey[:])
+
+		// Verify the sender is a known parent and the authority matches.
+		expectedAuthority, knownParent := parentAuthorities[offset.SenderPubkey]
+		if !knownParent {
+			log.Debug("Rejecting offset from unknown parent", "sender_pubkey", senderPK, "addr", addr)
+			continue
+		}
+		if expectedAuthority != offset.AuthorityPubkey {
+			log.Warn("Rejecting offset with wrong authority for parent",
+				"sender_pubkey", senderPK,
+				"expected_authority", solana.PublicKeyFromBytes(expectedAuthority[:]),
+				"actual_authority", authorityPK,
+				"addr", addr)
 			continue
 		}
 
 		// Verify signature chain (top-level and all references).
 		if err := geoprobe.VerifyOffsetChain(offset); err != nil {
-			authorityPK := solana.PublicKeyFromBytes(offset.AuthorityPubkey[:])
 			log.Warn("Offset signature verification failed", "authority_pubkey", authorityPK, "addr", addr, "error", err)
 			continue
 		}
 
 		cache.Put(offset)
 
-		authorityPK := solana.PublicKeyFromBytes(offset.AuthorityPubkey[:])
-		senderPK := solana.PublicKeyFromBytes(offset.SenderPubkey[:])
 		log.Debug("Cached DZD offset",
 			"authority_pubkey", authorityPK,
 			"sender_pubkey", senderPK,

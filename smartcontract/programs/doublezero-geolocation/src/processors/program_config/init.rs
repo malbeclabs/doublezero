@@ -2,12 +2,13 @@ use crate::{
     instructions::InitProgramConfigArgs,
     pda::get_program_config_pda,
     seeds::{SEED_PREFIX, SEED_PROGRAM_CONFIG},
-    serializer::{try_acc_create, try_acc_write},
+    serializer::try_acc_create,
     state::{accounttype::AccountType, program_config::GeolocationProgramConfig},
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -39,6 +40,10 @@ pub fn process_init_program_config(
         "Invalid ProgramConfig PubKey"
     );
 
+    if !program_config_account.data_is_empty() {
+        return Err(ProgramError::AccountAlreadyInitialized);
+    }
+
     let program_config = GeolocationProgramConfig {
         account_type: AccountType::ProgramConfig,
         bump_seed,
@@ -47,23 +52,14 @@ pub fn process_init_program_config(
         serviceability_program_id: args.serviceability_program_id,
     };
 
-    if program_config_account.data_is_empty() {
-        try_acc_create(
-            &program_config,
-            program_config_account,
-            payer_account,
-            system_program,
-            program_id,
-            &[SEED_PREFIX, SEED_PROGRAM_CONFIG, &[bump_seed]],
-        )?;
-    } else {
-        try_acc_write(
-            &program_config,
-            program_config_account,
-            payer_account,
-            accounts,
-        )?;
-    }
+    try_acc_create(
+        &program_config,
+        program_config_account,
+        payer_account,
+        system_program,
+        program_id,
+        &[SEED_PREFIX, SEED_PROGRAM_CONFIG, &[bump_seed]],
+    )?;
 
     Ok(())
 }

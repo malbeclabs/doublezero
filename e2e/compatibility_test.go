@@ -69,9 +69,9 @@ var knownIncompatibilities = map[string]string{
 	"write/link_set_health_dzx": "0.8.6",
 
 	// global_config_set: The SetGlobalConfig instruction added new required accounts
-	// that released CLIs (through v0.8.6) don't include, causing "insufficient account
-	// keys for instruction". Fixed in unreleased code.
-	"write/global_config_set": "0.8.7",
+	// (MulticastPublisherBlock, VrfIds) that released CLIs (through v0.8.7) don't
+	// include, causing "insufficient account keys for instruction".
+	"write/global_config_set": "0.8.8",
 }
 
 // =============================================================================

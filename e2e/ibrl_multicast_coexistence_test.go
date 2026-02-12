@@ -1194,16 +1194,16 @@ func verifyConcurrentMulticastPublisherMrouteState(t *testing.T, log *slog.Logge
 	addrOut, _ := client.Exec(t.Context(), []string{"bash", "-c", "ip addr show dev doublezero1 2>&1"}, docker.NoPrintOnError())
 	log.Info("Addresses on doublezero1", "output", string(addrOut))
 
-	// Trigger S,G creation with ping to multicast group using the allocated DZ IP as source
-	// The -I flag with an IP address forces that IP as the source address
-	log.Info("==> Triggering S,G creation with ping to multicast group", "sourceIP", expectedAllocatedIP, "interface", "doublezero1")
-	pingOut, pingErr := client.Exec(t.Context(), []string{"bash", "-c", "ping -c 3 -w 5 -I " + expectedAllocatedIP + " 233.84.178.0"}, docker.NoPrintOnError())
-	log.Info("Ping result", "output", string(pingOut), "error", pingErr)
-
-	// Verify mroute state on device - poll for 60 seconds (longer for concurrent case)
+	// Verify mroute state on device - poll for 60 seconds (longer for concurrent case).
+	// Each iteration pings the multicast group to trigger S,G creation. The ping is
+	// inside the loop because the device may still be applying PIM border-router config
+	// when we first start checking, and a ping sent before that config is active will
+	// be ignored.
 	mGroup := "233.84.178.0"
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
+		_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 -I " + expectedAllocatedIP + " " + mGroup}, docker.NoPrintOnError())
+
 		mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
 		if err != nil {
 			log.Debug("Error fetching mroutes", "error", err)
@@ -1253,14 +1253,15 @@ func verifyMulticastPublisherMrouteState(t *testing.T, log *slog.Logger, device 
 	require.NotEmpty(t, expectedAllocatedIP, "could not find multicast tunnel's DoubleZeroIP")
 	log.Info("==> Using client's actual allocated IP", "expectedAllocatedIP", expectedAllocatedIP)
 
-	// Trigger S,G creation with ping to multicast group
-	log.Debug("==> Triggering S,G creation with ping to multicast group")
-	_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 233.84.178.0"}, docker.NoPrintOnError())
-
-	// Verify mroute state on device - poll for 30 seconds
+	// Verify mroute state on device - poll for 30 seconds.
+	// Each iteration pings the multicast group to trigger S,G creation. The ping is
+	// inside the loop because the device may still be applying PIM border-router config
+	// when we first start checking.
 	mGroup := "233.84.178.0"
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
+		_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 -I " + expectedAllocatedIP + " " + mGroup}, docker.NoPrintOnError())
+
 		mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
 		if err != nil {
 			log.Debug("Error fetching mroutes", "error", err)

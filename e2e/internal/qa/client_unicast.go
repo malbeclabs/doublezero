@@ -62,6 +62,7 @@ func (c *Client) ConnectUserUnicast(ctx context.Context, deviceCode string, wait
 	resp, err := c.grpcClient.ConnectUnicast(ctx, &pb.ConnectUnicastRequest{
 		Mode:       mode,
 		DeviceCode: deviceCode,
+		ClientIp:   c.ClientIP,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to connect on host %s: %w", c.Host, err)

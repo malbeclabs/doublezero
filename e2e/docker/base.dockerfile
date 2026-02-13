@@ -72,9 +72,14 @@ ENV CARGO_INCREMENTAL=0
 WORKDIR /doublezero
 COPY . .
 
+# Hash of Cargo.lock for cache isolation. When dependencies change, we get a fresh
+# cache instead of reusing potentially stale compiled artifacts that cause
+# "two different versions of crate" errors.
+ARG CARGO_LOCK_HASH=default
+
 # Pre-fetch and cache rust dependencies
-RUN --mount=type=cache,target=/cargo \
-    --mount=type=cache,target=/target \
+RUN --mount=type=cache,id=cargo-${CARGO_LOCK_HASH},target=/cargo \
+    --mount=type=cache,id=target-${CARGO_LOCK_HASH},target=/target \
     cargo fetch
 
 # Set up a binaries directory
@@ -82,8 +87,8 @@ ENV BIN_DIR=/doublezero/bin
 RUN mkdir -p ${BIN_DIR}
 
 # Build all rust components except the Solana program
-RUN --mount=type=cache,target=/cargo \
-    --mount=type=cache,target=/target \
+RUN --mount=type=cache,id=cargo-${CARGO_LOCK_HASH},target=/cargo \
+    --mount=type=cache,id=target-${CARGO_LOCK_HASH},target=/target \
     RUSTFLAGS="-C link-arg=-fuse-ld=mold" cargo build --workspace --release --exclude doublezero-serviceability --exclude doublezero-telemetry && \
     cp /target/release/doublezero ${BIN_DIR}/ && \
     cp /target/release/doublezero-activator ${BIN_DIR}/ && \

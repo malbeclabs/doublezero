@@ -50,7 +50,7 @@ where
     )?;
 
     let mut account_data = &mut account.data.borrow_mut()[..];
-    value.serialize(&mut account_data).unwrap();
+    value.serialize(&mut account_data)?;
 
     #[cfg(test)]
     msg!("Created: {:?}", value);

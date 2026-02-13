@@ -5,6 +5,7 @@ use crate::{
     serializer::try_acc_write,
     state::{
         accounttype::AccountType,
+        contributor::Contributor,
         device::*,
         globalstate::GlobalState,
         interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LoopbackType, RoutingMode},
@@ -70,11 +71,8 @@ pub fn process_update_device_interface(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    /*  Accounts prefixed with an underscore are not currently used.
-        They are kept for backward compatibility and may be removed in future releases.
-    */
     let device_account = next_account_info(accounts_iter)?;
-    let _contributor_account = next_account_info(accounts_iter)?;
+    let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
@@ -91,6 +89,10 @@ pub fn process_update_device_interface(
         "Invalid PDA Account Owner"
     );
     assert_eq!(
+        contributor_account.owner, program_id,
+        "Invalid Contributor Account Owner"
+    );
+    assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
@@ -100,7 +102,11 @@ pub fn process_update_device_interface(
     let globalstate = GlobalState::try_from(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+    let contributor = Contributor::try_from(contributor_account)?;
+
+    if contributor.owner != *payer_account.key
+        && !globalstate.foundation_allowlist.contains(payer_account.key)
+    {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
@@ -145,6 +151,13 @@ pub fn process_update_device_interface(
         iface.status = status;
     }
     if let Some(ip_net) = value.ip_net {
+        // ip_net can only be set on CYOA, DIA, or user-tunnel-endpoint interfaces
+        if iface.interface_cyoa == InterfaceCYOA::None
+            && iface.interface_dia == InterfaceDIA::None
+            && !iface.user_tunnel_endpoint
+        {
+            return Err(DoubleZeroError::InvalidInterfaceIp.into());
+        }
         iface.ip_net = ip_net;
     }
     if let Some(node_segment_idx) = value.node_segment_idx {

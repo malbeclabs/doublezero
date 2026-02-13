@@ -108,6 +108,15 @@ pub fn process_create_device_interface(
         interface_type = InterfaceType::Loopback;
     }
 
+    // ip_net can only be set on CYOA, DIA, or user-tunnel-endpoint interfaces
+    if value.ip_net.is_some()
+        && value.interface_cyoa == InterfaceCYOA::None
+        && value.interface_dia == InterfaceDIA::None
+        && !value.user_tunnel_endpoint
+    {
+        return Err(DoubleZeroError::InvalidInterfaceIp.into());
+    }
+
     let mut device: Device = Device::try_from(device_account)?;
 
     if device.find_interface(&name).is_ok() {

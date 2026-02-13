@@ -39,6 +39,14 @@ pub fn process_add_target(
         msg!("Invalid GeoProbe Account Owner");
         return Err(ProgramError::IllegalOwner);
     }
+    if !user_account.is_writable {
+        msg!("GeolocationUser account must be writable");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if !probe_account.is_writable {
+        msg!("GeoProbe account must be writable");
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     let mut probe = GeoProbe::try_from(probe_account)?;
 
@@ -64,16 +72,14 @@ pub fn process_add_target(
 
     validate_public_ip(&args.ip_address)?;
 
-    let already_exists = user.targets.iter().any(|t| {
-        t.ip_address == args.ip_address
-            && t.location_offset_port == args.location_offset_port
-            && t.geoprobe_pk == *probe_account.key
-    });
+    let already_exists = user
+        .targets
+        .iter()
+        .any(|t| t.ip_address == args.ip_address && t.geoprobe_pk == *probe_account.key);
     if already_exists {
         msg!(
-            "Target already exists: {}:{} probe={}",
+            "Target already exists: {} probe={}",
             args.ip_address,
-            args.location_offset_port,
             probe_account.key
         );
         return Err(GeolocationError::TargetAlreadyExists.into());

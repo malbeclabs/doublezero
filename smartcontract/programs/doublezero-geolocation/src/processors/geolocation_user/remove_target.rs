@@ -35,6 +35,14 @@ pub fn process_remove_target(
         msg!("Invalid GeoProbe Account Owner");
         return Err(ProgramError::IllegalOwner);
     }
+    if !user_account.is_writable {
+        msg!("GeolocationUser account must be writable");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if !probe_account.is_writable {
+        msg!("GeoProbe account must be writable");
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     let mut probe = GeoProbe::try_from(probe_account)?;
 

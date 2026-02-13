@@ -1,4 +1,5 @@
 use crate::{
+    error::GeolocationError,
     instructions::CreateGeoProbeArgs,
     pda::get_geo_probe_pda,
     processors::check_foundation_allowlist,
@@ -39,12 +40,26 @@ pub fn process_create_geo_probe(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    check_foundation_allowlist(
+    let program_config = check_foundation_allowlist(
         program_config_account,
         serviceability_globalstate_account,
         payer_account,
         program_id,
     )?;
+
+    // Validate exchange_account belongs to the Serviceability program
+    if *exchange_account.owner != program_config.serviceability_program_id {
+        msg!(
+            "Exchange account owner {} does not match serviceability program {}",
+            exchange_account.owner,
+            program_config.serviceability_program_id
+        );
+        return Err(GeolocationError::InvalidServiceabilityProgramId.into());
+    }
+
+    // Verify it's a valid Exchange account by deserializing
+    let _exchange =
+        doublezero_serviceability::state::exchange::Exchange::try_from(exchange_account)?;
 
     validate_code_length(&args.code)?;
     let code = validate_account_code(&args.code)

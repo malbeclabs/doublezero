@@ -77,6 +77,12 @@ pub fn process_init_program_config(
         return Err(ProgramError::InvalidAccountData);
     }
 
+    // Verify the program data account is owned by the BPF Upgradeable Loader
+    if program_data_account.owner != &solana_program::bpf_loader_upgradeable::id() {
+        msg!("Program data account not owned by BPF Upgradeable Loader");
+        return Err(ProgramError::IllegalOwner);
+    }
+
     // Verify the program data account derives from the program id
     let expected_program_data = Pubkey::find_program_address(
         &[program_id.as_ref()],

@@ -5,6 +5,7 @@ use crate::{
     serializer::try_acc_write,
     state::geo_probe::{GeoProbe, MAX_PARENT_DEVICES},
 };
+use doublezero_serviceability::state::device::{Device, DeviceStatus};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -21,6 +22,7 @@ pub fn process_add_parent_device(
     let accounts_iter = &mut accounts.iter();
 
     let probe_account = next_account_info(accounts_iter)?;
+    let device_account = next_account_info(accounts_iter)?;
     let program_config_account = next_account_info(accounts_iter)?;
     let serviceability_globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
@@ -30,12 +32,43 @@ pub fn process_add_parent_device(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    check_foundation_allowlist(
+    let program_config = check_foundation_allowlist(
         program_config_account,
         serviceability_globalstate_account,
         payer_account,
         program_id,
     )?;
+
+    // Validate device_account key matches the requested device_pk
+    if device_account.key != &args.device_pk {
+        msg!(
+            "Device account key {} does not match args.device_pk {}",
+            device_account.key,
+            args.device_pk
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate device_account belongs to the Serviceability program
+    if *device_account.owner != program_config.serviceability_program_id {
+        msg!(
+            "Device account owner {} does not match serviceability program {}",
+            device_account.owner,
+            program_config.serviceability_program_id
+        );
+        return Err(GeolocationError::InvalidServiceabilityProgramId.into());
+    }
+
+    // Verify it's a valid, activated Device account
+    let device = Device::try_from(device_account)?;
+    if device.status != DeviceStatus::Activated {
+        msg!(
+            "Device {} is not activated (status: {:?})",
+            device_account.key,
+            device.status
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     if probe_account.owner != program_id {
         msg!("Invalid GeoProbe Account Owner");

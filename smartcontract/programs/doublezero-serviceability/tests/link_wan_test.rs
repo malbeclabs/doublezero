@@ -1160,9 +1160,11 @@ async fn test_wan_link_rejects_cyoa_interface() {
     )
     .await;
 
+    let error_string = format!("{:?}", res.unwrap_err());
     assert!(
-        res.is_err(),
-        "Link creation should fail when side A interface has CYOA assignment"
+        error_string.contains("Custom(81)"),
+        "Expected InterfaceHasEdgeAssignment error (Custom(81)), got: {}",
+        error_string
     );
 
     // 7. Now clear CYOA on device A and set it on device Z, then try again
@@ -1248,9 +1250,11 @@ async fn test_wan_link_rejects_cyoa_interface() {
     )
     .await;
 
+    let error_string = format!("{:?}", res.unwrap_err());
     assert!(
-        res.is_err(),
-        "Link creation should fail when side Z interface has DIA assignment"
+        error_string.contains("Custom(81)"),
+        "Expected InterfaceHasEdgeAssignment error (Custom(81)), got: {}",
+        error_string
     );
 
     // 8. Clear DIA on device Z, create link successfully, then try to activate
@@ -1359,9 +1363,11 @@ async fn test_wan_link_rejects_cyoa_interface() {
     )
     .await;
 
+    let error_string = format!("{:?}", res.unwrap_err());
     assert!(
-        res.is_err(),
-        "Link activation should fail when side A interface has CYOA assignment"
+        error_string.contains("Custom(81)"),
+        "Expected InterfaceHasEdgeAssignment error (Custom(81)), got: {}",
+        error_string
     );
 }
 
@@ -1756,9 +1762,11 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
     )
     .await;
 
+    let error_string = format!("{:?}", res.unwrap_err());
     assert!(
-        res.is_err(),
-        "Should not be able to set CYOA on a linked interface"
+        error_string.contains("Custom(81)"),
+        "Expected InterfaceHasEdgeAssignment error (Custom(81)), got: {}",
+        error_string
     );
 
     // Attempt to set DIA on linked side Z interface — should also fail
@@ -1790,8 +1798,10 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
     )
     .await;
 
+    let error_string = format!("{:?}", res.unwrap_err());
     assert!(
-        res.is_err(),
-        "Should not be able to set DIA on a linked interface"
+        error_string.contains("Custom(81)"),
+        "Expected InterfaceHasEdgeAssignment error (Custom(81)), got: {}",
+        error_string
     );
 }

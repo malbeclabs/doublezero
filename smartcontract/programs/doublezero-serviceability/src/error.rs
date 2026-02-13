@@ -166,7 +166,7 @@ pub enum DoubleZeroError {
     TenantNotInAccessPassAllowlist, // variant 79
     #[error("Invalid Tunnel Endpoint")]
     InvalidTunnelEndpoint, // variant 80
-    #[error("Interface with CYOA or DIA assignment cannot be used for links")]
+    #[error("Interface cannot have both a link and a CYOA or DIA assignment")]
     InterfaceHasEdgeAssignment, // variant 81
 }
 

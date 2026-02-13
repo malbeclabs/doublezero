@@ -18,11 +18,14 @@ pub enum PaymentStatus {
     Paid = 1,
 }
 
-impl From<u8> for PaymentStatus {
-    fn from(value: u8) -> Self {
+impl TryFrom<u8> for PaymentStatus {
+    type Error = ProgramError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            1 => PaymentStatus::Paid,
-            _ => PaymentStatus::Unpaid,
+            0 => Ok(PaymentStatus::Unpaid),
+            1 => Ok(PaymentStatus::Paid),
+            _ => Err(ProgramError::InvalidInstructionData),
         }
     }
 }
@@ -46,11 +49,14 @@ pub enum GeolocationUserStatus {
     Suspended = 1,
 }
 
-impl From<u8> for GeolocationUserStatus {
-    fn from(value: u8) -> Self {
+impl TryFrom<u8> for GeolocationUserStatus {
+    type Error = ProgramError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            1 => GeolocationUserStatus::Suspended,
-            _ => GeolocationUserStatus::Active,
+            0 => Ok(GeolocationUserStatus::Active),
+            1 => Ok(GeolocationUserStatus::Suspended),
+            _ => Err(ProgramError::InvalidInstructionData),
         }
     }
 }
@@ -338,25 +344,28 @@ mod tests {
     }
 
     #[test]
-    fn test_payment_status_from_u8() {
-        assert_eq!(PaymentStatus::from(0), PaymentStatus::Unpaid);
-        assert_eq!(PaymentStatus::from(1), PaymentStatus::Paid);
-        assert_eq!(PaymentStatus::from(255), PaymentStatus::Unpaid);
+    fn test_payment_status_try_from_u8() {
+        assert_eq!(PaymentStatus::try_from(0u8).unwrap(), PaymentStatus::Unpaid);
+        assert_eq!(PaymentStatus::try_from(1u8).unwrap(), PaymentStatus::Paid);
+        assert_eq!(
+            PaymentStatus::try_from(255u8).unwrap_err(),
+            ProgramError::InvalidInstructionData
+        );
     }
 
     #[test]
-    fn test_geolocation_user_status_from_u8() {
+    fn test_geolocation_user_status_try_from_u8() {
         assert_eq!(
-            GeolocationUserStatus::from(0),
+            GeolocationUserStatus::try_from(0u8).unwrap(),
             GeolocationUserStatus::Active
         );
         assert_eq!(
-            GeolocationUserStatus::from(1),
+            GeolocationUserStatus::try_from(1u8).unwrap(),
             GeolocationUserStatus::Suspended
         );
         assert_eq!(
-            GeolocationUserStatus::from(255),
-            GeolocationUserStatus::Active
+            GeolocationUserStatus::try_from(255u8).unwrap_err(),
+            ProgramError::InvalidInstructionData
         );
     }
 

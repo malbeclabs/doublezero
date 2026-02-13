@@ -35,6 +35,10 @@ pub enum GeolocationError {
     TargetAlreadyExists,
     #[error("Reference count is not zero")]
     ReferenceCountNotZero,
+    #[error("Reference count overflow")]
+    ReferenceCountOverflow,
+    #[error("Unauthorized: payer is not the upgrade authority")]
+    UnauthorizedInitializer,
 }
 
 impl From<GeolocationError> for ProgramError {
@@ -56,6 +60,8 @@ impl From<GeolocationError> for ProgramError {
             GeolocationError::ParentDeviceAlreadyExists => ProgramError::Custom(13),
             GeolocationError::TargetAlreadyExists => ProgramError::Custom(14),
             GeolocationError::ReferenceCountNotZero => ProgramError::Custom(15),
+            GeolocationError::ReferenceCountOverflow => ProgramError::Custom(16),
+            GeolocationError::UnauthorizedInitializer => ProgramError::Custom(17),
         }
     }
 }
@@ -78,6 +84,8 @@ impl From<u32> for GeolocationError {
             13 => GeolocationError::ParentDeviceAlreadyExists,
             14 => GeolocationError::TargetAlreadyExists,
             15 => GeolocationError::ReferenceCountNotZero,
+            16 => GeolocationError::ReferenceCountOverflow,
+            17 => GeolocationError::UnauthorizedInitializer,
             _ => GeolocationError::Custom(e),
         }
     }
@@ -117,6 +125,8 @@ mod tests {
             (GeolocationError::ParentDeviceAlreadyExists, 13),
             (GeolocationError::TargetAlreadyExists, 14),
             (GeolocationError::ReferenceCountNotZero, 15),
+            (GeolocationError::ReferenceCountOverflow, 16),
+            (GeolocationError::UnauthorizedInitializer, 17),
         ]
     }
 

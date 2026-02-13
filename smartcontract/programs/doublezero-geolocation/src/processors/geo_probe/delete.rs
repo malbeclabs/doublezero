@@ -6,6 +6,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -17,7 +18,10 @@ pub fn process_delete_geo_probe(program_id: &Pubkey, accounts: &[AccountInfo]) -
     let serviceability_globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
 
-    assert!(payer_account.is_signer, "Payer must be a signer");
+    if !payer_account.is_signer {
+        msg!("Payer must be a signer");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
     check_foundation_allowlist(
         program_config_account,
@@ -26,10 +30,10 @@ pub fn process_delete_geo_probe(program_id: &Pubkey, accounts: &[AccountInfo]) -
         program_id,
     )?;
 
-    assert_eq!(
-        probe_account.owner, program_id,
-        "Invalid GeoProbe Account Owner"
-    );
+    if probe_account.owner != program_id {
+        msg!("Invalid GeoProbe Account Owner");
+        return Err(ProgramError::IllegalOwner);
+    }
 
     let probe = GeoProbe::try_from(probe_account)?;
 

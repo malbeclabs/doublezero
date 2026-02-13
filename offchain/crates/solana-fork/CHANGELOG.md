@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fetch journal ATA ([#266](https://github.com/doublezerofoundation/doublezero-offchain/pull/266))
 - add `--next-completed-dz-epoch-override` ([#240](https://github.com/doublezerofoundation/doublezero-offchain/pull/240))
 - replace `spl-token` with `spl-token-interface` ([#232](https://github.com/doublezerofoundation/doublezero-offchain/pull/232))
 - use `doublezero-solana-sdk` as dependency ([#225](https://github.com/doublezerofoundation/doublezero-offchain/pull/225))

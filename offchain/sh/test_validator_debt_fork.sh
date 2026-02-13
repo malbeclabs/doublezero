@@ -27,6 +27,11 @@ solana airdrop 100 -ul
 
 ADMIN_CLI_BIN=target/debug/doublezero-revenue-distribution-admin
 CLI_BIN=target/debug/doublezero-solana-validator-debt
+DZ_SOLANA_CLI_BIN=target/debug/doublezero-solana
+
+### Mimic 2Z transfers to the Journal's ATA.
+spl-token mint -ul J6pQQ3FAcJQeWPPGppWRb4nM8jU3wLyYbRrLh7feMfvd 69000000 7ZQuXUHeeK4HkQCM49fqgqfwcoBvuAiHGm1eUTiUaRep
+spl-token mint -ul J6pQQ3FAcJQeWPPGppWRb4nM8jU3wLyYbRrLh7feMfvd 420000 7ZQuXUHeeK4HkQCM49fqgqfwcoBvuAiHGm1eUTiUaRep
 
 echo "doublezero-revenue-distribution-admin fetch-current-epoch -ul"
 CURRENT_EPOCH=$($ADMIN_CLI_BIN fetch-current-epoch -ul)
@@ -36,11 +41,30 @@ echo $CURRENT_EPOCH
 SOLANA_VALIDATOR_DEBT_WRITE_OFF_ACTIVATION_EPOCH=$((CURRENT_EPOCH + 1))
 
 echo "doublezero-revenue-distribution-admin configure -ul --solana-validator-debt-write-off-feature-activation-epoch $SOLANA_VALIDATOR_DEBT_WRITE_OFF_ACTIVATION_EPOCH"
-$ADMIN_CLI_BIN configure -ul --solana-validator-debt-write-off-feature-activation-epoch $SOLANA_VALIDATOR_DEBT_WRITE_OFF_ACTIVATION_EPOCH
+$ADMIN_CLI_BIN configure \
+    -ul \
+    --solana-validator-debt-write-off-feature-activation-epoch $SOLANA_VALIDATOR_DEBT_WRITE_OFF_ACTIVATION_EPOCH
 
 ### Begin tests.
 
 $CLI_BIN -h
+echo
+
+echo "Revenue Distribution Program Config"
+echo "-----------------------------------"
+echo
+
+$DZ_SOLANA_CLI_BIN revenue-distribution fetch config -ul
+echo
+
+echo "Current distribution"
+echo "--------------------"
+echo
+
+$DZ_SOLANA_CLI_BIN revenue-distribution fetch distribution \
+    -ul \
+    --dz-env mainnet-beta \
+    --debt-accountant $MAINNET_BETA_DEBT_ACCOUNTANT_KEY
 echo
 
 ### Initialize.
@@ -59,6 +83,23 @@ $CLI_BIN initialize-distribution \
     --with-compute-unit-price 1000
 echo
 
+echo "Revenue Distribution Program Config"
+echo "-----------------------------------"
+echo
+
+$DZ_SOLANA_CLI_BIN revenue-distribution fetch config -ul
+echo
+
+echo "Current distribution"
+echo "--------------------"
+echo
+
+$DZ_SOLANA_CLI_BIN revenue-distribution fetch distribution \
+    -ul \
+    --dz-env mainnet-beta \
+    --debt-accountant $MAINNET_BETA_DEBT_ACCOUNTANT_KEY
+echo
+
 ### In --god-mode, the time to wait for a new initialized distribution is one
 ### minute.
 echo "sleep 60"
@@ -72,4 +113,21 @@ $CLI_BIN initialize-distribution \
     --bypass-dz-epoch-check \
     --record-debt-accountant $MAINNET_BETA_DEBT_ACCOUNTANT_KEY \
     --with-compute-unit-price 1000
+echo
+
+echo "Revenue Distribution Program Config"
+echo "-----------------------------------"
+echo
+
+$DZ_SOLANA_CLI_BIN revenue-distribution fetch config -ul
+echo
+
+echo "Current distribution"
+echo "--------------------"
+echo
+
+$DZ_SOLANA_CLI_BIN revenue-distribution fetch distribution \
+    -ul \
+    --dz-env mainnet-beta \
+    --debt-accountant $MAINNET_BETA_DEBT_ACCOUNTANT_KEY
 echo

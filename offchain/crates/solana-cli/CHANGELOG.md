@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- add prepaid 2Z row for `revenue-distribution fetch distribution` ([#266](https://github.com/doublezerofoundation/doublezero-offchain/pull/266))
+
+## [0.4.0](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.4.0) - 2026-01-29
+
 - sum delinquent debt for `revenue-distribution fetch validator-debts` ([#260](https://github.com/doublezerofoundation/doublezero-offchain/pull/260))
 - change default leader schedule lookahead from 2 epochs to 1 for `prepare-validator-access` and `request-validator-access` commands ([#259](https://github.com/doublezerofoundation/doublezero-offchain/pull/259))
 

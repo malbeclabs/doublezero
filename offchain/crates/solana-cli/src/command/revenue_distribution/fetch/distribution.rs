@@ -192,6 +192,15 @@ async fn try_print_distribution_summary_table(
             ),
             note: "Lower-bound proportion of rewards burned".to_string(),
         },
+        DistributionSummaryTableRow {
+            field: "Collected 2Z payments",
+            value: format!(
+                "{:.1} 2Z",
+                distribution.collected_prepaid_2z_payments as f64
+                    / f64::powi(10.0, DOUBLEZERO_MINT_DECIMALS as i32),
+            ),
+            note: "Includes direct 2Z payments".to_string(),
+        },
     ];
 
     let fee_parameters = distribution.solana_validator_fee_parameters;

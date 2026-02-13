@@ -372,21 +372,28 @@ async fn try_fetch_and_write_accounts(
         try_write_wrapped_account_to_file(&token_2z_mint_key, &mint_wrapper, TMP_ACCOUNTS_PATH)?;
     }
 
-    // Fetch various 2Z Token PDAs.
+    // Fetch various 2Z Token accounts.
 
-    let mut token_pda_keys = Vec::new();
+    let mut token_account_keys = Vec::new();
 
     let (revenue_distribution_config_key, _) = RevenueDistributionProgramConfig::find_address();
-    token_pda_keys.push(
+    token_account_keys.push(
         revenue_distribution::state::find_2z_token_pda_address(&revenue_distribution_config_key).0,
     );
 
     let (swap_authority_key, _) = revenue_distribution::state::find_swap_authority_address();
-    token_pda_keys
+    token_account_keys
         .push(revenue_distribution::state::find_2z_token_pda_address(&swap_authority_key).0);
 
     let (journal_key, _) = Journal::find_address();
-    token_pda_keys.push(revenue_distribution::state::find_2z_token_pda_address(&journal_key).0);
+    token_account_keys.push(revenue_distribution::state::find_2z_token_pda_address(&journal_key).0);
+
+    let journal_ata_key =
+        spl_associated_token_account_interface::address::get_associated_token_address(
+            &journal_key,
+            &token_2z_mint_key,
+        );
+    token_account_keys.push(journal_ata_key);
 
     // For existing distributions, fetch the 2Z token PDAs. Read the
     // Revenue Distribution config account file to deserialize the data
@@ -404,12 +411,12 @@ async fn try_fetch_and_write_accounts(
         .min(forked_next_completed_dz_epoch);
     for epoch in 0..next_completed_dz_epoch {
         let (distribution_key, _) = Distribution::find_address(DoubleZeroEpoch::new(epoch));
-        token_pda_keys
+        token_account_keys
             .push(revenue_distribution::state::find_2z_token_pda_address(&distribution_key).0);
     }
 
     // Fetch all 2Z token PDA accounts, chunking 100 accounts at a time.
-    for token_pda_keys_chunk in token_pda_keys.chunks(100) {
+    for token_pda_keys_chunk in token_account_keys.chunks(100) {
         let token_accounts = connection
             .get_multiple_accounts(token_pda_keys_chunk)
             .await?;
@@ -421,9 +428,9 @@ async fn try_fetch_and_write_accounts(
         }
     }
 
-    let token_pda_keys_len = token_pda_keys.len();
+    let token_pda_keys_len = token_account_keys.len();
     tracing::info!(
-        "Wrote {} 2Z token PDA account{} to {TMP_ACCOUNTS_PATH}/",
+        "Wrote {} 2Z token account{} to {TMP_ACCOUNTS_PATH}/",
         token_pda_keys_len,
         if token_pda_keys_len == 1 { "" } else { "s" }
     );

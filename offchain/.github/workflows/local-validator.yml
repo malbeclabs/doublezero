@@ -69,7 +69,7 @@ jobs:
       - name: Start Solana mainnet-beta fork in background
         run: cargo run --bin doublezero-solana-fork -- -um --reset --god-mode > /dev/null 2>&1 &
       - name: Build `doublezero-revenue-distribution-admin` and `doublezero-solana-validator-debt`
-        run: cargo build --bin doublezero-revenue-distribution-admin --bin doublezero-solana-validator-debt
+        run: cargo build --bin doublezero-revenue-distribution-admin --bin doublezero-solana-validator-debt --bin doublezero-solana
       - name: Run `doublezero-solana-validator-debt` tests
         run: bash sh/test_validator_debt_fork.sh
 

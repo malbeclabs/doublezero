@@ -1,9 +1,14 @@
 use anyhow::Result;
 use clap::Args;
 use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
-use doublezero_solana_sdk::revenue_distribution::{
-    fetch::try_fetch_config, state::CommunityBurnRateMode,
+use doublezero_solana_sdk::{
+    environment_2z_token_mint_key,
+    revenue_distribution::{
+        fetch::try_fetch_config,
+        state::{CommunityBurnRateMode, Journal},
+    },
 };
+use spl_associated_token_account_interface::address::get_associated_token_address;
 
 #[derive(Debug, Args)]
 pub struct ConfigCommand {
@@ -30,6 +35,12 @@ impl ConfigCommand {
             println!();
         }
 
+        let network_env = connection.try_network_environment().await?;
+        let dz_mint_key = environment_2z_token_mint_key(network_env);
+
+        let (journal_key, _) = Journal::find_address();
+        let journal_ata = get_associated_token_address(&journal_key, &dz_mint_key);
+
         let distribution_parameters = &config.distribution_parameters;
         let community_burn_rate_params = &distribution_parameters.community_burn_rate_parameters;
         let community_burn_rate_mode = community_burn_rate_params.mode();
@@ -40,6 +51,21 @@ impl ConfigCommand {
                 field: "PDA key",
                 value: config_key.to_string(),
                 note: Default::default(),
+            },
+            ConfigTableRow {
+                field: "2Z Token key",
+                value: dz_mint_key.to_string(),
+                note: Default::default(),
+            },
+            ConfigTableRow {
+                field: "Journal key",
+                value: journal_key.to_string(),
+                note: Default::default(),
+            },
+            ConfigTableRow {
+                field: "Direct 2Z Payment key",
+                value: journal_ata.to_string(),
+                note: "Journal's ATA".to_string(),
             },
             ConfigTableRow {
                 field: "Administrator",

@@ -37,8 +37,9 @@ type PacketConner interface {
 // HeartbeatSender sends periodic UDP heartbeat packets to multicast groups
 // to keep PIM (S, G) state and MSDP SA caches alive in the network.
 type HeartbeatSender struct {
-	done chan struct{}
-	wg   *sync.WaitGroup
+	closeOnce sync.Once
+	done      chan struct{}
+	wg        *sync.WaitGroup
 }
 
 func NewHeartbeatSender() *HeartbeatSender {
@@ -110,7 +111,9 @@ func sendHeartbeats(p PacketConner, dsts []*net.UDPAddr) {
 }
 
 func (h *HeartbeatSender) Close() error {
-	close(h.done)
+	h.closeOnce.Do(func() {
+		close(h.done)
+	})
 	if h.wg != nil {
 		h.wg.Wait()
 	}

@@ -203,6 +203,32 @@ func TestHeartbeatSender_SendsAtInterval(t *testing.T) {
 	sender.Close()
 }
 
+func TestHeartbeatSender_DoubleClose(t *testing.T) {
+	conn := newMockPacketConn()
+	sender := NewHeartbeatSender()
+
+	groups := []net.IP{net.IPv4(239, 0, 0, 1)}
+	intf := &net.Interface{Index: 1, Name: "lo0"}
+
+	err := sender.startWithConn(conn, intf, groups, 32, 10*time.Second)
+	if err != nil {
+		t.Fatalf("failed to start: %v", err)
+	}
+
+	// Drain the immediate send.
+	<-conn.writeCh
+
+	// First close should succeed.
+	if err := sender.Close(); err != nil {
+		t.Fatalf("first Close() returned error: %v", err)
+	}
+
+	// Second close must not panic.
+	if err := sender.Close(); err != nil {
+		t.Fatalf("second Close() returned error: %v", err)
+	}
+}
+
 func TestHeartbeatSender_CloseStopsSending(t *testing.T) {
 	conn := newMockPacketConn()
 	sender := NewHeartbeatSender()

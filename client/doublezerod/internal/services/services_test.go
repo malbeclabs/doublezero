@@ -687,3 +687,45 @@ func TestServices(t *testing.T) {
 		})
 	}
 }
+
+func TestMulticastService_DoubleTeardown(t *testing.T) {
+	mockBgp := &MockBgpServer{}
+	mockNetlink := &MockNetlink{}
+	mockDb := &MockDb{}
+	mockPim := &MockPIMServer{}
+	mockHeartbeat := &MockHeartbeatSender{}
+
+	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockDb, mockPim, mockHeartbeat)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	pr := &api.ProvisionRequest{
+		UserType:           api.UserTypeMulticast,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		MulticastPubGroups: []net.IP{{239, 0, 0, 1}},
+		TunnelNet: &net.IPNet{
+			IP:   net.IPv4(169, 254, 0, 0),
+			Mask: net.IPMask{255, 255, 255, 254},
+		},
+		DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+		DoubleZeroPrefixes: []*net.IPNet{},
+		BgpLocalAsn:        65000,
+		BgpRemoteAsn:       65001,
+	}
+
+	if err := svc.Setup(pr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// First teardown should succeed.
+	if err := svc.Teardown(); err != nil {
+		t.Fatalf("first Teardown() returned error: %v", err)
+	}
+
+	// Second teardown must not panic (e.g. double close of heartbeat channel).
+	if err := svc.Teardown(); err != nil {
+		t.Fatalf("second Teardown() returned error: %v", err)
+	}
+}

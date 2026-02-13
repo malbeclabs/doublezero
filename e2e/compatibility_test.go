@@ -61,12 +61,12 @@ var knownIncompatibilities = map[string]string{
 	"write/multicast_group_get":                  "0.8.1",
 	"write/multicast_group_delete":               "0.8.1",
 
-	// set-health commands: Added in v0.8.6 as part of Network Provisioning.
-	// Older CLIs don't have these subcommands.
-	"write/device_set_health":   "0.8.6",
-	"write/device_set_health_2": "0.8.6",
-	"write/link_set_health":     "0.8.6",
-	"write/link_set_health_dzx": "0.8.6",
+	// set-health commands: v0.7.1 doesn't have these subcommands, v0.8.2 does.
+	// Exact boundary is unknown; stale detection will refine if needed.
+	"write/device_set_health":   "0.8.2",
+	"write/device_set_health_2": "0.8.2",
+	"write/link_set_health":     "0.8.2",
+	"write/link_set_health_dzx": "0.8.2",
 
 	// global_config_set: The SetGlobalConfig instruction added new required accounts
 	// (MulticastPublisherBlock, VrfIds) that released CLIs (through v0.8.7) don't
@@ -810,6 +810,10 @@ func runReadWorkflows(
 			log.Debug("==> Running manager read command", "command", rc.cmd)
 			output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", rc.cmd})
 			if err == nil {
+				if isKnownIncompatible(stepKey, version) {
+					t.Errorf("step %q passed for v%s but is listed as known-incompatible (min %s) — remove from knownIncompatibilities",
+						stepKey, version, knownIncompatibilities[stepKey])
+				}
 				recordResult(version, stepKey, "PASS", "")
 				log.Debug("--> Command succeeded", "command", rc.cmd)
 			} else if isKnownIncompatible(stepKey, version) {
@@ -947,6 +951,10 @@ func runWriteWorkflows(
 		output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", ws.cmd})
 		stepKey := "write/" + ws.name
 		if err == nil {
+			if isKnownIncompatible(stepKey, version) {
+				t.Errorf("step %q passed for v%s but is listed as known-incompatible (min %s) — remove from knownIncompatibilities",
+					stepKey, version, knownIncompatibilities[stepKey])
+			}
 			recordResult(version, stepKey, "PASS", "")
 			log.Debug("--> Command succeeded", "command", ws.cmd)
 			return false

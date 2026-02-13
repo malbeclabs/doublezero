@@ -248,7 +248,7 @@ func newMockNetlinker() *MockNetlinker {
 	m.Update(func(nl *MockNetlinker) {
 		nl.TunnelAddFunc = func(*Tunnel) error { return nil }
 		nl.TunnelDeleteFunc = func(*Tunnel) error { return nil }
-		nl.TunnelAddrAddFunc = func(*Tunnel, string) error { return nil }
+		nl.TunnelAddrAddFunc = func(*Tunnel, string, int) error { return nil }
 		nl.TunnelUpFunc = func(*Tunnel) error { return nil }
 		nl.RouteAddFunc = func(*Route) error { return nil }
 		nl.RouteDeleteFunc = func(*Route) error { return nil }
@@ -263,7 +263,7 @@ func newMockNetlinker() *MockNetlinker {
 type MockNetlinker struct {
 	TunnelAddFunc       func(*Tunnel) error
 	TunnelDeleteFunc    func(*Tunnel) error
-	TunnelAddrAddFunc   func(*Tunnel, string) error
+	TunnelAddrAddFunc   func(*Tunnel, string, int) error
 	TunnelUpFunc        func(*Tunnel) error
 	RouteAddFunc        func(*Route) error
 	RouteDeleteFunc     func(*Route) error
@@ -286,10 +286,10 @@ func (m *MockNetlinker) TunnelDelete(t *Tunnel) error {
 	defer m.mu.Unlock()
 	return m.TunnelDeleteFunc(t)
 }
-func (m *MockNetlinker) TunnelAddrAdd(t *Tunnel, ip string) error {
+func (m *MockNetlinker) TunnelAddrAdd(t *Tunnel, ip string, scope int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.TunnelAddrAddFunc(t, ip)
+	return m.TunnelAddrAddFunc(t, ip, scope)
 }
 func (m *MockNetlinker) TunnelUp(t *Tunnel) error {
 	m.mu.Lock()

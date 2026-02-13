@@ -49,7 +49,8 @@ type MockNetlink struct {
 }
 
 type MockTunAddr struct {
-	IP string
+	IP    string
+	Scope int
 }
 
 func (m *MockNetlink) TunnelAdd(t *routing.Tunnel) error {
@@ -63,8 +64,8 @@ func (m *MockNetlink) TunnelDelete(n *routing.Tunnel) error {
 	return nil
 }
 
-func (m *MockNetlink) TunnelAddrAdd(t *routing.Tunnel, ip string) error {
-	m.tunAddrAdded = append(m.tunAddrAdded, MockTunAddr{IP: ip})
+func (m *MockNetlink) TunnelAddrAdd(t *routing.Tunnel, ip string, scope int) error {
+	m.tunAddrAdded = append(m.tunAddrAdded, MockTunAddr{IP: ip, Scope: scope})
 	return nil
 }
 
@@ -190,7 +191,7 @@ func TestServices(t *testing.T) {
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 				MTU:            routing.GREMTU,
 			},
-			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}},
 			wantTunUp:        true,
 			wantRulesAdded:   nil,
 			wantRoutesAdded:  nil,
@@ -242,7 +243,7 @@ func TestServices(t *testing.T) {
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 				MTU:            routing.GREMTU,
 			},
-			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "192.168.1.0/32"}},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}, {IP: "192.168.1.0/32", Scope: syscall.RT_SCOPE_UNIVERSE}},
 			wantTunUp:        true,
 			wantRulesAdded:   nil,
 			wantRoutesAdded:  nil,
@@ -296,7 +297,7 @@ func TestServices(t *testing.T) {
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 				MTU:            routing.GREMTU,
 			},
-			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "7.7.7.7/32"}},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}, {IP: "7.7.7.7/32", Scope: syscall.RT_SCOPE_UNIVERSE}},
 			wantTunUp:        true,
 			wantRulesAdded: []*routing.IPRule{
 				{
@@ -391,7 +392,7 @@ func TestServices(t *testing.T) {
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 				MTU:            routing.GREMTU,
 			},
-			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}},
 			wantTunUp:        true,
 			wantRulesAdded:   nil,
 			wantRoutesAdded: []*routing.Route{
@@ -448,7 +449,7 @@ func TestServices(t *testing.T) {
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 				MTU:            routing.GREMTU,
 			},
-			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "7.7.7.7/32"}},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}, {IP: "7.7.7.7/32", Scope: syscall.RT_SCOPE_UNIVERSE}},
 			wantTunUp:        true,
 			wantRulesAdded:   nil,
 			wantRoutesAdded: []*routing.Route{
@@ -513,7 +514,7 @@ func TestServices(t *testing.T) {
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 				MTU:            routing.GREMTU,
 			},
-			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "7.7.7.7/32"}},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}, {IP: "7.7.7.7/32", Scope: syscall.RT_SCOPE_UNIVERSE}},
 			wantTunUp:        true,
 			wantRulesAdded:   nil,
 			// Only one route — the publisher route with Src set. The subscriber
@@ -572,7 +573,7 @@ func TestServices(t *testing.T) {
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 				MTU:            routing.GREMTU,
 			},
-			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "7.7.7.7/32"}},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}, {IP: "7.7.7.7/32", Scope: syscall.RT_SCOPE_UNIVERSE}},
 			wantTunUp:        true,
 			wantRulesAdded:   nil,
 			wantRoutesAdded: []*routing.Route{

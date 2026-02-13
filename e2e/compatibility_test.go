@@ -61,12 +61,12 @@ var knownIncompatibilities = map[string]string{
 	"write/multicast_group_get":                  "0.8.1",
 	"write/multicast_group_delete":               "0.8.1",
 
-	// set-health commands: v0.7.1 doesn't have these subcommands, v0.8.2 does.
-	// Exact boundary is unknown; stale detection will refine if needed.
-	"write/device_set_health":   "0.8.2",
-	"write/device_set_health_2": "0.8.2",
-	"write/link_set_health":     "0.8.2",
-	"write/link_set_health_dzx": "0.8.2",
+	// set-health commands: Added in v0.8.6 for mainnet-beta. Testnet had them
+	// earlier (v0.8.2+), but the boundary must cover the worst case across envs.
+	"write/device_set_health":   "0.8.6",
+	"write/device_set_health_2": "0.8.6",
+	"write/link_set_health":     "0.8.6",
+	"write/link_set_health_dzx": "0.8.6",
 
 	// global_config_set: The SetGlobalConfig instruction added new required accounts
 	// (MulticastPublisherBlock, VrfIds) that released CLIs (through v0.8.7) don't

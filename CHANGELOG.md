@@ -4,14 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-- Activator
-  - Assign multicast publisher IPs from global pool in serviceability GlobalConfig instead of per-device blocks
-- Client
-  - Add multicast publisher heartbeat sender — sends periodic UDP packets to each multicast group to keep PIM (S,G) mroute state alive on devices
-- E2E tests
-  - Add daily devnet QA test for device provisioning lifecycle (RFC12) — deletes/recreates device and links, restarts daemons with new pubkey via Ansible
-
-## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
+## [v0.8.8](https://github.com/malbeclabs/doublezero/compare/client/v0.8.7...client/v0.8.8) – 2026-02-13
 
 ### Breaking
 
@@ -19,6 +12,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Activator
+  - Assign multicast publisher IPs from global pool in serviceability GlobalConfig instead of per-device blocks
+- Client
+  - Add multicast publisher heartbeat sender — sends periodic UDP packets to each multicast group to keep PIM (S,G) mroute state alive on devices
+- E2E tests
+  - Add daily devnet QA test for device provisioning lifecycle (RFC12) — deletes/recreates device and links, restarts daemons with new pubkey via Ansible
 - SDK
   - Added Tenant to all sdks
 - E2E tests

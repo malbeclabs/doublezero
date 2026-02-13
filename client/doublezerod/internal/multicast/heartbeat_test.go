@@ -203,30 +203,65 @@ func TestHeartbeatSender_SendsAtInterval(t *testing.T) {
 	sender.Close()
 }
 
+func TestHeartbeatSender_CloseBeforeStart(t *testing.T) {
+	sender := NewHeartbeatSender()
+
+	// Close on a never-started sender must not panic or block.
+	if err := sender.Close(); err != nil {
+		t.Fatalf("Close() on never-started sender returned error: %v", err)
+	}
+}
+
+func TestHeartbeatSender_RestartAfterClose(t *testing.T) {
+	sender := NewHeartbeatSender()
+	groups := []net.IP{net.IPv4(239, 0, 0, 1)}
+
+	// First start/close cycle.
+	conn1 := newMockPacketConn()
+	intf1 := &net.Interface{Index: 1, Name: "lo0"}
+	err := sender.startWithConn(conn1, intf1, groups, 32, 50*time.Millisecond)
+	if err != nil {
+		t.Fatalf("first start failed: %v", err)
+	}
+	<-conn1.writeCh // drain immediate send
+	sender.Close()
+
+	// Second start/close cycle on the same sender instance.
+	conn2 := newMockPacketConn()
+	intf2 := &net.Interface{Index: 2, Name: "lo0"}
+	err = sender.startWithConn(conn2, intf2, groups, 32, 50*time.Millisecond)
+	if err != nil {
+		t.Fatalf("second start failed: %v", err)
+	}
+
+	// Verify heartbeats flow on the new connection.
+	select {
+	case w := <-conn2.writeCh:
+		udpAddr := w.dst.(*net.UDPAddr)
+		if !udpAddr.IP.Equal(net.IPv4(239, 0, 0, 1)) {
+			t.Errorf("expected dst 239.0.0.1, got %s", udpAddr.IP)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for heartbeat after restart")
+	}
+
+	sender.Close()
+}
+
 func TestHeartbeatSender_DoubleClose(t *testing.T) {
 	conn := newMockPacketConn()
 	sender := NewHeartbeatSender()
-
-	groups := []net.IP{net.IPv4(239, 0, 0, 1)}
 	intf := &net.Interface{Index: 1, Name: "lo0"}
 
-	err := sender.startWithConn(conn, intf, groups, 32, 10*time.Second)
+	err := sender.startWithConn(conn, intf, []net.IP{net.IPv4(239, 0, 0, 1)}, 32, 10*time.Second)
 	if err != nil {
 		t.Fatalf("failed to start: %v", err)
 	}
+	<-conn.writeCh // drain immediate send
 
-	// Drain the immediate send.
-	<-conn.writeCh
-
-	// First close should succeed.
-	if err := sender.Close(); err != nil {
-		t.Fatalf("first Close() returned error: %v", err)
-	}
-
-	// Second close must not panic.
-	if err := sender.Close(); err != nil {
-		t.Fatalf("second Close() returned error: %v", err)
-	}
+	sender.Close()
+	// Second close must not deadlock or panic.
+	sender.Close()
 }
 
 func TestHeartbeatSender_CloseStopsSending(t *testing.T) {

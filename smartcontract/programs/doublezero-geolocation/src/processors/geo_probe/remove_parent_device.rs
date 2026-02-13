@@ -38,6 +38,10 @@ pub fn process_remove_parent_device(
         msg!("Invalid GeoProbe Account Owner");
         return Err(ProgramError::IllegalOwner);
     }
+    if !probe_account.is_writable {
+        msg!("GeoProbe account must be writable");
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     let mut probe = GeoProbe::try_from(probe_account)?;
 

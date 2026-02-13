@@ -34,6 +34,10 @@ pub fn process_delete_geo_probe(program_id: &Pubkey, accounts: &[AccountInfo]) -
         msg!("Invalid GeoProbe Account Owner");
         return Err(ProgramError::IllegalOwner);
     }
+    if !probe_account.is_writable {
+        msg!("GeoProbe account must be writable");
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     let probe = GeoProbe::try_from(probe_account)?;
 

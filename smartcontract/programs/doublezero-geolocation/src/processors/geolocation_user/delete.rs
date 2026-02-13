@@ -26,6 +26,10 @@ pub fn process_delete_geolocation_user(
         msg!("Invalid GeolocationUser Account Owner");
         return Err(ProgramError::IllegalOwner);
     }
+    if !user_account.is_writable {
+        msg!("GeolocationUser account must be writable");
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     let user = GeolocationUser::try_from(user_account)?;
 

@@ -8,6 +8,7 @@ RUN apt-get update && \
 
 COPY --from=base /doublezero/bin/doublezero /usr/local/bin/
 COPY --from=base /doublezero/bin/doublezerod /usr/local/bin/
+COPY --from=base /doublezero/bin/doublezero-qaagent /usr/local/bin/
 COPY --from=base /usr/local/bin/solana /usr/local/bin/
 COPY --from=base /usr/local/bin/solana-keygen /usr/local/bin/
 

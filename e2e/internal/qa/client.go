@@ -73,6 +73,16 @@ type Client struct {
 
 	Host         string
 	AllocateAddr bool
+
+	// ClientIP overrides the client IP passed to the connect command.
+	// When set, this value is sent in the ConnectUnicast request's client_ip field,
+	// causing the CLI to use it instead of auto-detecting from the routing table.
+	// This is needed in E2E tests where the container has multiple network interfaces
+	// and auto-detection picks the wrong one.
+	//
+	// Exported as a simple configuration field (unlike publicIP which uses a setter
+	// because it has a non-nil invariant enforced by SetPublicIP).
+	ClientIP string
 }
 
 func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int, networkConfig *config.NetworkConfig, devices map[string]*Device, allocateAddr bool) (*Client, error) {
@@ -120,6 +130,17 @@ func (c *Client) SetLogger(log *slog.Logger) {
 
 func (c *Client) PublicIP() net.IP {
 	return c.publicIP
+}
+
+// SetPublicIP overrides the auto-detected public IP. This is needed in E2E tests
+// where the container has multiple network interfaces and the auto-detected IP
+// (from the default Docker network) differs from the CYOA network IP used for
+// tunnel setup and route installation.
+func (c *Client) SetPublicIP(ip net.IP) {
+	if ip == nil {
+		panic("SetPublicIP called with nil IP")
+	}
+	c.publicIP = ip
 }
 
 func (c *Client) DoublezeroOrPublicIP() net.IP {

@@ -653,7 +653,11 @@ func (c *Client) WaitForLatencyResults(ctx context.Context, wantDevicePK string,
 	err := poll.Until(ctx, func() (bool, error) {
 		results, err := c.ExecReturnJSONList(ctx, []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/latency"})
 		if err != nil {
-			return false, fmt.Errorf("failed to get latency results: %w", err)
+			if attempts == 1 || attempts%5 == 0 {
+				c.log.Debug("--> Waiting for latency results (curl not ready yet)", "wantDevicePK", wantDevicePK, "err", err, "attempts", attempts)
+			}
+			attempts++
+			return false, nil
 		}
 
 		if len(results) > 0 {

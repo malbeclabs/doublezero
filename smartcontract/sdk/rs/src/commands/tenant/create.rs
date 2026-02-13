@@ -13,8 +13,8 @@ pub struct CreateTenantCommand {
     pub code: String,
     pub administrator: Pubkey,
     pub token_account: Option<Pubkey>,
-    pub metro_route: bool,
-    pub route_aliveness: bool,
+    pub metro_routing: bool,
+    pub route_liveness: bool,
 }
 
 impl CreateTenantCommand {
@@ -35,8 +35,8 @@ impl CreateTenantCommand {
                     code,
                     administrator: self.administrator,
                     token_account: self.token_account,
-                    metro_route: self.metro_route,
-                    route_aliveness: self.route_aliveness,
+                    metro_routing: self.metro_routing,
+                    route_liveness: self.route_liveness,
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -70,8 +70,8 @@ mod tests {
                     code: "test".to_string(),
                     administrator,
                     token_account: None,
-                    metro_route: true,
-                    route_aliveness: false,
+                    metro_routing: true,
+                    route_liveness: false,
                 })),
                 predicate::always(),
             )
@@ -81,8 +81,8 @@ mod tests {
             code: "test/invalid".to_string(),
             administrator: Pubkey::default(),
             token_account: None,
-            metro_route: true,
-            route_aliveness: false,
+            metro_routing: true,
+            route_liveness: false,
         }
         .execute(&client);
 
@@ -92,8 +92,8 @@ mod tests {
             code: "test".to_string(),
             administrator,
             token_account: None,
-            metro_route: true,
-            route_aliveness: false,
+            metro_routing: true,
+            route_liveness: false,
         }
         .execute(&client);
 

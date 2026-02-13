@@ -20,6 +20,7 @@ type ProgramData struct {
 	Locations          []Location
 	Exchanges          []Exchange
 	Contributors       []Contributor
+	Tenants            []Tenant
 	Devices            []Device
 	Links              []Link
 	Users              []User
@@ -92,6 +93,7 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 		Locations:          []Location{},
 		Exchanges:          []Exchange{},
 		Contributors:       []Contributor{},
+		Tenants:            []Tenant{},
 		Devices:            []Device{},
 		Links:              []Link{},
 		Users:              []User{},
@@ -167,6 +169,11 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 			DeserializeResourceExtension(reader, &ext)
 			ext.PubKey = element.Pubkey
 			pd.ResourceExtensions = append(pd.ResourceExtensions, ext)
+		case TenantType:
+			var tenant Tenant
+			DeserializeTenant(reader, &tenant)
+			tenant.PubKey = element.Pubkey
+			pd.Tenants = append(pd.Tenants, tenant)
 		}
 	}
 

@@ -1,7 +1,6 @@
 package geoprobe
 
 import (
-	"bytes"
 	"fmt"
 
 	"github.com/gagliardetto/solana-go"
@@ -9,19 +8,26 @@ import (
 
 // OffsetSigner signs LocationOffset messages using Ed25519 with Solana keypairs.
 type OffsetSigner struct {
-	keypair solana.PrivateKey
+	keypair      solana.PrivateKey
+	senderPubkey [32]byte
 }
 
-func NewOffsetSigner(keypair solana.PrivateKey) *OffsetSigner {
-	return &OffsetSigner{keypair: keypair}
+func NewOffsetSigner(keypair solana.PrivateKey, senderPubkey solana.PublicKey) (*OffsetSigner, error) {
+	if senderPubkey.IsZero() {
+		return nil, fmt.Errorf("sender pubkey must not be zero")
+	}
+	var spk [32]byte
+	copy(spk[:], senderPubkey[:])
+	return &OffsetSigner{keypair: keypair, senderPubkey: spk}, nil
 }
 
-// SignOffset signs the given offset by populating its Signature and Pubkey fields.
-// The signature is computed over all fields except the Signature field itself.
-// This modifies the offset in-place.
+// SignOffset signs the given offset by populating its Signature, AuthorityPubkey,
+// and SenderPubkey fields. The signature is computed over all fields except the
+// Signature field itself. This modifies the offset in-place.
 func (s *OffsetSigner) SignOffset(offset *LocationOffset) error {
 	pubkey := s.keypair.PublicKey()
-	copy(offset.Pubkey[:], pubkey[:])
+	copy(offset.AuthorityPubkey[:], pubkey[:])
+	offset.SenderPubkey = s.senderPubkey
 
 	signingBytes, err := offset.GetSigningBytes()
 	if err != nil {
@@ -42,7 +48,7 @@ func (s *OffsetSigner) SignOffset(offset *LocationOffset) error {
 // For offsets with references, this only verifies the top-level signature.
 // Use VerifyOffsetChain to verify the entire reference chain.
 func VerifyOffset(offset *LocationOffset) error {
-	pubkey := solana.PublicKeyFromBytes(offset.Pubkey[:])
+	pubkey := solana.PublicKeyFromBytes(offset.AuthorityPubkey[:])
 
 	signingBytes, err := offset.GetSigningBytes()
 	if err != nil {
@@ -77,15 +83,4 @@ func VerifyOffsetChain(offset *LocationOffset) error {
 
 func (s *OffsetSigner) GetPublicKey() solana.PublicKey {
 	return s.keypair.PublicKey()
-}
-
-// TamperOffset modifies an offset's data without updating the signature.
-// This is used for testing signature verification failure paths.
-// DO NOT USE IN PRODUCTION CODE.
-func TamperOffset(offset *LocationOffset) {
-	offset.MeasuredRttNs = offset.MeasuredRttNs + 1
-}
-
-func OffsetSignaturesEqual(a, b *LocationOffset) bool {
-	return bytes.Equal(a.Signature[:], b.Signature[:])
 }

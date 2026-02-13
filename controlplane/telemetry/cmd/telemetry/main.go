@@ -17,6 +17,7 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
 	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/gnmitunnel"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
@@ -34,52 +35,57 @@ import (
 )
 
 const (
-	defaultProbeInterval           = 10 * time.Second
-	defaultSubmissionInterval      = 60 * time.Second
-	defaultTWAMPListenPort         = telemetryconfig.TWAMPListenPort
-	defaultTWAMPReflectorTimeout   = 1 * time.Second
-	defaultPeersRefreshInterval    = 10 * time.Second
-	defaultTWAMPSenderTimeout      = 1 * time.Second
-	defaultSenderTTL               = 5 * time.Minute
-	defaultLedgerRPCURL            = ""
-	defaultProgramId               = ""
-	defaultLocalDevicePubkey       = ""
-	defaultSubmitterMaxConcurrency = 10
-	defaultStateCollectInterval    = 60 * time.Second
+	defaultProbeInterval              = 10 * time.Second
+	defaultSubmissionInterval         = 60 * time.Second
+	defaultTWAMPListenPort            = telemetryconfig.TWAMPListenPort
+	defaultTWAMPReflectorTimeout      = 1 * time.Second
+	defaultPeersRefreshInterval       = 10 * time.Second
+	defaultTWAMPSenderTimeout         = 1 * time.Second
+	defaultSenderTTL                  = 5 * time.Minute
+	defaultMaxConsecutiveSenderLosses = 30
+	defaultLedgerRPCURL               = ""
+	defaultProgramId                  = ""
+	defaultLocalDevicePubkey          = ""
+	defaultSubmitterMaxConcurrency    = 10
+	defaultStateCollectInterval       = 60 * time.Second
 
 	waitForNamespaceTimeout             = 30 * time.Second
 	defaultStateIngestHTTPClientTimeout = 10 * time.Second
 )
 
 var (
-	env                     = flag.String("env", "", "The network environment to use (devnet, testnet, mainnet-beta).")
-	ledgerRPCURL            = flag.String("ledger-rpc-url", defaultLedgerRPCURL, "The url of the ledger rpc. If env is provided, this flag is ignored.")
-	serviceabilityProgramID = flag.String("serviceability-program-id", defaultProgramId, "The id of the serviceability program. If env is provided, this flag is ignored.")
-	telemetryProgramID      = flag.String("telemetry-program-id", defaultProgramId, "The id of the telemetry program. If env is provided, this flag is ignored.")
-	keypairPath             = flag.String("keypair", "", "The path to the metrics publisher keypair.")
-	localDevicePK           = flag.String("local-device-pubkey", defaultLocalDevicePubkey, "The pubkey of the local device.")
-	twampListenPort         = flag.Uint("twamp-listen-port", uint(defaultTWAMPListenPort), "The port to listen for twamp probes.")
-	probeInterval           = flag.Duration("probe-interval", defaultProbeInterval, "The interval to probe peers.")
-	submissionInterval      = flag.Duration("submission-interval", defaultSubmissionInterval, "The interval to submit samples.")
-	twampSenderTimeout      = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "The timeout for sending twamp probes.")
-	twampReflectorTimeout   = flag.Duration("twamp-reflector-timeout", defaultTWAMPReflectorTimeout, "The timeout for the twamp reflector.")
-	peersRefreshInterval    = flag.Duration("peers-refresh-interval", defaultPeersRefreshInterval, "The interval to refresh the peer discovery.")
-	senderTTL               = flag.Duration("sender-ttl", defaultSenderTTL, "The time to live for a sender instance until it's recreated.")
-	submitterMaxConcurrency = flag.Int("submitter-max-concurrency", defaultSubmitterMaxConcurrency, "The maximum number of concurrent submissions.")
-	managementNamespace     = flag.String("management-namespace", "", "The name of the management namespace to use for communication over the internet. If not provided, the default namespace will be used. (default: '')")
-	bgpNamespace            = flag.String("bgp-namespace", "ns-vrf1", "The name of the ns-vrf1 namespace to use for BGP state collection. (default: 'ns-vrf1')")
-	stateCollectEnable      = flag.Bool("state-collect-enable", false, "Enable state collection (unstable)")
-	stateCollectInterval    = flag.Duration("state-collect-interval", defaultStateCollectInterval, "The interval to collect and submit state snapshots.")
-	stateIngestURL          = flag.String("state-ingest-url", "", "The URL of the state ingest server.")
-	eapiAddr                = flag.String("eapi-addr", "127.0.0.1:9543", "IP Address and port of the Arist EOS API. Should always be the local switch at 127.0.0.1:9543.")
-	verbose                 = flag.Bool("verbose", false, "Enable verbose logging.")
-	showVersion             = flag.Bool("version", false, "Print the version of the doublezero-agent and exit.")
-	metricsEnable           = flag.Bool("metrics-enable", false, "Enable prometheus metrics.")
-	metricsAddr             = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics.")
+	env                        = flag.String("env", "", "The network environment to use (devnet, testnet, mainnet-beta).")
+	ledgerRPCURL               = flag.String("ledger-rpc-url", defaultLedgerRPCURL, "The url of the ledger rpc. If env is provided, this flag is ignored.")
+	serviceabilityProgramID    = flag.String("serviceability-program-id", defaultProgramId, "The id of the serviceability program. If env is provided, this flag is ignored.")
+	telemetryProgramID         = flag.String("telemetry-program-id", defaultProgramId, "The id of the telemetry program. If env is provided, this flag is ignored.")
+	keypairPath                = flag.String("keypair", "", "The path to the metrics publisher keypair.")
+	localDevicePK              = flag.String("local-device-pubkey", defaultLocalDevicePubkey, "The pubkey of the local device.")
+	twampListenPort            = flag.Uint("twamp-listen-port", uint(defaultTWAMPListenPort), "The port to listen for twamp probes.")
+	probeInterval              = flag.Duration("probe-interval", defaultProbeInterval, "The interval to probe peers.")
+	submissionInterval         = flag.Duration("submission-interval", defaultSubmissionInterval, "The interval to submit samples.")
+	twampSenderTimeout         = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "The timeout for sending twamp probes.")
+	twampReflectorTimeout      = flag.Duration("twamp-reflector-timeout", defaultTWAMPReflectorTimeout, "The timeout for the twamp reflector.")
+	peersRefreshInterval       = flag.Duration("peers-refresh-interval", defaultPeersRefreshInterval, "The interval to refresh the peer discovery.")
+	senderTTL                  = flag.Duration("sender-ttl", defaultSenderTTL, "The time to live for a sender instance until it's recreated.")
+	submitterMaxConcurrency    = flag.Int("submitter-max-concurrency", defaultSubmitterMaxConcurrency, "The maximum number of concurrent submissions.")
+	maxConsecutiveSenderLosses = flag.Int("max-consecutive-sender-losses", defaultMaxConsecutiveSenderLosses, "The number of consecutive probe losses before a sender is evicted and recreated.")
+	managementNamespace        = flag.String("management-namespace", "", "The name of the management namespace to use for communication over the internet. If not provided, the default namespace will be used. (default: '')")
+	bgpNamespace               = flag.String("bgp-namespace", "ns-vrf1", "The name of the ns-vrf1 namespace to use for BGP state collection. (default: 'ns-vrf1')")
+	stateCollectEnable         = flag.Bool("state-collect-enable", false, "Enable state collection (unstable)")
+	stateCollectInterval       = flag.Duration("state-collect-interval", defaultStateCollectInterval, "The interval to collect and submit state snapshots.")
+	stateIngestURL             = flag.String("state-ingest-url", "", "The URL of the state ingest server.")
+	eapiAddr                   = flag.String("eapi-addr", "127.0.0.1:9543", "IP Address and port of the Arist EOS API. Should always be the local switch at 127.0.0.1:9543.")
+	verbose                    = flag.Bool("verbose", false, "Enable verbose logging.")
+	showVersion                = flag.Bool("version", false, "Print the version of the doublezero-agent and exit.")
+	metricsEnable              = flag.Bool("metrics-enable", false, "Enable prometheus metrics.")
+	metricsAddr                = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics.")
 
 	// gNMI tunnel flags
 	gnmiTunnelEnable     = flag.Bool("gnmi-tunnel-enable", false, "Enable gNMI tunnel client for remote access.")
 	gnmiTunnelServerAddr = flag.String("gnmi-tunnel-server-addr", "", "Address of the gNMI tunnel server (defaults to env config, e.g., gnmic-devnet.doublezero.xyz:443).")
+
+	// geoprobe flags
+	additionalChildProbes = flag.String("additional-child-probes", "", "Comma-separated list of child geoProbe addresses (host:port) to measure RTT and send location offsets.")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -176,6 +182,16 @@ func main() {
 	if err != nil {
 		log.Error("Failed to load metrics publisher keypair", "error", err)
 		os.Exit(1)
+	}
+
+	// Parse additional child probes if provided.
+	childProbes, err := geoprobe.ParseProbeAddresses(*additionalChildProbes)
+	if err != nil {
+		log.Error("Failed to parse additional-child-probes", "error", err)
+		os.Exit(1)
+	}
+	if len(childProbes) > 0 {
+		log.Info("Configured child probes for geolocation measurement", "count", len(childProbes), "probes", childProbes)
 	}
 
 	log.Info("Starting telemetry collector",
@@ -283,14 +299,17 @@ func main() {
 
 	// Initialize collector.
 	collector, err := telemetry.New(log, telemetry.Config{
-		LocalDevicePK:          localDevicePK,
-		MetricsPublisherPK:     keypair.PublicKey(),
-		ProbeInterval:          *probeInterval,
-		SubmissionInterval:     *submissionInterval,
-		TWAMPSenderTimeout:     *twampSenderTimeout,
-		TWAMPReflector:         reflector,
-		PeerDiscovery:          peerDiscovery,
-		TelemetryProgramClient: sdktelemetry.New(log, rpcClient, &keypair, telemetryProgramID),
+		LocalDevicePK:               localDevicePK,
+		MetricsPublisherPK:          keypair.PublicKey(),
+		ProbeInterval:               *probeInterval,
+		SubmissionInterval:          *submissionInterval,
+		TWAMPSenderTimeout:          *twampSenderTimeout,
+		TWAMPReflector:              reflector,
+		PeerDiscovery:               peerDiscovery,
+		TelemetryProgramClient:      sdktelemetry.New(log, rpcClient, &keypair, telemetryProgramID),
+		ServiceabilityProgramClient: serviceability.New(rpcClient, serviceabilityProgramID),
+		RPCClient:                   rpcClient,
+		Keypair:                     keypair,
 		GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
 			epochInfo, err := rpcClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
 			if err != nil {
@@ -298,8 +317,10 @@ func main() {
 			}
 			return epochInfo.Epoch, nil
 		},
-		SenderTTL:               *senderTTL,
-		SubmitterMaxConcurrency: *submitterMaxConcurrency,
+		SenderTTL:                  *senderTTL,
+		SubmitterMaxConcurrency:    *submitterMaxConcurrency,
+		InitialChildGeoProbes:      childProbes,
+		MaxConsecutiveSenderLosses: *maxConsecutiveSenderLosses,
 	})
 	if err != nil {
 		log.Error("failed to create telemetry collector", "error", err)

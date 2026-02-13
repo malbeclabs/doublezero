@@ -15,6 +15,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/multicast"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/config"
@@ -25,7 +26,7 @@ const (
 	updateInstalledRoutesGaugeInterval = 10 * time.Second
 )
 
-func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig) error {
+func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig) error {
 	nlr := routing.Netlink{}
 	var crw bgp.RouteReaderWriter
 	var cr *routing.ConfiguredRoutes
@@ -68,7 +69,8 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	}
 
 	pim := pim.NewPIMServer()
-	nlm := manager.NewNetlinkManager(nlr, bgp, db, pim)
+	heartbeat := multicast.NewHeartbeatSender()
+	nlm := manager.NewNetlinkManager(nlr, bgp, db, pim, heartbeat)
 
 	errCh := make(chan error)
 
@@ -93,6 +95,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 			latency.WithProbeInterval(time.Duration(probeInterval)*time.Second),
 			latency.WithCacheUpdateInterval(time.Duration(cacheUpdateInterval)*time.Second),
 			latency.WithMetricsEnabled(enableLatencyMetrics),
+			latency.WithProbeTunnelEndpoints(latencyProbeTunnelEndpoints),
 		)
 		go func() {
 			err := latencyManager.Start(ctx)

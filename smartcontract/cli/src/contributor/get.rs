@@ -18,9 +18,10 @@ impl GetContributorCliCommand {
 
         writeln!(
             out,
-            "account: {},\r\ncode: {}\r\nstatus: {}\r\nowner: {}\r\nops_manager_key: {}",
+            "account: {},\r\ncode: {}\r\nreference_count: {}\r\nstatus: {}\r\nowner: {}\r\nops_manager_key: {}",
             pubkey,
             contributor.code,
+            contributor.reference_count,
             contributor.status,
             contributor.owner,
             contributor.ops_manager_pk
@@ -97,7 +98,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\r\nops_manager_key: 11111111111111111111111111111111\n");
+        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nreference_count: 0\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\r\nops_manager_key: 11111111111111111111111111111111\n");
 
         // Expected success
         let mut output = Vec::new();
@@ -107,6 +108,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\r\nops_manager_key: 11111111111111111111111111111111\n");
+        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nreference_count: 0\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\r\nops_manager_key: 11111111111111111111111111111111\n");
     }
 }

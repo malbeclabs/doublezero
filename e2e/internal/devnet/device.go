@@ -70,6 +70,21 @@ type DeviceSpec struct {
 
 	// LoopbackInterfaces is a map of interface names to loopback types.
 	LoopbackInterfaces map[string]string
+
+	// UserTunnelEndpoints specifies loopback interfaces to register as user tunnel endpoints.
+	// Each entry creates a Loopback interface with an IP derived from the CYOA subnet
+	// and marked as a user tunnel endpoint onchain.
+	UserTunnelEndpoints []UserTunnelEndpointSpec
+}
+
+// UserTunnelEndpointSpec describes a loopback interface to register as a user tunnel endpoint.
+type UserTunnelEndpointSpec struct {
+	// InterfaceName is the EOS interface name (e.g., "Loopback100").
+	InterfaceName string
+
+	// IPHostIDOffset is added to the device's CYOANetworkIPHostID to derive the loopback IP.
+	// For example, if the device has hostID=8 and offset=1, the loopback gets hostID=9.
+	IPHostIDOffset uint32
 }
 
 type DeviceTelemetrySpec struct {
@@ -179,6 +194,10 @@ type Device struct {
 
 	// ExternalTelemetryMetricsPort is the port on which the device's telemetry metrics server is exposed.
 	ExternalTelemetryMetricsPort int
+
+	// UserTunnelEndpointIPs maps interface names to their IPs for UTE loopbacks.
+	// e.g., {"Loopback100": "9.200.53.9"}
+	UserTunnelEndpointIPs map[string]string
 }
 
 func (d *Device) dockerContainerHostname() string {
@@ -315,7 +334,22 @@ func (d *Device) Start(ctx context.Context) error {
 	dzPrefix := dzPrefixBytes.String() + "/29"
 	d.DZPrefix = dzPrefix
 
-	devicePK, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, spec.MetricsPublisherPK, cyoaNetworkIP, []string{dzPrefix}, "mgmt")
+	// Compute a second dz_prefix for UTE loopback interfaces when needed.
+	// This prefix lives in a different /24 than the CYOA subnet (third octet incremented by 1)
+	// so the loopback IP doesn't overlap with Ethernet1's subnet on EOS.
+	// The IP is globally-routable (same 9.x.x.x space) to pass the onchain is_global check.
+	var uteDzPrefixBytes net.IP
+	dzPrefixes := []string{dzPrefix}
+	if len(spec.UserTunnelEndpoints) > 0 {
+		uteDzPrefixBytes = make(net.IP, 4)
+		copy(uteDzPrefixBytes, publicIPBytes)
+		uteDzPrefixBytes[2]++                            // different /24 than CYOA subnet
+		uteDzPrefixBytes[3] = (publicIPBytes[3] / 8) * 8 // round to /29 boundary
+		uteDzPrefix := uteDzPrefixBytes.String() + "/29"
+		dzPrefixes = append(dzPrefixes, uteDzPrefix)
+	}
+
+	devicePK, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, spec.MetricsPublisherPK, cyoaNetworkIP, dzPrefixes, "mgmt")
 	if err != nil {
 		return fmt.Errorf("failed to create device %s onchain: %w", spec.Code, err)
 	}
@@ -406,6 +440,64 @@ func (d *Device) Start(ctx context.Context) error {
 		}
 
 		d.log.Debug("--> Created loopback interface onchain", "code", spec.Code, "name", name, "loopbackType", loopbackType)
+	}
+
+	// Create user tunnel endpoint loopback interfaces onchain.
+	// UTE loopback IPs are derived from the second dz_prefix (different /24 than CYOA subnet)
+	// to avoid IP overlap with Ethernet1 on EOS and to pass the onchain is_global check.
+	// The client adds a static route to reach this IP via the device's CYOA IP on the bridge.
+	d.UserTunnelEndpointIPs = make(map[string]string)
+	for _, ute := range spec.UserTunnelEndpoints {
+		// Derive UTE IP from the second dz_prefix: take the base IP and add the offset.
+		uteIPBytes := make(net.IP, 4)
+		copy(uteIPBytes, uteDzPrefixBytes)
+		uteIPBytes[3] += byte(ute.IPHostIDOffset)
+		uteIPStr := uteIPBytes.String()
+		ipNet := uteIPStr + "/32"
+
+		out, err := d.dn.Manager.Exec(ctx, []string{
+			"doublezero", "device", "interface", "create", spec.Code, ute.InterfaceName,
+			"--ip-net", ipNet,
+			"--user-tunnel-endpoint", "true",
+		}, docker.NoPrintOnError())
+		if err != nil {
+			if strings.Contains(string(out), "already exists") {
+				d.log.Info("--> UTE interface already exists onchain", "code", spec.Code, "name", ute.InterfaceName, "ip", uteIPStr)
+				d.UserTunnelEndpointIPs[ute.InterfaceName] = uteIPStr
+				continue
+			}
+			fmt.Println(string(out))
+			return fmt.Errorf("failed to create UTE interface %s for device %s: %w", ute.InterfaceName, spec.Code, err)
+		}
+
+		// Wait for the UTE interface to exist onchain.
+		serviceabilityClient, err := d.dn.Ledger.GetServiceabilityClient()
+		if err != nil {
+			return fmt.Errorf("failed to get serviceability client: %w", err)
+		}
+		err = poll.Until(ctx, func() (bool, error) {
+			data, err := serviceabilityClient.GetProgramData(ctx)
+			if err != nil {
+				return false, fmt.Errorf("failed to get program data: %w", err)
+			}
+			for _, device := range data.Devices {
+				pk := solana.PublicKeyFromBytes(device.PubKey[:])
+				if pk.String() == devicePK {
+					for _, iface := range device.Interfaces {
+						if iface.Name == ute.InterfaceName {
+							return true, nil
+						}
+					}
+				}
+			}
+			return false, nil
+		}, 30*time.Second, 1*time.Second)
+		if err != nil {
+			return fmt.Errorf("failed to wait for UTE interface %s to exist onchain: %w", ute.InterfaceName, err)
+		}
+
+		d.UserTunnelEndpointIPs[ute.InterfaceName] = uteIPStr
+		d.log.Info("--> Created UTE interface onchain", "code", spec.Code, "name", ute.InterfaceName, "ip", uteIPStr)
 	}
 
 	controllerAddr := net.JoinHostPort(d.dn.Controller.DefaultNetworkIP, fmt.Sprintf("%d", internalControllerPort))

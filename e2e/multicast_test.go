@@ -252,14 +252,20 @@ func createMulticastGroupForBothClients(t *testing.T, dn *TestDevnet, publisherC
 // and subscriber tunnels configured.
 func checkMulticastBothUsersAgentConfig(t *testing.T, dn *TestDevnet, device *devnet.Device, publisherClient, subscriberClient *devnet.Client) {
 	t.Run("wait_for_agent_config_both_users", func(t *testing.T) {
-		dzPrefixIP, dzPrefixNet, err := netutil.ParseCIDR(device.DZPrefix)
-		require.NoError(t, err)
-		ones, _ := dzPrefixNet.Mask.Size()
-		allocatableBits := 32 - ones
 
-		// With onchain allocation, the first IP is reserved for the device tunnel endpoint.
-		expectedAllocatedPublisherIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
+		// Query the allocated publisher IP from user list
+		userListOutput, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "list"})
 		require.NoError(t, err)
+
+		rows := fixtures.ParseCLITable(userListOutput)
+		var expectedAllocatedPublisherIP string
+		for _, row := range rows {
+			if row["user_type"] == "Multicast" && row["client_ip"] == publisherClient.CYOANetworkIP {
+				expectedAllocatedPublisherIP = row["dz_ip"]
+				break
+			}
+		}
+		require.NotEmpty(t, expectedAllocatedPublisherIP, "publisher should have allocated dz_ip")
 
 		// Publisher gets the first tunnel slot, subscriber gets the second.
 		pubTunnel := controllerconfig.StartUserTunnelNum
@@ -330,14 +336,19 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 
 		var expectedAllocatedClientIP string
 		if mode == "publisher" {
-			dzPrefixIP, dzPrefixNet, err := netutil.ParseCIDR(device.DZPrefix)
+			// Query the allocated publisher IP from user list
+			userListOutput, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "list"})
 			require.NoError(t, err)
-			ones, _ := dzPrefixNet.Mask.Size()
-			allocatableBits := 32 - ones
 
-			// With onchain allocation, the first IP is reserved for the device tunnel endpoint.
-			expectedAllocatedClientIP, err = nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
-			require.NoError(t, err)
+			rows := fixtures.ParseCLITable(userListOutput)
+			for _, row := range rows {
+				if row["user_type"] == "Multicast" && row["client_ip"] == client.CYOANetworkIP {
+					expectedAllocatedClientIP = row["dz_ip"]
+					break
+				}
+			}
+			require.NotEmpty(t, expectedAllocatedClientIP, "publisher should have allocated dz_ip")
+			require.True(t, netutil.IPInRange(expectedAllocatedClientIP, "147.51.126.0/23"), "publisher dz_ip %s should be from global multicast_publisher_block", expectedAllocatedClientIP)
 		}
 
 		tests := []struct {
@@ -476,10 +487,9 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 
 				mGroups := []string{"233.84.178.0", "233.84.178.1"}
 
-				for _, mGroup := range mGroups {
-					_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 " + mGroup}, docker.NoPrintOnError())
-				}
-
+				// The publisher's heartbeat sender automatically sends UDP heartbeat
+				// packets to each multicast group every 10 seconds. This creates (S, G)
+				// mroute state on the device without requiring an explicit ping or send.
 				for _, mGroup := range mGroups {
 					require.Eventually(t, func() bool {
 						mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
@@ -501,7 +511,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 						}
 
 						return true
-					}, 5*time.Second, 1*time.Second, "multicast group %s not found in mroutes", mGroup)
+					}, 30*time.Second, 1*time.Second, "multicast group %s not found in mroutes", mGroup)
 				}
 			}) {
 				t.Fail()

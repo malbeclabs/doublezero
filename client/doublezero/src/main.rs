@@ -176,12 +176,12 @@ async fn main() -> eyre::Result<()> {
             cli::tenant::TenantCommands::List(args) => args.execute(&client, &mut handle),
             cli::tenant::TenantCommands::Get(args) => args.execute(&client, &mut handle),
             cli::tenant::TenantCommands::Delete(args) => args.execute(&client, &mut handle),
-            cli::tenant::TenantCommands::AddAdministrator(args) => {
-                args.execute(&client, &mut handle)
-            }
-            cli::tenant::TenantCommands::RemoveAdministrator(args) => {
-                args.execute(&client, &mut handle)
-            }
+            cli::tenant::TenantCommands::Administrator(command) => match command.command {
+                cli::tenant::AdministratorCommands::Add(args) => args.execute(&client, &mut handle),
+                cli::tenant::AdministratorCommands::Remove(args) => {
+                    args.execute(&client, &mut handle)
+                }
+            },
         },
         Command::Device(command) => match command.command {
             DeviceCommands::Create(args) => args.execute(&client, &mut handle),
@@ -215,6 +215,7 @@ async fn main() -> eyre::Result<()> {
             cli::accesspass::AccessPassCommands::Set(args) => args.execute(&client, &mut handle),
             cli::accesspass::AccessPassCommands::Close(args) => args.execute(&client, &mut handle),
             cli::accesspass::AccessPassCommands::List(args) => args.execute(&client, &mut handle),
+            cli::accesspass::AccessPassCommands::Get(args) => args.execute(&client, &mut handle),
         },
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client, &mut handle),

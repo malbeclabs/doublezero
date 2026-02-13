@@ -335,7 +335,8 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
     assert_eq!(multicastgroup.publisher_count, 1);
     assert_eq!(multicastgroup.subscriber_count, 1);
 
-    execute_transaction(
+    // DeleteMulticastGroup should fail because counts are non-zero
+    let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -348,35 +349,20 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
     )
     .await;
 
+    assert!(
+        result.is_err(),
+        "DeleteMulticastGroup should fail when publisher/subscriber counts are non-zero"
+    );
+
+    // Verify the group is still Activated (delete was rejected)
     let multicastgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
         .await
         .expect("Unable to get Account")
         .get_multicastgroup()
         .unwrap();
-    assert_eq!(multicastgroup.status, MulticastGroupStatus::Deleting);
+    assert_eq!(multicastgroup.status, MulticastGroupStatus::Activated);
 
-    let result = try_execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
-            use_onchain_deallocation: false,
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(multicastgroup.owner, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    assert!(
-        result.is_err(),
-        "DeactivateMulticastGroup should fail when publisher/subscriber counts are non-zero"
-    );
-
-    println!("✅ MulticastGroup deactivation correctly rejected with non-zero counts");
+    println!("✅ MulticastGroup deletion correctly rejected with non-zero counts");
     println!("🟢  End test_multicastgroup_deactivate_fails_when_counts_nonzero");
 }
 

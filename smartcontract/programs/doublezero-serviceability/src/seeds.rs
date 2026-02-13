@@ -14,6 +14,7 @@ pub const SEED_TENANT: &[u8] = b"tenant";
 pub const SEED_DEVICE_TUNNEL_BLOCK: &[u8] = b"devicetunnelblock";
 pub const SEED_USER_TUNNEL_BLOCK: &[u8] = b"usertunnelblock";
 pub const SEED_MULTICASTGROUP_BLOCK: &[u8] = b"multicastgroupblock";
+pub const SEED_MULTICAST_PUBLISHER_BLOCK: &[u8] = b"multicastpublisherblock";
 pub const SEED_DZ_PREFIX_BLOCK: &[u8] = b"dzprefixblock";
 pub const SEED_TUNNEL_IDS: &[u8] = b"tunnelids";
 pub const SEED_LINK_IDS: &[u8] = b"linkids";

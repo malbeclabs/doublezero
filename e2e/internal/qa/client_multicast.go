@@ -77,6 +77,30 @@ func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCodes [
 	return nil
 }
 
+func (c *Client) ConnectUserMulticast_PubAndSub_Wait(ctx context.Context, pubCodes []string, subCodes []string) error {
+	err := c.DisconnectUser(ctx, true, true)
+	if err != nil {
+		return fmt.Errorf("failed to ensure disconnected on host %s: %w", c.Host, err)
+	}
+
+	c.log.Debug("Connecting multicast pub+sub", "host", c.Host, "pubCodes", pubCodes, "subCodes", subCodes)
+	ctx, cancel := context.WithTimeout(ctx, connectMulticastTimeout)
+	defer cancel()
+	resp, err := c.grpcClient.ConnectMulticast(ctx, &pb.ConnectMulticastRequest{
+		PubCodes: pubCodes,
+		SubCodes: subCodes,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to connect on host %s: %w", c.Host, err)
+	}
+	if !resp.GetSuccess() {
+		return fmt.Errorf("connection failed on host %s: %s", c.Host, resp.GetOutput())
+	}
+	c.log.Debug("Multicast pub+sub connected", "host", c.Host, "pubCodes", pubCodes, "subCodes", subCodes)
+
+	return nil
+}
+
 func (c *Client) GetMulticastGroup(ctx context.Context, code string) (*MulticastGroup, error) {
 	data, err := getProgramDataWithRetry(ctx, c.serviceability)
 	if err != nil {
@@ -281,8 +305,9 @@ func (c *Client) AddToMulticastGroupAllowlist(ctx context.Context, code string, 
 
 // CleanupStaleTestGroups deletes all multicast groups matching the qa-test-group-* pattern.
 // This cleans up leftovers from previous test runs. Individual deletion failures are logged
-// but do not stop the cleanup. Returns the number of groups deleted.
-func (c *Client) CleanupStaleTestGroups(ctx context.Context) (int, error) {
+// but do not stop the cleanup. allClients is used to disconnect stale users that block group
+// deletion. Returns the number of groups deleted.
+func (c *Client) CleanupStaleTestGroups(ctx context.Context, allClients []*Client) (int, error) {
 	data, err := getProgramDataWithRetry(ctx, c.serviceability)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get program data: %w", err)
@@ -296,6 +321,27 @@ func (c *Client) CleanupStaleTestGroups(ctx context.Context) (int, error) {
 		pk := solana.PublicKeyFromBytes(group.PubKey[:])
 		c.log.Debug("Deleting stale test group", "code", group.Code, "pubkey", pk)
 		if err := c.DeleteMulticastGroup(ctx, pk); err != nil {
+			// AccountNotFound means the group was already deleted (e.g., by a previous
+			// test's cleanup). Treat it as a successful deletion.
+			if strings.Contains(err.Error(), "AccountNotFound") {
+				c.log.Debug("Stale test group already deleted", "code", group.Code)
+				deleted++
+				continue
+			}
+			// If the group has active publishers/subscribers, disconnect all clients
+			// to clear stale users, then retry the deletion.
+			if strings.Contains(err.Error(), "no active publishers or subscribers") {
+				c.log.Info("Stale test group has active users, disconnecting all clients before retry", "code", group.Code)
+				for _, client := range allClients {
+					_ = client.DisconnectUser(ctx, false, true)
+				}
+				if err := c.DeleteMulticastGroup(ctx, pk); err != nil {
+					c.log.Info("Failed to delete stale test group after disconnecting users", "code", group.Code, "error", err)
+					continue
+				}
+				deleted++
+				continue
+			}
 			c.log.Info("Failed to delete stale test group", "code", group.Code, "error", err)
 			continue
 		}

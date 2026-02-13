@@ -14,7 +14,7 @@ import (
 var configPayload = `
 02baae1ce3bce5130ae5f46b6d47884ab60b6d22f55b0c0cfac
 f14abe7ea3118aefd4cfe0000e9fd0000ac10000010a9fe0000
-10df00000004a2aa7d81b23bd270048af6aae3813dea
+10df000000043a2793337e0017
 `
 
 var locationPayload = `
@@ -88,6 +88,15 @@ b0c0cfacf14abe7ea3118ae01000000baae1ce3bce5130ae5f4
 4c7994e9d4b745f92183e1b409bb7006560f858cf3
 `
 
+var tenantPayload = `
+0d0a3b74b3535cdeb34fd5e4cd7ea1133e55abc521c8850f6d
+08166d11e4828978ff0b000000746573742d74656e616e7464
+00050000000100000000000000000000000000000000000000
+0000000000000000000000000000000001aaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0100
+000000000000000000000000000000000000
+`
+
 var programconfigPayload = `
 09ff010000000200000003000000
 `
@@ -145,6 +154,8 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			0xbf, 0xa5, 0x57, 0xc7, 0x5c, 0xd9, 0x67, 0x18, 0x2a, 0x00, 0x39, 0x22, 0x00, 0xb5, 0xde, 0x78},
 		{0xb7, 0x45, 0xf9, 0x21, 0x83, 0xe1, 0xb4, 0x09, 0xbb, 0x70, 0x06, 0x56, 0x0f, 0x85, 0x8c, 0xf3,
 			0xbf, 0xa5, 0x57, 0xc7, 0x5c, 0xd9, 0x67, 0x18, 0x2a, 0x00, 0x39, 0x22, 0x00, 0xb5, 0xde, 0x78},
+		{0xb8, 0x45, 0xf9, 0x21, 0x83, 0xe1, 0xb4, 0x09, 0xbb, 0x70, 0x06, 0x56, 0x0f, 0x85, 0x8c, 0xf3,
+			0xbf, 0xa5, 0x57, 0xc7, 0x5c, 0xd9, 0x67, 0x18, 0x2a, 0x00, 0x39, 0x22, 0x00, 0xb5, 0xde, 0x78},
 	}
 	tests := []struct {
 		Name        string
@@ -152,22 +163,23 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 		Payload     string
 		Want        *ProgramData
 	}{
-
 		{
 			Name:        "parse_valid_config",
 			Description: "parse and populate a valid config struct",
 			Payload:     strings.TrimSuffix(configPayload, "\n"),
 			Want: &ProgramData{
 				Config: Config{
-					AccountType:         ConfigType,
-					Owner:               getOwner(configPayload),
-					Bump_seed:           253,
-					Local_asn:           65100,
-					Remote_asn:          65001,
-					TunnelTunnelBlock:   [5]byte{172, 16, 0, 0, 16},
-					UserTunnelBlock:     [5]byte{169, 254, 0, 0, 16},
-					MulticastGroupBlock: [5]byte{223, 0, 0, 0, 4},
-					PubKey:              pubkeys[0],
+					AccountType:             ConfigType,
+					Owner:                   getOwner(configPayload),
+					Bump_seed:               253,
+					Local_asn:               65100,
+					Remote_asn:              65001,
+					TunnelTunnelBlock:       [5]byte{172, 16, 0, 0, 16},
+					UserTunnelBlock:         [5]byte{169, 254, 0, 0, 16},
+					MulticastGroupBlock:     [5]byte{223, 0, 0, 0, 4},
+					NextBGPCommunity:        10042,
+					MulticastPublisherBlock: [5]byte{147, 51, 126, 0, 23},
+					PubKey:                  pubkeys[0],
 				},
 				Locations:          []Location{},
 				Devices:            []Device{},
@@ -313,20 +325,21 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			Want: &ProgramData{
 				Users: []User{
 					{
-						AccountType:  UserType,
-						Index:        Uint128{High: 31, Low: 0},
-						Bump_seed:    252,
-						Owner:        getOwner(userPayload),
-						UserType:     UserTypeIBRL,
-						TenantPubKey: getPubKeyOffset(userPayload, 51, 83),
-						DevicePubKey: getPubKeyOffset(userPayload, 83, 115),
-						CyoaType:     CyoaTypeGREOverDIA,
-						ClientIp:     [4]byte{0x0a, 0x00, 0x00, 0x01},
-						TunnelId:     500,
-						TunnelNet:    [5]byte{0xa9, 0xfe, 0x00, 0x00, 0x1f},
-						DzIp:         [4]byte{0x0a, 0x00, 0x00, 0x01},
-						Status:       UserStatusActivated,
-						PubKey:       pubkeys[4],
+						AccountType:    UserType,
+						Index:          Uint128{High: 31, Low: 0},
+						Bump_seed:      252,
+						Owner:          getOwner(userPayload),
+						UserType:       UserTypeIBRL,
+						TenantPubKey:   getPubKeyOffset(userPayload, 51, 83),
+						DevicePubKey:   getPubKeyOffset(userPayload, 83, 115),
+						CyoaType:       CyoaTypeGREOverDIA,
+						ClientIp:       [4]byte{0x0a, 0x00, 0x00, 0x01},
+						TunnelId:       500,
+						TunnelNet:      [5]byte{0xa9, 0xfe, 0x00, 0x00, 0x1f},
+						DzIp:           [4]byte{0x0a, 0x00, 0x00, 0x01},
+						Status:         UserStatusActivated,
+						TunnelEndpoint: [4]byte{0xfc, 0xef, 0x68, 0xd5},
+						PubKey:         pubkeys[4],
 					},
 				},
 				Locations:          []Location{},
@@ -411,6 +424,43 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			},
 		},
 		{
+			Name:        "parse_valid_tenant",
+			Description: "parse and populate a valid tenant struct",
+			Payload:     strings.TrimSuffix(tenantPayload, "\n"),
+			Want: &ProgramData{
+				Tenants: []Tenant{
+					{
+						AccountType:    TenantType,
+						Owner:          getOwner(tenantPayload),
+						BumpSeed:       255,
+						Code:           "test-tenant",
+						VrfId:          100,
+						ReferenceCount: 5,
+						Administrators: [][32]byte{{}},
+						PaymentStatus:  TenantPaymentStatusPaid,
+						TokenAccount: [32]byte{
+							0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+							0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+							0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+							0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+						},
+						MetroRouting:  true,
+						RouteLiveness: false,
+						PubKey:        pubkeys[7],
+					},
+				},
+				Locations:          []Location{},
+				Devices:            []Device{},
+				Links:              []Link{},
+				Exchanges:          []Exchange{},
+				Users:              []User{},
+				Contributors:       []Contributor{},
+				MulticastGroups:    []MulticastGroup{},
+				ProgramConfig:      ProgramConfig{},
+				ResourceExtensions: []ResourceExtension{},
+			},
+		},
+		{
 			Name:        "parse_valid_programconfig",
 			Description: "parse and populate a valid programconfig struct",
 			Payload:     strings.TrimSuffix(programconfigPayload, "\n"),
@@ -448,7 +498,6 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				t.Fatalf("Client diff found; -want, +got: %s", diff)
 			}
 		})
-
 	}
 }
 

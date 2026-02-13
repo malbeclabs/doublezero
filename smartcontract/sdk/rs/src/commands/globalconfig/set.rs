@@ -17,6 +17,7 @@ pub struct SetGlobalConfigCommand {
     pub user_tunnel_block: Option<NetworkV4>,
     pub multicastgroup_block: Option<NetworkV4>,
     pub next_bgp_community: Option<u16>,
+    pub multicast_publisher_block: Option<NetworkV4>,
 }
 
 impl SetGlobalConfigCommand {
@@ -39,6 +40,10 @@ impl SetGlobalConfigCommand {
             get_resource_extension_pda(&client.get_program_id(), ResourceType::LinkIds);
         let (segment_routing_ids_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
+        let (multicast_publisher_block_pda, _, _) = get_resource_extension_pda(
+            &client.get_program_id(),
+            ResourceType::MulticastPublisherBlock,
+        );
         let (vrf_ids_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
 
@@ -52,6 +57,7 @@ impl SetGlobalConfigCommand {
                 AccountMeta::new(multicastgroup_block_pda, false),
                 AccountMeta::new(link_ids_pda, false),
                 AccountMeta::new(segment_routing_ids_pda, false),
+                AccountMeta::new(multicast_publisher_block_pda, false),
                 AccountMeta::new(vrf_ids_pda, false),
             ],
         )
@@ -70,6 +76,7 @@ impl SetGlobalConfigCommand {
                     user_tunnel_block: None,
                     multicastgroup_block: None,
                     next_bgp_community: None,
+                    multicast_publisher_block: None,
                 },
                 _,
             ) => Err(eyre::eyre!(
@@ -83,6 +90,7 @@ impl SetGlobalConfigCommand {
                     user_tunnel_block: Some(user_tunnel_block),
                     multicastgroup_block: Some(multicastgroup_block),
                     next_bgp_community,
+                    multicast_publisher_block: Some(multicast_publisher_block),
                 },
                 _,
             ) => Ok(SetGlobalConfigArgs {
@@ -92,6 +100,7 @@ impl SetGlobalConfigCommand {
                 user_tunnel_block: *user_tunnel_block,
                 multicastgroup_block: *multicastgroup_block,
                 next_bgp_community: *next_bgp_community,
+                multicast_publisher_block: *multicast_publisher_block,
             }),
             (_, None) => Err(eyre::eyre!("Invalid SetGlobalConfigCommand; incomplete set command with no valid config to update")),
             (set_config_command, Some((_, existing_config))) => Ok(SetGlobalConfigArgs {
@@ -101,6 +110,9 @@ impl SetGlobalConfigCommand {
                 user_tunnel_block: set_config_command.user_tunnel_block.unwrap_or(existing_config.user_tunnel_block),
                 multicastgroup_block: set_config_command.multicastgroup_block.unwrap_or(existing_config.multicastgroup_block),
                 next_bgp_community: set_config_command.next_bgp_community,
+                multicast_publisher_block: set_config_command
+                    .multicast_publisher_block
+                    .unwrap_or(existing_config.multicast_publisher_block),
             }),
         }
     }

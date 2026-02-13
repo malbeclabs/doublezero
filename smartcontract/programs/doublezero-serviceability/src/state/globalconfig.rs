@@ -10,27 +10,29 @@ use std::fmt;
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GlobalConfig {
-    pub account_type: AccountType,       // 1
-    pub owner: Pubkey,                   // 32
-    pub bump_seed: u8,                   // 1
-    pub local_asn: u32,                  // 4
-    pub remote_asn: u32,                 // 4
-    pub device_tunnel_block: NetworkV4,  // 5
-    pub user_tunnel_block: NetworkV4,    // 5
-    pub multicastgroup_block: NetworkV4, // 5
-    pub next_bgp_community: u16,         // 2
+    pub account_type: AccountType,            // 1
+    pub owner: Pubkey,                        // 32
+    pub bump_seed: u8,                        // 1
+    pub local_asn: u32,                       // 4
+    pub remote_asn: u32,                      // 4
+    pub device_tunnel_block: NetworkV4,       // 5
+    pub user_tunnel_block: NetworkV4,         // 5
+    pub multicastgroup_block: NetworkV4,      // 5
+    pub next_bgp_community: u16,              // 2
+    pub multicast_publisher_block: NetworkV4, // 5
 }
 
 impl fmt::Display for GlobalConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, local_asn: {}, remote_asn: {}, device_tunnel_block: {}, user_tunnel_block: {}, multicastgroup_block: {}, next_bgp_community: {}",
+            "account_type: {}, owner: {}, local_asn: {}, remote_asn: {}, device_tunnel_block: {}, user_tunnel_block: {}, multicastgroup_block: {}, next_bgp_community: {}, multicast_publisher_block: {}",
             self.account_type, self.owner, self.local_asn, self.remote_asn,
             &self.device_tunnel_block,
             &self.user_tunnel_block,
             &self.multicastgroup_block,
             self.next_bgp_community,
+            &self.multicast_publisher_block,
         )
     }
 }
@@ -50,6 +52,7 @@ impl TryFrom<&[u8]> for GlobalConfig {
             multicastgroup_block: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             next_bgp_community: BorshDeserialize::deserialize(&mut data)
                 .unwrap_or(BGP_COMMUNITY_MIN),
+            multicast_publisher_block: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::GlobalConfig {
@@ -78,7 +81,7 @@ impl TryFrom<&AccountInfo<'_>> for GlobalConfig {
 
 impl GlobalConfig {
     pub fn size(&self) -> usize {
-        1 + 32 + 1 + 4 + 4 + 5 + 5 + 5 + 2
+        1 + 32 + 1 + 4 + 4 + 5 + 5 + 5 + 2 + 5
     }
 }
 
@@ -131,6 +134,7 @@ mod tests {
         assert_eq!(val.user_tunnel_block, NetworkV4::default());
         assert_eq!(val.multicastgroup_block, NetworkV4::default());
         assert_eq!(val.next_bgp_community, BGP_COMMUNITY_MIN);
+        assert_eq!(val.multicast_publisher_block, NetworkV4::default());
     }
 
     #[test]
@@ -145,6 +149,7 @@ mod tests {
             user_tunnel_block: "10.0.0.2/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
             next_bgp_community: BGP_COMMUNITY_MIN,
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -165,6 +170,10 @@ mod tests {
         assert_eq!(val.multicastgroup_block, val2.multicastgroup_block);
         assert_eq!(val.next_bgp_community, val2.next_bgp_community);
         assert_eq!(
+            val.multicast_publisher_block,
+            val2.multicast_publisher_block
+        );
+        assert_eq!(
             data.len(),
             borsh::object_length(&val).unwrap(),
             "Invalid Size"
@@ -183,6 +192,7 @@ mod tests {
             user_tunnel_block: "10.0.0.2/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
             next_bgp_community: BGP_COMMUNITY_MIN,
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -201,6 +211,7 @@ mod tests {
             user_tunnel_block: "10.0.0.2/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
             next_bgp_community: BGP_COMMUNITY_MIN,
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
         };
         let err_zero = val_zero.validate();
         assert!(err_zero.is_err());
@@ -227,6 +238,7 @@ mod tests {
             user_tunnel_block: "10.0.0.2/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
             next_bgp_community: BGP_COMMUNITY_MIN,
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
         };
         let err_zero = val_zero.validate();
         assert!(err_zero.is_err());

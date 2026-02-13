@@ -157,6 +157,7 @@ mod tests {
     use doublezero_serviceability::state::device::{DeviceDesiredStatus, DeviceHealth};
     use mockall::predicate::*;
     use solana_sdk::pubkey::Pubkey;
+    use std::net::Ipv4Addr;
 
     #[tokio::test]
     async fn test_status_command_tunnel_up() {
@@ -277,6 +278,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             },
         );
 
@@ -619,6 +621,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             },
         );
 

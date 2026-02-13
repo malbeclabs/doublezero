@@ -24,6 +24,7 @@ from serviceability.state import (
     LocationStatus,
     LoopbackType,
     MulticastGroupStatus,
+    TenantPaymentStatus,
     UserStatus,
     UserUserType,
 )
@@ -51,6 +52,7 @@ ENUM_MAP = {
     "MulticastGroupStatus": MulticastGroupStatus,
     "AccessPassTypeTag": AccessPassTypeTag,
     "AccessPassStatus": AccessPassStatus,
+    "TenantPaymentStatus": TenantPaymentStatus,
 }
 
 

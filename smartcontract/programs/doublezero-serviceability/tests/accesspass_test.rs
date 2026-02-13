@@ -299,6 +299,8 @@ async fn test_accesspass_with_tenant() {
     // Create tenants for testing
     println!("🟢 1.1. Creating tenants...");
 
+    let (_multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     let tenant_acme_code = "acme";
@@ -313,8 +315,8 @@ async fn test_accesspass_with_tenant() {
             code: tenant_acme_code.to_string(),
             administrator: administrator_acme,
             token_account: None,
-            metro_route: true,
-            route_aliveness: false,
+            metro_routing: true,
+            route_liveness: false,
         }),
         vec![
             AccountMeta::new(tenant_acme, false),
@@ -337,8 +339,8 @@ async fn test_accesspass_with_tenant() {
             code: tenant_corp_code.to_string(),
             administrator: administrator_corp,
             token_account: None,
-            metro_route: false,
-            route_aliveness: true,
+            metro_routing: false,
+            route_liveness: true,
         }),
         vec![
             AccountMeta::new(tenant_corp, false),
@@ -361,8 +363,8 @@ async fn test_accesspass_with_tenant() {
             code: tenant_validator_code.to_string(),
             administrator: administrator_validator,
             token_account: None,
-            metro_route: true,
-            route_aliveness: true,
+            metro_routing: true,
+            route_liveness: true,
         }),
         vec![
             AccountMeta::new(tenant_validator, false),
@@ -971,8 +973,8 @@ async fn setup_device_and_tenants() -> (BanksClient, Keypair, Pubkey, Pubkey, Pu
             code: "tenant-a".to_string(),
             administrator: Pubkey::new_unique(),
             token_account: None,
-            metro_route: true,
-            route_aliveness: false,
+            metro_routing: true,
+            route_liveness: false,
         }),
         vec![
             AccountMeta::new(tenant_a, false),
@@ -992,8 +994,8 @@ async fn setup_device_and_tenants() -> (BanksClient, Keypair, Pubkey, Pubkey, Pu
             code: "tenant-b".to_string(),
             administrator: Pubkey::new_unique(),
             token_account: None,
-            metro_route: false,
-            route_aliveness: true,
+            metro_routing: false,
+            route_liveness: true,
         }),
         vec![
             AccountMeta::new(tenant_b, false),
@@ -1055,6 +1057,7 @@ async fn test_user_create_with_matching_tenant_in_allowlist() {
             client_ip: user_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1123,6 +1126,7 @@ async fn test_user_create_with_wrong_tenant_in_allowlist() {
             client_ip: user_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1182,6 +1186,7 @@ async fn test_user_create_with_default_tenant_allowlist_allows_any() {
             client_ip: user_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

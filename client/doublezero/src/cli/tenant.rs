@@ -27,10 +27,23 @@ pub enum TenantCommands {
     /// Delete a tenant
     #[clap()]
     Delete(DeleteTenantCliCommand),
+    /// manage tenant administrators
+    #[clap()]
+    Administrator(AdministratorCliCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct AdministratorCliCommand {
+    #[command(subcommand)]
+    pub command: AdministratorCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AdministratorCommands {
     /// Add an administrator to a tenant
     #[clap()]
-    AddAdministrator(AddAdministratorTenantCliCommand),
+    Add(AddAdministratorTenantCliCommand),
     /// Remove an administrator from a tenant
     #[clap()]
-    RemoveAdministrator(RemoveAdministratorTenantCliCommand),
+    Remove(RemoveAdministratorTenantCliCommand),
 }

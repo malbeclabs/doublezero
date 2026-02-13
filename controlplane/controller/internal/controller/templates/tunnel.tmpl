@@ -293,8 +293,10 @@ ip community-list COMM-{{ .Strings.ToUpper .Device.ExchangeCode }}_USERS permit 
 {{- range .Device.Tunnels }}
 no route-map RM-USER-{{ .Id }}-OUT
 {{- if eq true .Allocated }}
+{{- if or .IsMulticast .MetroRouting }}
 route-map RM-USER-{{ .Id }}-OUT deny 10
    match community COMM-{{ $.Strings.ToUpper $.Device.ExchangeCode }}_USERS
+{{- end }}
 route-map RM-USER-{{ .Id }}-OUT permit 20
    match community {{ if eq true .IsMulticast }}COMM-ALL_MCAST_USERS{{ else }}COMM-ALL_USERS{{ end }}
 {{- end }}

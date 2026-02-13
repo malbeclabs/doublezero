@@ -20,6 +20,7 @@ use doublezero_serviceability::{
 use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
+use std::net::Ipv4Addr;
 use user::closeaccount::UserCloseAccountArgs;
 
 mod test_helpers;
@@ -59,6 +60,8 @@ async fn test_old_user() {
     let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
     let (segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     execute_transaction(
@@ -71,6 +74,7 @@ async fn test_old_user() {
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/16".parse().unwrap(),
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
             next_bgp_community: None,
         }),
         vec![
@@ -81,6 +85,7 @@ async fn test_old_user() {
             AccountMeta::new(multicastgroup_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
             AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
@@ -332,6 +337,7 @@ async fn test_old_user() {
             client_ip: user_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -366,6 +372,7 @@ async fn test_old_user() {
             tunnel_net: "169.254.0.0/25".parse().unwrap(),
             dz_ip: [200, 0, 0, 1].into(),
             dz_prefix_count: 0, // legacy path - no ResourceExtension accounts
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -492,7 +499,8 @@ async fn test_old_user() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-            dz_prefix_count: 0, // legacy path - no ResourceExtension accounts
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0, // legacy path - no ResourceExtension accounts
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

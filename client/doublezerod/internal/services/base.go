@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"slices"
+	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
@@ -15,6 +16,11 @@ import (
 
 type PIMWriter interface {
 	Start(conn pim.RawConner, iface string, tunnelAddr net.IP, group []net.IP) error
+	Close() error
+}
+
+type HeartbeatWriter interface {
+	Start(iface string, srcIP net.IP, groups []net.IP, ttl int, interval time.Duration) error
 	Close() error
 }
 

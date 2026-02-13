@@ -32,7 +32,7 @@ use doublezero_serviceability::state::{
     location::{Location, LocationStatus},
     multicastgroup::{MulticastGroup, MulticastGroupStatus},
     programconfig::ProgramConfig,
-    tenant::{Tenant, TenantPaymentStatus},
+    tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
     user::{User, UserCYOA, UserStatus, UserType},
 };
 use serde::Serialize;
@@ -155,6 +155,7 @@ fn generate_global_config(dir: &Path) {
         user_tunnel_block: "10.200.0.0/16".parse().unwrap(),
         multicastgroup_block: "239.0.0.0/8".parse().unwrap(),
         next_bgp_community: 10042,
+        multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -172,6 +173,7 @@ fn generate_global_config(dir: &Path) {
             FieldValue { name: "UserTunnelBlock".into(), value: "10.200.0.0/16".into(), typ: "networkv4".into() },
             FieldValue { name: "MulticastGroupBlock".into(), value: "239.0.0.0/8".into(), typ: "networkv4".into() },
             FieldValue { name: "NextBgpCommunity".into(), value: "10042".into(), typ: "u16".into() },
+            FieldValue { name: "MulticastPublisherBlock".into(), value: "147.51.126.0/23".into(), typ: "networkv4".into() },
         ],
     };
 
@@ -472,6 +474,7 @@ fn generate_user(dir: &Path) {
         publishers: vec![publisher_pk],
         subscribers: vec![subscriber_pk],
         validator_pubkey,
+        tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -498,6 +501,7 @@ fn generate_user(dir: &Path) {
             FieldValue { name: "SubscribersLen".into(), value: "1".into(), typ: "u32".into() },
             FieldValue { name: "Subscribers0".into(), value: pubkey_bs58(&subscriber_pk), typ: "pubkey".into() },
             FieldValue { name: "ValidatorPubkey".into(), value: pubkey_bs58(&validator_pubkey), typ: "pubkey".into() },
+            FieldValue { name: "TunnelEndpoint".into(), value: "0.0.0.0".into(), typ: "ipv4".into() },
         ],
     };
 
@@ -633,6 +637,7 @@ fn generate_access_pass(dir: &Path) {
         mgroup_pub_allowlist: vec![],
         mgroup_sub_allowlist: vec![],
         flags: 0x01,
+        tenant_allowlist: vec![],
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -679,6 +684,7 @@ fn generate_access_pass_validator(dir: &Path) {
         mgroup_pub_allowlist: vec![mgroup_pub],
         mgroup_sub_allowlist: vec![mgroup_sub],
         flags: 0x03,
+        tenant_allowlist: vec![],
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -723,6 +729,9 @@ fn generate_tenant(dir: &Path) {
         administrators: vec![admin_pk],
         payment_status: TenantPaymentStatus::Paid,
         token_account,
+        metro_routing: true,
+        route_liveness: false,
+        billing: TenantBillingConfig::default(),
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -741,6 +750,11 @@ fn generate_tenant(dir: &Path) {
             FieldValue { name: "Administrators0".into(), value: pubkey_bs58(&admin_pk), typ: "pubkey".into() },
             FieldValue { name: "PaymentStatus".into(), value: "1".into(), typ: "u8".into() },
             FieldValue { name: "TokenAccount".into(), value: pubkey_bs58(&token_account), typ: "pubkey".into() },
+            FieldValue { name: "MetroRouting".into(), value: "true".into(), typ: "bool".into() },
+            FieldValue { name: "RouteLiveness".into(), value: "false".into(), typ: "bool".into() },
+            FieldValue { name: "BillingDiscriminant".into(), value: "0".into(), typ: "u8".into() },
+            FieldValue { name: "BillingRate".into(), value: "0".into(), typ: "u64".into() },
+            FieldValue { name: "BillingLastDeductionDzEpoch".into(), value: "0".into(), typ: "u64".into() },
         ],
     };
 

@@ -11,7 +11,8 @@ func DeserializeConfig(reader *ByteReader, cfg *Config) {
 	cfg.TunnelTunnelBlock = reader.ReadNetworkV4()
 	cfg.UserTunnelBlock = reader.ReadNetworkV4()
 	cfg.MulticastGroupBlock = reader.ReadNetworkV4()
-	cfg.PubKey = reader.ReadPubkey()
+	cfg.NextBGPCommunity = reader.ReadU16()
+	cfg.MulticastPublisherBlock = reader.ReadNetworkV4()
 }
 
 func DeserializeLocation(reader *ByteReader, loc *Location) {
@@ -65,6 +66,13 @@ func DeserializeTenant(reader *ByteReader, tenant *Tenant) {
 	tenant.VrfId = reader.ReadU16()
 	tenant.ReferenceCount = reader.ReadU32()
 	tenant.Administrators = reader.ReadPubkeySlice()
+	tenant.PaymentStatus = TenantPaymentStatus(reader.ReadU8())
+	tenant.TokenAccount = reader.ReadPubkey()
+	tenant.MetroRouting = (reader.ReadU8() != 0)
+	tenant.RouteLiveness = (reader.ReadU8() != 0)
+	tenant.BillingDiscriminant = reader.ReadU8()
+	tenant.BillingRate = reader.ReadU64()
+	tenant.BillingLastDeductionDzEpoch = reader.ReadU64()
 	// Note: tenant.PubKey is set separately in client.go after deserialization
 }
 
@@ -187,6 +195,7 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	user.Publishers = reader.ReadPubkeySlice()
 	user.Subscribers = reader.ReadPubkeySlice()
 	user.ValidatorPubKey = reader.ReadPubkey()
+	user.TunnelEndpoint = reader.ReadIPv4()
 	user.PubKey = reader.ReadPubkey()
 }
 

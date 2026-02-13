@@ -33,11 +33,11 @@ var (
 func TestMain(m *testing.M) {
 	flag.Parse()
 	switch *envFlag {
-	case "devnet", "testnet", "mainnet-beta":
+	case "devnet", "testnet", "mainnet-beta", "localnet":
 	case "":
-		log.Fatal("The -env flag is required. Must be one of: devnet, testnet, mainnet-beta")
+		log.Fatal("The -env flag is required. Must be one of: devnet, testnet, mainnet-beta, localnet")
 	default:
-		log.Fatalf("Invalid value for -env flag: %q. Must be one of: devnet, testnet, mainnet-beta", *envFlag)
+		log.Fatalf("Invalid value for -env flag: %q. Must be one of: devnet, testnet, mainnet-beta, localnet", *envFlag)
 	}
 
 	hostsArg = strings.Split(*hostsFlag, ",")

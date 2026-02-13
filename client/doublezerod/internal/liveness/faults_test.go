@@ -230,8 +230,6 @@ func TestClient_Liveness_Faults_SoftLoss_PartialPacketLoss(t *testing.T) {
 		sw.SetSoftLoss(p.ipA, p.ipB, softLossPct)
 	}
 
-	detectTime := cfg.rxMin * time.Duration(cfg.detectMult)
-
 	before := make(map[*testClient]float64)
 	for _, p := range ps {
 		if _, ok := before[p.cA]; !ok {
@@ -242,15 +240,17 @@ func TestClient_Liveness_Faults_SoftLoss_PartialPacketLoss(t *testing.T) {
 		}
 	}
 
+	// Let the sessions run under soft loss for the full duration. We rely on
+	// the transition-counter metric below to detect any flaps rather than
+	// polling the instantaneous state, which is racy under CI CPU pressure.
 	for range softLossCycles {
-		stableDeadline := time.Now().Add(stableDuration)
-		for time.Now().Before(stableDeadline) {
-			for _, p := range ps {
-				require.Truef(t, waitBothUp(p),
-					"sessions between %v and %v should stay Up under soft loss", p.ipA, p.ipB)
-			}
-			time.Sleep(detectTime / 2)
-		}
+		time.Sleep(stableDuration)
+	}
+
+	// Sessions should still be Up after the soft-loss period.
+	for _, p := range ps {
+		require.Eventually(t, func() bool { return waitBothUp(p) }, 10*time.Second, 200*time.Millisecond,
+			"sessions between %v and %v should be Up after soft loss period", p.ipA, p.ipB)
 	}
 
 	for c, v := range before {

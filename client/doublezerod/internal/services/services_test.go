@@ -4,6 +4,7 @@ import (
 	"net"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/jwhited/corebgp"
@@ -120,6 +121,29 @@ func (m *MockPIMServer) Start(conn pim.RawConner, iface string, tunnelAddr net.I
 }
 
 func (m *MockPIMServer) Close() error {
+	return nil
+}
+
+type MockHeartbeatSender struct {
+	started bool
+	closed  bool
+	iface   string
+	srcIP   net.IP
+	groups  []net.IP
+	ttl     int
+}
+
+func (m *MockHeartbeatSender) Start(iface string, srcIP net.IP, groups []net.IP, ttl int, interval time.Duration) error {
+	m.started = true
+	m.iface = iface
+	m.srcIP = srcIP
+	m.groups = groups
+	m.ttl = ttl
+	return nil
+}
+
+func (m *MockHeartbeatSender) Close() error {
+	m.closed = true
 	return nil
 }
 
@@ -397,6 +421,131 @@ func TestServices(t *testing.T) {
 			wantPeerRemoved: net.IP{169, 254, 0, 0},
 		},
 		{
+			name: "provision_multicast_publisher_and_subscriber",
+			provisioningRequest: &api.ProvisionRequest{
+				UserType:           api.UserTypeMulticast,
+				TunnelSrc:          net.IPv4(1, 1, 1, 1),
+				TunnelDst:          net.IPv4(2, 2, 2, 2),
+				MulticastPubGroups: []net.IP{{239, 0, 0, 1}},
+				MulticastSubGroups: []net.IP{{239, 0, 0, 2}},
+				TunnelNet: &net.IPNet{
+					IP:   net.IPv4(169, 254, 0, 0),
+					Mask: net.IPMask{255, 255, 255, 254},
+				},
+				DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+				DoubleZeroPrefixes: []*net.IPNet{},
+				BgpLocalAsn:        65000,
+				BgpRemoteAsn:       65001,
+			},
+			userType:    api.UserTypeMulticast,
+			expectError: false,
+			wantTunAdded: &routing.Tunnel{
+				Name:           "doublezero1",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
+				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+				MTU:            routing.GREMTU,
+			},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "7.7.7.7/32"}},
+			wantTunUp:        true,
+			wantRulesAdded:   nil,
+			wantRoutesAdded: []*routing.Route{
+				{
+					Table:    syscall.RT_TABLE_MAIN,
+					Dst:      &net.IPNet{IP: net.IP{239, 0, 0, 1}, Mask: net.IPMask{255, 255, 255, 255}},
+					NextHop:  net.IP{169, 254, 0, 0},
+					Src:      net.IP{7, 7, 7, 7},
+					Protocol: unix.RTPROT_STATIC,
+				},
+				{
+					Table:    syscall.RT_TABLE_MAIN,
+					Dst:      &net.IPNet{IP: net.IP{239, 0, 0, 2}, Mask: net.IPMask{255, 255, 255, 255}},
+					NextHop:  net.IP{169, 254, 0, 0},
+					Src:      nil,
+					Protocol: unix.RTPROT_STATIC,
+				},
+			},
+			wantPeerConfig: &bgp.PeerConfig{
+				LocalAddress:  net.IPv4(169, 254, 0, 1),
+				RemoteAddress: net.IPv4(169, 254, 0, 0),
+				LocalAs:       65000,
+				RemoteAs:      65001,
+				NoInstall:     true,
+			},
+			wantTunRemoved: &routing.Tunnel{
+				Name:           "doublezero1",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
+				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+				MTU:            routing.GREMTU,
+			},
+			wantPeerRemoved: net.IP{169, 254, 0, 0},
+		},
+		{
+			name: "provision_multicast_publisher_and_subscriber_same_group",
+			provisioningRequest: &api.ProvisionRequest{
+				UserType:           api.UserTypeMulticast,
+				TunnelSrc:          net.IPv4(1, 1, 1, 1),
+				TunnelDst:          net.IPv4(2, 2, 2, 2),
+				MulticastPubGroups: []net.IP{{239, 0, 0, 1}},
+				MulticastSubGroups: []net.IP{{239, 0, 0, 1}},
+				TunnelNet: &net.IPNet{
+					IP:   net.IPv4(169, 254, 0, 0),
+					Mask: net.IPMask{255, 255, 255, 254},
+				},
+				DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+				DoubleZeroPrefixes: []*net.IPNet{},
+				BgpLocalAsn:        65000,
+				BgpRemoteAsn:       65001,
+			},
+			userType:    api.UserTypeMulticast,
+			expectError: false,
+			wantTunAdded: &routing.Tunnel{
+				Name:           "doublezero1",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
+				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+				MTU:            routing.GREMTU,
+			},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "7.7.7.7/32"}},
+			wantTunUp:        true,
+			wantRulesAdded:   nil,
+			// Only one route — the publisher route with Src set. The subscriber
+			// skips the duplicate group because it's already routed by the publisher.
+			wantRoutesAdded: []*routing.Route{
+				{
+					Table:    syscall.RT_TABLE_MAIN,
+					Dst:      &net.IPNet{IP: net.IP{239, 0, 0, 1}, Mask: net.IPMask{255, 255, 255, 255}},
+					NextHop:  net.IP{169, 254, 0, 0},
+					Src:      net.IP{7, 7, 7, 7},
+					Protocol: unix.RTPROT_STATIC,
+				},
+			},
+			wantPeerConfig: &bgp.PeerConfig{
+				LocalAddress:  net.IPv4(169, 254, 0, 1),
+				RemoteAddress: net.IPv4(169, 254, 0, 0),
+				LocalAs:       65000,
+				RemoteAs:      65001,
+				NoInstall:     true,
+			},
+			wantTunRemoved: &routing.Tunnel{
+				Name:           "doublezero1",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
+				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+				MTU:            routing.GREMTU,
+			},
+			wantPeerRemoved: net.IP{169, 254, 0, 0},
+		},
+		{
 			name: "provision_multicast_publisher",
 			provisioningRequest: &api.ProvisionRequest{
 				UserType:           api.UserTypeMulticast,
@@ -461,8 +610,9 @@ func TestServices(t *testing.T) {
 			mockNetlink := &MockNetlink{}
 			mockDb := &MockDb{}
 			mockPim := &MockPIMServer{}
+			mockHeartbeat := &MockHeartbeatSender{}
 
-			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockDb, mockPim)
+			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockDb, mockPim, mockHeartbeat)
 			if err != nil {
 				t.Fatalf("failed to create service: %v", err)
 			}
@@ -535,5 +685,47 @@ func TestServices(t *testing.T) {
 				}
 			})
 		})
+	}
+}
+
+func TestMulticastService_DoubleTeardown(t *testing.T) {
+	mockBgp := &MockBgpServer{}
+	mockNetlink := &MockNetlink{}
+	mockDb := &MockDb{}
+	mockPim := &MockPIMServer{}
+	mockHeartbeat := &MockHeartbeatSender{}
+
+	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockDb, mockPim, mockHeartbeat)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	pr := &api.ProvisionRequest{
+		UserType:           api.UserTypeMulticast,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		MulticastPubGroups: []net.IP{{239, 0, 0, 1}},
+		TunnelNet: &net.IPNet{
+			IP:   net.IPv4(169, 254, 0, 0),
+			Mask: net.IPMask{255, 255, 255, 254},
+		},
+		DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+		DoubleZeroPrefixes: []*net.IPNet{},
+		BgpLocalAsn:        65000,
+		BgpRemoteAsn:       65001,
+	}
+
+	if err := svc.Setup(pr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// First teardown should succeed.
+	if err := svc.Teardown(); err != nil {
+		t.Fatalf("first Teardown() returned error: %v", err)
+	}
+
+	// Second teardown must not panic (e.g. double close of heartbeat channel).
+	if err := svc.Teardown(); err != nil {
+		t.Fatalf("second Teardown() returned error: %v", err)
 	}
 }

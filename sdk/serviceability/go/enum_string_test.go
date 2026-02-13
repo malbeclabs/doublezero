@@ -46,6 +46,7 @@ func TestEnumStrings(t *testing.T) {
 		"UserStatus":           func(v int) string { return UserStatus(v).String() },
 		"MulticastGroupStatus": func(v int) string { return MulticastGroupStatus(v).String() },
 		"AccessPassStatus":     func(v int) string { return AccessPassStatus(v).String() },
+		"TenantPaymentStatus":  func(v int) string { return TenantPaymentStatus(v).String() },
 	}
 
 	for enumName, cases := range fixture {

@@ -33,14 +33,16 @@ pub struct UserCreateArgs {
     pub cyoa_type: UserCYOA,
     #[incremental(default = Ipv4Addr::UNSPECIFIED)]
     pub client_ip: std::net::Ipv4Addr,
+    #[incremental(default = Ipv4Addr::UNSPECIFIED)]
+    pub tunnel_endpoint: std::net::Ipv4Addr,
 }
 
 impl fmt::Debug for UserCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}",
-            self.user_type, self.cyoa_type, &self.client_ip,
+            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}",
+            self.user_type, self.cyoa_type, &self.client_ip, &self.tunnel_endpoint,
         )
     }
 }
@@ -191,6 +193,13 @@ pub fn process_create_user(
             );
             return Err(DoubleZeroError::TenantNotInAccessPassAllowlist.into());
         }
+    } else if let Some(tenant_account) = tenant_account {
+        let tenant = Tenant::try_from(tenant_account)?;
+        msg!(
+            "Access-pass has no tenant_allowlist, but user creation specifies tenant {}",
+            tenant.code
+        );
+        return Err(DoubleZeroError::TenantNotInAccessPassAllowlist.into());
     }
 
     // Check Initial epoch
@@ -276,6 +285,7 @@ pub fn process_create_user(
         publishers: vec![],
         subscribers: vec![],
         validator_pubkey,
+        tunnel_endpoint: value.tunnel_endpoint,
     };
 
     if pda_ver == PDAVersion::V1 {

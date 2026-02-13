@@ -67,8 +67,8 @@ func ReceiveOffset(conn *net.UDPConn) (*LocationOffset, *net.UDPAddr, error) {
 // NewUDPListener creates a UDP listener on the specified port.
 // The listener binds to all interfaces (0.0.0.0).
 func NewUDPListener(port int) (*net.UDPConn, error) {
-	if port <= 0 || port > 65535 {
-		return nil, fmt.Errorf("invalid port %d: must be in range 1-65535", port)
+	if port < 0 || port > 65535 {
+		return nil, fmt.Errorf("invalid port %d: must be in range 0-65535", port)
 	}
 
 	addr := &net.UDPAddr{

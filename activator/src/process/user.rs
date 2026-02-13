@@ -28,6 +28,7 @@ pub fn process_user_event(
     pubkey: &Pubkey,
     devices: &mut DeviceMap,
     user_tunnel_ips: &mut IPBlockAllocator,
+    publisher_dz_ips: &mut Option<IPBlockAllocator>,
     link_ids: &mut IDAllocator,
     user: &User,
     locations: &HashMap<Pubkey, Location>,
@@ -99,31 +100,77 @@ pub fn process_user_event(
 
             let tunnel_id = device_state.get_next_tunnel_id();
 
-            let need_dz_ip = match user.user_type {
-                UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
-                UserType::IBRL => false,
-                UserType::Multicast => !user.publishers.is_empty(),
+            // Determine tunnel endpoint: if the client demanded a specific one, validate it;
+            // otherwise fall back to first-available (backwards compat with 0.0.0.0).
+            let tunnel_endpoint =
+                match resolve_tunnel_endpoint(client, pubkey, device_state, user, &mut log_msg) {
+                    Some(ep) => ep,
+                    None => return,
+                };
+
+            let need_dz_ip = user.needs_allocated_dz_ip();
+
+            // Determine allocation strategy for dz_ip:
+            // - Multicast publishers: use publisher_dz_ips pool if available, otherwise onchain
+            // - Other types: respect use_onchain_allocation flag
+            let is_publisher = user.user_type == UserType::Multicast && !user.publishers.is_empty();
+            let use_onchain_dz_ip = if is_publisher {
+                use_onchain_allocation || publisher_dz_ips.is_none()
+            } else {
+                use_onchain_allocation
             };
 
-            let dz_ip = if need_dz_ip {
-                match device_state.get_next_dz_ip() {
-                    Some(ip) => ip,
-                    None => {
+            let dz_ip = if need_dz_ip && !use_onchain_dz_ip {
+                // Offchain allocation
+                if is_publisher {
+                    // Publishers: allocate from global publisher pool
+                    if let Some(ref mut publisher_ips) = publisher_dz_ips {
+                        match publisher_ips.next_available_block(1, 1).map(|net| net.ip()) {
+                            Some(ip) => ip,
+                            None => {
+                                let res = reject_user(
+                                    client,
+                                    pubkey,
+                                    "Error: No available publisher dz_ip to allocate",
+                                );
+
+                                match res {
+                                    Ok(signature) => {
+                                        write!(
+                                            &mut log_msg,
+                                            " Reject(No available publisher dz_ip) Rejected {signature}"
+                                        )
+                                        .unwrap();
+                                    }
+                                    Err(e) => {
+                                        write!(
+                                            &mut log_msg,
+                                            " Reject(No available publisher dz_ip) Error: {e}"
+                                        )
+                                        .unwrap();
+                                    }
+                                }
+                                info!("{log_msg}");
+                                return;
+                            }
+                        }
+                    } else {
+                        // Should never happen due to use_onchain_dz_ip check above
                         let res =
-                            reject_user(client, pubkey, "Error: No available dz_ip to allocate");
+                            reject_user(client, pubkey, "Error: Publisher dz_ip pool unavailable");
 
                         match res {
                             Ok(signature) => {
                                 write!(
                                     &mut log_msg,
-                                    " Reject(No available dz_ip to allocate) Rejected {signature}"
+                                    " Reject(Publisher dz_ip pool unavailable) Rejected {signature}"
                                 )
                                 .unwrap();
                             }
                             Err(e) => {
                                 write!(
                                     &mut log_msg,
-                                    " Reject(No available dz_ip to allocate) Error: {e}"
+                                    " Reject(Publisher dz_ip pool unavailable) Error: {e}"
                                 )
                                 .unwrap();
                             }
@@ -131,7 +178,41 @@ pub fn process_user_event(
                         info!("{log_msg}");
                         return;
                     }
+                } else {
+                    // IBRL/EdgeFiltering: allocate from device state
+                    match device_state.get_next_dz_ip() {
+                        Some(ip) => ip,
+                        None => {
+                            let res = reject_user(
+                                client,
+                                pubkey,
+                                "Error: No available dz_ip to allocate",
+                            );
+
+                            match res {
+                                Ok(signature) => {
+                                    write!(
+                                        &mut log_msg,
+                                        " Reject(No available dz_ip to allocate) Rejected {signature}"
+                                    )
+                                    .unwrap();
+                                }
+                                Err(e) => {
+                                    write!(
+                                        &mut log_msg,
+                                        " Reject(No available dz_ip to allocate) Error: {e}"
+                                    )
+                                    .unwrap();
+                                }
+                            }
+                            info!("{log_msg}");
+                            return;
+                        }
+                    }
                 }
+            } else if need_dz_ip {
+                // Onchain allocation: pass UNSPECIFIED so smart contract allocates
+                Ipv4Addr::UNSPECIFIED
             } else {
                 user.client_ip
             };
@@ -139,16 +220,25 @@ pub fn process_user_event(
             write!(&mut log_msg, " tunnel_id: {} dz_ip: {} ", tunnel_id, &dz_ip).unwrap();
 
             // Activate the user
+            // Force onchain allocation for multicast publishers if no local publisher pool
+            let use_onchain_for_activation =
+                use_onchain_allocation || (is_publisher && publisher_dz_ips.is_none());
+
             let res = ActivateUserCommand {
                 user_pubkey: *pubkey,
-                tunnel_id: if use_onchain_allocation { 0 } else { tunnel_id },
-                tunnel_net: if use_onchain_allocation {
+                tunnel_id: if use_onchain_for_activation {
+                    0
+                } else {
+                    tunnel_id
+                },
+                tunnel_net: if use_onchain_for_activation {
                     NetworkV4::default()
                 } else {
                     tunnel_net.into()
                 },
                 dz_ip,
-                use_onchain_allocation,
+                use_onchain_allocation: use_onchain_for_activation,
+                tunnel_endpoint,
             }
             .execute(client);
 
@@ -166,6 +256,8 @@ pub fn process_user_event(
                         "user-pubkey" => pubkey.to_string(),
                     )
                     .increment(1);
+                    // Register the tunnel endpoint as in use for this client
+                    device_state.register_tunnel_endpoint(user.client_ip, tunnel_endpoint);
                     record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
                 }
                 Err(e) => {
@@ -197,34 +289,102 @@ pub fn process_user_event(
             )
             .unwrap();
 
-            let need_dz_ip = match user.user_type {
-                UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
-                UserType::IBRL => false,
-                UserType::Multicast => !user.publishers.is_empty(),
+            let need_dz_ip = user.needs_allocated_dz_ip();
+
+            let is_publisher = user.user_type == UserType::Multicast && !user.publishers.is_empty();
+            let use_onchain_dz_ip = if is_publisher {
+                use_onchain_allocation || publisher_dz_ips.is_none()
+            } else {
+                use_onchain_allocation
             };
 
             let dz_ip = if need_dz_ip && user.dz_ip == user.client_ip {
-                match device_state.get_next_dz_ip() {
-                    Some(ip) => ip,
-                    None => {
+                if use_onchain_dz_ip {
+                    // Onchain allocation: pass UNSPECIFIED so smart contract allocates
+                    Ipv4Addr::UNSPECIFIED
+                } else if is_publisher {
+                    // Publishers: allocate from global publisher pool
+                    if let Some(ref mut publisher_ips) = publisher_dz_ips {
+                        match publisher_ips.next_available_block(1, 1).map(|net| net.ip()) {
+                            Some(ip) => ip,
+                            None => {
+                                let res = reject_user(
+                                    client,
+                                    pubkey,
+                                    "Error: No available publisher dz_ip to allocate",
+                                );
+
+                                match res {
+                                    Ok(signature) => {
+                                        write!(
+                                            &mut log_msg,
+                                            " Reject(No available publisher dz_ip) Rejected {signature}"
+                                        )
+                                        .unwrap();
+                                    }
+                                    Err(e) => {
+                                        write!(
+                                            &mut log_msg,
+                                            " Reject(No available publisher dz_ip) Error: {e}"
+                                        )
+                                        .unwrap();
+                                    }
+                                }
+                                info!("{log_msg}");
+                                return;
+                            }
+                        }
+                    } else {
+                        // Should never happen due to use_onchain_dz_ip check above
                         let res =
-                            reject_user(client, pubkey, "Error: No available dz_ip to allocate");
+                            reject_user(client, pubkey, "Error: Publisher dz_ip pool unavailable");
 
                         match res {
                             Ok(signature) => {
                                 write!(
                                     &mut log_msg,
-                                    " Reject(No available user block) Rejected {signature}"
+                                    " Reject(Publisher dz_ip pool unavailable) Rejected {signature}"
                                 )
                                 .unwrap();
                             }
                             Err(e) => {
-                                write!(&mut log_msg, " Reject(No available user block) Error: {e}")
-                                    .unwrap();
+                                write!(
+                                    &mut log_msg,
+                                    " Reject(Publisher dz_ip pool unavailable) Error: {e}"
+                                )
+                                .unwrap();
                             }
                         }
                         info!("{log_msg}");
                         return;
+                    }
+                } else {
+                    // Non-publisher: allocate from device state
+                    match device_state.get_next_dz_ip() {
+                        Some(ip) => ip,
+                        None => {
+                            let res = reject_user(
+                                client,
+                                pubkey,
+                                "Error: No available dz_ip to allocate",
+                            );
+
+                            match res {
+                                Ok(signature) => {
+                                    write!(
+                                        &mut log_msg,
+                                        " Reject(No available dz_ip) Rejected {signature}"
+                                    )
+                                    .unwrap();
+                                }
+                                Err(e) => {
+                                    write!(&mut log_msg, " Reject(No available dz_ip) Error: {e}")
+                                        .unwrap();
+                                }
+                            }
+                            info!("{log_msg}");
+                            return;
+                        }
                     }
                 }
             } else {
@@ -238,13 +398,25 @@ pub fn process_user_event(
             )
             .unwrap();
 
+            // Determine tunnel endpoint: if the client demanded a specific one, validate it;
+            // otherwise fall back to first-available (backwards compat with 0.0.0.0).
+            let tunnel_endpoint =
+                match resolve_tunnel_endpoint(client, pubkey, device_state, user, &mut log_msg) {
+                    Some(ep) => ep,
+                    None => return,
+                };
+
             // Activate the user
+            let use_onchain_for_activation =
+                use_onchain_allocation || (is_publisher && publisher_dz_ips.is_none());
+
             let res = ActivateUserCommand {
                 user_pubkey: *pubkey,
                 tunnel_id: user.tunnel_id,
                 tunnel_net: user.tunnel_net,
                 dz_ip,
-                use_onchain_allocation,
+                use_onchain_allocation: use_onchain_for_activation,
+                tunnel_endpoint,
             }
             .execute(client);
             match res {
@@ -255,6 +427,8 @@ pub fn process_user_event(
                         ""
                     };
                     write!(&mut log_msg, "Reactivated{suffix}   {signature}").unwrap();
+                    // Register the tunnel endpoint as in use for this client
+                    device_state.register_tunnel_endpoint(user.client_ip, tunnel_endpoint);
                     metrics::counter!(
                         "doublezero_activator_state_transition",
                         "state_transition" => "user-updating-to-activated",
@@ -300,21 +474,24 @@ pub fn process_user_event(
                     match res {
                         Ok(signature) => {
                             if use_onchain_allocation {
-                                write!(&mut log_msg, " Deactivated (on-chain) {signature}")
-                                    .unwrap();
-                                // On-chain deallocation: smart contract handles releasing resources
+                                write!(&mut log_msg, " Deactivated (onchain) {signature}").unwrap();
+                                // Onchain deallocation: smart contract handles releasing resources
                             } else {
                                 write!(&mut log_msg, " Deactivated {signature}").unwrap();
                                 // Off-chain: activator tracks local allocations
-                                if user.tunnel_id != 0 {
+                                if user.has_unicast_tunnel() {
                                     link_ids.unassign(user.tunnel_id);
-                                }
-                                if user.tunnel_net != NetworkV4::default() {
                                     user_tunnel_ips.unassign_block(user.tunnel_net.into());
                                 }
+                                deallocate_publisher_dz_ip(user, publisher_dz_ips);
+                                if user.dz_ip != Ipv4Addr::UNSPECIFIED {
+                                    device_state.release(user.dz_ip, user.tunnel_id).unwrap();
+                                }
                             }
-                            if user.dz_ip != Ipv4Addr::UNSPECIFIED {
-                                device_state.release(user.dz_ip, user.tunnel_id).unwrap();
+                            // Release the tunnel endpoint (activator-local state, always needed)
+                            if user.has_tunnel_endpoint() {
+                                device_state
+                                    .release_tunnel_endpoint(user.client_ip, user.tunnel_endpoint);
                             }
 
                             metrics::counter!(
@@ -333,14 +510,20 @@ pub fn process_user_event(
                         Ok(signature) => {
                             write!(&mut log_msg, " Banned {signature}").unwrap();
 
-                            if user.tunnel_id != 0 {
-                                link_ids.unassign(user.tunnel_id);
-                            }
-                            if user.tunnel_net != NetworkV4::default() {
-                                user_tunnel_ips.unassign_block(user.tunnel_net.into());
+                            if !use_onchain_allocation {
+                                if user.has_unicast_tunnel() {
+                                    link_ids.unassign(user.tunnel_id);
+                                    user_tunnel_ips.unassign_block(user.tunnel_net.into());
+                                }
+                                deallocate_publisher_dz_ip(user, publisher_dz_ips);
                             }
                             if user.dz_ip != Ipv4Addr::UNSPECIFIED {
                                 device_state.release(user.dz_ip, user.tunnel_id).unwrap();
+                            }
+                            // Release the tunnel endpoint
+                            if user.has_tunnel_endpoint() {
+                                device_state
+                                    .release_tunnel_endpoint(user.client_ip, user.tunnel_endpoint);
                             }
 
                             metrics::counter!(
@@ -362,6 +545,83 @@ pub fn process_user_event(
         }
         _ => {}
     }
+}
+
+/// Resolve the tunnel endpoint for a user, rejecting if invalid or unavailable.
+/// Returns `Some(endpoint)` on success, or `None` if the user was rejected.
+fn resolve_tunnel_endpoint(
+    client: &dyn DoubleZeroClient,
+    pubkey: &Pubkey,
+    device_state: &DeviceState,
+    user: &User,
+    log_msg: &mut String,
+) -> Option<Ipv4Addr> {
+    if user.has_tunnel_endpoint() {
+        if device_state.is_valid_tunnel_endpoint(user.tunnel_endpoint) {
+            Some(user.tunnel_endpoint)
+        } else {
+            log_reject(
+                client,
+                pubkey,
+                "Error: Invalid tunnel endpoint requested",
+                "Invalid tunnel endpoint",
+                log_msg,
+            );
+            None
+        }
+    } else {
+        match device_state.get_available_tunnel_endpoint(user.client_ip) {
+            Some(ep) => Some(ep),
+            None => {
+                log_reject(
+                    client,
+                    pubkey,
+                    "Error: No available tunnel endpoint",
+                    "No available tunnel endpoint",
+                    log_msg,
+                );
+                None
+            }
+        }
+    }
+}
+
+fn deallocate_publisher_dz_ip(user: &User, publisher_dz_ips: &mut Option<IPBlockAllocator>) {
+    if user.user_type == UserType::Multicast
+        && !user.publishers.is_empty()
+        && user.dz_ip != Ipv4Addr::UNSPECIFIED
+        && user.dz_ip != user.client_ip
+    {
+        if let Some(ref mut publisher_ips) = publisher_dz_ips {
+            if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
+                publisher_ips.unassign_block(dz_ip_net.into());
+                info!(
+                    "Deallocated publisher dz_ip {} from global pool",
+                    user.dz_ip
+                );
+            }
+        }
+    }
+}
+
+/// Reject a user and write the outcome to log_msg.
+fn log_reject(
+    client: &dyn DoubleZeroClient,
+    pubkey: &Pubkey,
+    reason: &str,
+    label: &str,
+    log_msg: &mut String,
+) {
+    let res = reject_user(client, pubkey, reason);
+    match res {
+        Ok(signature) => {
+            write!(log_msg, " Reject({label}) Rejected {signature}").unwrap();
+        }
+        Err(e) => {
+            write!(log_msg, " Reject({label}) Error: {e}").unwrap();
+        }
+    }
+    info!("{log_msg}");
 }
 
 fn log_error_ignore_invalid_status(log_msg: &mut String, e: eyre::ErrReport) {
@@ -430,8 +690,10 @@ fn get_or_insert_device_state<'a>(
 mod tests {
     use super::*;
     use crate::tests::utils::{create_test_client, get_device_bump_seed, get_user_bump_seed};
+    use doublezero_program_common::types::NetworkV4;
     use doublezero_sdk::{
-        AccountData, AccountType, Device, DeviceStatus, DeviceType, MockDoubleZeroClient, UserCYOA,
+        AccountData, AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType,
+        InterfaceStatus, InterfaceType, LoopbackType, MockDoubleZeroClient, UserCYOA, UserType,
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
@@ -503,6 +765,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             };
 
             let (accesspass_pk_unspecified, _) = get_accesspass_pda(
@@ -560,6 +823,7 @@ mod tests {
                         tunnel_net: "10.0.0.0/31".parse().unwrap(),
                         dz_ip: expected_dz_ip.unwrap_or(Ipv4Addr::UNSPECIFIED),
                         dz_prefix_count: 0, // legacy path
+                        tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
                     })),
                     predicate::always(),
                 )
@@ -576,6 +840,7 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut None, // publisher_dz_ips
                 &mut link_ids,
                 &user,
                 &locations,
@@ -700,6 +965,7 @@ mod tests {
                 publishers: vec![Pubkey::default()],
                 subscribers: vec![Pubkey::default()],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             };
 
             let (accesspass_pk_unspecified, _) = get_accesspass_pda(
@@ -725,6 +991,7 @@ mod tests {
                 flags: 0,
             };
 
+            // ActivateUserCommand internally fetches user and access pass
             let user_cloned = user.clone();
             client
                 .expect_get()
@@ -755,8 +1022,9 @@ mod tests {
                     predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
                         tunnel_id: 500,
                         tunnel_net: "10.0.0.1/29".parse().unwrap(),
-                        dz_ip: [10, 0, 0, 1].into(),
+                        dz_ip: [147, 51, 126, 1].into(),
                         dz_prefix_count: 0, // legacy path
+                        tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
                     })),
                     predicate::always(),
                 )
@@ -768,11 +1036,15 @@ mod tests {
             let locations = HashMap::<Pubkey, Location>::new();
             let exchanges = HashMap::<Pubkey, Exchange>::new();
 
+            let mut publisher_dz_ips =
+                Some(IPBlockAllocator::new("147.51.126.0/23".parse().unwrap()));
+
             process_user_event(
                 &client,
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
                 &locations,
@@ -793,7 +1065,7 @@ mod tests {
                         ("device_pk", device_pk_str.as_str()),
                         ("code", "TestDevice"),
                     ],
-                    1,
+                    0, // publisher IP comes from global pool, not device
                 )
                 .expect_counter(
                     "doublezero_activator_device_total_ips",
@@ -846,6 +1118,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             };
 
             client
@@ -877,6 +1150,7 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut None, // publisher_dz_ips
                 &mut link_ids,
                 &user,
                 &locations,
@@ -953,6 +1227,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             };
 
             client
@@ -985,6 +1260,7 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut None, // publisher_dz_ips
                 &mut link_ids,
                 &user,
                 &locations,
@@ -1064,6 +1340,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             };
 
             client
@@ -1090,6 +1367,7 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut None, // publisher_dz_ips
                 &mut link_ids,
                 &user,
                 &locations,
@@ -1149,6 +1427,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             };
 
             let user2 = user.clone();
@@ -1196,6 +1475,7 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
+                &mut None, // publisher_dz_ips
                 &mut link_ids,
                 &user,
                 &locations,
@@ -1250,6 +1530,7 @@ mod tests {
                         predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                             UserCloseAccountArgs {
                                 dz_prefix_count: 0, // legacy path
+                                multicast_publisher_count: 0,
                             },
                         )),
                         predicate::always(),
@@ -1277,5 +1558,685 @@ mod tests {
             },
             "user-pending-ban-to-banned",
         );
+    }
+
+    /// Helper to create a device with UserTunnelEndpoint interfaces.
+    fn create_device_with_tunnel_endpoints(bump_seed: u8, endpoints: Vec<Ipv4Addr>) -> Device {
+        let interfaces = endpoints
+            .into_iter()
+            .enumerate()
+            .map(|(i, ip)| {
+                CurrentInterfaceVersion {
+                    status: InterfaceStatus::Activated,
+                    name: format!("Loopback{}", 100 + i),
+                    interface_type: InterfaceType::Loopback,
+                    loopback_type: LoopbackType::None,
+                    vlan_id: 0,
+                    ip_net: format!("{}/32", ip).parse().unwrap(),
+                    node_segment_idx: 0,
+                    user_tunnel_endpoint: true,
+                    ..Default::default()
+                }
+                .to_interface()
+            })
+            .collect();
+
+        Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            reference_count: 0,
+            bump_seed,
+            contributor_pk: Pubkey::new_unique(),
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [192, 168, 1, 2].into(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            code: "TestDevice".to_string(),
+            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+            mgmt_vrf: "default".to_string(),
+            interfaces,
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+        }
+    }
+
+    #[test]
+    fn test_process_user_event_pending_with_valid_demanded_tunnel_endpoint() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+
+        metrics::with_local_recorder(&recorder, || {
+            let mut seq = Sequence::new();
+            let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+            let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
+            let mut client = create_test_client();
+
+            let device_pubkey = Pubkey::new_unique();
+            let demanded_endpoint = Ipv4Addr::new(5, 5, 5, 5);
+            let device = create_device_with_tunnel_endpoints(
+                get_device_bump_seed(&client),
+                vec![demanded_endpoint, Ipv4Addr::new(6, 6, 6, 6)],
+            );
+
+            let user_pubkey = Pubkey::new_unique();
+            let user = User {
+                account_type: AccountType::User,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                bump_seed: get_user_bump_seed(&client),
+                user_type: UserType::IBRL,
+                tenant_pk: Pubkey::new_unique(),
+                device_pk: device_pubkey,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: [192, 168, 1, 1].into(),
+                dz_ip: Ipv4Addr::UNSPECIFIED,
+                tunnel_id: 0,
+                tunnel_net: NetworkV4::default(),
+                status: UserStatus::Pending,
+                publishers: vec![],
+                subscribers: vec![],
+                validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: demanded_endpoint,
+            };
+
+            let (accesspass_pk_unspecified, _) = get_accesspass_pda(
+                &client.get_program_id(),
+                &Ipv4Addr::UNSPECIFIED,
+                &user.owner,
+            );
+            let (accesspass_pk, _) =
+                get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
+            let accesspass = AccessPass {
+                account_type: AccountType::AccessPass,
+                owner: user.owner,
+                bump_seed: 255,
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip: user.client_ip,
+                user_payer: user.owner,
+                last_access_epoch: 1234,
+                connection_count: 0,
+                status: AccessPassStatus::Requested,
+                mgroup_pub_allowlist: vec![],
+                mgroup_sub_allowlist: vec![],
+                tenant_allowlist: vec![Default::default()],
+                flags: 0,
+            };
+
+            let user_cloned = user.clone();
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(user_pubkey))
+                .returning(move |_| Ok(AccountData::User(user_cloned.clone())));
+
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(accesspass_pk_unspecified))
+                .returning(move |_| Err(eyre::eyre!("AccessPass not found")));
+
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(accesspass_pk))
+                .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
+            // The activator should use the demanded endpoint (5.5.5.5), not pick one itself
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+                        tunnel_id: 500,
+                        tunnel_net: "10.0.0.0/31".parse().unwrap(),
+                        dz_ip: Ipv4Addr::new(192, 168, 1, 1),
+                        dz_prefix_count: 0,
+                        tunnel_endpoint: demanded_endpoint,
+                    })),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            let mut devices = HashMap::new();
+            devices.insert(device_pubkey, DeviceState::new(&device));
+
+            let locations = HashMap::<Pubkey, Location>::new();
+            let exchanges = HashMap::<Pubkey, Exchange>::new();
+
+            process_user_event(
+                &client,
+                &user_pubkey,
+                &mut devices,
+                &mut user_tunnel_ips,
+                &mut None,
+                &mut link_ids,
+                &user,
+                &locations,
+                &exchanges,
+                false,
+            );
+
+            let device_pk_str = user.device_pk.to_string();
+
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_device_assigned_ips",
+                    vec![
+                        ("device_pk", device_pk_str.as_str()),
+                        ("code", "TestDevice"),
+                    ],
+                    0,
+                )
+                .expect_counter(
+                    "doublezero_activator_device_total_ips",
+                    vec![
+                        ("device_pk", device_pk_str.as_str()),
+                        ("code", "TestDevice"),
+                    ],
+                    256,
+                )
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![
+                        ("state_transition", "user-pending-to-activated"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
+                    1,
+                )
+                .verify();
+        });
+    }
+
+    #[test]
+    fn test_process_user_event_pending_with_invalid_demanded_tunnel_endpoint() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+
+        metrics::with_local_recorder(&recorder, || {
+            let mut seq = Sequence::new();
+            let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+            let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
+            let mut client = create_test_client();
+
+            let device_pubkey = Pubkey::new_unique();
+            // Device only has 5.5.5.5 as a valid endpoint
+            let device = create_device_with_tunnel_endpoints(
+                get_device_bump_seed(&client),
+                vec![Ipv4Addr::new(5, 5, 5, 5)],
+            );
+
+            let user_pubkey = Pubkey::new_unique();
+            // User demands 9.9.9.9 which is NOT a valid endpoint on this device
+            let user = User {
+                account_type: AccountType::User,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                bump_seed: get_user_bump_seed(&client),
+                user_type: UserType::IBRL,
+                tenant_pk: Pubkey::new_unique(),
+                device_pk: device_pubkey,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: [192, 168, 1, 1].into(),
+                dz_ip: Ipv4Addr::UNSPECIFIED,
+                tunnel_id: 0,
+                tunnel_net: NetworkV4::default(),
+                status: UserStatus::Pending,
+                publishers: vec![],
+                subscribers: vec![],
+                validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::new(9, 9, 9, 9),
+            };
+
+            // Expect a reject transaction, NOT an activate
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::RejectUser(UserRejectArgs {
+                        reason: "Error: Invalid tunnel endpoint requested".to_string(),
+                    })),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            let mut devices = HashMap::new();
+            devices.insert(device_pubkey, DeviceState::new(&device));
+
+            let locations = HashMap::<Pubkey, Location>::new();
+            let exchanges = HashMap::<Pubkey, Exchange>::new();
+
+            process_user_event(
+                &client,
+                &user_pubkey,
+                &mut devices,
+                &mut user_tunnel_ips,
+                &mut None,
+                &mut link_ids,
+                &user,
+                &locations,
+                &exchanges,
+                false,
+            );
+
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![
+                        ("state_transition", "user-pending-to-rejected"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
+                    1,
+                )
+                .verify();
+        });
+    }
+
+    #[test]
+    fn test_process_user_event_pending_with_unspecified_tunnel_endpoint_falls_back() {
+        // When tunnel_endpoint is 0.0.0.0, activator should pick one via
+        // get_available_tunnel_endpoint (backwards compat). This is the same as the
+        // existing do_test_process_user_event_pending_to_activated tests, but with
+        // explicit UTE interfaces on the device to verify the first-available logic.
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+
+        metrics::with_local_recorder(&recorder, || {
+            let mut seq = Sequence::new();
+            let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+            let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
+            let mut client = create_test_client();
+
+            let device_pubkey = Pubkey::new_unique();
+            let device = create_device_with_tunnel_endpoints(
+                get_device_bump_seed(&client),
+                vec![Ipv4Addr::new(5, 5, 5, 5), Ipv4Addr::new(6, 6, 6, 6)],
+            );
+
+            let user_pubkey = Pubkey::new_unique();
+            let user = User {
+                account_type: AccountType::User,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                bump_seed: get_user_bump_seed(&client),
+                user_type: UserType::IBRL,
+                tenant_pk: Pubkey::new_unique(),
+                device_pk: device_pubkey,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: [192, 168, 1, 1].into(),
+                dz_ip: Ipv4Addr::UNSPECIFIED,
+                tunnel_id: 0,
+                tunnel_net: NetworkV4::default(),
+                status: UserStatus::Pending,
+                publishers: vec![],
+                subscribers: vec![],
+                validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED, // no demand
+            };
+
+            let (accesspass_pk_unspecified, _) = get_accesspass_pda(
+                &client.get_program_id(),
+                &Ipv4Addr::UNSPECIFIED,
+                &user.owner,
+            );
+            let (accesspass_pk, _) =
+                get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
+            let accesspass = AccessPass {
+                account_type: AccountType::AccessPass,
+                owner: user.owner,
+                bump_seed: 255,
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip: user.client_ip,
+                user_payer: user.owner,
+                last_access_epoch: 1234,
+                connection_count: 0,
+                status: AccessPassStatus::Requested,
+                mgroup_pub_allowlist: vec![],
+                mgroup_sub_allowlist: vec![],
+                tenant_allowlist: vec![Default::default()],
+                flags: 0,
+            };
+
+            let user_cloned = user.clone();
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(user_pubkey))
+                .returning(move |_| Ok(AccountData::User(user_cloned.clone())));
+
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(accesspass_pk_unspecified))
+                .returning(move |_| Err(eyre::eyre!("AccessPass not found")));
+
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(accesspass_pk))
+                .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
+            // With 0.0.0.0, the activator should fall back to first-available = 5.5.5.5
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+                        tunnel_id: 500,
+                        tunnel_net: "10.0.0.0/31".parse().unwrap(),
+                        dz_ip: Ipv4Addr::new(192, 168, 1, 1),
+                        dz_prefix_count: 0,
+                        tunnel_endpoint: Ipv4Addr::new(5, 5, 5, 5),
+                    })),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            let mut devices = HashMap::new();
+            devices.insert(device_pubkey, DeviceState::new(&device));
+
+            let locations = HashMap::<Pubkey, Location>::new();
+            let exchanges = HashMap::<Pubkey, Exchange>::new();
+
+            process_user_event(
+                &client,
+                &user_pubkey,
+                &mut devices,
+                &mut user_tunnel_ips,
+                &mut None,
+                &mut link_ids,
+                &user,
+                &locations,
+                &exchanges,
+                false,
+            );
+
+            let device_pk_str = user.device_pk.to_string();
+
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_device_assigned_ips",
+                    vec![
+                        ("device_pk", device_pk_str.as_str()),
+                        ("code", "TestDevice"),
+                    ],
+                    0,
+                )
+                .expect_counter(
+                    "doublezero_activator_device_total_ips",
+                    vec![
+                        ("device_pk", device_pk_str.as_str()),
+                        ("code", "TestDevice"),
+                    ],
+                    256,
+                )
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![
+                        ("state_transition", "user-pending-to-activated"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
+                    1,
+                )
+                .verify();
+        });
+    }
+
+    #[test]
+    fn test_process_user_event_updating_with_valid_demanded_tunnel_endpoint() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+
+        metrics::with_local_recorder(&recorder, || {
+            let mut seq = Sequence::new();
+            let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+            let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
+            let mut client = create_test_client();
+
+            let device_pubkey = Pubkey::new_unique();
+            let demanded_endpoint = Ipv4Addr::new(6, 6, 6, 6);
+            let device = create_device_with_tunnel_endpoints(
+                get_device_bump_seed(&client),
+                vec![Ipv4Addr::new(5, 5, 5, 5), demanded_endpoint],
+            );
+
+            let user_pubkey = Pubkey::new_unique();
+            let user = User {
+                account_type: AccountType::User,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                bump_seed: get_user_bump_seed(&client),
+                user_type: UserType::Multicast,
+                tenant_pk: Pubkey::new_unique(),
+                device_pk: device_pubkey,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: [192, 168, 1, 1].into(),
+                dz_ip: [192, 168, 1, 1].into(),
+                tunnel_id: 500,
+                tunnel_net: "10.0.0.1/29".parse().unwrap(),
+                status: UserStatus::Updating,
+                publishers: vec![Pubkey::default()],
+                subscribers: vec![Pubkey::default()],
+                validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: demanded_endpoint,
+            };
+
+            let (accesspass_pk_unspecified, _) = get_accesspass_pda(
+                &client.get_program_id(),
+                &Ipv4Addr::UNSPECIFIED,
+                &user.owner,
+            );
+            let (accesspass_pk, _) =
+                get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
+            let accesspass = AccessPass {
+                account_type: AccountType::AccessPass,
+                owner: user.owner,
+                bump_seed: 255,
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip: user.client_ip,
+                user_payer: user.owner,
+                last_access_epoch: 1234,
+                connection_count: 0,
+                status: AccessPassStatus::Requested,
+                mgroup_pub_allowlist: vec![],
+                mgroup_sub_allowlist: vec![],
+                tenant_allowlist: vec![Default::default()],
+                flags: 0,
+            };
+
+            // ActivateUserCommand internally fetches user and access pass
+            let user_cloned = user.clone();
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(user_pubkey))
+                .returning(move |_| Ok(AccountData::User(user_cloned.clone())));
+
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(accesspass_pk_unspecified))
+                .returning(move |_| Err(eyre::eyre!("AccessPass not found")));
+
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(accesspass_pk))
+                .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
+            // Should use the demanded endpoint 6.6.6.6
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+                        tunnel_id: 500,
+                        tunnel_net: "10.0.0.1/29".parse().unwrap(),
+                        dz_ip: [147, 51, 126, 1].into(),
+                        dz_prefix_count: 0,
+                        tunnel_endpoint: demanded_endpoint,
+                    })),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            let mut devices = HashMap::new();
+            devices.insert(device_pubkey, DeviceState::new(&device));
+
+            let locations = HashMap::<Pubkey, Location>::new();
+            let exchanges = HashMap::<Pubkey, Exchange>::new();
+
+            let mut publisher_dz_ips =
+                Some(IPBlockAllocator::new("147.51.126.0/23".parse().unwrap()));
+
+            process_user_event(
+                &client,
+                &user_pubkey,
+                &mut devices,
+                &mut user_tunnel_ips,
+                &mut publisher_dz_ips,
+                &mut link_ids,
+                &user,
+                &locations,
+                &exchanges,
+                false,
+            );
+
+            let device_pk_str = user.device_pk.to_string();
+
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_device_assigned_ips",
+                    vec![
+                        ("device_pk", device_pk_str.as_str()),
+                        ("code", "TestDevice"),
+                    ],
+                    0, // publisher IP comes from global pool, not device
+                )
+                .expect_counter(
+                    "doublezero_activator_device_total_ips",
+                    vec![
+                        ("device_pk", device_pk_str.as_str()),
+                        ("code", "TestDevice"),
+                    ],
+                    256,
+                )
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![
+                        ("state_transition", "user-updating-to-activated"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
+                    1,
+                )
+                .verify();
+        });
+    }
+
+    #[test]
+    fn test_process_user_event_updating_with_invalid_demanded_tunnel_endpoint() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+
+        metrics::with_local_recorder(&recorder, || {
+            let mut seq = Sequence::new();
+            let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+            let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
+            let mut client = create_test_client();
+
+            let device_pubkey = Pubkey::new_unique();
+            let device = create_device_with_tunnel_endpoints(
+                get_device_bump_seed(&client),
+                vec![Ipv4Addr::new(5, 5, 5, 5)],
+            );
+
+            let user_pubkey = Pubkey::new_unique();
+            // User demands 9.9.9.9 which is NOT a valid endpoint on this device
+            let user = User {
+                account_type: AccountType::User,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                bump_seed: get_user_bump_seed(&client),
+                user_type: UserType::Multicast,
+                tenant_pk: Pubkey::new_unique(),
+                device_pk: device_pubkey,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: [192, 168, 1, 1].into(),
+                dz_ip: [192, 168, 1, 1].into(),
+                tunnel_id: 500,
+                tunnel_net: "10.0.0.1/29".parse().unwrap(),
+                status: UserStatus::Updating,
+                publishers: vec![Pubkey::default()],
+                subscribers: vec![Pubkey::default()],
+                validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::new(9, 9, 9, 9),
+            };
+
+            // Expect a reject transaction
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::RejectUser(UserRejectArgs {
+                        reason: "Error: Invalid tunnel endpoint requested".to_string(),
+                    })),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            let mut devices = HashMap::new();
+            devices.insert(device_pubkey, DeviceState::new(&device));
+
+            let locations = HashMap::<Pubkey, Location>::new();
+            let exchanges = HashMap::<Pubkey, Exchange>::new();
+
+            process_user_event(
+                &client,
+                &user_pubkey,
+                &mut devices,
+                &mut user_tunnel_ips,
+                &mut None,
+                &mut link_ids,
+                &user,
+                &locations,
+                &exchanges,
+                false,
+            );
+
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![
+                        ("state_transition", "user-pending-to-rejected"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
+                    1,
+                )
+                .verify();
+        });
     }
 }

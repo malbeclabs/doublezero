@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,12 +16,16 @@ import (
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/docker/go-connections/nat"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/testcontainers/testcontainers-go"
 )
+
+// defaultQAAgentPort is the default port the QA agent listens on inside the client container.
+const defaultQAAgentPort = 7009
 
 type ClientSpec struct {
 	ContainerImage string
@@ -44,8 +49,17 @@ type ClientSpec struct {
 	// RouteLivenessDebug is a flag to enable or disable debug logging for route liveness.
 	RouteLivenessDebug bool
 
+	// LatencyProbeTunnelEndpoints enables probing UserTunnelEndpoint interfaces
+	// in addition to device PublicIp during latency measurements.
+	LatencyProbeTunnelEndpoints bool
+
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
+
+	// EnableQAAgent starts the QA agent inside the client container for local QA testing.
+	EnableQAAgent bool
+	// QAAgentPort is the port the QA agent listens on inside the container (default: 7009).
+	QAAgentPort int
 }
 
 func (s *ClientSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
@@ -80,6 +94,10 @@ type Client struct {
 	ContainerID   string
 	Pubkey        string
 	CYOANetworkIP string
+
+	// QAAgentHostPort is the host-side mapped port for the QA agent gRPC server.
+	// Only set when EnableQAAgent is true.
+	QAAgentHostPort int
 }
 
 func (c *Client) dockerContainerHostname() string {
@@ -190,6 +208,33 @@ func (c *Client) Start(ctx context.Context) error {
 	if c.Spec.RouteLivenessDebug {
 		extraArgs = append(extraArgs, "-route-liveness-debug")
 	}
+	if c.Spec.LatencyProbeTunnelEndpoints {
+		extraArgs = append(extraArgs, "-latency-probe-tunnel-endpoints")
+	}
+
+	// Determine QA agent port if enabled.
+	qaAgentPort := c.Spec.QAAgentPort
+	if c.Spec.EnableQAAgent && qaAgentPort == 0 {
+		qaAgentPort = defaultQAAgentPort
+	}
+
+	// Build container environment variables.
+	env := map[string]string{
+		"DZ_LEDGER_URL":                c.dn.Ledger.InternalRPCURL,
+		"DZ_LEDGER_WS":                 c.dn.Ledger.InternalRPCWSURL,
+		"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
+		"DZ_CLIENT_EXTRA_ARGS":         strings.Join(extraArgs, " "),
+	}
+	if c.Spec.EnableQAAgent {
+		env["DZ_QAAGENT_ENABLE"] = "true"
+		env["DZ_QAAGENT_ADDR"] = fmt.Sprintf("0.0.0.0:%d", qaAgentPort)
+	}
+
+	// Build exposed ports list.
+	var exposedPorts []string
+	if c.Spec.EnableQAAgent {
+		exposedPorts = append(exposedPorts, fmt.Sprintf("%d/tcp", qaAgentPort))
+	}
 
 	// Start the client container.
 	req := testcontainers.ContainerRequest{
@@ -198,12 +243,8 @@ func (c *Client) Start(ctx context.Context) error {
 		ConfigModifier: func(cfg *dockercontainer.Config) {
 			cfg.Hostname = c.dockerContainerHostname()
 		},
-		Env: map[string]string{
-			"DZ_LEDGER_URL":                c.dn.Ledger.InternalRPCURL,
-			"DZ_LEDGER_WS":                 c.dn.Ledger.InternalRPCWSURL,
-			"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
-			"DZ_CLIENT_EXTRA_ARGS":         strings.Join(extraArgs, " "),
-		},
+		Env:          env,
+		ExposedPorts: exposedPorts,
 		Files: []testcontainers.ContainerFile{
 			{
 				HostFilePath:      c.Spec.KeypairPath,
@@ -236,6 +277,20 @@ func (c *Client) Start(ctx context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("failed to start client: %w", err)
+	}
+
+	// Get the QA agent mapped host port if enabled.
+	if c.Spec.EnableQAAgent {
+		mappedPort, err := container.MappedPort(ctx, nat.Port(fmt.Sprintf("%d/tcp", qaAgentPort)))
+		if err != nil {
+			return fmt.Errorf("failed to get QA agent mapped port: %w", err)
+		}
+		hostPort, err := strconv.Atoi(mappedPort.Port())
+		if err != nil {
+			return fmt.Errorf("failed to parse QA agent mapped port %q: %w", mappedPort.Port(), err)
+		}
+		c.QAAgentHostPort = hostPort
+		c.log.Debug("QA agent mapped port", "containerPort", qaAgentPort, "hostPort", c.QAAgentHostPort)
 	}
 
 	// Set the component's state.
@@ -315,6 +370,23 @@ func (c *Client) setState(ctx context.Context, containerID string) error {
 		return fmt.Errorf("failed to get client CYOA network IP")
 	}
 	c.CYOANetworkIP = container.NetworkSettings.Networks[c.dn.CYOANetwork.Name].IPAddress
+
+	// Recover QA agent host port from port bindings if the QA agent is enabled.
+	if c.Spec.EnableQAAgent && c.QAAgentHostPort == 0 {
+		qaAgentPort := c.Spec.QAAgentPort
+		if qaAgentPort == 0 {
+			qaAgentPort = defaultQAAgentPort
+		}
+		portKey := nat.Port(fmt.Sprintf("%d/tcp", qaAgentPort))
+		if bindings, ok := container.NetworkSettings.Ports[portKey]; ok && len(bindings) > 0 {
+			hostPort, err := strconv.Atoi(bindings[0].HostPort)
+			if err != nil {
+				return fmt.Errorf("failed to parse recovered QA agent port %q: %w", bindings[0].HostPort, err)
+			}
+			c.QAAgentHostPort = hostPort
+			c.log.Debug("Recovered QA agent mapped port", "containerPort", qaAgentPort, "hostPort", c.QAAgentHostPort)
+		}
+	}
 
 	return nil
 }
@@ -581,7 +653,11 @@ func (c *Client) WaitForLatencyResults(ctx context.Context, wantDevicePK string,
 	err := poll.Until(ctx, func() (bool, error) {
 		results, err := c.ExecReturnJSONList(ctx, []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/latency"})
 		if err != nil {
-			return false, fmt.Errorf("failed to get latency results: %w", err)
+			if attempts == 1 || attempts%5 == 0 {
+				c.log.Debug("--> Waiting for latency results (curl not ready yet)", "wantDevicePK", wantDevicePK, "err", err, "attempts", attempts)
+			}
+			attempts++
+			return false, nil
 		}
 
 		if len(results) > 0 {
@@ -602,6 +678,26 @@ func (c *Client) WaitForLatencyResults(ctx context.Context, wantDevicePK string,
 	}, timeout, 1*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to wait for latency results: %w", err)
+	}
+
+	return nil
+}
+
+// WaitForPing waits until the given IP is reachable via ICMP ping from the client container.
+func (c *Client) WaitForPing(ctx context.Context, ip string, timeout time.Duration) error {
+	c.log.Debug("==> Waiting for ping to succeed", "ip", ip, "timeout", timeout)
+
+	start := time.Now()
+	err := poll.Until(ctx, func() (bool, error) {
+		_, err := c.Exec(ctx, []string{"ping", "-c", "1", "-W", "1", ip})
+		if err == nil {
+			c.log.Debug("✅ Ping succeeded", "ip", ip, "duration", time.Since(start))
+			return true, nil
+		}
+		return false, nil
+	}, timeout, 2*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to ping %s within %s: %w", ip, timeout, err)
 	}
 
 	return nil

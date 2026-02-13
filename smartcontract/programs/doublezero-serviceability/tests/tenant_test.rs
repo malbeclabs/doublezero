@@ -4,7 +4,7 @@ use doublezero_serviceability::{
     processors::tenant::{
         add_administrator::TenantAddAdministratorArgs, create::TenantCreateArgs,
         delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
-        update::TenantUpdateArgs,
+        update::TenantUpdateArgs, update_payment_status::UpdatePaymentStatusArgs,
     },
     resource::ResourceType,
     state::{accounttype::AccountType, tenant::*},
@@ -25,6 +25,8 @@ async fn test_tenant() {
     /***********************************************************************************************************************************/
     println!("🟢  Start test_tenant");
 
+    let (_multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     println!("🟢 1. Testing Tenant creation...");
@@ -42,8 +44,8 @@ async fn test_tenant() {
             code: "test-tenant".to_string(),
             administrator,
             token_account: None,
-            metro_route: true,
-            route_aliveness: false,
+            metro_routing: true,
+            route_liveness: false,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -65,8 +67,8 @@ async fn test_tenant() {
     assert_eq!(tenant.reference_count, 0);
     assert_eq!(tenant.administrators.len(), 1);
     assert_eq!(tenant.administrators[0], administrator);
-    assert!(tenant.metro_route);
-    assert!(!tenant.route_aliveness);
+    assert!(tenant.metro_routing);
+    assert!(!tenant.route_liveness);
 
     println!("✅ Tenant created successfully");
 
@@ -79,8 +81,9 @@ async fn test_tenant() {
         DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
             vrf_id: Some(200),
             token_account: None,
-            metro_route: Some(false),
-            route_aliveness: Some(true),
+            metro_routing: Some(false),
+            route_liveness: Some(true),
+            billing: None,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -98,12 +101,117 @@ async fn test_tenant() {
     assert_eq!(tenant.account_type, AccountType::Tenant);
     assert_eq!(tenant.code, "test-tenant".to_string()); // Code unchanged (immutable)
     assert_eq!(tenant.vrf_id, 200); // VRF ID updated
-    assert!(!tenant.metro_route); // Metro route updated
-    assert!(tenant.route_aliveness); // Route aliveness updated
+    assert!(!tenant.metro_routing); // Metro routing updated
+    assert!(tenant.route_liveness); // Route liveness updated
+    assert_eq!(tenant.billing, TenantBillingConfig::default()); // Billing unchanged
 
     let _initial_vrf_id = tenant.vrf_id; // Save for later comparison
 
     println!("✅ Tenant updated successfully");
+
+    /***********************************************************************************************************************************/
+    println!("🟢 2b. Testing Tenant update (billing config)...");
+    let billing_config = TenantBillingConfig::FlatPerEpoch(FlatPerEpochConfig {
+        rate: 1_000_000,
+        last_deduction_dz_epoch: 0,
+    });
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
+            vrf_id: None,
+            token_account: None,
+            metro_routing: None,
+            route_liveness: None,
+            billing: Some(billing_config),
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tenant = get_account_data(&mut banks_client, tenant_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tenant()
+        .unwrap();
+    assert_eq!(tenant.billing, billing_config); // Billing updated
+    assert_eq!(tenant.vrf_id, 200); // Other fields unchanged
+
+    println!("✅ Tenant billing config updated successfully");
+
+    /***********************************************************************************************************************************/
+    println!("🟢 2c. Testing UpdatePaymentStatus with last_deduction_dz_epoch...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
+            payment_status: 1, // Paid
+            last_deduction_dz_epoch: Some(5),
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tenant = get_account_data(&mut banks_client, tenant_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tenant()
+        .unwrap();
+    assert_eq!(tenant.payment_status, TenantPaymentStatus::Paid);
+    assert_eq!(
+        tenant.billing,
+        TenantBillingConfig::FlatPerEpoch(FlatPerEpochConfig {
+            rate: 1_000_000,
+            last_deduction_dz_epoch: 5,
+        })
+    );
+
+    println!("✅ Payment status and deduction epoch updated successfully");
+
+    /***********************************************************************************************************************************/
+    println!("🟢 2d. Testing UpdatePaymentStatus without last_deduction_dz_epoch...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
+            payment_status: 0, // Delinquent
+            last_deduction_dz_epoch: None,
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tenant = get_account_data(&mut banks_client, tenant_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tenant()
+        .unwrap();
+    assert_eq!(tenant.payment_status, TenantPaymentStatus::Delinquent);
+    // last_deduction_dz_epoch should be unchanged (still 5)
+    assert_eq!(
+        tenant.billing,
+        TenantBillingConfig::FlatPerEpoch(FlatPerEpochConfig {
+            rate: 1_000_000,
+            last_deduction_dz_epoch: 5,
+        })
+    );
+
+    println!("✅ Payment status updated without changing deduction epoch");
 
     /***********************************************************************************************************************************/
     println!("🟢 3. Testing add administrator...");
@@ -227,6 +335,8 @@ async fn test_tenant_delete_with_nonzero_reference_count_fails() {
 
     println!("🟢  Start test_tenant_delete_with_nonzero_reference_count_fails");
 
+    let (_multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     // Create a tenant
@@ -243,8 +353,8 @@ async fn test_tenant_delete_with_nonzero_reference_count_fails() {
             code: tenant_code_refcount.to_string(),
             administrator,
             token_account: None,
-            metro_route: true,
-            route_aliveness: false,
+            metro_routing: true,
+            route_liveness: false,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -301,6 +411,8 @@ async fn test_tenant_add_duplicate_administrator_fails() {
 
     println!("🟢  Start test_tenant_add_duplicate_administrator_fails");
 
+    let (_multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     // Create a tenant
@@ -317,8 +429,8 @@ async fn test_tenant_add_duplicate_administrator_fails() {
             code: tenant_code_duplicate.to_string(),
             administrator,
             token_account: None,
-            metro_route: true,
-            route_aliveness: false,
+            metro_routing: true,
+            route_liveness: false,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -391,6 +503,8 @@ async fn test_tenant_remove_nonexistent_administrator_fails() {
 
     println!("🟢  Start test_tenant_remove_nonexistent_administrator_fails");
 
+    let (_multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     // Create a tenant
@@ -407,8 +521,8 @@ async fn test_tenant_remove_nonexistent_administrator_fails() {
             code: tenant_code_nonexistent.to_string(),
             administrator,
             token_account: None,
-            metro_route: true,
-            route_aliveness: false,
+            metro_routing: true,
+            route_liveness: false,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),

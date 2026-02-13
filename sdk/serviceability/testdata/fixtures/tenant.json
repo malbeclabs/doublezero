@@ -1,0 +1,81 @@
+{
+  "name": "Tenant",
+  "account_type": 13,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "13",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "EzwoU1vYtuyVxt1eoxPsDk2Yq2XKrcBaTR9hhZXzvLWj",
+      "typ": "pubkey"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "240",
+      "typ": "u8"
+    },
+    {
+      "name": "Code",
+      "value": "acme",
+      "typ": "string"
+    },
+    {
+      "name": "VrfId",
+      "value": "500",
+      "typ": "u16"
+    },
+    {
+      "name": "ReferenceCount",
+      "value": "2",
+      "typ": "u32"
+    },
+    {
+      "name": "AdministratorsLen",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "Administrators0",
+      "value": "F4rD7WednkUDNa8dKTfK7fmn6366ZZHV3HTbCkqze9B5",
+      "typ": "pubkey"
+    },
+    {
+      "name": "PaymentStatus",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "TokenAccount",
+      "value": "F8kcm1NigaxvnGFbpxvm1bX1M3esGWPPd9mUhx9zMwqR",
+      "typ": "pubkey"
+    },
+    {
+      "name": "MetroRouting",
+      "value": "true",
+      "typ": "bool"
+    },
+    {
+      "name": "RouteLiveness",
+      "value": "false",
+      "typ": "bool"
+    },
+    {
+      "name": "BillingDiscriminant",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "BillingRate",
+      "value": "0",
+      "typ": "u64"
+    },
+    {
+      "name": "BillingLastDeductionDzEpoch",
+      "value": "0",
+      "typ": "u64"
+    }
+  ]
+}

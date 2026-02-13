@@ -574,6 +574,7 @@ mod tests {
         },
     };
     use solana_program::pubkey::Pubkey;
+    use std::net::Ipv4Addr;
 
     use super::*;
 
@@ -598,6 +599,7 @@ mod tests {
                 device_tunnel_block: "1.2.3.4/1".parse().unwrap(),
                 user_tunnel_block: "1.2.3.4/1".parse().unwrap(),
                 multicastgroup_block: "1.2.3.4/1".parse().unwrap(),
+                multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
                 next_bgp_community: None,
             }),
             "SetGlobalConfig",
@@ -756,6 +758,7 @@ mod tests {
                 user_type: UserType::IBRL,
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: [1, 2, 3, 4].into(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             }),
             "CreateUser",
         );
@@ -765,6 +768,7 @@ mod tests {
                 tunnel_net: "1.2.3.4/1".parse().unwrap(),
                 dz_ip: [1, 2, 3, 4].into(),
                 dz_prefix_count: 0,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             }),
             "ActivateUser",
         );
@@ -797,7 +801,10 @@ mod tests {
             "CloseAccountLink",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs { dz_prefix_count: 0 }),
+            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+                dz_prefix_count: 0,
+                multicast_publisher_count: 0,
+            }),
             "CloseAccountUser",
         );
         test_instruction(
@@ -971,6 +978,7 @@ mod tests {
                 client_ip: [1, 2, 3, 4].into(),
                 publisher: false,
                 subscriber: true,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             }),
             "CreateSubscribeUser",
         );
@@ -1157,8 +1165,8 @@ mod tests {
                 code: "test".to_string(),
                 administrator: Pubkey::new_unique(),
                 token_account: None,
-                metro_route: true,
-                route_aliveness: false,
+                metro_routing: true,
+                route_liveness: false,
             }),
             "CreateTenant",
         );
@@ -1166,14 +1174,16 @@ mod tests {
             DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
                 vrf_id: Some(200),
                 token_account: Some(Pubkey::new_unique()),
-                metro_route: Some(true),
-                route_aliveness: Some(false),
+                metro_routing: Some(true),
+                route_liveness: Some(false),
+                billing: None,
             }),
             "UpdateTenant",
         );
         test_instruction(
             DoubleZeroInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
                 payment_status: 1,
+                last_deduction_dz_epoch: None,
             }),
             "UpdatePaymentStatus",
         );

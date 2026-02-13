@@ -27,6 +27,7 @@ pub struct CreateSubscribeUserCommand {
     pub mgroup_pk: Pubkey,
     pub publisher: bool,
     pub subscriber: bool,
+    pub tunnel_endpoint: Ipv4Addr,
 }
 
 impl CreateSubscribeUserCommand {
@@ -71,6 +72,7 @@ impl CreateSubscribeUserCommand {
                     client_ip: self.client_ip,
                     publisher: self.publisher,
                     subscriber: self.subscriber,
+                    tunnel_endpoint: self.tunnel_endpoint,
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),

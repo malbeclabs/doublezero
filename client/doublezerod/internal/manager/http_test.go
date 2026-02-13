@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -108,7 +109,8 @@ func TestHttpStatus(t *testing.T) {
 	b := &MockBgpServer{}
 	db := &MockDb{state: nil}
 	pim := &MockPIMServer{}
-	manager := manager.NewNetlinkManager(m, b, db, pim)
+	heartbeat := &MockHeartbeatSender{}
+	manager := manager.NewNetlinkManager(m, b, db, pim, heartbeat)
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {
@@ -220,7 +222,8 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 	b := &MockBgpServer{}
 	db := &MockDb{state: []*api.ProvisionRequest{}}
 	pim := &MockPIMServer{}
-	manager := manager.NewNetlinkManager(m, b, db, pim)
+	heartbeat := &MockHeartbeatSender{}
+	manager := manager.NewNetlinkManager(m, b, db, pim, heartbeat)
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {
@@ -401,6 +404,16 @@ func (m *MockPIMServer) Start(conn pim.RawConner, iface string, tunnelAddr net.I
 }
 
 func (m *MockPIMServer) Close() error {
+	return nil
+}
+
+type MockHeartbeatSender struct{}
+
+func (m *MockHeartbeatSender) Start(iface string, srcIP net.IP, groups []net.IP, ttl int, interval time.Duration) error {
+	return nil
+}
+
+func (m *MockHeartbeatSender) Close() error {
 	return nil
 }
 

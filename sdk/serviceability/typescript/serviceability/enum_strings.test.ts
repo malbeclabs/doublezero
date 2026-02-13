@@ -25,6 +25,7 @@ import {
   multicastGroupStatusString,
   accessPassTypeTagString,
   accessPassStatusString,
+  tenantPaymentStatusString,
 } from "./state";
 
 const fixtureData: Record<string, Record<string, string>> = JSON.parse(
@@ -55,6 +56,7 @@ const fnMap: Record<string, (v: number) => string> = {
   MulticastGroupStatus: multicastGroupStatusString,
   AccessPassTypeTag: accessPassTypeTagString,
   AccessPassStatus: accessPassStatusString,
+  TenantPaymentStatus: tenantPaymentStatusString,
 };
 
 describe("enum string functions", () => {

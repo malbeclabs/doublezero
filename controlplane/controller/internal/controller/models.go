@@ -235,6 +235,7 @@ type Tunnel struct {
 	Allocated             bool
 	IsMulticast           bool
 	VrfId                 uint16
+	MetroRouting          bool
 	MulticastBoundaryList []net.IP
 	MulticastSubscribers  []net.IP
 	MulticastPublishers   []net.IP

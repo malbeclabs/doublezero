@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.8.8](https://github.com/malbeclabs/doublezero/compare/client/v0.8.7...client/v0.8.8) – 2026-02-13
+
 ### Breaking
 
 - None for this release
@@ -12,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 - Serviceability: prevent creating or activating links on interfaces with CYOA or DIA assignments, and prevent setting CYOA/DIA on interfaces that are already linked
 - CLI: add early validation in `link wan-create` and `link dzx-create` to reject interfaces with CYOA or DIA assignments
+- Activator
+  - Assign multicast publisher IPs from global pool in serviceability GlobalConfig instead of per-device blocks
+- Client
+  - Add multicast publisher heartbeat sender — sends periodic UDP packets to each multicast group to keep PIM (S,G) mroute state alive on devices
+  - Fix panic in heartbeat sender when concurrent teardown requests race on close
+- E2E tests
+  - Add daily devnet QA test for device provisioning lifecycle (RFC12) — deletes/recreates device and links, restarts daemons with new pubkey via Ansible
 
 ## [v0.8.7](https://github.com/malbeclabs/doublezero/compare/client/v0.8.6...client/v0.8.7) – 2026-02-10
 
@@ -21,12 +30,23 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- SDK
+  - Added Tenant to all sdks
+- E2E tests
+  - Added multi-tenancy deletion test coverage
 - Telemetry
-  - geoprobe: add LocationOffset type with Ed25519 signing/verification and UDP transport for geolocation verification measurements (#2898)
+  - Add `doublezero-geoprobe-agent`, intermediary probe server for RFC16
+  - Adds support for per-tenant metro routing policy
+  - Add `--geoprobe-pubkey` flag to `doublezero-geoprobe-agent` for device identity
+  - `LocationOffset` struct now includes `SenderPubkey` to distinguish individual devices that share the same signing authority
+- Telemetry
+  - extend device telemetry agent to measure RTT to child geoProbes via TWAMP, generate signed LocationOffset structures, and deliver them via UDP as per rfcs/rfc16-geolocation-verification.md
+  - geoprobe-target: example target listener for geolocation verification with TWAMP reflector, UDP offset receiver, signature chain verification, distance calculation logging, and DoS protections (5-reference depth limit and per-source-IP rate limiting) (#2901)
 - Onchain programs
+  - feat(serviceability): add TenantBillingConfig and epoch tracking to UpdatePaymentStatus ([#2922](https://github.com/malbeclabs/doublezero/pull/2922))
   - feat(smartcontract): add payment_status, token_account fields and UpdatePaymentStatus instruction ([#2880](https://github.com/malbeclabs/doublezero/pull/2880))
   - fix(smartcontract): correctly ser/deser ops_manager_pk ([#2887](https://github.com/malbeclabs/doublezero/pull/2887))
-  - Serviceability: add metro_route and route_aliveness boolean fields to Tenant for routing configuration
+  - Serviceability: add metro_routing and route_liveness boolean fields to Tenant for routing configuration
   - Serviceability: add Tenant account type with immutable code-based PDA derivation, VRF ID, administrator management, and reference counting for safe deletion
   - Serviceability: add TenantAddAdministrator and TenantRemoveAdministrator instructions for foundation-managed administrator lists
   - Serviceability: extend UserUpdate instruction to support tenant_pk field updates with automatic reference count management on old and new tenants (backward compatible with old format)
@@ -34,8 +54,9 @@ All notable changes to this project will be documented in this file.
   - Serviceability: add reference count validation in DeleteMulticastGroup to prevent deletion when active publishers or subscribers exist
   - Serviceability: fix multicast group closeaccount to use InvalidStatus error and remove redundant publisher/subscriber count check
   - Serviceability: add tenant_allowlist field to AccessPass to restrict which tenants can use specific access passes (backward compatible with existing accounts)
+  - Serviceability: bypass validation for link delete ([#2934](https://github.com/malbeclabs/doublezero/pull/2934))
 - SDK
-  - Add metro_route and route_aliveness fields to CreateTenantCommand and UpdateTenantCommand
+  - Add metro_routing and route_liveness fields to CreateTenantCommand and UpdateTenantCommand
   - Add CreateTenant, UpdateTenant (vrf_id only), DeleteTenant, GetTenant, and ListTenant commands with support for code or pubkey lookup
   - Add AddAdministratorTenant and RemoveAdministratorTenant commands for tenant administrator management
   - UpdateUserCommand extended with tenant_pk field and automatic tenant account resolution for reference counting
@@ -44,6 +65,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Add --metro-route and --route-aliveness flags to tenant create and update commands
   - Add tenant subcommands (create, update, delete, get, list, add-administrator, remove-administrator) to doublezero and doublezero-admin CLIs
+  - Support simultaneous publisher and subscriber multicast via `--publish` and `--subscribe` flags
   - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
   - Added activation check for existing users before subscribing to new groups (#2782)
   - access-pass set: add --tenant argument to specify tenant code for access pass restriction (converts to tenant PDA onchain)
@@ -64,6 +86,10 @@ All notable changes to this project will be documented in this file.
   - Enforce that `CloseAccessPass` only closes AccessPass accounts when `connection_count == 0`, preventing closure while active connections are present.
 - Monitor
   - Add sol-balance watcher to track SOL balances for configured accounts and export Prometheus metrics for alerting
+- Client
+  - Support simultaneous publisher and subscriber multicast in the daemon
+- Telemetry
+  - Add consecutive-loss-based sender eviction to the telemetry collector so broken TWAMP senders are recreated quickly instead of persisting until TTL expiry (`--max-consecutive-sender-losses`, default 30)
 - E2E tests
   - e2e: add multi-tenancy VRF isolation test ([#2891](https://github.com/malbeclabs/doublezero/pull/2891))
   - Add backward compatibility test that validates older CLI versions against the current onchain program by cloning live state from testnet and mainnet-beta
@@ -134,6 +160,8 @@ All notable changes to this project will be documented in this file.
   - On-chain allocation enabled
 - Smartcontract
   - feat(smartcontract): add use_onchain_deallocation flag to MulticastGroup ([#2748](https://github.com/malbeclabs/doublezero/pull/2748))
+- CLI 
+  - Remove restriction for a single tunnel per user; now a user can have a unicast and multicast tunnel concurrently (but can only be a publisher _or_ a subscriber) ([2728](https://github.com/malbeclabs/doublezero/pull/2728))
 
 ## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
 

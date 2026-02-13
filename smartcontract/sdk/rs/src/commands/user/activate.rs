@@ -22,6 +22,8 @@ pub struct ActivateUserCommand {
     /// When true, SDK computes ResourceExtension PDAs and includes them for on-chain allocation.
     /// When false, uses legacy behavior with caller-provided tunnel_id, tunnel_net, and dz_ip.
     pub use_onchain_allocation: bool,
+    /// Tunnel endpoint IP (device-side GRE endpoint). 0.0.0.0 means use device.public_ip for backwards compatibility.
+    pub tunnel_endpoint: Ipv4Addr,
 }
 
 impl ActivateUserCommand {
@@ -72,6 +74,12 @@ impl ActivateUserCommand {
             let (global_resource_ext, _, _) =
                 get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
 
+            // Global MulticastPublisherBlock (for publisher DZ IPs)
+            let (multicast_publisher_block_ext, _, _) = get_resource_extension_pda(
+                &client.get_program_id(),
+                ResourceType::MulticastPublisherBlock,
+            );
+
             // Device TunnelIds (scoped to user's device)
             let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
                 &client.get_program_id(),
@@ -79,6 +87,7 @@ impl ActivateUserCommand {
             );
 
             accounts.push(AccountMeta::new(global_resource_ext, false));
+            accounts.push(AccountMeta::new(multicast_publisher_block_ext, false));
             accounts.push(AccountMeta::new(device_tunnel_ids_ext, false));
 
             // Add all N DzPrefixBlock accounts (devices can have multiple dz_prefixes)
@@ -101,6 +110,7 @@ impl ActivateUserCommand {
                 tunnel_net: self.tunnel_net,
                 dz_ip: self.dz_ip,
                 dz_prefix_count,
+                tunnel_endpoint: self.tunnel_endpoint,
             }),
             accounts,
         )
@@ -160,6 +170,7 @@ mod tests {
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(
@@ -203,6 +214,7 @@ mod tests {
                     tunnel_net,
                     dz_ip,
                     dz_prefix_count: 0,
+                    tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
@@ -218,6 +230,7 @@ mod tests {
             tunnel_net,
             dz_ip,
             use_onchain_allocation: false,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }
         .execute(&client);
 
@@ -250,6 +263,7 @@ mod tests {
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(
@@ -276,6 +290,10 @@ mod tests {
         // Compute ResourceExtension PDAs
         let (global_resource_ext, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
+        let (multicast_publisher_block_ext, _, _) = get_resource_extension_pda(
+            &client.get_program_id(),
+            ResourceType::MulticastPublisherBlock,
+        );
         let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
             &client.get_program_id(),
             ResourceType::TunnelIds(device_pk, 0),
@@ -316,12 +334,14 @@ mod tests {
                     tunnel_net: NetworkV4::default(),
                     dz_ip: Ipv4Addr::UNSPECIFIED,
                     dz_prefix_count: 1, // 1 dz_prefix from device.dz_prefixes
+                    tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
                     AccountMeta::new(accesspass_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
                     AccountMeta::new(global_resource_ext, false),
+                    AccountMeta::new(multicast_publisher_block_ext, false),
                     AccountMeta::new(device_tunnel_ids_ext, false),
                     AccountMeta::new(device_dz_prefix_ext, false),
                 ]),
@@ -334,6 +354,7 @@ mod tests {
             tunnel_net: NetworkV4::default(),
             dz_ip: Ipv4Addr::UNSPECIFIED,
             use_onchain_allocation: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }
         .execute(&client);
 

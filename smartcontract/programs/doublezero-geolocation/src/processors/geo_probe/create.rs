@@ -11,6 +11,7 @@ use doublezero_program_common::validate_account_code;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
@@ -28,12 +29,14 @@ pub fn process_create_geo_probe(
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
-    assert!(payer_account.is_signer, "Payer must be a signer");
-    assert_eq!(
-        system_program.key,
-        &solana_program::system_program::id(),
-        "Invalid System Program account"
-    );
+    if !payer_account.is_signer {
+        msg!("Payer must be a signer");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if system_program.key != &solana_program::system_program::id() {
+        msg!("Invalid System Program account");
+        return Err(ProgramError::IncorrectProgramId);
+    }
 
     check_foundation_allowlist(
         program_config_account,
@@ -48,7 +51,10 @@ pub fn process_create_geo_probe(
     validate_public_ip(&args.public_ip)?;
 
     let (expected_pda, bump_seed) = get_geo_probe_pda(program_id, &code);
-    assert_eq!(probe_account.key, &expected_pda, "Invalid GeoProbe PubKey");
+    if probe_account.key != &expected_pda {
+        msg!("Invalid GeoProbe PubKey");
+        return Err(ProgramError::InvalidSeeds);
+    }
 
     if !probe_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);

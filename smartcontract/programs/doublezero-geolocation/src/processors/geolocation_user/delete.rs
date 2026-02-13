@@ -5,6 +5,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -17,11 +18,14 @@ pub fn process_delete_geolocation_user(
     let user_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
 
-    assert!(payer_account.is_signer, "Payer must be a signer");
-    assert_eq!(
-        user_account.owner, program_id,
-        "Invalid GeolocationUser Account Owner"
-    );
+    if !payer_account.is_signer {
+        msg!("Payer must be a signer");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if user_account.owner != program_id {
+        msg!("Invalid GeolocationUser Account Owner");
+        return Err(ProgramError::IllegalOwner);
+    }
 
     let user = GeolocationUser::try_from(user_account)?;
 

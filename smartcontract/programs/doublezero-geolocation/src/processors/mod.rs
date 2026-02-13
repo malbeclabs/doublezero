@@ -6,7 +6,10 @@ use crate::{
     error::GeolocationError, pda::get_program_config_pda,
     state::program_config::GeolocationProgramConfig,
 };
-use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, msg, pubkey::Pubkey};
+use solana_program::{
+    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
+    pubkey::Pubkey,
+};
 
 pub fn check_foundation_allowlist(
     program_config_account: &AccountInfo,
@@ -14,17 +17,17 @@ pub fn check_foundation_allowlist(
     payer_account: &AccountInfo,
     program_id: &Pubkey,
 ) -> ProgramResult {
-    assert_eq!(
-        program_config_account.owner, program_id,
-        "Invalid ProgramConfig Account Owner"
-    );
+    if program_config_account.owner != program_id {
+        msg!("Invalid ProgramConfig Account Owner");
+        return Err(ProgramError::IllegalOwner);
+    }
 
     // Verify ProgramConfig PDA address
     let (expected_config_pda, _) = get_program_config_pda(program_id);
-    assert_eq!(
-        program_config_account.key, &expected_config_pda,
-        "Invalid ProgramConfig PDA"
-    );
+    if program_config_account.key != &expected_config_pda {
+        msg!("Invalid ProgramConfig PDA");
+        return Err(ProgramError::InvalidSeeds);
+    }
 
     let program_config = GeolocationProgramConfig::try_from(program_config_account)?;
 
@@ -41,10 +44,10 @@ pub fn check_foundation_allowlist(
     let (expected_gs_pda, _) = doublezero_serviceability::pda::get_globalstate_pda(
         &program_config.serviceability_program_id,
     );
-    assert_eq!(
-        serviceability_globalstate_account.key, &expected_gs_pda,
-        "Invalid Serviceability GlobalState PDA"
-    );
+    if serviceability_globalstate_account.key != &expected_gs_pda {
+        msg!("Invalid Serviceability GlobalState PDA");
+        return Err(ProgramError::InvalidSeeds);
+    }
 
     let globalstate = doublezero_serviceability::state::globalstate::GlobalState::try_from(
         serviceability_globalstate_account,

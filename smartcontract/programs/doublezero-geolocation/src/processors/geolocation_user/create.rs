@@ -13,6 +13,7 @@ use doublezero_program_common::validate_account_code;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
@@ -28,22 +29,24 @@ pub fn process_create_geolocation_user(
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
-    assert!(payer_account.is_signer, "Payer must be a signer");
-    assert_eq!(
-        system_program.key,
-        &solana_program::system_program::id(),
-        "Invalid System Program account"
-    );
+    if !payer_account.is_signer {
+        msg!("Payer must be a signer");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if system_program.key != &solana_program::system_program::id() {
+        msg!("Invalid System Program account");
+        return Err(ProgramError::IncorrectProgramId);
+    }
 
     validate_code_length(&args.code)?;
     let code = validate_account_code(&args.code)
         .map_err(|_| crate::error::GeolocationError::InvalidAccountCode)?;
 
     let (expected_pda, bump_seed) = get_geolocation_user_pda(program_id, &code);
-    assert_eq!(
-        user_account.key, &expected_pda,
-        "Invalid GeolocationUser PubKey"
-    );
+    if user_account.key != &expected_pda {
+        msg!("Invalid GeolocationUser PubKey");
+        return Err(ProgramError::InvalidSeeds);
+    }
 
     if !user_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);

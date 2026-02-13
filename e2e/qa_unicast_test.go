@@ -15,6 +15,10 @@ import (
 )
 
 func TestQA_UnicastConnectivity(t *testing.T) {
+	if *multiTunnelFlag {
+		t.Skip("Skipping: unicast connectivity is tested within TestQA_MultiTunnel in multi-tunnel mode")
+	}
+
 	log := newTestLogger(t)
 	ctx := t.Context()
 	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)

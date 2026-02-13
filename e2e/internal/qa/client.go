@@ -151,11 +151,21 @@ func (c *Client) DoublezeroOrPublicIP() net.IP {
 }
 
 func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitForDeletion bool) error {
-	status, err := c.GetUserStatus(ctx)
+	// Use GetStatus directly to tolerate multiple tunnel statuses in multi-tunnel mode.
+	resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
 	if err != nil {
 		return fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
 	}
-	if status.SessionStatus != UserStatusDisconnected {
+	// When resp.Status is empty (no tunnels), the loop is a no-op and
+	// anyConnected stays false. We still proceed with disconnect below.
+	anyConnected := false
+	for _, s := range resp.Status {
+		if s.SessionStatus != UserStatusDisconnected {
+			anyConnected = true
+			break
+		}
+	}
+	if anyConnected {
 		c.log.Debug("Disconnecting user", "host", c.Host)
 	}
 
@@ -173,7 +183,7 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	if waitForStatus {
 		err = c.WaitForStatusDisconnected(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to wait for status to be disconnected on host %s, current status %s: %w", c.Host, status.SessionStatus, err)
+			return fmt.Errorf("failed to wait for status to be disconnected on host %s: %w", c.Host, err)
 		}
 	}
 
@@ -239,16 +249,90 @@ func (c *Client) GetUserStatus(ctx context.Context) (*pb.Status, error) {
 	return resp.Status[0], nil
 }
 
+// GetUserStatuses returns all tunnel statuses (one per active tunnel).
+func (c *Client) GetUserStatuses(ctx context.Context) ([]*pb.Status, error) {
+	resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get status on host %s: %w", c.Host, err)
+	}
+	if len(resp.Status) == 0 {
+		return nil, fmt.Errorf("no user status found on host %s", c.Host)
+	}
+	return resp.Status, nil
+}
+
+// WaitForAllStatusesUp waits for all tunnel statuses to report "up".
+// Use this in multi-tunnel mode after connecting both unicast and multicast.
+// When minExpected > 0, the function also waits until at least that many
+// tunnel statuses exist before returning success. This prevents false positives
+// when a tunnel type (e.g. multicast) silently failed to connect.
+func (c *Client) WaitForAllStatusesUp(ctx context.Context, minExpected int) error {
+	c.log.Debug("Waiting for all tunnel statuses to be up", "host", c.Host, "minExpected", minExpected)
+	var finalStatus *pb.Status
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
+		if err != nil {
+			return false, err
+		}
+		if len(resp.Status) == 0 {
+			return false, nil
+		}
+		if minExpected > 0 && len(resp.Status) < minExpected {
+			return false, nil
+		}
+		for _, s := range resp.Status {
+			if !IsStatusUp(s.SessionStatus) {
+				return false, nil
+			}
+		}
+		// Prefer the unicast status for setting doubleZeroIP.
+		for _, s := range resp.Status {
+			if strings.HasPrefix(s.UserType, "IBRL") {
+				finalStatus = s
+				break
+			}
+		}
+		if finalStatus == nil {
+			finalStatus = resp.Status[0]
+		}
+		return true, nil
+	}, waitForStatusUpTimeout, waitInterval)
+	if err != nil {
+		return fmt.Errorf("failed to wait for all statuses up on host %s: %w", c.Host, err)
+	}
+	if finalStatus != nil && finalStatus.DoubleZeroIp != "" {
+		c.doubleZeroIP = net.ParseIP(finalStatus.DoubleZeroIp)
+	}
+	c.log.Debug("Confirmed all tunnel statuses are up", "host", c.Host)
+	return nil
+}
+
+// GetCurrentDevice returns the device the client is connected to via unicast.
+// In multi-tunnel mode, this looks at the IBRL tunnel status specifically.
 func (c *Client) GetCurrentDevice(ctx context.Context) (*Device, error) {
-	status, err := c.GetUserStatus(ctx)
+	resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
 	}
-	device, ok := c.devices[status.CurrentDevice]
-	if !ok {
-		return nil, fmt.Errorf("device %q not found on host %s", status.CurrentDevice, c.Host)
+	// Look for IBRL status first (multi-tunnel case).
+	for _, s := range resp.Status {
+		if strings.HasPrefix(s.UserType, "IBRL") && s.CurrentDevice != "" {
+			device, ok := c.devices[s.CurrentDevice]
+			if !ok {
+				return nil, fmt.Errorf("device %q not found on host %s", s.CurrentDevice, c.Host)
+			}
+			return device, nil
+		}
 	}
-	return device, nil
+	// Fall back to single status (backwards compatible).
+	if len(resp.Status) == 1 {
+		device, ok := c.devices[resp.Status[0].CurrentDevice]
+		if !ok {
+			return nil, fmt.Errorf("device %q not found on host %s", resp.Status[0].CurrentDevice, c.Host)
+		}
+		return device, nil
+	}
+	return nil, fmt.Errorf("no IBRL status with current device found on host %s", c.Host)
 }
 
 func (c *Client) GetInstalledRoutes(ctx context.Context) ([]*pb.Route, error) {
@@ -479,18 +563,32 @@ func (c *Client) DumpDiagnostics(groups []*MulticastGroup) {
 }
 
 func (c *Client) getConnectedDevice(ctx context.Context) (*Device, error) {
-	status, err := c.GetUserStatus(ctx)
+	statuses, err := c.GetUserStatuses(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
 	}
-	if !IsStatusUp(status.SessionStatus) {
-		return nil, fmt.Errorf("user status is not up on host %s: %s", c.Host, status.SessionStatus)
+	// Look for an IBRL status that is up.
+	for _, s := range statuses {
+		if strings.HasPrefix(s.UserType, "IBRL") && IsStatusUp(s.SessionStatus) {
+			device, ok := c.devices[s.CurrentDevice]
+			if !ok {
+				return nil, fmt.Errorf("device %q not found on host %s", s.CurrentDevice, c.Host)
+			}
+			return device, nil
+		}
 	}
-	device, ok := c.devices[status.CurrentDevice]
-	if !ok {
-		return nil, fmt.Errorf("device %q not found on host %s", status.CurrentDevice, c.Host)
+	// Fall back to single status.
+	if len(statuses) == 1 {
+		if !IsStatusUp(statuses[0].SessionStatus) {
+			return nil, fmt.Errorf("user status is not up on host %s: %s", c.Host, statuses[0].SessionStatus)
+		}
+		device, ok := c.devices[statuses[0].CurrentDevice]
+		if !ok {
+			return nil, fmt.Errorf("device %q not found on host %s", statuses[0].CurrentDevice, c.Host)
+		}
+		return device, nil
 	}
-	return device, nil
+	return nil, fmt.Errorf("no connected IBRL device found on host %s", c.Host)
 }
 
 func (c *Client) waitForStatus(ctx context.Context, wantStatus string, timeout time.Duration, interval time.Duration) (*pb.Status, error) {

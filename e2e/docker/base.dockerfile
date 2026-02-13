@@ -114,6 +114,9 @@ FROM builder-base AS builder-rust-sbf
 # solana stage above.
 ARG SOLANA_VERSION=2.3.13
 
+# Hash of Cargo.lock for cache isolation (same as builder-rust stage).
+ARG CARGO_LOCK_HASH=default
+
 # Set cargo environment variables for build caching
 ENV CARGO_HOME=/cargo-sbf
 ENV CARGO_TARGET_DIR=/target-sbf
@@ -123,14 +126,14 @@ WORKDIR /doublezero
 COPY . .
 
 # Pre-fetch and cache rust dependencies
-RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION},target=/cargo-sbf \
-    --mount=type=cache,id=sbf-target-${SOLANA_VERSION},target=/target-sbf \
+RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
+    --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
     --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-serviceability && \
     cargo fetch
 
-RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION},target=/cargo-sbf \
-    --mount=type=cache,id=sbf-target-${SOLANA_VERSION},target=/target-sbf \
+RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
+    --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
     --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-telemetry && \
     cargo fetch
@@ -139,17 +142,29 @@ RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION},target=/cargo-sbf \
 ENV BIN_DIR=/doublezero/bin
 RUN mkdir -p ${BIN_DIR}
 
+# Validate that the cached platform-tools installation is intact. If a previous build was
+# interrupted during the platform-tools download/extraction, the cache can contain a
+# partially extracted directory where rust/lib is not a valid directory. Removing the
+# corrupted directory allows cargo build-sbf to re-download platform-tools cleanly.
+RUN --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
+    for pt_dir in /root/.cache/solana/*/platform-tools; do \
+        if [ -e "$pt_dir" ] && [ ! -d "$pt_dir/rust/lib" ]; then \
+            echo "Removing corrupted platform-tools cache: $pt_dir"; \
+            rm -rf "$pt_dir"; \
+        fi; \
+    done
+
 # Build the Solana programs with build-sbf (rust)
 # Note that we don't use mold here.
-RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION},target=/cargo-sbf \
-    --mount=type=cache,id=sbf-target-${SOLANA_VERSION},target=/target-sbf \
+RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
+    --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
     --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-serviceability && \
     cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_serviceability.so ${BIN_DIR}/doublezero_serviceability.so
 
-RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION},target=/cargo-sbf \
-    --mount=type=cache,id=sbf-target-${SOLANA_VERSION},target=/target-sbf \
+RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
+    --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
     --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-telemetry && \
     cargo build-sbf --features localnet && \

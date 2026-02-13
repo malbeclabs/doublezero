@@ -22,7 +22,7 @@
 - Summary bullets should be concise, ordered by importance/significance
 - Focus on "what" and "why", not implementation details
 - Include a "Testing Verification" section
-- Don't mention table-stakes items like "compiles cleanly" in testing verification
+- Don't mention table-stakes items in testing verification (e.g., "compiles cleanly", "builds successfully", "no lint errors"). Only include meaningful verification like specific test scenarios, behavioral observations, or edge cases validated.
 
 ## Terminology
 

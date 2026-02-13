@@ -18,7 +18,10 @@ use doublezero_sdk::{
     },
     *,
 };
-use doublezero_serviceability::state::link::LinkDesiredStatus;
+use doublezero_serviceability::state::{
+    interface::{InterfaceCYOA, InterfaceDIA},
+    link::LinkDesiredStatus,
+};
 use eyre::eyre;
 use std::io::Write;
 
@@ -110,6 +113,15 @@ impl CreateDZXLinkCliCommand {
         if side_a_iface.status != InterfaceStatus::Unlinked {
             return Err(eyre!(
                 "Interface '{}' on side A device must be unlinked",
+                self.side_a_interface
+            ));
+        }
+
+        if side_a_iface.interface_cyoa != InterfaceCYOA::None
+            || side_a_iface.interface_dia != InterfaceDIA::None
+        {
+            return Err(eyre!(
+                "Interface '{}' on side A device has a CYOA or DIA assignment and cannot be used for links",
                 self.side_a_interface
             ));
         }

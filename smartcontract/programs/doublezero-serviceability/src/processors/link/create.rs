@@ -4,8 +4,12 @@ use crate::{
     seeds::{SEED_LINK, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
-        accounttype::AccountType, contributor::Contributor, device::Device,
-        globalstate::GlobalState, link::*,
+        accounttype::AccountType,
+        contributor::Contributor,
+        device::Device,
+        globalstate::GlobalState,
+        interface::{InterfaceCYOA, InterfaceDIA},
+        link::*,
     },
 };
 use borsh::BorshSerialize;
@@ -125,27 +129,47 @@ pub fn process_create_link(
         return Err(DoubleZeroError::InvalidContributor.into());
     }
 
-    if !side_a_dev
+    let side_a_iface = side_a_dev
         .interfaces
         .iter()
-        .any(|iface| iface.into_current_version().name == value.side_a_iface_name)
-    {
+        .map(|iface| iface.into_current_version())
+        .find(|iface| iface.name == value.side_a_iface_name);
+
+    if side_a_iface.is_none() {
         #[cfg(test)]
         msg!("{:?}", side_a_dev);
 
         return Err(DoubleZeroError::InvalidInterfaceName.into());
     }
 
-    let side_z_iface_name = value.side_z_iface_name.clone().unwrap_or_default();
-    if value.side_z_iface_name.is_some()
-        && !side_z_dev.interfaces.iter().any(|iface| {
-            iface.into_current_version().name == value.side_z_iface_name.clone().unwrap()
-        })
+    let side_a_iface = side_a_iface.unwrap();
+    if side_a_iface.interface_cyoa != InterfaceCYOA::None
+        || side_a_iface.interface_dia != InterfaceDIA::None
     {
-        #[cfg(test)]
-        msg!("{:?}", side_z_dev);
+        return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
+    }
 
-        return Err(DoubleZeroError::InvalidInterfaceName.into());
+    let side_z_iface_name = value.side_z_iface_name.clone().unwrap_or_default();
+    if let Some(ref z_name) = value.side_z_iface_name {
+        let side_z_iface = side_z_dev
+            .interfaces
+            .iter()
+            .map(|iface| iface.into_current_version())
+            .find(|iface| iface.name == *z_name);
+
+        if side_z_iface.is_none() {
+            #[cfg(test)]
+            msg!("{:?}", side_z_dev);
+
+            return Err(DoubleZeroError::InvalidInterfaceName.into());
+        }
+
+        let side_z_iface = side_z_iface.unwrap();
+        if side_z_iface.interface_cyoa != InterfaceCYOA::None
+            || side_z_iface.interface_dia != InterfaceDIA::None
+        {
+            return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
+        }
     }
     if value.link_type == LinkLinkType::DZX && value.side_z_iface_name.is_some() {
         return Err(DoubleZeroError::InvalidInterfaceZForExternal.into());

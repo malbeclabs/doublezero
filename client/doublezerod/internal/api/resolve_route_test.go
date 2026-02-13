@@ -20,15 +20,15 @@ type mockNetlinker struct {
 	mu           sync.Mutex
 }
 
-func (m *mockNetlinker) TunnelAdd(*routing.Tunnel) error               { return nil }
-func (m *mockNetlinker) TunnelDelete(*routing.Tunnel) error            { return nil }
-func (m *mockNetlinker) TunnelAddrAdd(*routing.Tunnel, string) error   { return nil }
-func (m *mockNetlinker) TunnelUp(*routing.Tunnel) error                { return nil }
-func (m *mockNetlinker) RouteAdd(*routing.Route) error                 { return nil }
-func (m *mockNetlinker) RouteDelete(*routing.Route) error              { return nil }
-func (m *mockNetlinker) RuleAdd(*routing.IPRule) error                 { return nil }
-func (m *mockNetlinker) RuleDel(*routing.IPRule) error                 { return nil }
-func (m *mockNetlinker) RouteByProtocol(int) ([]*routing.Route, error) { return nil, nil }
+func (m *mockNetlinker) TunnelAdd(*routing.Tunnel) error                  { return nil }
+func (m *mockNetlinker) TunnelDelete(*routing.Tunnel) error               { return nil }
+func (m *mockNetlinker) TunnelAddrAdd(*routing.Tunnel, string, int) error { return nil }
+func (m *mockNetlinker) TunnelUp(*routing.Tunnel) error                   { return nil }
+func (m *mockNetlinker) RouteAdd(*routing.Route) error                    { return nil }
+func (m *mockNetlinker) RouteDelete(*routing.Route) error                 { return nil }
+func (m *mockNetlinker) RuleAdd(*routing.IPRule) error                    { return nil }
+func (m *mockNetlinker) RuleDel(*routing.IPRule) error                    { return nil }
+func (m *mockNetlinker) RouteByProtocol(int) ([]*routing.Route, error)    { return nil, nil }
 
 func (m *mockNetlinker) RouteGet(ip net.IP) ([]*routing.Route, error) {
 	m.mu.Lock()

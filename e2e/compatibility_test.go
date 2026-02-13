@@ -67,6 +67,13 @@ var knownIncompatibilities = map[string]string{
 	"write/device_interface_create_3": "0.8.8",
 	"write/device_interface_create_4": "0.8.8",
 
+	// device_interface_update: The DeviceInterfaceUpdateArgs instruction changed in v0.8.8
+	// to require the contributor account and add validation. Older CLIs pass unused accounts.
+	"write/device_interface_set_unlinked":   "0.8.8",
+	"write/device_interface_set_unlinked_2": "0.8.8",
+	"write/device_interface_set_unlinked_3": "0.8.8",
+	"write/device_interface_set_unlinked_4": "0.8.8",
+
 	// set-health commands: Added in v0.8.6 as part of Network Provisioning.
 	// Older CLIs don't have these subcommands.
 	"write/device_set_health":   "0.8.6",

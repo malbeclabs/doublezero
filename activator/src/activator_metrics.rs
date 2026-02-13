@@ -77,13 +77,14 @@ mod tests {
         let mut device = DeviceState::new(&device);
 
         let (assigned, total) = ip_count(&device);
-        assert_eq!(assigned, 0);
+        // 2 reserved IPs (one per prefix, the network address used as multicast tunnel endpoint)
+        assert_eq!(assigned, 2);
         assert_eq!(total, 512);
 
         for expected in 0..510 {
             let _ = device.get_next_dz_ip();
             let (assigned, total) = ip_count(&device);
-            assert_eq!(assigned, expected + 1);
+            assert_eq!(assigned, expected + 3); // 2 reserved + (expected + 1) allocated
             assert_eq!(total, 512);
         }
     }

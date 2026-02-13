@@ -283,6 +283,7 @@ func checkMulticastBothUsersAgentConfig(t *testing.T, dn *TestDevnet, device *de
 			"PublisherClientIP":            publisherClient.CYOANetworkIP,
 			"SubscriberClientIP":           subscriberClient.CYOANetworkIP,
 			"DeviceIP":                     device.CYOANetworkIP,
+			"DzPrefixFirstIP":              device.DZPrefixFirstIP,
 			"ExpectedAllocatedPublisherIP": expectedAllocatedPublisherIP,
 			"PublisherTunnelNum":           pubTunnel,
 			"SubscriberTunnelNum":          subTunnel,
@@ -370,7 +371,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 				fixturePath: "fixtures/multicast/doublezero_status_connected_" + mode + ".tmpl",
 				data: map[string]any{
 					"ClientIP":                  client.CYOANetworkIP,
-					"DeviceIP":                  device.CYOANetworkIP,
+					"DzPrefixFirstIP":           device.DZPrefixFirstIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 				},
 				cmd: []string{"doublezero", "status"},
@@ -422,7 +423,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 				"link_type":         "gre",
 				"address":           client.CYOANetworkIP,
 				"link_pointtopoint": true,
-				"broadcast":         device.CYOANetworkIP,
+				"broadcast":         device.DZPrefixFirstIP,
 			}, links[0])
 		}) {
 			t.Fail()

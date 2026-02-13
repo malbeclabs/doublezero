@@ -154,6 +154,9 @@ interface Loopback0
 interface Ethernet1
    no switchport
    ip address {{.CYOANetworkIP}}/{{.CYOANetworkCIDRPrefix}}
+{{- if .DzPrefixFirstIP }}
+   ip address {{.DzPrefixFirstIP}}/32 secondary
+{{- end }}
 !
 interface Management0
 {{- if .ManagementNS }}

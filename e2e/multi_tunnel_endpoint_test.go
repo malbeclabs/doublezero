@@ -16,33 +16,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestE2E_MultiTunnel_FallbackToSecondDevice tests that when a client already has
-// a tunnel to a device, creating a second tunnel (different type) will use a different
-// device since the first device's tunnel endpoint is already in use.
-//
-// This verifies the client CLI's device selection logic correctly excludes devices
-// where all tunnel endpoints are exhausted and falls back to the next best device.
-func TestE2E_MultiTunnel_FallbackToSecondDevice(t *testing.T) {
+// TestE2E_MultiTunnel_SameDevice tests that when a client already has an IBRL tunnel,
+// adding multicast creates a second tunnel on the SAME device using DzPrefixFirstIP
+// as the multicast tunnel endpoint, avoiding GRE demux collisions.
+func TestE2E_MultiTunnel_SameDevice(t *testing.T) {
 	t.Parallel()
 
 	dn, device1, device2, client := setupMultiTunnelDevnet(t)
 	log := logger.With("test", t.Name())
 
-	t.Run("ibrl_then_multicast_different_devices", func(t *testing.T) {
-		runMultiTunnelFallbackTest(t, log, dn, device1, device2, client, false)
+	t.Run("ibrl_then_multicast_same_device", func(t *testing.T) {
+		runMultiTunnelSameDeviceTest(t, log, dn, device1, device2, client, false)
 	})
 }
 
-// TestE2E_MultiTunnel_FallbackToSecondDevice_AllocatedAddr tests the same fallback
-// behavior but with IBRL using allocated address mode.
-func TestE2E_MultiTunnel_FallbackToSecondDevice_AllocatedAddr(t *testing.T) {
+// TestE2E_MultiTunnel_SameDevice_AllocatedAddr tests the same behavior
+// but with IBRL using allocated address mode.
+func TestE2E_MultiTunnel_SameDevice_AllocatedAddr(t *testing.T) {
 	t.Parallel()
 
 	dn, device1, device2, client := setupMultiTunnelDevnet(t)
 	log := logger.With("test", t.Name())
 
-	t.Run("ibrl_allocated_then_multicast_different_devices", func(t *testing.T) {
-		runMultiTunnelFallbackTest(t, log, dn, device1, device2, client, true)
+	t.Run("ibrl_allocated_then_multicast_same_device", func(t *testing.T) {
+		runMultiTunnelSameDeviceTest(t, log, dn, device1, device2, client, true)
 	})
 }
 
@@ -162,11 +159,11 @@ func setupMultiTunnelDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devn
 	return dn, device1, device2, client
 }
 
-// runMultiTunnelFallbackTest tests that when creating a second tunnel type,
-// the client CLI correctly falls back to a different device since the first
-// device's tunnel endpoint is already in use.
-func runMultiTunnelFallbackTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet,
-	device1 *devnet.Device, device2 *devnet.Device, client *devnet.Client, useAllocatedAddr bool,
+// runMultiTunnelSameDeviceTest tests that when adding multicast to an existing IBRL tunnel,
+// the multicast tunnel goes to the SAME device using DzPrefixFirstIP as the tunnel endpoint.
+// IBRL uses the device's public IP, multicast uses DzPrefixFirstIP — no GRE demux collision.
+func runMultiTunnelSameDeviceTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet,
+	device1 *devnet.Device, _ *devnet.Device, client *devnet.Client, useAllocatedAddr bool,
 ) {
 	mode := "standard"
 	if useAllocatedAddr {
@@ -201,7 +198,7 @@ func runMultiTunnelFallbackTest(t *testing.T, log *slog.Logger, dn *devnet.Devne
 	require.NoError(t, err, "IBRL tunnel failed to come up")
 	log.Info("--> IBRL tunnel is up")
 
-	// Verify IBRL tunnel destination is device1
+	// Verify IBRL tunnel destination is device1's public IP
 	tunnelStatus, err := client.GetTunnelStatus(t.Context())
 	require.NoError(t, err)
 	require.Len(t, tunnelStatus, 1, "expected exactly one tunnel after IBRL connect")
@@ -215,21 +212,19 @@ func runMultiTunnelFallbackTest(t *testing.T, log *slog.Logger, dn *devnet.Devne
 	verifyIBRLClientBGPEstablished(t, log, device1)
 	log.Info("--> IBRL BGP session verified on device1")
 
-	// === PHASE 2: Connect Multicast (should go to device2 since device1's endpoint is used) ===
-	log.Info("==> PHASE 2: Connecting Multicast (should fall back to device2)")
+	// === PHASE 2: Connect Multicast (same device, DzPrefixFirstIP endpoint) ===
+	log.Info("==> PHASE 2: Connecting Multicast (same device, DzPrefixFirstIP endpoint)")
 
-	// Connect multicast without specifying device - it should automatically pick device2
-	// because device1's tunnel endpoint is already in use by the IBRL tunnel
 	mcastCmd := fmt.Sprintf("doublezero connect multicast subscriber mg01 --client-ip %s 2>&1",
 		client.CYOANetworkIP)
 	mcastOutput, err := client.Exec(t.Context(), []string{"bash", "-c", mcastCmd})
 	log.Info("==> Multicast connect output", "output", string(mcastOutput))
 	require.NoError(t, err)
 
-	// Wait for agent config to be pushed to device2
-	log.Info("==> Waiting for agent config to be pushed to device2")
-	waitForAgentConfigWithClient(t, log, dn, device2, client)
-	log.Info("--> Agent config pushed to device2")
+	// Wait for agent config to be pushed to device1 (same device as IBRL)
+	log.Info("==> Waiting for agent config to be pushed to device1")
+	waitForAgentConfigWithClient(t, log, dn, device1, client)
+	log.Info("--> Agent config pushed to device1")
 
 	// Wait for BOTH tunnels to be up
 	log.Info("==> Waiting for both tunnels (IBRL and Multicast) to be up")
@@ -259,13 +254,13 @@ func runMultiTunnelFallbackTest(t *testing.T, log *slog.Logger, dn *devnet.Devne
 		"ibrl_dst", ibrlTunnel.TunnelDst.String(),
 		"mcast_dst", mcastTunnel.TunnelDst.String())
 
-	// CRITICAL VERIFICATION: The tunnels should be on DIFFERENT devices
-	// because device1's endpoint is already in use by IBRL
+	// CRITICAL VERIFICATION: Both tunnels on the SAME device with different endpoint IPs.
+	// IBRL uses the device's public IP, multicast uses DzPrefixFirstIP.
 	require.Equal(t, device1.CYOANetworkIP, ibrlTunnel.TunnelDst.String(),
-		"IBRL tunnel should still be on device1")
-	require.Equal(t, device2.CYOANetworkIP, mcastTunnel.TunnelDst.String(),
-		"Multicast tunnel should fall back to device2")
-	log.Info("--> Verified: tunnels are on different devices (fallback worked)")
+		"IBRL tunnel should use device1's public IP")
+	require.Equal(t, device1.DZPrefixFirstIP, mcastTunnel.TunnelDst.String(),
+		"Multicast tunnel should use device1's DzPrefixFirstIP")
+	log.Info("--> Verified: both tunnels on same device with different endpoint IPs (public IP + DzPrefixFirstIP)")
 
 	// === PHASE 3: Verify both tunnels work ===
 	log.Info("==> PHASE 3: Verifying both tunnels work")
@@ -275,10 +270,10 @@ func runMultiTunnelFallbackTest(t *testing.T, log *slog.Logger, dn *devnet.Devne
 	verifyIBRLClientBGPEstablished(t, log, device1)
 	log.Info("--> IBRL BGP verified on device1")
 
-	// Verify multicast PIM adjacency on device2
-	log.Info("==> Verifying multicast PIM adjacency on device2")
-	verifyMulticastSubscriberPIMAdjacency(t, log, device2)
-	log.Info("--> Multicast PIM adjacency verified on device2")
+	// Verify multicast PIM adjacency on device1 (same device)
+	log.Info("==> Verifying multicast PIM adjacency on device1")
+	verifyConcurrentMulticastPIMAdjacency(t, log, device1)
+	log.Info("--> Multicast PIM adjacency verified on device1")
 
 	// === PHASE 4: Disconnect and verify ===
 	log.Info("==> PHASE 4: Disconnecting")
@@ -311,7 +306,7 @@ func runMultiTunnelFallbackTest(t *testing.T, log *slog.Logger, dn *devnet.Devne
 		log.Info("--> Warning: IBRL disconnect returned error", "error", err)
 	}
 
-	log.Info("--> Multi-tunnel fallback test completed successfully")
+	log.Info("--> Multi-tunnel same-device test completed successfully")
 }
 
 // TestE2E_MultiTunnel_SimultaneousToSingleDevice tests that a client can establish
@@ -583,14 +578,12 @@ func runSimultaneousTunnelTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet
 		"mcast_dst", mcastTunnel.TunnelDst.String())
 
 	// CRITICAL VERIFICATION: Both tunnels on the SAME device but DIFFERENT endpoint IPs.
-	// The client selects endpoints based on latency, so we don't assume which tunnel
-	// gets which endpoint. We just verify they use different IPs and both are valid
-	// device endpoints (one is the UTE loopback, the other is the device's public IP).
-	endpoints := []string{ibrlTunnel.TunnelDst.String(), mcastTunnel.TunnelDst.String()}
-	require.Contains(t, endpoints, uteIP,
-		"one tunnel should use the UTE loopback IP")
-	require.Contains(t, endpoints, device.CYOANetworkIP,
-		"one tunnel should use the device public IP")
+	// IBRL uses either the UTE loopback or the device's public IP (latency-based selection).
+	// Multicast always uses DzPrefixFirstIP as the tunnel endpoint.
+	require.True(t, ibrlTunnel.TunnelDst.String() == uteIP || ibrlTunnel.TunnelDst.String() == device.CYOANetworkIP,
+		"IBRL tunnel should use either the UTE loopback IP or device public IP, got %s", ibrlTunnel.TunnelDst.String())
+	require.Equal(t, device.DZPrefixFirstIP, mcastTunnel.TunnelDst.String(),
+		"Multicast tunnel should use DzPrefixFirstIP")
 	require.NotEqual(t, ibrlTunnel.TunnelDst.String(), mcastTunnel.TunnelDst.String(),
 		"the two tunnels must use different endpoint IPs")
 	log.Info("--> Verified: both tunnels on same device with different endpoint IPs")

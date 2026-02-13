@@ -132,19 +132,18 @@ func runSingleClientMulticastPubSubSwapTest(t *testing.T, log *slog.Logger, dn *
 	ibrlTunnelDst := tunnelStatus[0].TunnelDst.String()
 	log.Info("==> IBRL tunnel destination", "tunnelDst", ibrlTunnelDst)
 
-	// Determine actual IBRL and multicast devices based on tunnel destination
-	var ibrlDevice, actualMcastDevice *devnet.Device
+	// Determine IBRL device based on tunnel destination.
+	// Multicast goes to the SAME device as IBRL (using DzPrefixFirstIP).
+	var ibrlDevice *devnet.Device
 	if ibrlTunnelDst == device.CYOANetworkIP {
 		ibrlDevice = device
-		actualMcastDevice = mcastDevice
 	} else if ibrlTunnelDst == mcastDevice.CYOANetworkIP {
 		ibrlDevice = mcastDevice
-		actualMcastDevice = device
 	} else {
 		t.Fatalf("IBRL tunnel destination %s doesn't match any device (device=%s, mcastDevice=%s)",
 			ibrlTunnelDst, device.CYOANetworkIP, mcastDevice.CYOANetworkIP)
 	}
-	log.Info("==> Device assignment", "ibrlDevice", ibrlDevice.Spec.Code, "mcastDevice", actualMcastDevice.Spec.Code)
+	log.Info("==> Device assignment", "ibrlDevice", ibrlDevice.Spec.Code)
 
 	log.Info("==> Verifying IBRL client")
 	verifyIBRLClient(t, log, ibrlDevice, client, false)
@@ -157,8 +156,8 @@ func runSingleClientMulticastPubSubSwapTest(t *testing.T, log *slog.Logger, dn *
 	log.Info("==> Multicast subscriber connect output", "output", string(mcastOutput))
 	require.NoError(t, err)
 
-	log.Info("==> Waiting for agent config to be pushed to multicast device")
-	waitForAgentConfigWithClient(t, log, dn, actualMcastDevice, client)
+	log.Info("==> Waiting for agent config to be pushed to device")
+	waitForAgentConfigWithClient(t, log, dn, ibrlDevice, client)
 	log.Info("--> Agent config pushed")
 
 	log.Info("==> Waiting for agent to apply configuration")
@@ -170,7 +169,7 @@ func runSingleClientMulticastPubSubSwapTest(t *testing.T, log *slog.Logger, dn *
 	log.Info("--> Both tunnels are up")
 
 	log.Info("==> Verifying subscriber PIM adjacency")
-	verifyConcurrentMulticastPIMAdjacency(t, log, actualMcastDevice)
+	verifyConcurrentMulticastPIMAdjacency(t, log, ibrlDevice)
 	log.Info("--> Subscriber PIM adjacency verified")
 
 	log.Info("==> PHASE 3: Removing multicast subscriber")
@@ -198,8 +197,8 @@ func runSingleClientMulticastPubSubSwapTest(t *testing.T, log *slog.Logger, dn *
 	log.Info("==> Multicast publisher connect output", "output", string(mcastOutput))
 	require.NoError(t, err)
 
-	log.Info("==> Waiting for agent config to be pushed to multicast device")
-	waitForAgentConfigWithClient(t, log, dn, actualMcastDevice, client)
+	log.Info("==> Waiting for agent config to be pushed to device")
+	waitForAgentConfigWithClient(t, log, dn, ibrlDevice, client)
 	log.Info("--> Agent config pushed")
 
 	log.Info("==> Waiting for agent to apply configuration")
@@ -211,7 +210,7 @@ func runSingleClientMulticastPubSubSwapTest(t *testing.T, log *slog.Logger, dn *
 	log.Info("--> Both tunnels are up")
 
 	log.Info("==> Verifying publisher mroute state")
-	verifyConcurrentMulticastPublisherMrouteState(t, log, actualMcastDevice, client)
+	verifyConcurrentMulticastPublisherMrouteState(t, log, ibrlDevice, client)
 	log.Info("--> Publisher mroute state verified")
 
 	log.Info("==> PHASE 5: Removing multicast publisher")
@@ -239,8 +238,8 @@ func runSingleClientMulticastPubSubSwapTest(t *testing.T, log *slog.Logger, dn *
 	log.Info("==> Multicast subscriber connect output", "output", string(mcastOutput))
 	require.NoError(t, err)
 
-	log.Info("==> Waiting for agent config to be pushed to multicast device")
-	waitForAgentConfigWithClient(t, log, dn, actualMcastDevice, client)
+	log.Info("==> Waiting for agent config to be pushed to device")
+	waitForAgentConfigWithClient(t, log, dn, ibrlDevice, client)
 	log.Info("--> Agent config pushed")
 
 	log.Info("==> Waiting for agent to apply configuration")
@@ -252,7 +251,7 @@ func runSingleClientMulticastPubSubSwapTest(t *testing.T, log *slog.Logger, dn *
 	log.Info("--> Both tunnels are up")
 
 	log.Info("==> Verifying subscriber PIM adjacency after re-add")
-	verifyConcurrentMulticastPIMAdjacency(t, log, actualMcastDevice)
+	verifyConcurrentMulticastPIMAdjacency(t, log, ibrlDevice)
 	log.Info("--> Subscriber PIM adjacency verified after swap")
 
 	log.Info("==> DISCONNECT PHASE")
@@ -472,7 +471,7 @@ func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, 
 }
 
 // runSingleClientIBRLThenMulticastTest tests a single client connecting with IBRL first,
-// then adding multicast capability. The IBRL tunnel goes to device and multicast goes to mcastDevice.
+// then adding multicast capability. Both IBRL and multicast go to the same device (using DzPrefixFirstIP for multicast).
 func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet, device *devnet.Device,
 	mcastDevice *devnet.Device, client *devnet.Client, useAllocatedAddr bool, asPublisher bool,
 ) {
@@ -516,29 +515,28 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 	ibrlTunnelDst := tunnelStatus[0].TunnelDst.String()
 	log.Debug("==> IBRL tunnel destination", "tunnelDst", ibrlTunnelDst)
 
-	// Determine actual IBRL and multicast devices based on tunnel destination
-	var ibrlDevice, actualMcastDevice *devnet.Device
+	// Determine the IBRL device based on tunnel destination.
+	// Multicast goes to the SAME device as IBRL (using DzPrefixFirstIP).
+	var ibrlDevice *devnet.Device
 	if ibrlTunnelDst == device.CYOANetworkIP {
 		ibrlDevice = device
-		actualMcastDevice = mcastDevice
 	} else if ibrlTunnelDst == mcastDevice.CYOANetworkIP {
 		ibrlDevice = mcastDevice
-		actualMcastDevice = device
 	} else {
 		t.Fatalf("IBRL tunnel destination %s doesn't match any device (device=%s, mcastDevice=%s)",
 			ibrlTunnelDst, device.CYOANetworkIP, mcastDevice.CYOANetworkIP)
 	}
-	log.Debug("==> Device assignment", "ibrlDevice", ibrlDevice.Spec.Code, "mcastDevice", actualMcastDevice.Spec.Code)
+	log.Debug("==> Device assignment", "ibrlDevice", ibrlDevice.Spec.Code)
 
 	// Verify IBRL is working on the actual device
 	log.Debug("==> Verifying IBRL client")
 	verifyIBRLClient(t, log, ibrlDevice, client, useAllocatedAddr)
 	log.Debug("--> IBRL client verified")
 
-	// === CONNECT PHASE 2: Add Multicast (creates separate Multicast user) ===
-	log.Debug("==> CONNECT PHASE 2: Adding multicast (will create separate Multicast user)")
+	// === CONNECT PHASE 2: Add Multicast (creates separate Multicast user on SAME device) ===
+	log.Debug("==> CONNECT PHASE 2: Adding multicast (will create separate Multicast user on same device)")
 
-	// Connect multicast (creates a NEW Multicast user, separate from IBRL user)
+	// Connect multicast (creates a NEW Multicast user, separate from IBRL user, same device)
 	var mcastCmd string
 	if asPublisher {
 		log.Debug("==> Adding multicast publisher subscription")
@@ -556,18 +554,13 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 	listOutput, _ := client.Exec(t.Context(), []string{"bash", "-c", listUsersCmd})
 	log.Debug("==> Users after multicast connect", "output", string(listOutput))
 
-	// Wait for agent config to be pushed to the multicast device BEFORE waiting for tunnel
-	// This is critical because the device needs to have the tunnel configured before the
-	// client's BGP session can be established
-	log.Debug("==> Waiting for agent config to be pushed to multicast device",
-		"device", actualMcastDevice.Spec.Code,
-		"deviceID", actualMcastDevice.ID,
-		"deviceIP", actualMcastDevice.CYOANetworkIP,
-		"ibrlDeviceCode", ibrlDevice.Spec.Code,
-		"ibrlDeviceID", ibrlDevice.ID,
-		"ibrlDeviceIP", ibrlDevice.CYOANetworkIP)
-	waitForAgentConfigWithClient(t, log, dn, actualMcastDevice, client)
-	log.Info("--> Agent config pushed to multicast device")
+	// Wait for agent config to be pushed to the IBRL device (multicast goes to same device)
+	log.Debug("==> Waiting for agent config to be pushed to device",
+		"device", ibrlDevice.Spec.Code,
+		"deviceID", ibrlDevice.ID,
+		"deviceIP", ibrlDevice.CYOANetworkIP)
+	waitForAgentConfigWithClient(t, log, dn, ibrlDevice, client)
+	log.Info("--> Agent config pushed to device")
 
 	// Give time for agent to apply the configuration
 	log.Info("==> Waiting for agent to apply configuration")
@@ -597,7 +590,7 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 			require.NotEqual(t, "N/A", status.Metro,
 				"IBRL tunnel should have a metro, got N/A")
 		case devnet.ClientUserTypeMulticast:
-			// Both publishers and subscribers can be matched to a device via tunnel_dst (device public IP)
+			// Both publishers and subscribers can be matched to a device via tunnel_dst (DzPrefixFirstIP)
 			require.NotEqual(t, "N/A", status.CurrentDevice,
 				"Multicast tunnel should have a current_device, got N/A")
 			require.NotEqual(t, "N/A", status.Metro,
@@ -616,19 +609,19 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 	verifyIBRLClientBGPEstablished(t, log, ibrlDevice)
 	log.Debug("--> IBRL BGP still established")
 
-	// Verify multicast is working on the other device
+	// Verify multicast is working on the same device as IBRL
 	// Note: Agent config was already pushed and applied before waiting for tunnels above
 
 	if asPublisher {
 		// Publishers don't use PIM - they just send traffic and the device creates (S,G) state
-		verifyConcurrentMulticastPublisherMrouteState(t, log, actualMcastDevice, client)
+		verifyConcurrentMulticastPublisherMrouteState(t, log, ibrlDevice, client)
 	} else {
 		// Subscribers need PIM adjacency to receive multicast traffic
-		verifyConcurrentMulticastPIMAdjacency(t, log, actualMcastDevice)
-		log.Debug("--> PIM adjacency established on multicast device")
+		verifyConcurrentMulticastPIMAdjacency(t, log, ibrlDevice)
+		log.Debug("--> PIM adjacency established on device")
 	}
 
-	log.Debug("--> Both IBRL and multicast verified as working on same client (separate tunnels)")
+	log.Debug("--> Both IBRL and multicast verified as working on same device (separate tunnels)")
 
 	// === DISCONNECT PHASE ===
 	log.Debug("==> DISCONNECT PHASE")

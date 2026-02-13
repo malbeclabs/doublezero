@@ -20,23 +20,35 @@ impl DeviceState {
     pub fn new(device: &Device) -> DeviceState {
         DeviceState {
             device: device.clone(),
-            dz_ips: device
-                .dz_prefixes
-                .iter()
-                .map(|b| IPBlockAllocator::new((*b).into()))
-                .collect(),
+            dz_ips: Self::create_dz_ip_allocators(device),
             tunnel_ids: IDAllocator::new(500, vec![]),
             tunnel_endpoints_in_use: HashMap::new(),
         }
     }
 
+    /// Create IP allocators for the given dz_prefixes, reserving the first IP
+    /// of each block (used as multicast tunnel endpoint on the device).
+    fn create_dz_ip_allocators(device: &Device) -> Vec<IPBlockAllocator> {
+        device
+            .dz_prefixes
+            .iter()
+            .map(|b| {
+                let mut allocator = IPBlockAllocator::new((*b).into());
+                // Reserve the network address (index 0) — it is used as the
+                // multicast tunnel source on the device and must not be handed
+                // out as a user dz_ip.
+                let net: Ipv4Network = (*b).into();
+                if let Ok(first_ip_net) = Ipv4Network::new(net.network(), 32) {
+                    allocator.assign_block(first_ip_net);
+                }
+                allocator
+            })
+            .collect()
+    }
+
     pub fn update(&mut self, device: &Device) {
         if self.device.dz_prefixes != device.dz_prefixes {
-            self.dz_ips = device
-                .dz_prefixes
-                .iter()
-                .map(|b| IPBlockAllocator::new((*b).into()))
-                .collect();
+            self.dz_ips = Self::create_dz_ip_allocators(device);
 
             info!(
                 "Update Device: {} public_ip: {} dz_prefixes: {} ",
@@ -133,10 +145,19 @@ impl DeviceState {
     }
 
     /// Check whether the given IP is a valid tunnel endpoint for this device.
-    /// Returns true if the IP matches the device's public_ip, or if it matches
-    /// any interface that has `user_tunnel_endpoint == true` and a valid `ip_net`.
+    /// Returns true if the IP matches the device's public_ip, a dz_prefix
+    /// network address, or any interface with `user_tunnel_endpoint == true`.
     pub fn is_valid_tunnel_endpoint(&self, ip: Ipv4Addr) -> bool {
         if ip == self.device.public_ip {
+            return true;
+        }
+
+        if self
+            .device
+            .dz_prefixes
+            .iter()
+            .any(|prefix| prefix.ip() == ip)
+        {
             return true;
         }
 
@@ -264,6 +285,15 @@ mod tests {
         let state = DeviceState::new(&device);
 
         assert!(!state.is_valid_tunnel_endpoint(Ipv4Addr::new(9, 9, 9, 9)));
+    }
+
+    #[test]
+    fn test_is_valid_tunnel_endpoint_matches_dz_prefix() {
+        let device = create_test_device_without_tunnel_endpoints();
+        let state = DeviceState::new(&device);
+
+        // 10.0.0.0 is the first IP of dz_prefixes "10.0.0.0/24"
+        assert!(state.is_valid_tunnel_endpoint(Ipv4Addr::new(10, 0, 0, 0)));
     }
 
     #[test]
@@ -409,6 +439,22 @@ mod tests {
         // Should be available again
         let available = state.get_available_tunnel_endpoint(client_ip);
         assert_eq!(available, Some(endpoint));
+    }
+
+    #[test]
+    fn test_dz_prefix_first_ip_reserved_at_init() {
+        let device = Device {
+            public_ip: Ipv4Addr::new(1, 1, 1, 1),
+            dz_prefixes: "10.0.0.0/29".parse().unwrap(),
+            interfaces: vec![],
+            ..Default::default()
+        };
+        let mut state = DeviceState::new(&device);
+
+        // First IP (10.0.0.0) is reserved for multicast tunnel endpoint,
+        // so get_next_dz_ip should return 10.0.0.1 (second IP)
+        let dz_ip = state.get_next_dz_ip().unwrap();
+        assert_eq!(dz_ip, Ipv4Addr::new(10, 0, 0, 1));
     }
 
     #[test]

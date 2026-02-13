@@ -151,7 +151,7 @@ interface Tunnel{{.PublisherTunnelNum}}
    mtu 9216
    ip address {{.PublisherTunnelDeviceIP}}
    tunnel mode gre
-   tunnel source {{.DeviceIP}}
+   tunnel source {{.DzPrefixFirstIP}}
    tunnel destination {{.PublisherClientIP}}
    tunnel path-mtu-discovery
    tunnel ttl 32
@@ -165,7 +165,7 @@ interface Tunnel{{.SubscriberTunnelNum}}
    mtu 9216
    ip address {{.SubscriberTunnelDeviceIP}}
    tunnel mode gre
-   tunnel source {{.DeviceIP}}
+   tunnel source {{.DzPrefixFirstIP}}
    tunnel destination {{.SubscriberClientIP}}
    tunnel path-mtu-discovery
    tunnel ttl 32

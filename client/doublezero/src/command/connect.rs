@@ -624,13 +624,25 @@ impl ProvisioningCliCommand {
                     ibrl_user_pk
                 ));
 
-                // Select a separate device from the IBRL user to allow independent tunnels
-                // Exclude the IBRL user's tunnel endpoint to ensure we get a different device
-                let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
-
-                let (device_pk, device, tunnel_endpoint) = self
-                    .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
-                    .await?;
+                // Use the same device as the IBRL tunnel. Multicast uses DzPrefixFirstIP
+                // as the tunnel endpoint so the device sets a different tunnel source,
+                // avoiding a GRE demux collision with the existing unicast tunnel.
+                let device_pk = ibrl_user.device_pk;
+                let device = devices
+                    .get(&device_pk)
+                    .ok_or_else(|| eyre::eyre!("Device not found for IBRL user"))?
+                    .clone();
+                let tunnel_endpoint = device
+                    .dz_prefixes
+                    .iter()
+                    .next()
+                    .map(|p| p.ip())
+                    .ok_or_else(|| {
+                        eyre::eyre!(
+                            "Device {} has no dz_prefixes for multicast tunnel endpoint",
+                            device.code
+                        )
+                    })?;
 
                 spinner.println(format!(
                     "    The Device has been selected: {} ",
@@ -759,9 +771,19 @@ impl ProvisioningCliCommand {
 
                 let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
 
-                let (device_pk, device, tunnel_endpoint) = self
+                let (device_pk, device, _latency_endpoint) = self
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
                     .await?;
+
+                // Use DzPrefixFirstIP for multicast tunnels so the device sets
+                // a distinct tunnel source. Falls back to device public_ip for
+                // backward compatibility with devices that have no dz_prefixes.
+                let tunnel_endpoint = device
+                    .dz_prefixes
+                    .iter()
+                    .next()
+                    .map(|p| p.ip())
+                    .unwrap_or(device.public_ip);
 
                 spinner.println(format!(
                     "    The Device has been selected: {} ",
@@ -1375,14 +1397,17 @@ mod tests {
             device_pk: Pubkey,
             client_ip: &str,
         ) -> User {
-            // Look up device's public_ip to set as tunnel_endpoint
-            let tunnel_endpoint = self
-                .devices
-                .lock()
-                .unwrap()
-                .get(&device_pk)
-                .map(|d| d.public_ip)
-                .unwrap_or(Ipv4Addr::UNSPECIFIED);
+            // Look up device to set tunnel_endpoint.
+            // Multicast users use DzPrefixFirstIP; others use public_ip.
+            let devices = self.devices.lock().unwrap();
+            let device = devices.get(&device_pk);
+            let tunnel_endpoint = match user_type {
+                UserType::Multicast => device
+                    .and_then(|d| d.dz_prefixes.iter().next().map(|p| p.ip()))
+                    .unwrap_or(Ipv4Addr::UNSPECIFIED),
+                _ => device.map(|d| d.public_ip).unwrap_or(Ipv4Addr::UNSPECIFIED),
+            };
+            drop(devices);
 
             User {
                 account_type: AccountType::User,
@@ -1619,8 +1644,7 @@ mod tests {
         let (tenant_pk, tenant) = fixture.add_tenant("my-tenant");
 
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
-        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
-        let (device2_pk, device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
+        let dz_prefix_first_ip = device1.dz_prefixes.iter().next().unwrap().ip();
         let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         let user_pk = Pubkey::new_unique();
         fixture.expect_create_user_with_tenant(user_pk, &user, Some(tenant_pk));
@@ -1653,9 +1677,9 @@ mod tests {
         println!("Test that adding a multicast tunnel with an existing IBRL creates a separate Multicast user");
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
 
-        // When IBRL user exists, a separate Multicast user should be created on a different device
-        // (exclude_ips prevents reusing the same device as the IBRL tunnel)
-        let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
+        // Multicast user goes to the SAME device as IBRL, using DzPrefixFirstIP
+        // as the tunnel endpoint so the device sets a different tunnel source.
+        let mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
             &mcast_user,
@@ -1666,7 +1690,7 @@ mod tests {
         fixture.expected_provisioning_request(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
-            device2.public_ip.to_string().as_str(),
+            dz_prefix_first_ip.to_string().as_str(),
             Some(vec![mcast_group.multicast_ip.to_string()]),
             Some(vec![]),
         );
@@ -1697,8 +1721,7 @@ mod tests {
         let (tenant_pk, tenant) = fixture.add_tenant("edge-tenant");
 
         let (device1_pk, device1) = fixture.add_device(DeviceType::Edge, 100, true);
-        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
-        let (device2_pk, device2) = fixture.add_device(DeviceType::Edge, 110, true);
+        let dz_prefix_first_ip = device1.dz_prefixes.iter().next().unwrap().ip();
         let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         let user_pk = Pubkey::new_unique();
         fixture.expect_create_user_with_tenant(user_pk, &user, Some(tenant_pk));
@@ -1731,9 +1754,9 @@ mod tests {
         println!("Test that adding a multicast tunnel with an existing IBRL creates a separate Multicast user");
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
 
-        // When IBRL user exists, a separate Multicast user should be created on a different device
-        // (exclude_ips prevents reusing the same device as the IBRL tunnel)
-        let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
+        // Multicast user goes to the SAME device as IBRL, using DzPrefixFirstIP
+        // as the tunnel endpoint so the device sets a different tunnel source.
+        let mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
             &mcast_user,
@@ -1744,7 +1767,7 @@ mod tests {
         fixture.expected_provisioning_request(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
-            device2.public_ip.to_string().as_str(),
+            dz_prefix_first_ip.to_string().as_str(),
             Some(vec![mcast_group.multicast_ip.to_string()]),
             Some(vec![]),
         );
@@ -1936,6 +1959,7 @@ mod tests {
 
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let dz_prefix_first_ip = device1.dz_prefixes.iter().next().unwrap().ip();
         let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -1947,7 +1971,7 @@ mod tests {
         fixture.expected_provisioning_request(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
+            dz_prefix_first_ip.to_string().as_str(),
             Some(vec![mcast_group.multicast_ip.to_string()]),
             Some(vec![]),
         );
@@ -1980,6 +2004,7 @@ mod tests {
         let (mcast_group2_pk, mcast_group2) =
             fixture.add_multicast_group("test-group2", "239.0.0.2");
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let dz_prefix_first_ip = device1.dz_prefixes.iter().next().unwrap().ip();
         let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
 
         let (publisher, subscriber) = match multicast_mode {
@@ -2028,7 +2053,7 @@ mod tests {
         fixture.expected_provisioning_request(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
+            dz_prefix_first_ip.to_string().as_str(),
             expect_publishers,
             expect_subscribers,
         );
@@ -2095,6 +2120,7 @@ mod tests {
         let (mcast_group2_pk, mcast_group2) =
             fixture.add_multicast_group("test-group2", "239.0.0.2");
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let dz_prefix_first_ip = device1.dz_prefixes.iter().next().unwrap().ip();
 
         // Create a user who is already a publisher
         let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
@@ -2113,7 +2139,7 @@ mod tests {
         fixture.expected_provisioning_request(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
+            dz_prefix_first_ip.to_string().as_str(),
             Some(vec![mcast_group.multicast_ip.to_string()]),
             Some(vec![mcast_group2.multicast_ip.to_string()]),
         );
@@ -2147,6 +2173,7 @@ mod tests {
         let (mcast_group2_pk, mcast_group2) =
             fixture.add_multicast_group("test-group2", "239.0.0.2");
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let dz_prefix_first_ip = device1.dz_prefixes.iter().next().unwrap().ip();
 
         // Create a user who is already a subscriber
         let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
@@ -2165,7 +2192,7 @@ mod tests {
         fixture.expected_provisioning_request(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
+            dz_prefix_first_ip.to_string().as_str(),
             Some(vec![mcast_group2.multicast_ip.to_string()]),
             Some(vec![mcast_group.multicast_ip.to_string()]),
         );
@@ -2206,6 +2233,7 @@ mod tests {
 
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let dz_prefix_first_ip = device1.dz_prefixes.iter().next().unwrap().ip();
         let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
 
         let expect_publishers;
@@ -2226,7 +2254,7 @@ mod tests {
         fixture.expected_provisioning_request(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
+            dz_prefix_first_ip.to_string().as_str(),
             expect_publishers,
             expect_subscribers,
         );
@@ -2269,8 +2297,7 @@ mod tests {
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
-        // Add a second device for concurrent tunnels (Multicast + IBRL must go to different devices)
-        let (device2_pk, device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
+        let dz_prefix_first_ip = device1.dz_prefixes.iter().next().unwrap().ip();
         let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -2282,7 +2309,7 @@ mod tests {
         fixture.expected_provisioning_request(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
+            dz_prefix_first_ip.to_string().as_str(),
             Some(vec![]),
             Some(vec![mcast_group.multicast_ip.to_string()]),
         );
@@ -2304,15 +2331,15 @@ mod tests {
             .await;
         assert!(result.is_ok());
 
-        // Test that adding an IBRL tunnel with an existing multicast succeeds on a DIFFERENT device
-        // (concurrent tunnels from same client IP must go to different devices)
-        let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
+        // Test that adding an IBRL tunnel with an existing multicast succeeds on the SAME device
+        // (IBRL uses public_ip, multicast uses DzPrefixFirstIP — no GRE demux collision)
+        let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
         fixture.expected_provisioning_request(
             UserType::IBRL,
             ibrl_user.client_ip.to_string().as_str(),
-            device2.public_ip.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
             None,
             None,
         );
@@ -2340,8 +2367,7 @@ mod tests {
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
-        // Add a second device for concurrent tunnels (Multicast + IBRL must go to different devices)
-        let (device2_pk, device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
+        let dz_prefix_first_ip = device1.dz_prefixes.iter().next().unwrap().ip();
         let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -2353,14 +2379,13 @@ mod tests {
         fixture.expected_provisioning_request(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
+            dz_prefix_first_ip.to_string().as_str(),
             Some(vec![]),
             Some(vec![mcast_group.multicast_ip.to_string()]),
         );
 
         // Save device1's latency for delayed availability test
         let latency_record_device1 = fixture.latencies.lock().unwrap()[0].clone();
-        let latency_record_device2 = fixture.latencies.lock().unwrap()[1].clone();
         fixture.latencies.lock().unwrap().clear();
         let latencies = Arc::clone(&fixture.latencies);
 
@@ -2381,7 +2406,6 @@ mod tests {
             tokio::time::sleep(Duration::from_secs(2)).await;
             let mut latencies = latencies.lock().unwrap();
             latencies.push(latency_record_device1);
-            latencies.push(latency_record_device2);
         });
 
         let (result1, _) = tokio::join!(coro1, coro2);
@@ -2389,15 +2413,14 @@ mod tests {
         assert!(result1.is_ok());
 
         println!("Test that adding an IBRL tunnel with an existing multicast succeeds");
-        // IBRL user should go to a DIFFERENT device than the existing Multicast user
-        // (concurrent tunnels from same client IP must go to different devices)
-        let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
+        // IBRL goes to the SAME device — IBRL uses public_ip, multicast uses DzPrefixFirstIP
+        let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
         fixture.expected_provisioning_request(
             UserType::IBRL,
             ibrl_user.client_ip.to_string().as_str(),
-            device2.public_ip.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
             None,
             None,
         );
@@ -2686,16 +2709,15 @@ mod tests {
         let mut fixture = TestFixture::new();
 
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
-        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
-        let (device2_pk, device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let dz_prefix_first_ip = device1.dz_prefixes.iter().next().unwrap().ip();
 
         let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         let _ibrl_user_pk = fixture.add_user(&ibrl_user);
 
-        // Expect create_subscribe_user to be called to create a NEW Multicast user on a DIFFERENT device
-        // (concurrent tunnels from same client IP must go to different devices)
-        let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
+        // Multicast user goes to the SAME device as IBRL, using DzPrefixFirstIP
+        // as the tunnel endpoint so the device sets a different tunnel source.
+        let mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
             &mcast_user,
@@ -2707,7 +2729,7 @@ mod tests {
         fixture.expected_provisioning_request(
             UserType::Multicast,
             mcast_user.client_ip.to_string().as_str(),
-            device2.public_ip.to_string().as_str(),
+            dz_prefix_first_ip.to_string().as_str(),
             Some(vec![]),
             Some(vec![mcast_group.multicast_ip.to_string()]),
         );
@@ -2746,17 +2768,15 @@ mod tests {
 
         let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
-        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
-        let (device2_pk, _device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
 
         // Create a pure Multicast user and add it to the fixture (simulating existing user)
         let mut mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         mcast_user.subscribers.push(mcast_group_pk);
         let mcast_user_pk = fixture.add_user(&mcast_user);
 
-        // Create an IBRL user for the same IP on a DIFFERENT device
-        // (concurrent tunnels from same client IP must go to different devices)
-        let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
+        // Create an IBRL user for the same IP on the SAME device
+        // (IBRL uses public_ip, multicast uses DzPrefixFirstIP — no GRE demux collision)
+        let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
         // Allow any provisioning call

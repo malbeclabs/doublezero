@@ -888,7 +888,7 @@ mod tests {
         do_test_process_user_event_pending_to_activated(
             UserType::IBRL,
             Some([192, 168, 1, 1].into()),
-            0,
+            1, // 1 reserved (dz_prefix network address), IBRL doesn't allocate from prefix
         );
     }
 
@@ -897,7 +897,7 @@ mod tests {
         do_test_process_user_event_pending_to_activated(
             UserType::IBRLWithAllocatedIP,
             Some([10, 0, 0, 1].into()),
-            1,
+            2, // 1 reserved + 1 allocated
         );
     }
 
@@ -906,7 +906,7 @@ mod tests {
         do_test_process_user_event_pending_to_activated(
             UserType::EdgeFiltering,
             Some([10, 0, 0, 1].into()),
-            1,
+            2, // 1 reserved + 1 allocated
         );
     }
 
@@ -1065,7 +1065,7 @@ mod tests {
                         ("device_pk", device_pk_str.as_str()),
                         ("code", "TestDevice"),
                     ],
-                    0, // publisher IP comes from global pool, not device
+                    1, // 1 reserved (dz_prefix network address); publisher IP comes from global pool
                 )
                 .expect_counter(
                     "doublezero_activator_device_total_ips",
@@ -1246,11 +1246,8 @@ mod tests {
             let device2 = device.clone();
             devices.insert(device_pubkey, DeviceState::new(&device2));
 
-            // allocate the only ip
-            assert_ne!(
-                devices.get_mut(&device_pubkey).unwrap().dz_ips[0].next_available_block(1, 1),
-                None
-            );
+            // The /32 prefix only has one IP (the network address), which is
+            // reserved for the multicast tunnel endpoint, so no dz_ip can be allocated.
 
             let locations = HashMap::<Pubkey, Location>::new();
             let exchanges = HashMap::<Pubkey, Exchange>::new();
@@ -1495,7 +1492,7 @@ mod tests {
                         ("device_pk", device_pk_str.as_str()),
                         ("code", "TestDevice"),
                     ],
-                    0,
+                    1, // 1 reserved (dz_prefix network address)
                 )
                 .expect_counter(
                     "doublezero_activator_device_total_ips",
@@ -1736,7 +1733,7 @@ mod tests {
                         ("device_pk", device_pk_str.as_str()),
                         ("code", "TestDevice"),
                     ],
-                    0,
+                    1, // 1 reserved (dz_prefix network address)
                 )
                 .expect_counter(
                     "doublezero_activator_device_total_ips",
@@ -1977,7 +1974,7 @@ mod tests {
                         ("device_pk", device_pk_str.as_str()),
                         ("code", "TestDevice"),
                     ],
-                    0,
+                    1, // 1 reserved (dz_prefix network address)
                 )
                 .expect_counter(
                     "doublezero_activator_device_total_ips",
@@ -2133,7 +2130,7 @@ mod tests {
                         ("device_pk", device_pk_str.as_str()),
                         ("code", "TestDevice"),
                     ],
-                    0, // publisher IP comes from global pool, not device
+                    1, // 1 reserved (dz_prefix network address); publisher IP comes from global pool
                 )
                 .expect_counter(
                     "doublezero_activator_device_total_ips",

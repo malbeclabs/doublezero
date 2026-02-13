@@ -185,9 +185,10 @@ type Device struct {
 	// It's the primary key of the devices dataset in the ledger.
 	ID string
 
-	ContainerID   string
-	CYOANetworkIP string
-	DZPrefix      string // The dz_prefix registered onchain for this device
+	ContainerID     string
+	CYOANetworkIP   string
+	DZPrefix        string // The dz_prefix registered onchain for this device
+	DZPrefixFirstIP string // The first IP (network address) of DZPrefix, used as multicast tunnel endpoint
 
 	// ExternalEAPIHTTPPort is the port on which the device's EAPI HTTP server is exposed.
 	ExternalEAPIHTTPPort int
@@ -333,6 +334,7 @@ func (d *Device) Start(ctx context.Context) error {
 	}
 	dzPrefix := dzPrefixBytes.String() + "/29"
 	d.DZPrefix = dzPrefix
+	d.DZPrefixFirstIP = dzPrefixBytes.String()
 
 	// Compute a second dz_prefix for UTE loopback interfaces when needed.
 	// This prefix lives in a different /24 than the CYOA subnet (third octet incremented by 1)
@@ -633,6 +635,7 @@ func (d *Device) Start(ctx context.Context) error {
 		"TelemetryMetricsEnable":   spec.Telemetry.MetricsEnable,
 		"TelemetryMetricsPort":     telemetryMetricsPort,
 		"CYOANetworkIP":            cyoaNetworkIP,
+		"DzPrefixFirstIP":          d.DZPrefixFirstIP,
 		"CYOANetworkCIDRPrefix":    strconv.Itoa(d.dn.Spec.CYOANetwork.CIDRPrefix),
 		"DefaultNetworkIP":         defaultNetworkIP,
 		"DefaultNetworkCIDRPrefix": strconv.Itoa(defaultNetworkCIDRPrefix),

@@ -89,12 +89,14 @@ impl StatusCliCommand {
                     metro = exchanges.get(&dev.exchange_pk).map(|e| e.name.clone());
                 }
             } else if let Some(ref tunnel_dst) = response.tunnel_dst {
-                // Fallback: match by tunnel_dst (device public IP) for users without dz_ip
-                // This is needed for multicast subscribers who don't have a doublezero_ip
+                // Fallback: match by tunnel_dst for users without dz_ip.
+                // Check both public_ip and dz_prefixes since multicast tunnels
+                // use DzPrefixFirstIP as the tunnel destination.
                 if let Ok(tunnel_ip) = Ipv4Addr::from_str(tunnel_dst) {
-                    if let Some((device_pk, dev)) =
-                        devices.iter().find(|(_, d)| d.public_ip == tunnel_ip)
-                    {
+                    if let Some((device_pk, dev)) = devices.iter().find(|(_, d)| {
+                        d.public_ip == tunnel_ip
+                            || d.dz_prefixes.iter().any(|p| p.ip() == tunnel_ip)
+                    }) {
                         current_device = Some(*device_pk);
                         metro = exchanges.get(&dev.exchange_pk).map(|e| e.name.clone());
                     }

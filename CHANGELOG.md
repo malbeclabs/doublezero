@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 - Activator
   - Assign multicast publisher IPs from global pool in serviceability GlobalConfig instead of per-device blocks
+  - Multicast tunnels now use the device's DZ prefix first IP (network address of dz_prefixes[0]) as both tunnel source (device side) and tunnel destination (client side), instead of the device's public IP
 - E2E tests
   - Add daily devnet QA test for device provisioning lifecycle (RFC12) — deletes/recreates device and links, restarts daemons with new pubkey via Ansible
 

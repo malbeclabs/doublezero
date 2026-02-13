@@ -2,6 +2,7 @@ package devnet
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"os"
@@ -29,7 +30,17 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 	// proper incremental compilation. Without this, switching branches can result
 	// in stale cached artifacts being used.
 	cacheBusterBuildArg := fmt.Sprintf("CACHE_BUSTER=%d", time.Now().Unix())
-	extraArgs := []string{"--build-arg", cacheBusterBuildArg, "--platform", "linux/amd64"}
+
+	// Hash Cargo.lock to key the Rust build cache mounts. When dependencies change,
+	// this gives us a fresh cache instead of reusing stale compiled artifacts that
+	// can cause "two different versions of crate" build errors.
+	cargoLockHash := "default"
+	if lockData, err := os.ReadFile(filepath.Join(workspaceDir, "Cargo.lock")); err == nil {
+		cargoLockHash = fmt.Sprintf("%x", sha256.Sum256(lockData))[:16]
+	}
+	cargoLockHashArg := fmt.Sprintf("CARGO_LOCK_HASH=%s", cargoLockHash)
+
+	extraArgs := []string{"--build-arg", cacheBusterBuildArg, "--build-arg", cargoLockHashArg, "--platform", "linux/amd64"}
 	err := docker.Build(ctx, log, os.Getenv("DZ_BASE_IMAGE"), filepath.Join(dockerfilesDir, "base.dockerfile"), workspaceDir, verbose, extraArgs...)
 	if err != nil {
 		return fmt.Errorf("failed to build base image: %w", err)

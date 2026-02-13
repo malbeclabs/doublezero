@@ -38,7 +38,26 @@ impl DeleteTenantCommand {
                 DeleteUserCommand { pubkey: *user_pk }.execute(client)?;
             }
 
-            // 2. Wait for activator to process close accounts (reference_count reaches 0)
+            // 2. Clean up access passes before waiting for reference_count to reach 0
+            let access_passes = ListAccessPassCommand.execute(client)?;
+            let tenant_passes: Vec<_> = access_passes
+                .into_iter()
+                .filter(|(_, ap)| ap.tenant_allowlist.contains(&self.tenant_pubkey))
+                .collect();
+
+            for (_, ap) in &tenant_passes {
+                SetAccessPassCommand {
+                    accesspass_type: ap.accesspass_type.clone(),
+                    client_ip: ap.client_ip,
+                    user_payer: ap.user_payer,
+                    last_access_epoch: ap.last_access_epoch,
+                    allow_multiple_ip: ap.allow_multiple_ip(),
+                    tenant: Pubkey::default(),
+                }
+                .execute(client)?;
+            }
+
+            // 3. Wait for activator to process close accounts (reference_count reaches 0)
             if !tenant_users.is_empty() {
                 let tenant_pubkey = self.tenant_pubkey;
                 let builder = ExponentialBuilder::new()
@@ -61,25 +80,25 @@ impl DeleteTenantCommand {
                     eyre::eyre!("Timeout waiting for tenant reference_count to reach 0")
                 })?;
             }
-        }
+        } else {
+            // When not cascading user deletion, still clean up access passes
+            let access_passes = ListAccessPassCommand.execute(client)?;
+            let tenant_passes: Vec<_> = access_passes
+                .into_iter()
+                .filter(|(_, ap)| ap.tenant_allowlist.contains(&self.tenant_pubkey))
+                .collect();
 
-        // Always List access passes that include this tenant and reset their tenant to default
-        let access_passes = ListAccessPassCommand.execute(client)?;
-        let tenant_passes: Vec<_> = access_passes
-            .into_iter()
-            .filter(|(_, ap)| ap.tenant_allowlist.contains(&self.tenant_pubkey))
-            .collect();
-
-        for (_, ap) in &tenant_passes {
-            SetAccessPassCommand {
-                accesspass_type: ap.accesspass_type.clone(),
-                client_ip: ap.client_ip,
-                user_payer: ap.user_payer,
-                last_access_epoch: ap.last_access_epoch,
-                allow_multiple_ip: ap.allow_multiple_ip(),
-                tenant: Pubkey::default(),
+            for (_, ap) in &tenant_passes {
+                SetAccessPassCommand {
+                    accesspass_type: ap.accesspass_type.clone(),
+                    client_ip: ap.client_ip,
+                    user_payer: ap.user_payer,
+                    last_access_epoch: ap.last_access_epoch,
+                    allow_multiple_ip: ap.allow_multiple_ip(),
+                    tenant: Pubkey::default(),
+                }
+                .execute(client)?;
             }
-            .execute(client)?;
         }
 
         // Execute the DeleteTenant transaction
@@ -278,16 +297,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        // 6. Wait for reference_count: get(tenant_pubkey)
-        let tenant_after_clone = tenant_after.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(tenant_pubkey))
-            .times(1)
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(AccountData::Tenant(tenant_after_clone.clone())));
-
-        // 7. ListAccessPassCommand: gets(AccountType::AccessPass)
+        // 5. ListAccessPassCommand: gets(AccountType::AccessPass)
         let accesspass_for_list = accesspass.clone();
         client
             .expect_gets()
@@ -303,7 +313,7 @@ mod tests {
                 Ok(map)
             });
 
-        // 8. SetAccessPassCommand: execute_transaction(SetAccessPass) to reset tenant
+        // 6. SetAccessPassCommand: execute_transaction(SetAccessPass) to reset tenant
         client
             .expect_execute_transaction()
             .with(
@@ -319,7 +329,16 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        // 9. Final: execute_transaction(DeleteTenant)
+        // 7. Wait for reference_count: get(tenant_pubkey)
+        let tenant_after_clone = tenant_after.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(tenant_pubkey))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::Tenant(tenant_after_clone.clone())));
+
+        // 8. Final: execute_transaction(DeleteTenant)
         client
             .expect_execute_transaction()
             .with(

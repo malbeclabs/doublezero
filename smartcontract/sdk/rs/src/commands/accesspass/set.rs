@@ -53,12 +53,15 @@ impl SetAccessPassCommand {
             AccountMeta::new(self.user_payer, false),
         ];
 
-        if self.tenant != Pubkey::default() {
-            let tenant_allowlist_first = accesspass
-                .as_ref()
-                .and_then(|(_, ap)| ap.tenant_allowlist.first().copied())
-                .unwrap_or_default();
-            accounts.push(AccountMeta::new(tenant_allowlist_first, false));
+        // Get the current tenant from the existing access pass (if any)
+        let current_tenant = accesspass
+            .as_ref()
+            .and_then(|(_, ap)| ap.tenant_allowlist.first().copied())
+            .unwrap_or_default();
+
+        // Push tenant accounts if there's a tenant to remove or add
+        if current_tenant != Pubkey::default() || self.tenant != Pubkey::default() {
+            accounts.push(AccountMeta::new(current_tenant, false));
             accounts.push(AccountMeta::new(self.tenant, false));
         }
 

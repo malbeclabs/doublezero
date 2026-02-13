@@ -2,7 +2,7 @@ use crate::{
     doublezerocommand::CliCommand,
     poll_for_activation::poll_for_multicastgroup_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{validate_code, validate_pubkey_or_code},
+    validators::{validate_code, validate_parse_bandwidth, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_sdk::commands::multicastgroup::{
@@ -22,7 +22,7 @@ pub struct UpdateMulticastGroupCliCommand {
     #[arg(long)]
     pub multicast_ip: Option<Ipv4Addr>,
     /// Updated maximum bandwidth (e.g. 1Gbps, 100Mbps)
-    #[arg(long)]
+    #[arg(long, value_parser = validate_parse_bandwidth)]
     pub max_bandwidth: Option<u64>,
     /// Updated publisher count
     #[arg(long)]
@@ -79,6 +79,87 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+
+    #[test]
+    fn test_cli_multicastgroup_update_bandwidth_parsing() {
+        use clap::Parser;
+
+        // Define a test CLI structure to parse arguments
+        #[derive(Parser, Debug)]
+        struct TestCli {
+            #[command(subcommand)]
+            command: TestCommand,
+        }
+
+        #[derive(clap::Subcommand, Debug)]
+        enum TestCommand {
+            Update(UpdateMulticastGroupCliCommand),
+        }
+
+        // Test various bandwidth formats
+        let test_cases = vec![
+            ("1Gbps", 1_000_000_000u64),
+            ("100Mbps", 100_000_000u64),
+            ("500Kbps", 500_000u64),
+            ("1000bps", 1_000u64),
+            ("10gbps", 10_000_000_000u64), // lowercase
+            ("2.5Gbps", 2_500_000_000u64), // decimal
+        ];
+
+        for (input, expected) in test_cases {
+            let args = vec![
+                "test",
+                "update",
+                "--pubkey",
+                "test-pubkey",
+                "--max-bandwidth",
+                input,
+            ];
+
+            let result = TestCli::try_parse_from(args);
+            assert!(
+                result.is_ok(),
+                "Failed to parse bandwidth '{}': {:?}",
+                input,
+                result.err()
+            );
+
+            if let Ok(TestCli {
+                command: TestCommand::Update(cmd),
+            }) = result
+            {
+                assert_eq!(
+                    cmd.max_bandwidth,
+                    Some(expected),
+                    "Bandwidth '{}' parsed incorrectly. Expected {}, got {:?}",
+                    input,
+                    expected,
+                    cmd.max_bandwidth
+                );
+            }
+        }
+
+        // Test invalid bandwidth formats
+        let invalid_cases = vec!["invalid", "abc", "Gbps", ""];
+
+        for input in invalid_cases {
+            let args = vec![
+                "test",
+                "update",
+                "--pubkey",
+                "test-pubkey",
+                "--max-bandwidth",
+                input,
+            ];
+
+            let result = TestCli::try_parse_from(args);
+            assert!(
+                result.is_err(),
+                "Should have failed to parse invalid bandwidth '{}'",
+                input
+            );
+        }
+    }
 
     #[test]
     fn test_cli_multicastgroup_update() {

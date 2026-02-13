@@ -61,6 +61,7 @@ All notable changes to this project will be documented in this file.
   - SetAccessPassCommand extended with tenant field to specify allowed tenant for access pass
   - TypeScript SDK updated with tenantAllowlist field in AccessPass interface and deserialization
 - CLI
+  - Fix `multicastgroup update` command to properly parse human-readable bandwidth values (e.g., "1Gbps", "100Mbps") in `--max-bandwidth` flag
   - Add --metro-route and --route-aliveness flags to tenant create and update commands
   - Add tenant subcommands (create, update, delete, get, list, add-administrator, remove-administrator) to doublezero and doublezero-admin CLIs
   - Support simultaneous publisher and subscriber multicast via `--publish` and `--subscribe` flags

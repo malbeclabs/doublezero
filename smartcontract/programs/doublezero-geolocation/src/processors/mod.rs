@@ -6,17 +6,14 @@ use crate::{
     error::GeolocationError, pda::get_program_config_pda,
     state::program_config::GeolocationProgramConfig,
 };
-use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
-    pubkey::Pubkey,
-};
+use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 
 pub fn check_foundation_allowlist(
     program_config_account: &AccountInfo,
     serviceability_globalstate_account: &AccountInfo,
     payer_account: &AccountInfo,
     program_id: &Pubkey,
-) -> ProgramResult {
+) -> Result<GeolocationProgramConfig, ProgramError> {
     if program_config_account.owner != program_id {
         msg!("Invalid ProgramConfig Account Owner");
         return Err(ProgramError::IllegalOwner);
@@ -57,5 +54,5 @@ pub fn check_foundation_allowlist(
         return Err(GeolocationError::NotAllowed.into());
     }
 
-    Ok(())
+    Ok(program_config)
 }

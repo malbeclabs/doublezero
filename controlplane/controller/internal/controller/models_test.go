@@ -7,8 +7,8 @@ import (
 
 func TestIsBgpMartian(t *testing.T) {
 	tests := []struct {
-		name     string
-		ip       string
+		name      string
+		ip        string
 		isMartian bool
 	}{
 		// Martian addresses

@@ -10,7 +10,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: make build-artifacts
-      - run: sha256sum --check programs/sha256sums_mainnet_beta.txt
-      - run: NETWORK=development make build-artifacts
-      - run: sha256sum --check programs/sha256sums_development.txt
+      - run: NETWORK=mainnet-beta make build-checked-artifacts
+      - run: NETWORK=development make build-checked-artifacts

@@ -11,7 +11,7 @@ use doublezero_revenue_distribution::{
         DistributionMerkleRootKind, ProgramConfiguration, ProgramFeatureConfiguration,
         ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
-    state::{self, Distribution, SolanaValidatorDeposit},
+    state::{self, Distribution, Journal, SolanaValidatorDeposit},
     types::{BurnRate, DoubleZeroEpoch, RewardShare, SolanaValidatorDebt, ValidatorFee},
     DOUBLEZERO_MINT_KEY, ID,
 };
@@ -22,6 +22,7 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::TransactionError,
 };
+use spl_associated_token_account_interface::address::get_associated_token_address;
 use svm_hash::merkle::{merkle_root_from_indexed_pod_leaves, MerkleProof};
 
 //
@@ -79,6 +80,7 @@ async fn test_distribute_rewards() {
 
     let expected_swept_2z_amount_1 = 69 * u64::pow(10, 8);
     let expected_swept_2z_amount_2 = 420 * u64::pow(10, 8);
+    let direct_2z_payment_amount: u64 = 10_000 * u64::pow(10, 8); // 10 thousand 2Z tokens.
 
     // Distribution rewards.
     let minimum_epoch_duration_to_finalize_rewards = 1;
@@ -86,6 +88,9 @@ async fn test_distribute_rewards() {
     // Target epochs.
     let dz_epoch = DoubleZeroEpoch::new(1);
     let next_dz_epoch = dz_epoch.saturating_add_duration(1);
+
+    let (journal_key, _) = Journal::find_address();
+    let journal_ata_key = get_associated_token_address(&journal_key, &DOUBLEZERO_MINT_KEY);
 
     test_setup
         .transfer_2z(
@@ -98,6 +103,9 @@ async fn test_distribute_rewards() {
         .await
         .unwrap()
         .initialize_journal()
+        .await
+        .unwrap()
+        .create_2z_ata(&journal_key)
         .await
         .unwrap()
         .initialize_swap_destination(&DOUBLEZERO_MINT_KEY)
@@ -145,6 +153,9 @@ async fn test_distribute_rewards() {
         .await
         .unwrap()
         .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap()
+        .transfer_2z(&journal_ata_key, direct_2z_payment_amount)
         .await
         .unwrap()
         .warp_timestamp_by(60)
@@ -567,11 +578,12 @@ async fn test_distribute_rewards() {
         total_solana_validator_debt - uncollectible_debt.amount;
     expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
     expected_distribution.collected_2z_converted_from_sol = expected_swept_2z_amount_1;
+    expected_distribution.collected_prepaid_2z_payments = direct_2z_payment_amount;
     expected_distribution.total_contributors = total_contributors;
     expected_distribution.rewards_merkle_root = rewards_merkle_root;
     expected_distribution.distributed_rewards_count = total_contributors;
-    expected_distribution.distributed_2z_amount = 6_210_000_000;
-    expected_distribution.burned_2z_amount = 690_000_000;
+    expected_distribution.distributed_2z_amount = 906_210_000_000;
+    expected_distribution.burned_2z_amount = 100_690_000_000;
     expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
     expected_distribution.processed_solana_validator_debt_write_off_start_index =
         total_solana_validators / 8;
@@ -590,7 +602,7 @@ async fn test_distribute_rewards() {
     assert_eq!(distribution, expected_distribution);
     assert_eq!(
         distribution.distributed_2z_amount + distribution.burned_2z_amount,
-        expected_swept_2z_amount_1
+        expected_swept_2z_amount_1 + direct_2z_payment_amount
     );
 
     // First byte reflects debt tracking.
@@ -621,6 +633,13 @@ async fn test_distribute_rewards() {
 
     // All tokens should have been transferred to all recipients.
     assert_eq!(distribution_2z_token_pda.amount, 0);
+
+    // Verify the journal's ATA was fully drained.
+    let journal_ata_after = test_setup
+        .fetch_token_account(&journal_ata_key)
+        .await
+        .unwrap();
+    assert_eq!(journal_ata_after.amount, 0);
 
     // Check the second distribution.
 

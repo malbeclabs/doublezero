@@ -2,14 +2,16 @@ mod common;
 
 //
 
+use doublezero_revenue_distribution::DOUBLEZERO_MINT_KEY;
 use doublezero_revenue_distribution::{
     instruction::{ProgramConfiguration, ProgramFlagConfiguration},
-    state::{self, CommunityBurnRateParameters, Distribution, ProgramConfig},
+    state::{self, CommunityBurnRateParameters, Distribution, Journal, ProgramConfig},
     types::ValidatorFee,
     types::{BurnRate, DoubleZeroEpoch},
 };
 use solana_program_test::tokio;
 use solana_sdk::signature::{Keypair, Signer};
+use spl_associated_token_account_interface::address::get_associated_token_address;
 
 //
 // Initialize distribution.
@@ -148,6 +150,23 @@ async fn test_initialize_distribution() {
     expected_relay_params.distribute_rewards_lamports = distribute_rewards_relay_lamports;
     assert_eq!(program_config, expected_program_config);
 
+    // Fund the journal's ATA so `initialize_distribution` will sweep it.
+    let direct_2z_payment_amount_1: u64 = 69_000 * u64::pow(10, 8);
+    let direct_2z_payment_amount_2: u64 = 420 * u64::pow(10, 8);
+    let (journal_key, _) = Journal::find_address();
+    let journal_ata_key = get_associated_token_address(&journal_key, &DOUBLEZERO_MINT_KEY);
+
+    test_setup
+        .create_2z_ata(&journal_key)
+        .await
+        .unwrap()
+        .transfer_2z(&journal_ata_key, direct_2z_payment_amount_1)
+        .await
+        .unwrap()
+        .transfer_2z(&journal_ata_key, direct_2z_payment_amount_2)
+        .await
+        .unwrap();
+
     // Create another distribution.
 
     test_setup
@@ -181,6 +200,8 @@ async fn test_initialize_distribution() {
         .base_block_rewards_pct =
         ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
+    expected_distribution.collected_prepaid_2z_payments =
+        direct_2z_payment_amount_1 + direct_2z_payment_amount_2;
     expected_distribution.calculation_allowed_timestamp = test_setup
         .get_clock()
         .await
@@ -188,7 +209,17 @@ async fn test_initialize_distribution() {
         .saturating_add(i64::from(calculation_grace_period_minutes) * 60)
         as u32;
     assert_eq!(distribution, expected_distribution);
-    assert_eq!(distribution_custody.amount, 0);
+    assert_eq!(
+        distribution_custody.amount,
+        direct_2z_payment_amount_1 + direct_2z_payment_amount_2
+    );
+
+    // Verify the journal's ATA was fully drained.
+    let journal_ata_after = test_setup
+        .fetch_token_account(&journal_ata_key)
+        .await
+        .unwrap();
+    assert_eq!(journal_ata_after.amount, 0);
 
     let (program_config_key, program_config, _) = test_setup.fetch_program_config().await;
 

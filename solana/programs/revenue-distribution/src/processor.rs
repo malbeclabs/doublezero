@@ -17,6 +17,7 @@ use solana_account_info::{AccountInfo, MAX_PERMITTED_DATA_INCREASE};
 use solana_cpi::invoke_signed_unchecked;
 use solana_msg::msg;
 use solana_program_error::{ProgramError, ProgramResult};
+use solana_program_pack::Pack;
 use solana_pubkey::Pubkey;
 use solana_system_interface::instruction as system_instruction;
 use solana_sysvar::{clock::Clock, rent::Rent, Sysvar};
@@ -674,7 +675,8 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
     // - 6: SPL Token program.
     // - 7: Journal.
     // - 8: Journal's 2Z token account.
-    // - 9: System program.
+    // - 9: Journal's ATA.
+    // - 10: System program.
     let mut accounts_iter = accounts.iter().enumerate();
 
     let authorized_use = VerifiedProgramAuthorityMut::try_next_accounts(
@@ -858,12 +860,13 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
         .try_into()
         .unwrap();
 
-    // NOTE: The Journal and its 2Z token account are not used in this
-    // instruction. But they act as placeholders when 2Z prepayment will be
-    // implemented.
-
     // Account 7 must be the journal.
     let journal = ZeroCopyMutAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // NOTE: The Journal's 2Z token account (not ATA) is not used in this
+    // instruction. Its purpose is for prepaid 2Z payments when they are
+    // implemented (as opposed to the ATA, which is used for direct 2Z payments
+    // not enforceable onchain).
 
     // Account 8 must be the journal's 2Z token account.
     let (_, _journal_2z_token_pda_info, _) = try_next_2z_token_pda_info(
@@ -872,6 +875,55 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
         "journal's",
         Some(journal.token_2z_pda_bump_seed),
     )?;
+
+    // Account 9 must be the journal's ATA. Any balance on this ATA will be
+    // transferred to the distribution's 2Z token account.
+    let (account_index, journal_ata_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+    let expected_journal_ata_key =
+        get_associated_token_address(journal.info.key, &DOUBLEZERO_MINT_KEY);
+
+    // Enforce this account location.
+    if journal_ata_info.key != &expected_journal_ata_key {
+        msg!(
+            "Expected ATA for journal {} (account {})",
+            journal.info.key,
+            account_index
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Attempt to deserialize ATA to get the balance and transfer it to the
+    // distribution's 2Z token account. If deserialization fails, the ATA does
+    // not exist (so there is no balance to transfer).
+    match spl_token_interface::state::Account::unpack(&journal_ata_info.data.borrow()[..]) {
+        Ok(journal_ata) if journal_ata.amount != 0 => {
+            let transfer_amount = journal_ata.amount;
+
+            let token_transfer_ix = token_instruction::transfer(
+                &spl_token_interface::ID,
+                &expected_journal_ata_key,
+                new_distribution_2z_token_pda_info.key,
+                journal.info.key,
+                &[], // signer_pubkeys
+                transfer_amount,
+            )
+            .unwrap();
+
+            invoke_signed_unchecked(
+                &token_transfer_ix,
+                accounts,
+                &[&[Journal::SEED_PREFIX, &[journal.bump_seed]]],
+            )?;
+
+            msg!(
+                "Moved {} 2Z from journal's ATA to distribution",
+                transfer_amount
+            );
+            distribution.collected_prepaid_2z_payments += transfer_amount;
+        }
+        _ => msg!("No balance to transfer from journal's ATA"),
+    }
 
     msg!("Initialized distribution for DZ epoch {}", dz_epoch);
 

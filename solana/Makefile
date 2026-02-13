@@ -36,6 +36,13 @@ artifacts-$(NETWORK):
 .PHONY: build-artifacts
 build-artifacts: artifacts-$(NETWORK)
 
+.PHONY: verify-checksums
+verify-checksums:
+	shasum -a 256 -c programs/sha256sums_$(subst -,_,$(NETWORK)).txt
+
+.PHONY: build-checked-artifacts
+build-checked-artifacts: build-artifacts verify-checksums
+
 .PHONY: build-sbf-mock
 build-sbf-mock:
 	cargo build-sbf --features $(CARGO_FEATURES) --manifest-path mock/swap-sol-2z/Cargo.toml
@@ -60,5 +67,10 @@ doc:
 
 .PHONY: write-checksums
 write-checksums:
-	shasum -a 256 artifacts-mainnet-beta/*.so > programs/sha256sums_mainnet_beta.txt
+	$(MAKE) build-artifacts NETWORK=mainnet-beta && \
+	$(MAKE) build-artifacts NETWORK=development && \
+	shasum -a 256 artifacts-mainnet-beta/*.so > programs/sha256sums_mainnet_beta.txt && \
 	shasum -a 256 artifacts-development/*.so > programs/sha256sums_development.txt
+
+.PHONY: clean-write-checksums
+clean-write-checksums: clean write-checksums

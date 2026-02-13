@@ -30,7 +30,7 @@ pub struct GeoProbe {
     )]
     pub exchange_pk: Pubkey, // 32
     pub public_ip: Ipv4Addr,       // 4
-    pub port: u16,                 // 2
+    pub location_offset_port: u16, // 2
     pub code: String,              // 4 + len
     pub parent_devices: Vec<Pubkey>, // 4 + 32 * len
     #[cfg_attr(
@@ -49,9 +49,9 @@ impl fmt::Display for GeoProbe {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, bump_seed: {}, exchange_pk: {}, public_ip: {}, port: {}, \
+            "account_type: {}, owner: {}, bump_seed: {}, exchange_pk: {}, public_ip: {}, location_offset_port: {}, \
             code: {}, parent_devices: {:?}, metrics_publisher_pk: {}, latency_threshold_ns: {}, reference_count: {}",
-            self.account_type, self.owner, self.bump_seed, self.exchange_pk, self.public_ip, self.port,
+            self.account_type, self.owner, self.bump_seed, self.exchange_pk, self.public_ip, self.location_offset_port,
             self.code, self.parent_devices, self.metrics_publisher_pk, self.latency_threshold_ns, self.reference_count,
         )
     }
@@ -67,7 +67,7 @@ impl TryFrom<&[u8]> for GeoProbe {
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             exchange_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             public_ip: BorshDeserialize::deserialize(&mut data).unwrap_or([0, 0, 0, 0].into()),
-            port: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            location_offset_port: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             parent_devices: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             metrics_publisher_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
@@ -131,7 +131,7 @@ mod tests {
         assert_eq!(val.bump_seed, 0);
         assert_eq!(val.exchange_pk, Pubkey::default());
         assert_eq!(val.public_ip, Ipv4Addr::new(0, 0, 0, 0));
-        assert_eq!(val.port, 0);
+        assert_eq!(val.location_offset_port, 0);
         assert_eq!(val.code, "");
         assert_eq!(val.parent_devices.len(), 0);
         assert_eq!(val.metrics_publisher_pk, Pubkey::default());
@@ -147,7 +147,7 @@ mod tests {
             bump_seed: 1,
             exchange_pk: Pubkey::new_unique(),
             public_ip: [8, 8, 8, 8].into(),
-            port: 4242,
+            location_offset_port: 4242,
             code: "probe-ams-01".to_string(),
             parent_devices: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             metrics_publisher_pk: Pubkey::new_unique(),
@@ -169,7 +169,7 @@ mod tests {
         assert_eq!(val.bump_seed, val2.bump_seed);
         assert_eq!(val.exchange_pk, val2.exchange_pk);
         assert_eq!(val.public_ip, val2.public_ip);
-        assert_eq!(val.port, val2.port);
+        assert_eq!(val.location_offset_port, val2.location_offset_port);
         assert_eq!(val.code, val2.code);
         assert_eq!(val.parent_devices, val2.parent_devices);
         assert_eq!(val.metrics_publisher_pk, val2.metrics_publisher_pk);
@@ -190,7 +190,7 @@ mod tests {
             bump_seed: 1,
             exchange_pk: Pubkey::new_unique(),
             public_ip: [8, 8, 8, 8].into(),
-            port: 4242,
+            location_offset_port: 4242,
             code: "probe-ams-01".to_string(),
             parent_devices: vec![],
             metrics_publisher_pk: Pubkey::new_unique(),
@@ -210,7 +210,7 @@ mod tests {
             bump_seed: 1,
             exchange_pk: Pubkey::new_unique(),
             public_ip: [8, 8, 8, 8].into(),
-            port: 4242,
+            location_offset_port: 4242,
             code: "a".repeat(33), // More than 32 bytes
             parent_devices: vec![],
             metrics_publisher_pk: Pubkey::new_unique(),
@@ -230,7 +230,7 @@ mod tests {
             bump_seed: 1,
             exchange_pk: Pubkey::new_unique(),
             public_ip: [8, 8, 8, 8].into(),
-            port: 4242,
+            location_offset_port: 4242,
             code: "probe-ams-01".to_string(),
             parent_devices: vec![
                 Pubkey::new_unique(),

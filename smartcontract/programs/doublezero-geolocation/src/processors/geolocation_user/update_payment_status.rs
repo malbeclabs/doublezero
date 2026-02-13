@@ -2,7 +2,9 @@ use crate::{
     instructions::UpdatePaymentStatusArgs,
     processors::check_foundation_allowlist,
     serializer::try_acc_write,
-    state::geolocation_user::{GeolocationUser, PaymentStatus},
+    state::geolocation_user::{
+        GeolocationBillingConfig, GeolocationPaymentStatus, GeolocationUser,
+    },
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -43,7 +45,12 @@ pub fn process_update_payment_status(
 
     let mut user = GeolocationUser::try_from(user_account)?;
 
-    user.payment_status = PaymentStatus::try_from(args.payment_status)?;
+    user.payment_status = GeolocationPaymentStatus::try_from(args.payment_status)?;
+
+    if let Some(epoch) = args.last_deduction_dz_epoch {
+        let GeolocationBillingConfig::FlatPerEpoch(ref mut config) = user.billing;
+        config.last_deduction_dz_epoch = epoch;
+    }
 
     try_acc_write(&user, user_account, payer_account, accounts)?;
 

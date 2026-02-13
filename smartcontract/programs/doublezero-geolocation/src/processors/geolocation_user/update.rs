@@ -1,8 +1,6 @@
 use crate::{
-    error::GeolocationError,
-    instructions::UpdateGeolocationUserArgs,
-    serializer::try_acc_write,
-    state::geolocation_user::{GeolocationUser, GeolocationUserStatus},
+    error::GeolocationError, instructions::UpdateGeolocationUserArgs, serializer::try_acc_write,
+    state::geolocation_user::GeolocationUser,
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -39,9 +37,6 @@ pub fn process_update_geolocation_user(
 
     if let Some(token_account) = args.token_account {
         user.token_account = token_account;
-    }
-    if let Some(status) = args.status {
-        user.status = GeolocationUserStatus::try_from(status)?;
     }
 
     try_acc_write(&user, user_account, payer_account, accounts)?;

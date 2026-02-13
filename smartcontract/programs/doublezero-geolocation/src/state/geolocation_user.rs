@@ -12,29 +12,29 @@ pub const MAX_TARGETS: usize = 4096;
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default, Copy, Clone, PartialEq)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum PaymentStatus {
+pub enum GeolocationPaymentStatus {
     #[default]
-    Unpaid = 0,
+    Delinquent = 0,
     Paid = 1,
 }
 
-impl TryFrom<u8> for PaymentStatus {
+impl TryFrom<u8> for GeolocationPaymentStatus {
     type Error = ProgramError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(PaymentStatus::Unpaid),
-            1 => Ok(PaymentStatus::Paid),
+            0 => Ok(GeolocationPaymentStatus::Delinquent),
+            1 => Ok(GeolocationPaymentStatus::Paid),
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
 }
 
-impl fmt::Display for PaymentStatus {
+impl fmt::Display for GeolocationPaymentStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PaymentStatus::Unpaid => write!(f, "unpaid"),
-            PaymentStatus::Paid => write!(f, "paid"),
+            GeolocationPaymentStatus::Delinquent => write!(f, "delinquent"),
+            GeolocationPaymentStatus::Paid => write!(f, "paid"),
         }
     }
 }
@@ -45,7 +45,7 @@ impl fmt::Display for PaymentStatus {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GeolocationUserStatus {
     #[default]
-    Active = 0,
+    Activated = 0,
     Suspended = 1,
 }
 
@@ -54,7 +54,7 @@ impl TryFrom<u8> for GeolocationUserStatus {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(GeolocationUserStatus::Active),
+            0 => Ok(GeolocationUserStatus::Activated),
             1 => Ok(GeolocationUserStatus::Suspended),
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -64,8 +64,47 @@ impl TryFrom<u8> for GeolocationUserStatus {
 impl fmt::Display for GeolocationUserStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            GeolocationUserStatus::Active => write!(f, "active"),
+            GeolocationUserStatus::Activated => write!(f, "activated"),
             GeolocationUserStatus::Suspended => write!(f, "suspended"),
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, Default, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FlatPerEpochConfig {
+    pub rate: u64,
+    pub last_deduction_dz_epoch: u64,
+}
+
+impl fmt::Display for FlatPerEpochConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "rate: {}, last_deduction_dz_epoch: {}",
+            self.rate, self.last_deduction_dz_epoch
+        )
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum GeolocationBillingConfig {
+    FlatPerEpoch(FlatPerEpochConfig),
+}
+
+impl Default for GeolocationBillingConfig {
+    fn default() -> Self {
+        GeolocationBillingConfig::FlatPerEpoch(FlatPerEpochConfig::default())
+    }
+}
+
+impl fmt::Display for GeolocationBillingConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GeolocationBillingConfig::FlatPerEpoch(config) => {
+                write!(f, "flat_per_epoch({})", config)
+            }
         }
     }
 }
@@ -73,8 +112,8 @@ impl fmt::Display for GeolocationUserStatus {
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GeolocationTarget {
-    pub target_ip: Ipv4Addr, // 4
-    pub target_port: u16,    // 2
+    pub ip_address: Ipv4Addr,      // 4
+    pub location_offset_port: u16, // 2
     #[cfg_attr(
         feature = "serde",
         serde(
@@ -82,15 +121,15 @@ pub struct GeolocationTarget {
             deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
-    pub probe_pk: Pubkey, // 32
+    pub geoprobe_pk: Pubkey, // 32
 }
 
 impl fmt::Display for GeolocationTarget {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "target_ip: {}, target_port: {}, probe_pk: {}",
-            self.target_ip, self.target_port, self.probe_pk,
+            "ip_address: {}, location_offset_port: {}, geoprobe_pk: {}",
+            self.ip_address, self.location_offset_port, self.geoprobe_pk,
         )
     }
 }
@@ -117,8 +156,8 @@ pub struct GeolocationUser {
         )
     )]
     pub token_account: Pubkey, // 32
-    pub payment_status: PaymentStatus, // 1
-    pub billing: u64,              // 8
+    pub payment_status: GeolocationPaymentStatus, // 1
+    pub billing: GeolocationBillingConfig, // 1 + 16
     pub status: GeolocationUserStatus, // 1
     pub targets: Vec<GeolocationTarget>, // 4 + ~38 * len
 }
@@ -217,9 +256,12 @@ mod tests {
         assert_eq!(val.bump_seed, 0);
         assert_eq!(val.code, "");
         assert_eq!(val.token_account, Pubkey::default());
-        assert_eq!(val.payment_status, PaymentStatus::Unpaid);
-        assert_eq!(val.billing, 0);
-        assert_eq!(val.status, GeolocationUserStatus::Active);
+        assert_eq!(val.payment_status, GeolocationPaymentStatus::Delinquent);
+        assert_eq!(
+            val.billing,
+            GeolocationBillingConfig::FlatPerEpoch(FlatPerEpochConfig::default())
+        );
+        assert_eq!(val.status, GeolocationUserStatus::Activated);
         assert_eq!(val.targets.len(), 0);
     }
 
@@ -231,19 +273,19 @@ mod tests {
             bump_seed: 1,
             code: "geo-user-01".to_string(),
             token_account: Pubkey::new_unique(),
-            payment_status: PaymentStatus::Paid,
-            billing: 1_000_000,
-            status: GeolocationUserStatus::Active,
+            payment_status: GeolocationPaymentStatus::Paid,
+            billing: GeolocationBillingConfig::FlatPerEpoch(FlatPerEpochConfig::default()),
+            status: GeolocationUserStatus::Activated,
             targets: vec![
                 GeolocationTarget {
-                    target_ip: [8, 8, 8, 8].into(),
-                    target_port: 443,
-                    probe_pk: Pubkey::new_unique(),
+                    ip_address: [8, 8, 8, 8].into(),
+                    location_offset_port: 443,
+                    geoprobe_pk: Pubkey::new_unique(),
                 },
                 GeolocationTarget {
-                    target_ip: [1, 1, 1, 1].into(),
-                    target_port: 80,
-                    probe_pk: Pubkey::new_unique(),
+                    ip_address: [1, 1, 1, 1].into(),
+                    location_offset_port: 80,
+                    geoprobe_pk: Pubkey::new_unique(),
                 },
             ],
         };
@@ -281,9 +323,9 @@ mod tests {
             bump_seed: 1,
             code: "geo-user-01".to_string(),
             token_account: Pubkey::new_unique(),
-            payment_status: PaymentStatus::Paid,
-            billing: 1_000_000,
-            status: GeolocationUserStatus::Active,
+            payment_status: GeolocationPaymentStatus::Paid,
+            billing: GeolocationBillingConfig::FlatPerEpoch(FlatPerEpochConfig::default()),
+            status: GeolocationUserStatus::Activated,
             targets: vec![],
         };
         let err = val.validate();
@@ -299,9 +341,9 @@ mod tests {
             bump_seed: 1,
             code: "a".repeat(33), // More than 32 bytes
             token_account: Pubkey::new_unique(),
-            payment_status: PaymentStatus::Unpaid,
-            billing: 0,
-            status: GeolocationUserStatus::Active,
+            payment_status: GeolocationPaymentStatus::Delinquent,
+            billing: GeolocationBillingConfig::FlatPerEpoch(FlatPerEpochConfig::default()),
+            status: GeolocationUserStatus::Activated,
             targets: vec![],
         };
         let err = val.validate();
@@ -313,9 +355,9 @@ mod tests {
     fn test_state_geolocation_user_validate_error_too_many_targets() {
         let targets: Vec<GeolocationTarget> = (0..MAX_TARGETS + 1)
             .map(|i| GeolocationTarget {
-                target_ip: Ipv4Addr::new(8, 8, (i >> 8) as u8, i as u8),
-                target_port: 443,
-                probe_pk: Pubkey::new_unique(),
+                ip_address: Ipv4Addr::new(8, 8, (i >> 8) as u8, i as u8),
+                location_offset_port: 443,
+                geoprobe_pk: Pubkey::new_unique(),
             })
             .collect();
 
@@ -325,9 +367,9 @@ mod tests {
             bump_seed: 1,
             code: "geo-user-01".to_string(),
             token_account: Pubkey::new_unique(),
-            payment_status: PaymentStatus::Paid,
-            billing: 1_000_000,
-            status: GeolocationUserStatus::Active,
+            payment_status: GeolocationPaymentStatus::Paid,
+            billing: GeolocationBillingConfig::FlatPerEpoch(FlatPerEpochConfig::default()),
+            status: GeolocationUserStatus::Activated,
             targets,
         };
         let err = val.validate();
@@ -345,10 +387,16 @@ mod tests {
 
     #[test]
     fn test_payment_status_try_from_u8() {
-        assert_eq!(PaymentStatus::try_from(0u8).unwrap(), PaymentStatus::Unpaid);
-        assert_eq!(PaymentStatus::try_from(1u8).unwrap(), PaymentStatus::Paid);
         assert_eq!(
-            PaymentStatus::try_from(255u8).unwrap_err(),
+            GeolocationPaymentStatus::try_from(0u8).unwrap(),
+            GeolocationPaymentStatus::Delinquent
+        );
+        assert_eq!(
+            GeolocationPaymentStatus::try_from(1u8).unwrap(),
+            GeolocationPaymentStatus::Paid
+        );
+        assert_eq!(
+            GeolocationPaymentStatus::try_from(255u8).unwrap_err(),
             ProgramError::InvalidInstructionData
         );
     }
@@ -357,7 +405,7 @@ mod tests {
     fn test_geolocation_user_status_try_from_u8() {
         assert_eq!(
             GeolocationUserStatus::try_from(0u8).unwrap(),
-            GeolocationUserStatus::Active
+            GeolocationUserStatus::Activated
         );
         assert_eq!(
             GeolocationUserStatus::try_from(1u8).unwrap(),
@@ -371,13 +419,16 @@ mod tests {
 
     #[test]
     fn test_payment_status_display() {
-        assert_eq!(PaymentStatus::Unpaid.to_string(), "unpaid");
-        assert_eq!(PaymentStatus::Paid.to_string(), "paid");
+        assert_eq!(
+            GeolocationPaymentStatus::Delinquent.to_string(),
+            "delinquent"
+        );
+        assert_eq!(GeolocationPaymentStatus::Paid.to_string(), "paid");
     }
 
     #[test]
     fn test_geolocation_user_status_display() {
-        assert_eq!(GeolocationUserStatus::Active.to_string(), "active");
+        assert_eq!(GeolocationUserStatus::Activated.to_string(), "activated");
         assert_eq!(GeolocationUserStatus::Suspended.to_string(), "suspended");
     }
 }

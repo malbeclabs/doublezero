@@ -26,20 +26,19 @@ pub struct InitProgramConfigArgs {
 #[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
 pub struct CreateGeoProbeArgs {
     pub code: String,
-    pub exchange_pk: Pubkey,
     #[incremental(default = std::net::Ipv4Addr::UNSPECIFIED)]
     pub public_ip: Ipv4Addr,
-    pub port: u16,
-    pub metrics_publisher_pk: Pubkey,
+    pub location_offset_port: u16,
     pub latency_threshold_ns: u64,
+    pub metrics_publisher_pk: Pubkey,
 }
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
 pub struct UpdateGeoProbeArgs {
     pub public_ip: Option<Ipv4Addr>,
-    pub port: Option<u16>,
-    pub metrics_publisher_pk: Option<Pubkey>,
+    pub location_offset_port: Option<u16>,
     pub latency_threshold_ns: Option<u64>,
+    pub metrics_publisher_pk: Option<Pubkey>,
 }
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
@@ -55,33 +54,33 @@ pub struct RemoveParentDeviceArgs {
 #[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
 pub struct CreateGeolocationUserArgs {
     pub code: String,
+    pub token_account: Pubkey,
 }
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
 pub struct UpdateGeolocationUserArgs {
     pub token_account: Option<Pubkey>,
-    pub status: Option<u8>,
 }
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
 pub struct AddTargetArgs {
     #[incremental(default = std::net::Ipv4Addr::UNSPECIFIED)]
-    pub target_ip: Ipv4Addr,
-    pub target_port: u16,
-    pub probe_pk: Pubkey,
+    pub ip_address: Ipv4Addr,
+    pub location_offset_port: u16,
+    pub exchange_pk: Pubkey,
 }
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
 pub struct RemoveTargetArgs {
     #[incremental(default = std::net::Ipv4Addr::UNSPECIFIED)]
     pub target_ip: Ipv4Addr,
-    pub target_port: u16,
-    pub probe_pk: Pubkey,
+    pub exchange_pk: Pubkey,
 }
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
 pub struct UpdatePaymentStatusArgs {
     pub payment_status: u8,
+    pub last_deduction_dz_epoch: Option<u64>,
 }
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
@@ -180,15 +179,14 @@ mod tests {
         ));
         test_instruction(GeolocationInstruction::CreateGeoProbe(CreateGeoProbeArgs {
             code: "test-probe".to_string(),
-            exchange_pk: Pubkey::new_unique(),
             public_ip: Ipv4Addr::new(8, 8, 8, 8),
-            port: 8923,
+            location_offset_port: 8923,
             metrics_publisher_pk: Pubkey::new_unique(),
             latency_threshold_ns: 500_000,
         }));
         test_instruction(GeolocationInstruction::UpdateGeoProbe(UpdateGeoProbeArgs {
             public_ip: Some(Ipv4Addr::new(1, 1, 1, 1)),
-            port: Some(9999),
+            location_offset_port: Some(9999),
             metrics_publisher_pk: None,
             latency_threshold_ns: Some(1_000_000),
         }));
@@ -206,27 +204,29 @@ mod tests {
         test_instruction(GeolocationInstruction::CreateGeolocationUser(
             CreateGeolocationUserArgs {
                 code: "test-user".to_string(),
+                token_account: Pubkey::new_unique(),
             },
         ));
         test_instruction(GeolocationInstruction::UpdateGeolocationUser(
             UpdateGeolocationUserArgs {
                 token_account: Some(Pubkey::new_unique()),
-                status: Some(1),
             },
         ));
         test_instruction(GeolocationInstruction::DeleteGeolocationUser);
         test_instruction(GeolocationInstruction::AddTarget(AddTargetArgs {
-            target_ip: Ipv4Addr::new(203, 0, 113, 42),
-            target_port: 443,
-            probe_pk: Pubkey::new_unique(),
+            ip_address: Ipv4Addr::new(203, 0, 113, 42),
+            location_offset_port: 443,
+            exchange_pk: Pubkey::new_unique(),
         }));
         test_instruction(GeolocationInstruction::RemoveTarget(RemoveTargetArgs {
             target_ip: Ipv4Addr::new(203, 0, 113, 42),
-            target_port: 443,
-            probe_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
         }));
         test_instruction(GeolocationInstruction::UpdatePaymentStatus(
-            UpdatePaymentStatusArgs { payment_status: 1 },
+            UpdatePaymentStatusArgs {
+                payment_status: 1,
+                last_deduction_dz_epoch: Some(42),
+            },
         ));
     }
 

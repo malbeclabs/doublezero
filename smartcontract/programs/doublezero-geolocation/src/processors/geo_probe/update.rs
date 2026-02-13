@@ -45,8 +45,8 @@ pub fn process_update_geo_probe(
         validate_public_ip(public_ip)?;
         probe.public_ip = *public_ip;
     }
-    if let Some(port) = args.port {
-        probe.port = port;
+    if let Some(location_offset_port) = args.location_offset_port {
+        probe.location_offset_port = location_offset_port;
     }
     if let Some(metrics_publisher_pk) = args.metrics_publisher_pk {
         probe.metrics_publisher_pk = metrics_publisher_pk;

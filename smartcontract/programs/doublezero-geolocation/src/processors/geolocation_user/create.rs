@@ -5,7 +5,10 @@ use crate::{
     serializer::try_acc_create,
     state::{
         accounttype::AccountType,
-        geolocation_user::{GeolocationUser, GeolocationUserStatus, PaymentStatus},
+        geolocation_user::{
+            FlatPerEpochConfig, GeolocationBillingConfig, GeolocationPaymentStatus,
+            GeolocationUser, GeolocationUserStatus,
+        },
     },
     validation::validate_code_length,
 };
@@ -57,10 +60,10 @@ pub fn process_create_geolocation_user(
         owner: *payer_account.key,
         bump_seed,
         code,
-        token_account: Pubkey::default(),
-        payment_status: PaymentStatus::Unpaid,
-        billing: 0,
-        status: GeolocationUserStatus::Active,
+        token_account: args.token_account,
+        payment_status: GeolocationPaymentStatus::Delinquent,
+        billing: GeolocationBillingConfig::FlatPerEpoch(FlatPerEpochConfig::default()),
+        status: GeolocationUserStatus::Activated,
         targets: vec![],
     };
 

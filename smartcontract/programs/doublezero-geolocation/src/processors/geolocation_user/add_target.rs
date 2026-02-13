@@ -39,8 +39,11 @@ pub fn process_add_target(
         msg!("Invalid GeoProbe Account Owner");
         return Err(ProgramError::IllegalOwner);
     }
-    if probe_account.key != &args.probe_pk {
-        msg!("Probe account does not match probe_pk in args");
+
+    let mut probe = GeoProbe::try_from(probe_account)?;
+
+    if probe.exchange_pk != args.exchange_pk {
+        msg!("Probe exchange_pk does not match exchange_pk in args");
         return Err(ProgramError::InvalidAccountData);
     }
 
@@ -59,33 +62,32 @@ pub fn process_add_target(
         return Err(GeolocationError::MaxTargetsReached.into());
     }
 
-    validate_public_ip(&args.target_ip)?;
+    validate_public_ip(&args.ip_address)?;
 
     let already_exists = user.targets.iter().any(|t| {
-        t.target_ip == args.target_ip
-            && t.target_port == args.target_port
-            && t.probe_pk == args.probe_pk
+        t.ip_address == args.ip_address
+            && t.location_offset_port == args.location_offset_port
+            && t.geoprobe_pk == *probe_account.key
     });
     if already_exists {
         msg!(
             "Target already exists: {}:{} probe={}",
-            args.target_ip,
-            args.target_port,
-            args.probe_pk
+            args.ip_address,
+            args.location_offset_port,
+            probe_account.key
         );
         return Err(GeolocationError::TargetAlreadyExists.into());
     }
 
-    let mut probe = GeoProbe::try_from(probe_account)?;
     probe.reference_count = probe
         .reference_count
         .checked_add(1)
         .ok_or(GeolocationError::ReferenceCountOverflow)?;
 
     user.targets.push(GeolocationTarget {
-        target_ip: args.target_ip,
-        target_port: args.target_port,
-        probe_pk: args.probe_pk,
+        ip_address: args.ip_address,
+        location_offset_port: args.location_offset_port,
+        geoprobe_pk: *probe_account.key,
     });
 
     try_acc_write(&user, user_account, payer_account, accounts)?;

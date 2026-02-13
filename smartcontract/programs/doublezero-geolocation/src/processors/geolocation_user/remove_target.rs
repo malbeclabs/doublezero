@@ -35,8 +35,11 @@ pub fn process_remove_target(
         msg!("Invalid GeoProbe Account Owner");
         return Err(ProgramError::IllegalOwner);
     }
-    if probe_account.key != &args.probe_pk {
-        msg!("Probe account does not match probe_pk in args");
+
+    let mut probe = GeoProbe::try_from(probe_account)?;
+
+    if probe.exchange_pk != args.exchange_pk {
+        msg!("Probe exchange_pk does not match exchange_pk in args");
         return Err(ProgramError::InvalidAccountData);
     }
 
@@ -46,11 +49,10 @@ pub fn process_remove_target(
         return Err(GeolocationError::InvalidOwner.into());
     }
 
-    let pos = user.targets.iter().position(|t| {
-        t.target_ip == args.target_ip
-            && t.target_port == args.target_port
-            && t.probe_pk == args.probe_pk
-    });
+    let pos = user
+        .targets
+        .iter()
+        .position(|t| t.ip_address == args.target_ip && t.geoprobe_pk == *probe_account.key);
 
     match pos {
         Some(index) => {
@@ -58,16 +60,14 @@ pub fn process_remove_target(
         }
         None => {
             msg!(
-                "Target not found: {}:{} probe={}",
+                "Target not found: {} probe={}",
                 args.target_ip,
-                args.target_port,
-                args.probe_pk
+                probe_account.key
             );
             return Err(GeolocationError::TargetNotFound.into());
         }
     }
 
-    let mut probe = GeoProbe::try_from(probe_account)?;
     probe.reference_count = probe.reference_count.saturating_sub(1);
 
     try_acc_write(&user, user_account, payer_account, accounts)?;

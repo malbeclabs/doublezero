@@ -24,6 +24,7 @@ pub fn process_create_geo_probe(
     let accounts_iter = &mut accounts.iter();
 
     let probe_account = next_account_info(accounts_iter)?;
+    let exchange_account = next_account_info(accounts_iter)?;
     let program_config_account = next_account_info(accounts_iter)?;
     let serviceability_globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
@@ -64,9 +65,9 @@ pub fn process_create_geo_probe(
         account_type: AccountType::GeoProbe,
         owner: *payer_account.key,
         bump_seed,
-        exchange_pk: args.exchange_pk,
+        exchange_pk: *exchange_account.key,
         public_ip: args.public_ip,
-        port: args.port,
+        location_offset_port: args.location_offset_port,
         code,
         parent_devices: vec![],
         metrics_publisher_pk: args.metrics_publisher_pk,

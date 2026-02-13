@@ -1,7 +1,11 @@
 use crate::{
     error::DoubleZeroError,
     serializer::try_acc_write,
-    state::{device::*, globalstate::GlobalState, interface::InterfaceStatus},
+    state::{
+        device::*,
+        globalstate::GlobalState,
+        interface::{InterfaceStatus, InterfaceType},
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -68,7 +72,11 @@ pub fn process_unlink_device_interface(
     }
 
     iface.status = InterfaceStatus::Unlinked;
-    iface.ip_net = NetworkV4::default();
+    // Only reset ip_net for loopback interfaces (where IPs are auto-allocated from the pool).
+    // Physical interfaces keep their user-provided ip_net.
+    if iface.interface_type == InterfaceType::Loopback {
+        iface.ip_net = NetworkV4::default();
+    }
     device.interfaces[idx] = iface.to_interface();
 
     try_acc_write(&device, device_account, payer_account, accounts)?;

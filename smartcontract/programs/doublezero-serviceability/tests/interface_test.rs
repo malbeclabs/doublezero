@@ -25,7 +25,7 @@ use doublezero_serviceability::{
 };
 use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Keypair, signer::Signer};
 
 mod test_helpers;
 use test_helpers::*;
@@ -330,7 +330,7 @@ async fn test_device_interfaces() {
             interface_cyoa: InterfaceCYOA::GREOverDIA,
             bandwidth: 0,
             cir: 0,
-            ip_net: None,
+            ip_net: Some("63.243.225.62/30".parse().unwrap()),
             mtu: 1500,
             routing_mode: RoutingMode::Static,
             vlan_id: 43,
@@ -453,6 +453,39 @@ async fn test_device_interfaces() {
         .to_string()
         .contains("custom program error: 0x38")); // DoubleZeroError::InterfaceAlreadyExists == 0x38
 
+    // Try to create a plain physical interface with ip_net (should fail)
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "Et4/1".to_string(),
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::None,
+            interface_cyoa: InterfaceCYOA::None,
+            bandwidth: 0,
+            ip_net: Some("10.0.0.1/24".parse().unwrap()),
+            cir: 0,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    assert!(
+        res.unwrap_err()
+            .to_string()
+            .contains("custom program error: 0x2f"),
+        "ip_net should only be allowed on CYOA, DIA, or user-tunnel-endpoint interfaces"
+    ); // DoubleZeroError::InvalidInterfaceIp == 0x2f
+
     let device = get_account_data(&mut banks_client, device_pubkey)
         .await
         .expect("Unable to get Account")
@@ -472,6 +505,7 @@ async fn test_device_interfaces() {
     assert_eq!(iface1.vlan_id, 43);
     assert!(iface1.user_tunnel_endpoint);
     assert_eq!(iface1.status, InterfaceStatus::Pending);
+    assert_eq!(iface1.ip_net, "63.243.225.62/30".parse().unwrap());
 
     let iface1 = device.find_interface("Ethernet3/1").unwrap().1;
     //assert_eq!(iface1.interface_dia, InterfaceDIA::DIA);
@@ -680,8 +714,18 @@ async fn test_device_interfaces() {
 
     let iface1 = device.find_interface("Ethernet1/1").unwrap().1;
     assert_eq!(iface1.status, InterfaceStatus::Unlinked);
+    assert_eq!(
+        iface1.ip_net,
+        "0.0.0.0/0".parse().unwrap(),
+        "Physical interface without ip_net should remain default after unlink"
+    );
     let iface1 = device.find_interface("Ethernet2/1").unwrap().1;
     assert_eq!(iface1.status, InterfaceStatus::Unlinked);
+    assert_eq!(
+        iface1.ip_net,
+        "63.243.225.62/30".parse().unwrap(),
+        "CYOA physical interface ip_net should be preserved after unlink"
+    );
     let iface1 = device.find_interface("Ethernet3/1").unwrap().1;
     assert_eq!(iface1.status, InterfaceStatus::Unlinked);
     let iface2 = device.find_interface("Loopback0").unwrap().1;
@@ -742,6 +786,57 @@ async fn test_device_interfaces() {
         .contains("custom program error: 0x7")); // DoubleZeroError::InvalidStatus == 0x7
 
     println!("✅ Regression checks for ActivateDeviceInterface status validation passed");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 9b. Unlink loopback interface resets ip_net...");
+
+    // Loopback0 is currently Activated with ip_net = 10.1.1.0/31
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
+            name: "loopback0".to_string(),
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    let loopback0 = device.find_interface("Loopback0").unwrap().1;
+    assert_eq!(loopback0.status, InterfaceStatus::Unlinked);
+    assert_eq!(
+        loopback0.ip_net,
+        "0.0.0.0/0".parse().unwrap(),
+        "Loopback ip_net should be reset to default after unlink"
+    );
+
+    // Re-activate Loopback0 so the rest of the test (delete/remove) still works
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
+            name: "loopback0".to_string(),
+            ip_net: "10.1.1.0/31".parse().unwrap(),
+            node_segment_idx: 10,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    println!("✅ Loopback ip_net reset on unlink verified");
     /*****************************************************************************************************************************************************/
     println!("🟢 10. Deleting device interfaces...");
     execute_transaction(
@@ -944,5 +1039,230 @@ async fn test_device_interfaces() {
     assert_eq!(loopback1.status, InterfaceStatus::Rejected);
 
     println!("✅ Device interfaces removed");
+
+    /*****************************************************************************************************************************************************/
+    println!(
+        "🟢 12. Contributor owner (not in foundation_allowlist) can update their own interface..."
+    );
+
+    // Create a new keypair for contributor owner
+    let contributor_owner = Keypair::new();
+
+    // Fund the contributor owner
+    transfer(
+        &mut banks_client,
+        &payer,
+        &contributor_owner.pubkey(),
+        10_000_000,
+    )
+    .await;
+
+    // Get current globalstate index
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+
+    // Create contributor with contributor_owner as the owner (foundation payer signs)
+    let (contributor2_pubkey, _) = get_contributor_pda(&program_id, gs.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "cont2".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(contributor_owner.pubkey(), false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create device under contributor2 (foundation payer signs)
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (device2_pubkey, _) = get_device_pda(&program_id, gs.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
+            code: "la2".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [9, 9, 9, 9].into(),
+            dz_prefixes: "110.2.0.0/23".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create CYOA interface on device2 with explicit ip_net (foundation payer signs)
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "Et1/1".to_string(),
+            interface_cyoa: InterfaceCYOA::GREOverDIA,
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::None,
+            bandwidth: 1000,
+            cir: 500,
+            ip_net: Some("38.104.127.117/31".parse().unwrap()),
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create a plain physical interface (no CYOA/DIA/UTE) on device2
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "Et2/1".to_string(),
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::None,
+            bandwidth: 1000,
+            cir: 500,
+            ip_net: None,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Updating ip_net on a plain physical interface should fail
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
+            name: "ethernet2/1".to_string(),
+            ip_net: Some("10.0.0.1/24".parse().unwrap()),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    assert!(
+        res.unwrap_err()
+            .to_string()
+            .contains("custom program error: 0x2f"),
+        "ip_net update should be rejected on plain physical interfaces"
+    ); // DoubleZeroError::InvalidInterfaceIp == 0x2f
+
+    // Update interface using contributor_owner (NOT in foundation_allowlist)
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
+            name: "ethernet1/1".to_string(),
+            bandwidth: Some(2000),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &contributor_owner,
+    )
+    .await;
+    assert!(
+        res.is_ok(),
+        "Contributor owner should be able to update their own interface"
+    );
+
+    // Verify the update succeeded and ip_net is unchanged
+    let device2 = get_account_data(&mut banks_client, device2_pubkey)
+        .await
+        .expect("Unable to get Device")
+        .get_device()
+        .unwrap();
+    let iface = device2.find_interface("Ethernet1/1").unwrap().1;
+    assert_eq!(iface.bandwidth, 2000);
+    assert_eq!(
+        iface.ip_net,
+        "38.104.127.117/31".parse().unwrap(),
+        "ip_net should be unchanged after update"
+    );
+
+    // Verify that a random keypair (neither contributor owner nor foundation) cannot update
+    let random_user = Keypair::new();
+    transfer(&mut banks_client, &payer, &random_user.pubkey(), 10_000_000).await;
+
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
+            name: "ethernet1/1".to_string(),
+            bandwidth: Some(3000),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &random_user,
+    )
+    .await;
+    assert!(
+        res.unwrap_err()
+            .to_string()
+            .contains("custom program error: 0x8"),
+        "Random user should not be able to update interface (NotAllowed)"
+    );
+
+    // Verify the bandwidth was NOT changed by the unauthorized update
+    let device2 = get_account_data(&mut banks_client, device2_pubkey)
+        .await
+        .expect("Unable to get Device")
+        .get_device()
+        .unwrap();
+    let iface = device2.find_interface("Ethernet1/1").unwrap().1;
+    assert_eq!(
+        iface.bandwidth, 2000,
+        "Unauthorized update should not have taken effect"
+    );
+
+    println!("✅ Contributor owner can update their own interface");
     println!("🟢🟢🟢  End test_device_interfaces  🟢🟢🟢");
 }

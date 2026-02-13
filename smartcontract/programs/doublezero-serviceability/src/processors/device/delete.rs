@@ -84,7 +84,7 @@ pub fn process_delete_device(
 
     if !matches!(
         device.status,
-        DeviceStatus::Activated
+        DeviceStatus::Pending
             | DeviceStatus::DeviceProvisioning
             | DeviceStatus::LinkProvisioning
             | DeviceStatus::Drained

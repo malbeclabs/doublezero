@@ -507,6 +507,34 @@ async fn test_device() {
 
     println!("✅ Device updated to Activated");
     /*****************************************************************************************************************************************************/
+    println!("🟢 10b. Drain Device before deletion...");
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            desired_status: Some(DeviceDesiredStatus::Drained),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_la = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_la.status, DeviceStatus::Drained);
+
+    println!("✅ Device drained");
+    /*****************************************************************************************************************************************************/
     println!("🟢 11. Deleting Device...");
     execute_transaction(
         &mut banks_client,
@@ -1024,6 +1052,24 @@ async fn test_delete_device_fails_with_reference_count_not_zero() {
         .unwrap();
     assert_eq!(device.reference_count, 1);
 
+    // Drain device first (delete only allowed from Drained state)
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            desired_status: Some(DeviceDesiredStatus::Drained),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
     // DeleteDevice should fail with ReferenceCountNotZero (error code 13)
     let result = try_execute_transaction(
         &mut banks_client,
@@ -1052,7 +1098,7 @@ async fn test_delete_device_fails_with_reference_count_not_zero() {
 }
 
 #[tokio::test]
-async fn test_device_delete_fails_from_pending() {
+async fn test_device_delete_from_pending() {
     let (
         mut banks_client,
         payer,
@@ -1098,7 +1144,7 @@ async fn test_device_delete_fails_from_pending() {
         .unwrap();
     assert_eq!(device.status, DeviceStatus::Pending);
 
-    let result = try_execute_transaction(
+    execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -1112,13 +1158,12 @@ async fn test_device_delete_fails_from_pending() {
     )
     .await;
 
-    assert!(result.is_err());
-    let error_string = format!("{:?}", result.unwrap_err());
-    assert!(
-        error_string.contains("Custom(7)"),
-        "Expected InvalidStatus (Custom(7)), got: {}",
-        error_string
-    );
+    let device = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .unwrap()
+        .get_device()
+        .unwrap();
+    assert_eq!(device.status, DeviceStatus::Deleting);
 }
 
 #[tokio::test]
@@ -1210,6 +1255,29 @@ async fn test_device_delete_from_drained() {
         .get_device()
         .unwrap();
     assert_eq!(device.status, DeviceStatus::Activated);
+
+    // Delete from Activated should fail (must drain first)
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {}),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(result.is_err());
+    let error_string = format!("{:?}", result.unwrap_err());
+    assert!(
+        error_string.contains("Custom(7)"),
+        "Expected InvalidStatus (Custom(7)), got: {}",
+        error_string
+    );
 
     // Drain device
     execute_transaction(

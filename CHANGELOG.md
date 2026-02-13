@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
   - removes accesspass monitor task (that expires access passes)
 - Onchain Programs
   - Refactor user creation to validate all limits (max_users, max_multicast_users, max_unicast_users) before incrementing counters — improves efficiency by avoiding wasted work on validation failures and follows fail-fast best practice
+  - Serviceability: `UnlinkDeviceInterface` now only allows `Activated` or `Pending` interfaces; when an associated link account is provided for an `Activated` interface, the link must be in `Deleting` status
+  - SDK: `UnlinkDeviceInterfaceCommand` automatically discovers and passes associated link accounts
 - E2E / QA Tests
   - Fix QA unicast test flake caused by RPC 429 rate limiting during concurrent user deletion — treat transient RPC errors as non-fatal in the deletion polling loop
 

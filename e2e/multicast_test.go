@@ -487,10 +487,9 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 
 				mGroups := []string{"233.84.178.0", "233.84.178.1"}
 
-				for _, mGroup := range mGroups {
-					_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 " + mGroup}, docker.NoPrintOnError())
-				}
-
+				// The publisher's heartbeat sender automatically sends UDP heartbeat
+				// packets to each multicast group every 10 seconds. This creates (S, G)
+				// mroute state on the device without requiring an explicit ping or send.
 				for _, mGroup := range mGroups {
 					require.Eventually(t, func() bool {
 						mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
@@ -512,7 +511,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 						}
 
 						return true
-					}, 5*time.Second, 1*time.Second, "multicast group %s not found in mroutes", mGroup)
+					}, 30*time.Second, 1*time.Second, "multicast group %s not found in mroutes", mGroup)
 				}
 			}) {
 				t.Fail()

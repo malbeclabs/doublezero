@@ -51,12 +51,13 @@ type NetlinkManager struct {
 	bgp              BGPServer
 	db               services.DBReaderWriter
 	pim              services.PIMWriter
+	heartbeat        services.HeartbeatWriter
 	mu               sync.Mutex
 }
 
 // CreateService creates the appropriate service based on the provisioned
 // user type.
-func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netlinker, db services.DBReaderWriter, pim services.PIMWriter) (Provisioner, error) {
+func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netlinker, db services.DBReaderWriter, pim services.PIMWriter, heartbeat services.HeartbeatWriter) (Provisioner, error) {
 	switch u {
 	case api.UserTypeIBRL:
 		return services.NewIBRLService(bgp, nl, db), nil
@@ -65,14 +66,14 @@ func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netl
 	case api.UserTypeEdgeFiltering:
 		return services.NewEdgeFilteringService(bgp, nl, db), nil
 	case api.UserTypeMulticast:
-		return services.NewMulticastService(bgp, nl, db, pim), nil
+		return services.NewMulticastService(bgp, nl, db, pim, heartbeat), nil
 	default:
 		return nil, fmt.Errorf("unsupported user type: %s", u)
 	}
 }
 
-func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, db services.DBReaderWriter, pim services.PIMWriter) *NetlinkManager {
-	manager := &NetlinkManager{netlink: netlink, bgp: bgp, db: db, pim: pim}
+func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, db services.DBReaderWriter, pim services.PIMWriter, heartbeat services.HeartbeatWriter) *NetlinkManager {
+	manager := &NetlinkManager{netlink: netlink, bgp: bgp, db: db, pim: pim, heartbeat: heartbeat}
 	return manager
 }
 
@@ -84,7 +85,7 @@ func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.db, n.pim)
+	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.db, n.pim, n.heartbeat)
 	if err != nil {
 		return fmt.Errorf("error creating service: %v", err)
 	}

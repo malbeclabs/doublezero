@@ -11,6 +11,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/multicast"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
@@ -21,6 +22,7 @@ type MulticastService struct {
 	nl                 routing.Netlinker
 	db                 DBReaderWriter
 	pim                PIMWriter
+	heartbeat          HeartbeatWriter
 	Tunnel             *routing.Tunnel
 	DoubleZeroAddr     net.IP
 	MulticastPubGroups []net.IP
@@ -30,13 +32,18 @@ type MulticastService struct {
 func (s *MulticastService) UserType() api.UserType   { return api.UserTypeMulticast }
 func (s *MulticastService) ServiceType() ServiceType { return ServiceTypeMulticast }
 
-func NewMulticastService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter, pim PIMWriter) *MulticastService {
+func NewMulticastService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter, pim PIMWriter, heartbeat HeartbeatWriter) *MulticastService {
 	return &MulticastService{
-		bgp: bgp,
-		nl:  nl,
-		db:  db,
-		pim: pim,
+		bgp:       bgp,
+		nl:        nl,
+		db:        db,
+		pim:       pim,
+		heartbeat: heartbeat,
 	}
+}
+
+func (s *MulticastService) isPublisher() bool {
+	return len(s.MulticastPubGroups) > 0
 }
 
 func (s *MulticastService) isSubscriber() bool {
@@ -81,6 +88,11 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 			if err := s.nl.RouteAdd(mroute); err != nil {
 				return fmt.Errorf("error adding multicast route: %v", err)
 			}
+		}
+
+		s.MulticastPubGroups = p.MulticastPubGroups
+		if err := s.heartbeat.Start(tun.Name, p.DoubleZeroIP, p.MulticastPubGroups, multicast.DefaultHeartbeatTTL, multicast.DefaultHeartbeatInterval); err != nil {
+			return fmt.Errorf("error starting heartbeat sender: %v", err)
 		}
 	}
 
@@ -145,6 +157,12 @@ func (s *MulticastService) Teardown() error {
 	var errRemoveTunnel, errRemovePeer error
 	if s.Tunnel == nil {
 		return nil
+	}
+
+	if s.isPublisher() {
+		if err := s.heartbeat.Close(); err != nil {
+			slog.Error("error stopping heartbeat sender", "error", err)
+		}
 	}
 
 	if s.isSubscriber() {

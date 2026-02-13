@@ -15,7 +15,6 @@ defmodule Scheduler.Worker.CalculateDistribution do
     {:ok, state, {:continue, :calculate_distribution}}
   end
 
-
   def handle_continue(:calculate_distribution, %{count: 2} = state) do
     case nif_module().calculate_distribution(
            solana_rpc(),

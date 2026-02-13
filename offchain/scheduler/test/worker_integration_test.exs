@@ -13,6 +13,10 @@ defmodule Scheduler.WorkerIntegrationTest do
   import ExUnit.CaptureLog
   import Mox
 
+  alias Scheduler.Worker.CalculateDistribution
+  alias Scheduler.Worker.CollectAllDebt
+  alias Scheduler.Worker.InitializeDistribution
+
   # Use global mode for cross-process mocking (GenServers spawn in separate processes)
   setup :set_mox_global
   setup :verify_on_exit!
@@ -24,7 +28,7 @@ defmodule Scheduler.WorkerIntegrationTest do
 
     on_exit(fn ->
       Application.delete_env(:scheduler, :nif_module)
-       Application.delete_env(:scheduler, :solana_rpc)
+      Application.delete_env(:scheduler, :solana_rpc)
     end)
 
     :ok
@@ -40,7 +44,7 @@ defmodule Scheduler.WorkerIntegrationTest do
         capture_log(fn ->
           # Trap exits so we can monitor without crashing
           Process.flag(:trap_exit, true)
-          {:ok, pid} = Scheduler.Worker.InitializeDistribution.start_link()
+          {:ok, pid} = InitializeDistribution.start_link()
 
           receive do
             {:EXIT, ^pid, reason} ->
@@ -61,7 +65,7 @@ defmodule Scheduler.WorkerIntegrationTest do
       log =
         capture_log(fn ->
           Process.flag(:trap_exit, true)
-          {:ok, pid} = Scheduler.Worker.InitializeDistribution.start_link()
+          {:ok, pid} = InitializeDistribution.start_link()
 
           receive do
             {:EXIT, ^pid, reason} ->
@@ -85,7 +89,7 @@ defmodule Scheduler.WorkerIntegrationTest do
       log =
         capture_log(fn ->
           Process.flag(:trap_exit, true)
-          {:ok, pid} = Scheduler.Worker.CollectAllDebt.start_link()
+          {:ok, pid} = CollectAllDebt.start_link()
 
           receive do
             {:EXIT, ^pid, reason} ->
@@ -106,7 +110,7 @@ defmodule Scheduler.WorkerIntegrationTest do
       log =
         capture_log(fn ->
           Process.flag(:trap_exit, true)
-          {:ok, pid} = Scheduler.Worker.CollectAllDebt.start_link()
+          {:ok, pid} = CollectAllDebt.start_link()
 
           receive do
             {:EXIT, ^pid, reason} ->
@@ -145,7 +149,7 @@ defmodule Scheduler.WorkerIntegrationTest do
       log =
         capture_log(fn ->
           Process.flag(:trap_exit, true)
-          {:ok, pid} = Scheduler.Worker.CalculateDistribution.start_link()
+          {:ok, pid} = CalculateDistribution.start_link()
 
           receive do
             {:EXIT, ^pid, reason} ->
@@ -176,7 +180,7 @@ defmodule Scheduler.WorkerIntegrationTest do
       log =
         capture_log(fn ->
           Process.flag(:trap_exit, true)
-          {:ok, pid} = Scheduler.Worker.CalculateDistribution.start_link()
+          {:ok, pid} = CalculateDistribution.start_link()
 
           receive do
             {:EXIT, ^pid, reason} -> assert reason == :normal
@@ -197,7 +201,7 @@ defmodule Scheduler.WorkerIntegrationTest do
       log =
         capture_log(fn ->
           Process.flag(:trap_exit, true)
-          {:ok, pid} = Scheduler.Worker.CalculateDistribution.start_link()
+          {:ok, pid} = CalculateDistribution.start_link()
 
           receive do
             {:EXIT, ^pid, reason} ->
@@ -225,7 +229,7 @@ defmodule Scheduler.WorkerIntegrationTest do
       log =
         capture_log(fn ->
           Process.flag(:trap_exit, true)
-          {:ok, pid} = Scheduler.Worker.CalculateDistribution.start_link()
+          {:ok, pid} = CalculateDistribution.start_link()
 
           receive do
             {:EXIT, ^pid, reason} ->
@@ -258,7 +262,7 @@ defmodule Scheduler.WorkerIntegrationTest do
       log =
         capture_log(fn ->
           Process.flag(:trap_exit, true)
-          {:ok, pid} = Scheduler.Worker.CalculateDistribution.start_link()
+          {:ok, pid} = CalculateDistribution.start_link()
 
           receive do
             {:EXIT, ^pid, reason} ->
@@ -288,7 +292,7 @@ defmodule Scheduler.WorkerIntegrationTest do
       log =
         capture_log(fn ->
           Process.flag(:trap_exit, true)
-          {:ok, pid} = Scheduler.Worker.CalculateDistribution.start_link()
+          {:ok, pid} = CalculateDistribution.start_link()
 
           receive do
             {:EXIT, ^pid, reason} ->

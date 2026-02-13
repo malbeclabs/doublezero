@@ -1,4 +1,5 @@
 defmodule Scheduler.ValidatorDebt.DebtCollection do
+  @moduledoc false
   defstruct total_paid: 0,
             already_paid: 0,
             total_debt: 0,
@@ -7,5 +8,6 @@ defmodule Scheduler.ValidatorDebt.DebtCollection do
 end
 
 defmodule Scheduler.ValidatorDebt.Debt do
+  @moduledoc false
   defstruct [:validator_id, :amount, :result, :success]
 end

@@ -1217,6 +1217,7 @@ async fn test_user_per_type_limits() {
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/24".parse().unwrap(),
             next_bgp_community: None,
+            multicast_publisher_block: "232.0.0.0/24".parse().unwrap(),
         }),
         vec![
             AccountMeta::new(config_pubkey, false),
@@ -1661,7 +1662,10 @@ async fn test_user_per_type_limits() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs { dz_prefix_count: 0 }),
+        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
         vec![
             AccountMeta::new(user1_pubkey, false),
             AccountMeta::new(payer.pubkey(), false),

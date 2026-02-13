@@ -18,15 +18,6 @@ All notable changes to this project will be documented in this file.
   - Add multicast publisher heartbeat sender — sends periodic UDP packets to each multicast group to keep PIM (S,G) mroute state alive on devices
 - E2E tests
   - Add daily devnet QA test for device provisioning lifecycle (RFC12) — deletes/recreates device and links, restarts daemons with new pubkey via Ansible
-- SDK
-  - Added Tenant to all sdks
-- E2E tests
-  - Added multi-tenancy deletion test coverage
-- Telemetry
-  - Add `doublezero-geoprobe-agent`, intermediary probe server for RFC16
-  - Adds support for per-tenant metro routing policy
-  - Add `--geoprobe-pubkey` flag to `doublezero-geoprobe-agent` for device identity
-  - `LocationOffset` struct now includes `SenderPubkey` to distinguish individual devices that share the same signing authority
 
 ## [v0.8.7](https://github.com/malbeclabs/doublezero/compare/client/v0.8.6...client/v0.8.7) – 2026-02-10
 
@@ -36,6 +27,15 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- SDK
+  - Added Tenant to all sdks
+- E2E tests
+  - Added multi-tenancy deletion test coverage
+- Telemetry
+  - Add `doublezero-geoprobe-agent`, intermediary probe server for RFC16
+  - Adds support for per-tenant metro routing policy
+  - Add `--geoprobe-pubkey` flag to `doublezero-geoprobe-agent` for device identity
+  - `LocationOffset` struct now includes `SenderPubkey` to distinguish individual devices that share the same signing authority
 - Telemetry
   - extend device telemetry agent to measure RTT to child geoProbes via TWAMP, generate signed LocationOffset structures, and deliver them via UDP as per rfcs/rfc16-geolocation-verification.md
   - geoprobe-target: example target listener for geolocation verification with TWAMP reflector, UDP offset receiver, signature chain verification, distance calculation logging, and DoS protections (5-reference depth limit and per-source-IP rate limiting) (#2901)

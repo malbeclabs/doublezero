@@ -32,13 +32,13 @@ This RFC leverages DoubleZero's existing TWAMP telemetry infrastructure to creat
 ### geoProbe
 A server that acts as an intermediary for latency measurements. geoProbes:
 - Are bare metal servers. Ideally located within 1ms of a DZD
-- Run a UDP listener (default port 8923) accepting signed Offset messages from DZDs
+- Run a UDP listener (default port 8923) accepting signed Location Offset messages from DZDs
 - Pull configuration from the DZ Ledger and measure latency to target devices specified there
 - Generate composite Offset messages including references to DZD measurements attesting to the probe's location
 - Are registered onchain in the Telemetry Program
 
-### Offset
-A signed data structure representing the latency relationship between two entities (DZD↔Probe or Probe↔Target) and is sent to the Probe or Target. This is sent via UDP to the next link in the chain (From DZD->Probe and From Probe->Target). RttNs is the sum of the reference rtt plus measured rtt, and lat/lng are copied from the reference.
+### Location Offset
+A signed data structure containing a DZD's geographic location (latitude and longitude) and a chain of latency relationship between two entities (DZD↔Probe or Probe↔Target) and is sent to the Probe or Target. This is sent via UDP to the next link in the chain (From DZD->Probe and From Probe->Target). RttNs is the sum of the reference rtt plus measured rtt, and lat/lng are copied from the reference.
 
 ```go
 type LocationOffset struct {
@@ -116,6 +116,7 @@ IP    │ │ Offset        Target IPs │  │ Measured             Offset │
 ```
 
 **Data Flows:**
+
 _Ongoing:_
 - **Probe Discovery (60s interval):** DZD queries onchain Probe accounts to discover child probes
 - **Target Discovery (30s interval):** Probe queries onchain to discover its targets
@@ -132,56 +133,163 @@ _Measurement Flow_
 6. **Composite Offset:** Probe creates new Offset with DZD Offset as reference, signs it
 8. **Target Verification:** Target verifies signature chain, uses `lat/lng` + `rtt_ns` to determine location 
 
-### Data Structures
-
-#### Probe Account (Onchain in Serviceability)
-
-```rust
-pub struct Probe {
-    pub account_type: AccountType,           // New AccountType::Probe
-    pub owner: Pubkey,                       // Resource Provider
-    pub index: u128,                         // Unique index for PDA
-    pub bump_seed: u8,
-    pub exchange_pk: Pubkey,                 // Reference to Exchange account
-    pub public_ip: Ipv4Addr,                 // Where probe listens
-    pub status: ProbeStatus,                 // Pending/Activated/Suspended/Deleting
-    pub code: String,                        // e.g., "ams-probe-01"
-    pub parent_devices: Vec<Pubkey>,         // DZDs to measure this probe
-    pub metrics_publisher_pk: Pubkey,        // For telemetry submissions
-    pub reference_count: u32,
-}
-```
-
-**PDA Seeds:** `["doublezero", "probe", index.to_le_bytes()]`
-
 ### Smart Contract Changes
 
-#### New Instructions (Telemetry Program)
+This change introduces a new **Geolocation Program** deployed separately from the Serviceability Program. It manages GeoProbe infrastructure and GeolocationUser accounts. The Geolocation Program references the Serviceability Program's `GlobalState` via CPI to verify foundation allowlist membership for administrative operations (probe management, billing). GeolocationUser accounts are self-service — any signer can create one without foundation approval.
+
+> ⚠️ _MVP Constraint:_ Each exchange has 0 or 1 probe.
+> ⚠️ _MVP Constraint:_ The LocationOffset chain is limited to 2 offsets. 
+> ⚠️ _MVP Constraint:_ The TWAMP port is set to 862 on both GeoProbe and GeolocationTarget, and is not configurable in the smart contract.
+
+#### Account Types
+
+##### ProgramConfig
 
 ```rust
-pub enum TelemetryInstruction {
-    // Existing instructions...
+pub struct GeolocationProgramConfig {
+    pub account_type: AccountType,              // AccountType::ProgramConfig
+    pub bump_seed: u8,
+    pub version: Version,
+    pub min_compatible_version: Version,
+    pub serviceability_program_id: Pubkey,      // For CPI to read foundation allowlist
+}
+```
+**PDA Seeds:** `["doublezero", "programconfig"]`
 
-    InitializeProbe {
-        index: u128,
-        public_ip: Ipv4Addr,
-        port: u16,
+##### GeoProbe
+
+```rust
+pub struct GeoProbe {
+    pub account_type: AccountType,             // AccountType::GeoProbe
+    pub owner: Pubkey,                         // Resource provider
+    pub bump_seed: u8,
+    pub exchange_pk: Pubkey,                   // Reference to Serviceability Exchange account
+    pub public_ip: Ipv4Addr,                   // Where probe listens
+    pub location_offset_port: u16,             // UDP listen port (default 8923)
+    pub code: String,                          // e.g., "ams-probe-01" (max 32 bytes)
+    pub parent_devices: Vec<Pubkey>,           // DZDs that measure this probe
+    pub metrics_publisher_pk: Pubkey,          // Signing key for telemetry
+    pub latency_threshold_ns: u64,             // Max acceptable DZD→Probe RTT (e.g., 1_000_000 = 1ms)
+    pub reference_count: u32,                  // GeolocationTargets referencing this probe
+}
+```
+**PDA Seeds:** `["doublezero", "probe", code.as_bytes()]`
+
+##### GeolocationUser
+
+```rust
+pub enum GeolocationUserStatus {
+    Activated = 0,
+    Suspended = 1,  // Lack of Payment
+}
+
+pub struct GeolocationTarget {
+    pub ip_address: Ipv4Addr,
+    pub location_offset_port: u16,
+    pub geoprobe_pk: Pubkey,                       // Which probe measures this target
+}
+
+pub enum GeolocationPaymentStatus {
+    Delinquent = 0,
+    Paid = 1,
+}
+
+pub enum GeolocationBillingConfig {
+    FlatPerEpoch(FlatPerEpochConfig),
+}
+
+pub struct GeolocationUser {
+    pub account_type: AccountType,              // AccountType::GeolocationUser
+    pub owner: Pubkey,                          // User who created this account (signer)
+    pub bump_seed: u8,
+    pub code: String,                          // Unique identifier for PDA (max 32 bytes)
+    pub token_account: Pubkey,                 // 2Z token account for billing
+    pub payment_status: GeolocationPaymentStatus,
+    pub billing: GeolocationBillingConfig,
+    pub status: GeolocationUserStatus,
+    pub targets: Vec<GeolocationTarget>,
+}
+```
+**PDA Seeds:** `["doublezero", "geouser", code.as_bytes()]`
+
+#### Instructions
+> ⚠️ _Note:_ Program instructions are shown here defined inline for readability, but in the implementation each instruction will take a single struct containing all the arguments.
+
+```rust
+pub enum GeolocationInstruction {
+    // --- Program Management ---
+    InitProgramConfig {                             // variant 0
+        serviceability_program_id: Pubkey,
+    },
+
+    // --- GeoProbe Management (foundation-gated via Serviceability CPI) ---
+    CreateGeoProbe {                                // variant 1
         code: String,
+        public_ip: Ipv4Addr,
+        location_offset_port: u16,
         latency_threshold_ns: u64,
         metrics_publisher_pk: Pubkey,
     },
-
-    UpdateProbe {
+    UpdateGeoProbe {                                // variant 2
         public_ip: Option<Ipv4Addr>,
-        port: Option<u16>,
-        status: Option<ProbeStatus>,
+        location_offset_port: Option<u16>,
         latency_threshold_ns: Option<u64>,
+        metrics_publisher_pk: Option<Pubkey>,
+    },
+    DeleteGeoProbe {},                              // variant 3
+    AddParentDevice { device_pk: Pubkey },          // variant 4
+    RemoveParentDevice { device_pk: Pubkey },       // variant 5
+
+    // --- GeolocationUser Management (self-service) ---
+    CreateGeolocationUser {                         // variant 6
+        code: String,
+        token_account: Pubkey,
+    },
+    UpdateGeolocationUser {                         // variant 7
+        token_account: Option<Pubkey>,
+    },
+    DeleteGeolocationUser {},                       // variant 8
+    AddTarget {                                     // variant 9
+        ip_address: Ipv4Addr,
+        location_offset_port: u16,
+        exchange_pk: Pubkey,                        // Program looks up the probe at this exchange
+    },
+    RemoveTarget {                                  // variant 10
+        target_ip: Ipv4Addr,
+        exchange_pk: Pubkey,
     },
 
-    AddParentDevice { device_pk: Pubkey },
-    RemoveParentDevice { device_pk: Pubkey },
+    // --- Billing (foundation-gated via Serviceability CPI) ---
+    UpdatePaymentStatus {                           // variant 11
+        payment_status: GeolocationPaymentStatus,
+        last_deduction_dz_epoch: Option<u64>,
+    },
 }
 ```
+
+#### Access Control
+
+| Instruction | Required Authority |
+|---|---|
+| InitProgramConfig | Program deploy authority (one-time) |
+| CreateGeoProbe, UpdateGeoProbe, ActivateGeoProbe, SuspendGeoProbe, ResumeGeoProbe, DeleteGeoProbe | Foundation allowlist (via Serviceability CPI) |
+| AddParentDevice, RemoveParentDevice | Foundation allowlist (via Serviceability CPI) |
+| CreateGeolocationUser, UpdateGeolocationUser, DeleteGeolocationUser | Any signer (self-service, signer becomes owner) |
+| AddTarget, RemoveTarget | GeolocationUser owner |
+| UpdatePaymentStatus | Foundation allowlist (via Serviceability CPI) |
+
+#### GeoProbe Onboarding
+
+1. Foundation calls `CreateGeoProbe` with the probe's code, IP address, location offset port, exchange, and signing key. The probe's `exchange_pk` must reference an existing Serviceability Exchange account.
+2. Foundation calls `AddParentDevice` for each DZD that should measure this probe. Each `device_pk` must reference an activated Device in the Serviceability Program.
+4. DZDs poll onchain GeoProbe accounts (60s interval) to discover child probes. When a new activated probe appears with the DZD in its `parent_devices`, the DZD begins TWAMP measurements and Offset generation.
+
+#### GeolocationUser Onboarding
+
+1. User calls `CreateGeolocationUser` with a unique code and their 2Z token account. Status is set to `Activated` (no approval step). Payment status starts as `Delinquent` until the foundation or a sentinel confirms funding via `UpdatePaymentStatus`.
+2. User calls `AddTarget` for each target to be measured, specifying the target's IP address, location offset port, and which exchange should perform the measurement. The cli will figure out the probe_pk associated with that exchange. The target's `probe_pk` must reference an activated GeoProbe, which increments that probe's `reference_count`.
+3. Probes poll onchain GeolocationUser accounts to discover targets assigned to them. Only targets from users with `payment_status: Paid` are measured.
+4. To stop measurement, user calls `RemoveTarget` (decrements probe `reference_count`) or `DeleteGeolocationUser` (requires all targets removed first).
 
 ### Component Implementation
 
@@ -192,12 +300,12 @@ pub enum TelemetryInstruction {
 ```go
 type Config struct {
     // Existing fields...
-    ProbeEnabled           bool          // Default: false
-    ProbeInterval          time.Duration // Default: 5s
-    ProbeTimeout           time.Duration // Default: 2s
-    ProbePacketSize        int           // Default: 2048 bytes
-    ProbeUDPPort           uint16        // Default: 8923
-    ProbesRefreshInterval  time.Duration // Default: 10s
+    ProbeEnabled                  bool          // Default: false
+    ProbeInterval                 time.Duration // Default: 5s
+    ProbeTimeout                  time.Duration // Default: 2s
+    ProbePacketSize               int           // Default: 2048 bytes
+    ProbeLocationOffsetPort       uint16        // Default: 8923
+    ProbesRefreshInterval         time.Duration // Default: 10s
 }
 ```
 
@@ -223,7 +331,7 @@ Reuses the new modules for the telemetry agent in `controlplane/telemetry/intern
 - **Target Handler:** Measures RTT to targets, generates composite Offsets
 - **Signature Verifier:** Validates Ed25519 signatures
 
-**Language:** Rust (for performance and consistency with other infrastructure)
+**Language:** Go (for consistency with other infrastructure)
 
 **Configuration:**
 ```yaml

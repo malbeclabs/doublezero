@@ -5,7 +5,10 @@ use doublezero_solana_client_tools::{
     payer::{SolanaPayerOptions, SolanaSignerOptions, Wallet, try_load_keypair},
     rpc::{DoubleZeroLedgerConnection, SolanaConnectionOptions},
 };
-use doublezero_solana_sdk::{NetworkEnvironment, revenue_distribution::fetch::try_fetch_config};
+use doublezero_solana_sdk::{
+    NetworkEnvironment,
+    revenue_distribution::fetch::{try_fetch_config, try_fetch_distribution},
+};
 use doublezero_solana_validator_debt::{
     rpc::SolanaValidatorDebtConnectionOptions,
     solana_debt_calculator::SolanaDebtCalculator,
@@ -70,10 +73,20 @@ pub fn collect_epoch_debt(
 
             let dz_connection = get_dz_ledger(&wallet, None).await?;
             let (_, config) = try_fetch_config(&wallet.connection).await?;
+            let (_, distribution) = try_fetch_distribution(&wallet.connection, dz_epoch).await?;
 
-            let tx_results =
-                worker::pay_solana_validator_debt(&wallet, &dz_connection, dz_epoch, &config)
-                    .await?;
+            if !distribution.is_debt_calculation_finalized() {
+                tracing::warn!("{dz_epoch} is not finalized, skipping");
+                return Ok(Default::default());
+            }
+            let tx_results = worker::pay_solana_validator_debt(
+                &wallet,
+                &dz_connection,
+                dz_epoch,
+                &config,
+                &distribution,
+            )
+            .await?;
 
             worker::post_debt_collection_to_slack(tx_results.clone(), false, None).await?;
 

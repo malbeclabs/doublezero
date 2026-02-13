@@ -8,6 +8,7 @@ use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use anyhow::{Result, bail, ensure};
 use doublezero_solana_client_tools::{
+    account::zero_copy::ZeroCopyAccountOwnedData,
     payer::{TransactionOutcome, Wallet},
     rpc::{DoubleZeroLedgerConnection, SolanaConnection},
 };
@@ -18,7 +19,7 @@ use doublezero_solana_sdk::{
         instruction::{
             RevenueDistributionInstructionData, account::InitializeSolanaValidatorDepositAccounts,
         },
-        state::{ProgramConfig, SolanaValidatorDeposit},
+        state::{Distribution, ProgramConfig, SolanaValidatorDeposit},
         types::SolanaValidatorDebt,
     },
     try_build_instruction,
@@ -434,8 +435,22 @@ pub async fn pay_all_solana_validator_debt(
             let config_ref = &config;
 
             async move {
-                let result =
-                    pay_solana_validator_debt(wallet_ref, ledger_ref, dz_epoch, config_ref).await?;
+                let (_, distribution) =
+                    try_fetch_distribution(&wallet_ref.connection, dz_epoch).await?;
+
+                if !distribution.is_debt_calculation_finalized() {
+                    tracing::warn!("{dz_epoch} is not finalized, skipping");
+
+                    return Ok(Default::default());
+                }
+                let result = pay_solana_validator_debt(
+                    wallet_ref,
+                    ledger_ref,
+                    dz_epoch,
+                    config_ref,
+                    &distribution,
+                )
+                .await?;
                 tracing::info!("Finished debt collection for epoch {dz_epoch}");
                 Ok::<_, anyhow::Error>(result)
             }
@@ -457,6 +472,7 @@ pub async fn pay_solana_validator_debt(
     dz_ledger: &DoubleZeroLedgerConnection,
     dz_epoch_value: u64,
     config: &ProgramConfig,
+    distribution: &ZeroCopyAccountOwnedData<Distribution>,
 ) -> Result<DebtCollectionResults> {
     let (_, computed_debt) = ledger::try_fetch_debt_record(
         dz_ledger,
@@ -465,8 +481,6 @@ pub async fn pay_solana_validator_debt(
         dz_ledger.commitment(),
     )
     .await?;
-
-    let (_, distribution) = try_fetch_distribution(&wallet.connection, dz_epoch_value).await?;
 
     try_initialize_missing_deposit_accounts(wallet, &computed_debt).await?;
 
@@ -478,7 +492,7 @@ pub async fn pay_solana_validator_debt(
             &wallet.connection,
             computed_debt,
             dz_epoch_value,
-            &distribution,
+            distribution,
         )
         .await
 }

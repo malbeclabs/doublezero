@@ -54,7 +54,7 @@ pub struct Transaction {
     pub force: bool,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct DebtCollectionResults {
     pub collection_results: Vec<DebtCollectionResult>,
     pub dz_epoch: u64,

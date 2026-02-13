@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- CLI
+  - Add local route-table fallback for public IP detection with comprehensive non-routable address filtering
 - Activator
   - Assign multicast publisher IPs from global pool in serviceability GlobalConfig instead of per-device blocks
 - Client

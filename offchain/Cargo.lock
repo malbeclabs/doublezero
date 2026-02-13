@@ -1441,6 +1441,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "borsh-incremental"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0faa79093f85698e0075c813bf87c52044e832e1f9baa5cb0f126e4c2b2d29dd"
+dependencies = [
+ "borsh 1.5.7",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.110",
+]
+
+[[package]]
 name = "borsh-schema-derive-internal"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2471,8 +2483,8 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "doublezero-config"
-version = "0.6.8"
-source = "git+https://github.com/malbeclabs/doublezero?rev=fd78b9af#fd78b9af8299d82117ecbe376474a09fc3347cd9"
+version = "0.8.7"
+source = "git+https://github.com/malbeclabs/doublezero?rev=94ff2dc394c02c748f76970c0260a7498dcb47fe#94ff2dc394c02c748f76970c0260a7498dcb47fe"
 dependencies = [
  "eyre",
  "serde",
@@ -2544,7 +2556,10 @@ dependencies = [
  "doublezero-passport",
  "doublezero-program-common",
  "doublezero-program-tools",
+ "doublezero-record",
+ "doublezero-revenue-distribution",
  "doublezero-serviceability",
+ "doublezero_sdk",
  "metrics",
  "metrics-exporter-prometheus",
  "mockall",
@@ -2558,6 +2573,8 @@ dependencies = [
  "solana-sdk",
  "solana-system-interface",
  "solana-transaction-status-client-types",
+ "spl-associated-token-account-interface",
+ "spl-token-interface",
  "strum",
  "thiserror 2.0.17",
  "tokio",
@@ -2601,8 +2618,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.6.8"
-source = "git+https://github.com/malbeclabs/doublezero?rev=fd78b9af#fd78b9af8299d82117ecbe376474a09fc3347cd9"
+version = "0.8.7"
+source = "git+https://github.com/malbeclabs/doublezero?rev=94ff2dc394c02c748f76970c0260a7498dcb47fe#94ff2dc394c02c748f76970c0260a7498dcb47fe"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -2636,8 +2653,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-record"
-version = "0.6.8"
-source = "git+https://github.com/malbeclabs/doublezero?rev=fd78b9af#fd78b9af8299d82117ecbe376474a09fc3347cd9"
+version = "0.8.7"
+source = "git+https://github.com/malbeclabs/doublezero?rev=94ff2dc394c02c748f76970c0260a7498dcb47fe#94ff2dc394c02c748f76970c0260a7498dcb47fe"
 dependencies = [
  "bytemuck",
  "solana-program",
@@ -2695,10 +2712,13 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.6.8"
-source = "git+https://github.com/malbeclabs/doublezero?rev=fd78b9af#fd78b9af8299d82117ecbe376474a09fc3347cd9"
+version = "0.8.7"
+source = "git+https://github.com/malbeclabs/doublezero?rev=94ff2dc394c02c748f76970c0260a7498dcb47fe#94ff2dc394c02c748f76970c0260a7498dcb47fe"
 dependencies = [
+ "bitflags",
  "borsh 1.5.7",
+ "borsh-incremental",
+ "bytemuck",
  "doublezero-program-common",
  "ipnetwork",
  "serde",
@@ -2888,10 +2908,11 @@ dependencies = [
 
 [[package]]
 name = "doublezero-telemetry"
-version = "0.6.8"
-source = "git+https://github.com/malbeclabs/doublezero?rev=fd78b9af#fd78b9af8299d82117ecbe376474a09fc3347cd9"
+version = "0.8.7"
+source = "git+https://github.com/malbeclabs/doublezero?rev=94ff2dc394c02c748f76970c0260a7498dcb47fe#94ff2dc394c02c748f76970c0260a7498dcb47fe"
 dependencies = [
  "borsh 1.5.7",
+ "borsh-incremental",
  "doublezero-config",
  "doublezero-program-common",
  "doublezero-serviceability",
@@ -2902,9 +2923,11 @@ dependencies = [
 
 [[package]]
 name = "doublezero_sdk"
-version = "0.6.8"
-source = "git+https://github.com/malbeclabs/doublezero?rev=fd78b9af#fd78b9af8299d82117ecbe376474a09fc3347cd9"
+version = "0.8.7"
+source = "git+https://github.com/malbeclabs/doublezero?rev=94ff2dc394c02c748f76970c0260a7498dcb47fe#94ff2dc394c02c748f76970c0260a7498dcb47fe"
 dependencies = [
+ "async-trait",
+ "backon",
  "base64 0.22.1",
  "bincode 2.0.1",
  "bytemuck",
@@ -2915,6 +2938,7 @@ dependencies = [
  "doublezero-program-common",
  "doublezero-record",
  "doublezero-serviceability",
+ "doublezero-telemetry",
  "eyre",
  "futures",
  "log",

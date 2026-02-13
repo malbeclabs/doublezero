@@ -13,7 +13,10 @@ use solana_client::{
     },
     nonblocking::pubsub_client::PubsubClientError,
 };
-use solana_sdk::signature::{ParseSignatureError, Signature};
+use solana_sdk::{
+    pubkey::Pubkey,
+    signature::{ParseSignatureError, Signature},
+};
 use thiserror::Error;
 use tracing::warn;
 
@@ -49,6 +52,14 @@ pub enum Error {
     SignatureInvalid(#[from] ParseSignatureError),
     #[error("access request signature did not verify")]
     SignatureVerify,
+    #[error("token account {account} owner {owner} != sentinel {sentinel}")]
+    TokenAccountOwnerMismatch {
+        account: Pubkey,
+        owner: Pubkey,
+        sentinel: Pubkey,
+    },
+    #[error("SPL instruction error: {0}")]
+    SplInstruction(String),
     #[error("invalid transaction encoding: {0}")]
     TransactionEncoding(Signature),
     #[error("solana offchain message error: {0}")]

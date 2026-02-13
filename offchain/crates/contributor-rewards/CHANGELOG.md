@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- feat: billing sentinel for tenant payment status monitoring ([#265](https://github.com/doublezerofoundation/doublezero-offchain/pull/265))
 - feat(contributor-rewards): add export shapley command ([#234](https://github.com/doublezerofoundation/doublezero-offchain/pull/234))
 - feat(contributor-rewards): add read-rewards command ([#212](https://github.com/doublezerofoundation/doublezero-offchain/pull/212))
 

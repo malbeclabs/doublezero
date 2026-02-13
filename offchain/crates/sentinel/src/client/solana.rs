@@ -1,6 +1,7 @@
 use std::{
     net::{Ipv4Addr, SocketAddr},
     sync::Arc,
+    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -31,6 +32,7 @@ use solana_commitment_config::{CommitmentConfig, CommitmentLevel};
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction,
     instruction::CompiledInstruction,
+    program_pack::Pack,
     pubkey::Pubkey,
     signature::{Keypair, Signature},
     signer::Signer,
@@ -44,6 +46,9 @@ use url::Url;
 use crate::{AccessId, Error, Result, new_transaction};
 
 const ACCESS_REQUEST_ACCOUNT_INDEX: usize = 2;
+/// Timeout for `send_and_confirm_transaction` calls to prevent the billing
+/// polling loop from stalling on slow RPC confirmations.
+const SEND_AND_CONFIRM_TIMEOUT: Duration = Duration::from_secs(60);
 
 const SLOTS_PER_EPOCH: u64 = 432_000;
 
@@ -72,6 +77,15 @@ pub trait SolRpcClientType {
     ) -> Result<bool>;
 
     async fn get_validator_ip(&self, validator_id: &Pubkey) -> Result<Option<Ipv4Addr>>;
+
+    async fn get_token_account_balance(&self, token_account: &Pubkey) -> Result<u64>;
+
+    async fn transfer_spl_token(
+        &self,
+        from: &Pubkey,
+        to: &Pubkey,
+        amount: u64,
+    ) -> Result<Signature>;
 }
 
 pub struct SolRpcClient {
@@ -116,6 +130,19 @@ impl SolRpcClientType for SolRpcClient {
 
     async fn get_validator_ip(&self, validator_id: &Pubkey) -> Result<Option<Ipv4Addr>> {
         self.get_validator_ip(validator_id).await
+    }
+
+    async fn get_token_account_balance(&self, token_account: &Pubkey) -> Result<u64> {
+        self.get_token_account_balance(token_account).await
+    }
+
+    async fn transfer_spl_token(
+        &self,
+        from: &Pubkey,
+        to: &Pubkey,
+        amount: u64,
+    ) -> Result<Signature> {
+        self.transfer_spl_token(from, to, amount).await
     }
 }
 
@@ -331,6 +358,50 @@ impl SolRpcClient {
                 SocketAddr::V6(addr_v6) => addr_v6.ip().to_ipv4_mapped(),
             });
         Ok(address)
+    }
+
+    pub async fn get_token_account_balance(&self, token_account: &Pubkey) -> Result<u64> {
+        let account = self.client.get_account(token_account).await?;
+        let token_data = spl_token_interface::state::Account::unpack(&account.data)
+            .map_err(|e| Error::Deserialize(format!("failed to unpack token account: {e}")))?;
+        if token_data.owner != self.payer.pubkey() {
+            return Err(Error::TokenAccountOwnerMismatch {
+                account: *token_account,
+                owner: token_data.owner,
+                sentinel: self.payer.pubkey(),
+            });
+        }
+        Ok(token_data.amount)
+    }
+
+    pub async fn transfer_spl_token(
+        &self,
+        from: &Pubkey,
+        to: &Pubkey,
+        amount: u64,
+    ) -> Result<Signature> {
+        let signer = &self.payer;
+        let ix = spl_token_interface::instruction::transfer(
+            &spl_token_interface::id(),
+            from,
+            to,
+            &signer.pubkey(),
+            &[],
+            amount,
+        )
+        .map_err(|e| Error::SplInstruction(format!("transfer: {e}")))?;
+
+        let recent_blockhash = self.client.get_latest_blockhash().await?;
+        let transaction = new_transaction(&[ix], &[signer], recent_blockhash);
+
+        let signature = tokio::time::timeout(
+            SEND_AND_CONFIRM_TIMEOUT,
+            self.client.send_and_confirm_transaction(&transaction),
+        )
+        .await
+        .map_err(|_| Error::Deserialize("transfer_spl_token timed out".into()))??;
+
+        Ok(signature)
     }
 }
 

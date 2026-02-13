@@ -28,6 +28,16 @@ pub struct AppArgs {
     /// Recommended: 30-120 seconds for production.
     #[arg(long)]
     pub poll_interval: u64,
+
+    /// Polling interval in seconds for checking tenant payment status.
+    /// Recommended: 60-300 seconds for devnet/testnet.
+    #[arg(long, default_value = "120")]
+    pub billing_poll_interval: u64,
+
+    /// Minimum 2Z token amount (in smallest unit) for a tenant to be considered paid.
+    /// Default: 1 (any nonzero balance = paid).
+    #[arg(long)]
+    pub minimum_balance: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -111,6 +121,25 @@ impl Settings {
             "mainnet" => Ok(mainnet::program_id::id()),
             "mainnet-beta" => Ok(mainnet::program_id::id()),
             other => Pubkey::from_str(other),
+        }
+    }
+
+    pub fn doublezero_mint(&self) -> Pubkey {
+        match self.env.to_lowercase().as_str() {
+            "mainnet" | "mainnet-beta" | "local" | "localhost" => {
+                // NOTE: local|localhost are forked off of mn-beta
+                doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY
+            }
+            "testnet" | "devnet" => {
+                doublezero_revenue_distribution::env::development::DOUBLEZERO_MINT_KEY
+            }
+            other => {
+                tracing::warn!(
+                    env = other,
+                    "unknown environment for mint; defaulting to development key"
+                );
+                doublezero_revenue_distribution::env::development::DOUBLEZERO_MINT_KEY
+            }
         }
     }
 }

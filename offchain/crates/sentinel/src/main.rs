@@ -1,11 +1,14 @@
 use clap::Parser;
 use doublezero_ledger_sentinel::{
+    client::{doublezero_ledger::DzRpcClient, solana::SolRpcClient},
     constants::ENV_PREVIOUS_LEADER_EPOCHS,
-    sentinel::PollingSentinel,
+    sentinel::{BillingConfig, BillingSentinel, PollingSentinel},
     settings::{AppArgs, Settings},
 };
+use doublezero_revenue_distribution::state::Journal;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use solana_sdk::signer::Signer;
+use spl_associated_token_account_interface::address::get_associated_token_address;
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
@@ -36,19 +39,38 @@ async fn main() -> anyhow::Result<()> {
         %sol_rpc_url,
         %dz_rpc_url,
         poll_interval_secs = args.poll_interval,
+        billing_poll_interval_secs = args.billing_poll_interval,
         pubkey = %keypair.pubkey(),
         "DoubleZero Ledger Sentinel starting"
     );
 
     let mut polling_sentinel = PollingSentinel::new(
-        dz_rpc_url,
-        sol_rpc_url,
-        keypair,
+        dz_rpc_url.clone(),
+        sol_rpc_url.clone(),
+        keypair.clone(),
         serviceability_id,
         args.poll_interval,
         ENV_PREVIOUS_LEADER_EPOCHS,
     )
     .await?;
+
+    // Derive billing addresses
+    let mint = settings.doublezero_mint();
+    let (journal_pda, _) = Journal::find_address();
+    let journal_ata = get_associated_token_address(&journal_pda, &mint);
+
+    info!(%mint, %journal_ata, "billing: derived 2Z addresses");
+
+    let mut billing_sentinel = BillingSentinel::new(
+        DzRpcClient::new(dz_rpc_url, keypair.clone(), serviceability_id),
+        SolRpcClient::new(sol_rpc_url, keypair),
+        BillingConfig::new(
+            args.billing_poll_interval,
+            args.minimum_balance,
+            journal_ata,
+        ),
+    )
+    .await;
 
     let shutdown_listener = shutdown_listener();
 
@@ -60,6 +82,11 @@ async fn main() -> anyhow::Result<()> {
         result = polling_sentinel.run(shutdown_listener.clone()) => {
             if let Err(err) = result {
                 error!(?err, "polling sentinel exited with error");
+            }
+        },
+        result = billing_sentinel.run(shutdown_listener.clone()) => {
+            if let Err(err) = result {
+                error!(?err, "billing sentinel exited with error");
             }
         }
     }

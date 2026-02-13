@@ -257,6 +257,12 @@ mod tests {
             assert!(devices.contains_key(&device_pubkey));
             assert_eq!(devices.get(&device_pubkey).unwrap().device, device);
 
+            // UnlinkDeviceInterfaceCommand now looks up links to discover associated accounts
+            client
+                .expect_gets()
+                .with(predicate::eq(AccountType::Link))
+                .returning(|_| Ok(HashMap::new()));
+
             client
                 .expect_execute_transaction()
                 .times(1)
@@ -472,6 +478,12 @@ mod tests {
         };
 
         let mut ip_block_allocator = IPBlockAllocator::new("1.1.1.0/24".parse().unwrap());
+
+        // UnlinkDeviceInterfaceCommand now looks up links to discover associated accounts
+        client
+            .expect_gets()
+            .with(predicate::eq(AccountType::Link))
+            .returning(|_| Ok(HashMap::new()));
 
         client
             .expect_execute_transaction()

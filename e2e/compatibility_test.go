@@ -61,6 +61,12 @@ var knownIncompatibilities = map[string]string{
 	"write/multicast_group_get":                  "0.8.1",
 	"write/multicast_group_delete":               "0.8.1",
 
+	// device_interface_create: The DeviceInterfaceCreateArgs Borsh struct changed in v0.8.8 to add a new required field (interface_type).
+	"write/device_interface_create":   "0.8.8",
+	"write/device_interface_create_2": "0.8.8",
+	"write/device_interface_create_3": "0.8.8",
+	"write/device_interface_create_4": "0.8.8",
+
 	// set-health commands: Added in v0.8.6 as part of Network Provisioning.
 	// Older CLIs don't have these subcommands.
 	"write/device_set_health":   "0.8.6",

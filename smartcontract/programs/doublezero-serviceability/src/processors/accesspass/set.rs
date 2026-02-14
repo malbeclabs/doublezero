@@ -214,6 +214,7 @@ pub fn process_set_access_pass(
         // Update fields
         accesspass.accesspass_type = value.accesspass_type.clone();
         accesspass.last_access_epoch = value.last_access_epoch;
+        accesspass.flags = flags;
 
         if let Some(tenant_remove) = tenant_remove_account {
             accesspass

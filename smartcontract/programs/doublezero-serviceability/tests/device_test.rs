@@ -452,13 +452,12 @@ async fn test_device() {
     println!("✅ Device updated");
     /*****************************************************************************************************************************************************/
     println!("🟢 9. Update Device - Drained...");
-    println!("🟢 9. Update Device - Drained...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            desired_status: Some(DeviceDesiredStatus::Drained),
+            status: Some(DeviceStatus::Drained),
             ..DeviceUpdateArgs::default()
         }),
         vec![
@@ -485,7 +484,7 @@ async fn test_device() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            desired_status: Some(DeviceDesiredStatus::Activated),
+            status: Some(DeviceStatus::Activated),
             ..DeviceUpdateArgs::default()
         }),
         vec![
@@ -503,7 +502,6 @@ async fn test_device() {
         .get_device()
         .unwrap();
 
-    assert_eq!(device_la.desired_status, DeviceDesiredStatus::Activated);
     assert_eq!(device_la.device_health, DeviceHealth::ReadyForUsers);
     assert_eq!(device_la.status, DeviceStatus::Activated);
 

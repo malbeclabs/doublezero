@@ -475,8 +475,8 @@ const (
 	LinkStatusDeleted
 	LinkStatusRejected
 	LinkStatusRequested
-	LinkStatusSoftDrained
 	LinkStatusHardDrained
+	LinkStatusSoftDrained
 	LinkStatusProvisioning
 )
 
@@ -488,8 +488,8 @@ func (l LinkStatus) String() string {
 		"deleted",
 		"rejected",
 		"requested",
-		"soft-drained",
 		"hard-drained",
+		"soft-drained",
 		"provisioning",
 	}[l]
 }

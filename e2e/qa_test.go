@@ -19,10 +19,11 @@ import (
 )
 
 var (
-	hostsFlag = flag.String("hosts", "", "comma separated list of hosts to run tests against")
-	portFlag  = flag.String("port", "7009", "port to connect to on each host")
-	envFlag   = flag.String("env", "", "environment to run in (devnet, testnet, mainnet-beta)")
-	debug     = flag.Bool("debug", false, "enable debug logging")
+	hostsFlag       = flag.String("hosts", "", "comma separated list of hosts to run tests against")
+	portFlag        = flag.String("port", "7009", "port to connect to on each host")
+	envFlag         = flag.String("env", "", "environment to run in (devnet, testnet, mainnet-beta)")
+	debug           = flag.Bool("debug", false, "enable debug logging")
+	multiTunnelFlag = flag.Bool("multi-tunnel", false, "enable multi-tunnel mode (connect unicast + multicast simultaneously)")
 
 	hostsArg      []string
 	portArg       int

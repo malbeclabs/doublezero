@@ -50,6 +50,26 @@ func (c *Client) ConnectUserMulticast_Subscriber_NoWait(ctx context.Context, mul
 	return c.ConnectUserMulticast(ctx, multicastGroupCodes, pb.ConnectMulticastRequest_SUBSCRIBER, false)
 }
 
+// ConnectUserMulticast_AddTunnel connects a multicast tunnel without disconnecting
+// existing tunnels. Use this in multi-tunnel mode to add multicast on top of
+// an existing unicast connection.
+func (c *Client) ConnectUserMulticast_AddTunnel(ctx context.Context, multicastGroupCodes []string, mode pb.ConnectMulticastRequest_MulticastMode) error {
+	c.log.Debug("Adding multicast tunnel (no disconnect)", "host", c.Host, "codes", multicastGroupCodes, "mode", mode)
+	if err := c.connectMulticast(ctx, multicastGroupCodes, mode); err != nil {
+		return err
+	}
+	c.log.Debug("Multicast tunnel added", "host", c.Host, "codes", multicastGroupCodes)
+	return nil
+}
+
+func (c *Client) ConnectUserMulticast_Publisher_AddTunnel(ctx context.Context, multicastGroupCodes ...string) error {
+	return c.ConnectUserMulticast_AddTunnel(ctx, multicastGroupCodes, pb.ConnectMulticastRequest_PUBLISHER)
+}
+
+func (c *Client) ConnectUserMulticast_Subscriber_AddTunnel(ctx context.Context, multicastGroupCodes ...string) error {
+	return c.ConnectUserMulticast_AddTunnel(ctx, multicastGroupCodes, pb.ConnectMulticastRequest_SUBSCRIBER)
+}
+
 func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCodes []string, mode pb.ConnectMulticastRequest_MulticastMode, waitForStatus bool) error {
 	// Don't wait for daemon status — the daemon may be stuck in "BGP Session Failed" if a
 	// previous disconnect failed to clean up the tunnel state. Waiting for onchain deletion
@@ -60,20 +80,30 @@ func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCodes [
 	}
 
 	c.log.Debug("Connecting multicast", "host", c.Host, "multicastGroupCodes", multicastGroupCodes, "mode", mode)
+	if err := c.connectMulticast(ctx, multicastGroupCodes, mode); err != nil {
+		return err
+	}
+	c.log.Debug("Multicast connected", "host", c.Host, "multicastGroupCodes", multicastGroupCodes)
+
+	return nil
+}
+
+// connectMulticast performs the gRPC ConnectMulticast call with a timeout and
+// validates the response. Both ConnectUserMulticast and ConnectUserMulticast_AddTunnel
+// delegate to this method.
+func (c *Client) connectMulticast(ctx context.Context, codes []string, mode pb.ConnectMulticastRequest_MulticastMode) error {
 	ctx, cancel := context.WithTimeout(ctx, connectMulticastTimeout)
 	defer cancel()
 	resp, err := c.grpcClient.ConnectMulticast(ctx, &pb.ConnectMulticastRequest{
 		Mode:  mode,
-		Codes: multicastGroupCodes,
+		Codes: codes,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to connect on host %s: %w", c.Host, err)
+		return fmt.Errorf("failed to connect multicast on host %s: %w", c.Host, err)
 	}
 	if !resp.GetSuccess() {
-		return fmt.Errorf("connection failed on host %s: %s", c.Host, resp.GetOutput())
+		return fmt.Errorf("multicast connection failed on host %s: %s", c.Host, resp.GetOutput())
 	}
-	c.log.Debug("Multicast connected", "host", c.Host, "multicastGroupCodes", multicastGroupCodes)
-
 	return nil
 }
 

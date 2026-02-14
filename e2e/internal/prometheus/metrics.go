@@ -35,8 +35,15 @@ func NewMetricsClient(url string) *MetricsClient {
 
 func (m *MetricsClient) WaitForReady(ctx context.Context, timeout time.Duration) error {
 	return poll.Until(ctx, func() (bool, error) {
-		err := m.Fetch(ctx)
-		// Don't propagate transient errors - just keep polling
+		// Use a per-request timeout so individual fetch attempts fail fast.
+		// Without this, http.DefaultClient has no timeout, and if the target
+		// port silently drops packets (e.g. metrics listener in a different
+		// network namespace before cEOS finishes setup), each attempt blocks
+		// for the OS TCP connect timeout (~20-30s), starving the poller of
+		// retry attempts.
+		fetchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		err := m.Fetch(fetchCtx)
 		return err == nil, nil
 	}, timeout, 500*time.Millisecond)
 }

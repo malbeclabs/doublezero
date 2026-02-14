@@ -210,7 +210,94 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		t.FailNow()
 	}
 
-	// Test 7: Full lifecycle - create, update, delete
+	// Test 8: ip_net on plain physical interface (no CYOA, no DIA, no UTE) should be rejected on create
+	if !t.Run("ip_net_on_plain_physical_create_rejected", func(t *testing.T) {
+		testInterfaceName := "Ethernet11"
+
+		dn.log.Debug("==> Attempting to create plain physical interface with ip_net (should fail)", "device", testDeviceCode)
+
+		output, err := dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "device", "interface", "create",
+			testDeviceCode, testInterfaceName,
+			"--ip-net", "45.33.100.50/31",
+		})
+
+		require.Error(t, err, "expected error when creating plain physical interface with ip_net")
+		require.True(t,
+			strings.Contains(string(output), "Invalid interface IP") ||
+				strings.Contains(string(output), "InvalidInterfaceIp") ||
+				strings.Contains(string(output), "0x2f"),
+			"expected InvalidInterfaceIp error, got: %s", string(output))
+
+		dn.log.Debug("--> Correctly rejected plain physical interface with ip_net")
+	}) {
+		t.FailNow()
+	}
+
+	// Test 9: ip_net on CYOA physical interface should be saved on create
+	if !t.Run("ip_net_on_cyoa_physical_saved_on_create", func(t *testing.T) {
+		testInterfaceName := "Ethernet12"
+
+		dn.log.Debug("==> Creating CYOA physical interface with ip_net", "device", testDeviceCode)
+
+		_, err := dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "device", "interface", "create",
+			testDeviceCode, testInterfaceName,
+			"--interface-cyoa", "gre-over-dia",
+			"--ip-net", "45.33.100.60/31",
+		})
+		require.NoError(t, err, "failed to create CYOA physical interface with ip_net")
+
+		// Verify the interface was created with correct CYOA and ip_net values
+		iface, err := waitForDeviceInterface(t.Context(), dn.Devnet, testDeviceCode, testInterfaceName, 60*time.Second)
+		require.NoError(t, err, "interface was not found")
+		require.Equal(t, serviceability.InterfaceCYOAGREOverDIA, iface.InterfaceCYOA, "interface CYOA mismatch")
+		require.NotEqual(t, [5]uint8{}, iface.IpNet, "ip_net should be set on CYOA physical interface")
+
+		dn.log.Debug("--> CYOA physical interface with ip_net created and verified")
+	}) {
+		t.FailNow()
+	}
+
+	// Test 10: ip_net on plain physical interface should be rejected on update
+	if !t.Run("ip_net_on_plain_physical_update_rejected", func(t *testing.T) {
+		testInterfaceName := "Ethernet13"
+
+		// First create a plain physical interface without ip_net
+		dn.log.Debug("==> Creating plain physical interface for update test", "device", testDeviceCode)
+
+		_, err := dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "device", "interface", "create",
+			testDeviceCode, testInterfaceName,
+		})
+		require.NoError(t, err, "failed to create plain physical interface")
+
+		// Wait for interface to exist
+		_, err = waitForDeviceInterface(t.Context(), dn.Devnet, testDeviceCode, testInterfaceName, 60*time.Second)
+		require.NoError(t, err, "interface was not found")
+
+		// Attempt to update the plain physical interface with ip_net - should fail
+		dn.log.Debug("==> Attempting to update plain physical interface with ip_net (should fail)", "device", testDeviceCode)
+
+		output, err := dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "device", "interface", "update",
+			testDeviceCode, testInterfaceName,
+			"--ip-net", "45.33.100.70/31",
+		})
+
+		require.Error(t, err, "expected error when updating plain physical interface with ip_net")
+		require.True(t,
+			strings.Contains(string(output), "Invalid interface IP") ||
+				strings.Contains(string(output), "InvalidInterfaceIp") ||
+				strings.Contains(string(output), "0x2f"),
+			"expected InvalidInterfaceIp error, got: %s", string(output))
+
+		dn.log.Debug("--> Correctly rejected update of plain physical interface with ip_net")
+	}) {
+		t.FailNow()
+	}
+
+	// Test 11: Full lifecycle - create, update, delete
 	t.Run("full_lifecycle", func(t *testing.T) {
 		testInterfaceName := "Loopback106"
 		publicIP := "203.0.113.40/32" // TEST-NET-3 public IP

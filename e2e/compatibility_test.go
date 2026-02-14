@@ -87,12 +87,37 @@ var knownIncompatibilities = map[string]string{
 	// link_create_dzx is incompatible with CLIs < 0.8.9, the link doesn't exist.
 	"write/link_accept_dzx": "0.8.9",
 
+	// All link operations that depend on links existing. Since link_create_wan/dzx are
+	// incompatible with CLIs < 0.8.9 (because interfaces can't be created), the links
+	// don't exist and all downstream link operations fail.
+	"write/link_update":              "0.8.9",
+	"write/link_get":                 "0.8.9",
+	"write/link_wait_activated":      "0.8.9",
+	"write/link_wait_activated_dzx":  "0.8.9",
+	"write/link_delete":              "0.8.9",
+	"write/link_delete_dzx":          "0.8.9",
+
+	// Interface wait/delete operations that depend on interfaces existing.
+	// Since device_interface_create is incompatible with CLIs < 0.8.9, interfaces
+	// don't exist and these downstream operations fail.
+	"write/iface_wait_unlinked":      "0.8.9",
+	"write/iface_wait_unlinked_2":    "0.8.9",
+	"write/iface_wait_unlinked_3":    "0.8.9",
+	"write/iface_wait_unlinked_4":    "0.8.9",
+	"write/device_interface_delete":   "0.8.9",
+	"write/device_interface_delete_2": "0.8.9",
+	"write/device_interface_delete_3": "0.8.9",
+	"write/device_interface_delete_4": "0.8.9",
+	"write/iface_wait_removed":       "0.8.9",
+	"write/iface_wait_removed_2":     "0.8.9",
+
 	// set-health commands: Added in v0.8.6 as part of Network Provisioning.
-	// Older CLIs don't have these subcommands.
+	// Older CLIs don't have these subcommands. Link set-health also requires
+	// links to exist (incompatible for < 0.8.9 due to interface changes).
 	"write/device_set_health":   "0.8.6",
 	"write/device_set_health_2": "0.8.6",
-	"write/link_set_health":     "0.8.6",
-	"write/link_set_health_dzx": "0.8.6",
+	"write/link_set_health":     "0.8.9",
+	"write/link_set_health_dzx": "0.8.9",
 
 	// global_config_set: The SetGlobalConfig instruction added new required accounts
 	// (MulticastPublisherBlock, VrfIds) that released CLIs (through v0.8.7) don't

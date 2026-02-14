@@ -61,18 +61,31 @@ var knownIncompatibilities = map[string]string{
 	"write/multicast_group_get":                  "0.8.1",
 	"write/multicast_group_delete":               "0.8.1",
 
-	// device_interface_create: The DeviceInterfaceCreateArgs Borsh struct changed in v0.8.8 to add a new required field (interface_type).
-	"write/device_interface_create":   "0.8.8",
-	"write/device_interface_create_2": "0.8.8",
-	"write/device_interface_create_3": "0.8.8",
-	"write/device_interface_create_4": "0.8.8",
+	// device_interface_create: The DeviceInterfaceCreateArgs Borsh struct changed in v0.8.8 to add
+	// a new required field (interface_type), and again in v0.8.9 to reorder fields (ip_net moved
+	// to the end). Borsh deserializes sequentially, so field reordering breaks older CLIs.
+	"write/device_interface_create":   "0.8.9",
+	"write/device_interface_create_2": "0.8.9",
+	"write/device_interface_create_3": "0.8.9",
+	"write/device_interface_create_4": "0.8.9",
 
 	// device_interface_update: The DeviceInterfaceUpdateArgs instruction changed in v0.8.8
-	// to require the contributor account and add validation. Older CLIs pass unused accounts.
-	"write/device_interface_set_unlinked":   "0.8.8",
-	"write/device_interface_set_unlinked_2": "0.8.8",
-	"write/device_interface_set_unlinked_3": "0.8.8",
-	"write/device_interface_set_unlinked_4": "0.8.8",
+	// to require the contributor account and add validation. In v0.8.9 the update args struct
+	// was also reordered for consistency with create.
+	"write/device_interface_set_unlinked":   "0.8.9",
+	"write/device_interface_set_unlinked_2": "0.8.9",
+	"write/device_interface_set_unlinked_3": "0.8.9",
+	"write/device_interface_set_unlinked_4": "0.8.9",
+
+	// link_create_wan/dzx: Link creation requires interfaces to exist on both sides.
+	// Since device_interface_create is incompatible with CLIs < 0.8.9, interfaces don't
+	// exist and link creation fails with "Interface not found".
+	"write/link_create_wan": "0.8.9",
+	"write/link_create_dzx": "0.8.9",
+
+	// link_accept_dzx: Accepting a DZX link requires the link to exist. Since
+	// link_create_dzx is incompatible with CLIs < 0.8.9, the link doesn't exist.
+	"write/link_accept_dzx": "0.8.9",
 
 	// set-health commands: Added in v0.8.6 as part of Network Provisioning.
 	// Older CLIs don't have these subcommands.

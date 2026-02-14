@@ -241,6 +241,42 @@ type Tunnel struct {
 	MulticastPublishers   []net.IP
 }
 
+// bgpMartianNets contains the standard BGP martian prefixes — addresses that
+// should never appear in BGP routing tables and must not be rendered into
+// device config as user DZ IPs.
+var bgpMartianNets = func() []*net.IPNet {
+	cidrs := []string{
+		"0.0.0.0/8",       // "this" network (RFC 1122)
+		"10.0.0.0/8",      // private (RFC 1918)
+		"100.64.0.0/10",   // shared address space (RFC 6598)
+		"127.0.0.0/8",     // loopback (RFC 1122)
+		"169.254.0.0/16",  // link-local (RFC 3927)
+		"172.16.0.0/12",   // private (RFC 1918)
+		"192.0.2.0/24",    // documentation TEST-NET-1 (RFC 5737)
+		"192.168.0.0/16",  // private (RFC 1918)
+		"198.51.100.0/24", // documentation TEST-NET-2 (RFC 5737)
+		"203.0.113.0/24",  // documentation TEST-NET-3 (RFC 5737)
+		"224.0.0.0/4",     // multicast (RFC 5771)
+		"240.0.0.0/4",     // reserved (RFC 1112)
+	}
+	nets := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		_, n, _ := net.ParseCIDR(cidr)
+		nets = append(nets, n)
+	}
+	return nets
+}()
+
+// isBgpMartian returns true if ip falls within any standard BGP martian prefix.
+func isBgpMartian(ip net.IP) bool {
+	for _, n := range bgpMartianNets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 type BgpPeer struct {
 	PeerIP   net.IP
 	PeerName string

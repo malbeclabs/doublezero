@@ -162,7 +162,7 @@ type Manager interface {
 
 - **CLI**: Old CLI versions that call `/provision` directly will continue to work — the endpoint is still present. The reconciler and CLI-driven provisioning can coexist; the reconciler will detect the already-provisioned service and skip it. The `/provision` and `/remove` endpoints are candidates for deprecation once all clients have migrated to the reconciler-based flow.
 - **Daemon without `--client-ip`**: If the flag is not set, the daemon auto-discovers the client IP from local interfaces or an external lookup. If discovery fails (e.g., no network connectivity), the reconciler is not started and the daemon behaves as before (CLI-driven provisioning only).
-- **Rollout**: The reconciler can be enabled per-client by setting the `--client-ip` flag. No coordinated rollout required.
+- **Rollout**: The reconciler is enabled by default via IP auto-discovery. Operators can override with `--client-ip` if needed. No coordinated rollout required.
 
 ## Open Questions
 

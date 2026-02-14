@@ -167,4 +167,3 @@ type Manager interface {
 ## Open Questions
 
 - Should the reconciler detect configuration drift (e.g., ASN changes, prefix changes) and re-provision running services, or only react to user activation/deactivation? Currently it only provisions/removes, not updates.
-- Should we add a readiness probe that reports whether the reconciler has completed at least one successful poll? This would be useful for orchestration systems waiting for tunnel establishment.

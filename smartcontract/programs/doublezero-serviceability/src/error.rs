@@ -166,6 +166,10 @@ pub enum DoubleZeroError {
     TenantNotInAccessPassAllowlist, // variant 79
     #[error("Invalid Tunnel Endpoint")]
     InvalidTunnelEndpoint, // variant 80
+    #[error("Max unicast users exceeded")]
+    MaxUnicastUsersExceeded, // variant 81
+    #[error("Max multicast users exceeded")]
+    MaxMulticastUsersExceeded, // variant 82
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -252,6 +256,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidPaymentStatus => ProgramError::Custom(78),
             DoubleZeroError::TenantNotInAccessPassAllowlist => ProgramError::Custom(79),
             DoubleZeroError::InvalidTunnelEndpoint => ProgramError::Custom(80),
+            DoubleZeroError::MaxUnicastUsersExceeded => ProgramError::Custom(81),
+            DoubleZeroError::MaxMulticastUsersExceeded => ProgramError::Custom(82),
         }
     }
 }
@@ -339,6 +345,8 @@ impl From<u32> for DoubleZeroError {
             78 => DoubleZeroError::InvalidPaymentStatus,
             79 => DoubleZeroError::TenantNotInAccessPassAllowlist,
             80 => DoubleZeroError::InvalidTunnelEndpoint,
+            81 => DoubleZeroError::MaxUnicastUsersExceeded,
+            82 => DoubleZeroError::MaxMulticastUsersExceeded,
             _ => DoubleZeroError::Custom(e),
         }
     }

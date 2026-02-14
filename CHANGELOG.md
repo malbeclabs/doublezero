@@ -68,6 +68,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: fix multicast group closeaccount to use InvalidStatus error and remove redundant publisher/subscriber count check
   - Serviceability: add tenant_allowlist field to AccessPass to restrict which tenants can use specific access passes (backward compatible with existing accounts)
   - Serviceability: bypass validation for link delete ([#2934](https://github.com/malbeclabs/doublezero/pull/2934))
+  - Serviceability: add per-device unicast and multicast user limits with separate counters and configurable max values ([RFC-14](rfcs/rfc14-per-device-unicast-multicast-user-limits.md))
 - SDK
   - Add metro_routing and route_liveness fields to CreateTenantCommand and UpdateTenantCommand
   - Add CreateTenant, UpdateTenant (vrf_id only), DeleteTenant, GetTenant, and ListTenant commands with support for code or pubkey lookup
@@ -80,6 +81,7 @@ All notable changes to this project will be documented in this file.
   - Add --metro-route and --route-aliveness flags to tenant create and update commands
   - Add tenant subcommands (create, update, delete, get, list, add-administrator, remove-administrator) to doublezero and doublezero-admin CLIs
   - Support simultaneous publisher and subscriber multicast via `--publish` and `--subscribe` flags
+  - Add `--max-unicast-users` and `--max-multicast-users` flags to `device update` command
   - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
   - Added activation check for existing users before subscribing to new groups (#2782)
   - access-pass set: add --tenant argument to specify tenant code for access pass restriction (converts to tenant PDA onchain)

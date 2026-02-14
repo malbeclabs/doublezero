@@ -155,6 +155,10 @@ mod tests {
             max_users: 1000,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 1000,
+            max_multicast_users: 1000,
         };
 
         let mgroup_pubkey = Pubkey::new_unique();

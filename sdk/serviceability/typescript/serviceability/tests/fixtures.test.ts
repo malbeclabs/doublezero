@@ -162,6 +162,10 @@ describe("Device fixture", () => {
       MaxUsers: dev.maxUsers,
       DeviceHealth: dev.deviceHealth,
       DesiredStatus: dev.deviceDesiredStatus,
+      UnicastUsersCount: dev.unicastUsersCount,
+      MulticastUsersCount: dev.multicastUsersCount,
+      MaxUnicastUsers: dev.maxUnicastUsers,
+      MaxMulticastUsers: dev.maxMulticastUsers,
       MetricsPublisherPk: dev.metricsPublisherPubKey,
       ContributorPk: dev.contributorPubKey,
     });

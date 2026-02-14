@@ -4,6 +4,7 @@ use crate::{
     state::{
         accounttype::AccountType,
         interface::{CurrentInterfaceVersion, Interface},
+        user::UserType,
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -274,6 +275,10 @@ pub struct Device {
     pub max_users: u16,            // 2
     pub device_health: DeviceHealth, // 1
     pub desired_status: DeviceDesiredStatus, // 1
+    pub unicast_users_count: u16,  // 2
+    pub multicast_users_count: u16, // 2
+    pub max_unicast_users: u16,    // 2
+    pub max_multicast_users: u16,  // 2
 }
 
 impl Default for Device {
@@ -299,6 +304,10 @@ impl Default for Device {
             max_users: 0,
             device_health: DeviceHealth::Pending,
             desired_status: DeviceDesiredStatus::Pending,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         }
     }
 }
@@ -323,6 +332,36 @@ impl Device {
         self.status == DeviceStatus::Activated
             && (self.device_type == DeviceType::Edge || self.device_type == DeviceType::Hybrid)
             && (self.max_users > 0 && self.users_count < self.max_users)
+    }
+
+    /// Checks if the device has capacity for a specific user type.
+    /// Returns None if eligible, or Some(error_message) if at capacity.
+    pub fn check_user_type_capacity(&self, user_type: UserType) -> Option<String> {
+        match user_type {
+            UserType::Multicast => {
+                if self.max_multicast_users > 0
+                    && self.multicast_users_count >= self.max_multicast_users
+                {
+                    Some(format!(
+                        "Device {} has reached its multicast user limit ({}/{})",
+                        self.code, self.multicast_users_count, self.max_multicast_users
+                    ))
+                } else {
+                    None
+                }
+            }
+            _ => {
+                if self.max_unicast_users > 0 && self.unicast_users_count >= self.max_unicast_users
+                {
+                    Some(format!(
+                        "Device {} has reached its unicast user limit ({}/{})",
+                        self.code, self.unicast_users_count, self.max_unicast_users
+                    ))
+                } else {
+                    None
+                }
+            }
+        }
     }
 
     /// Checks and updates the `status` of the `Device` based on its current `status`, `desired_status`, and `device_health`.
@@ -400,10 +439,12 @@ impl fmt::Display for Device {
             f,
             "account_type: {}, owner: {}, index: {}, contributor_pk: {}, location_pk: {}, exchange_pk: {}, device_type: {}, \
             public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}, mgmt_vrf: {}, interfaces: {:?}, \
-            reference_count: {}, users_count: {}, max_users: {}, device_health: {}, desired_status: {}",
+            reference_count: {}, users_count: {}, max_users: {}, device_health: {}, desired_status: {}, \
+            unicast_users_count: {}, multicast_users_count: {}, max_unicast_users: {}, max_multicast_users: {}",
             self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type,
             &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.mgmt_vrf, self.interfaces,
-            self.reference_count, self.users_count, self.max_users, self.device_health, self.desired_status
+            self.reference_count, self.users_count, self.max_users, self.device_health, self.desired_status,
+            self.unicast_users_count, self.multicast_users_count, self.max_unicast_users, self.max_multicast_users
         )
     }
 }
@@ -433,6 +474,10 @@ impl TryFrom<&[u8]> for Device {
             max_users: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             device_health: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             desired_status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            unicast_users_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            multicast_users_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            max_unicast_users: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            max_multicast_users: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Device {
@@ -501,6 +546,24 @@ impl Validate for Device {
                 self.max_users
             );
             return Err(DoubleZeroError::MaxUsersExceeded);
+        }
+        // unicast_users_count must be <= max_unicast_users when max_unicast_users > 0
+        if self.max_unicast_users > 0 && self.unicast_users_count > self.max_unicast_users {
+            msg!(
+                "Max unicast users exceeded: unicast_users_count = {}, max_unicast_users = {}",
+                self.unicast_users_count,
+                self.max_unicast_users
+            );
+            return Err(DoubleZeroError::MaxUnicastUsersExceeded);
+        }
+        // multicast_users_count must be <= max_multicast_users when max_multicast_users > 0
+        if self.max_multicast_users > 0 && self.multicast_users_count > self.max_multicast_users {
+            msg!(
+                "Max multicast users exceeded: multicast_users_count = {}, max_multicast_users = {}",
+                self.multicast_users_count,
+                self.max_multicast_users
+            );
+            return Err(DoubleZeroError::MaxMulticastUsersExceeded);
         }
         // validate Interfaces
         for interface in &self.interfaces {
@@ -626,6 +689,10 @@ mod tests {
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
@@ -654,6 +721,10 @@ mod tests {
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::CodeTooLong);
@@ -682,6 +753,10 @@ mod tests {
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidLocation);
@@ -710,6 +785,10 @@ mod tests {
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -739,6 +818,10 @@ mod tests {
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
@@ -767,6 +850,10 @@ mod tests {
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDzPrefix);
@@ -795,6 +882,10 @@ mod tests {
             max_users: 0,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         };
         // max_users == 0 means "locked", so validation should still succeed
         val.validate().unwrap();
@@ -823,6 +914,10 @@ mod tests {
             max_users: 5,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         };
 
         let err = val.validate();
@@ -852,6 +947,10 @@ mod tests {
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -898,6 +997,10 @@ mod tests {
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -962,6 +1065,10 @@ mod tests {
             max_users: 222,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -1025,6 +1132,10 @@ mod tests {
             max_users: 0,
             device_health: DeviceHealth::Pending,
             desired_status: DeviceDesiredStatus::Pending,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,   // defaults to 0 for old accounts
+            max_multicast_users: 0, // defaults to 0 for old accounts
         };
 
         let oldsize = size_of_pre_dzd_metadata_device(val.code.len(), val.dz_prefixes.len());
@@ -1068,6 +1179,10 @@ mod test_device_validate {
             max_users: 10,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         };
         assert!(device.validate().is_ok());
     }
@@ -1099,6 +1214,10 @@ mod test_device_validate_errors {
             max_users: 10,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         }
     }
 
@@ -1184,5 +1303,76 @@ mod test_device_validate_errors {
         device.max_users = 10;
         let err = device.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::MaxUsersExceeded);
+    }
+
+    #[test]
+    fn test_check_user_type_capacity() {
+        use crate::state::user::UserType;
+
+        // Device with no per-type limits (0 means no limit enforced)
+        let device = Device {
+            code: "test-device".to_string(),
+            max_unicast_users: 0,
+            max_multicast_users: 0,
+            unicast_users_count: 100,
+            multicast_users_count: 100,
+            ..Device::default()
+        };
+        assert!(device.check_user_type_capacity(UserType::IBRL).is_none());
+        assert!(device
+            .check_user_type_capacity(UserType::Multicast)
+            .is_none());
+
+        // Device with unicast limit reached
+        let device = Device {
+            code: "test-device".to_string(),
+            max_unicast_users: 10,
+            max_multicast_users: 5,
+            unicast_users_count: 10,
+            multicast_users_count: 2,
+            ..Device::default()
+        };
+        assert!(device.check_user_type_capacity(UserType::IBRL).is_some());
+        assert!(device
+            .check_user_type_capacity(UserType::IBRLWithAllocatedIP)
+            .is_some());
+        assert!(device
+            .check_user_type_capacity(UserType::Multicast)
+            .is_none());
+
+        // Device with multicast limit reached
+        let device = Device {
+            code: "test-device".to_string(),
+            max_unicast_users: 10,
+            max_multicast_users: 5,
+            unicast_users_count: 2,
+            multicast_users_count: 5,
+            ..Device::default()
+        };
+        assert!(device.check_user_type_capacity(UserType::IBRL).is_none());
+        assert!(device
+            .check_user_type_capacity(UserType::Multicast)
+            .is_some());
+
+        // Device with both limits reached
+        let device = Device {
+            code: "test-device".to_string(),
+            max_unicast_users: 10,
+            max_multicast_users: 5,
+            unicast_users_count: 10,
+            multicast_users_count: 5,
+            ..Device::default()
+        };
+        assert!(device.check_user_type_capacity(UserType::IBRL).is_some());
+        assert!(device
+            .check_user_type_capacity(UserType::Multicast)
+            .is_some());
+
+        // Verify error message format
+        let err = device
+            .check_user_type_capacity(UserType::Multicast)
+            .unwrap();
+        assert!(err.contains("multicast user limit"));
+        assert!(err.contains("5/5"));
     }
 }

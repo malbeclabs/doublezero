@@ -35,6 +35,10 @@ pub struct DeviceUpdateArgs {
     pub desired_status: Option<DeviceDesiredStatus>,
     pub resource_count: usize,
     pub reference_count: Option<u32>,
+    #[incremental(default = None)]
+    pub max_unicast_users: Option<u16>,
+    #[incremental(default = None)]
+    pub max_multicast_users: Option<u16>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
@@ -75,6 +79,12 @@ impl fmt::Debug for DeviceUpdateArgs {
         write!(f, "resource_count: {:?}, ", self.resource_count)?;
         if self.reference_count.is_some() {
             write!(f, "reference_count: {:?}, ", self.reference_count)?;
+        }
+        if self.max_unicast_users.is_some() {
+            write!(f, "max_unicast_users: {:?}, ", self.max_unicast_users)?;
+        }
+        if self.max_multicast_users.is_some() {
+            write!(f, "max_multicast_users: {:?}, ", self.max_multicast_users)?;
         }
         Ok(())
     }
@@ -230,6 +240,12 @@ pub fn process_update_device(
     }
     if let Some(max_users) = value.max_users {
         device.max_users = max_users;
+    }
+    if let Some(max_unicast_users) = value.max_unicast_users {
+        device.max_unicast_users = max_unicast_users;
+    }
+    if let Some(max_multicast_users) = value.max_multicast_users {
+        device.max_multicast_users = max_multicast_users;
     }
 
     // Handle location update if both old and new location accounts are provided

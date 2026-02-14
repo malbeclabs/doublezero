@@ -163,6 +163,10 @@ pub fn process_create_device(
         desired_status: value
             .desired_status
             .unwrap_or(DeviceDesiredStatus::Activated),
+        unicast_users_count: 0,
+        multicast_users_count: 0,
+        max_unicast_users: 0, // Initially locked, must be set via device update
+        max_multicast_users: 0, // Initially locked, must be set via device update
     };
 
     device.check_status_transition();

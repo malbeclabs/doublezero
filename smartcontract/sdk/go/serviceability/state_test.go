@@ -229,6 +229,10 @@ func TestCustomJSONMarshal(t *testing.T) {
                 "ReferenceCount": 5,
                 "UsersCount": 2,
                 "MaxUsers": 100,
+                "UnicastUsersCount": 0,
+                "MulticastUsersCount": 0,
+                "MaxUnicastUsers": 0,
+                "MaxMulticastUsers": 0,
                 "PubKey": "` + dummyPubKeyB58 + `"
             }`,
 			expectErr: false,
@@ -313,6 +317,10 @@ func TestCustomJSONMarshal(t *testing.T) {
                 "ReferenceCount": 5,
                 "UsersCount": 2,
                 "MaxUsers": 100,
+                "UnicastUsersCount": 0,
+                "MulticastUsersCount": 0,
+                "MaxUnicastUsers": 0,
+                "MaxMulticastUsers": 0,
                 "PubKey": "` + dummyPubKeyB58 + `"
             }`,
 			expectErr: false,

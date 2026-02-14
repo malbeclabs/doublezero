@@ -701,6 +701,8 @@ mod tests {
                 desired_status: None,
                 reference_count: None,
                 resource_count: 0,
+                max_unicast_users: None,
+                max_multicast_users: None,
             }),
             "UpdateDevice",
         );

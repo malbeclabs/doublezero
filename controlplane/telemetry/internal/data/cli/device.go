@@ -16,7 +16,7 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
 	devicedata "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/device"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/epoch"
 	"github.com/olekukonko/tablewriter"

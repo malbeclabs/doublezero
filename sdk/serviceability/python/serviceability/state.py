@@ -81,21 +81,22 @@ class DeviceDeviceType(IntEnum):
 class DeviceStatus(IntEnum):
     PENDING = 0
     ACTIVATED = 1
-    DELETING = 2
-    REJECTED = 3
-    DRAINED = 4
-    DEVICE_PROVISIONING = 5
-    LINK_PROVISIONING = 6
+    # SUSPENDED was 2 but is no longer used
+    DELETING = 3
+    REJECTED = 4
+    DRAINED = 5
+    DEVICE_PROVISIONING = 6
+    LINK_PROVISIONING = 7
 
     def __str__(self) -> str:
         _names = {
             0: "pending",
             1: "activated",
-            2: "deleting",
-            3: "rejected",
-            4: "drained",
-            5: "device-provisioning",
-            6: "link-provisioning",
+            3: "deleting",
+            4: "rejected",
+            5: "drained",
+            6: "device-provisioning",
+            7: "link-provisioning",
         }
         return _names.get(self.value, "unknown")
 
@@ -222,6 +223,7 @@ class LinkLinkType(IntEnum):
 class LinkStatus(IntEnum):
     PENDING = 0
     ACTIVATED = 1
+    # SUSPENDED was 2 but is no longer used
     DELETING = 3
     REJECTED = 4
     REQUESTED = 5
@@ -257,11 +259,11 @@ class LinkHealth(IntEnum):
 class LinkDesiredStatus(IntEnum):
     PENDING = 0
     ACTIVATED = 1
-    HARD_DRAINED = 2
-    SOFT_DRAINED = 3
+    HARD_DRAINED = 6
+    SOFT_DRAINED = 7
 
     def __str__(self) -> str:
-        _names = {0: "pending", 1: "activated", 2: "hard-drained", 3: "soft-drained"}
+        _names = {0: "pending", 1: "activated", 6: "hard-drained", 7: "soft-drained"}
         return _names.get(self.value, "unknown")
 
 

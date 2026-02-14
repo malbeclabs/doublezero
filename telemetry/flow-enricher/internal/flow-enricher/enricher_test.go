@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	flow "github.com/malbeclabs/doublezero/telemetry/proto/flow/gen/pb-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"

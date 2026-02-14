@@ -19,7 +19,7 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/mr-tron/base58"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
@@ -49,7 +49,7 @@ type ServiceabilityProgramClient interface {
 }
 
 type stateCache struct {
-	Config          serviceability.Config
+	GlobalConfig    serviceability.GlobalConfig
 	Devices         map[string]*Device
 	MulticastGroups map[string]serviceability.MulticastGroup
 	Tenants         map[string]serviceability.Tenant
@@ -257,7 +257,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		locationMap[location.PubKey] = location
 	}
 	cache := stateCache{
-		Config:          data.Config,
+		GlobalConfig:    *data.GlobalConfig,
 		Devices:         make(map[string]*Device),
 		MulticastGroups: make(map[string]serviceability.MulticastGroup),
 	}
@@ -692,12 +692,12 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 			continue
 		}
 		// Only remove peers with addresses that DZ has assigned. This will avoid removal of contributor-configured peers like DIA.
-		if isIPInBlock(ip, c.cache.Config.UserTunnelBlock) || isIPInBlock(ip, c.cache.Config.TunnelTunnelBlock) {
+		if isIPInBlock(ip, c.cache.GlobalConfig.UserTunnelBlock) || isIPInBlock(ip, c.cache.GlobalConfig.DeviceTunnelBlock) {
 			unknownPeers = append(unknownPeers, ip)
 		}
 	}
 
-	multicastGroupBlock := formatCIDR(&c.cache.Config.MulticastGroupBlock)
+	multicastGroupBlock := formatCIDR(&c.cache.GlobalConfig.MulticastGroupBlock)
 
 	// This check avoids the situation where the template produces the following useless output, which happens in any test case with a single DZD.
 	// ```

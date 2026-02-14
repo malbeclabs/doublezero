@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

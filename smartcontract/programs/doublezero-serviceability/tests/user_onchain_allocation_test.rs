@@ -1284,6 +1284,482 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
 }
 
 // ============================================================================
+// Multicast Publisher Block Deallocation Tests
+// ============================================================================
+
+/// Verify that a multicast publisher's dz_ip is correctly deallocated from the
+/// global MulticastPublisherBlock on-chain when the user is closed, and that
+/// the same IP is re-allocated on the next activation.
+///
+/// Full cycle: activate → subscribe as publisher → reactivate (gets dz_ip from
+/// MulticastPublisherBlock) → unsubscribe → delete → close with deallocation →
+/// create new user → subscribe as publisher → reactivate → verify same dz_ip.
+#[tokio::test]
+async fn test_multicast_publisher_block_deallocation_and_reuse() {
+    println!("[TEST] test_multicast_publisher_block_deallocation_and_reuse");
+
+    let client_ip = [100, 0, 0, 20];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        (user_tunnel_block_pubkey, tunnel_ids_pubkey, dz_prefix_block_pubkey),
+    ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
+
+    let (multicast_publisher_block_pubkey, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+
+    // =========================================================================
+    // Step 1: First activation (Multicast with no publishers → dz_ip = client_ip)
+    // =========================================================================
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // No publishers yet → MulticastPublisherBlock should be empty
+    let publisher_block_before =
+        get_resource_extension_data(&mut banks_client, multicast_publisher_block_pubkey)
+            .await
+            .expect("MulticastPublisherBlock should exist");
+    assert!(
+        publisher_block_before.iter_allocated().is_empty(),
+        "MulticastPublisherBlock should have no allocations before publisher subscribe"
+    );
+
+    // =========================================================================
+    // Step 2: Create multicast group and subscribe user as publisher
+    // =========================================================================
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (multicastgroup_pubkey, _) =
+        get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "test-mgroup".to_string(),
+            max_bandwidth: 1000,
+            owner: payer.pubkey(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
+            multicast_ip: [239, 0, 0, 1].into(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupPubAllowlist(AddMulticastGroupPubAllowlistArgs {
+            client_ip: client_ip.into(),
+            user_payer: payer.pubkey(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: client_ip.into(),
+            publisher: true,
+            subscriber: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // User should now be Updating (gained first publisher)
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Updating);
+    assert_eq!(user.publishers.len(), 1);
+
+    // =========================================================================
+    // Step 3: Re-activate → allocates dz_ip from MulticastPublisherBlock
+    // =========================================================================
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Activated);
+
+    let first_dz_ip = user.dz_ip;
+    // dz_ip should be from MulticastPublisherBlock (147.51.126.0/23), not client_ip
+    assert_ne!(first_dz_ip, Ipv4Addr::from(client_ip));
+    assert_eq!(
+        first_dz_ip.octets()[0..2],
+        [147, 51],
+        "dz_ip should be from MulticastPublisherBlock (147.51.126.0/23)"
+    );
+    println!("  First publisher dz_ip: {}", first_dz_ip);
+
+    // MulticastPublisherBlock should have 1 allocation
+    let publisher_block_after_alloc =
+        get_resource_extension_data(&mut banks_client, multicast_publisher_block_pubkey)
+            .await
+            .unwrap();
+    assert_eq!(
+        publisher_block_after_alloc.iter_allocated().len(),
+        1,
+        "MulticastPublisherBlock should have 1 allocation"
+    );
+
+    // =========================================================================
+    // Step 4: Unsubscribe publisher → triggers Updating, then delete user
+    // =========================================================================
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: client_ip.into(),
+            publisher: false,
+            subscriber: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert!(
+        user.publishers.is_empty(),
+        "publishers should be empty after unsubscribe"
+    );
+    assert_eq!(user.status, UserStatus::Updating);
+
+    // Re-activate to get back to Activated (needed before DeleteUser)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // DeleteUser (sets status to Deleting)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // =========================================================================
+    // Step 5: CloseAccount with MulticastPublisherBlock deallocation
+    // =========================================================================
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    let user_owner = user.owner;
+    assert_eq!(user.status, UserStatus::Deleting);
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+            dz_prefix_count: 1,
+            multicast_publisher_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(user_owner, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // User account should be closed
+    let user = get_account_data(&mut banks_client, user_pubkey).await;
+    assert!(user.is_none(), "User account should be closed");
+
+    // CRITICAL: MulticastPublisherBlock should be empty after deallocation
+    let publisher_block_after_close =
+        get_resource_extension_data(&mut banks_client, multicast_publisher_block_pubkey)
+            .await
+            .unwrap();
+    assert!(
+        publisher_block_after_close.iter_allocated().is_empty(),
+        "MulticastPublisherBlock should have no allocations after CloseAccount"
+    );
+
+    println!("  MulticastPublisherBlock deallocated successfully");
+
+    // =========================================================================
+    // Step 6: Create new user, subscribe as publisher, activate → same dz_ip
+    // =========================================================================
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    let (user_pubkey2, _) = get_user_pda(&program_id, &client_ip.into(), UserType::Multicast);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: client_ip.into(),
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey2, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // First activate (no publishers yet)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey2, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Subscribe as publisher again
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: client_ip.into(),
+            publisher: true,
+            subscriber: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey2, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Re-activate → should get dz_ip from MulticastPublisherBlock again
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey2, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user2 = get_account_data(&mut banks_client, user_pubkey2)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+
+    assert_eq!(user2.status, UserStatus::Activated);
+    assert_eq!(
+        user2.dz_ip, first_dz_ip,
+        "Second publisher should get the same dz_ip ({}) since the first was deallocated, got {}",
+        first_dz_ip, user2.dz_ip
+    );
+
+    // MulticastPublisherBlock should have exactly 1 allocation again
+    let publisher_block_final =
+        get_resource_extension_data(&mut banks_client, multicast_publisher_block_pubkey)
+            .await
+            .unwrap();
+    assert_eq!(
+        publisher_block_final.iter_allocated().len(),
+        1,
+        "MulticastPublisherBlock should have 1 allocation after re-activation"
+    );
+
+    println!("  Second publisher dz_ip: {} (same as first)", user2.dz_ip);
+    println!("[PASS] test_multicast_publisher_block_deallocation_and_reuse");
+}
+
+// ============================================================================
 // Error Handling Tests
 // ============================================================================
 

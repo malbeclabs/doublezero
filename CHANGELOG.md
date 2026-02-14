@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 - Activator
   - Fail to start if any global config network blocks (`device_tunnel_block`, `user_tunnel_block`, `multicastgroup_block`, `multicast_publisher_block`) are unset (0.0.0.0/0)
+  - Fix multicast publisher dz_ip leak in offchain deallocation — IPs from the global publisher pool were never freed on user deletion because the check required non-empty publishers, which the smartcontract already clears before allowing deletion
 - Client
   - Fix heartbeat sender not restarting after disconnect due to poisoned done channel
 - Onchain Programs

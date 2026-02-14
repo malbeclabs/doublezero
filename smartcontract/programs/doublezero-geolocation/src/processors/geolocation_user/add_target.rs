@@ -26,6 +26,7 @@ pub fn process_add_target(
     let user_account = next_account_info(accounts_iter)?;
     let probe_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     if !payer_account.is_signer {
         msg!("Payer must be a signer");

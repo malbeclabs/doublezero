@@ -657,7 +657,7 @@ async fn test_wan_link() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            desired_status: Some(LinkDesiredStatus::HardDrained),
+            status: Some(LinkStatus::HardDrained),
             ..Default::default()
         }),
         vec![
@@ -675,7 +675,6 @@ async fn test_wan_link() {
         .get_tunnel()
         .unwrap();
     assert_eq!(tunnel_la.account_type, AccountType::Link);
-    assert_eq!(tunnel_la.desired_status, LinkDesiredStatus::HardDrained);
     assert_eq!(tunnel_la.status, LinkStatus::HardDrained);
 
     println!("✅ Link updated to HardDrained");
@@ -686,7 +685,7 @@ async fn test_wan_link() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            desired_status: Some(LinkDesiredStatus::SoftDrained),
+            status: Some(LinkStatus::SoftDrained),
             ..Default::default()
         }),
         vec![
@@ -704,7 +703,6 @@ async fn test_wan_link() {
         .get_tunnel()
         .unwrap();
     assert_eq!(tunnel_la.account_type, AccountType::Link);
-    assert_eq!(tunnel_la.desired_status, LinkDesiredStatus::SoftDrained);
     assert_eq!(tunnel_la.status, LinkStatus::SoftDrained);
 
     println!("✅ Link updated to SoftDrained");
@@ -715,7 +713,7 @@ async fn test_wan_link() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            desired_status: Some(LinkDesiredStatus::Activated),
+            status: Some(LinkStatus::Activated),
             ..Default::default()
         }),
         vec![
@@ -733,7 +731,6 @@ async fn test_wan_link() {
         .get_tunnel()
         .unwrap();
     assert_eq!(tunnel_la.account_type, AccountType::Link);
-    assert_eq!(tunnel_la.desired_status, LinkDesiredStatus::Activated);
     assert_eq!(tunnel_la.status, LinkStatus::Activated);
 
     println!("✅ Link updated to activated");

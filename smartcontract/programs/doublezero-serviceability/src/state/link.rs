@@ -1,62 +1,3 @@
-#[cfg(test)]
-mod test_check_status_transition {
-    use super::*;
-
-    #[test]
-    fn test_activation_transition() {
-        let mut link = Link {
-            status: LinkStatus::Provisioning,
-            desired_status: LinkDesiredStatus::Activated,
-            link_health: LinkHealth::ReadyForService,
-            ..Link::default()
-        };
-        link.check_status_transition();
-        assert_eq!(link.status, LinkStatus::Activated);
-    }
-
-    #[test]
-    fn test_soft_drained_transition() {
-        let mut link = Link {
-            status: LinkStatus::Activated,
-            desired_status: LinkDesiredStatus::SoftDrained,
-            ..Link::default()
-        };
-        link.check_status_transition();
-        assert_eq!(link.status, LinkStatus::SoftDrained);
-    }
-
-    #[test]
-    fn test_hard_drained_transition() {
-        let mut link = Link {
-            status: LinkStatus::Activated,
-            desired_status: LinkDesiredStatus::HardDrained,
-            ..Link::default()
-        };
-        link.check_status_transition();
-        assert_eq!(link.status, LinkStatus::HardDrained);
-    }
-
-    #[test]
-    fn test_recovery_from_drains() {
-        let mut link = Link {
-            status: LinkStatus::SoftDrained,
-            desired_status: LinkDesiredStatus::Activated,
-            link_health: LinkHealth::ReadyForService,
-            ..Link::default()
-        };
-        link.check_status_transition();
-        assert_eq!(link.status, LinkStatus::Activated);
-
-        let mut link = Link {
-            status: LinkStatus::HardDrained,
-            desired_status: LinkDesiredStatus::Activated,
-            link_health: LinkHealth::ReadyForService,
-            ..Link::default()
-        };
-        link.check_status_transition();
-        assert_eq!(link.status, LinkStatus::Activated);
-    }
-}
 use crate::{
     error::{DoubleZeroError, Validate},
     state::accounttype::AccountType,
@@ -485,7 +426,11 @@ impl Link {
     /// This method mutates the `status` field of the `Link` in-place.
     /// Where `_` means any value is valid for that field.
     ///
+    #[allow(unreachable_code)]
     pub fn check_status_transition(&mut self) {
+        // waiting for health oracle to implement this logic
+        return;
+
         match (self.status, self.desired_status, self.link_health) {
             // Activation transition
             (

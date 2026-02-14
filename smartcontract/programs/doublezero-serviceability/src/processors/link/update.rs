@@ -180,12 +180,7 @@ pub fn process_update_link(
     }
 
     if let Some(status) = value.status {
-        // Only foundation allowlist can update the status directly
-        if globalstate.foundation_allowlist.contains(payer_account.key) {
-            link.status = status;
-        } else {
-            return Err(DoubleZeroError::NotAllowed.into());
-        }
+        link.status = status;
     }
 
     link.check_status_transition();

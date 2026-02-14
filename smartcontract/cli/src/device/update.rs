@@ -55,7 +55,7 @@ pub struct UpdateDeviceCliCommand {
     #[arg(long)]
     pub device_type: Option<DeviceType>,
     /// Desired status for the device (optional)
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub desired_status: Option<DeviceDesiredStatus>,
     /// Reference count for the device (optional, foundation only)
     #[arg(long)]

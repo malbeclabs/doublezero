@@ -624,15 +624,13 @@ async fn test_accesspass_with_tenant() {
         .get_accesspass()
         .unwrap();
 
-    // accesspass_1 was updated to Pubkey::default() in test 5
-    assert_eq!(accesspass_check_1.tenant_allowlist.len(), 1);
-    assert_eq!(accesspass_check_1.tenant_allowlist[0], Pubkey::default());
+    // accesspass_1 had its tenant removed in test 5
+    assert_eq!(accesspass_check_1.tenant_allowlist.len(), 0);
     // accesspass_2 has tenant_corp
     assert_eq!(accesspass_check_2.tenant_allowlist.len(), 1);
     assert_eq!(accesspass_check_2.tenant_allowlist[0], tenant_corp);
-    // accesspass_3 has Pubkey::default()
-    assert_eq!(accesspass_check_3.tenant_allowlist.len(), 1);
-    assert_eq!(accesspass_check_3.tenant_allowlist[0], Pubkey::default());
+    // accesspass_3 was created without tenant accounts
+    assert_eq!(accesspass_check_3.tenant_allowlist.len(), 0);
     println!("✅ Multiple access passes with different tenant configurations verified");
 
     println!("🟢  End test_accesspass_with_tenant");

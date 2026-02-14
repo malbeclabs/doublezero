@@ -4,7 +4,10 @@ use crate::{
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
-        device::*, globalstate::GlobalState, interface::InterfaceStatus, link::*,
+        device::*,
+        globalstate::GlobalState,
+        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus},
+        link::*,
         resource_extension::ResourceExtensionBorrowed,
     },
 };
@@ -134,6 +137,14 @@ pub fn process_activate_link(
         || side_z_iface.status != InterfaceStatus::Unlinked
     {
         return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
+    if side_a_iface.interface_cyoa != InterfaceCYOA::None
+        || side_a_iface.interface_dia != InterfaceDIA::None
+        || side_z_iface.interface_cyoa != InterfaceCYOA::None
+        || side_z_iface.interface_dia != InterfaceDIA::None
+    {
+        return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
     }
 
     // Allocate resources from ResourceExtension or use provided values

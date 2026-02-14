@@ -27,6 +27,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Serviceability: prevent creating or activating links on interfaces with CYOA or DIA assignments, and prevent setting CYOA/DIA on interfaces that are already linked
+- CLI: add early validation in `link wan-create` and `link dzx-create` to reject interfaces with CYOA or DIA assignments
 - Activator
   - Assign multicast publisher IPs from global pool in serviceability GlobalConfig instead of per-device blocks
 - Client

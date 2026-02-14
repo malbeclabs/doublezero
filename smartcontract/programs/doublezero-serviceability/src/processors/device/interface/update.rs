@@ -8,7 +8,9 @@ use crate::{
         contributor::Contributor,
         device::*,
         globalstate::GlobalState,
-        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LoopbackType, RoutingMode},
+        interface::{
+            InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
+        },
     },
 };
 use borsh::BorshSerialize;
@@ -124,9 +126,21 @@ pub fn process_update_device_interface(
         iface.loopback_type = *loopback_type;
     }
     if let Some(interface_cyoa) = &value.interface_cyoa {
+        if *interface_cyoa != InterfaceCYOA::None
+            && iface.status == InterfaceStatus::Activated
+            && iface.interface_type == InterfaceType::Physical
+        {
+            return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
+        }
         iface.interface_cyoa = *interface_cyoa;
     }
     if let Some(interface_dia) = &value.interface_dia {
+        if *interface_dia != InterfaceDIA::None
+            && iface.status == InterfaceStatus::Activated
+            && iface.interface_type == InterfaceType::Physical
+        {
+            return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
+        }
         iface.interface_dia = *interface_dia;
     }
     if let Some(bandwidth) = value.bandwidth {

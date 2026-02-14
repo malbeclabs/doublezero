@@ -166,6 +166,8 @@ pub enum DoubleZeroError {
     TenantNotInAccessPassAllowlist, // variant 79
     #[error("Invalid Tunnel Endpoint")]
     InvalidTunnelEndpoint, // variant 80
+    #[error("Interface cannot have both a link and a CYOA or DIA assignment")]
+    InterfaceHasEdgeAssignment, // variant 81
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -252,6 +254,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidPaymentStatus => ProgramError::Custom(78),
             DoubleZeroError::TenantNotInAccessPassAllowlist => ProgramError::Custom(79),
             DoubleZeroError::InvalidTunnelEndpoint => ProgramError::Custom(80),
+            DoubleZeroError::InterfaceHasEdgeAssignment => ProgramError::Custom(81),
         }
     }
 }
@@ -339,6 +342,7 @@ impl From<u32> for DoubleZeroError {
             78 => DoubleZeroError::InvalidPaymentStatus,
             79 => DoubleZeroError::TenantNotInAccessPassAllowlist,
             80 => DoubleZeroError::InvalidTunnelEndpoint,
+            81 => DoubleZeroError::InterfaceHasEdgeAssignment,
             _ => DoubleZeroError::Custom(e),
         }
     }

@@ -25,6 +25,7 @@ pub fn process_update_payment_status(
     let program_config_account = next_account_info(accounts_iter)?;
     let serviceability_globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     if !payer_account.is_signer {
         msg!("Payer must be a signer");

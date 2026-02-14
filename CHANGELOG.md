@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Client
+  - Fix heartbeat sender not restarting after disconnect due to poisoned done channel
 - Onchain Programs
   - bugfix(serviceability): contributors can now update their interfaces, CYOA interfaces saved on create, physical interfaces remain after unlink ([#2993](https://github.com/malbeclabs/doublezero/pull/2993))
 

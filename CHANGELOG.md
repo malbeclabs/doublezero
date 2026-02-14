@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
   - bugfix(serviceability): contributors can now update their interfaces, CYOA interfaces saved on create, physical interfaces remain after unlink ([#2993](https://github.com/malbeclabs/doublezero/pull/2993))
 - Device controller
   - Reject users with BGP martian DZ IPs (RFC 1918, loopback, multicast, link-local, documentation nets, shared address space, reserved) to prevent invalid addresses from being advertised via BGP or permitted in device ACLs
+- Claude
+  - chore: update CLAUDE.md ([#2999](https://github.com/malbeclabs/doublezero/pull/2999))
 
 ## [v0.8.8](https://github.com/malbeclabs/doublezero/compare/client/v0.8.7...client/v0.8.8) – 2026-02-13
 

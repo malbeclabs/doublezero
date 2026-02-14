@@ -59,7 +59,10 @@ func TestE2E_SDK_Serviceability(t *testing.T) {
 
 		require.Eventually(t, func() bool {
 			data, err := client.GetProgramData(ctx)
-			require.NoError(t, err, "error while reloading onchain state to verify update")
+			if err != nil {
+				log.Debug("--> Error reloading onchain state to verify update", "error", err)
+				return false
+			}
 
 			got := data.GlobalConfig.RemoteASN
 			if got == newAsn {

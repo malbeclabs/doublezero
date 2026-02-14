@@ -239,7 +239,7 @@ no route-map RM-USER-{{$i}}-IN
 !
 {{- end}}
 no ip prefix-list PL-USER-500
-ip prefix-list PL-USER-500 seq 10 permit 100.100.100.100/32
+ip prefix-list PL-USER-500 seq 10 permit 147.100.100.100/32
 !
 no ip prefix-list PL-USER-501
 ip prefix-list PL-USER-501 seq 10 deny 0.0.0.0/0 le 32
@@ -260,7 +260,7 @@ ip access-list SEC-USER-500-IN
    !PERMIT BGP
    permit tcp 169.254.0.1/32 169.254.0.0/32 eq 179
    !PERMIT USER DZ_IP as a source only
-   permit ip 100.100.100.100/32 any
+   permit ip 147.100.100.100/32 any
    deny ip any any
 !
 {{- range $i := seq (add .StartTunnel 1) .EndTunnel}}

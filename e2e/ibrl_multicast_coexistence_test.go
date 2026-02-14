@@ -1195,14 +1195,11 @@ func verifyConcurrentMulticastPublisherMrouteState(t *testing.T, log *slog.Logge
 	log.Info("Addresses on doublezero1", "output", string(addrOut))
 
 	// Verify mroute state on device - poll for 60 seconds (longer for concurrent case).
-	// Each iteration pings the multicast group to trigger S,G creation. The ping is
-	// inside the loop because the device may still be applying PIM border-router config
-	// when we first start checking, and a ping sent before that config is active will
-	// be ignored.
+	// The heartbeat sender creates (S,G) state by sending periodic UDP heartbeat
+	// packets to the multicast group, so no explicit ping is needed.
 	mGroup := "233.84.178.0"
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
-		_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 -I " + expectedAllocatedIP + " " + mGroup}, docker.NoPrintOnError())
 
 		mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
 		if err != nil {
@@ -1254,13 +1251,11 @@ func verifyMulticastPublisherMrouteState(t *testing.T, log *slog.Logger, device 
 	log.Info("==> Using client's actual allocated IP", "expectedAllocatedIP", expectedAllocatedIP)
 
 	// Verify mroute state on device - poll for 30 seconds.
-	// Each iteration pings the multicast group to trigger S,G creation. The ping is
-	// inside the loop because the device may still be applying PIM border-router config
-	// when we first start checking.
+	// The heartbeat sender creates (S,G) state by sending periodic UDP heartbeat
+	// packets to the multicast group, so no explicit ping is needed.
 	mGroup := "233.84.178.0"
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
-		_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 -I " + expectedAllocatedIP + " " + mGroup}, docker.NoPrintOnError())
 
 		mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
 		if err != nil {

@@ -450,6 +450,10 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				slog.Error("DZ IP is set to 0.0.0.0 for user", "user pubkey", userPubKey)
 				return false
 			}
+			if isBgpMartian(net.IP(user.DzIp[:])) {
+				slog.Error("DZ IP is a BGP martian address", "dz_ip", net.IP(user.DzIp[:]), "user pubkey", userPubKey)
+				return false
+			}
 			if user.TunnelNet[4] != 31 {
 				c.log.Error("tunnel network mask is not 31\n", "tunnel network mask", user.TunnelNet[4])
 				return false

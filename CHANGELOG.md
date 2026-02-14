@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 
 - Onchain Programs
   - bugfix(serviceability): contributors can now update their interfaces, CYOA interfaces saved on create, physical interfaces remain after unlink ([#2993](https://github.com/malbeclabs/doublezero/pull/2993))
+- e2e
+  - e2e: Add network contributor e2e flow tests ([#2997](https://github.com/malbeclabs/doublezero/pull/2997))
 
 ## [v0.8.8](https://github.com/malbeclabs/doublezero/compare/client/v0.8.7...client/v0.8.8) – 2026-02-13
 

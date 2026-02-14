@@ -67,12 +67,12 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	log.Debug("Device creation output", "output", string(output))
 	require.NoError(t, err, "Device creation failed with output: %s", string(output))
 
-	// Create interfaces on the devices with CYOA and ip_net to test ip_net preservation across link lifecycle
-	log.Debug("==> Creating device interfaces with CYOA and ip_net")
+	// Create interfaces on the devices with CYOA (ip_net set after unlink to survive activator processing)
+	log.Debug("==> Creating device interfaces with CYOA")
 	output, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
-		doublezero device interface create test-dz01 "Ethernet1" --interface-cyoa gre-over-dia --ip-net "45.33.100.62/31" 2>&1
-		doublezero device interface create test-dz02 "Ethernet1" --interface-cyoa gre-over-dia --ip-net "45.33.100.64/31" 2>&1
+		doublezero device interface create test-dz01 "Ethernet1" --interface-cyoa gre-over-dia 2>&1
+		doublezero device interface create test-dz02 "Ethernet1" --interface-cyoa gre-over-dia 2>&1
 	`})
 	log.Debug("Interface creation output", "output", string(output))
 	require.NoError(t, err)
@@ -130,6 +130,18 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 
 		return true
 	}, 60*time.Second, 2*time.Second, "interfaces were not unlinked within timeout")
+
+	// Set ip_net on the CYOA interfaces now that they're unlinked.
+	// This must happen after the activator's Pending→Unlinked transition to ensure
+	// the ip_net values survive the link→activate→delete→unlink cycle.
+	log.Debug("==> Setting ip_net on unlinked interfaces")
+	output, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
+		set -euo pipefail
+		doublezero device interface update test-dz01 "Ethernet1" --ip-net "45.33.100.62/31" 2>&1
+		doublezero device interface update test-dz02 "Ethernet1" --ip-net "45.33.100.64/31" 2>&1
+	`})
+	log.Debug("Interface ip_net update output", "output", string(output))
+	require.NoError(t, err, "failed to set ip_net on interfaces")
 
 	// Create allocation verifier and capture snapshot BEFORE link creation
 	client, err := dn.Ledger.GetServiceabilityClient()

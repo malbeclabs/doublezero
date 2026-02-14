@@ -16,12 +16,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestE2E_ContributorLifecycle tests the full CRUD lifecycle for contributors, including
-// create, get, list, update, and delete operations, as well as contributor-owner authorization
-// for managing devices and interfaces.
+// TestE2E_ContributorAuth tests contributor-owner authorization and reference-count
+// guards. Basic CRUD (create, get, list, update, delete) is covered by the backward
+// compatibility test; this test focuses on ownership semantics: non-foundation signers
+// updating their own devices/interfaces, reference-count delete rejection, and
+// ops_manager self-service.
 //
 // All subtests share a single devnet to avoid Docker network pool exhaustion.
-func TestE2E_ContributorLifecycle(t *testing.T) {
+func TestE2E_ContributorAuth(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
@@ -103,9 +105,27 @@ func TestE2E_ContributorLifecycle(t *testing.T) {
 	if !t.Run("update_code", func(t *testing.T) {
 		log.Debug("==> Updating contributor test-co02 code to test-co02-renamed")
 
-		_, err := dn.Manager.Exec(t.Context(), []string{
+		// contributor update --pubkey requires an actual base58 pubkey, not a code.
+		// Extract the pubkey from contributor get output.
+		getOutput, err := dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "contributor", "get",
+			"--code", "test-co02",
+		})
+		require.NoError(t, err, "failed to get contributor test-co02 for pubkey lookup")
+		// Output format: "account: <pubkey>,\r\ncode: ..."
+		var co02Pubkey string
+		for _, line := range strings.Split(string(getOutput), "\n") {
+			line = strings.TrimSpace(strings.ReplaceAll(line, "\r", ""))
+			if strings.HasPrefix(line, "account:") {
+				co02Pubkey = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "account:"), ","))
+				break
+			}
+		}
+		require.NotEmpty(t, co02Pubkey, "could not extract pubkey from contributor get output: %s", string(getOutput))
+
+		_, err = dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "contributor", "update",
-			"--pubkey", "test-co02",
+			"--pubkey", co02Pubkey,
 			"--code", "test-co02-renamed",
 		})
 		require.NoError(t, err, "failed to update contributor code")

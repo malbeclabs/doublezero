@@ -933,7 +933,7 @@ mod tests {
     use mockall::predicate;
     use solana_sdk::signature::Signature;
     use std::{
-        collections::HashMap,
+        collections::{HashMap, HashSet},
         sync::{Arc, Mutex, OnceLock},
         thread,
         time::Duration,
@@ -962,6 +962,10 @@ mod tests {
         pub mcast_groups: Arc<Mutex<HashMap<Pubkey, MulticastGroup>>>,
         pub tenants: Arc<Mutex<HashMap<Pubkey, Tenant>>>,
         pub default_tenant_pk: Pubkey,
+        /// Tracks which service types the daemon has "provisioned" (simulating
+        /// what the reconciler would do). The status mock only returns entries
+        /// for types in this set.
+        pub provisioned_services: Arc<Mutex<HashSet<String>>>,
     }
 
     impl TestFixture {
@@ -1007,6 +1011,7 @@ mod tests {
                 mcast_groups: Arc::new(Mutex::new(HashMap::new())),
                 tenants: Arc::new(Mutex::new(tenants)),
                 default_tenant_pk,
+                provisioned_services: Arc::new(Mutex::new(HashSet::new())),
             };
 
             fixture
@@ -1029,9 +1034,17 @@ mod tests {
                 .expect_service_controller_can_open()
                 .return_const(true);
 
-            fixture.controller.expect_status().returning_st(|| {
-                Ok(vec![
-                    StatusResponse {
+            // The status mock returns daemon service entries only for service
+            // types tracked in `provisioned_services`. This simulates the daemon's
+            // reconciler: a service only appears in the status after it has been
+            // provisioned. Test helpers (expect_create_user, etc.) add entries to
+            // `provisioned_services` when they simulate successful onchain txs.
+            let status_provisioned = fixture.provisioned_services.clone();
+            fixture.controller.expect_status().returning_st(move || {
+                let provisioned = status_provisioned.lock().unwrap();
+                let mut statuses = Vec::new();
+                if provisioned.contains("IBRL") {
+                    statuses.push(StatusResponse {
                         doublezero_status: DoubleZeroStatus {
                             session_status: "BGP Session Up".to_string(),
                             last_session_update: Some(0),
@@ -1041,8 +1054,10 @@ mod tests {
                         tunnel_dst: Some("5.6.7.1".to_string()),
                         doublezero_ip: Some("10.1.1.1".to_string()),
                         user_type: Some("IBRL".to_string()),
-                    },
-                    StatusResponse {
+                    });
+                }
+                if provisioned.contains("IBRLWithAllocatedIP") {
+                    statuses.push(StatusResponse {
                         doublezero_status: DoubleZeroStatus {
                             session_status: "BGP Session Up".to_string(),
                             last_session_update: Some(0),
@@ -1052,8 +1067,23 @@ mod tests {
                         tunnel_dst: Some("5.6.7.1".to_string()),
                         doublezero_ip: Some("10.1.1.1".to_string()),
                         user_type: Some("IBRLWithAllocatedIP".to_string()),
-                    },
-                    StatusResponse {
+                    });
+                }
+                if provisioned.contains("EdgeFiltering") {
+                    statuses.push(StatusResponse {
+                        doublezero_status: DoubleZeroStatus {
+                            session_status: "BGP Session Up".to_string(),
+                            last_session_update: Some(0),
+                        },
+                        tunnel_name: Some("doublezero1".to_string()),
+                        tunnel_src: Some("1.2.3.4".to_string()),
+                        tunnel_dst: Some("5.6.7.1".to_string()),
+                        doublezero_ip: Some("10.1.1.1".to_string()),
+                        user_type: Some("EdgeFiltering".to_string()),
+                    });
+                }
+                if provisioned.contains("Multicast") {
+                    statuses.push(StatusResponse {
                         doublezero_status: DoubleZeroStatus {
                             session_status: "BGP Session Up".to_string(),
                             last_session_update: Some(0),
@@ -1063,8 +1093,9 @@ mod tests {
                         tunnel_dst: Some("5.6.7.2".to_string()),
                         doublezero_ip: Some("10.1.1.2".to_string()),
                         user_type: Some("Multicast".to_string()),
-                    },
-                ])
+                    });
+                }
+                Ok(statuses)
             });
 
             let latencies = fixture.latencies.clone();
@@ -1339,6 +1370,7 @@ mod tests {
             };
 
             let users = self.users.clone();
+            let provisioned = self.provisioned_services.clone();
             let user = user.clone();
             self.client
                 .expect_create_user()
@@ -1346,7 +1378,9 @@ mod tests {
                 .with(predicate::eq(expected_create_user_command))
                 .returning_st(move |_| {
                     thread::sleep(Duration::from_secs(1));
+                    let ut = user.user_type.to_string();
                     users.lock().unwrap().insert(pk, user.clone());
+                    provisioned.lock().unwrap().insert(ut);
                     Ok((Signature::default(), pk))
                 });
         }
@@ -1371,6 +1405,7 @@ mod tests {
             };
 
             let users = self.users.clone();
+            let provisioned = self.provisioned_services.clone();
             let mut user = user.clone();
             if publisher {
                 user.publishers.push(mcast_group_pk);
@@ -1384,7 +1419,9 @@ mod tests {
                 .with(predicate::eq(expected_create_subscribe_user_command))
                 .returning_st(move |_| {
                     thread::sleep(Duration::from_secs(1));
+                    let ut = user.user_type.to_string();
                     users.lock().unwrap().insert(pk, user.clone());
+                    provisioned.lock().unwrap().insert(ut);
                     Ok((Signature::default(), pk))
                 });
         }
@@ -1407,6 +1444,7 @@ mod tests {
             };
 
             let users = self.users.clone();
+            let provisioned = self.provisioned_services.clone();
             self.client
                 .expect_subscribe_multicastgroup()
                 .times(1)
@@ -1421,6 +1459,10 @@ mod tests {
                         if cmd.subscriber {
                             user.subscribers.push(cmd.group_pk);
                         }
+                        provisioned
+                            .lock()
+                            .unwrap()
+                            .insert(user.user_type.to_string());
                     }
                     Ok(Signature::default())
                 });
@@ -1820,10 +1862,11 @@ mod tests {
     async fn test_connect_command_multicast_publisher_can_add_subscriber_group() {
         let mut fixture = TestFixture::new();
 
-        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        let (mcast_group2_pk, mcast_group2) =
+        let (mcast_group_pk, _mcast_group) =
+            fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (mcast_group2_pk, _mcast_group2) =
             fixture.add_multicast_group("test-group2", "239.0.0.2");
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
 
         // Create a user who is already a publisher
         let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
@@ -1838,16 +1881,6 @@ mod tests {
             false,
             true,
         );
-
-        fixture.expected_provisioning_request(
-            UserType::Multicast,
-            user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            Some(vec![mcast_group.multicast_ip.to_string()]),
-            Some(vec![mcast_group2.multicast_ip.to_string()]),
-        );
-
-        println!();
 
         // Add subscriber group to existing publisher - should succeed
         let command = ProvisioningCliCommand {
@@ -1872,10 +1905,11 @@ mod tests {
     async fn test_connect_command_multicast_subscriber_can_add_publisher_group() {
         let mut fixture = TestFixture::new();
 
-        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        let (mcast_group2_pk, mcast_group2) =
+        let (mcast_group_pk, _mcast_group) =
+            fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (mcast_group2_pk, _mcast_group2) =
             fixture.add_multicast_group("test-group2", "239.0.0.2");
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
 
         // Create a user who is already a subscriber
         let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
@@ -1890,16 +1924,6 @@ mod tests {
             true,
             false,
         );
-
-        fixture.expected_provisioning_request(
-            UserType::Multicast,
-            user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            Some(vec![mcast_group2.multicast_ip.to_string()]),
-            Some(vec![mcast_group.multicast_ip.to_string()]),
-        );
-
-        println!();
 
         // Add publisher group to existing subscriber - should succeed
         let command = ProvisioningCliCommand {

@@ -33,7 +33,7 @@ The current provisioning flow has the CLI acting as an orchestrator: it creates 
 
 ### Architecture
 
-The reconciler runs as a goroutine inside the daemon, alongside the existing BGP, PIM, multicast, and API subsystems. It is enabled when the `--client-ip` flag is set.
+The reconciler runs as a goroutine inside the daemon, alongside the existing BGP, PIM, multicast, and API subsystems. It is enabled when the client IP is known — either via the `--client-ip` flag or auto-discovered from local interfaces / external lookup.
 
 ```
                         ┌──────────────────────────────────────────┐
@@ -109,7 +109,7 @@ The CLI drops ~700 lines of networking logic (device fetching, global config fet
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--client-ip` | (none) | Client's public IP. Enables the reconciler when set. |
+| `--client-ip` | (auto-discovered) | Client's public IP. Optional — if not set, the daemon auto-discovers the IP by scanning local interfaces for a publicly routable IPv4 address, falling back to an external lookup via `ifconfig.me`. Explicit value takes precedence. |
 | `--reconciler-poll-interval` | 10 | Seconds between reconciliation polls. |
 
 ### Interface Design
@@ -161,7 +161,7 @@ type Manager interface {
 ## Backward Compatibility
 
 - **CLI**: Old CLI versions that call `/provision` directly will continue to work — the endpoint is still present. The reconciler and CLI-driven provisioning can coexist; the reconciler will detect the already-provisioned service and skip it. The `/provision` and `/remove` endpoints are candidates for deprecation once all clients have migrated to the reconciler-based flow.
-- **Daemon without `--client-ip`**: If the flag is not set, the reconciler is not started and the daemon behaves exactly as before (CLI-driven provisioning only).
+- **Daemon without `--client-ip`**: If the flag is not set, the daemon auto-discovers the client IP from local interfaces or an external lookup. If discovery fails (e.g., no network connectivity), the reconciler is not started and the daemon behaves as before (CLI-driven provisioning only).
 - **Rollout**: The reconciler can be enabled per-client by setting the `--client-ip` flag. No coordinated rollout required.
 
 ## Open Questions

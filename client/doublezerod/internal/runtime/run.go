@@ -80,11 +80,11 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		errCh <- err
 	}()
 
-	if clientIP != "" {
-		ip := net.ParseIP(clientIP)
-		if ip == nil {
-			return fmt.Errorf("invalid client-ip: %s", clientIP)
-		}
+	ip, method, err := DiscoverClientIP(clientIP)
+	if err != nil {
+		slog.Warn("reconciler: client IP discovery failed, reconciler will not start", "error", err)
+	} else {
+		slog.Info("reconciler: discovered client IP", "ip", ip.String(), "method", method)
 		pid, err := solana.PublicKeyFromBase58(networkConfig.ServiceabilityProgramID.String())
 		if err != nil {
 			return fmt.Errorf("error parsing program ID: %v", err)
@@ -92,7 +92,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		fetcher := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), pid)
 		pollInterval := time.Duration(reconcilerPollInterval) * time.Second
 		rec := reconciler.NewReconciler(
-			ip.To4(),
+			ip,
 			nlm,
 			fetcher,
 			reconciler.WithPollInterval(pollInterval),

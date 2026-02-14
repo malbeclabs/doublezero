@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Activator
+  - Fail to start if any global config network blocks (`device_tunnel_block`, `user_tunnel_block`, `multicastgroup_block`, `multicast_publisher_block`) are unset (0.0.0.0/0)
 - Client
   - Fix heartbeat sender not restarting after disconnect due to poisoned done channel
 - Onchain Programs

@@ -71,6 +71,28 @@ impl<T: DoubleZeroClient> Processor<T> {
             .call()
             .expect("Failed to get global config after retries");
 
+        let unspecified = NetworkV4::default();
+        if config.device_tunnel_block == unspecified {
+            return Err(eyre::eyre!(
+                "Global config device_tunnel_block is not set (0.0.0.0/0)"
+            ));
+        }
+        if config.user_tunnel_block == unspecified {
+            return Err(eyre::eyre!(
+                "Global config user_tunnel_block is not set (0.0.0.0/0)"
+            ));
+        }
+        if config.multicastgroup_block == unspecified {
+            return Err(eyre::eyre!(
+                "Global config multicastgroup_block is not set (0.0.0.0/0)"
+            ));
+        }
+        if config.multicast_publisher_block == unspecified {
+            return Err(eyre::eyre!(
+                "Global config multicast_publisher_block is not set (0.0.0.0/0)"
+            ));
+        }
+
         let devices = ListDeviceCommand.execute(client.as_ref())?;
         let links = ListLinkCommand.execute(client.as_ref())?;
         let users = ListUserCommand.execute(client.as_ref())?;
@@ -257,5 +279,91 @@ impl<T: DoubleZeroClient> Processor<T> {
             _ => {}
         };
         metrics::counter!("doublezero_activator_event_handled").increment(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use doublezero_program_common::types::NetworkV4;
+    use doublezero_sdk::{AccountType, GlobalConfig, MockDoubleZeroClient};
+    use doublezero_serviceability::pda::get_globalconfig_pda;
+    use mockall::predicate;
+    use std::{collections::HashMap, sync::Arc};
+    use tokio::sync::mpsc;
+
+    fn valid_config() -> GlobalConfig {
+        GlobalConfig {
+            account_type: AccountType::GlobalConfig,
+            owner: Pubkey::new_unique(),
+            bump_seed: 1,
+            local_asn: 123,
+            remote_asn: 456,
+            device_tunnel_block: "1.0.0.0/24".parse().unwrap(),
+            user_tunnel_block: "2.0.0.0/24".parse().unwrap(),
+            multicastgroup_block: "239.239.239.0/24".parse().unwrap(),
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
+            next_bgp_community: 0,
+        }
+    }
+
+    fn mock_client_with_config(config: GlobalConfig) -> Arc<MockDoubleZeroClient> {
+        let mut client = MockDoubleZeroClient::new();
+        let program_id = Pubkey::new_unique();
+        client.expect_get_program_id().returning(move || program_id);
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+        client
+            .expect_get()
+            .with(predicate::eq(globalconfig_pubkey))
+            .returning(move |_| Ok(AccountData::GlobalConfig(config.clone())));
+        client.expect_gets().returning(move |_| Ok(HashMap::new()));
+        Arc::new(client)
+    }
+
+    #[tokio::test]
+    async fn test_processor_new_rejects_unset_device_tunnel_block() {
+        let mut config = valid_config();
+        config.device_tunnel_block = NetworkV4::default();
+        let client = mock_client_with_config(config);
+        let (_tx, rx) = mpsc::channel(1);
+        let result = Processor::new(rx, client, false);
+        let err = result.err().expect("expected error").to_string();
+        assert!(err.contains("device_tunnel_block"), "error was: {err}");
+    }
+
+    #[tokio::test]
+    async fn test_processor_new_rejects_unset_user_tunnel_block() {
+        let mut config = valid_config();
+        config.user_tunnel_block = NetworkV4::default();
+        let client = mock_client_with_config(config);
+        let (_tx, rx) = mpsc::channel(1);
+        let result = Processor::new(rx, client, false);
+        let err = result.err().expect("expected error").to_string();
+        assert!(err.contains("user_tunnel_block"), "error was: {err}");
+    }
+
+    #[tokio::test]
+    async fn test_processor_new_rejects_unset_multicastgroup_block() {
+        let mut config = valid_config();
+        config.multicastgroup_block = NetworkV4::default();
+        let client = mock_client_with_config(config);
+        let (_tx, rx) = mpsc::channel(1);
+        let result = Processor::new(rx, client, false);
+        let err = result.err().expect("expected error").to_string();
+        assert!(err.contains("multicastgroup_block"), "error was: {err}");
+    }
+
+    #[tokio::test]
+    async fn test_processor_new_rejects_unset_multicast_publisher_block() {
+        let mut config = valid_config();
+        config.multicast_publisher_block = NetworkV4::default();
+        let client = mock_client_with_config(config);
+        let (_tx, rx) = mpsc::channel(1);
+        let result = Processor::new(rx, client, false);
+        let err = result.err().expect("expected error").to_string();
+        assert!(
+            err.contains("multicast_publisher_block"),
+            "error was: {err}"
+        );
     }
 }

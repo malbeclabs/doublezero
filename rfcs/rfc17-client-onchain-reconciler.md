@@ -12,10 +12,6 @@ The current provisioning flow has the CLI acting as an orchestrator: it creates 
 
 - **Fragile recovery**: If the daemon restarts, it reads a JSON state file (`doublezerod.json`) to re-provision tunnels. If this file is corrupted, missing, or stale, tunnels are not restored until the user manually runs `doublezero connect` again.
 
-- **CLI complexity**: The CLI must understand networking details (tunnel source/destination, ASN config, DZ prefixes, multicast group resolution) that are purely daemon concerns. This makes the CLI harder to maintain and test.
-
-- **Split responsibility**: Provisioning logic is spread across the CLI (parameter computation) and daemon (tunnel setup), making it difficult to reason about the full flow.
-
 - **No automatic deprovisioning**: If a user is deactivated onchain (e.g., rejected, suspended), the daemon has no way to know — tunnels remain up until the user manually disconnects.
 
 - **Tight coupling to CLI**: The daemon cannot provision tunnels on its own — it requires the CLI to compute parameters and call `/provision`. This means the CLI is the only path to a working connection. External tools, automation systems, or alternative frontends that create Users onchain have no way to trigger tunnel setup without reimplementing the CLI's provisioning logic.
@@ -27,7 +23,7 @@ The current provisioning flow has the CLI acting as an orchestrator: it creates 
 
 ## Alternatives Considered
 
-- **Keep the CLI-driven model and fix the state file**: We could make the JSON state file more robust (e.g., fsync, checksums). This doesn't solve the split-responsibility problem, doesn't enable automatic deprovisioning, and keeps the CLI unnecessarily complex.
+- **Do nothing**: Keep the current CLI-driven provisioning model with the JSON state file for crash recovery. This doesn't address any of the problems described in Motivation.
 
 - **Event-driven via WebSocket subscriptions**: The daemon could subscribe to onchain account changes instead of polling. This would reduce latency but adds complexity (reconnection handling, missed events, fallback polling). Polling is simpler, sufficient for the 10-second convergence target, and can be replaced with event-driven updates later if needed.
 
@@ -63,15 +59,20 @@ On each tick (default 10 seconds, configurable via `--reconciler-poll-interval`)
 2. **Filter** users matching this daemon's client IP and `Activated` status.
 3. **Classify** matching users as unicast (IBRL, IBRLWithAllocatedIP, EdgeFiltering) or multicast.
 4. **Diff** desired state against current in-memory service state:
-   - If unicast users exist but no unicast service is running → provision.
+   - If unicast users exist but no unicast service is running → provision using the first matching user.
    - If no unicast users but a unicast service is running → remove.
    - Same logic independently for multicast.
+   - Unicast and multicast are reconciled independently — a client can have one of each running simultaneously.
+
+   In practice, the activator enforces one user per type per client IP, so multiple matching unicast users shouldn't occur. If they do, the reconciler uses the first one it encounters.
 5. **Build** a `ProvisionRequest` from onchain data when provisioning:
    - Resolve the device's public IP as tunnel destination.
    - Resolve the tunnel source IP via kernel route lookup (`ip route get`), falling back to the client IP.
    - Collect all DZ prefixes across all devices.
    - Resolve multicast publisher/subscriber groups.
    - Read ASN configuration from the onchain global config.
+
+If the RPC call fails or any step in the reconciliation encounters an error, the reconciler logs the error and retries on the next tick. Transient failures do not crash the daemon or affect already-provisioned tunnels.
 
 ### Daemon State Management
 
@@ -81,19 +82,26 @@ The `Provisioner` interface gains a `ProvisionRequest()` method, and the manager
 
 ### CLI Changes
 
-The CLI no longer sends `/provision` requests to the daemon. After creating/activating a user onchain, it polls the daemon's `/status` endpoint until the reconciler has provisioned the tunnel:
+The CLI no longer sends `/provision` requests to the daemon. After creating a user onchain, it polls until the user reaches `Activated` status (the activator handles this transition), then polls the daemon's `/status` endpoint until the reconciler has provisioned the tunnel:
 
 ```
-CLI                          Daemon                      Solana
- │                             │                            │
- │  1. CreateUser ─────────────│───────────────────────────>│
- │                             │                            │ User (Activated)
- │                             │  2. Poll (reconciler) ────>│
- │                             │<──── ProgramData ──────────│
- │                             │  3. Provision tunnel       │
- │  4. GET /status ───────────>│                            │
- │<──── tunnel details ────────│                            │
+CLI                          Activator       Daemon                      Solana
+ │                             │               │                            │
+ │  1. CreateUser ─────────────│───────────────│───────────────────────────>│
+ │                             │               │                            │ User (Pending)
+ │                             │  2. Activate ─│───────────────────────────>│
+ │                             │               │                            │ User (Activated)
+ │  3. Poll user status ───────│───────────────│───────────────────────────>│
+ │<──── Activated ─────────────│───────────────│────────────────────────────│
+ │                             │               │                            │
+ │                             │               │  4. Poll (reconciler) ────>│
+ │                             │               │<──── ProgramData ──────────│
+ │                             │               │  5. Provision tunnel       │
+ │  6. GET /status ───────────>│               │                            │
+ │<──── tunnel details ────────│───────────────│                            │
 ```
+
+The CLI polls the daemon's `/status` endpoint up to 12 times at 5-second intervals (60 seconds total) waiting for the tunnel to appear. If the reconciler hasn't provisioned the tunnel within that window, the CLI times out with an error — though the reconciler will still provision the tunnel on a subsequent poll.
 
 The CLI drops ~700 lines of networking logic (device fetching, global config fetching, tunnel parameter computation, multicast group resolution).
 
@@ -152,7 +160,7 @@ type Manager interface {
 
 ## Backward Compatibility
 
-- **CLI**: Old CLI versions that call `/provision` directly will continue to work — the endpoint is still present. The reconciler and CLI-driven provisioning can coexist; the reconciler will detect the already-provisioned service and skip it.
+- **CLI**: Old CLI versions that call `/provision` directly will continue to work — the endpoint is still present. The reconciler and CLI-driven provisioning can coexist; the reconciler will detect the already-provisioned service and skip it. The `/provision` and `/remove` endpoints are candidates for deprecation once all clients have migrated to the reconciler-based flow.
 - **Daemon without `--client-ip`**: If the flag is not set, the reconciler is not started and the daemon behaves exactly as before (CLI-driven provisioning only).
 - **Rollout**: The reconciler can be enabled per-client by setting the `--client-ip` flag. No coordinated rollout required.
 

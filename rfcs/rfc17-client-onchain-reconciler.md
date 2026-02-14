@@ -19,7 +19,7 @@ The current provisioning flow has the CLI acting as an orchestrator: it creates 
 ## New Terminology
 
 - **Reconciler**: A background loop in the daemon that polls onchain state and converges local tunnel state to match it.
-- **Fetcher**: An interface for retrieving onchain program data (`GetProgramData`), abstracting the Solana RPC client.
+- **Fetcher**: An interface for retrieving onchain program data (`GetProgramData`), abstracting the RPC client.
 
 ## Alternatives Considered
 
@@ -40,7 +40,7 @@ The reconciler runs as a goroutine inside the daemon, alongside the existing BGP
                         │              doublezerod                  │
                         │                                          │
                         │  ┌────────────┐     ┌─────────────────┐  │
-  Solana RPC ◄──────────│──│ Reconciler │────►│ Network Manager │  │
+  DZ Ledger RPC ◄───────│──│ Reconciler │────►│ Network Manager │  │
   (poll every 10s)      │  └────────────┘     └────────┬────────┘  │
                         │                              │           │
                         │                     ┌────────┴────────┐  │
@@ -55,7 +55,7 @@ The reconciler runs as a goroutine inside the daemon, alongside the existing BGP
 
 On each tick (default 10 seconds, configurable via `--reconciler-poll-interval`):
 
-1. **Fetch** all program data from Solana (devices, users, multicast groups, config) via the `Fetcher` interface.
+1. **Fetch** all program data from the DZ Ledger (devices, users, multicast groups, config) via the `Fetcher` interface.
 2. **Filter** users matching this daemon's client IP and `Activated` status.
 3. **Classify** matching users as unicast (IBRL, IBRLWithAllocatedIP, EdgeFiltering) or multicast.
 4. **Diff** desired state against current in-memory service state:
@@ -85,7 +85,7 @@ The `Provisioner` interface gains a `ProvisionRequest()` method, and the manager
 The CLI no longer sends `/provision` requests to the daemon. After creating a user onchain, it polls until the user reaches `Activated` status (the activator handles this transition), then polls the daemon's `/status` endpoint until the reconciler has provisioned the tunnel:
 
 ```
-CLI                          Activator       Daemon                      Solana
+CLI                          Activator       Daemon                      DZ Ledger
  │                             │               │                            │
  │  1. CreateUser ─────────────│───────────────│───────────────────────────>│
  │                             │               │                            │ User (Pending)
@@ -114,7 +114,7 @@ The CLI drops ~700 lines of networking logic (device fetching, global config fet
 
 ### Interface Design
 
-The reconciler depends on two interfaces, keeping it decoupled from Solana SDK details and the daemon's internal networking:
+The reconciler depends on two interfaces, keeping it decoupled from ledger SDK details and the daemon's internal networking:
 
 ```go
 // Fetcher abstracts onchain data retrieval.
@@ -149,7 +149,7 @@ type Manager interface {
 
 ### Performance
 
-- One Solana RPC call per poll interval (fetches all program data). At 10-second intervals this is negligible load.
+- One RPC call per poll interval (fetches all program data). At 10-second intervals this is negligible load.
 - Tunnel convergence time after user activation: up to ~10 seconds (one poll interval) plus tunnel setup time.
 
 ## Security Considerations

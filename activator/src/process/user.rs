@@ -588,7 +588,6 @@ fn resolve_tunnel_endpoint(
 
 fn deallocate_publisher_dz_ip(user: &User, publisher_dz_ips: &mut Option<IPBlockAllocator>) {
     if user.user_type == UserType::Multicast
-        && !user.publishers.is_empty()
         && user.dz_ip != Ipv4Addr::UNSPECIFIED
         && user.dz_ip != user.client_ip
     {
@@ -1577,6 +1576,125 @@ mod tests {
                     .returning(|_, _| Ok(Signature::new_unique()));
             },
             "user-pending-ban-to-banned",
+        );
+    }
+
+    /// Verify that a multicast publisher's dz_ip is deallocated from the global
+    /// publisher pool when the user is deleted, even though publishers have already
+    /// been cleared (required by the smartcontract before Deleting status).
+    /// Regression test: the original code checked `!user.publishers.is_empty()`
+    /// in `deallocate_publisher_dz_ip`, which was always false at deletion time,
+    /// causing publisher IPs to leak on every connect/disconnect cycle.
+    #[test]
+    fn test_publisher_dz_ip_deallocated_on_delete() {
+        let mut publisher_dz_ips = Some(IPBlockAllocator::new("147.51.126.0/23".parse().unwrap()));
+
+        // Allocate a publisher IP (simulates what happens during Pending → Activated)
+        let allocated_ip = publisher_dz_ips
+            .as_mut()
+            .unwrap()
+            .next_available_block(1, 1)
+            .map(|net| net.ip())
+            .unwrap();
+        assert_eq!(allocated_ip, Ipv4Addr::new(147, 51, 126, 1));
+        assert!(publisher_dz_ips.as_ref().unwrap().assigned_ips[1]);
+
+        // Simulate the user at deletion time: Multicast type, dz_ip set,
+        // but publishers is empty (smartcontract requires this before Deleting).
+        let deleting_user = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            bump_seed: 0,
+            user_type: UserType::Multicast,
+            tenant_pk: Pubkey::default(),
+            device_pk: Pubkey::default(),
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: [192, 168, 1, 1].into(),
+            dz_ip: allocated_ip,
+            tunnel_id: 500,
+            tunnel_net: "10.0.0.0/31".parse().unwrap(),
+            status: UserStatus::Deleting,
+            publishers: vec![], // empty — required by smartcontract to reach Deleting
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        };
+
+        // Deallocate — this should free the IP even though publishers is empty
+        deallocate_publisher_dz_ip(&deleting_user, &mut publisher_dz_ips);
+
+        assert!(
+            !publisher_dz_ips.as_ref().unwrap().assigned_ips[1],
+            "publisher dz_ip should be deallocated after user deletion"
+        );
+
+        // Re-allocate — should get the same IP back since it was freed
+        let reallocated_ip = publisher_dz_ips
+            .as_mut()
+            .unwrap()
+            .next_available_block(1, 1)
+            .map(|net| net.ip())
+            .unwrap();
+        assert_eq!(
+            reallocated_ip, allocated_ip,
+            "should get the same IP back after deallocation"
+        );
+    }
+
+    /// Verify that deallocate_publisher_dz_ip is a no-op for non-Multicast users
+    /// and for users whose dz_ip matches client_ip (subscribers).
+    #[test]
+    fn test_publisher_dz_ip_deallocation_skipped_for_non_publishers() {
+        let mut publisher_dz_ips = Some(IPBlockAllocator::new("147.51.126.0/23".parse().unwrap()));
+
+        // Allocate an IP so we can verify it's NOT freed
+        let allocated_ip = publisher_dz_ips
+            .as_mut()
+            .unwrap()
+            .next_available_block(1, 1)
+            .map(|net| net.ip())
+            .unwrap();
+
+        // IBRL user with that dz_ip — should NOT deallocate from publisher pool
+        let ibrl_user = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            bump_seed: 0,
+            user_type: UserType::IBRLWithAllocatedIP,
+            tenant_pk: Pubkey::default(),
+            device_pk: Pubkey::default(),
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: [192, 168, 1, 1].into(),
+            dz_ip: allocated_ip,
+            tunnel_id: 500,
+            tunnel_net: "10.0.0.0/31".parse().unwrap(),
+            status: UserStatus::Deleting,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        };
+
+        deallocate_publisher_dz_ip(&ibrl_user, &mut publisher_dz_ips);
+        assert!(
+            publisher_dz_ips.as_ref().unwrap().assigned_ips[1],
+            "non-Multicast user should not free publisher IPs"
+        );
+
+        // Multicast subscriber (dz_ip == client_ip) — should NOT deallocate
+        let subscriber_user = User {
+            user_type: UserType::Multicast,
+            client_ip: [192, 168, 1, 1].into(),
+            dz_ip: [192, 168, 1, 1].into(), // same as client_ip = subscriber
+            ..ibrl_user
+        };
+
+        deallocate_publisher_dz_ip(&subscriber_user, &mut publisher_dz_ips);
+        assert!(
+            publisher_dz_ips.as_ref().unwrap().assigned_ips[1],
+            "Multicast subscriber (dz_ip == client_ip) should not free publisher IPs"
         );
     }
 

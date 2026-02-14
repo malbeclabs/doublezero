@@ -1,7 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     serializer::try_acc_close,
-    state::{exchange::Exchange, globalstate::GlobalState},
+    state::{exchange::*, globalstate::GlobalState},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -69,6 +69,11 @@ pub fn process_delete_exchange(
     }
 
     let exchange = Exchange::try_from(exchange_account)?;
+
+    if exchange.status != ExchangeStatus::Activated && exchange.status != ExchangeStatus::Suspended
+    {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
 
     if exchange.reference_count > 0 {
         return Err(DoubleZeroError::ReferenceCountNotZero.into());

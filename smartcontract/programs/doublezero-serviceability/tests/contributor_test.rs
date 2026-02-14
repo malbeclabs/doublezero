@@ -399,14 +399,12 @@ async fn test_contributor() {
 }
 
 #[tokio::test]
-async fn test_suspend_contributor_from_suspended_fails() {
+async fn test_contributor_delete_from_suspended() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-    let owner = Pubkey::new_unique();
 
-    // Initialize global state
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -420,7 +418,7 @@ async fn test_suspend_contributor_from_suspended_fails() {
     )
     .await;
 
-    // Create a contributor
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (contributor_pubkey, _) =
         get_contributor_pda(&program_id, globalstate_account.account_index + 1);
@@ -430,18 +428,18 @@ async fn test_suspend_contributor_from_suspended_fails() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-            code: "test".to_string(),
+            code: "la".to_string(),
         }),
         vec![
             AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(owner, false),
+            AccountMeta::new(payer.pubkey(), false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
     .await;
 
-    // First suspend (should succeed)
+    // Suspend and then delete directly from Suspended
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -455,20 +453,18 @@ async fn test_suspend_contributor_from_suspended_fails() {
     )
     .await;
 
-    // Verify contributor is suspended
-    let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+    let contributor_la = get_account_data(&mut banks_client, contributor_pubkey)
         .await
         .expect("Unable to get Account")
         .get_contributor()
         .unwrap();
-    assert_eq!(contributor.status, ContributorStatus::Suspended);
+    assert_eq!(contributor_la.status, ContributorStatus::Suspended);
 
-    // Second suspend (should fail with InvalidStatus)
-    let result = try_execute_transaction(
+    execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SuspendContributor(ContributorSuspendArgs {}),
+        DoubleZeroInstruction::DeleteContributor(ContributorDeleteArgs {}),
         vec![
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -477,12 +473,6 @@ async fn test_suspend_contributor_from_suspended_fails() {
     )
     .await;
 
-    assert!(result.is_err());
-    let error_string = format!("{:?}", result.unwrap_err());
-    assert!(
-        error_string.contains("Custom(7)"),
-        "Expected InvalidStatus error (Custom(7)), got: {}",
-        error_string
-    );
-    println!("✅ Suspending already-suspended contributor correctly fails with InvalidStatus");
+    let contributor_la = get_account_data(&mut banks_client, contributor_pubkey).await;
+    assert_eq!(contributor_la, None);
 }

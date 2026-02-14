@@ -10,6 +10,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
@@ -20,6 +22,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/reconciler"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/config"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"golang.org/x/sys/unix"
 )
 
@@ -82,17 +85,18 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		if ip == nil {
 			return fmt.Errorf("invalid client-ip: %s", clientIP)
 		}
+		pid, err := solana.PublicKeyFromBase58(networkConfig.ServiceabilityProgramID.String())
+		if err != nil {
+			return fmt.Errorf("error parsing program ID: %v", err)
+		}
+		fetcher := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), pid)
 		pollInterval := time.Duration(reconcilerPollInterval) * time.Second
-		rec, err := reconciler.NewReconciler(
+		rec := reconciler.NewReconciler(
 			ip.To4(),
 			nlm,
-			networkConfig.ServiceabilityProgramID.String(),
-			networkConfig.LedgerPublicRPCURL,
+			fetcher,
 			reconciler.WithPollInterval(pollInterval),
 		)
-		if err != nil {
-			return fmt.Errorf("error creating reconciler: %v", err)
-		}
 		go func() {
 			err := rec.Start(ctx)
 			errCh <- err

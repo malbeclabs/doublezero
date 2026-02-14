@@ -7,8 +7,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/gagliardetto/solana-go"
-	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
@@ -50,31 +48,18 @@ func WithPollInterval(d time.Duration) Option {
 	}
 }
 
-func WithFetcher(f Fetcher) Option {
-	return func(r *Reconciler) {
-		r.fetcher = f
-	}
-}
-
-// NewReconciler creates a new Reconciler. If no Fetcher option is provided,
-// it creates a serviceability SDK client from the given programID and rpcURL.
-func NewReconciler(clientIP net.IP, mgr Manager, programID string, rpcURL string, opts ...Option) (*Reconciler, error) {
+// NewReconciler creates a new Reconciler.
+func NewReconciler(clientIP net.IP, mgr Manager, fetcher Fetcher, opts ...Option) *Reconciler {
 	r := &Reconciler{
 		clientIP:     clientIP,
 		manager:      mgr,
+		fetcher:      fetcher,
 		pollInterval: defaultPollInterval,
 	}
 	for _, o := range opts {
 		o(r)
 	}
-	if r.fetcher == nil {
-		pid, err := solana.PublicKeyFromBase58(programID)
-		if err != nil {
-			return nil, fmt.Errorf("reconciler: invalid program ID: %v", err)
-		}
-		r.fetcher = serviceability.New(rpc.New(rpcURL), pid)
-	}
-	return r, nil
+	return r
 }
 
 // Start runs the reconciliation loop until the context is cancelled.

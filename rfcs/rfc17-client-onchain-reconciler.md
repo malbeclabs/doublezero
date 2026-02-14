@@ -103,7 +103,7 @@ CLI                          Activator       Daemon                      DZ Ledg
 
 The CLI polls the daemon's `/status` endpoint up to 12 times at 5-second intervals (60 seconds total) waiting for the tunnel to appear. If the reconciler hasn't provisioned the tunnel within that window, the CLI times out with an error — though the reconciler will still provision the tunnel on a subsequent poll.
 
-The CLI drops ~700 lines of networking logic (device fetching, global config fetching, tunnel parameter computation, multicast group resolution).
+The CLI drops ~400 lines of networking logic (device fetching, global config fetching, tunnel parameter computation, multicast group resolution).
 
 ### New Daemon Flags
 
@@ -136,16 +136,15 @@ type Manager interface {
 
 ### Codebase
 
-- **New code**: `client/doublezerod/internal/reconciler/` (~270 lines implementation, ~420 lines tests).
-- **Removed code**: `client/doublezerod/internal/manager/db.go` (209 lines), DB test fixtures, `Recover()` method, CLI provisioning logic (~700 lines from `connect.rs`).
-- **Net reduction**: ~470 lines deleted across the change.
+- **New code**: `client/doublezerod/internal/reconciler/` (~290 lines implementation, ~420 lines tests), client IP auto-discovery in `runtime/clientip.go`.
+- **Removed code**: `client/doublezerod/internal/manager/db.go` (209 lines), DB test fixtures, `Recover()` method, CLI provisioning logic (~400 lines from `connect.rs`).
 - **Modified**: Manager, service implementations (IBRL, EdgeFiltering, Multicast), routes API handler, CLI connect/disconnect commands.
 
 ### Operational
 
 - Daemon restart no longer depends on a state file — tunnels are re-provisioned from onchain state within one poll interval.
 - Automatic deprovisioning when users are deactivated onchain.
-- New `--client-ip` flag required to enable reconciliation.
+- Client IP is auto-discovered (or set explicitly via `--client-ip`) to enable reconciliation.
 
 ### Performance
 
@@ -155,7 +154,7 @@ type Manager interface {
 ## Security Considerations
 
 - The daemon reads onchain state via a public RPC endpoint. No private keys or signing authority is needed — the reconciler is read-only with respect to the ledger.
-- The daemon only provisions tunnels for users matching its configured `--client-ip`, preventing a daemon from provisioning tunnels for other clients.
+- The daemon only provisions tunnels for users matching its client IP, preventing a daemon from provisioning tunnels for other clients.
 - The RPC endpoint URL and program ID are passed via existing daemon configuration (`--network-config`), not new trust boundaries.
 
 ## Backward Compatibility

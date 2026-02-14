@@ -85,6 +85,7 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 
 	data, err := r.fetcher.GetProgramData(ctx)
 	if err != nil {
+		metricPollsTotal.WithLabelValues(statusError).Inc()
 		slog.Error("reconciler: error fetching program data", "error", err)
 		return
 	}
@@ -133,22 +134,33 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 		}
 	}
 
+	metricPollsTotal.WithLabelValues(statusSuccess).Inc()
+	metricMatchedUsers.WithLabelValues(serviceUnicast).Set(float64(len(wantUnicast)))
+	metricMatchedUsers.WithLabelValues(serviceMulticast).Set(float64(len(wantMulticast)))
+
 	// Reconcile unicast
 	if len(wantUnicast) > 0 && !r.manager.HasUnicastService() {
 		u := wantUnicast[0]
 		pr, err := r.buildProvisionRequest(u, devicesByPK, mcastGroupsByPK, allPrefixes, data.Config)
 		if err != nil {
 			slog.Error("reconciler: error building unicast provision request", "error", err)
+			metricProvisionsTotal.WithLabelValues(serviceUnicast, statusError).Inc()
 		} else {
 			slog.Info("reconciler: provisioning unicast service", "user_type", pr.UserType)
 			if err := r.manager.Provision(pr); err != nil {
 				slog.Error("reconciler: error provisioning unicast service", "error", err)
+				metricProvisionsTotal.WithLabelValues(serviceUnicast, statusError).Inc()
+			} else {
+				metricProvisionsTotal.WithLabelValues(serviceUnicast, statusSuccess).Inc()
 			}
 		}
 	} else if len(wantUnicast) == 0 && r.manager.HasUnicastService() {
 		slog.Info("reconciler: removing unicast service")
 		if err := r.manager.Remove(api.UserTypeIBRL); err != nil {
 			slog.Error("reconciler: error removing unicast service", "error", err)
+			metricRemovalsTotal.WithLabelValues(serviceUnicast, statusError).Inc()
+		} else {
+			metricRemovalsTotal.WithLabelValues(serviceUnicast, statusSuccess).Inc()
 		}
 	}
 
@@ -158,16 +170,23 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 		pr, err := r.buildProvisionRequest(u, devicesByPK, mcastGroupsByPK, allPrefixes, data.Config)
 		if err != nil {
 			slog.Error("reconciler: error building multicast provision request", "error", err)
+			metricProvisionsTotal.WithLabelValues(serviceMulticast, statusError).Inc()
 		} else {
 			slog.Info("reconciler: provisioning multicast service", "user_type", pr.UserType)
 			if err := r.manager.Provision(pr); err != nil {
 				slog.Error("reconciler: error provisioning multicast service", "error", err)
+				metricProvisionsTotal.WithLabelValues(serviceMulticast, statusError).Inc()
+			} else {
+				metricProvisionsTotal.WithLabelValues(serviceMulticast, statusSuccess).Inc()
 			}
 		}
 	} else if len(wantMulticast) == 0 && r.manager.HasMulticastService() {
 		slog.Info("reconciler: removing multicast service")
 		if err := r.manager.Remove(api.UserTypeMulticast); err != nil {
 			slog.Error("reconciler: error removing multicast service", "error", err)
+			metricRemovalsTotal.WithLabelValues(serviceMulticast, statusError).Inc()
+		} else {
+			metricRemovalsTotal.WithLabelValues(serviceMulticast, statusSuccess).Inc()
 		}
 	}
 }

@@ -80,8 +80,9 @@ pub fn process_activate_device(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    // Start provisioning process for the device: DeviceProvisioning -> LinkProvisioning -> Activated
-    device.status = DeviceStatus::DeviceProvisioning;
+    //TODO: This should be changed once the Health Oracle is finalized.
+    //device.status = DeviceStatus::DeviceProvisioning;
+    device.status = DeviceStatus::Activated;
 
     device.check_status_transition();
 

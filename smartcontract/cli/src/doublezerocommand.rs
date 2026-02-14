@@ -297,7 +297,10 @@ pub trait CliCommand {
         cmd: RemoveMulticastGroupSubAllowlistCommand,
     ) -> eyre::Result<Signature>;
     fn set_accesspass(&self, cmd: SetAccessPassCommand) -> eyre::Result<Signature>;
-    fn get_accesspass(&self, cmd: GetAccessPassCommand) -> eyre::Result<(Pubkey, AccessPass)>;
+    fn get_accesspass(
+        &self,
+        cmd: GetAccessPassCommand,
+    ) -> eyre::Result<Option<(Pubkey, AccessPass)>>;
     fn list_accesspass(
         &self,
         cmd: ListAccessPassCommand,
@@ -704,7 +707,10 @@ impl CliCommand for CliCommandImpl<'_> {
     fn set_accesspass(&self, cmd: SetAccessPassCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn get_accesspass(&self, cmd: GetAccessPassCommand) -> eyre::Result<(Pubkey, AccessPass)> {
+    fn get_accesspass(
+        &self,
+        cmd: GetAccessPassCommand,
+    ) -> eyre::Result<Option<(Pubkey, AccessPass)>> {
         cmd.execute(self.client)
     }
     fn list_accesspass(

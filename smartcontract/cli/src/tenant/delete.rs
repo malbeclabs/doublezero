@@ -12,6 +12,10 @@ pub struct DeleteTenantCliCommand {
     /// Tenant pubkey or code
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub pubkey: String,
+
+    /// Delete all users in the tenant and close related access passes before deleting
+    #[arg(long, default_value_t = false)]
+    pub allow_delete_users: bool,
 }
 
 impl DeleteTenantCliCommand {
@@ -23,14 +27,17 @@ impl DeleteTenantCliCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
-        if tenant.reference_count > 0 {
+        if tenant.reference_count > 0 && !self.allow_delete_users {
             return Err(eyre::eyre!(
-                "Cannot delete tenant with reference_count > 0 (current: {})",
+                "Cannot delete tenant with reference_count > 0 (current: {}). Use --allow-delete-users to cascade delete.",
                 tenant.reference_count
             ));
         }
 
-        let signature = client.delete_tenant(DeleteTenantCommand { tenant_pubkey })?;
+        let signature = client.delete_tenant(DeleteTenantCommand {
+            tenant_pubkey,
+            allow_delete_users: self.allow_delete_users,
+        })?;
 
         writeln!(out, "Signature: {signature}")?;
 
@@ -95,13 +102,17 @@ mod tests {
             .returning(move |_| Ok((tenant_pubkey, tenant_cloned.clone())));
         client
             .expect_delete_tenant()
-            .with(predicate::eq(DeleteTenantCommand { tenant_pubkey }))
+            .with(predicate::eq(DeleteTenantCommand {
+                tenant_pubkey,
+                allow_delete_users: false,
+            }))
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
         let res = DeleteTenantCliCommand {
             pubkey: tenant_pubkey.to_string(),
+            allow_delete_users: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -148,8 +159,60 @@ mod tests {
         let mut output = Vec::new();
         let res = DeleteTenantCliCommand {
             pubkey: tenant_pubkey.to_string(),
+            allow_delete_users: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_cli_tenant_delete_with_references_and_allow_delete_users() {
+        let mut client = create_test_client();
+
+        let tenant_pubkey = Pubkey::new_unique();
+        let signature = Signature::new_unique();
+
+        let tenant = Tenant {
+            account_type: AccountType::Tenant,
+            owner: Pubkey::default(),
+            bump_seed: 0,
+            code: "test".to_string(),
+            vrf_id: 100,
+            reference_count: 2,
+            administrators: vec![],
+            token_account: Pubkey::default(),
+            payment_status: TenantPaymentStatus::Paid,
+            metro_routing: false,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
+        };
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        let tenant_cloned = tenant.clone();
+        client
+            .expect_get_tenant()
+            .with(predicate::eq(GetTenantCommand {
+                pubkey_or_code: tenant_pubkey.to_string(),
+            }))
+            .returning(move |_| Ok((tenant_pubkey, tenant_cloned.clone())));
+        client
+            .expect_delete_tenant()
+            .with(predicate::eq(DeleteTenantCommand {
+                tenant_pubkey,
+                allow_delete_users: true,
+            }))
+            .returning(move |_| Ok(signature));
+
+        /*****************************************************************************************************/
+        let mut output = Vec::new();
+        let res = DeleteTenantCliCommand {
+            pubkey: tenant_pubkey.to_string(),
+            allow_delete_users: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
     }
 }

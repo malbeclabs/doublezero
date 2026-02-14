@@ -42,15 +42,17 @@ impl ActivateUserCommand {
             client_ip: Ipv4Addr::UNSPECIFIED,
             user_payer: user.owner,
         }
-        .execute(client)
-        .or_else(|_| {
+        .execute(client)?
+        .or_else(|| {
             GetAccessPassCommand {
                 client_ip: user.client_ip,
                 user_payer: user.owner,
             }
             .execute(client)
+            .ok()
+            .flatten()
         })
-        .map_err(|_| eyre::eyre!("You have no Access Pass"))?;
+        .ok_or_else(|| eyre::eyre!("You have no Access Pass"))?;
 
         // Build accounts list with optional ResourceExtension accounts before payer
         // (payer and system_program are appended by execute_transaction)

@@ -102,10 +102,12 @@ pub fn check_balance(client: &dyn CliCommand, spinner: Option<&ProgressBar>) -> 
 
 pub fn check_accesspass(client: &dyn CliCommand, client_ip: Ipv4Addr) -> eyre::Result<bool> {
     let epoch = client.get_epoch()?;
-    let (_, accesspass) = client.get_accesspass(GetAccessPassCommand {
-        client_ip,
-        user_payer: client.get_payer(),
-    })?;
+    let (_, accesspass) = client
+        .get_accesspass(GetAccessPassCommand {
+            client_ip,
+            user_payer: client.get_payer(),
+        })?
+        .ok_or_else(|| eyre::eyre!("Access Pass not found"))?;
 
     Ok(accesspass.last_access_epoch >= epoch)
 }

@@ -1029,7 +1029,6 @@ mod tests {
                 client_ip: [1, 2, 3, 4].into(),
                 last_access_epoch: 123,
                 allow_multiple_ip: false,
-                tenant: Pubkey::default(),
             }),
             "SetAccessPass",
         );

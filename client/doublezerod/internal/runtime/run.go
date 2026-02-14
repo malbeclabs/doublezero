@@ -64,14 +64,9 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		return fmt.Errorf("error creating bgp server: %v", err)
 	}
 
-	db, err := manager.NewDb()
-	if err != nil {
-		return fmt.Errorf("error initializing db: %v", err)
-	}
-
 	pim := pim.NewPIMServer()
 	heartbeat := multicast.NewHeartbeatSender()
-	nlm := manager.NewNetlinkManager(nlr, bgp, db, pim, heartbeat)
+	nlm := manager.NewNetlinkManager(nlr, bgp, pim, heartbeat)
 
 	errCh := make(chan error)
 
@@ -108,7 +103,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	mux.HandleFunc("POST /provision", nlm.ServeProvision)
 	mux.HandleFunc("POST /remove", nlm.ServeRemove)
 	mux.HandleFunc("GET /status", nlm.ServeStatus)
-	mux.HandleFunc("GET /routes", api.ServeRoutesHandler(nlr, lm, db, networkConfig))
+	mux.HandleFunc("GET /routes", api.ServeRoutesHandler(nlr, lm, nlm, networkConfig))
 	mux.HandleFunc("POST /resolve-route", api.ServeResolveRouteHandler(nlr, networkConfig))
 
 	if enableLatencyProbing {

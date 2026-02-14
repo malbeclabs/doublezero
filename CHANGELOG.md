@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
   - Fix heartbeat sender not restarting after disconnect due to poisoned done channel
 - Onchain Programs
   - bugfix(serviceability): contributors can now update their interfaces, CYOA interfaces saved on create, physical interfaces remain after unlink ([#2993](https://github.com/malbeclabs/doublezero/pull/2993))
+- e2e
+  - e2e: Add network contributor e2e flow tests ([#2997](https://github.com/malbeclabs/doublezero/pull/2997))
 - Device controller
   - Reject users with BGP martian DZ IPs (RFC 1918, loopback, multicast, link-local, documentation nets, shared address space, reserved) to prevent invalid addresses from being advertised via BGP or permitted in device ACLs
 - Claude

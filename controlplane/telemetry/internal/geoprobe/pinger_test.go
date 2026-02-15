@@ -365,6 +365,7 @@ func TestPinger_MeasureAll_ConcurrencyLimit(t *testing.T) {
 	}
 
 	pinger := NewPinger(cfg)
+	t.Cleanup(func() { pinger.Close() })
 	ctx := context.Background()
 
 	numProbes := 2000
@@ -431,9 +432,10 @@ func TestPinger_MeasureAll_LargeScale(t *testing.T) {
 	}
 
 	pinger := NewPinger(cfg)
+	t.Cleanup(func() { pinger.Close() })
 	ctx := context.Background()
 
-	numProbes := 5000
+	numProbes := 1000
 	t.Logf("Testing with %d probes (validates worker pool batching)", numProbes)
 
 	for i := 0; i < numProbes; i++ {

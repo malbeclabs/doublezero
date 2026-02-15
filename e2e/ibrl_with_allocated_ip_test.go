@@ -125,13 +125,14 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 		dn.log.Debug("--> Expected allocated client IP", "expectedAllocatedClientIP", expectedAllocatedClientIP, "deviceCYOAIP", device.CYOANetworkIP, "dzPrefix", device.DZPrefix)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
-			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl", map[string]any{
-				"ClientIP":                  client.CYOANetworkIP,
-				"DeviceIP":                  device.CYOANetworkIP,
-				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
-				"StartTunnel":               controllerconfig.StartUserTunnelNum,
-				"EndTunnel":                 controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
-			})
+			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl",
+				dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
+					"ClientIP":                  client.CYOANetworkIP,
+					"DeviceIP":                  device.CYOANetworkIP,
+					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
+					"StartTunnel":               controllerconfig.StartUserTunnelNum,
+					"EndTunnel":                 controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+				}))
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
@@ -310,11 +311,12 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 		dn.log.Debug("==> Checking IBRL with allocated IP post-disconnect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
-			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.tmpl", map[string]any{
-				"DeviceIP":    device.CYOANetworkIP,
-				"StartTunnel": controllerconfig.StartUserTunnelNum,
-				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
-			})
+			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.tmpl",
+				dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
+					"DeviceIP":    device.CYOANetworkIP,
+					"StartTunnel": controllerconfig.StartUserTunnelNum,
+					"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+				}))
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")

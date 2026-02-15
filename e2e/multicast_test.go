@@ -275,29 +275,21 @@ func checkMulticastBothUsersAgentConfig(t *testing.T, dn *TestDevnet, device *de
 		pubTunnelBGPNeighbor := fmt.Sprintf("169.254.0.%d", 2*(pubTunnel-controllerconfig.StartUserTunnelNum)+1)
 		subTunnelBGPNeighbor := fmt.Sprintf("169.254.0.%d", 2*(subTunnel-controllerconfig.StartUserTunnelNum)+1)
 
-		// Fetch the link interface IPs dynamically from the ledger
-		linkIPs, err := dn.GetDeviceLinkInterfaceIPs(t, device.Spec.Code)
-		require.NoError(t, err, "error getting device link interface IPs")
-
-		config, err := fixtures.Render("fixtures/multicast/doublezero_agent_config_both_users_added.tmpl", map[string]any{
-			"PublisherClientIP":            publisherClient.CYOANetworkIP,
-			"SubscriberClientIP":           subscriberClient.CYOANetworkIP,
-			"DeviceIP":                     device.CYOANetworkIP,
-			"ExpectedAllocatedPublisherIP": expectedAllocatedPublisherIP,
-			"PublisherTunnelNum":           pubTunnel,
-			"SubscriberTunnelNum":          subTunnel,
-			"PublisherTunnelDeviceIP":      pubTunnelDeviceIP,
-			"SubscriberTunnelDeviceIP":     subTunnelDeviceIP,
-			"PublisherTunnelBGPNeighbor":   pubTunnelBGPNeighbor,
-			"SubscriberTunnelBGPNeighbor":  subTunnelBGPNeighbor,
-			"StartTunnel":                  controllerconfig.StartUserTunnelNum,
-			"EndTunnel":                    controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
-			"Ethernet2IP":                  linkIPs["Ethernet2"],
-			"Ethernet4IP":                  linkIPs["Ethernet4"],
-			"Ethernet5IP":                  linkIPs["Ethernet5"],
-			"Ethernet6IP":                  linkIPs["Ethernet6"],
-			"Vlan4001IP":                   linkIPs["Vlan4001"],
-		})
+		config, err := fixtures.Render("fixtures/multicast/doublezero_agent_config_both_users_added.tmpl",
+			dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
+				"PublisherClientIP":            publisherClient.CYOANetworkIP,
+				"SubscriberClientIP":           subscriberClient.CYOANetworkIP,
+				"DeviceIP":                     device.CYOANetworkIP,
+				"ExpectedAllocatedPublisherIP": expectedAllocatedPublisherIP,
+				"PublisherTunnelNum":           pubTunnel,
+				"SubscriberTunnelNum":          subTunnel,
+				"PublisherTunnelDeviceIP":      pubTunnelDeviceIP,
+				"SubscriberTunnelDeviceIP":     subTunnelDeviceIP,
+				"PublisherTunnelBGPNeighbor":   pubTunnelBGPNeighbor,
+				"SubscriberTunnelBGPNeighbor":  subTunnelBGPNeighbor,
+				"StartTunnel":                  controllerconfig.StartUserTunnelNum,
+				"EndTunnel":                    controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+			}))
 		require.NoError(t, err, "error reading agent configuration fixture")
 		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
 		require.NoError(t, err, "error waiting for agent config to match")
@@ -308,20 +300,12 @@ func checkMulticastBothUsersAgentConfig(t *testing.T, dn *TestDevnet, device *de
 // publisher and subscriber tunnels removed.
 func checkMulticastBothUsersRemovedAgentConfig(t *testing.T, dn *TestDevnet, device *devnet.Device) {
 	t.Run("wait_for_agent_config_both_users_removed", func(t *testing.T) {
-		// Fetch the link interface IPs dynamically from the ledger
-		linkIPs, err := dn.GetDeviceLinkInterfaceIPs(t, device.Spec.Code)
-		require.NoError(t, err, "error getting device link interface IPs")
-
-		config, err := fixtures.Render("fixtures/multicast/doublezero_agent_config_both_users_removed.tmpl", map[string]any{
-			"DeviceIP":    device.CYOANetworkIP,
-			"StartTunnel": controllerconfig.StartUserTunnelNum,
-			"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
-			"Ethernet2IP": linkIPs["Ethernet2"],
-			"Ethernet4IP": linkIPs["Ethernet4"],
-			"Ethernet5IP": linkIPs["Ethernet5"],
-			"Ethernet6IP": linkIPs["Ethernet6"],
-			"Vlan4001IP":  linkIPs["Vlan4001"],
-		})
+		config, err := fixtures.Render("fixtures/multicast/doublezero_agent_config_both_users_removed.tmpl",
+			dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
+				"DeviceIP":    device.CYOANetworkIP,
+				"StartTunnel": controllerconfig.StartUserTunnelNum,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+			}))
 		require.NoError(t, err, "error reading agent configuration fixture")
 		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
 		require.NoError(t, err, "error waiting for agent config to match")

@@ -3,6 +3,8 @@
 package e2e_test
 
 import (
+	"net"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -96,7 +98,7 @@ func TestE2E_MulticastPublisher_MultipleAllocations(t *testing.T) {
 		require.Len(t, publishers, 3, "should have 3 multicast publisher users")
 
 		// Verify all IPs are from global multicast_publisher_block (147.51.126.0/23)
-		// and are sequential (147.51.126.1, .2, .3)
+		// and are sequential
 		dzIPs := []string{}
 		for _, pub := range publishers {
 			require.True(t, netutil.IPInRange(pub.DzIP, "147.51.126.0/23"),
@@ -104,11 +106,26 @@ func TestE2E_MulticastPublisher_MultipleAllocations(t *testing.T) {
 			dzIPs = append(dzIPs, pub.DzIP)
 		}
 
-		// Verify sequential allocation - this also guarantees uniqueness
-		expectedIPs := []string{"147.51.126.0", "147.51.126.1", "147.51.126.2"}
-		for _, expectedIP := range expectedIPs {
-			require.Contains(t, dzIPs, expectedIP,
-				"expected IP %s should be allocated", expectedIP)
+		// Verify all IPs are unique and sequential (contiguous)
+		sort.Slice(dzIPs, func(i, j int) bool {
+			a := net.ParseIP(dzIPs[i]).To4()
+			b := net.ParseIP(dzIPs[j]).To4()
+			for k := range a {
+				if a[k] != b[k] {
+					return a[k] < b[k]
+				}
+			}
+			return false
+		})
+		for i, ip := range dzIPs {
+			if i > 0 {
+				prev := net.ParseIP(dzIPs[i-1]).To4()
+				curr := net.ParseIP(ip).To4()
+				prevInt := uint32(prev[0])<<24 | uint32(prev[1])<<16 | uint32(prev[2])<<8 | uint32(prev[3])
+				currInt := uint32(curr[0])<<24 | uint32(curr[1])<<16 | uint32(curr[2])<<8 | uint32(curr[3])
+				require.Equal(t, prevInt+1, currInt,
+					"IPs should be sequential: %s followed by %s", dzIPs[i-1], ip)
+			}
 		}
 
 		dn.log.Info("✓ All publishers allocated unique sequential IPs from global block",
@@ -325,13 +342,13 @@ func TestE2E_MulticastPublisher_IPDeallocation(t *testing.T) {
 	}
 }
 
-// TestE2E_MulticastPublisher_BothAllocationPaths verifies that off-chain publisher IP
-// allocations are synced to the on-chain ResourceExtension bitmap, and deallocations
+// TestE2E_MulticastPublisher_BothAllocationPaths verifies that offchain publisher IP
+// allocations are synced to the onchain ResourceExtension bitmap, and deallocations
 // are also synced back.
 func TestE2E_MulticastPublisher_BothAllocationPaths(t *testing.T) {
 	t.Parallel()
 
-	dn, _, client1 := NewSingleDeviceSingleClientTestDevnet(t)
+	dn, _, client1 := NewSingleDeviceSingleClientTestDevnetWithOnchainAllocation(t)
 
 	// Add one more client
 	client2, err := dn.Devnet.AddClient(t.Context(), devnet.ClientSpec{

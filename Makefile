@@ -79,7 +79,7 @@ rust-build-programs:
 .PHONY: rust-lint
 rust-lint: rust-fmt-check
 	@cargo install cargo-hack
-	cargo hack clippy --workspace --all-targets --exclude doublezero-telemetry --exclude doublezero-serviceability --exclude doublezero-program-common --exclude doublezero-record -- -Dclippy::all -Dwarnings
+	cargo hack clippy --workspace --all-targets --exclude doublezero-telemetry --exclude doublezero-serviceability --exclude doublezero-program-common --exclude doublezero-record --exclude doublezero-geolocation -- -Dclippy::all -Dwarnings
 	cd smartcontract && $(MAKE) lint-programs
 
 .PHONY: rust-fmt
@@ -94,7 +94,7 @@ rust-fmt-check:
 
 .PHONY: rust-test
 rust-test:
-	cargo test --workspace --exclude doublezero-telemetry --exclude doublezero-serviceability --exclude doublezero-program-common --exclude doublezero-record --all-features
+	cargo test --workspace --exclude doublezero-telemetry --exclude doublezero-serviceability --exclude doublezero-program-common --exclude doublezero-record --exclude doublezero-geolocation --all-features
 	cd smartcontract && $(MAKE) test-programs
 	$(MAKE) rust-program-accounts-compat
 

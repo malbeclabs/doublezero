@@ -10,12 +10,6 @@ pub const UPDATE_GEO_PROBE: u8 = 2;
 pub const DELETE_GEO_PROBE: u8 = 3;
 pub const ADD_PARENT_DEVICE: u8 = 4;
 pub const REMOVE_PARENT_DEVICE: u8 = 5;
-pub const CREATE_GEOLOCATION_USER: u8 = 6;
-pub const UPDATE_GEOLOCATION_USER: u8 = 7;
-pub const DELETE_GEOLOCATION_USER: u8 = 8;
-pub const ADD_TARGET: u8 = 9;
-pub const REMOVE_TARGET: u8 = 10;
-pub const UPDATE_PAYMENT_STATUS: u8 = 11;
 
 // Args structs
 #[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
@@ -51,38 +45,6 @@ pub struct RemoveParentDeviceArgs {
     pub device_pk: Pubkey,
 }
 
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
-pub struct CreateGeolocationUserArgs {
-    pub code: String,
-    pub token_account: Pubkey,
-}
-
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
-pub struct UpdateGeolocationUserArgs {
-    pub token_account: Option<Pubkey>,
-}
-
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
-pub struct AddTargetArgs {
-    #[incremental(default = std::net::Ipv4Addr::UNSPECIFIED)]
-    pub ip_address: Ipv4Addr,
-    pub location_offset_port: u16,
-    pub exchange_pk: Pubkey,
-}
-
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
-pub struct RemoveTargetArgs {
-    #[incremental(default = std::net::Ipv4Addr::UNSPECIFIED)]
-    pub target_ip: Ipv4Addr,
-    pub exchange_pk: Pubkey,
-}
-
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
-pub struct UpdatePaymentStatusArgs {
-    pub payment_status: u8,
-    pub last_deduction_dz_epoch: Option<u64>,
-}
-
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 pub enum GeolocationInstruction {
     InitProgramConfig(InitProgramConfigArgs),
@@ -91,12 +53,6 @@ pub enum GeolocationInstruction {
     DeleteGeoProbe,
     AddParentDevice(AddParentDeviceArgs),
     RemoveParentDevice(RemoveParentDeviceArgs),
-    CreateGeolocationUser(CreateGeolocationUserArgs),
-    UpdateGeolocationUser(UpdateGeolocationUserArgs),
-    DeleteGeolocationUser,
-    AddTarget(AddTargetArgs),
-    RemoveTarget(RemoveTargetArgs),
-    UpdatePaymentStatus(UpdatePaymentStatusArgs),
 }
 
 impl GeolocationInstruction {
@@ -133,26 +89,6 @@ impl GeolocationInstruction {
             )),
             REMOVE_PARENT_DEVICE => Ok(Self::RemoveParentDevice(
                 RemoveParentDeviceArgs::try_from(rest)
-                    .map_err(|_| ProgramError::InvalidInstructionData)?,
-            )),
-            CREATE_GEOLOCATION_USER => Ok(Self::CreateGeolocationUser(
-                CreateGeolocationUserArgs::try_from(rest)
-                    .map_err(|_| ProgramError::InvalidInstructionData)?,
-            )),
-            UPDATE_GEOLOCATION_USER => Ok(Self::UpdateGeolocationUser(
-                UpdateGeolocationUserArgs::try_from(rest)
-                    .map_err(|_| ProgramError::InvalidInstructionData)?,
-            )),
-            DELETE_GEOLOCATION_USER => Ok(Self::DeleteGeolocationUser),
-            ADD_TARGET => Ok(Self::AddTarget(
-                AddTargetArgs::try_from(rest).map_err(|_| ProgramError::InvalidInstructionData)?,
-            )),
-            REMOVE_TARGET => Ok(Self::RemoveTarget(
-                RemoveTargetArgs::try_from(rest)
-                    .map_err(|_| ProgramError::InvalidInstructionData)?,
-            )),
-            UPDATE_PAYMENT_STATUS => Ok(Self::UpdatePaymentStatus(
-                UpdatePaymentStatusArgs::try_from(rest)
                     .map_err(|_| ProgramError::InvalidInstructionData)?,
             )),
             _ => Err(ProgramError::InvalidInstructionData),
@@ -199,33 +135,6 @@ mod tests {
         test_instruction(GeolocationInstruction::RemoveParentDevice(
             RemoveParentDeviceArgs {
                 device_pk: Pubkey::new_unique(),
-            },
-        ));
-        test_instruction(GeolocationInstruction::CreateGeolocationUser(
-            CreateGeolocationUserArgs {
-                code: "test-user".to_string(),
-                token_account: Pubkey::new_unique(),
-            },
-        ));
-        test_instruction(GeolocationInstruction::UpdateGeolocationUser(
-            UpdateGeolocationUserArgs {
-                token_account: Some(Pubkey::new_unique()),
-            },
-        ));
-        test_instruction(GeolocationInstruction::DeleteGeolocationUser);
-        test_instruction(GeolocationInstruction::AddTarget(AddTargetArgs {
-            ip_address: Ipv4Addr::new(203, 0, 113, 42),
-            location_offset_port: 443,
-            exchange_pk: Pubkey::new_unique(),
-        }));
-        test_instruction(GeolocationInstruction::RemoveTarget(RemoveTargetArgs {
-            target_ip: Ipv4Addr::new(203, 0, 113, 42),
-            exchange_pk: Pubkey::new_unique(),
-        }));
-        test_instruction(GeolocationInstruction::UpdatePaymentStatus(
-            UpdatePaymentStatusArgs {
-                payment_status: 1,
-                last_deduction_dz_epoch: Some(42),
             },
         ));
     }

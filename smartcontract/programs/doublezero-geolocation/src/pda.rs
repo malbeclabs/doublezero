@@ -1,6 +1,6 @@
 use solana_program::pubkey::Pubkey;
 
-use crate::seeds::{SEED_GEO_USER, SEED_PREFIX, SEED_PROBE, SEED_PROGRAM_CONFIG};
+use crate::seeds::{SEED_PREFIX, SEED_PROBE, SEED_PROGRAM_CONFIG};
 
 pub fn get_program_config_pda(program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[SEED_PREFIX, SEED_PROGRAM_CONFIG], program_id)
@@ -8,10 +8,6 @@ pub fn get_program_config_pda(program_id: &Pubkey) -> (Pubkey, u8) {
 
 pub fn get_geo_probe_pda(program_id: &Pubkey, code: &str) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[SEED_PREFIX, SEED_PROBE, code.as_bytes()], program_id)
-}
-
-pub fn get_geolocation_user_pda(program_id: &Pubkey, code: &str) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[SEED_PREFIX, SEED_GEO_USER, code.as_bytes()], program_id)
 }
 
 #[cfg(test)]
@@ -63,37 +59,10 @@ mod tests {
     }
 
     #[test]
-    fn test_geolocation_user_pda_is_deterministic() {
-        let program_id = test_program_id();
-        let (pda1, bump1) = get_geolocation_user_pda(&program_id, "user-x");
-        let (pda2, bump2) = get_geolocation_user_pda(&program_id, "user-x");
-        assert_eq!(pda1, pda2);
-        assert_eq!(bump1, bump2);
-    }
-
-    #[test]
-    fn test_geolocation_user_pda_differs_by_code() {
-        let program_id = test_program_id();
-        let (pda1, _) = get_geolocation_user_pda(&program_id, "user-x");
-        let (pda2, _) = get_geolocation_user_pda(&program_id, "user-y");
-        assert_ne!(pda1, pda2);
-    }
-
-    #[test]
-    fn test_geolocation_user_pda_differs_by_program_id() {
-        let (pda1, _) = get_geolocation_user_pda(&Pubkey::new_unique(), "user-x");
-        let (pda2, _) = get_geolocation_user_pda(&Pubkey::new_unique(), "user-x");
-        assert_ne!(pda1, pda2);
-    }
-
-    #[test]
     fn test_different_pda_types_do_not_collide() {
         let program_id = test_program_id();
         let (config_pda, _) = get_program_config_pda(&program_id);
         let (probe_pda, _) = get_geo_probe_pda(&program_id, "code");
-        let (user_pda, _) = get_geolocation_user_pda(&program_id, "code");
         assert_ne!(config_pda, probe_pda);
-        assert_ne!(config_pda, user_pda);
-        assert_ne!(probe_pda, user_pda);
     }
 }

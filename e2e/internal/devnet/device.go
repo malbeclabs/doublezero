@@ -698,6 +698,14 @@ func (d *Device) Start(ctx context.Context) error {
 			}
 		}
 
+		// Disk space on /var/tmp (core dumps can fill this up and prevent daemon starts).
+		dfOut, dfErr := docker.Exec(diagCtx, d.dn.dockerClient, containerID, []string{"df", "-h", "/var/tmp"}, docker.NoPrintOnError())
+		if dfErr != nil {
+			fmt.Printf("  df /var/tmp: ERROR: %v\n", dfErr)
+		} else {
+			fmt.Printf("  df /var/tmp:\n%s\n", string(dfOut))
+		}
+
 		// Syslog (last 50 lines).
 		syslog, syslogErr := docker.Exec(diagCtx, d.dn.dockerClient, containerID, []string{"tail", "-50", "/var/log/messages"}, docker.NoPrintOnError())
 		if syslogErr != nil {

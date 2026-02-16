@@ -670,13 +670,9 @@ func createAndStartVersionDevnet(
 	_, err = dn.Manager.Exec(t.Context(), []string{"solana", "airdrop", "100"})
 	require.NoError(t, err)
 
-	// Initialize the smart contract and set global config with valid network blocks
-	// so the activator can start (it validates blocks are not 0.0.0.0/0).
-	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
-		set -euo pipefail
-		doublezero init
-		doublezero global-config set --local-asn 65000 --remote-asn 65342 --device-tunnel-block 172.16.0.0/16 --user-tunnel-block 169.254.0.0/16 --multicastgroup-block 233.84.178.0/24 --multicast-publisher-block 148.51.120.0/21
-	`})
+	// Initialize the smart contract — creates ProgramConfig and other PDA accounts
+	// that the upgraded program needs. GlobalConfig is already set from the cloned state.
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero init"})
 	require.NoError(t, err)
 
 	// Start the activator — it needs the PDAs to exist.

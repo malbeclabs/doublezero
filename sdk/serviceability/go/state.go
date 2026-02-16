@@ -758,6 +758,7 @@ type User struct {
 	Publishers      [][32]byte
 	Subscribers     [][32]byte
 	ValidatorPubKey [32]byte
+	TunnelEndpoint  [4]uint8
 	PubKey          [32]byte
 }
 

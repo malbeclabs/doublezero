@@ -8,7 +8,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
 

@@ -371,32 +371,6 @@ func TestFixtureAccessPassValidator(t *testing.T) {
 		solana.PublicKey(ap.MGroupSubAllowlist[0]))
 }
 
-func TestFixtureTenant(t *testing.T) {
-	data, meta := loadFixture(t, "tenant")
-	reader := NewByteReader(data)
-	var tenant Tenant
-	DeserializeTenant(reader, &tenant)
-
-	assertFields(t, meta.Fields, map[string]any{
-		"AccountType":    uint8(tenant.AccountType),
-		"Owner":          solana.PublicKey(tenant.Owner),
-		"BumpSeed":       tenant.BumpSeed,
-		"Code":           tenant.Code,
-		"VrfId":          tenant.VrfId,
-		"ReferenceCount": tenant.ReferenceCount,
-		"PaymentStatus":  uint8(tenant.PaymentStatus),
-		"TokenAccount":   solana.PublicKey(tenant.TokenAccount),
-	})
-
-	// Verify Administrators
-	if len(tenant.Administrators) != 1 {
-		t.Fatalf("Administrators: want len 1, got %d", len(tenant.Administrators))
-	}
-	assertEq(t, "Administrators[0]",
-		solana.MustPublicKeyFromBase58("F4rD7WednkUDNa8dKTfK7fmn6366ZZHV3HTbCkqze9B5"),
-		solana.PublicKey(tenant.Administrators[0]))
-}
-
 func TestFixtureResourceExtensionId(t *testing.T) {
 	data, meta := loadFixture(t, "resource_extension_id")
 	reader := NewByteReader(data)

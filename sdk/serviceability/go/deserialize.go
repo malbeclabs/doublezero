@@ -184,6 +184,7 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	user.Publishers = reader.ReadPubkeySlice()
 	user.Subscribers = reader.ReadPubkeySlice()
 	user.ValidatorPubKey = reader.ReadPubkey()
+	user.TunnelEndpoint = reader.ReadIPv4()
 }
 
 func DeserializeMulticastGroup(reader *ByteReader, mg *MulticastGroup) {
@@ -246,18 +247,6 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 	ap.MGroupPubAllowlist = reader.ReadPubkeySlice()
 	ap.MGroupSubAllowlist = reader.ReadPubkeySlice()
 	ap.Flags = reader.ReadU8()
-}
-
-func DeserializeTenant(reader *ByteReader, t *Tenant) {
-	t.AccountType = AccountType(reader.ReadU8())
-	t.Owner = reader.ReadPubkey()
-	t.BumpSeed = reader.ReadU8()
-	t.Code = reader.ReadString()
-	t.VrfId = reader.ReadU16()
-	t.ReferenceCount = reader.ReadU32()
-	t.Administrators = reader.ReadPubkeySlice()
-	t.PaymentStatus = TenantPaymentStatus(reader.ReadU8())
-	t.TokenAccount = reader.ReadPubkey()
 }
 
 // resourceExtensionBitmapOffset is the fixed offset where the bitmap starts.

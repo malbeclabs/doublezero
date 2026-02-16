@@ -6,7 +6,9 @@ use crate::{
             delete::process_delete_geo_probe, remove_parent_device::process_remove_parent_device,
             update::process_update_geo_probe,
         },
-        program_config::init::process_init_program_config,
+        program_config::{
+            init::process_init_program_config, update::process_update_program_config,
+        },
     },
 };
 
@@ -40,6 +42,9 @@ pub fn process_instruction(
         }
         GeolocationInstruction::RemoveParentDevice(args) => {
             process_remove_parent_device(program_id, accounts, &args)?
+        }
+        GeolocationInstruction::UpdateProgramConfig(args) => {
+            process_update_program_config(program_id, accounts, &args)?
         }
     };
 

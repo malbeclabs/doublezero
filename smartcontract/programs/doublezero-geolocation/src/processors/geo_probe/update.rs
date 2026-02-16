@@ -56,9 +56,6 @@ pub fn process_update_geo_probe(
     if let Some(metrics_publisher_pk) = args.metrics_publisher_pk {
         probe.metrics_publisher_pk = metrics_publisher_pk;
     }
-    if let Some(latency_threshold_ns) = args.latency_threshold_ns {
-        probe.latency_threshold_ns = latency_threshold_ns;
-    }
 
     try_acc_write(&probe, probe_account, payer_account, accounts)?;
 

@@ -10,6 +10,7 @@ pub const UPDATE_GEO_PROBE: u8 = 2;
 pub const DELETE_GEO_PROBE: u8 = 3;
 pub const ADD_PARENT_DEVICE: u8 = 4;
 pub const REMOVE_PARENT_DEVICE: u8 = 5;
+pub const UPDATE_PROGRAM_CONFIG: u8 = 6;
 
 // Args structs
 #[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
@@ -23,7 +24,6 @@ pub struct CreateGeoProbeArgs {
     #[incremental(default = std::net::Ipv4Addr::UNSPECIFIED)]
     pub public_ip: Ipv4Addr,
     pub location_offset_port: u16,
-    pub latency_threshold_ns: u64,
     pub metrics_publisher_pk: Pubkey,
 }
 
@@ -31,7 +31,6 @@ pub struct CreateGeoProbeArgs {
 pub struct UpdateGeoProbeArgs {
     pub public_ip: Option<Ipv4Addr>,
     pub location_offset_port: Option<u16>,
-    pub latency_threshold_ns: Option<u64>,
     pub metrics_publisher_pk: Option<Pubkey>,
 }
 
@@ -45,6 +44,13 @@ pub struct RemoveParentDeviceArgs {
     pub device_pk: Pubkey,
 }
 
+#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
+pub struct UpdateProgramConfigArgs {
+    pub serviceability_program_id: Option<Pubkey>,
+    pub version: Option<u32>,
+    pub min_compatible_version: Option<u32>,
+}
+
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 pub enum GeolocationInstruction {
     InitProgramConfig(InitProgramConfigArgs),
@@ -53,6 +59,7 @@ pub enum GeolocationInstruction {
     DeleteGeoProbe,
     AddParentDevice(AddParentDeviceArgs),
     RemoveParentDevice(RemoveParentDeviceArgs),
+    UpdateProgramConfig(UpdateProgramConfigArgs),
 }
 
 impl GeolocationInstruction {
@@ -91,6 +98,10 @@ impl GeolocationInstruction {
                 RemoveParentDeviceArgs::try_from(rest)
                     .map_err(|_| ProgramError::InvalidInstructionData)?,
             )),
+            UPDATE_PROGRAM_CONFIG => Ok(Self::UpdateProgramConfig(
+                UpdateProgramConfigArgs::try_from(rest)
+                    .map_err(|_| ProgramError::InvalidInstructionData)?,
+            )),
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -118,13 +129,11 @@ mod tests {
             public_ip: Ipv4Addr::new(8, 8, 8, 8),
             location_offset_port: 8923,
             metrics_publisher_pk: Pubkey::new_unique(),
-            latency_threshold_ns: 500_000,
         }));
         test_instruction(GeolocationInstruction::UpdateGeoProbe(UpdateGeoProbeArgs {
             public_ip: Some(Ipv4Addr::new(1, 1, 1, 1)),
             location_offset_port: Some(9999),
             metrics_publisher_pk: None,
-            latency_threshold_ns: Some(1_000_000),
         }));
         test_instruction(GeolocationInstruction::DeleteGeoProbe);
         test_instruction(GeolocationInstruction::AddParentDevice(
@@ -135,6 +144,20 @@ mod tests {
         test_instruction(GeolocationInstruction::RemoveParentDevice(
             RemoveParentDeviceArgs {
                 device_pk: Pubkey::new_unique(),
+            },
+        ));
+        test_instruction(GeolocationInstruction::UpdateProgramConfig(
+            UpdateProgramConfigArgs {
+                serviceability_program_id: Some(Pubkey::new_unique()),
+                version: Some(2),
+                min_compatible_version: Some(1),
+            },
+        ));
+        test_instruction(GeolocationInstruction::UpdateProgramConfig(
+            UpdateProgramConfigArgs {
+                serviceability_program_id: None,
+                version: None,
+                min_compatible_version: None,
             },
         ));
     }

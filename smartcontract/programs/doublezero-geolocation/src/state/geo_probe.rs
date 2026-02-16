@@ -41,7 +41,6 @@ pub struct GeoProbe {
         )
     )]
     pub metrics_publisher_pk: Pubkey, // 32
-    pub latency_threshold_ns: u64, // 8
     pub reference_count: u32,      // 4
 }
 
@@ -50,9 +49,9 @@ impl fmt::Display for GeoProbe {
         write!(
             f,
             "account_type: {}, owner: {}, bump_seed: {}, exchange_pk: {}, public_ip: {}, location_offset_port: {}, \
-            code: {}, parent_devices: {:?}, metrics_publisher_pk: {}, latency_threshold_ns: {}, reference_count: {}",
+            code: {}, parent_devices: {:?}, metrics_publisher_pk: {}, reference_count: {}",
             self.account_type, self.owner, self.bump_seed, self.exchange_pk, self.public_ip, self.location_offset_port,
-            self.code, self.parent_devices, self.metrics_publisher_pk, self.latency_threshold_ns, self.reference_count,
+            self.code, self.parent_devices, self.metrics_publisher_pk, self.reference_count,
         )
     }
 }
@@ -71,7 +70,6 @@ impl TryFrom<&[u8]> for GeoProbe {
             code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             parent_devices: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             metrics_publisher_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            latency_threshold_ns: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             reference_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
@@ -135,7 +133,6 @@ mod tests {
         assert_eq!(val.code, "");
         assert_eq!(val.parent_devices.len(), 0);
         assert_eq!(val.metrics_publisher_pk, Pubkey::default());
-        assert_eq!(val.latency_threshold_ns, 0);
         assert_eq!(val.reference_count, 0);
     }
 
@@ -151,7 +148,6 @@ mod tests {
             code: "probe-ams-01".to_string(),
             parent_devices: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             metrics_publisher_pk: Pubkey::new_unique(),
-            latency_threshold_ns: 500_000,
             reference_count: 3,
         };
 
@@ -173,7 +169,6 @@ mod tests {
         assert_eq!(val.code, val2.code);
         assert_eq!(val.parent_devices, val2.parent_devices);
         assert_eq!(val.metrics_publisher_pk, val2.metrics_publisher_pk);
-        assert_eq!(val.latency_threshold_ns, val2.latency_threshold_ns);
         assert_eq!(val.reference_count, val2.reference_count);
         assert_eq!(
             data.len(),
@@ -194,7 +189,7 @@ mod tests {
             code: "probe-ams-01".to_string(),
             parent_devices: vec![],
             metrics_publisher_pk: Pubkey::new_unique(),
-            latency_threshold_ns: 500_000,
+
             reference_count: 0,
         };
         let err = val.validate();
@@ -214,7 +209,7 @@ mod tests {
             code: "a".repeat(33), // More than 32 bytes
             parent_devices: vec![],
             metrics_publisher_pk: Pubkey::new_unique(),
-            latency_threshold_ns: 500_000,
+
             reference_count: 0,
         };
         let err = val.validate();
@@ -241,7 +236,7 @@ mod tests {
                 Pubkey::new_unique(), // 6 > MAX_PARENT_DEVICES (5)
             ],
             metrics_publisher_pk: Pubkey::new_unique(),
-            latency_threshold_ns: 500_000,
+
             reference_count: 0,
         };
         let err = val.validate();

@@ -1,10 +1,6 @@
 use crate::{
-    error::GeolocationError,
-    instructions::InitProgramConfigArgs,
-    pda::get_program_config_pda,
-    seeds::{SEED_PREFIX, SEED_PROGRAM_CONFIG},
-    serializer::try_acc_create,
-    state::{accounttype::AccountType, program_config::GeolocationProgramConfig},
+    error::GeolocationError, instructions::UpdateProgramConfigArgs, pda::get_program_config_pda,
+    serializer::try_acc_write, state::program_config::GeolocationProgramConfig,
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -16,10 +12,10 @@ use solana_program::{
 
 use super::parse_upgrade_authority;
 
-pub fn process_init_program_config(
+pub fn process_update_program_config(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    args: &InitProgramConfigArgs,
+    args: &UpdateProgramConfigArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -39,6 +35,10 @@ pub fn process_init_program_config(
     if !program_config_account.is_writable {
         msg!("ProgramConfig must be writable");
         return Err(ProgramError::InvalidAccountData);
+    }
+    if program_config_account.owner != program_id {
+        msg!("Invalid ProgramConfig Account Owner");
+        return Err(ProgramError::IllegalOwner);
     }
 
     // Verify the program data account is owned by the BPF Upgradeable Loader
@@ -77,31 +77,32 @@ pub fn process_init_program_config(
     }
     drop(program_data);
 
-    let (expected_pda, bump_seed) = get_program_config_pda(program_id);
+    let (expected_pda, _) = get_program_config_pda(program_id);
     if program_config_account.key != &expected_pda {
         msg!("Invalid ProgramConfig PubKey");
         return Err(ProgramError::InvalidSeeds);
     }
 
-    if !program_config_account.data_is_empty() {
-        return Err(ProgramError::AccountAlreadyInitialized);
+    let mut program_config = GeolocationProgramConfig::try_from(program_config_account)?;
+
+    if let Some(serviceability_program_id) = args.serviceability_program_id {
+        program_config.serviceability_program_id = serviceability_program_id;
+    }
+    if let Some(version) = args.version {
+        program_config.version = version;
+    }
+    if let Some(min_compatible_version) = args.min_compatible_version {
+        if min_compatible_version > program_config.version {
+            return Err(GeolocationError::InvalidMinCompatibleVersion.into());
+        }
+        program_config.min_compatible_version = min_compatible_version;
     }
 
-    let program_config = GeolocationProgramConfig {
-        account_type: AccountType::ProgramConfig,
-        bump_seed,
-        version: 1,
-        min_compatible_version: 1,
-        serviceability_program_id: args.serviceability_program_id,
-    };
-
-    try_acc_create(
+    try_acc_write(
         &program_config,
         program_config_account,
         payer_account,
-        system_program,
-        program_id,
-        &[SEED_PREFIX, SEED_PROGRAM_CONFIG, &[bump_seed]],
+        accounts,
     )?;
 
     Ok(())

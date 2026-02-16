@@ -169,7 +169,6 @@ pub struct GeoProbe {
     pub code: String,                          // e.g., "ams-probe-01" (max 32 bytes)
     pub parent_devices: Vec<Pubkey>,           // DZDs that measure this probe
     pub metrics_publisher_pk: Pubkey,          // Signing key for telemetry
-    pub latency_threshold_ns: u64,             // Max acceptable DZD→Probe RTT (e.g., 1_000_000 = 1ms)
     pub reference_count: u32,                  // GeolocationTargets referencing this probe
 }
 ```
@@ -227,13 +226,11 @@ pub enum GeolocationInstruction {
         code: String,
         public_ip: Ipv4Addr,
         location_offset_port: u16,
-        latency_threshold_ns: u64,
         metrics_publisher_pk: Pubkey,
     },
     UpdateGeoProbe {                                // variant 2
         public_ip: Option<Ipv4Addr>,
         location_offset_port: Option<u16>,
-        latency_threshold_ns: Option<u64>,
         metrics_publisher_pk: Option<Pubkey>,
     },
     DeleteGeoProbe {},                              // variant 3

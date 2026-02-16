@@ -57,9 +57,17 @@ pub fn process_create_geo_probe(
         return Err(GeolocationError::InvalidServiceabilityProgramId.into());
     }
 
-    // Verify it's a valid Exchange account by deserializing
-    let _exchange =
+    // Verify it's a valid, activated Exchange account
+    let exchange =
         doublezero_serviceability::state::exchange::Exchange::try_from(exchange_account)?;
+    if exchange.status != doublezero_serviceability::state::exchange::ExchangeStatus::Activated {
+        msg!(
+            "Exchange {} is not activated (status: {:?})",
+            exchange_account.key,
+            exchange.status
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     validate_code_length(&args.code)?;
     let code = validate_account_code(&args.code)
@@ -86,7 +94,6 @@ pub fn process_create_geo_probe(
         code,
         parent_devices: vec![],
         metrics_publisher_pk: args.metrics_publisher_pk,
-        latency_threshold_ns: args.latency_threshold_ns,
         reference_count: 0,
     };
 

@@ -27,6 +27,8 @@ pub enum GeolocationError {
     ReferenceCountNotZero,
     #[error("Unauthorized: payer is not the upgrade authority")]
     UnauthorizedInitializer,
+    #[error("min_compatible_version cannot exceed version")]
+    InvalidMinCompatibleVersion,
 }
 
 impl From<GeolocationError> for ProgramError {
@@ -44,6 +46,7 @@ impl From<GeolocationError> for ProgramError {
             GeolocationError::ParentDeviceAlreadyExists => ProgramError::Custom(13),
             GeolocationError::ReferenceCountNotZero => ProgramError::Custom(15),
             GeolocationError::UnauthorizedInitializer => ProgramError::Custom(17),
+            GeolocationError::InvalidMinCompatibleVersion => ProgramError::Custom(18),
         }
     }
 }
@@ -53,15 +56,22 @@ impl From<u32> for GeolocationError {
         match e {
             1 => GeolocationError::InvalidAccountType,
             2 => GeolocationError::NotAllowed,
+            // 3 RFU
             4 => GeolocationError::InvalidCodeLength,
             5 => GeolocationError::InvalidIpAddress,
             6 => GeolocationError::MaxParentDevicesReached,
+            // 7 RFU
             8 => GeolocationError::ParentDeviceNotFound,
+            // 9 RFU
+            // 10 RFU
             11 => GeolocationError::InvalidServiceabilityProgramId,
             12 => GeolocationError::InvalidAccountCode,
             13 => GeolocationError::ParentDeviceAlreadyExists,
+            // 14 RFU
             15 => GeolocationError::ReferenceCountNotZero,
+            // 16 RFU
             17 => GeolocationError::UnauthorizedInitializer,
+            18 => GeolocationError::InvalidMinCompatibleVersion,
             _ => GeolocationError::Custom(e),
         }
     }
@@ -97,6 +107,7 @@ mod tests {
             (GeolocationError::ParentDeviceAlreadyExists, 13),
             (GeolocationError::ReferenceCountNotZero, 15),
             (GeolocationError::UnauthorizedInitializer, 17),
+            (GeolocationError::InvalidMinCompatibleVersion, 18),
         ]
     }
 

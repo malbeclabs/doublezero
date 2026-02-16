@@ -884,6 +884,22 @@ func DeviceExecAristaCliJSON[T any](ctx context.Context, device *Device, command
 	return result, nil
 }
 
+// FetchTelemetryMetricsViaExec fetches Prometheus metrics by execing into the
+// container and curling localhost from within the given network namespace.
+// This avoids reliance on Docker port mapping which can be flaky when the
+// metrics listener runs inside a non-default namespace (e.g. ns-management).
+func (d *Device) FetchTelemetryMetricsViaExec(ctx context.Context, namespace string) ([]byte, error) {
+	port, err := d.InternalTelemetryMetricsPort()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get internal metrics port: %w", err)
+	}
+	cmd := []string{
+		"ip", "netns", "exec", namespace,
+		"wget", "-q", "-O-", fmt.Sprintf("http://localhost:%d/metrics", port),
+	}
+	return d.Exec(ctx, cmd)
+}
+
 func (d *Device) Exec(ctx context.Context, command []string) ([]byte, error) {
 	d.log.Debug("--> Executing command", "command", command)
 	output, err := docker.Exec(ctx, d.dn.dockerClient, d.ContainerID, command)

@@ -1,6 +1,7 @@
 package prometheus
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"time"
@@ -66,6 +67,18 @@ func (m *MetricsClient) Fetch(ctx context.Context) error {
 		return err
 	}
 
+	m.families = families
+	return nil
+}
+
+// ParseMetrics parses raw Prometheus exposition-format text and stores the
+// metric families, just like Fetch does but without making an HTTP request.
+func (m *MetricsClient) ParseMetrics(data []byte) error {
+	parser := expfmt.NewTextParser(model.LegacyValidation)
+	families, err := parser.TextToMetricFamilies(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
 	m.families = families
 	return nil
 }

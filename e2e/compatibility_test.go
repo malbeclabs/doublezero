@@ -664,9 +664,18 @@ func createAndStartVersionDevnet(
 	require.NoError(t, err)
 
 	// Initialize the smart contract — creates ProgramConfig and other PDA accounts
-	// that the upgraded program needs. GlobalConfig is already set from the cloned state.
+	// that the upgraded program needs. GlobalConfig exists from the cloned state but
+	// may be missing fields (e.g. multicast_publisher_block on mainnet-beta).
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero init"})
 	require.NoError(t, err)
+
+	// Ensure global config has multicast_publisher_block set. The cloned mainnet-beta
+	// state may not have it (multicast not yet enabled on mainnet), and the activator
+	// will exit immediately if it's unset. On testnet the field is already set and
+	// immutable, so ignore errors. Use the current CLI since old CLIs are missing
+	// required accounts for the SetGlobalConfig instruction.
+	_, _ = dn.Manager.Exec(t.Context(), []string{"bash", "-c",
+		"doublezero global-config set --multicast-publisher-block 148.51.120.0/21"})
 
 	// Start the activator — it needs the PDAs to exist.
 	// Skip the controller (not exercised in compat tests, saves memory).

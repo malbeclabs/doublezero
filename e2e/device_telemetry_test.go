@@ -341,14 +341,22 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Fetch metrics from both devices.
+	// la2 (no management NS): use HTTP via Docker port mapping.
 	la2MetricsClient := dn.Devices["la2-dz01"].GetTelemetryMetricsClient()
 	require.NoError(t, la2MetricsClient.WaitForReady(t.Context(), 30*time.Second))
 	err = la2MetricsClient.Fetch(t.Context())
 	require.NoError(t, err)
-	ny5MetricsClient := dn.Devices["ny5-dz01"].GetTelemetryMetricsClient()
-	require.NoError(t, ny5MetricsClient.WaitForReady(t.Context(), 120*time.Second))
-	err = ny5MetricsClient.Fetch(t.Context())
-	require.NoError(t, err)
+	// ny5 (management NS): fetch via exec inside ns-management to avoid flaky
+	// cross-namespace Docker port mapping on resource-constrained CI.
+	ny5MetricsClient := prometheus.NewMetricsClient("" /* unused, fetched via exec */)
+	require.Eventually(t, func() bool {
+		data, execErr := dn.Devices["ny5-dz01"].FetchTelemetryMetricsViaExec(t.Context(), "ns-management")
+		if execErr != nil {
+			log.Debug("Waiting for ny5 metrics via exec", "error", execErr)
+			return false
+		}
+		return ny5MetricsClient.ParseMetrics(data) == nil
+	}, 120*time.Second, 2*time.Second, "ny5 metrics should be fetchable via exec")
 
 	// Get post-startup "errors_total" metric for the la2 device, so we can check that it's 0 at the end.
 	la2ErrorsCounterValues := la2MetricsClient.GetCounterValues("doublezero_device_telemetry_agent_errors_total")
@@ -499,11 +507,12 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		require.Equal(t, uint32(0), rtt)
 	}
 
-	// Fetch metrics from both devices.
+	// Re-fetch metrics from both devices.
 	err = la2MetricsClient.Fetch(t.Context())
 	require.NoError(t, err)
-	err = ny5MetricsClient.Fetch(t.Context())
+	ny5MetricsData, err := dn.Devices["ny5-dz01"].FetchTelemetryMetricsViaExec(t.Context(), "ns-management")
 	require.NoError(t, err)
+	require.NoError(t, ny5MetricsClient.ParseMetrics(ny5MetricsData))
 
 	// Check that la2 has 0 "tunnel not found" gauge metric value, since it has no links with non-existent devices.
 	log.Debug("==> Checking that la2 has 0 not found tunnels")

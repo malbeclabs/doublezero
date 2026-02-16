@@ -478,6 +478,32 @@ func (c *Client) GetTunnelStatus(ctx context.Context) ([]ClientStatusResponse, e
 	return resp, nil
 }
 
+// WaitForDaemonReady polls the doublezerod Unix socket until the daemon is
+// accepting requests. The container entrypoint starts doublezerod as its last
+// step, so there is a window after the container is "running" where the socket
+// does not yet exist.
+func (c *Client) WaitForDaemonReady(ctx context.Context, timeout time.Duration) error {
+	c.log.Debug("==> Waiting for doublezerod daemon to be ready", "timeout", timeout)
+	start := time.Now()
+	attempts := 0
+	err := poll.Until(ctx, func() (bool, error) {
+		_, err := c.GetTunnelStatus(ctx)
+		if err != nil {
+			if attempts == 0 || attempts%5 == 0 {
+				c.log.Debug("--> Waiting for doublezerod daemon", "attempts", attempts, "err", err)
+			}
+			attempts++
+			return false, nil
+		}
+		c.log.Debug("✅ doublezerod daemon is ready", "duration", time.Since(start))
+		return true, nil
+	}, timeout, 1*time.Second)
+	if err != nil {
+		return fmt.Errorf("doublezerod daemon not ready: %w", err)
+	}
+	return nil
+}
+
 func (c *Client) WaitForTunnelUp(ctx context.Context, timeout time.Duration) error {
 	return c.WaitForTunnelStatus(ctx, ClientSessionStatusUp, timeout)
 }

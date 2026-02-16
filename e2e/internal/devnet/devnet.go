@@ -598,6 +598,14 @@ func (d *Devnet) AddClient(ctx context.Context, spec ClientSpec) (*Client, error
 		return nil, fmt.Errorf("failed to start client: %w", err)
 	}
 
+	// The container entrypoint starts doublezerod as its last step, so there
+	// is a window after the container is "running" where the socket does not
+	// yet exist. Wait for the daemon to be accepting requests before
+	// returning the client to the caller.
+	if err := client.WaitForDaemonReady(ctx, 30*time.Second); err != nil {
+		return nil, fmt.Errorf("failed to wait for client daemon: %w", err)
+	}
+
 	return client, nil
 }
 

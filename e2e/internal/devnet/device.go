@@ -673,6 +673,68 @@ func (d *Device) Start(ctx context.Context) error {
 	start := time.Now()
 	err = d.dn.waitContainerHealthy(ctx, containerID, 300*time.Second, 2*time.Second)
 	if err != nil {
+		// Collect diagnostics to help debug health check timeouts.
+		fmt.Printf("=== DEVICE HEALTH CHECK TIMEOUT DIAGNOSTICS [%s] ===\n", spec.Code)
+
+		diagCtx, diagCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer diagCancel()
+
+		// Container state and health check log.
+		inspect, inspectErr := d.dn.dockerClient.ContainerInspect(diagCtx, containerID)
+		if inspectErr != nil {
+			fmt.Printf("  container inspect: ERROR: %v\n", inspectErr)
+		} else {
+			fmt.Printf("  container state: status=%s exitCode=%d error=%q startedAt=%s\n",
+				inspect.State.Status, inspect.State.ExitCode, inspect.State.Error, inspect.State.StartedAt)
+			if inspect.State.Health != nil {
+				fmt.Printf("  health check: status=%s failingStreak=%d\n",
+					inspect.State.Health.Status, inspect.State.Health.FailingStreak)
+				for i, entry := range inspect.State.Health.Log {
+					fmt.Printf("  health log[%d]: exitCode=%d start=%s end=%s output=%q\n",
+						i, entry.ExitCode, entry.Start, entry.End, entry.Output)
+				}
+			} else {
+				fmt.Printf("  health check: no health state available\n")
+			}
+		}
+
+		// Disk space on /var/tmp (core dumps can fill this up and prevent daemon starts).
+		dfOut, dfErr := docker.Exec(diagCtx, d.dn.dockerClient, containerID, []string{"df", "-h", "/var/tmp"}, docker.NoPrintOnError())
+		if dfErr != nil {
+			fmt.Printf("  df /var/tmp: ERROR: %v\n", dfErr)
+		} else {
+			fmt.Printf("  df /var/tmp:\n%s\n", string(dfOut))
+		}
+
+		// Syslog (last 50 lines).
+		syslog, syslogErr := docker.Exec(diagCtx, d.dn.dockerClient, containerID, []string{"tail", "-50", "/var/log/messages"}, docker.NoPrintOnError())
+		if syslogErr != nil {
+			fmt.Printf("  /var/log/messages: ERROR: %v\n", syslogErr)
+		} else {
+			fmt.Printf("  /var/log/messages (last 50 lines):\n%s\n", string(syslog))
+		}
+
+		// Agent logs (last 50 lines each).
+		agentFiles, agentFilesErr := docker.Exec(diagCtx, d.dn.dockerClient, containerID, []string{"ls", "/var/log/agents-latest/"}, docker.NoPrintOnError())
+		if agentFilesErr != nil {
+			fmt.Printf("  /var/log/agents-latest/: ERROR: %v\n", agentFilesErr)
+		} else {
+			for _, name := range strings.Split(strings.TrimSpace(string(agentFiles)), "\n") {
+				if name == "" {
+					continue
+				}
+				path := "/var/log/agents-latest/" + name
+				agentLog, agentLogErr := docker.Exec(diagCtx, d.dn.dockerClient, containerID, []string{"tail", "-50", path}, docker.NoPrintOnError())
+				if agentLogErr != nil {
+					fmt.Printf("  %s: ERROR: %v\n", path, agentLogErr)
+				} else {
+					fmt.Printf("  %s (last 50 lines):\n%s\n", path, string(agentLog))
+				}
+			}
+		}
+
+		fmt.Printf("=== END DEVICE HEALTH CHECK TIMEOUT DIAGNOSTICS [%s] ===\n", spec.Code)
+
 		return fmt.Errorf("failed to wait for device container to be healthy: %w", err)
 	}
 	d.log.Debug("--> Device container is healthy", "container", shortContainerID(containerID), "cyoaNetworkIP", cyoaNetworkIP, "defaultNetworkIP", defaultNetworkIP, "name", container.Name, "duration", time.Since(start))

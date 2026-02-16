@@ -266,7 +266,7 @@ mod tests {
     #[test]
     fn test_documentation_ranges() {
         let ips = [
-            Ipv4Addr::new(192, 0, 2, 1),   // TEST-NET-1
+            Ipv4Addr::new(192, 0, 2, 1),    // TEST-NET-1
             Ipv4Addr::new(198, 51, 100, 1), // TEST-NET-2
             Ipv4Addr::new(203, 0, 113, 1),  // TEST-NET-3
         ];

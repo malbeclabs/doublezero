@@ -71,7 +71,10 @@ var knownIncompatibilities = map[string]string{
 	// global_config_set: The SetGlobalConfig instruction added new required accounts
 	// (MulticastPublisherBlock, VrfIds) that released CLIs (through v0.8.7) don't
 	// include, causing "insufficient account keys for instruction".
-	"write/global_config_set": "0.8.8",
+	// Updated to 0.8.10: The multicast publisher IP block changed from 147.51.126.0/23
+	// to 148.51.120.0/21. CLIs v0.8.9 and older have the old IP block hardcoded,
+	// causing "Immutable Field" errors when trying to update other global config fields.
+	"write/global_config_set": "0.8.10",
 }
 
 // =============================================================================
@@ -641,7 +644,7 @@ func createAndStartVersionDevnet(
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -euo pipefail
 		doublezero init
-		doublezero global-config set --local-asn 65000 --remote-asn 65342 --device-tunnel-block 172.16.0.0/16 --user-tunnel-block 169.254.0.0/16 --multicastgroup-block 233.84.178.0/24 --multicast-publisher-block 147.51.126.0/23
+		doublezero global-config set --local-asn 65000 --remote-asn 65342 --device-tunnel-block 172.16.0.0/16 --user-tunnel-block 169.254.0.0/16 --multicastgroup-block 233.84.178.0/24 --multicast-publisher-block 148.51.120.0/21
 	`})
 	require.NoError(t, err)
 

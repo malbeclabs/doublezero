@@ -155,7 +155,7 @@ fn generate_global_config(dir: &Path) {
         user_tunnel_block: "10.200.0.0/16".parse().unwrap(),
         multicastgroup_block: "239.0.0.0/8".parse().unwrap(),
         next_bgp_community: 10042,
-        multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
+        multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -173,7 +173,7 @@ fn generate_global_config(dir: &Path) {
             FieldValue { name: "UserTunnelBlock".into(), value: "10.200.0.0/16".into(), typ: "networkv4".into() },
             FieldValue { name: "MulticastGroupBlock".into(), value: "239.0.0.0/8".into(), typ: "networkv4".into() },
             FieldValue { name: "NextBgpCommunity".into(), value: "10042".into(), typ: "u16".into() },
-            FieldValue { name: "MulticastPublisherBlock".into(), value: "147.51.126.0/23".into(), typ: "networkv4".into() },
+            FieldValue { name: "MulticastPublisherBlock".into(), value: "148.51.120.0/21".into(), typ: "networkv4".into() },
         ],
     };
 

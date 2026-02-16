@@ -33,7 +33,7 @@ func TestIsBgpMartian(t *testing.T) {
 		{"valid public 1", "1.1.1.1", false},
 		{"valid public 8", "8.8.8.8", false},
 		{"valid public 100", "100.128.0.1", false},
-		{"valid public 147", "147.51.126.1", false},
+		{"valid public 148", "148.51.120.1", false},
 		{"valid public 172.15", "172.15.255.255", false},
 		{"valid public 172.32", "172.32.0.0", false},
 		{"valid public 192.0.3", "192.0.3.1", false},

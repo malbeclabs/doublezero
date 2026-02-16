@@ -73,7 +73,7 @@ mod tests {
             device_tunnel_block: "10.1.0.0/24".parse().unwrap(),
             user_tunnel_block: "10.5.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.2.0.0/4".parse().unwrap(),
-            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
             next_bgp_community: 10000,
         };
 
@@ -88,7 +88,7 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
-            output_str, " local asn | remote asn | device tunnel block | user tunnel block | multicast group block | multicast publisher block | next bgp community \n 1234      | 5678       | 10.1.0.0/24         | 10.5.0.0/24       | 224.2.0.0/4           | 147.51.126.0/23           | 10000              \n"
+            output_str, " local asn | remote asn | device tunnel block | user tunnel block | multicast group block | multicast publisher block | next bgp community \n 1234      | 5678       | 10.1.0.0/24         | 10.5.0.0/24       | 224.2.0.0/4           | 148.51.120.0/21           | 10000              \n"
         );
     }
 }

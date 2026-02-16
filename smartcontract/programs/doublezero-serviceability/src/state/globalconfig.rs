@@ -149,7 +149,7 @@ mod tests {
             user_tunnel_block: "10.0.0.2/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
             next_bgp_community: BGP_COMMUNITY_MIN,
-            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -192,7 +192,7 @@ mod tests {
             user_tunnel_block: "10.0.0.2/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
             next_bgp_community: BGP_COMMUNITY_MIN,
-            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -211,7 +211,7 @@ mod tests {
             user_tunnel_block: "10.0.0.2/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
             next_bgp_community: BGP_COMMUNITY_MIN,
-            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
         };
         let err_zero = val_zero.validate();
         assert!(err_zero.is_err());
@@ -238,7 +238,7 @@ mod tests {
             user_tunnel_block: "10.0.0.2/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
             next_bgp_community: BGP_COMMUNITY_MIN,
-            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
         };
         let err_zero = val_zero.validate();
         assert!(err_zero.is_err());

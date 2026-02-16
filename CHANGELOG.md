@@ -10,7 +10,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
-- N/A
+- E2E / QA Tests
+  - Fix QA unicast test flake caused by RPC 429 rate limiting during concurrent user deletion — treat transient RPC errors as non-fatal in the deletion polling loop
 
 ## [v0.8.9](https://github.com/malbeclabs/doublezero/compare/client/v0.8.8...client/v0.8.9) – 2026-02-16
 

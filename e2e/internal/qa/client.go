@@ -182,19 +182,22 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 
 		data, err := getProgramDataWithRetry(ctx, c.serviceability)
 		if err != nil {
-			return fmt.Errorf("failed to get program data for user on host %s: %w", c.Host, err)
-		}
-		userFound := false
-		for _, user := range data.Users {
-			userClientIP := net.IP(user.ClientIp[:]).String()
-			if userClientIP == publicIP {
-				userFound = true
-				break
+			// RPC errors (e.g. 429 rate limiting) during the initial check are not fatal —
+			// skip the early exit and fall through to the polling loop which will keep trying.
+			c.log.Debug("Failed to check onchain user state, will poll for deletion", "host", c.Host, "error", err)
+		} else {
+			userFound := false
+			for _, user := range data.Users {
+				userClientIP := net.IP(user.ClientIp[:]).String()
+				if userClientIP == publicIP {
+					userFound = true
+					break
+				}
 			}
-		}
-		if !userFound {
-			c.log.Debug("User already deleted onchain", "ip", publicIP)
-			return nil
+			if !userFound {
+				c.log.Debug("User already deleted onchain", "ip", publicIP)
+				return nil
+			}
 		}
 
 		c.log.Debug("Waiting for user to be deleted onchain", "host", c.Host)
@@ -203,7 +206,10 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 		err = poll.Until(ctx, func() (bool, error) {
 			data, err := getProgramDataWithRetry(ctx, c.serviceability)
 			if err != nil {
-				return false, err
+				// Transient RPC errors (e.g. 429 rate limiting) should not abort the poll.
+				// Log and keep trying until the timeout expires.
+				c.log.Debug("Transient RPC error while waiting for user deletion, will retry", "host", c.Host, "error", err)
+				return false, nil
 			}
 
 			for _, user := range data.Users {

@@ -33,48 +33,56 @@ import (
 // onchain program for versions older than the specified version. These failures
 // are expected and will be reported as "KNOWN_FAIL" instead of "FAIL".
 //
-// Format: "step_name" -> "minimum_compatible_version"
+// Format: "step_name" -> {minVersion, envOverride}
 //
-// Example: "write/foo_create": "0.9.0" means:
+// Example: "write/foo_create": {minVersion: "0.9.0"} means:
 //   - CLI v0.8.x and older → KNOWN_FAIL (expected to fail, test passes)
 //   - CLI v0.9.0 and newer → FAIL if broken (unexpected, test fails)
+//
+// Per-environment overrides: Cloudsmith repos for different environments may
+// publish the same version number from different git SHAs (e.g. testnet v0.8.2
+// was built 9 days after mainnet-beta v0.8.2 and includes features the mainnet
+// build doesn't). Use envOverride when the boundary differs across environments.
 //
 // When adding entries:
 //   - Document WHY the incompatibility exists
 //   - Set the version to the first CLI version that IS compatible
 //   - Remove entries when min_compatible_version is bumped past them
-var knownIncompatibilities = map[string]string{
+
+// knownIncompat defines the minimum compatible CLI version for a step,
+// with optional per-environment overrides.
+type knownIncompat struct {
+	minVersion  string            // default minimum compatible version
+	envOverride map[string]string // optional per-environment overrides (env → min version)
+}
+
+var knownIncompatibilities = map[string]knownIncompat{
 	// multicast_group_create: The MulticastGroupCreateArgs Borsh struct changed in v0.8.1.
 	// The index and bump_seed fields were removed. Older CLIs send the old format which
 	// causes Borsh deserialization failure in the current program.
-	"write/multicast_group_create": "0.8.1",
+	"write/multicast_group_create": {minVersion: "0.8.1"},
 
 	// All multicast operations that depend on multicast_group_create. When the group
 	// can't be created (< 0.8.1), these all fail with "MulticastGroup not found".
-	"write/multicast_group_wait_activated":       "0.8.1",
-	"write/multicast_group_update":               "0.8.1",
-	"write/multicast_group_pub_allowlist_add":    "0.8.1",
-	"write/multicast_group_pub_allowlist_remove": "0.8.1",
-	"write/multicast_group_sub_allowlist_add":    "0.8.1",
-	"write/user_subscribe":                       "0.8.1",
-	"write/multicast_group_sub_allowlist_remove": "0.8.1",
-	"write/multicast_group_get":                  "0.8.1",
-	"write/multicast_group_delete":               "0.8.1",
+	"write/multicast_group_wait_activated":       {minVersion: "0.8.1"},
+	"write/multicast_group_update":               {minVersion: "0.8.1"},
+	"write/multicast_group_pub_allowlist_add":    {minVersion: "0.8.1"},
+	"write/multicast_group_pub_allowlist_remove": {minVersion: "0.8.1"},
+	"write/multicast_group_sub_allowlist_add":    {minVersion: "0.8.1"},
+	"write/user_subscribe":                       {minVersion: "0.8.1"},
+	"write/multicast_group_sub_allowlist_remove": {minVersion: "0.8.1"},
+	"write/multicast_group_get":                  {minVersion: "0.8.1"},
+	"write/multicast_group_delete":               {minVersion: "0.8.1"},
 
-	// set-health commands: Added in v0.8.6 as part of Network Provisioning.
-	// Older CLIs don't have these subcommands.
-	"write/device_set_health":   "0.8.6",
-	"write/device_set_health_2": "0.8.6",
-	"write/link_set_health":     "0.8.6",
-	"write/link_set_health_dzx": "0.8.6",
+	// set-health commands: The CLI subcommand was added in commit eb7ea308 (Jan 16).
+	// mainnet-beta v0.8.2 was built Jan 13 (before set-health) → doesn't have it.
+	// testnet v0.8.2 was built Jan 22 (after set-health) → has it.
+	// The next mainnet-beta release after 0.8.2 is 0.8.6, so that's its first version with it.
+	"write/device_set_health":   {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
+	"write/device_set_health_2": {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
+	"write/link_set_health":     {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
+	"write/link_set_health_dzx": {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
 
-	// global_config_set: The SetGlobalConfig instruction added new required accounts
-	// (MulticastPublisherBlock, VrfIds) that released CLIs (through v0.8.7) don't
-	// include, causing "insufficient account keys for instruction".
-	// Updated to 0.8.10: The multicast publisher IP block changed from 147.51.126.0/23
-	// to 148.51.120.0/21. CLIs v0.8.9 and older have the old IP block hardcoded,
-	// causing "Immutable Field" errors when trying to update other global config fields.
-	"write/global_config_set": "0.8.10",
 }
 
 // =============================================================================
@@ -94,11 +102,11 @@ var compatEnvConfigs = map[string]compatEnvConfig{
 	"mainnet-beta": {OnchainAllocation: false}, // Not yet enabled on mainnet
 }
 
-// isKnownIncompatible checks if a step failure is expected for the given CLI version.
-// Returns true if the step has a known incompatibility and the version is older than
-// the minimum compatible version for that step.
-func isKnownIncompatible(stepName, cliVersion string) bool {
-	minCompatVersion, exists := knownIncompatibilities[stepName]
+// isKnownIncompatible checks if a step failure is expected for the given CLI version
+// and environment. Returns true if the step has a known incompatibility and the version
+// is older than the minimum compatible version for that step (using per-env override if set).
+func isKnownIncompatible(stepName, cliVersion, env string) bool {
+	entry, exists := knownIncompatibilities[stepName]
 	if !exists {
 		return false
 	}
@@ -106,11 +114,27 @@ func isKnownIncompatible(stepName, cliVersion string) bool {
 	if !ok {
 		return false
 	}
-	minVer, ok := devnet.ParseSemver(minCompatVersion)
+	minVersion := entry.minVersion
+	if override, ok := entry.envOverride[env]; ok {
+		minVersion = override
+	}
+	minVer, ok := devnet.ParseSemver(minVersion)
 	if !ok {
 		return false
 	}
 	return devnet.CompareProgramVersions(cliVer, minVer) < 0
+}
+
+// knownIncompatMinVersion returns the effective minimum version for a step+env (for error messages).
+func knownIncompatMinVersion(stepName, env string) string {
+	entry, exists := knownIncompatibilities[stepName]
+	if !exists {
+		return ""
+	}
+	if override, ok := entry.envOverride[env]; ok {
+		return override
+	}
+	return entry.minVersion
 }
 
 // TestE2E_BackwardCompatibility tests CLI compatibility with the upgraded onchain program.
@@ -639,14 +663,19 @@ func createAndStartVersionDevnet(
 	_, err = dn.Manager.Exec(t.Context(), []string{"solana", "airdrop", "100"})
 	require.NoError(t, err)
 
-	// Initialize the smart contract and set global config with valid network blocks
-	// so the activator can start (it validates blocks are not 0.0.0.0/0).
-	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
-		set -euo pipefail
-		doublezero init
-		doublezero global-config set --local-asn 65000 --remote-asn 65342 --device-tunnel-block 172.16.0.0/16 --user-tunnel-block 169.254.0.0/16 --multicastgroup-block 233.84.178.0/24 --multicast-publisher-block 148.51.120.0/21
-	`})
+	// Initialize the smart contract — creates ProgramConfig and other PDA accounts
+	// that the upgraded program needs. GlobalConfig exists from the cloned state but
+	// may be missing fields (e.g. multicast_publisher_block on mainnet-beta).
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero init"})
 	require.NoError(t, err)
+
+	// Ensure global config has multicast_publisher_block set. The cloned mainnet-beta
+	// state may not have it (multicast not yet enabled on mainnet), and the activator
+	// will exit immediately if it's unset. On testnet the field is already set and
+	// immutable, so ignore errors. Use the current CLI since old CLIs are missing
+	// required accounts for the SetGlobalConfig instruction.
+	_, _ = dn.Manager.Exec(t.Context(), []string{"bash", "-c",
+		"doublezero global-config set --multicast-publisher-block 148.51.120.0/21"})
 
 	// Start the activator — it needs the PDAs to exist.
 	// Skip the controller (not exercised in compat tests, saves memory).
@@ -768,7 +797,7 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 			// touch cloned state and don't conflict with writes.
 			t.Run("manager_read", func(t *testing.T) {
 				t.Parallel()
-				runReadWorkflows(t, dn, cli, version, recordResult, vLog)
+				runReadWorkflows(t, dn, cli, version, cloneEnv, recordResult, vLog)
 			})
 			t.Run("manager_write", func(t *testing.T) {
 				t.Parallel()
@@ -783,7 +812,7 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 func runReadWorkflows(
 	t *testing.T,
 	dn *devnet.Devnet,
-	cli, version string,
+	cli, version, cloneEnv string,
 	recordResult func(version, name, status, errMsg string),
 	log *slog.Logger,
 ) {
@@ -810,9 +839,13 @@ func runReadWorkflows(
 			log.Debug("==> Running manager read command", "command", rc.cmd)
 			output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", rc.cmd})
 			if err == nil {
+				if isKnownIncompatible(stepKey, version, cloneEnv) {
+					t.Errorf("step %q passed for v%s but is listed as known-incompatible (min %s) — remove from knownIncompatibilities",
+						stepKey, version, knownIncompatMinVersion(stepKey, cloneEnv))
+				}
 				recordResult(version, stepKey, "PASS", "")
 				log.Debug("--> Command succeeded", "command", rc.cmd)
-			} else if isKnownIncompatible(stepKey, version) {
+			} else if isKnownIncompatible(stepKey, version, cloneEnv) {
 				recordResult(version, stepKey, "KNOWN_FAIL", string(output))
 				log.Debug("--> Command failed (known incompatibility)", "command", rc.cmd)
 			} else {
@@ -947,11 +980,15 @@ func runWriteWorkflows(
 		output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", ws.cmd})
 		stepKey := "write/" + ws.name
 		if err == nil {
+			if isKnownIncompatible(stepKey, version, cloneEnv) {
+				t.Errorf("step %q passed for v%s but is listed as known-incompatible (min %s) — remove from knownIncompatibilities",
+					stepKey, version, knownIncompatMinVersion(stepKey, cloneEnv))
+			}
 			recordResult(version, stepKey, "PASS", "")
 			log.Debug("--> Command succeeded", "command", ws.cmd)
 			return false
 		}
-		if isKnownIncompatible(stepKey, version) {
+		if isKnownIncompatible(stepKey, version, cloneEnv) {
 			recordResult(version, stepKey, "KNOWN_FAIL", string(output))
 			log.Debug("--> Command failed (known incompatibility)", "command", ws.cmd)
 			return false
@@ -1121,7 +1158,6 @@ func runWriteWorkflows(
 				fmt.Sprintf(" --public-ip 45.133.2.%d", 10+vi)},
 			{name: "cloned_location_update", cmd: cli + " location update --pubkey " + lookupFirstPubkey("location list") + " --name ClonedLocUpdated"},
 			{name: "cloned_exchange_update", cmd: cli + " exchange update --pubkey " + lookupFirstPubkey("exchange list") + " --name ClonedExUpdated"},
-			{name: "global_config_set", cmd: cli + " global-config set --remote-asn 65001", noCascade: true},
 			{name: "device_list_verify", cmd: cli + " device list"},
 			{name: "link_list_verify", cmd: cli + " link list"},
 			{name: "contributor_get", cmd: cli + " contributor get --code " + contributorCode, noCascade: true},

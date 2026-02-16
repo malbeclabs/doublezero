@@ -332,7 +332,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 				}
 			}
 			require.NotEmpty(t, expectedAllocatedClientIP, "publisher should have allocated dz_ip")
-			require.True(t, netutil.IPInRange(expectedAllocatedClientIP, "147.51.126.0/23"), "publisher dz_ip %s should be from global multicast_publisher_block", expectedAllocatedClientIP)
+			require.True(t, netutil.IPInRange(expectedAllocatedClientIP, "148.51.120.0/21"), "publisher dz_ip %s should be from global multicast_publisher_block", expectedAllocatedClientIP)
 		}
 
 		tests := []struct {

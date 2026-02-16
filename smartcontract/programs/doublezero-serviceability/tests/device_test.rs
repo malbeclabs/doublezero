@@ -85,7 +85,7 @@ async fn test_device() {
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(), // Private tunnel block
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),   // Private tunnel block
             multicastgroup_block: "224.0.0.0/16".parse().unwrap(), // Multicast block
-            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
             next_bgp_community: None,
         }),
         vec![
@@ -761,7 +761,7 @@ async fn setup_program_with_location_and_exchange(
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/16".parse().unwrap(),
-            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
             next_bgp_community: None,
         }),
         vec![

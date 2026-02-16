@@ -1029,7 +1029,7 @@ mod tests {
                     predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
                         tunnel_id: 500,
                         tunnel_net: "10.0.0.1/29".parse().unwrap(),
-                        dz_ip: [147, 51, 126, 1].into(),
+                        dz_ip: [148, 51, 120, 1].into(),
                         dz_prefix_count: 0, // legacy path
                         tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
                     })),
@@ -1044,7 +1044,7 @@ mod tests {
             let exchanges = HashMap::<Pubkey, Exchange>::new();
 
             let mut publisher_dz_ips =
-                Some(IPBlockAllocator::new("147.51.126.0/23".parse().unwrap()));
+                Some(IPBlockAllocator::new("148.51.120.0/21".parse().unwrap()));
 
             process_user_event(
                 &client,
@@ -1587,7 +1587,7 @@ mod tests {
     /// causing publisher IPs to leak on every connect/disconnect cycle.
     #[test]
     fn test_publisher_dz_ip_deallocated_on_delete() {
-        let mut publisher_dz_ips = Some(IPBlockAllocator::new("147.51.126.0/23".parse().unwrap()));
+        let mut publisher_dz_ips = Some(IPBlockAllocator::new("148.51.120.0/21".parse().unwrap()));
 
         // Allocate a publisher IP (simulates what happens during Pending → Activated)
         let allocated_ip = publisher_dz_ips
@@ -1596,7 +1596,7 @@ mod tests {
             .next_available_block(1, 1)
             .map(|net| net.ip())
             .unwrap();
-        assert_eq!(allocated_ip, Ipv4Addr::new(147, 51, 126, 1));
+        assert_eq!(allocated_ip, Ipv4Addr::new(148, 51, 120, 1));
         assert!(publisher_dz_ips.as_ref().unwrap().assigned_ips[1]);
 
         // Simulate the user at deletion time: Multicast type, dz_ip set,
@@ -1646,7 +1646,7 @@ mod tests {
     /// and for users whose dz_ip matches client_ip (subscribers).
     #[test]
     fn test_publisher_dz_ip_deallocation_skipped_for_non_publishers() {
-        let mut publisher_dz_ips = Some(IPBlockAllocator::new("147.51.126.0/23".parse().unwrap()));
+        let mut publisher_dz_ips = Some(IPBlockAllocator::new("148.51.120.0/21".parse().unwrap()));
 
         // Allocate an IP so we can verify it's NOT freed
         let allocated_ip = publisher_dz_ips
@@ -2235,7 +2235,7 @@ mod tests {
                     predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
                         tunnel_id: 500,
                         tunnel_net: "10.0.0.1/29".parse().unwrap(),
-                        dz_ip: [147, 51, 126, 1].into(),
+                        dz_ip: [148, 51, 120, 1].into(),
                         dz_prefix_count: 0,
                         tunnel_endpoint: demanded_endpoint,
                     })),
@@ -2250,7 +2250,7 @@ mod tests {
             let exchanges = HashMap::<Pubkey, Exchange>::new();
 
             let mut publisher_dz_ips =
-                Some(IPBlockAllocator::new("147.51.126.0/23".parse().unwrap()));
+                Some(IPBlockAllocator::new("148.51.120.0/21".parse().unwrap()));
 
             process_user_event(
                 &client,

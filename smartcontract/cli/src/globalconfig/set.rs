@@ -30,7 +30,7 @@ pub struct SetGlobalConfigCliCommand {
     #[arg(long)]
     pub next_bgp_community: Option<u16>,
     /// Multicast publisher block in CIDR format
-    #[arg(long, default_value = "147.51.126.0/23")]
+    #[arg(long, default_value = "148.51.120.0/21")]
     multicast_publisher_block: Option<NetworkV4>,
 }
 

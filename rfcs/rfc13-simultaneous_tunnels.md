@@ -36,7 +36,7 @@ N/A
 
 This design enables simultaneous tunnels by provisioning a second tunnel endpoint on each DZD device, allowing users to maintain both a unicast tunnel and a multicast tunnel concurrently. The approach requires changes across four areas:
 
-1. **Activator**: Assigns multicast publishers an IP from a new global address pool (proposed: 147.51.126.0/23) rather than the per-device dz_prefix ranges, which are too small for anticipated multicast volume.
+1. **Activator**: Assigns multicast publishers an IP from a new global address pool (proposed: 148.51.120.0/21) rather than the per-device dz_prefix ranges, which are too small for anticipated multicast volume.
 
 2. **Client**: Updates the CLI to provision a second tunnel by locating an available tunnel endpoint on the user's current device, or falling back to a nearby device within a 5ms latency threshold. The existing check preventing multiple tunnels will be removed.
 
@@ -71,7 +71,7 @@ This design enables simultaneous tunnels by provisioning a second tunnel endpoin
 * `user-tunnel-endpoint` IP addresses should be configured on Loopback interfaces to reduce the risk of an outage if a physical interface goes down.  However, if there is only a single CYOA interface, a `user-tunnel-endpoint` may be configured on a physical interface.
 * To support capacity planning, the smart-contract should support distinct max-user counts for unicast and multicast.  By default, both values should be set to 48.
 * Policing of user-tunnels, particularly important for multicast tunnels, will be addressed in a separate RFC.
-* Multicast publishers should be assigned an IP address from a global pool of address space defined in `global-config`.  It is proposed that this is set to 147.51.126.0/23, allowing 512 distinct multicast publishers.  If required to expand this block, there should be an option for including additional ranges.
+* Multicast publishers should be assigned an IP address from a global pool of address space defined in `global-config`.  It is proposed that this is set to 148.51.120.0/21, allowing 512 distinct multicast publishers.  If required to expand this block, there should be an option for including additional ranges.
 
 ## Impact
 

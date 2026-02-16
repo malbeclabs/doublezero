@@ -128,7 +128,7 @@ async fn setup_user_onchain_allocation_test(
             device_tunnel_block: "10.100.0.0/24".parse().unwrap(),
             user_tunnel_block: "169.254.0.0/24".parse().unwrap(), // Link-local for user tunnel_net
             multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
-            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
             next_bgp_community: None,
         }),
         vec![
@@ -1480,12 +1480,12 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
     assert_eq!(user.status, UserStatus::Activated);
 
     let first_dz_ip = user.dz_ip;
-    // dz_ip should be from MulticastPublisherBlock (147.51.126.0/23), not client_ip
+    // dz_ip should be from MulticastPublisherBlock (148.51.120.0/21), not client_ip
     assert_ne!(first_dz_ip, Ipv4Addr::from(client_ip));
     assert_eq!(
         first_dz_ip.octets()[0..2],
         [147, 51],
-        "dz_ip should be from MulticastPublisherBlock (147.51.126.0/23)"
+        "dz_ip should be from MulticastPublisherBlock (148.51.120.0/21)"
     );
     println!("  First publisher dz_ip: {}", first_dz_ip);
 

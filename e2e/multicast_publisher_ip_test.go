@@ -39,7 +39,7 @@ func parsePublisherUserInfo(output []byte) []publisherUserInfo {
 }
 
 // TestE2E_MulticastPublisher_MultipleAllocations verifies that multiple publishers
-// get unique sequential IPs from the global multicast_publisher_block (147.51.126.0/23).
+// get unique sequential IPs from the global multicast_publisher_block (148.51.120.0/21).
 func TestE2E_MulticastPublisher_MultipleAllocations(t *testing.T) {
 	t.Parallel()
 
@@ -97,12 +97,12 @@ func TestE2E_MulticastPublisher_MultipleAllocations(t *testing.T) {
 		publishers := parsePublisherUserInfo(userListOutput)
 		require.Len(t, publishers, 3, "should have 3 multicast publisher users")
 
-		// Verify all IPs are from global multicast_publisher_block (147.51.126.0/23)
+		// Verify all IPs are from global multicast_publisher_block (148.51.120.0/21)
 		// and are sequential
 		dzIPs := []string{}
 		for _, pub := range publishers {
-			require.True(t, netutil.IPInRange(pub.DzIP, "147.51.126.0/23"),
-				"publisher dz_ip %s should be in global multicast_publisher_block 147.51.126.0/23", pub.DzIP)
+			require.True(t, netutil.IPInRange(pub.DzIP, "148.51.120.0/21"),
+				"publisher dz_ip %s should be in global multicast_publisher_block 148.51.120.0/21", pub.DzIP)
 			dzIPs = append(dzIPs, pub.DzIP)
 		}
 
@@ -205,8 +205,8 @@ func TestE2E_MulticastPublisher_MixedUsers(t *testing.T) {
 		require.NotEmpty(t, ibrlDzIP, "IBRL user should have dz_ip")
 
 		// Verify publisher uses global multicast_publisher_block
-		require.True(t, netutil.IPInRange(publisherDzIP, "147.51.126.0/23"),
-			"publisher dz_ip %s should be from global block 147.51.126.0/23", publisherDzIP)
+		require.True(t, netutil.IPInRange(publisherDzIP, "148.51.120.0/21"),
+			"publisher dz_ip %s should be from global block 148.51.120.0/21", publisherDzIP)
 
 		// Verify IBRL user uses device DzPrefixBlock
 		require.True(t, netutil.IPInRange(ibrlDzIP, device.DZPrefix),
@@ -217,7 +217,7 @@ func TestE2E_MulticastPublisher_MixedUsers(t *testing.T) {
 			"publisher and IBRL user should have different IPs")
 
 		dn.log.Info("✓ Publisher and IBRL user coexist with separate IP pools",
-			"publisher_dz_ip", publisherDzIP, "publisher_pool", "147.51.126.0/23",
+			"publisher_dz_ip", publisherDzIP, "publisher_pool", "148.51.120.0/21",
 			"ibrl_dz_ip", ibrlDzIP, "ibrl_pool", device.DZPrefix)
 	}) {
 		t.Fail()
@@ -281,7 +281,7 @@ func TestE2E_MulticastPublisher_IPDeallocation(t *testing.T) {
 		require.Len(t, publishers, 1, "should have 1 publisher")
 		firstPublisherIP = publishers[0].DzIP
 
-		require.True(t, netutil.IPInRange(firstPublisherIP, "147.51.126.0/23"),
+		require.True(t, netutil.IPInRange(firstPublisherIP, "148.51.120.0/21"),
 			"first publisher dz_ip %s should be from global block", firstPublisherIP)
 
 		dn.log.Info("✓ First publisher connected", "dz_ip", firstPublisherIP)
@@ -399,7 +399,7 @@ func TestE2E_MulticastPublisher_BothAllocationPaths(t *testing.T) {
 		// Collect allocated IPs
 		dzIPs := []string{}
 		for _, pub := range publishers {
-			require.True(t, netutil.IPInRange(pub.DzIP, "147.51.126.0/23"),
+			require.True(t, netutil.IPInRange(pub.DzIP, "148.51.120.0/21"),
 				"publisher dz_ip %s should be in global multicast_publisher_block", pub.DzIP)
 			dzIPs = append(dzIPs, pub.DzIP)
 		}
@@ -440,7 +440,7 @@ func TestE2E_MulticastPublisher_BothAllocationPaths(t *testing.T) {
 				return false
 			}
 			// Bitmap should be empty after deallocation
-			return !strings.Contains(string(resourceOutput), "147.51.126")
+			return !strings.Contains(string(resourceOutput), "148.51.120")
 		}, 30*time.Second, 2*time.Second, "IPs should be deallocated from on-chain bitmap")
 
 		dn.log.Info("✓ Off-chain deallocations synced to on-chain bitmap")

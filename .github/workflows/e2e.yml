@@ -75,9 +75,13 @@ jobs:
           echo "Discovered $count tests"
           echo "$tests"
 
-          # BackwardCompatibility spawns many parallel subtests internally,
-          # so it gets its own dedicated shard to avoid starving other tests.
+          # Shard 1: BackwardCompatibility gets its own shard because it spawns
+          # many parallel subtests internally and would starve other tests.
           dedicated="TestE2E_BackwardCompatibility"
+
+          # Shard 2: Tests that also run with onchain allocation enabled.
+          onchain_tests="TestE2E_IBRL|TestE2E_IBRL_WithAllocatedIP|TestE2E_Multicast|TestE2E_InterfaceValidation|TestE2E_UserLimits|TestE2E_MulticastPublisher_BothAllocationPaths"
+
           remaining=$(echo "$tests" | grep -v "^${dedicated}$")
 
           # Distribute remaining tests round-robin across shards
@@ -97,10 +101,11 @@ jobs:
             i=$((i + 1))
           done <<< "$remaining"
 
-          # Build JSON matrix: dedicated shard first, then round-robin shards
-          matrix="[{\"shard\":1,\"run\":\"^(${dedicated})$\"}"
+          # Build JSON matrix: shard 1 = dedicated, shard 2 = onchain, shards 3+ = round-robin
+          matrix="[{\"shard\":1,\"run\":\"^(${dedicated})$\",\"onchain_allocation\":\"\"}"
+          matrix="${matrix},{\"shard\":2,\"run\":\"^(${onchain_tests})$\",\"onchain_allocation\":\"true\"}"
           for ((i=0; i<SHARD_COUNT; i++)); do
-            matrix="${matrix},{\"shard\":$((i + 2)),\"run\":\"^(${shards[$i]})$\"}"
+            matrix="${matrix},{\"shard\":$((i + 3)),\"run\":\"^(${shards[$i]})$\",\"onchain_allocation\":\"\"}"
           done
           matrix="${matrix}]"
 
@@ -171,4 +176,5 @@ jobs:
       - name: test
         env:
           DZ_E2E_NO_BUILD: "1"
+          DZ_E2E_ONCHAIN_ALLOCATION: ${{ matrix.onchain_allocation }}
         run: go test -tags=e2e -timeout=20m -parallel=12 -run '${{ matrix.run }}' -v

@@ -164,6 +164,42 @@ func NewSingleDeviceSingleClientTestDevnet(t *testing.T) (*TestDevnet, *devnet.D
 	return tdn, device, client
 }
 
+func NewSingleDeviceSingleClientTestDevnetWithOnchainAllocation(t *testing.T) (*TestDevnet, *devnet.Device, *devnet.Client) {
+	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
+	log := newTestLoggerForTest(t)
+
+	log.Debug("==> Starting test devnet with single device and client (onchain allocation)")
+
+	currentDir, err := os.Getwd()
+	require.NoError(t, err)
+	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
+
+	dn, err := devnet.New(devnet.DevnetSpec{
+		DeployID:  deployID,
+		DeployDir: t.TempDir(),
+
+		CYOANetwork: devnet.CYOANetworkSpec{
+			CIDRPrefix: subnetCIDRPrefix,
+		},
+		Manager: devnet.ManagerSpec{
+			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
+		},
+		Activator: devnet.ActivatorSpec{
+			OnchainAllocation: devnet.BoolPtr(true),
+		},
+	}, log, dockerClient, subnetAllocator)
+	require.NoError(t, err)
+
+	tdn := &TestDevnet{
+		Devnet: dn,
+		log:    logger,
+	}
+
+	device, client := tdn.Start(t)
+
+	return tdn, device, client
+}
+
 func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 	ctx := t.Context()
 
@@ -614,6 +650,110 @@ func (dn *TestDevnet) GetDeviceLinkInterfaceIPs(t *testing.T, deviceCode string)
 	}
 
 	return result, nil
+}
+
+// DeviceLoopbackIPs holds the loopback IP addresses for a device.
+type DeviceLoopbackIPs struct {
+	Vpnv4IP        string // e.g., "172.16.0.1/32"
+	Vpnv4IPOnly    string // e.g., "172.16.0.1"
+	Ipv4IP         string // e.g., "172.16.0.9/32"
+	Ipv4IPOnly     string // e.g., "172.16.0.9"
+	NodeSegmentIdx uint16
+}
+
+// GetAllDeviceLoopbackIPs fetches loopback IPs for all devices from the ledger.
+// Returns map[deviceCode] -> DeviceLoopbackIPs.
+func (dn *TestDevnet) GetAllDeviceLoopbackIPs(t *testing.T) (map[string]DeviceLoopbackIPs, error) {
+	client, err := dn.Ledger.GetServiceabilityClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get serviceability client: %w", err)
+	}
+
+	data, err := client.GetProgramData(t.Context())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get program data: %w", err)
+	}
+
+	result := make(map[string]DeviceLoopbackIPs)
+	for _, dev := range data.Devices {
+		var lb DeviceLoopbackIPs
+		for _, iface := range dev.Interfaces {
+			ip := net.IPv4(iface.IpNet[0], iface.IpNet[1], iface.IpNet[2], iface.IpNet[3]).To4()
+			prefix := iface.IpNet[4]
+			if ip.Equal(net.IPv4zero) && prefix == 0 {
+				continue
+			}
+			ipStr := ip.String()
+			ipWithMask := fmt.Sprintf("%s/%d", ipStr, prefix)
+
+			switch iface.LoopbackType {
+			case serviceability.LoopbackTypeVpnv4:
+				lb.Vpnv4IP = ipWithMask
+				lb.Vpnv4IPOnly = ipStr
+				lb.NodeSegmentIdx = iface.NodeSegmentIdx
+			case serviceability.LoopbackTypeIpv4:
+				lb.Ipv4IP = ipWithMask
+				lb.Ipv4IPOnly = ipStr
+			}
+		}
+		result[dev.Code] = lb
+	}
+	return result, nil
+}
+
+// ISISNetFromIP generates the ISIS NET address from an IPv4 address string.
+// Format: 49.0000.XXYY.ZZWW.0000.00 where XX.YY.ZZ.WW is the IP in hex.
+func ISISNetFromIP(ipStr string) string {
+	ip := net.ParseIP(ipStr).To4()
+	return fmt.Sprintf("49.0000.%02x%02x.%02x%02x.0000.00", ip[0], ip[1], ip[2], ip[3])
+}
+
+// BuildAgentConfigData builds template data for agent config fixtures by reading
+// current device interface IPs from the ledger. This ensures fixtures work correctly
+// regardless of whether onchain or offchain allocation is used.
+func (dn *TestDevnet) BuildAgentConfigData(t *testing.T, deviceCode string, extra map[string]any) map[string]any {
+	linkIPs, err := dn.GetDeviceLinkInterfaceIPs(t, deviceCode)
+	require.NoError(t, err, "error getting device link interface IPs")
+
+	loopbackIPs, err := dn.GetAllDeviceLoopbackIPs(t)
+	require.NoError(t, err, "error getting device loopback IPs")
+
+	data := make(map[string]any)
+
+	// Device's own loopback IPs
+	if lb, ok := loopbackIPs[deviceCode]; ok {
+		data["Loopback255IP"] = lb.Vpnv4IP
+		data["Loopback255IPOnly"] = lb.Vpnv4IPOnly
+		data["Loopback256IP"] = lb.Ipv4IP
+		data["Loopback256IPOnly"] = lb.Ipv4IPOnly
+		data["NodeSegmentIndex"] = lb.NodeSegmentIdx
+		data["ISISNet"] = ISISNetFromIP(lb.Vpnv4IPOnly)
+	}
+
+	// Link IPs
+	for ifaceName, ip := range linkIPs {
+		data[ifaceName+"IP"] = ip
+	}
+
+	// Peer loopback IPs: only include peers that have Loopback255 (vpnv4),
+	// since the controller excludes devices without it from all peering.
+	peerVpnv4 := make(map[string]string)
+	peerIpv4 := make(map[string]string)
+	for code, lb := range loopbackIPs {
+		if code != deviceCode && lb.Vpnv4IPOnly != "" {
+			peerVpnv4[code] = lb.Vpnv4IPOnly
+			peerIpv4[code] = lb.Ipv4IPOnly
+		}
+	}
+	data["PeerVpnv4"] = peerVpnv4
+	data["PeerIpv4"] = peerIpv4
+
+	// Add extra params
+	for k, v := range extra {
+		data[k] = v
+	}
+
+	return data
 }
 
 // newTestLoggerForTest creates a logger for individual test runs.

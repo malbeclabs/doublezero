@@ -38,7 +38,6 @@ func TestE2E_UserLimits(t *testing.T) {
 	require.NoError(t, err)
 	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
 
-	// Create devnet with on-chain allocation enabled
 	dn, err := devnet.New(devnet.DevnetSpec{
 		DeployID:  deployID,
 		DeployDir: t.TempDir(),
@@ -48,9 +47,6 @@ func TestE2E_UserLimits(t *testing.T) {
 		},
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
-		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(true),
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)

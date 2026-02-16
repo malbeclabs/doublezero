@@ -14,7 +14,7 @@ import (
 
 type ActivatorSpec struct {
 	ContainerImage    string
-	OnchainAllocation *bool // nil = default (enabled), false = explicitly disabled
+	OnchainAllocation *bool // nil = default (offchain), true = explicitly enabled for onchain allocation tests
 }
 
 // BoolPtr returns a pointer to the given bool value.
@@ -26,6 +26,17 @@ func (s *ActivatorSpec) Validate() error {
 	// If the container image is not set, use the DZ_ACTIVATOR_IMAGE environment variable.
 	if s.ContainerImage == "" {
 		s.ContainerImage = os.Getenv("DZ_ACTIVATOR_IMAGE")
+	}
+
+	// Default to offchain allocation (matching production/mainnet behavior).
+	// Tests that validate onchain ResourceExtension bitmaps must opt in explicitly.
+	// The DZ_E2E_ONCHAIN_ALLOCATION env var allows CI to run dual-mode tests.
+	if s.OnchainAllocation == nil {
+		if os.Getenv("DZ_E2E_ONCHAIN_ALLOCATION") == "true" {
+			s.OnchainAllocation = BoolPtr(true)
+		} else {
+			s.OnchainAllocation = BoolPtr(false)
+		}
 	}
 
 	return nil
@@ -117,9 +128,10 @@ func (a *Activator) Start(ctx context.Context) error {
 		"DZ_LEDGER_WS":                 a.dn.Ledger.InternalRPCWSURL,
 		"DZ_SERVICEABILITY_PROGRAM_ID": a.dn.Manager.ServiceabilityProgramID,
 	}
-	// Only set DZ_ONCHAIN_ALLOCATION=false when explicitly disabled.
-	// Otherwise let the entrypoint default to enabled (matching main's behavior).
-	if a.dn.Spec.Activator.OnchainAllocation != nil && !*a.dn.Spec.Activator.OnchainAllocation {
+	// Set DZ_ONCHAIN_ALLOCATION based on the spec. After Validate(), this is always non-nil.
+	if a.dn.Spec.Activator.OnchainAllocation != nil && *a.dn.Spec.Activator.OnchainAllocation {
+		env["DZ_ONCHAIN_ALLOCATION"] = "true"
+	} else {
 		env["DZ_ONCHAIN_ALLOCATION"] = "false"
 	}
 

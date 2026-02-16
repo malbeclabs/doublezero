@@ -328,11 +328,13 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	log.Debug("--> Confirmed client1 and client3 do not have routes to each other (intra-exchange routing policy working)")
 
 	// Check that client1 and client2 have routes to each other (cross-exchange) (QW5 optimization: parallel).
-	// The iBGP propagation is already confirmed above, so these should converge quickly.
+	// Even though iBGP propagation between devices is confirmed above, the route still
+	// needs to propagate from the device to the client daemon and into the kernel routing
+	// table. On resource-constrained CI this can take over 60s.
 	log.Debug("==> Checking that client1 and client2 have routes to each other (cross-exchange, parallel)")
 	g = new(errgroup.Group)
 	g.Go(func() error {
-		return waitForCondition(t.Context(), 60*time.Second, 1*time.Second, func() (bool, error) {
+		return waitForCondition(t.Context(), 120*time.Second, 5*time.Second, func() (bool, error) {
 			output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
 			if err != nil {
 				return false, nil
@@ -341,7 +343,7 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 		}, "client1 should have route to client2 (different exchanges)")
 	})
 	g.Go(func() error {
-		return waitForCondition(t.Context(), 60*time.Second, 1*time.Second, func() (bool, error) {
+		return waitForCondition(t.Context(), 120*time.Second, 5*time.Second, func() (bool, error) {
 			output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
 			if err != nil {
 				return false, nil

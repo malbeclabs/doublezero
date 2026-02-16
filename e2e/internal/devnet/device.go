@@ -714,6 +714,25 @@ func (d *Device) Start(ctx context.Context) error {
 			fmt.Printf("  /var/log/messages (last 50 lines):\n%s\n", string(syslog))
 		}
 
+		// Agent logs (last 50 lines each).
+		agentFiles, agentFilesErr := docker.Exec(diagCtx, d.dn.dockerClient, containerID, []string{"ls", "/var/log/agents-latest/"}, docker.NoPrintOnError())
+		if agentFilesErr != nil {
+			fmt.Printf("  /var/log/agents-latest/: ERROR: %v\n", agentFilesErr)
+		} else {
+			for _, name := range strings.Split(strings.TrimSpace(string(agentFiles)), "\n") {
+				if name == "" {
+					continue
+				}
+				path := "/var/log/agents-latest/" + name
+				agentLog, agentLogErr := docker.Exec(diagCtx, d.dn.dockerClient, containerID, []string{"tail", "-50", path}, docker.NoPrintOnError())
+				if agentLogErr != nil {
+					fmt.Printf("  %s: ERROR: %v\n", path, agentLogErr)
+				} else {
+					fmt.Printf("  %s (last 50 lines):\n%s\n", path, string(agentLog))
+				}
+			}
+		}
+
 		fmt.Printf("=== END DEVICE HEALTH CHECK TIMEOUT DIAGNOSTICS [%s] ===\n", spec.Code)
 
 		return fmt.Errorf("failed to wait for device container to be healthy: %w", err)

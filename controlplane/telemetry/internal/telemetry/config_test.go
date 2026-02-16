@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	telemetryprog "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 

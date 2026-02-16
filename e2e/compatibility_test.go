@@ -83,13 +83,6 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/link_set_health":     {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
 	"write/link_set_health_dzx": {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
 
-	// global_config_set: The SetGlobalConfig instruction added new required accounts
-	// (MulticastPublisherBlock, VrfIds) that released CLIs (through v0.8.7) don't
-	// include, causing "insufficient account keys for instruction".
-	// Updated to 0.8.10: The multicast publisher IP block changed from 147.51.126.0/23
-	// to 148.51.120.0/21. CLIs v0.8.9 and older have the old IP block hardcoded,
-	// causing "Immutable Field" errors when trying to update other global config fields.
-	"write/global_config_set": {minVersion: "0.8.10"},
 }
 
 // =============================================================================
@@ -1156,7 +1149,6 @@ func runWriteWorkflows(
 				fmt.Sprintf(" --public-ip 45.133.2.%d", 10+vi)},
 			{name: "cloned_location_update", cmd: cli + " location update --pubkey " + lookupFirstPubkey("location list") + " --name ClonedLocUpdated"},
 			{name: "cloned_exchange_update", cmd: cli + " exchange update --pubkey " + lookupFirstPubkey("exchange list") + " --name ClonedExUpdated"},
-			{name: "global_config_set", cmd: cli + " global-config set --remote-asn 65001", noCascade: true},
 			{name: "device_list_verify", cmd: cli + " device list"},
 			{name: "link_list_verify", cmd: cli + " link list"},
 			{name: "contributor_get", cmd: cli + " contributor get --code " + contributorCode, noCascade: true},

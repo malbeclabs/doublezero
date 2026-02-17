@@ -142,7 +142,8 @@ impl DeleteTenantCliCommand {
                     }
 
                     if attempt == max_attempts - 1 {
-                        spinner.finish_with_message("Timeout waiting for reference_count to reach 0");
+                        spinner
+                            .finish_with_message("Timeout waiting for reference_count to reach 0");
                         return Err(eyre::eyre!(
                             "Timeout waiting for tenant reference_count to reach 0"
                         ));

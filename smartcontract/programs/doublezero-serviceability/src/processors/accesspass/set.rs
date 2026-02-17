@@ -269,6 +269,17 @@ pub fn process_set_access_pass(
                 "Tenant Add Account is not writable"
             );
             let mut tenant_add = Tenant::try_from(tenant_add_acc)?;
+
+            // Validate payer is administrator of the tenant
+            if !tenant_add.administrators.contains(payer_account.key) {
+                msg!(
+                    "Payer {} is not an administrator of tenant {}",
+                    payer_account.key,
+                    tenant_add_acc.key
+                );
+                return Err(DoubleZeroError::Unauthorized.into());
+            }
+
             tenant_add.reference_count = tenant_add
                 .reference_count
                 .checked_add(1)

@@ -6,6 +6,7 @@ use doublezero_serviceability::{
             check_status::CheckStatusAccessPassArgs, close::CloseAccessPassArgs,
             set::SetAccessPassArgs,
         },
+        allowlist::foundation::add::AddFoundationAllowlistArgs,
         contributor::create::ContributorCreateArgs,
         device::{activate::DeviceActivateArgs, update::DeviceUpdateArgs},
         tenant::create::TenantCreateArgs,
@@ -301,7 +302,6 @@ async fn test_accesspass_with_tenant() {
 
     let tenant_acme_code = "acme";
     let (tenant_acme, _) = get_tenant_pda(&program_id, tenant_acme_code);
-    let administrator_acme = Pubkey::new_unique();
 
     execute_transaction(
         &mut banks_client,
@@ -309,7 +309,7 @@ async fn test_accesspass_with_tenant() {
         program_id,
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: tenant_acme_code.to_string(),
-            administrator: administrator_acme,
+            administrator: payer.pubkey(),
             token_account: None,
             metro_routing: true,
             route_liveness: false,
@@ -325,7 +325,6 @@ async fn test_accesspass_with_tenant() {
 
     let tenant_corp_code = "corp";
     let (tenant_corp, _) = get_tenant_pda(&program_id, tenant_corp_code);
-    let administrator_corp = Pubkey::new_unique();
 
     execute_transaction(
         &mut banks_client,
@@ -333,7 +332,7 @@ async fn test_accesspass_with_tenant() {
         program_id,
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: tenant_corp_code.to_string(),
-            administrator: administrator_corp,
+            administrator: payer.pubkey(),
             token_account: None,
             metro_routing: false,
             route_liveness: true,
@@ -349,7 +348,6 @@ async fn test_accesspass_with_tenant() {
 
     let tenant_validator_code = "validator-tenant";
     let (tenant_validator, _) = get_tenant_pda(&program_id, tenant_validator_code);
-    let administrator_validator = Pubkey::new_unique();
 
     execute_transaction(
         &mut banks_client,
@@ -357,7 +355,7 @@ async fn test_accesspass_with_tenant() {
         program_id,
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: tenant_validator_code.to_string(),
-            administrator: administrator_validator,
+            administrator: payer.pubkey(),
             token_account: None,
             metro_routing: true,
             route_liveness: true,
@@ -954,7 +952,7 @@ async fn setup_device_and_tenants() -> (BanksClient, Keypair, Pubkey, Pubkey, Pu
     )
     .await;
 
-    // Create two tenants
+    // Create two tenants (payer is administrator so they can add tenants to access passes)
     let (tenant_a, _) = get_tenant_pda(&program_id, "tenant-a");
     execute_transaction(
         &mut banks_client,
@@ -962,7 +960,7 @@ async fn setup_device_and_tenants() -> (BanksClient, Keypair, Pubkey, Pubkey, Pu
         program_id,
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: "tenant-a".to_string(),
-            administrator: Pubkey::new_unique(),
+            administrator: payer.pubkey(),
             token_account: None,
             metro_routing: true,
             route_liveness: false,
@@ -983,7 +981,7 @@ async fn setup_device_and_tenants() -> (BanksClient, Keypair, Pubkey, Pubkey, Pu
         program_id,
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: "tenant-b".to_string(),
-            administrator: Pubkey::new_unique(),
+            administrator: payer.pubkey(),
             token_account: None,
             metro_routing: false,
             route_liveness: true,
@@ -1200,4 +1198,234 @@ async fn test_user_create_with_empty_tenant_allowlist_rejects_tenant() {
         error_string
     );
     println!("✅ User creation with tenant correctly rejected when access-pass has empty tenant allowlist");
+}
+
+#[tokio::test]
+async fn test_set_accesspass_unauthorized_payer_fails() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    println!("🟢 Start test_set_accesspass_unauthorized_payer_fails");
+
+    // Create an unauthorized payer (not in foundation_allowlist)
+    let unauthorized_payer = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &unauthorized_payer.pubkey(),
+        10_000_000_000,
+    )
+    .await;
+
+    let client_ip = Ipv4Addr::new(100, 0, 0, 50);
+    let user_payer = Pubkey::new_unique();
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+
+    // Try to create access pass with unauthorized payer → should fail
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 10,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+        ],
+        &unauthorized_payer,
+    )
+    .await;
+
+    assert!(
+        res.is_err(),
+        "SetAccessPass should fail when payer is not in foundation_allowlist"
+    );
+
+    let error_string = format!("{:?}", res.unwrap_err());
+    assert!(
+        error_string.contains("Custom(8)"),
+        "Expected NotAllowed error (Custom(8)), got: {}",
+        error_string
+    );
+
+    println!("✅ SetAccessPass correctly rejected unauthorized payer (error 8)");
+}
+
+#[tokio::test]
+async fn test_set_accesspass_with_tenant_admin_succeeds() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    println!("🟢 Start test_set_accesspass_with_tenant_admin_succeeds");
+
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+
+    // Create a tenant with a specific administrator
+    let tenant_admin = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &tenant_admin.pubkey(),
+        10_000_000_000,
+    )
+    .await;
+
+    let tenant_code = "admin-tenant";
+    let (tenant_pubkey, _) = get_tenant_pda(&program_id, tenant_code);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: tenant_code.to_string(),
+            administrator: tenant_admin.pubkey(),
+            token_account: None,
+            metro_routing: true,
+            route_liveness: false,
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Add tenant_admin to foundation_allowlist so they can create access passes
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs {
+            pubkey: tenant_admin.pubkey(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    let client_ip = Ipv4Addr::new(100, 0, 0, 60);
+    let user_payer = Pubkey::new_unique();
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+
+    // Create access pass with tenant using tenant_admin (who is an administrator) → should succeed
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 10,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+            AccountMeta::new(Pubkey::default(), false),
+            AccountMeta::new(tenant_pubkey, false),
+        ],
+        &tenant_admin,
+    )
+    .await;
+
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .expect("Unable to get AccessPass")
+        .get_accesspass()
+        .unwrap();
+
+    assert_eq!(accesspass.tenant_allowlist.len(), 1);
+    assert_eq!(accesspass.tenant_allowlist[0], tenant_pubkey);
+
+    println!("✅ SetAccessPass with tenant succeeded when payer is tenant administrator");
+}
+
+#[tokio::test]
+async fn test_set_accesspass_with_tenant_non_admin_fails() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    println!("🟢 Start test_set_accesspass_with_tenant_non_admin_fails");
+
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+
+    // Create a tenant with a specific administrator
+    let tenant_admin = Pubkey::new_unique();
+    let tenant_code = "locked-tenant";
+    let (tenant_pubkey, _) = get_tenant_pda(&program_id, tenant_code);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: tenant_code.to_string(),
+            administrator: tenant_admin,
+            token_account: None,
+            metro_routing: true,
+            route_liveness: false,
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let client_ip = Ipv4Addr::new(100, 0, 0, 70);
+    let user_payer = Pubkey::new_unique();
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+
+    // Try to create access pass with tenant using payer (who is NOT an administrator) → should fail
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 10,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+            AccountMeta::new(Pubkey::default(), false),
+            AccountMeta::new(tenant_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(
+        res.is_err(),
+        "SetAccessPass should fail when payer is not an administrator of the tenant"
+    );
+
+    let error_string = format!("{:?}", res.unwrap_err());
+    assert!(
+        error_string.contains("Custom(22)"),
+        "Expected Unauthorized error (Custom(22)), got: {}",
+        error_string
+    );
+
+    println!("✅ SetAccessPass correctly rejected non-administrator payer for tenant (error 22)");
 }

@@ -41,6 +41,7 @@ mod errors;
 
 pub mod commands;
 pub mod doublezeroclient;
+pub mod geolocation;
 pub mod keypair;
 pub mod record;
 pub mod rpckeyedaccount_decode;
@@ -54,6 +55,7 @@ pub use crate::{
     config::{convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker},
     doublezeroclient::{DoubleZeroClient, MockDoubleZeroClient},
     errors::*,
+    geolocation::client::{GeolocationClient, MockGeolocationClient},
 };
 
 pub use crate::commands::{

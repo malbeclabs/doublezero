@@ -301,10 +301,6 @@ func (c *Client) GetUserStatuses(ctx context.Context) ([]*pb.Status, error) {
 	return resp.Status, nil
 }
 
-func (c *Client) GetCurrentDevice(ctx context.Context) (*Device, error) {
-	return c.getIBRLDevice(ctx, false)
-}
-
 func (c *Client) GetInstalledRoutes(ctx context.Context) ([]*pb.Route, error) {
 	resp, err := c.grpcClient.GetRoutes(ctx, &emptypb.Empty{})
 	if err != nil {
@@ -583,13 +579,9 @@ func (c *Client) DumpDiagnostics(groups []*MulticastGroup) {
 	}
 }
 
-func (c *Client) getConnectedDevice(ctx context.Context) (*Device, error) {
-	return c.getIBRLDevice(ctx, true)
-}
-
-// getIBRLDevice returns the device for the client's IBRL tunnel. When
+// GetIBRLDevice returns the device for the client's IBRL tunnel. When
 // requireUp is true it also verifies the session status is up.
-func (c *Client) getIBRLDevice(ctx context.Context, requireUp bool) (*Device, error) {
+func (c *Client) GetIBRLDevice(ctx context.Context, requireUp bool) (*Device, error) {
 	resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get status on host %s: %w", c.Host, err)

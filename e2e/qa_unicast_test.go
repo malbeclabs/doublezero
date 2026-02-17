@@ -63,10 +63,10 @@ func validateUnicastConnectivity(t *testing.T, ctx context.Context, log *slog.Lo
 
 	// Wait for routes to be installed on each host.
 	for _, c := range clients {
-		device, err := c.GetCurrentDevice(ctx)
+		device, err := c.GetIBRLDevice(ctx, false)
 		require.NoError(t, err, "failed to get current device for client %s", c.Host)
 		err = c.WaitForRoutes(ctx, qa.MapFilter(clients, func(other *qa.Client) (net.IP, bool) {
-			otherDevice, err := other.GetCurrentDevice(ctx)
+			otherDevice, err := other.GetIBRLDevice(ctx, false)
 			if err != nil {
 				return nil, false
 			}

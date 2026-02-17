@@ -842,7 +842,9 @@ func (d *Devnet) GetDevicePubkeyOnchain(ctx context.Context, deviceCode string) 
 }
 
 func (d *Devnet) waitContainerHealthy(ctx context.Context, containerID string, timeout time.Duration, delay time.Duration) error {
-	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	// Use context.Background() to ensure we get the full timeout regardless of parent context deadline.
+	// This matches the pattern used in the diagnostic code and prevents premature context cancellation.
+	waitCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	ticker := time.NewTicker(delay)
 	defer ticker.Stop()

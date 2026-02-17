@@ -4,8 +4,12 @@ use crate::{
     resource::{IdOrIp, ResourceType},
     serializer::{try_acc_close, try_acc_write},
     state::{
-        contributor::Contributor, device::*, globalstate::GlobalState, interface::InterfaceStatus,
-        link::*, resource_extension::ResourceExtensionBorrowed,
+        contributor::Contributor,
+        device::*,
+        globalstate::GlobalState,
+        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType},
+        link::*,
+        resource_extension::ResourceExtensionBorrowed,
     },
 };
 use borsh::BorshSerialize;
@@ -202,14 +206,30 @@ pub fn process_closeaccount_link(
     if let Ok((idx_a, side_a_iface)) = side_a_dev.find_interface(&link.side_a_iface_name) {
         let mut updated_iface = side_a_iface.clone();
         updated_iface.status = InterfaceStatus::Unlinked;
-        updated_iface.ip_net = NetworkV4::default();
+        // Preserve user-provided ip_net for CYOA/DIA physical interfaces.
+        // For all other interfaces (loopbacks, plain physical), reset ip_net since it was
+        // set from tunnel_net during activation and is no longer valid.
+        let has_user_ip = updated_iface.interface_type == InterfaceType::Physical
+            && (updated_iface.interface_cyoa != InterfaceCYOA::None
+                || updated_iface.interface_dia != InterfaceDIA::None);
+        if !has_user_ip {
+            updated_iface.ip_net = NetworkV4::default();
+        }
         side_a_dev.interfaces[idx_a] = updated_iface.to_interface();
     }
 
     if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface(&link.side_z_iface_name) {
         let mut updated_iface = side_z_iface.clone();
         updated_iface.status = InterfaceStatus::Unlinked;
-        updated_iface.ip_net = NetworkV4::default();
+        // Preserve user-provided ip_net for CYOA/DIA physical interfaces.
+        // For all other interfaces (loopbacks, plain physical), reset ip_net since it was
+        // set from tunnel_net during activation and is no longer valid.
+        let has_user_ip = updated_iface.interface_type == InterfaceType::Physical
+            && (updated_iface.interface_cyoa != InterfaceCYOA::None
+                || updated_iface.interface_dia != InterfaceDIA::None);
+        if !has_user_ip {
+            updated_iface.ip_net = NetworkV4::default();
+        }
         side_z_dev.interfaces[idx_z] = updated_iface.to_interface();
     }
 

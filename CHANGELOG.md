@@ -42,6 +42,8 @@ All notable changes to this project will be documented in this file.
   - Reject users with BGP martian DZ IPs (RFC 1918, loopback, multicast, link-local, documentation nets, shared address space, reserved) to prevent invalid addresses from being advertised via BGP or permitted in device ACLs
 - Claude
   - chore: update CLAUDE.md ([#2999](https://github.com/malbeclabs/doublezero/pull/2999))
+- e2e
+  - e2e: Add network contributor e2e flow tests ([#2997](https://github.com/malbeclabs/doublezero/pull/2997))
 
 ## [v0.8.8](https://github.com/malbeclabs/doublezero/compare/client/v0.8.7...client/v0.8.8) – 2026-02-13
 

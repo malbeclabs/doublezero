@@ -207,14 +207,22 @@ pub fn process_activate_link(
 
     let mut updated_iface_a = side_a_iface.clone();
     updated_iface_a.status = InterfaceStatus::Activated;
-    updated_iface_a.ip_net =
-        NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix()).unwrap();
+    // Only set ip_net from tunnel_net if the interface doesn't already have a user-provided ip_net
+    // (e.g. CYOA/DIA physical interfaces). Interfaces without a user value get tunnel IPs.
+    if updated_iface_a.ip_net == NetworkV4::default() {
+        updated_iface_a.ip_net =
+            NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix()).unwrap();
+    }
     side_a_dev.interfaces[idx_a] = updated_iface_a.to_interface();
 
     let mut updated_iface_z = side_z_iface.clone();
     updated_iface_z.status = InterfaceStatus::Activated;
-    updated_iface_z.ip_net =
-        NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix()).unwrap();
+    // Only set ip_net from tunnel_net if the interface doesn't already have a user-provided ip_net
+    // (e.g. CYOA/DIA physical interfaces). Interfaces without a user value get tunnel IPs.
+    if updated_iface_z.ip_net == NetworkV4::default() {
+        updated_iface_z.ip_net =
+            NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix()).unwrap();
+    }
     side_z_dev.interfaces[idx_z] = updated_iface_z.to_interface();
 
     //TODO: This should be changed once the Health Oracle is finalized.

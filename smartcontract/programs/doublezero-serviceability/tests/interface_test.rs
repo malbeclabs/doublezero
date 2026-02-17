@@ -1,4 +1,5 @@
 use device::activate::DeviceActivateArgs;
+use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
     instructions::*,
     pda::*,
@@ -1337,5 +1338,90 @@ async fn test_device_interfaces() {
     );
 
     println!("✅ node_segment_idx restricted to foundation_allowlist");
+
+    // Setting CYOA on an interface without ip_net should fail
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
+            name: "ethernet2/1".to_string(),
+            interface_cyoa: Some(InterfaceCYOA::GREOverDIA),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    assert!(
+        res.unwrap_err()
+            .to_string()
+            .contains("custom program error: 0x2f"),
+        "Setting CYOA on interface without ip_net should be rejected"
+    ); // DoubleZeroError::InvalidInterfaceIp == 0x2f
+
+    // Clearing ip_net on a CYOA interface should fail
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
+            name: "ethernet1/1".to_string(),
+            ip_net: Some(NetworkV4::default()),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    assert!(
+        res.unwrap_err()
+            .to_string()
+            .contains("custom program error: 0x2f"),
+        "Clearing ip_net on CYOA interface should be rejected"
+    ); // DoubleZeroError::InvalidInterfaceIp == 0x2f
+
+    println!("✅ CYOA ip_net validation enforced on update path");
+
+    // Updating ip_net on an existing CYOA interface should succeed
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
+            name: "ethernet1/1".to_string(),
+            ip_net: Some("38.104.127.118/31".parse().unwrap()),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device2 = get_account_data(&mut banks_client, device2_pubkey)
+        .await
+        .expect("Unable to get Device")
+        .get_device()
+        .unwrap();
+    let iface = device2.find_interface("Ethernet1/1").unwrap().1;
+    assert_eq!(
+        iface.ip_net,
+        "38.104.127.118/31".parse::<NetworkV4>().unwrap(),
+        "ip_net should be updated to the new value"
+    );
+
+    println!("✅ Updating ip_net on CYOA interface succeeds and persists");
     println!("🟢🟢🟢  End test_device_interfaces  🟢🟢🟢");
 }

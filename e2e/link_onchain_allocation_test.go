@@ -67,12 +67,15 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	log.Debug("Device creation output", "output", string(output))
 	require.NoError(t, err, "Device creation failed with output: %s", string(output))
 
-	// Create interfaces on the devices (no CYOA/DIA assignment so they can be used for WAN links)
+	// Create CYOA interfaces on Ethernet1 (for ip_net preservation verification)
+	// and plain physical interfaces on Ethernet2 (for WAN link)
 	log.Debug("==> Creating device interfaces")
 	output, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
-		doublezero device interface create test-dz01 "Ethernet1" 2>&1
-		doublezero device interface create test-dz02 "Ethernet1" 2>&1
+		doublezero device interface create test-dz01 "Ethernet1" --interface-cyoa gre-over-dia --ip-net "45.33.100.62/31" 2>&1
+		doublezero device interface create test-dz02 "Ethernet1" --interface-cyoa gre-over-dia --ip-net "45.33.100.64/31" 2>&1
+		doublezero device interface create test-dz01 "Ethernet2" 2>&1
+		doublezero device interface create test-dz02 "Ethernet2" 2>&1
 	`})
 	log.Debug("Interface creation output", "output", string(output))
 	require.NoError(t, err)
@@ -92,39 +95,46 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 			return false
 		}
 
-		// Track whether we found both devices with their interfaces
-		dz01Found := false
-		dz02Found := false
+		// Track whether we found both devices with their interfaces (Ethernet1 + Ethernet2)
+		dz01Et1 := false
+		dz01Et2 := false
+		dz02Et1 := false
+		dz02Et2 := false
 
 		for _, device := range data.Devices {
 			if device.Code == "test-dz01" {
 				for _, iface := range device.Interfaces {
+					if iface.Status != serviceability.InterfaceStatusUnlinked {
+						log.Debug("Interface not yet unlinked", "device", device.Code, "interface", iface.Name, "status", iface.Status)
+						return false
+					}
 					if iface.Name == "Ethernet1" {
-						if iface.Status == serviceability.InterfaceStatusUnlinked {
-							dz01Found = true
-						} else {
-							log.Debug("Interface not yet unlinked", "device", device.Code, "interface", iface.Name, "status", iface.Status)
-							return false
-						}
+						dz01Et1 = true
+					}
+					if iface.Name == "Ethernet2" {
+						dz01Et2 = true
 					}
 				}
 			}
 			if device.Code == "test-dz02" {
 				for _, iface := range device.Interfaces {
+					if iface.Status != serviceability.InterfaceStatusUnlinked {
+						log.Debug("Interface not yet unlinked", "device", device.Code, "interface", iface.Name, "status", iface.Status)
+						return false
+					}
 					if iface.Name == "Ethernet1" {
-						if iface.Status == serviceability.InterfaceStatusUnlinked {
-							dz02Found = true
-						} else {
-							log.Debug("Interface not yet unlinked", "device", device.Code, "interface", iface.Name, "status", iface.Status)
-							return false
-						}
+						dz02Et1 = true
+					}
+					if iface.Name == "Ethernet2" {
+						dz02Et2 = true
 					}
 				}
 			}
 		}
 
-		if !dz01Found || !dz02Found {
-			log.Debug("Waiting for interfaces to appear", "dz01Found", dz01Found, "dz02Found", dz02Found)
+		allFound := dz01Et1 && dz01Et2 && dz02Et1 && dz02Et2
+		if !allFound {
+			log.Debug("Waiting for interfaces to appear", "dz01Et1", dz01Et1, "dz01Et2", dz01Et2, "dz02Et1", dz02Et1, "dz02Et2", dz02Et2)
 			return false
 		}
 
@@ -163,9 +173,9 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 			--code "test-dz01:test-dz02" \
 			--contributor co01 \
 			--side-a test-dz01 \
-			--side-a-interface Ethernet1 \
+			--side-a-interface Ethernet2 \
 			--side-z test-dz02 \
-			--side-z-interface Ethernet1 \
+			--side-z-interface Ethernet2 \
 			--bandwidth "10 Gbps" \
 			--mtu 9000 \
 			--delay-ms 10 \
@@ -340,7 +350,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	err = verifier.AssertResourcesReturned(beforeAlloc, afterDealloc)
 	require.NoError(t, err, "resources were not properly returned to pre-allocation state")
 
-	// Verify interfaces are back to Unlinked status after link closure
+	// Verify Ethernet2 interfaces (used for the link) are back to Unlinked status after link closure
 	log.Debug("==> Verifying interfaces returned to Unlinked status")
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
@@ -358,14 +368,14 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 		for _, device := range data.Devices {
 			if device.Code == "test-dz01" {
 				for _, iface := range device.Interfaces {
-					if iface.Name == "Ethernet1" && iface.Status == serviceability.InterfaceStatusUnlinked {
+					if iface.Name == "Ethernet2" && iface.Status == serviceability.InterfaceStatusUnlinked {
 						dz01Unlinked = true
 					}
 				}
 			}
 			if device.Code == "test-dz02" {
 				for _, iface := range device.Interfaces {
-					if iface.Name == "Ethernet1" && iface.Status == serviceability.InterfaceStatusUnlinked {
+					if iface.Name == "Ethernet2" && iface.Status == serviceability.InterfaceStatusUnlinked {
 						dz02Unlinked = true
 					}
 				}

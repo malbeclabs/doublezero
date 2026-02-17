@@ -61,6 +61,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 			"doublezero", "device", "interface", "create",
 			testDeviceCode, testInterfaceName,
 			"--interface-cyoa", "gre-over-dia",
+			"--ip-net", "45.33.100.50/31",
 		})
 		require.NoError(t, err, "failed to create physical interface with CYOA")
 

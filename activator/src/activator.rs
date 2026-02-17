@@ -1,4 +1,4 @@
-use crate::{accesspass_monitor, processor::Processor};
+use crate::processor::Processor;
 use doublezero_cli::{checkversion::check_version, doublezerocommand::CliCommandImpl};
 use doublezero_sdk::{
     doublezeroclient::{AsyncDoubleZeroClient, DoubleZeroClient},
@@ -62,13 +62,6 @@ where
             }
             _ = websocket_task(&async_client_factory, tx.clone(), shutdown.clone()) => {
                 info!("Websocket task finished, stopping activator...");
-            }
-            accesspass_monitor_res = accesspass_monitor::access_pass_monitor_task(client.clone(), shutdown.clone()) => {
-                if let Err(err) = accesspass_monitor_res {
-                    error!("AccessPass monitor task exited unexpectedly with reason: {err:?}");
-                } else {
-                    info!("AccessPass monitor task finished, stopping activator...");
-                }
             }
             snapshot_poll_res = get_snapshot_poll(client.clone(), tx.clone(), shutdown.clone()) => {
                 if let Err(err) = snapshot_poll_res {

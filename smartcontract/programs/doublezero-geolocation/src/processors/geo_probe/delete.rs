@@ -43,7 +43,7 @@ pub fn process_delete_geo_probe(program_id: &Pubkey, accounts: &[AccountInfo]) -
 
     if probe.reference_count > 0 {
         msg!(
-            "Cannot delete GeoProbe with reference_count={}",
+            "Cannot delete GeoProbe. reference_count of {} > 0",
             probe.reference_count
         );
         return Err(GeolocationError::ReferenceCountNotZero.into());

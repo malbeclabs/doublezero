@@ -1640,6 +1640,8 @@ dependencies = [
  "doublezero-serviceability",
  "serde",
  "serde_bytes",
+ "solana-bincode",
+ "solana-loader-v3-interface",
  "solana-program",
  "solana-program-test",
  "solana-sdk",

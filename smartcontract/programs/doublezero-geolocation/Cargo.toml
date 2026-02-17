@@ -19,6 +19,8 @@ crate-type = ["cdylib", "lib"]
 borsh.workspace = true
 serde = { workspace = true, optional = true }
 serde_bytes = { workspace = true, optional = true }
+solana-bincode = "2.2.1"
+solana-loader-v3-interface = { version = "3.0.0", features = ["serde"] }
 solana-program.workspace = true
 doublezero-program-common.workspace = true
 doublezero-serviceability.workspace = true

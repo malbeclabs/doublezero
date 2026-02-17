@@ -1,6 +1,10 @@
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use crate::{
-    instructions::UpdateGeoProbeArgs, processors::check_foundation_allowlist,
-    serializer::try_acc_write, state::geo_probe::GeoProbe, validation::validate_public_ip,
+    processors::check_foundation_allowlist,
+    serializer::try_acc_write,
+    state::geo_probe::GeoProbe,
+    validation::validate_public_ip,
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -9,6 +13,14 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
+use std::net::Ipv4Addr;
+
+#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
+pub struct UpdateGeoProbeArgs {
+    pub public_ip: Option<Ipv4Addr>,
+    pub location_offset_port: Option<u16>,
+    pub metrics_publisher_pk: Option<Pubkey>,
+}
 
 pub fn process_update_geo_probe(
     program_id: &Pubkey,

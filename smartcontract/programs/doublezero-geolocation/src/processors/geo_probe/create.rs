@@ -1,6 +1,7 @@
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use crate::{
     error::GeolocationError,
-    instructions::CreateGeoProbeArgs,
     pda::get_geo_probe_pda,
     processors::check_foundation_allowlist,
     seeds::{SEED_PREFIX, SEED_PROBE},
@@ -16,6 +17,16 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
+use std::net::Ipv4Addr;
+
+#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
+pub struct CreateGeoProbeArgs {
+    pub code: String,
+    #[incremental(default = std::net::Ipv4Addr::UNSPECIFIED)]
+    pub public_ip: Ipv4Addr,
+    pub location_offset_port: u16,
+    pub metrics_publisher_pk: Pubkey,
+}
 
 pub fn process_create_geo_probe(
     program_id: &Pubkey,

@@ -1,6 +1,7 @@
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use crate::{
     error::GeolocationError,
-    instructions::InitProgramConfigArgs,
     pda::get_program_config_pda,
     seeds::{SEED_PREFIX, SEED_PROGRAM_CONFIG},
     serializer::try_acc_create,
@@ -15,6 +16,11 @@ use solana_program::{
 };
 
 use super::parse_upgrade_authority;
+
+#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
+pub struct InitProgramConfigArgs {
+    pub serviceability_program_id: Pubkey,
+}
 
 pub fn process_init_program_config(
     program_id: &Pubkey,

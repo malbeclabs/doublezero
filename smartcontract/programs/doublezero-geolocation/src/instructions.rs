@@ -1,7 +1,13 @@
 use borsh::BorshSerialize;
-use borsh_incremental::BorshDeserializeIncremental;
-use solana_program::{program_error::ProgramError, pubkey::Pubkey};
-use std::net::Ipv4Addr;
+use solana_program::program_error::ProgramError;
+
+pub use crate::processors::{
+    geo_probe::{
+        add_parent_device::AddParentDeviceArgs, create::CreateGeoProbeArgs,
+        remove_parent_device::RemoveParentDeviceArgs, update::UpdateGeoProbeArgs,
+    },
+    program_config::{init::InitProgramConfigArgs, update::UpdateProgramConfigArgs},
+};
 
 // Instruction indices
 pub const INIT_PROGRAM_CONFIG: u8 = 0;
@@ -11,45 +17,6 @@ pub const DELETE_GEO_PROBE: u8 = 3;
 pub const ADD_PARENT_DEVICE: u8 = 4;
 pub const REMOVE_PARENT_DEVICE: u8 = 5;
 pub const UPDATE_PROGRAM_CONFIG: u8 = 6;
-
-// Args structs
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
-pub struct InitProgramConfigArgs {
-    pub serviceability_program_id: Pubkey,
-}
-
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
-pub struct CreateGeoProbeArgs {
-    pub code: String,
-    #[incremental(default = std::net::Ipv4Addr::UNSPECIFIED)]
-    pub public_ip: Ipv4Addr,
-    pub location_offset_port: u16,
-    pub metrics_publisher_pk: Pubkey,
-}
-
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
-pub struct UpdateGeoProbeArgs {
-    pub public_ip: Option<Ipv4Addr>,
-    pub location_offset_port: Option<u16>,
-    pub metrics_publisher_pk: Option<Pubkey>,
-}
-
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
-pub struct AddParentDeviceArgs {
-    pub device_pk: Pubkey,
-}
-
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
-pub struct RemoveParentDeviceArgs {
-    pub device_pk: Pubkey,
-}
-
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
-pub struct UpdateProgramConfigArgs {
-    pub serviceability_program_id: Option<Pubkey>,
-    pub version: Option<u32>,
-    pub min_compatible_version: Option<u32>,
-}
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 pub enum GeolocationInstruction {
@@ -110,6 +77,8 @@ impl GeolocationInstruction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use solana_program::pubkey::Pubkey;
+    use std::net::Ipv4Addr;
 
     fn test_instruction(instruction: GeolocationInstruction) {
         let packed = instruction.pack();

@@ -1,6 +1,7 @@
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use crate::{
     error::GeolocationError,
-    instructions::AddParentDeviceArgs,
     processors::check_foundation_allowlist,
     serializer::try_acc_write,
     state::geo_probe::{GeoProbe, MAX_PARENT_DEVICES},
@@ -13,6 +14,11 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
+
+#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
+pub struct AddParentDeviceArgs {
+    pub device_pk: Pubkey,
+}
 
 /// Adds a parent device (DZD) to a GeoProbe's parent_devices list.
 ///

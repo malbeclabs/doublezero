@@ -1,6 +1,10 @@
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use crate::{
-    error::GeolocationError, instructions::UpdateProgramConfigArgs, pda::get_program_config_pda,
-    serializer::try_acc_write, state::program_config::GeolocationProgramConfig,
+    error::GeolocationError,
+    pda::get_program_config_pda,
+    serializer::try_acc_write,
+    state::program_config::GeolocationProgramConfig,
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -11,6 +15,13 @@ use solana_program::{
 };
 
 use super::parse_upgrade_authority;
+
+#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
+pub struct UpdateProgramConfigArgs {
+    pub serviceability_program_id: Option<Pubkey>,
+    pub version: Option<u32>,
+    pub min_compatible_version: Option<u32>,
+}
 
 pub fn process_update_program_config(
     program_id: &Pubkey,

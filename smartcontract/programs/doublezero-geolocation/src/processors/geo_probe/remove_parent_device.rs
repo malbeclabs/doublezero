@@ -1,6 +1,10 @@
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use crate::{
-    error::GeolocationError, instructions::RemoveParentDeviceArgs,
-    processors::check_foundation_allowlist, serializer::try_acc_write, state::geo_probe::GeoProbe,
+    error::GeolocationError,
+    processors::check_foundation_allowlist,
+    serializer::try_acc_write,
+    state::geo_probe::GeoProbe,
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -9,6 +13,11 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
+
+#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
+pub struct RemoveParentDeviceArgs {
+    pub device_pk: Pubkey,
+}
 
 pub fn process_remove_parent_device(
     program_id: &Pubkey,

@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Activator
+  - removes accesspass monitor task (that expires access passes)
 - Onchain Programs
   - Refactor user creation to validate all limits (max_users, max_multicast_users, max_unicast_users) before incrementing counters — improves efficiency by avoiding wasted work on validation failures and follows fail-fast best practice
 - E2E / QA Tests

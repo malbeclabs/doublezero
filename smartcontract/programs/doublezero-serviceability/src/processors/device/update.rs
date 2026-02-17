@@ -6,7 +6,7 @@ use crate::{
     serializer::try_acc_write,
     state::{
         accounttype::AccountType, contributor::Contributor, device::*, globalstate::GlobalState,
-        location::Location,
+        location::Location, resource_extension::ResourceExtensionBorrowed,
     },
 };
 use borsh::BorshSerialize;
@@ -216,19 +216,40 @@ pub fn process_update_device(
     }
 
     let mut create_dz_prefixes_resources = false;
+    let mut new_dz_prefix_count = 0usize;
     if let Some(dz_prefixes) = &value.dz_prefixes {
-        assert_eq!(
-            device.users_count, 0,
-            "Cannot update dz_prefixes when users are present"
-        );
+        let old_count = device.dz_prefixes.len();
+        let new_count = dz_prefixes.len();
+        new_dz_prefix_count = new_count;
+
         assert!(
             globalconfig_account.is_some(),
             "GlobalConfig account is required when updating dz_prefixes"
         );
         assert!(
-            resource_accounts.len() == dz_prefixes.len() + 1,
+            resource_accounts.len() == old_count.max(new_count) + 1,
             "Wrong number of resource accounts provided"
         );
+
+        // Verify existing DzPrefixBlock accounts have no user IP allocations.
+        // Only the loopback reservation at index 0 should be present.
+        for (i, resource_account) in resource_accounts
+            .iter()
+            .enumerate()
+            .take(old_count + 1)
+            .skip(1)
+        {
+            if !resource_account.data_is_empty() {
+                let mut buffer = resource_account.data.borrow_mut();
+                let resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+                assert!(
+                    resource.count_allocated() <= 1,
+                    "Cannot update dz_prefixes: DzPrefixBlock at index {} has allocated user IPs",
+                    i - 1
+                );
+            }
+        }
+
         device.dz_prefixes = dz_prefixes.clone();
         create_dz_prefixes_resources = true;
     }
@@ -302,7 +323,12 @@ pub fn process_update_device(
     // this has to occur after the device change is serialized because create_resource
     // needs to be able to read dz_prefixes from the device_account
     if create_dz_prefixes_resources {
-        for (i, resource_account) in resource_accounts.iter().enumerate().skip(1) {
+        for (i, resource_account) in resource_accounts
+            .iter()
+            .enumerate()
+            .take(new_dz_prefix_count + 1)
+            .skip(1)
+        {
             create_resource(
                 program_id,
                 resource_account,

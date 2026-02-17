@@ -52,6 +52,26 @@ func IsStatusUp(status string) bool {
 	return status == UserStatusUp || status == UserStatusUpLegacy
 }
 
+// IsIBRLStatus returns true if the status represents an IBRL (unicast) tunnel.
+func IsIBRLStatus(s *pb.Status) bool {
+	return strings.HasPrefix(s.UserType, "IBRL")
+}
+
+// FindIBRLStatus returns the first IBRL status from the given list.
+// When only one status exists, it is returned regardless of type (backwards-compatible
+// fallback for single-tunnel mode).
+func FindIBRLStatus(statuses []*pb.Status) *pb.Status {
+	if len(statuses) == 1 {
+		return statuses[0]
+	}
+	for _, s := range statuses {
+		if IsIBRLStatus(s) {
+			return s
+		}
+	}
+	return nil
+}
+
 type Device struct {
 	PubKey       string
 	Code         string
@@ -151,12 +171,16 @@ func (c *Client) DoublezeroOrPublicIP() net.IP {
 }
 
 func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitForDeletion bool) error {
-	status, err := c.GetUserStatus(ctx)
+	resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
 	if err != nil {
 		return fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
 	}
-	if status.SessionStatus != UserStatusDisconnected {
-		c.log.Debug("Disconnecting user", "host", c.Host)
+	// Log if any tunnel is not already disconnected.
+	for _, s := range resp.Status {
+		if s.SessionStatus != UserStatusDisconnected {
+			c.log.Debug("Disconnecting user", "host", c.Host, "tunnel", s.TunnelName, "userType", s.UserType)
+			break
+		}
 	}
 
 	// Always try disconnecting, even if it looks like the user is already disconnected.
@@ -173,7 +197,22 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	if waitForStatus {
 		err = c.WaitForStatusDisconnected(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to wait for status to be disconnected on host %s, current status %s: %w", c.Host, status.SessionStatus, err)
+			// Log current statuses for diagnostics using a fresh context
+			// since the caller's ctx may have timed out.
+			diagCtx, diagCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer diagCancel()
+			diagResp, diagErr := c.grpcClient.GetStatus(diagCtx, &emptypb.Empty{})
+			if diagErr == nil {
+				for _, s := range diagResp.Status {
+					c.log.Info("DisconnectUser timeout: current status",
+						"host", c.Host,
+						"tunnelName", s.TunnelName,
+						"userType", s.UserType,
+						"sessionStatus", s.SessionStatus,
+					)
+				}
+			}
+			return fmt.Errorf("failed to wait for status to be disconnected on host %s: %w", c.Host, err)
 		}
 	}
 
@@ -231,6 +270,10 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	return nil
 }
 
+// GetUserStatus returns the single tunnel status for the client.
+//
+// Deprecated: Use GetUserStatuses + FindIBRLStatus instead, which handle
+// multi-tunnel scenarios where more than one status may be present.
 func (c *Client) GetUserStatus(ctx context.Context) (*pb.Status, error) {
 	resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
 	if err != nil {
@@ -245,16 +288,17 @@ func (c *Client) GetUserStatus(ctx context.Context) (*pb.Status, error) {
 	return resp.Status[0], nil
 }
 
-func (c *Client) GetCurrentDevice(ctx context.Context) (*Device, error) {
-	status, err := c.GetUserStatus(ctx)
+// GetUserStatuses returns all tunnel statuses for the client.
+// Returns an error if no statuses are found.
+func (c *Client) GetUserStatuses(ctx context.Context) ([]*pb.Status, error) {
+	resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
+		return nil, fmt.Errorf("failed to get status on host %s: %w", c.Host, err)
 	}
-	device, ok := c.devices[status.CurrentDevice]
-	if !ok {
-		return nil, fmt.Errorf("device %q not found on host %s", status.CurrentDevice, c.Host)
+	if len(resp.Status) == 0 {
+		return nil, fmt.Errorf("no user statuses found on host %s", c.Host)
 	}
-	return device, nil
+	return resp.Status, nil
 }
 
 func (c *Client) GetInstalledRoutes(ctx context.Context) ([]*pb.Route, error) {
@@ -285,6 +329,57 @@ func (c *Client) WaitForStatusUp(ctx context.Context) error {
 	}
 
 	c.log.Debug("Confirmed status is up", "host", c.Host, "doubleZeroIP", c.doubleZeroIP)
+	return nil
+}
+
+// WaitForAllStatusesUp polls until all tunnel statuses are up and at least
+// minExpected statuses exist. Sets doubleZeroIP from the IBRL status preferentially.
+func (c *Client) WaitForAllStatusesUp(ctx context.Context, minExpected int) error {
+	c.log.Debug("Waiting for all statuses to be up", "host", c.Host, "minExpected", minExpected)
+	ctx, cancel := context.WithTimeout(ctx, waitForStatusUpTimeout)
+	defer cancel()
+
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
+		if err != nil {
+			return false, err
+		}
+		if len(resp.Status) < minExpected {
+			c.log.Debug("Waiting for statuses", "host", c.Host, "have", len(resp.Status), "want", minExpected)
+			return false, nil
+		}
+		for _, s := range resp.Status {
+			if !IsStatusUp(s.SessionStatus) {
+				c.log.Debug("Status not up yet", "host", c.Host, "tunnel", s.TunnelName, "userType", s.UserType, "status", s.SessionStatus)
+				return false, nil
+			}
+		}
+		// All statuses are up. Set doubleZeroIP from IBRL status preferentially.
+		ibrl := FindIBRLStatus(resp.Status)
+		if ibrl != nil && ibrl.DoubleZeroIp != "" {
+			c.doubleZeroIP = net.ParseIP(ibrl.DoubleZeroIp)
+		}
+		return true, nil
+	}, waitForStatusUpTimeout, waitInterval)
+	if err != nil {
+		// Log current statuses for diagnostics before returning error.
+		diagCtx, diagCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer diagCancel()
+		resp, diagErr := c.grpcClient.GetStatus(diagCtx, &emptypb.Empty{})
+		if diagErr == nil {
+			for _, s := range resp.Status {
+				c.log.Info("WaitForAllStatusesUp timeout: current status",
+					"host", c.Host,
+					"tunnelName", s.TunnelName,
+					"userType", s.UserType,
+					"sessionStatus", s.SessionStatus,
+				)
+			}
+		}
+		return fmt.Errorf("failed to wait for all statuses to be up on host %s: %w", c.Host, err)
+	}
+
+	c.log.Debug("Confirmed all statuses are up", "host", c.Host, "doubleZeroIP", c.doubleZeroIP)
 	return nil
 }
 
@@ -484,12 +579,18 @@ func (c *Client) DumpDiagnostics(groups []*MulticastGroup) {
 	}
 }
 
-func (c *Client) getConnectedDevice(ctx context.Context) (*Device, error) {
-	status, err := c.GetUserStatus(ctx)
+// GetUnicastDevice returns the device for the client's IBRL tunnel. When
+// requireUp is true it also verifies the session status is up.
+func (c *Client) GetUnicastDevice(ctx context.Context, requireUp bool) (*Device, error) {
+	resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
+		return nil, fmt.Errorf("failed to get status on host %s: %w", c.Host, err)
 	}
-	if !IsStatusUp(status.SessionStatus) {
+	status := FindIBRLStatus(resp.Status)
+	if status == nil {
+		return nil, fmt.Errorf("no IBRL status found on host %s", c.Host)
+	}
+	if requireUp && !IsStatusUp(status.SessionStatus) {
 		return nil, fmt.Errorf("user status is not up on host %s: %s", c.Host, status.SessionStatus)
 	}
 	device, ok := c.devices[status.CurrentDevice]

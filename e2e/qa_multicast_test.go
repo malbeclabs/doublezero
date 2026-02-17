@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -34,6 +35,10 @@ func parseMulticastGroups() []string {
 }
 
 func TestQA_MulticastConnectivity(t *testing.T) {
+	if *multiTunnelFlag {
+		t.Skip("Skipping: use TestQA_MultiTunnel in multi-tunnel mode")
+	}
+
 	log := newTestLogger(t)
 	ctx := t.Context()
 	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)
@@ -150,9 +155,17 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 		require.NoError(t, err, "failed to wait for status")
 	}
 
+	validateMulticastConnectivity(t, ctx, log, publisher, subscribers, group)
+}
+
+// validateMulticastConnectivity verifies multicast data delivery from publisher
+// to all subscribers. Clients must already be connected with status up.
+func validateMulticastConnectivity(t *testing.T, ctx context.Context, log *slog.Logger, publisher *qa.Client, subscribers []*qa.Client, group *qa.MulticastGroup) {
+	t.Helper()
+
 	// Join all subscribers to the multicast group.
 	for _, subscriber := range subscribers {
-		err = subscriber.MulticastJoin(ctx, group)
+		err := subscriber.MulticastJoin(ctx, group)
 		require.NoError(t, err, "failed to join multicast group %s", group.Code)
 	}
 
@@ -181,7 +194,7 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 	}
 
 	// Leave multicast group.
-	err = publisher.MulticastLeave(ctx, group.Code)
+	err := publisher.MulticastLeave(ctx, group.Code)
 	require.NoError(t, err, "failed to leave multicast group")
 }
 

@@ -493,8 +493,11 @@ func (q *QAAgent) ConnectMulticast(ctx context.Context, req *pb.ConnectMulticast
 		}
 	}
 
-	q.log.Debug("Received ConnectMulticast request", "pub_codes", pubCodes, "sub_codes", subCodes)
+	q.log.Debug("Received ConnectMulticast request", "pub_codes", pubCodes, "sub_codes", subCodes, "client_ip", req.GetClientIp())
 	args := []string{"connect", "multicast"}
+	if clientIP := req.GetClientIp(); clientIP != "" {
+		args = append(args, "--client-ip", clientIP)
+	}
 	if len(pubCodes) > 0 {
 		args = append(args, "--publish")
 		args = append(args, pubCodes...)

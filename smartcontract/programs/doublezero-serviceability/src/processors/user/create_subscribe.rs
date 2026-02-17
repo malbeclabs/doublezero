@@ -168,12 +168,6 @@ pub fn process_create_subscribe_user(
         return Err(DoubleZeroError::AccessPassUnauthorized.into());
     }
 
-    accesspass.connection_count += 1;
-    accesspass.status = AccessPassStatus::Connected;
-    if accesspass.is_dynamic() && accesspass.client_ip == Ipv4Addr::UNSPECIFIED {
-        accesspass.client_ip = value.client_ip; // lock to the first used IP
-    }
-
     // Read validator_pubkey from AccesPass
     let validator_pubkey = match &accesspass.accesspass_type {
         AccessPassType::SolanaValidator(pk) => *pk,
@@ -239,6 +233,13 @@ pub fn process_create_subscribe_user(
                 return Err(DoubleZeroError::MaxUnicastUsersExceeded.into());
             }
         }
+    }
+
+    // All validations passed - now update counters
+    accesspass.connection_count += 1;
+    accesspass.status = AccessPassStatus::Connected;
+    if accesspass.is_dynamic() && accesspass.client_ip == Ipv4Addr::UNSPECIFIED {
+        accesspass.client_ip = value.client_ip; // lock to the first used IP
     }
 
     device.reference_count += 1;

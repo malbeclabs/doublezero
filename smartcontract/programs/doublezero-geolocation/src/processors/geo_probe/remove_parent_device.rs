@@ -37,12 +37,26 @@ pub fn process_remove_parent_device(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    check_foundation_allowlist(
+    if program_config_account.owner != program_id {
+        msg!("Invalid ProgramConfig Account Owner");
+        return Err(ProgramError::IllegalOwner);
+    }
+
+    let program_config = check_foundation_allowlist(
         program_config_account,
         serviceability_globalstate_account,
         payer_account,
         program_id,
     )?;
+
+    if *serviceability_globalstate_account.owner != program_config.serviceability_program_id {
+        msg!(
+            "Expected serviceability program: {}, got: {}",
+            program_config.serviceability_program_id,
+            serviceability_globalstate_account.owner
+        );
+        return Err(GeolocationError::InvalidServiceabilityProgramId.into());
+    }
 
     if probe_account.owner != program_id {
         msg!("Invalid GeoProbe Account Owner");

@@ -1395,7 +1395,6 @@ async fn test_user_per_type_limits() {
             client_ip: user1_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass1_pubkey, false),
@@ -1455,7 +1454,6 @@ async fn test_user_per_type_limits() {
             client_ip: user2_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass2_pubkey, false),
@@ -1511,7 +1509,6 @@ async fn test_user_per_type_limits() {
             client_ip: mcast1_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_mcast1_pubkey, false),
@@ -1572,7 +1569,6 @@ async fn test_user_per_type_limits() {
             client_ip: mcast2_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_mcast2_pubkey, false),
@@ -1773,7 +1769,6 @@ async fn test_user_per_type_limits() {
             client_ip: user3_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass3_pubkey, false),
@@ -1819,7 +1814,6 @@ async fn test_user_per_type_limits() {
             client_ip: mcast3_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_mcast3_pubkey, false),

@@ -90,7 +90,7 @@ pub fn process_update_program_config(
 
     let (expected_pda, _) = get_program_config_pda(program_id);
     if program_config_account.key != &expected_pda {
-        msg!("Invalid ProgramConfig PubKey");
+        msg!("Invalid ProgramConfig Pubkey");
         return Err(ProgramError::InvalidSeeds);
     }
 

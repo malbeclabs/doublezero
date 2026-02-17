@@ -214,9 +214,6 @@ pub fn process_create_user(
         return Err(DoubleZeroError::AccessPassUnauthorized.into());
     }
 
-    accesspass.connection_count += 1;
-    accesspass.status = AccessPassStatus::Connected;
-
     // Read validator_pubkey from AccessPass
     let validator_pubkey = match &accesspass.accesspass_type {
         AccessPassType::SolanaValidator(pk) => *pk,
@@ -270,6 +267,10 @@ pub fn process_create_user(
             }
         }
     }
+
+    // All validations passed - now update counters
+    accesspass.connection_count += 1;
+    accesspass.status = AccessPassStatus::Connected;
 
     device.reference_count += 1;
     device.users_count += 1;

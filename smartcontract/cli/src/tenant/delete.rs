@@ -9,7 +9,6 @@ use doublezero_sdk::commands::{
     tenant::{delete::DeleteTenantCommand, get::GetTenantCommand},
     user::{delete::DeleteUserCommand, list::ListUserCommand},
 };
-use doublezero_serviceability::state::accountdata::AccountData;
 use indicatif::{ProgressBar, ProgressStyle};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, time::Duration};

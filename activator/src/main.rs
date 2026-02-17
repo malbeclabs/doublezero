@@ -7,10 +7,8 @@ use metrics_exporter_prometheus::PrometheusBuilder;
 use std::path::PathBuf;
 use tokio::signal;
 
-mod accesspass_monitor;
 mod activator;
 mod activator_metrics;
-mod constants;
 mod idallocator;
 mod ipblockallocator;
 mod process;

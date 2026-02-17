@@ -579,9 +579,9 @@ func (c *Client) DumpDiagnostics(groups []*MulticastGroup) {
 	}
 }
 
-// GetIBRLDevice returns the device for the client's IBRL tunnel. When
+// GetUnicastDevice returns the device for the client's IBRL tunnel. When
 // requireUp is true it also verifies the session status is up.
-func (c *Client) GetIBRLDevice(ctx context.Context, requireUp bool) (*Device, error) {
+func (c *Client) GetUnicastDevice(ctx context.Context, requireUp bool) (*Device, error) {
 	resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get status on host %s: %w", c.Host, err)

@@ -228,7 +228,7 @@ func TestE2E_QAAgent_UnicastConnectivity(t *testing.T) {
 	log.Debug("==> Waiting for cross-exchange routes")
 	qaClients := []*qa.Client{qaClient1, qaClient2}
 	for _, c := range qaClients {
-		device, err := c.GetIBRLDevice(ctx, false)
+		device, err := c.GetUnicastDevice(ctx, false)
 		require.NoError(t, err)
 		err = c.WaitForRoutes(ctx, qa.MapFilter(qaClients, func(other *qa.Client) (net.IP, bool) {
 			// Skip self (by pointer identity, not hostname, since all E2E clients
@@ -236,7 +236,7 @@ func TestE2E_QAAgent_UnicastConnectivity(t *testing.T) {
 			if other == c {
 				return nil, false
 			}
-			otherDevice, err := other.GetIBRLDevice(ctx, false)
+			otherDevice, err := other.GetUnicastDevice(ctx, false)
 			if err != nil {
 				return nil, false
 			}
@@ -578,13 +578,13 @@ func TestE2E_QAAgent_MultiTunnelConnectivity(t *testing.T) {
 	// 5a. Verify unicast routes and ping still work.
 	log.Debug("==> Waiting for cross-exchange routes")
 	for _, c := range qaClients {
-		device, err := c.GetIBRLDevice(ctx, false)
+		device, err := c.GetUnicastDevice(ctx, false)
 		require.NoError(t, err)
 		err = c.WaitForRoutes(ctx, qa.MapFilter(qaClients, func(other *qa.Client) (net.IP, bool) {
 			if other == c {
 				return nil, false
 			}
-			otherDevice, err := other.GetIBRLDevice(ctx, false)
+			otherDevice, err := other.GetUnicastDevice(ctx, false)
 			if err != nil {
 				return nil, false
 			}

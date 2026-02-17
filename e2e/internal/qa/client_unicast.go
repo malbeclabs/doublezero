@@ -95,7 +95,7 @@ func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targ
 	clientDevice := srcDevice
 	if clientDevice == nil {
 		var err error
-		clientDevice, err = c.GetIBRLDevice(ctx, true)
+		clientDevice, err = c.GetUnicastDevice(ctx, true)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get connected device: %w", err)
 		}
@@ -104,7 +104,7 @@ func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targ
 	otherClientDevice := dstDevice
 	if otherClientDevice == nil {
 		var err error
-		otherClientDevice, err = targetClient.GetIBRLDevice(ctx, true)
+		otherClientDevice, err = targetClient.GetUnicastDevice(ctx, true)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get connected device: %w", err)
 		}

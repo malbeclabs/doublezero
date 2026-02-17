@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: `UnlinkDeviceInterface` now only allows `Activated` or `Pending` interfaces; when an associated link account is provided for an `Activated` interface, the link must be in `Deleting` status
   - SDK: `UnlinkDeviceInterfaceCommand` automatically discovers and passes associated link accounts
   - Serviceability: allow contributors to update prefixes when for IBRL when no users are allocated
+  - Serviceability: require ip-net for CYOA interfaces
 - E2E / QA Tests
   - Fix QA unicast test flake caused by RPC 429 rate limiting during concurrent user deletion — treat transient RPC errors as non-fatal in the deletion polling loop
 

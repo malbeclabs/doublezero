@@ -645,6 +645,48 @@ doublezero-geolocation get 12345 203.0.113.42  # Specific IP in epoch
 - **Analytics Integration:** Feed measurement data to Lake for insights
 - **Dynamic Configuration:** Change target IPs without redeploying probe servers
 
+### Cross-Program Reference Counting
+
+**Problem:** GeoProbes reference serviceability Devices via `parent_devices` to establish authoritative basis for their location. If a parent device is deleted or suspended in the serviceability program, the GeoProbe retains a stale reference, invalidating its location attestation.
+
+**Current Behavior:** Phase 1 implementation validates parent devices exist and are activated only at `AddParentDevice` instruction time. This creates a "soft reference" that is not enforced onchain. The telemetry agent polls onchain for GeoProbe updates and periodically updates a cached copy of it's associated device's lat/lng values. If the device disappears in the next poll cycle, the telemetry agent stops any geolocation measurements and begins raising errors. The geoprobe agent also stops any geolocation measurements associated with the removed device.
+
+**Proposed Solution: Cross-Program Reference Counting via CPI**
+
+1. **Serviceability Program Changes:**
+   - Add `IncrementDeviceReferenceCount` instruction (foundation-gated)
+   - Add `DecrementDeviceReferenceCount` instruction (foundation-gated)
+   - Existing `DeleteDevice` already checks `device.reference_count > 0`
+
+2. **Geolocation Program Changes:**
+   - Update `AddParentDevice` to CPI `IncrementDeviceReferenceCount` before adding to `parent_devices`
+   - Update `RemoveParentDevice` to CPI `DecrementDeviceReferenceCount` after removing from `parent_devices`
+   - Add rollback logic if CPI fails
+
+**Implementation Example:**
+```rust
+// In geolocation/processors/geo_probe/add_parent_device.rs
+pub fn process_add_parent_device(...) -> ProgramResult {
+    // ... existing validation ...
+
+    // CPI to increment device reference count
+    let increment_ix = create_increment_device_ref_count_instruction(
+        &program_config.serviceability_program_id,
+        device_account.key,
+        payer_account.key,
+    );
+    invoke(&increment_ix, &[device_account.clone(), payer_account.clone()])?;
+
+    // Only add to parent_devices if CPI succeeded
+    probe.parent_devices.push(args.device_pk);
+    try_acc_write(&probe, probe_account, payer_account, accounts)?;
+
+    Ok(())
+}
+```
+**Dependencies:**
+- Requires serviceability program upgrade to expose reference count management
+
 ## Backward Compatibility
 
 - No breaking changes to existing telemetry infrastructure

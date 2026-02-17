@@ -14,6 +14,21 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
+/// Adds a parent device (DZD) to a GeoProbe's parent_devices list.
+///
+/// Parent devices provide the authoritative basis for the probe's location by
+/// measuring latency to it. This instruction validates the device exists and is
+/// activated at add time, but creates a "soft reference" - if the device is
+/// later deleted or suspended in the serviceability program, this probe will
+/// have a stale reference.
+///
+/// Note: Phase 1 limitations:
+/// - No cross-program reference counting (device can be deleted while referenced)
+///
+/// Future enhancement should implement:
+/// 1. CPI to serviceability's IncrementDeviceReferenceCount (prevent deletion)
+///
+/// See RFC16 Future Work section "Cross-Program Reference Counting" for details.
 pub fn process_add_parent_device(
     program_id: &Pubkey,
     accounts: &[AccountInfo],

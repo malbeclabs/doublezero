@@ -7,6 +7,7 @@ use crate::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType, ALLOW_MULTIPLE_IP, IS_DYNAMIC},
         accounttype::AccountType,
         globalstate::GlobalState,
+        tenant::Tenant,
     },
 };
 use borsh::BorshSerialize;
@@ -36,7 +37,6 @@ pub struct SetAccessPassArgs {
     pub client_ip: Ipv4Addr, // 4
     pub last_access_epoch: u64,          // 8
     pub allow_multiple_ip: bool,         // 1
-    pub tenant: Pubkey,                  // 32
 }
 
 impl fmt::Debug for SetAccessPassArgs {
@@ -59,6 +59,16 @@ pub fn process_set_access_pass(
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let user_payer = next_account_info(accounts_iter)?;
+
+    // Optional tenant accounts for reference counting (backwards compatible)
+    let (tenant_remove_account, tenant_add_account) = if accounts.len() >= 7 {
+        let remove = next_account_info(accounts_iter)?;
+        let add = next_account_info(accounts_iter)?;
+        (Some(remove), Some(add))
+    } else {
+        (None, None)
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -148,7 +158,11 @@ pub fn process_set_access_pass(
             owner: *payer_account.key,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
-            tenant_allowlist: vec![value.tenant],
+            tenant_allowlist: if let Some(acc) = tenant_add_account {
+                vec![*acc.key]
+            } else {
+                vec![]
+            },
             flags,
         };
 
@@ -193,21 +207,85 @@ pub fn process_set_access_pass(
                 owner: *payer_account.key,
                 mgroup_pub_allowlist: vec![],
                 mgroup_sub_allowlist: vec![],
-                tenant_allowlist: vec![value.tenant],
+                tenant_allowlist: vec![],
             }
         };
 
         // Update fields
         accesspass.accesspass_type = value.accesspass_type.clone();
         accesspass.last_access_epoch = value.last_access_epoch;
-        accesspass.tenant_allowlist = vec![value.tenant];
         accesspass.flags = flags;
+
+        if let Some(tenant_remove) = tenant_remove_account {
+            accesspass
+                .tenant_allowlist
+                .retain(|&x| x != *tenant_remove.key);
+        }
+        if let Some(tenant_add) = tenant_add_account {
+            if tenant_add.key != &Pubkey::default()
+                && !accesspass.tenant_allowlist.contains(tenant_add.key)
+            {
+                accesspass.tenant_allowlist.push(*tenant_add.key);
+            }
+        }
 
         // Write back updated Access Pass
         try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
 
         #[cfg(test)]
         msg!("Updated: {:?}", accesspass);
+    }
+
+    // Manage tenant reference counting for added/removed tenants (if provided)
+    if let Some(tenant_remove_acc) = tenant_remove_account {
+        if tenant_remove_acc.key != &Pubkey::default() {
+            // Validate removed tenant account
+            assert_eq!(
+                *tenant_remove_acc.owner, *program_id,
+                "Invalid Tenant Remove Account Owner"
+            );
+            assert!(
+                tenant_remove_acc.is_writable,
+                "Tenant Remove Account is not writable"
+            );
+            let mut tenant_remove = Tenant::try_from(tenant_remove_acc)?;
+            tenant_remove.reference_count = tenant_remove
+                .reference_count
+                .checked_sub(1)
+                .ok_or(DoubleZeroError::InvalidIndex)?;
+            try_acc_write(&tenant_remove, tenant_remove_acc, payer_account, accounts)?;
+        }
+    }
+
+    if let Some(tenant_add_acc) = tenant_add_account {
+        if tenant_add_acc.key != &Pubkey::default() {
+            // Validate added tenant account
+            assert_eq!(
+                *tenant_add_acc.owner, *program_id,
+                "Invalid Tenant Add Account Owner"
+            );
+            assert!(
+                tenant_add_acc.is_writable,
+                "Tenant Add Account is not writable"
+            );
+            let mut tenant_add = Tenant::try_from(tenant_add_acc)?;
+
+            // Validate payer is administrator of the tenant
+            if !tenant_add.administrators.contains(payer_account.key) {
+                msg!(
+                    "Payer {} is not an administrator of tenant {}",
+                    payer_account.key,
+                    tenant_add_acc.key
+                );
+                return Err(DoubleZeroError::Unauthorized.into());
+            }
+
+            tenant_add.reference_count = tenant_add
+                .reference_count
+                .checked_add(1)
+                .ok_or(DoubleZeroError::InvalidIndex)?;
+            try_acc_write(&tenant_add, tenant_add_acc, payer_account, accounts)?;
+        }
     }
 
     // Airdrop rent exempt + configured lamports to user_payer account

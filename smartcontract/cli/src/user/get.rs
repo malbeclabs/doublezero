@@ -20,10 +20,12 @@ impl GetUserCliCommand {
         let pubkey = Pubkey::from_str(&self.pubkey)?;
         let (pubkey, user) = client.get_user(GetUserCommand { pubkey })?;
 
-        let (_, accesspass) = client.get_accesspass(GetAccessPassCommand {
-            client_ip: user.client_ip,
-            user_payer: user.owner,
-        })?;
+        let (_, accesspass) = client
+            .get_accesspass(GetAccessPassCommand {
+                client_ip: user.client_ip,
+                user_payer: user.owner,
+            })?
+            .ok_or_else(|| eyre::eyre!("Access Pass not found"))?;
         let multicast_groups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
         let tenants = client.list_tenant(ListTenantCommand {})?;
         let devices = client.list_device(ListDeviceCommand {})?;
@@ -244,7 +246,7 @@ mod tests {
                 client_ip: user.client_ip,
                 user_payer: user.owner,
             }))
-            .returning(move |_| Ok((accesspass_pubkey, accesspass.clone())));
+            .returning(move |_| Ok(Some((accesspass_pubkey, accesspass.clone()))));
 
         client
             .expect_get_user()

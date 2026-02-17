@@ -13,4 +13,4 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -tags=qa -short -v ./e2e --args -hosts=chi-dn-bm2,chi-dn-bm3,chi-dn-bm4 -env devnet -multi-tunnel
+      - run: go test -tags=qa -short -v ./e2e --args -hosts=chi-dn-bm2,chi-dn-bm3,chi-dn-bm4 -env devnet

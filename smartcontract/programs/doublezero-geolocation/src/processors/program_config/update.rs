@@ -1,5 +1,4 @@
-use borsh::BorshSerialize;
-use borsh_incremental::BorshDeserializeIncremental;
+use borsh::{BorshDeserialize, BorshSerialize};
 use crate::{
     error::GeolocationError,
     pda::get_program_config_pda,
@@ -16,7 +15,7 @@ use solana_program::{
 
 use super::parse_upgrade_authority;
 
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct UpdateProgramConfigArgs {
     pub serviceability_program_id: Option<Pubkey>,
     pub version: Option<u32>,

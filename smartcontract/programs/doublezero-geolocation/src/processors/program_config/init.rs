@@ -1,5 +1,4 @@
-use borsh::BorshSerialize;
-use borsh_incremental::BorshDeserializeIncremental;
+use borsh::{BorshDeserialize, BorshSerialize};
 use crate::{
     error::GeolocationError,
     pda::get_program_config_pda,
@@ -17,7 +16,7 @@ use solana_program::{
 
 use super::parse_upgrade_authority;
 
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct InitProgramConfigArgs {
     pub serviceability_program_id: Pubkey,
 }
@@ -38,19 +37,9 @@ pub fn process_init_program_config(
         msg!("Payer must be a signer");
         return Err(ProgramError::MissingRequiredSignature);
     }
-    if system_program.key != &solana_program::system_program::id() {
-        msg!("Invalid System Program account");
-        return Err(ProgramError::IncorrectProgramId);
-    }
     if !program_config_account.is_writable {
         msg!("ProgramConfig must be writable");
         return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Verify the program data account is owned by the BPF Upgradeable Loader
-    if program_data_account.owner != &solana_program::bpf_loader_upgradeable::id() {
-        msg!("Program data account not owned by BPF Upgradeable Loader");
-        return Err(ProgramError::IllegalOwner);
     }
 
     // Verify the program data account derives from the program id

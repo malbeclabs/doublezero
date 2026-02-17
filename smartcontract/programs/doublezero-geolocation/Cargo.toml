@@ -17,7 +17,6 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 borsh.workspace = true
-borsh-incremental.workspace = true
 serde = { workspace = true, optional = true }
 serde_bytes = { workspace = true, optional = true }
 solana-program.workspace = true

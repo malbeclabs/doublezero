@@ -1,5 +1,4 @@
-use borsh::BorshSerialize;
-use borsh_incremental::BorshDeserializeIncremental;
+use borsh::{BorshDeserialize, BorshSerialize};
 use crate::{
     error::GeolocationError,
     processors::check_foundation_allowlist,
@@ -14,7 +13,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct RemoveParentDeviceArgs {
     pub device_pk: Pubkey,
 }

@@ -1,5 +1,4 @@
-use borsh::BorshSerialize;
-use borsh_incremental::BorshDeserializeIncremental;
+use borsh::{BorshDeserialize, BorshSerialize};
 use crate::{
     error::GeolocationError,
     processors::check_foundation_allowlist,
@@ -15,7 +14,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct AddParentDeviceArgs {
     pub device_pk: Pubkey,
 }
@@ -60,16 +59,6 @@ pub fn process_add_parent_device(
         payer_account,
         program_id,
     )?;
-
-    // Validate device_account key matches the requested device_pk
-    if device_account.key != &args.device_pk {
-        msg!(
-            "Device account key {} does not match args.device_pk {}",
-            device_account.key,
-            args.device_pk
-        );
-        return Err(ProgramError::InvalidAccountData);
-    }
 
     // Validate device_account belongs to the Serviceability program
     if *device_account.owner != program_config.serviceability_program_id {

@@ -8,7 +8,7 @@ use std::{fmt, net::Ipv4Addr};
 
 pub const MAX_PARENT_DEVICES: usize = 5;
 
-#[derive(BorshSerialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GeoProbe {
     pub account_type: AccountType, // 1
@@ -60,18 +60,7 @@ impl TryFrom<&[u8]> for GeoProbe {
     type Error = ProgramError;
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
-        let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            exchange_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            public_ip: BorshDeserialize::deserialize(&mut data).unwrap_or([0, 0, 0, 0].into()),
-            location_offset_port: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            parent_devices: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            metrics_publisher_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            reference_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-        };
+        let out = Self::deserialize(&mut data).map_err(|_| ProgramError::InvalidAccountData)?;
 
         if out.account_type != AccountType::GeoProbe {
             return Err(ProgramError::InvalidAccountData);
@@ -119,22 +108,6 @@ impl Validate for GeoProbe {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_state_geo_probe_try_from_defaults() {
-        let data = [AccountType::GeoProbe as u8];
-        let val = GeoProbe::try_from(&data[..]).unwrap();
-
-        assert_eq!(val.owner, Pubkey::default());
-        assert_eq!(val.bump_seed, 0);
-        assert_eq!(val.exchange_pk, Pubkey::default());
-        assert_eq!(val.public_ip, Ipv4Addr::new(0, 0, 0, 0));
-        assert_eq!(val.location_offset_port, 0);
-        assert_eq!(val.code, "");
-        assert_eq!(val.parent_devices.len(), 0);
-        assert_eq!(val.metrics_publisher_pk, Pubkey::default());
-        assert_eq!(val.reference_count, 0);
-    }
 
     #[test]
     fn test_state_geo_probe_serialization() {

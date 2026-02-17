@@ -1,5 +1,4 @@
-use borsh::BorshSerialize;
-use borsh_incremental::BorshDeserializeIncremental;
+use borsh::{BorshDeserialize, BorshSerialize};
 use crate::{
     error::GeolocationError,
     pda::get_geo_probe_pda,
@@ -19,10 +18,9 @@ use solana_program::{
 };
 use std::net::Ipv4Addr;
 
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct CreateGeoProbeArgs {
     pub code: String,
-    #[incremental(default = std::net::Ipv4Addr::UNSPECIFIED)]
     pub public_ip: Ipv4Addr,
     pub location_offset_port: u16,
     pub metrics_publisher_pk: Pubkey,
@@ -45,10 +43,6 @@ pub fn process_create_geo_probe(
     if !payer_account.is_signer {
         msg!("Payer must be a signer");
         return Err(ProgramError::MissingRequiredSignature);
-    }
-    if system_program.key != &solana_program::system_program::id() {
-        msg!("Invalid System Program account");
-        return Err(ProgramError::IncorrectProgramId);
     }
 
     let program_config = check_foundation_allowlist(

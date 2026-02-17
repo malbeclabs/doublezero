@@ -1,4 +1,4 @@
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::program_error::ProgramError;
 
 pub use crate::processors::{
@@ -9,16 +9,8 @@ pub use crate::processors::{
     program_config::{init::InitProgramConfigArgs, update::UpdateProgramConfigArgs},
 };
 
-// Instruction indices
-pub const INIT_PROGRAM_CONFIG: u8 = 0;
-pub const CREATE_GEO_PROBE: u8 = 1;
-pub const UPDATE_GEO_PROBE: u8 = 2;
-pub const DELETE_GEO_PROBE: u8 = 3;
-pub const ADD_PARENT_DEVICE: u8 = 4;
-pub const REMOVE_PARENT_DEVICE: u8 = 5;
-pub const UPDATE_PROGRAM_CONFIG: u8 = 6;
 
-#[derive(BorshSerialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub enum GeolocationInstruction {
     InitProgramConfig(InitProgramConfigArgs),
     CreateGeoProbe(CreateGeoProbeArgs),
@@ -35,42 +27,7 @@ impl GeolocationInstruction {
     }
 
     pub fn unpack(data: &[u8]) -> Result<Self, ProgramError> {
-        if data.is_empty() {
-            return Err(ProgramError::InvalidInstructionData);
-        }
-
-        let (&instruction, rest) = data
-            .split_first()
-            .ok_or(ProgramError::InvalidInstructionData)?;
-
-        match instruction {
-            INIT_PROGRAM_CONFIG => Ok(Self::InitProgramConfig(
-                InitProgramConfigArgs::try_from(rest)
-                    .map_err(|_| ProgramError::InvalidInstructionData)?,
-            )),
-            CREATE_GEO_PROBE => Ok(Self::CreateGeoProbe(
-                CreateGeoProbeArgs::try_from(rest)
-                    .map_err(|_| ProgramError::InvalidInstructionData)?,
-            )),
-            UPDATE_GEO_PROBE => Ok(Self::UpdateGeoProbe(
-                UpdateGeoProbeArgs::try_from(rest)
-                    .map_err(|_| ProgramError::InvalidInstructionData)?,
-            )),
-            DELETE_GEO_PROBE => Ok(Self::DeleteGeoProbe),
-            ADD_PARENT_DEVICE => Ok(Self::AddParentDevice(
-                AddParentDeviceArgs::try_from(rest)
-                    .map_err(|_| ProgramError::InvalidInstructionData)?,
-            )),
-            REMOVE_PARENT_DEVICE => Ok(Self::RemoveParentDevice(
-                RemoveParentDeviceArgs::try_from(rest)
-                    .map_err(|_| ProgramError::InvalidInstructionData)?,
-            )),
-            UPDATE_PROGRAM_CONFIG => Ok(Self::UpdateProgramConfig(
-                UpdateProgramConfigArgs::try_from(rest)
-                    .map_err(|_| ProgramError::InvalidInstructionData)?,
-            )),
-            _ => Err(ProgramError::InvalidInstructionData),
-        }
+        borsh::from_slice(data).map_err(|_| ProgramError::InvalidInstructionData)
     }
 }
 

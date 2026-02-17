@@ -1,5 +1,4 @@
-use borsh::BorshSerialize;
-use borsh_incremental::BorshDeserializeIncremental;
+use borsh::{BorshDeserialize, BorshSerialize};
 use crate::{
     processors::check_foundation_allowlist,
     serializer::try_acc_write,
@@ -15,7 +14,7 @@ use solana_program::{
 };
 use std::net::Ipv4Addr;
 
-#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct UpdateGeoProbeArgs {
     pub public_ip: Option<Ipv4Addr>,
     pub location_offset_port: Option<u16>,

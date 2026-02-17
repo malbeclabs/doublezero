@@ -2,87 +2,37 @@ use solana_program::program_error::ProgramError;
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Clone)]
+#[repr(u32)]
 pub enum GeolocationError {
-    #[error("Custom program error: {0:#x}")]
-    Custom(u32),
     #[error("Invalid account type")]
-    InvalidAccountType,
+    InvalidAccountType = 1,
     #[error("Not allowed")]
-    NotAllowed,
+    NotAllowed = 2,
     #[error("Invalid code length (max 32 bytes)")]
-    InvalidCodeLength,
+    InvalidCodeLength = 4,
     #[error("Invalid IP address: not publicly routable")]
-    InvalidIpAddress,
+    InvalidIpAddress = 5,
     #[error("Maximum parent devices reached")]
-    MaxParentDevicesReached,
+    MaxParentDevicesReached = 6,
     #[error("Parent device not found")]
-    ParentDeviceNotFound,
+    ParentDeviceNotFound = 8,
     #[error("Invalid serviceability program ID")]
-    InvalidServiceabilityProgramId,
+    InvalidServiceabilityProgramId = 11,
     #[error("Invalid account code")]
-    InvalidAccountCode,
+    InvalidAccountCode = 12,
     #[error("Parent device already exists")]
-    ParentDeviceAlreadyExists,
+    ParentDeviceAlreadyExists = 13,
     #[error("Reference count is not zero")]
-    ReferenceCountNotZero,
+    ReferenceCountNotZero = 15,
     #[error("Unauthorized: payer is not the upgrade authority")]
-    UnauthorizedInitializer,
+    UnauthorizedInitializer = 17,
     #[error("min_compatible_version cannot exceed version")]
-    InvalidMinCompatibleVersion,
+    InvalidMinCompatibleVersion = 18,
 }
 
 impl From<GeolocationError> for ProgramError {
     fn from(e: GeolocationError) -> Self {
-        match e {
-            GeolocationError::Custom(e) => ProgramError::Custom(e),
-            GeolocationError::InvalidAccountType => ProgramError::Custom(1),
-            GeolocationError::NotAllowed => ProgramError::Custom(2),
-            GeolocationError::InvalidCodeLength => ProgramError::Custom(4),
-            GeolocationError::InvalidIpAddress => ProgramError::Custom(5),
-            GeolocationError::MaxParentDevicesReached => ProgramError::Custom(6),
-            GeolocationError::ParentDeviceNotFound => ProgramError::Custom(8),
-            GeolocationError::InvalidServiceabilityProgramId => ProgramError::Custom(11),
-            GeolocationError::InvalidAccountCode => ProgramError::Custom(12),
-            GeolocationError::ParentDeviceAlreadyExists => ProgramError::Custom(13),
-            GeolocationError::ReferenceCountNotZero => ProgramError::Custom(15),
-            GeolocationError::UnauthorizedInitializer => ProgramError::Custom(17),
-            GeolocationError::InvalidMinCompatibleVersion => ProgramError::Custom(18),
-        }
-    }
-}
-
-impl From<u32> for GeolocationError {
-    fn from(e: u32) -> Self {
-        match e {
-            1 => GeolocationError::InvalidAccountType,
-            2 => GeolocationError::NotAllowed,
-            // 3 RFU
-            4 => GeolocationError::InvalidCodeLength,
-            5 => GeolocationError::InvalidIpAddress,
-            6 => GeolocationError::MaxParentDevicesReached,
-            // 7 RFU
-            8 => GeolocationError::ParentDeviceNotFound,
-            // 9 RFU
-            // 10 RFU
-            11 => GeolocationError::InvalidServiceabilityProgramId,
-            12 => GeolocationError::InvalidAccountCode,
-            13 => GeolocationError::ParentDeviceAlreadyExists,
-            // 14 RFU
-            15 => GeolocationError::ReferenceCountNotZero,
-            // 16 RFU
-            17 => GeolocationError::UnauthorizedInitializer,
-            18 => GeolocationError::InvalidMinCompatibleVersion,
-            _ => GeolocationError::Custom(e),
-        }
-    }
-}
-
-impl From<ProgramError> for GeolocationError {
-    fn from(e: ProgramError) -> Self {
-        match e {
-            ProgramError::Custom(e) => e.into(),
-            _ => GeolocationError::Custom(0),
-        }
+        ProgramError::Custom(e as u32)
     }
 }
 
@@ -94,7 +44,7 @@ pub trait Validate {
 mod tests {
     use super::*;
 
-    fn all_named_variants() -> Vec<(GeolocationError, u32)> {
+    fn all_variants() -> Vec<(GeolocationError, u32)> {
         vec![
             (GeolocationError::InvalidAccountType, 1),
             (GeolocationError::NotAllowed, 2),
@@ -112,8 +62,8 @@ mod tests {
     }
 
     #[test]
-    fn test_round_trip_named_variants() {
-        for (variant, expected_code) in all_named_variants() {
+    fn test_error_codes() {
+        for (variant, expected_code) in all_variants() {
             let program_error: ProgramError = variant.clone().into();
             let ProgramError::Custom(code) = program_error else {
                 panic!("expected ProgramError::Custom for {:?}", variant);
@@ -123,42 +73,7 @@ mod tests {
                 "variant {:?} should map to code {}",
                 variant, expected_code
             );
-
-            let round_tripped: GeolocationError = program_error.into();
-            assert_eq!(
-                round_tripped, variant,
-                "round-trip failed for code {}",
-                expected_code
-            );
         }
-    }
-
-    #[test]
-    fn test_custom_variant_round_trip() {
-        let original = GeolocationError::Custom(999);
-        let program_error: ProgramError = original.clone().into();
-        let round_tripped: GeolocationError = program_error.into();
-        assert_eq!(round_tripped, GeolocationError::Custom(999));
-    }
-
-    #[test]
-    fn test_custom_zero_round_trip() {
-        let original = GeolocationError::Custom(0);
-        let program_error: ProgramError = original.clone().into();
-        let round_tripped: GeolocationError = program_error.into();
-        assert_eq!(round_tripped, GeolocationError::Custom(0));
-    }
-
-    #[test]
-    fn test_unknown_u32_becomes_custom() {
-        let error: GeolocationError = 42u32.into();
-        assert_eq!(error, GeolocationError::Custom(42));
-    }
-
-    #[test]
-    fn test_non_custom_program_error_becomes_custom_zero() {
-        let error: GeolocationError = ProgramError::InvalidArgument.into();
-        assert_eq!(error, GeolocationError::Custom(0));
     }
 
     #[test]
@@ -171,10 +86,6 @@ mod tests {
         assert_eq!(
             GeolocationError::InvalidIpAddress.to_string(),
             "Invalid IP address: not publicly routable"
-        );
-        assert_eq!(
-            GeolocationError::Custom(0x1234).to_string(),
-            "Custom program error: 0x1234"
         );
     }
 }

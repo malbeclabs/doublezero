@@ -66,7 +66,10 @@ impl UpdateDeviceCommand {
         let mut resource_count = 0;
         if let Some(dz_prefixes) = &self.dz_prefixes {
             extra_accounts.push(AccountMeta::new(globalconfig_pubkey, false));
-            for idx in 0..dz_prefixes.len() + 1 {
+            let old_count = device.dz_prefixes.len();
+            let new_count = dz_prefixes.len();
+            let max_count = old_count.max(new_count);
+            for idx in 0..max_count + 1 {
                 let resource_type = match idx {
                     0 => ResourceType::TunnelIds(device_pubkey, 0),
                     _ => ResourceType::DzPrefixBlock(device_pubkey, idx - 1),
@@ -75,7 +78,7 @@ impl UpdateDeviceCommand {
                     get_resource_extension_pda(&client.get_program_id(), resource_type);
                 extra_accounts.push(AccountMeta::new(pda, false));
             }
-            resource_count += dz_prefixes.len() + 1;
+            resource_count += max_count + 1;
         }
 
         client.execute_transaction(

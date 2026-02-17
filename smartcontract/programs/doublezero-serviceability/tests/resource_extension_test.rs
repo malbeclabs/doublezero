@@ -1068,8 +1068,15 @@ async fn update_device_dz_prefixes(
 
     let dz_prefixes_list: NetworkV4List = dz_prefixes.parse().unwrap();
 
+    let device = get_device(banks_client, device_pubkey)
+        .await
+        .expect("Device should exist");
+    let old_count = device.dz_prefixes.len();
+    let new_count = dz_prefixes_list.len();
+    let max_count = old_count.max(new_count);
+
     let mut resource_accounts = vec![];
-    for idx in 0..dz_prefixes_list.len() + 1 {
+    for idx in 0..max_count + 1 {
         let resource_type = match idx {
             0 => ResourceType::TunnelIds(device_pubkey, 0),
             _ => ResourceType::DzPrefixBlock(device_pubkey, idx - 1),

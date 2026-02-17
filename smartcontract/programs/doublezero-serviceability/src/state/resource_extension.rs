@@ -249,6 +249,13 @@ impl<'a> ResourceExtensionBorrowed<'a> {
             }
         }
     }
+
+    pub fn count_allocated(&self) -> usize {
+        match &self.allocator {
+            Allocator::Ip(ip_allocator) => ip_allocator.iter_allocated(self.storage).count(),
+            Allocator::Id(id_allocator) => id_allocator.iter_allocated(self.storage).count(),
+        }
+    }
 }
 
 impl fmt::Display for ResourceExtensionBorrowed<'_> {

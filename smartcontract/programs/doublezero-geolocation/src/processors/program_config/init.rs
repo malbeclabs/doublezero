@@ -70,7 +70,6 @@ pub fn process_init_program_config(
             return Err(ProgramError::InvalidAccountData);
         }
     }
-    drop(program_data);
 
     let (expected_pda, bump_seed) = get_program_config_pda(program_id);
     if program_config_account.key != &expected_pda {

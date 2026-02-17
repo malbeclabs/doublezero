@@ -59,12 +59,19 @@ func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCodes [
 		return fmt.Errorf("failed to ensure disconnected on host %s: %w", c.Host, err)
 	}
 
+	return c.connectMulticast(ctx, multicastGroupCodes, mode)
+}
+
+// connectMulticast performs the gRPC ConnectMulticast call and validates the response.
+// It does not handle disconnect or wait-for-status — callers are responsible for that.
+func (c *Client) connectMulticast(ctx context.Context, multicastGroupCodes []string, mode pb.ConnectMulticastRequest_MulticastMode) error {
 	c.log.Debug("Connecting multicast", "host", c.Host, "multicastGroupCodes", multicastGroupCodes, "mode", mode)
 	ctx, cancel := context.WithTimeout(ctx, connectMulticastTimeout)
 	defer cancel()
 	resp, err := c.grpcClient.ConnectMulticast(ctx, &pb.ConnectMulticastRequest{
-		Mode:  mode,
-		Codes: multicastGroupCodes,
+		Mode:     mode,
+		Codes:    multicastGroupCodes,
+		ClientIp: c.ClientIP,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to connect on host %s: %w", c.Host, err)
@@ -73,8 +80,19 @@ func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCodes [
 		return fmt.Errorf("connection failed on host %s: %s", c.Host, resp.GetOutput())
 	}
 	c.log.Debug("Multicast connected", "host", c.Host, "multicastGroupCodes", multicastGroupCodes)
-
 	return nil
+}
+
+// ConnectUserMulticast_Publisher_AddTunnel adds a multicast publisher tunnel
+// without disconnecting the existing connection.
+func (c *Client) ConnectUserMulticast_Publisher_AddTunnel(ctx context.Context, multicastGroupCodes ...string) error {
+	return c.connectMulticast(ctx, multicastGroupCodes, pb.ConnectMulticastRequest_PUBLISHER)
+}
+
+// ConnectUserMulticast_Subscriber_AddTunnel adds a multicast subscriber tunnel
+// without disconnecting the existing connection.
+func (c *Client) ConnectUserMulticast_Subscriber_AddTunnel(ctx context.Context, multicastGroupCodes ...string) error {
+	return c.connectMulticast(ctx, multicastGroupCodes, pb.ConnectMulticastRequest_SUBSCRIBER)
 }
 
 func (c *Client) ConnectUserMulticast_PubAndSub_Wait(ctx context.Context, pubCodes []string, subCodes []string) error {
@@ -89,6 +107,7 @@ func (c *Client) ConnectUserMulticast_PubAndSub_Wait(ctx context.Context, pubCod
 	resp, err := c.grpcClient.ConnectMulticast(ctx, &pb.ConnectMulticastRequest{
 		PubCodes: pubCodes,
 		SubCodes: subCodes,
+		ClientIp: c.ClientIP,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to connect on host %s: %w", c.Host, err)

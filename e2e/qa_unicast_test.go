@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"sync"
 	"testing"
@@ -15,6 +16,10 @@ import (
 )
 
 func TestQA_UnicastConnectivity(t *testing.T) {
+	if *multiTunnelFlag {
+		t.Skip("Skipping: use TestQA_MultiTunnel in multi-tunnel mode")
+	}
+
 	log := newTestLogger(t)
 	ctx := t.Context()
 	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)
@@ -47,6 +52,14 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 		err := client.WaitForStatusUp(ctx)
 		require.NoError(t, err, "failed to wait for status")
 	}
+
+	validateUnicastConnectivity(t, ctx, log, clients)
+}
+
+// validateUnicastConnectivity verifies unicast routes and ping connectivity
+// between all client pairs. Clients must already be connected with status up.
+func validateUnicastConnectivity(t *testing.T, ctx context.Context, log *slog.Logger, clients []*qa.Client) {
+	t.Helper()
 
 	// Wait for routes to be installed on each host.
 	for _, c := range clients {

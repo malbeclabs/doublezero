@@ -28,6 +28,9 @@ var (
 )
 
 func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
+	if *multiTunnelFlag {
+		t.Skip("Skipping: not compatible with multi-tunnel mode")
+	}
 	if testing.Short() {
 		t.Skip("Skipping all-devices test in short mode")
 	}

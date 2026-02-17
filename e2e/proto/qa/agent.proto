@@ -61,6 +61,10 @@ message ConnectMulticastRequest {
   // New fields for simultaneous pub+sub
   repeated string pub_codes = 3;
   repeated string sub_codes = 4;
+
+  // Client IP address for the connect command (optional).
+  // When set, passed as --client-ip to the doublezero CLI.
+  string client_ip = 5;
 }
 
 message MulticastAllowListAddRequest {

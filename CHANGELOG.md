@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
 
 - Activator
   - removes accesspass monitor task (that expires access passes)
+- Monitor
+  - Add Prometheus metrics for multicast publisher block utilization (`doublezero_multicast_publisher_block_total_ips`, `doublezero_multicast_publisher_block_allocated_ips`, `doublezero_multicast_publisher_block_utilization_percent`) — enables Grafana alerting on IP pool exhaustion thresholds
+- SDK (Go)
+  - Add `GetMulticastPublisherBlockResourceExtension()` method to serviceability client for fetching the global multicast publisher IP allocation bitmap
 - Onchain Programs
   - Refactor user creation to validate all limits (max_users, max_multicast_users, max_unicast_users) before incrementing counters — improves efficiency by avoiding wasted work on validation failures and follows fail-fast best practice
 - E2E / QA Tests

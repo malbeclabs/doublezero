@@ -5,15 +5,16 @@ import (
 )
 
 var (
-	seedPrefix              = []byte("doublezero")
-	seedGlobalState         = []byte("globalstate")
-	seedGlobalConfig        = []byte("config")
-	seedProgramConfig       = []byte("programconfig")
-	seedLinkIds             = []byte("linkids")
-	seedSegmentRoutingIds   = []byte("segmentroutingids")
-	seedUserTunnelBlock     = []byte("usertunnelblock")
-	seedDeviceTunnelBlock   = []byte("devicetunnelblock")
-	seedMulticastGroupBlock = []byte("multicastgroupblock")
+	seedPrefix                  = []byte("doublezero")
+	seedGlobalState             = []byte("globalstate")
+	seedGlobalConfig            = []byte("config")
+	seedProgramConfig           = []byte("programconfig")
+	seedLinkIds                 = []byte("linkids")
+	seedSegmentRoutingIds       = []byte("segmentroutingids")
+	seedUserTunnelBlock         = []byte("usertunnelblock")
+	seedDeviceTunnelBlock       = []byte("devicetunnelblock")
+	seedMulticastGroupBlock     = []byte("multicastgroupblock")
+	seedMulticastPublisherBlock = []byte("multicastpublisherblock")
 )
 
 func DeriveGlobalStatePDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
@@ -51,4 +52,9 @@ func GetDeviceTunnelBlockPDA(programID solana.PublicKey) (solana.PublicKey, uint
 // GetMulticastGroupBlockPDA derives the PDA for the global MulticastGroupBlock resource extension
 func GetMulticastGroupBlockPDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
 	return solana.FindProgramAddress([][]byte{seedPrefix, seedMulticastGroupBlock}, programID)
+}
+
+// GetMulticastPublisherBlockPDA derives the PDA for the global MulticastPublisherBlock resource extension
+func GetMulticastPublisherBlockPDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
+	return solana.FindProgramAddress([][]byte{seedPrefix, seedMulticastPublisherBlock}, programID)
 }

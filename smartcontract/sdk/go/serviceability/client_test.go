@@ -125,6 +125,21 @@ func (m *mockSolanaClient) GetProgramAccounts(context.Context, solana.PublicKey)
 	}, nil
 }
 
+func (m *mockSolanaClient) GetAccountInfo(context.Context, solana.PublicKey) (*rpc.GetAccountInfoResult, error) {
+	if m.returnEmpty {
+		return nil, nil
+	}
+	data, err := hex.DecodeString(strings.ReplaceAll(m.payload, "\n", ""))
+	if err != nil {
+		return nil, err
+	}
+	return &rpc.GetAccountInfoResult{
+		Value: &rpc.Account{
+			Data: rpc.DataBytesOrJSONFromBytes(data),
+		},
+	}, nil
+}
+
 func getOwner(payload string) [32]byte {
 	return getPubKeyOffset(payload, 1, 33)
 }

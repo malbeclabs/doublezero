@@ -118,6 +118,9 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 		w.exportLinksToInflux(data.Links)
 	}
 
+	// Export multicast publisher block metrics
+	w.exportMulticastPublisherBlockMetrics(ctx)
+
 	// save current on-chain state for next comparison interval
 	w.cacheLinks = data.Links
 	w.cacheDevices = data.Devices
@@ -386,4 +389,38 @@ func (w *ServiceabilityWatcher) postSlackMessage(msg string) error {
 		return fmt.Errorf("non-2xx response from Slack: %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func (w *ServiceabilityWatcher) exportMulticastPublisherBlockMetrics(ctx context.Context) {
+	ext, err := w.cfg.Serviceability.GetMulticastPublisherBlockResourceExtension(ctx)
+	if err != nil {
+		w.log.Error("failed to fetch multicast publisher block resource extension", "error", err)
+		return
+	}
+
+	if ext == nil {
+		// Account not yet initialized, set metrics to zero
+		w.log.Debug("multicast publisher block resource extension not yet initialized")
+		MetricMulticastPublisherBlockTotalIPs.Set(0)
+		MetricMulticastPublisherBlockAllocatedIPs.Set(0)
+		MetricMulticastPublisherBlockUtilizationPct.Set(0)
+		return
+	}
+
+	totalIPs := ext.TotalCapacity()
+	allocatedIPs := ext.AllocatedCount()
+	utilizationPct := 0.0
+	if totalIPs > 0 {
+		utilizationPct = (float64(allocatedIPs) / float64(totalIPs)) * 100.0
+	}
+
+	w.log.Debug("multicast publisher block metrics",
+		"total_ips", totalIPs,
+		"allocated_ips", allocatedIPs,
+		"utilization_pct", utilizationPct,
+		"base_net", ext.BaseNetString())
+
+	MetricMulticastPublisherBlockTotalIPs.Set(float64(totalIPs))
+	MetricMulticastPublisherBlockAllocatedIPs.Set(float64(allocatedIPs))
+	MetricMulticastPublisherBlockUtilizationPct.Set(utilizationPct)
 }

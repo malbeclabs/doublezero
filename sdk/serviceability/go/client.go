@@ -78,6 +78,44 @@ func (c *Client) ProgramID() solana.PublicKey {
 	return c.programID
 }
 
+// GetMulticastPublisherBlockResourceExtension fetches the global MulticastPublisherBlock resource extension.
+func (c *Client) GetMulticastPublisherBlockResourceExtension(ctx context.Context) (*ResourceExtension, error) {
+	pda, _, err := GetMulticastPublisherBlockPDA(c.programID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive MulticastPublisherBlock PDA: %w", err)
+	}
+
+	// Fetch the account data
+	rpcClient, ok := c.rpc.(interface {
+		GetAccountInfo(context.Context, solana.PublicKey) (*rpc.GetAccountInfoResult, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("RPC client does not support GetAccountInfo")
+	}
+
+	accountInfo, err := rpcClient.GetAccountInfo(ctx, pda)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch MulticastPublisherBlock account: %w", err)
+	}
+
+	if accountInfo == nil || accountInfo.Value == nil {
+		// Account doesn't exist yet (not initialized)
+		return nil, nil
+	}
+
+	data := accountInfo.Value.Data.GetBinary()
+	if len(data) == 0 {
+		return nil, nil
+	}
+
+	reader := NewByteReader(data)
+	var ext ResourceExtension
+	DeserializeResourceExtension(reader, &ext)
+	ext.PubKey = pda
+
+	return &ext, nil
+}
+
 // GetProgramData fetches all program accounts and deserializes them by type.
 func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 	out, err := c.rpc.GetProgramAccounts(ctx, c.programID)

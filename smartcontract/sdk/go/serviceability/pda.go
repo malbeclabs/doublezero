@@ -4,13 +4,14 @@ import "github.com/gagliardetto/solana-go"
 
 // PDA seeds matching Rust implementation in seeds.rs
 const (
-	SeedPrefix              = "doublezero"
-	SeedLinkIds             = "linkids"
-	SeedSegmentRoutingIds   = "segmentroutingids"
-	SeedUserTunnelBlock     = "usertunnelblock"
-	SeedDeviceTunnelBlock   = "devicetunnelblock"
-	SeedMulticastGroupBlock = "multicastgroupblock"
-	SeedTenant              = "tenant"
+	SeedPrefix                  = "doublezero"
+	SeedLinkIds                 = "linkids"
+	SeedSegmentRoutingIds       = "segmentroutingids"
+	SeedUserTunnelBlock         = "usertunnelblock"
+	SeedDeviceTunnelBlock       = "devicetunnelblock"
+	SeedMulticastGroupBlock     = "multicastgroupblock"
+	SeedMulticastPublisherBlock = "multicastpublisherblock"
+	SeedTenant                  = "tenant"
 )
 
 // GetLinkIdsPDA derives the PDA for the global LinkIds resource extension
@@ -54,6 +55,15 @@ func GetMulticastGroupBlockPDA(programID solana.PublicKey) (solana.PublicKey, ui
 	seeds := [][]byte{
 		[]byte(SeedPrefix),
 		[]byte(SeedMulticastGroupBlock),
+	}
+	return solana.FindProgramAddress(seeds, programID)
+}
+
+// GetMulticastPublisherBlockPDA derives the PDA for the global MulticastPublisherBlock resource extension
+func GetMulticastPublisherBlockPDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
+	seeds := [][]byte{
+		[]byte(SeedPrefix),
+		[]byte(SeedMulticastPublisherBlock),
 	}
 	return solana.FindProgramAddress(seeds, programID)
 }

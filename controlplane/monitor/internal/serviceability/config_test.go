@@ -53,9 +53,17 @@ func newTestLogger(t *testing.T) *slog.Logger {
 }
 
 type mockServiceabilityClient struct {
-	GetProgramDataFunc func(ctx context.Context) (*serviceability.ProgramData, error)
+	GetProgramDataFunc                              func(ctx context.Context) (*serviceability.ProgramData, error)
+	GetMulticastPublisherBlockResourceExtensionFunc func(ctx context.Context) (*serviceability.ResourceExtension, error)
 }
 
 func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
 	return m.GetProgramDataFunc(ctx)
+}
+
+func (m *mockServiceabilityClient) GetMulticastPublisherBlockResourceExtension(ctx context.Context) (*serviceability.ResourceExtension, error) {
+	if m.GetMulticastPublisherBlockResourceExtensionFunc != nil {
+		return m.GetMulticastPublisherBlockResourceExtensionFunc(ctx)
+	}
+	return nil, nil
 }

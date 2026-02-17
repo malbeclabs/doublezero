@@ -13,6 +13,7 @@ import (
 
 type ServiceabilityClient interface {
 	GetProgramData(context.Context) (*serviceability.ProgramData, error)
+	GetMulticastPublisherBlockResourceExtension(context.Context) (*serviceability.ResourceExtension, error)
 }
 
 type LedgerRPCClient interface {

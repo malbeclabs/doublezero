@@ -89,7 +89,7 @@ func checkDeviceDrain(t *testing.T, dn *TestDevnet, device *devnet.Device) {
 	dn.log.Debug("==> Checking that device is drained")
 
 	if !t.Run("set_device_status_to_drained", func(t *testing.T) {
-		_, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "device", "update", "--pubkey", device.Spec.Code, "--desired-status", "drained"})
+		_, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "device", "update", "--pubkey", device.Spec.Code, "--status", "drained"})
 		require.NoError(t, err)
 	}) {
 		t.Fail()
@@ -117,7 +117,7 @@ func checkDeviceUndrain(t *testing.T, dn *TestDevnet, device *devnet.Device) {
 	dn.log.Debug("==> Checking that device is undrained (returned to activated)")
 
 	if !t.Run("set_device_status_to_activated", func(t *testing.T) {
-		_, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "device", "update", "--pubkey", device.Spec.Code, "--desired-status", "activated"})
+		_, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "device", "update", "--pubkey", device.Spec.Code, "--status", "activated"})
 		require.NoError(t, err)
 	}) {
 		t.Fail()

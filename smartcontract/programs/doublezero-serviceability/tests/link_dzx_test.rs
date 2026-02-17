@@ -722,7 +722,7 @@ async fn test_dzx_link() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            desired_status: Some(LinkDesiredStatus::HardDrained),
+            status: Some(LinkStatus::HardDrained),
             ..Default::default()
         }),
         vec![
@@ -740,7 +740,6 @@ async fn test_dzx_link() {
         .expect("Unable to get Account")
         .get_tunnel()
         .unwrap();
-    assert_eq!(link_dzx.desired_status, LinkDesiredStatus::HardDrained);
     assert_eq!(link_dzx.link_health, LinkHealth::ReadyForService);
     assert_eq!(link_dzx.status, LinkStatus::HardDrained);
 
@@ -752,7 +751,7 @@ async fn test_dzx_link() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            desired_status: Some(LinkDesiredStatus::SoftDrained),
+            status: Some(LinkStatus::SoftDrained),
             ..Default::default()
         }),
         vec![
@@ -780,7 +779,7 @@ async fn test_dzx_link() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            desired_status: Some(LinkDesiredStatus::Activated),
+            status: Some(LinkStatus::Activated),
             ..Default::default()
         }),
         vec![
@@ -802,8 +801,8 @@ async fn test_dzx_link() {
 
     println!("✅ Link updated to Activated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 19. Update Link by Contributor B to SoftDrained (should fail)...");
-    let res = try_execute_transaction(
+    println!("🟢 19. Update Link by Contributor B to SoftDrained via status...");
+    execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -821,16 +820,14 @@ async fn test_dzx_link() {
     )
     .await;
 
-    assert!(res.is_err());
-
     let link_dzx = get_account_data(&mut banks_client, link_dzx_pubkey)
         .await
         .expect("Unable to get Account")
         .get_tunnel()
         .unwrap();
-    assert_eq!(link_dzx.status, LinkStatus::Activated);
+    assert_eq!(link_dzx.status, LinkStatus::SoftDrained);
 
-    println!("✅ Failed to update to Suspended as expected; link remained Activated");
+    println!("✅ Link updated to SoftDrained by Contributor B");
     /*****************************************************************************************************************************************************/
     println!("🟢 20. Deleting Link...");
     execute_transaction(

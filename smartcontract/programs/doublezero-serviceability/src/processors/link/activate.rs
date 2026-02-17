@@ -217,7 +217,9 @@ pub fn process_activate_link(
         NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix()).unwrap();
     side_z_dev.interfaces[idx_z] = updated_iface_z.to_interface();
 
-    link.status = LinkStatus::Provisioning;
+    //TODO: This should be changed once the Health Oracle is finalized.
+    //link.status = LinkStatus::Provisioning;
+    link.status = LinkStatus::Activated;
 
     link.check_status_transition();
 

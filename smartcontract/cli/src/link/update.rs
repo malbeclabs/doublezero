@@ -50,7 +50,7 @@ pub struct UpdateLinkCliCommand {
     #[arg(long)]
     pub status: Option<String>,
     /// Update link desired status (e.g. activated, soft-drained, hard-drained)
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub desired_status: Option<LinkDesiredStatus>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]

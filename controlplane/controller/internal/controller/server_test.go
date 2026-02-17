@@ -1216,7 +1216,7 @@ func TestStateCache(t *testing.T) {
 		},
 		{
 			Name: "user_with_explicit_tunnel_endpoint_uses_that_ip",
-			Config: serviceability.Config{
+			GlobalConfig: serviceability.GlobalConfig{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
 			Exchanges: []serviceability.Exchange{
@@ -1283,7 +1283,7 @@ func TestStateCache(t *testing.T) {
 			},
 			Links: []serviceability.Link{},
 			StateCache: stateCache{
-				Config: serviceability.Config{
+				GlobalConfig: serviceability.GlobalConfig{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{},

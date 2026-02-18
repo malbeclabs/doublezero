@@ -26,6 +26,8 @@ pub struct StatusCliCommand {
 struct AppendedStatusResponse {
     #[tabled(inline)]
     response: StatusResponse,
+    #[tabled(rename = "Reconciler")]
+    reconciler_enabled: bool,
     #[tabled(rename = "Tenant")]
     tenant: String,
     #[tabled(rename = "Current Device")]
@@ -61,7 +63,16 @@ impl StatusCliCommand {
         let exchanges = client.list_exchange(ListExchangeCommand)?;
         let tenants = client.list_tenant(ListTenantCommand {})?;
 
-        let status_responses = controller.status().await?;
+        let v2_status = controller.v2_status().await?;
+        if !self.json {
+            let state = if v2_status.reconciler_enabled {
+                "enabled"
+            } else {
+                "disabled"
+            };
+            println!("Reconciler: {state}");
+        }
+        let status_responses = v2_status.services;
         let mut responses = Vec::with_capacity(status_responses.len());
         for response in &status_responses {
             let mut current_device: Option<Pubkey> = None;
@@ -139,6 +150,7 @@ impl StatusCliCommand {
 
             responses.push(AppendedStatusResponse {
                 response: response.clone(),
+                reconciler_enabled: v2_status.reconciler_enabled,
                 current_device: current_device
                     .and_then(|d| devices.get(&d))
                     .map(|d| d.code.clone())
@@ -158,7 +170,9 @@ impl StatusCliCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::servicecontroller::{DoubleZeroStatus, LatencyRecord, MockServiceController};
+    use crate::servicecontroller::{
+        DoubleZeroStatus, LatencyRecord, MockServiceController, V2StatusResponse,
+    };
     use doublezero_cli::doublezerocommand::MockCliCommand;
     use doublezero_program_common::types::{NetworkV4, NetworkV4List};
     use doublezero_sdk::{
@@ -325,9 +339,12 @@ mod tests {
             },
         ];
 
-        mock_controller
-            .expect_status()
-            .returning(move || Ok(status_responses.clone()));
+        mock_controller.expect_v2_status().returning(move || {
+            Ok(V2StatusResponse {
+                reconciler_enabled: true,
+                services: status_responses.clone(),
+            })
+        });
         mock_controller
             .expect_latency()
             .returning(move || Ok(latencies.clone()));
@@ -513,9 +530,12 @@ mod tests {
             },
         ];
 
-        mock_controller
-            .expect_status()
-            .returning(move || Ok(status_responses.clone()));
+        mock_controller.expect_v2_status().returning(move || {
+            Ok(V2StatusResponse {
+                reconciler_enabled: true,
+                services: status_responses.clone(),
+            })
+        });
         mock_controller
             .expect_latency()
             .returning(move || Ok(latencies.clone()));
@@ -679,9 +699,12 @@ mod tests {
             reachable: true,
         }];
 
-        mock_controller
-            .expect_status()
-            .returning(move || Ok(status_responses.clone()));
+        mock_controller.expect_v2_status().returning(move || {
+            Ok(V2StatusResponse {
+                reconciler_enabled: true,
+                services: status_responses.clone(),
+            })
+        });
         mock_controller
             .expect_latency()
             .returning(move || Ok(latencies.clone()));
@@ -811,9 +834,12 @@ mod tests {
             reachable: true,
         }];
 
-        mock_controller
-            .expect_status()
-            .returning(move || Ok(status_responses.clone()));
+        mock_controller.expect_v2_status().returning(move || {
+            Ok(V2StatusResponse {
+                reconciler_enabled: true,
+                services: status_responses.clone(),
+            })
+        });
         mock_controller
             .expect_latency()
             .returning(move || Ok(latencies.clone()));
@@ -883,6 +909,7 @@ mod tests {
         // Create AppendedStatusResponse
         let appended_response = AppendedStatusResponse {
             response: status_response,
+            reconciler_enabled: true,
             current_device: "device1".to_string(),
             lowest_latency_device: "device1".to_string(),
             metro: "amsterdam".to_string(),
@@ -903,6 +930,10 @@ mod tests {
         // Validate status entry fields
         let status = &json_output.as_array().unwrap()[0];
         assert!(status.get("response").is_some(), "Missing 'response' field");
+        assert!(
+            status.get("reconciler_enabled").is_some(),
+            "Missing 'reconciler_enabled' field"
+        );
         assert!(
             status.get("current_device").is_some(),
             "Missing 'current_device' field"
@@ -987,6 +1018,7 @@ mod tests {
 
         let appended_response = AppendedStatusResponse {
             response: status_response,
+            reconciler_enabled: true,
             current_device: "device1".to_string(),
             lowest_latency_device: "device1".to_string(),
             metro: "amsterdam".to_string(),
@@ -1022,5 +1054,99 @@ mod tests {
 
         // user_type should still be present
         assert_eq!(response.get("user_type").unwrap(), "Multicast");
+    }
+
+    #[tokio::test]
+    async fn test_status_reconciler_disabled() {
+        let mut mock_command = MockCliCommand::new();
+        let mut mock_controller = MockServiceController::new();
+
+        let devices = std::collections::HashMap::<Pubkey, Device>::new();
+        let users = std::collections::HashMap::<Pubkey, User>::new();
+        let exchanges = std::collections::HashMap::<Pubkey, Exchange>::new();
+
+        let status_responses = vec![StatusResponse {
+            doublezero_status: DoubleZeroStatus {
+                session_status: "BGP Session Up".to_string(),
+                last_session_update: Some(1625247600),
+            },
+            tunnel_name: Some("doublezero1".to_string()),
+            tunnel_src: Some("1.2.3.4".to_string()),
+            tunnel_dst: Some("5.6.7.8".to_string()),
+            doublezero_ip: Some("10.0.0.1".to_string()),
+            user_type: Some("IBRL".to_string()),
+        }];
+
+        mock_controller.expect_v2_status().returning(move || {
+            Ok(V2StatusResponse {
+                reconciler_enabled: false,
+                services: status_responses.clone(),
+            })
+        });
+        mock_controller.expect_latency().returning(|| Ok(vec![]));
+        mock_command
+            .expect_get_environment()
+            .return_const(doublezero_config::Environment::Testnet);
+        mock_command
+            .expect_list_device()
+            .with(eq(ListDeviceCommand))
+            .returning(move |_| Ok(devices.clone()));
+        mock_command
+            .expect_list_user()
+            .with(eq(ListUserCommand))
+            .returning(move |_| Ok(users.clone()));
+        mock_command
+            .expect_list_exchange()
+            .with(eq(ListExchangeCommand))
+            .returning(move |_| Ok(exchanges.clone()));
+
+        let result = StatusCliCommand { json: true }
+            .command_impl(&mock_command, &mock_controller)
+            .await;
+
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(!result[0].reconciler_enabled);
+    }
+
+    #[tokio::test]
+    async fn test_status_empty_services_disconnected() {
+        let mut mock_command = MockCliCommand::new();
+        let mut mock_controller = MockServiceController::new();
+
+        let devices = std::collections::HashMap::<Pubkey, Device>::new();
+        let users = std::collections::HashMap::<Pubkey, User>::new();
+        let exchanges = std::collections::HashMap::<Pubkey, Exchange>::new();
+
+        mock_controller.expect_v2_status().returning(|| {
+            Ok(V2StatusResponse {
+                reconciler_enabled: false,
+                services: vec![],
+            })
+        });
+        mock_command
+            .expect_get_environment()
+            .return_const(doublezero_config::Environment::Testnet);
+        mock_command
+            .expect_list_device()
+            .with(eq(ListDeviceCommand))
+            .returning(move |_| Ok(devices.clone()));
+        mock_command
+            .expect_list_user()
+            .with(eq(ListUserCommand))
+            .returning(move |_| Ok(users.clone()));
+        mock_command
+            .expect_list_exchange()
+            .with(eq(ListExchangeCommand))
+            .returning(move |_| Ok(exchanges.clone()));
+
+        let result = StatusCliCommand { json: true }
+            .command_impl(&mock_command, &mock_controller)
+            .await;
+
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        assert!(result.is_empty());
     }
 }

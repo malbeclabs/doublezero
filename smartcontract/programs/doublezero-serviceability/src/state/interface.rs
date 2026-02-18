@@ -448,6 +448,14 @@ impl Validate for Interface {
             return Err(DoubleZeroError::CyoaRequiresPhysical);
         }
 
+        // CYOA interfaces must have an ip_net
+        if interface.interface_cyoa != InterfaceCYOA::None
+            && interface.ip_net == NetworkV4::default()
+        {
+            msg!("CYOA interfaces must have an ip_net set");
+            return Err(DoubleZeroError::InvalidInterfaceIp);
+        }
+
         // Only allow private and link-local IPs for non-CYOA and non-DIA interfaces,
         // unless it's a loopback interface with user_tunnel_endpoint set to true.
         if interface.ip_net != NetworkV4::default()

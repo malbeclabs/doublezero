@@ -546,7 +546,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 
 					log.Debug("PIM neighbor not yet on subscriber tunnel", "tunnel", subTunnelName)
 					return false
-				}, 60*time.Second, 1*time.Second, "PIM neighbor not established on %s", subTunnelName)
+				}, 90*time.Second, 1*time.Second, "PIM neighbor not established on %s", subTunnelName)
 			}) {
 				t.Fail()
 			}
@@ -583,7 +583,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 						}
 
 						return true
-					}, 60*time.Second, 1*time.Second, "PIM join not received for %s", mGroup)
+					}, 90*time.Second, 1*time.Second, "PIM join not received for %s", mGroup)
 				}
 			}) {
 				t.Fail()

@@ -286,7 +286,7 @@ func (w *ServiceabilityWatcher) processEvents(data *serviceability.ProgramData) 
 
 		if len(newUsers) > 0 && w.cfg.SlackWebhookURL != "" {
 			w.log.Info("notifying new users", "count", len(newUsers))
-			w.notifyNewUsers(newUsers, data.Devices, len(data.Users))
+			w.notifyNewUsers(newUsers, data.Devices, data.Tenants, len(data.Users))
 		}
 	}
 }
@@ -312,7 +312,7 @@ func programVersionString(version serviceability.ProgramVersion) string {
 	return fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
 }
 
-func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEvent, devices []serviceability.Device, totalUsers int) (string, error) {
+func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEvent, devices []serviceability.Device, tenants []serviceability.Tenant, totalUsers int) (string, error) {
 	if len(event) == 0 {
 		return "", nil
 	}
@@ -326,6 +326,15 @@ func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEven
 		return "not found"
 	}
 
+	findTenantCode := func(pubkey [32]uint8) string {
+		for _, t := range tenants {
+			if t.PubKey == pubkey {
+				return t.Code
+			}
+		}
+		return ""
+	}
+
 	users := [][]string{}
 	for _, e := range event {
 		users = append(users, []string{
@@ -334,6 +343,7 @@ func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEven
 			base58.Encode(e.User.DevicePubKey[:]),
 			findDeviceCode(e.User.DevicePubKey),
 			strconv.FormatUint(uint64(e.User.TunnelId), 10),
+			findTenantCode(e.User.TenantPubKey),
 		})
 	}
 
@@ -342,7 +352,7 @@ func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEven
 		title = "New DoubleZero User Added!"
 	}
 
-	users = slices.Insert(users, 0, []string{"UserPubKey", "Client IP", "Device PubKey", "Device Name", "Tunnel ID"})
+	users = slices.Insert(users, 0, []string{"UserPubKey", "Client IP", "Device PubKey", "Device Name", "Tunnel ID", "Tenant"})
 	header := fmt.Sprintf(":yay-frog: :frog-wow-scroll: :elmo-fire: :lfg-dz: %s :lfg-dz: :elmo-fire: :frog-wow-scroll: :yay-frog:", title)
 	footer := fmt.Sprintf("Total Users: %d", totalUsers)
 	return GenerateSlackTableMessage(header, users, nil, footer)
@@ -360,8 +370,8 @@ func (w *ServiceabilityWatcher) buildEpochChangeSlackMessage(environment, networ
 	return GenerateSlackTableMessage(header, rows, nil, "")
 }
 
-func (w *ServiceabilityWatcher) notifyNewUsers(newUsers []ServiceabilityUserEvent, devices []serviceability.Device, totalUsers int) {
-	msg, err := w.buildSlackMessage(newUsers, devices, totalUsers)
+func (w *ServiceabilityWatcher) notifyNewUsers(newUsers []ServiceabilityUserEvent, devices []serviceability.Device, tenants []serviceability.Tenant, totalUsers int) {
+	msg, err := w.buildSlackMessage(newUsers, devices, tenants, totalUsers)
 	if err != nil {
 		w.log.Error("failed to build slack message", "error", err)
 	}

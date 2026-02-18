@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
   - removes accesspass monitor task (that expires access passes)
 - Monitor
   - Add Prometheus metrics for multicast publisher block utilization (`doublezero_multicast_publisher_block_total_ips`, `doublezero_multicast_publisher_block_allocated_ips`, `doublezero_multicast_publisher_block_utilization_percent`) — enables Grafana alerting on IP pool exhaustion thresholds
+  - Include tenant name in the Slack notification table when new users are activated
 - SDK (Go)
   - Add `GetMulticastPublisherBlockResourceExtension()` method to serviceability client for fetching the global multicast publisher IP allocation bitmap
 - Onchain Programs

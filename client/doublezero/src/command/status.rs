@@ -2,7 +2,9 @@ use crate::{
     command::util,
     dzd_latency::best_latency,
     requirements::check_doublezero,
-    servicecontroller::{ServiceController, ServiceControllerImpl, StatusResponse},
+    servicecontroller::{
+        DoubleZeroStatus, ServiceController, ServiceControllerImpl, StatusResponse,
+    },
 };
 use clap::Args;
 use doublezero_cli::{doublezerocommand::CliCommand, helpers::print_error};
@@ -73,6 +75,31 @@ impl StatusCliCommand {
             println!("Reconciler: {state}");
         }
         let status_responses = v2_status.services;
+
+        // When no services are running, synthesize a "disconnected" entry to match
+        // the legacy /status endpoint behavior. The QA agent and other tooling
+        // expect at least one entry in the status array.
+        if status_responses.is_empty() {
+            return Ok(vec![AppendedStatusResponse {
+                response: StatusResponse {
+                    doublezero_status: DoubleZeroStatus {
+                        session_status: "disconnected".to_string(),
+                        last_session_update: None,
+                    },
+                    tunnel_name: None,
+                    tunnel_src: None,
+                    tunnel_dst: None,
+                    doublezero_ip: None,
+                    user_type: None,
+                },
+                reconciler_enabled: v2_status.reconciler_enabled,
+                current_device: "N/A".to_string(),
+                lowest_latency_device: "N/A".to_string(),
+                metro: "N/A".to_string(),
+                network: format!("{}", client.get_environment()),
+            }]);
+        }
+
         let mut responses = Vec::with_capacity(status_responses.len());
         for response in &status_responses {
             let mut current_device: Option<Pubkey> = None;
@@ -1147,6 +1174,14 @@ mod tests {
 
         assert!(result.is_ok());
         let result = result.unwrap();
-        assert!(result.is_empty());
+        // When no services are running, a synthetic "disconnected" entry is returned
+        assert_eq!(result.len(), 1);
+        assert_eq!(
+            result[0].response.doublezero_status.session_status,
+            "disconnected"
+        );
+        assert!(!result[0].reconciler_enabled);
+        assert_eq!(result[0].current_device, "N/A");
+        assert_eq!(result[0].network, "testnet");
     }
 }

@@ -93,6 +93,7 @@ impl StatusCliCommand {
                     user_type: None,
                 },
                 reconciler_enabled: v2_status.reconciler_enabled,
+                tenant: String::new(),
                 current_device: "N/A".to_string(),
                 lowest_latency_device: "N/A".to_string(),
                 metro: "N/A".to_string(),
@@ -1126,6 +1127,10 @@ mod tests {
             .expect_list_exchange()
             .with(eq(ListExchangeCommand))
             .returning(move |_| Ok(exchanges.clone()));
+        mock_command
+            .expect_list_tenant()
+            .with(eq(ListTenantCommand {}))
+            .returning(|_| Ok(std::collections::HashMap::<Pubkey, Tenant>::new()));
 
         let result = StatusCliCommand { json: true }
             .command_impl(&mock_command, &mock_controller)
@@ -1167,6 +1172,10 @@ mod tests {
             .expect_list_exchange()
             .with(eq(ListExchangeCommand))
             .returning(move |_| Ok(exchanges.clone()));
+        mock_command
+            .expect_list_tenant()
+            .with(eq(ListTenantCommand {}))
+            .returning(|_| Ok(std::collections::HashMap::<Pubkey, Tenant>::new()));
 
         let result = StatusCliCommand { json: true }
             .command_impl(&mock_command, &mock_controller)

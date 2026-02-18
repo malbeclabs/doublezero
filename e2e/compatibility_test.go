@@ -88,10 +88,12 @@ var knownIncompatibilities = map[string]knownIncompat{
 	// include, causing "insufficient account keys for instruction".
 	"write/global_config_set": {minVersion: "0.8.8"},
 
-	// link/device drain: The --desired-status flag for link update and device update
-	// was added in v0.8.1 as part of Network Provisioning. Older CLIs don't support it.
-	"write/link_drain":     {minVersion: "0.8.1"},
-	"write/link_drain_dzx": {minVersion: "0.8.1"},
+	// link drain: --status soft-drained was supported since v0.7.2. v0.7.1 and older
+	// fail with "Invalid LinkStatus: soft-drained".
+	"write/link_drain":     {minVersion: "0.7.2"},
+	"write/link_drain_dzx": {minVersion: "0.7.2"},
+
+	// device drain: --status drained (DeviceStatus) was added in v0.8.1.
 	"write/device_drain":   {minVersion: "0.8.1"},
 	"write/device_drain_2": {minVersion: "0.8.1"},
 }
@@ -979,10 +981,10 @@ func runWriteWorkflows(
 	}
 
 	type writeStep struct {
-		name              string
-		cmd               string
-		noCascade         bool // if true, failure doesn't skip subsequent phases
-		cascadeKnownFail  bool // if true, known-incompatible failures also cascade
+		name             string
+		cmd              string
+		noCascade        bool // if true, failure doesn't skip subsequent phases
+		cascadeKnownFail bool // if true, known-incompatible failures also cascade
 	}
 
 	// execStep runs a single write step and records the result.
@@ -1208,8 +1210,8 @@ func runWriteWorkflows(
 				`echo "user1 not removed after 30s"; exit 1`},
 			{name: "user_delete_2", cmd: cli + " user delete --pubkey " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP)},
-			{name: "link_drain", cascadeKnownFail: true, cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", linkCode) + " --desired-status soft-drained"},
-			{name: "link_drain_dzx", cascadeKnownFail: true, cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", dzxLinkCode) + " --desired-status soft-drained"},
+			{name: "link_drain", cascadeKnownFail: true, cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", linkCode) + " --status soft-drained"},
+			{name: "link_drain_dzx", cascadeKnownFail: true, cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", dzxLinkCode) + " --status soft-drained"},
 		}},
 
 		// Delete both drained links.
@@ -1252,8 +1254,8 @@ func runWriteWorkflows(
 
 		// Drain both devices before deletion (delete not allowed from Activated).
 		{name: "drain_devices", parallel: true, steps: []writeStep{
-			{name: "device_drain", cascadeKnownFail: true, cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode) + " --desired-status drained"},
-			{name: "device_drain_2", cascadeKnownFail: true, cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode2) + " --desired-status drained"},
+			{name: "device_drain", cascadeKnownFail: true, cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode) + " --status drained"},
+			{name: "device_drain_2", cascadeKnownFail: true, cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode2) + " --status drained"},
 		}},
 
 		// Delete both devices in parallel.

@@ -432,7 +432,34 @@ async fn device_update_location_test() {
 
     println!("✅ Device update failed correctly.");
     /*****************************************************************************************************************************************************/
-    println!("🟢 12. Deleting Device...");
+    println!("🟢 12. Drain Device before deletion...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            status: Some(DeviceStatus::Drained),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_la = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_la.status, DeviceStatus::Drained);
+
+    println!("✅ Device drained");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 13. Deleting Device...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -458,7 +485,7 @@ async fn device_update_location_test() {
     assert_eq!(device_la.status, DeviceStatus::Deleting);
 
     /*****************************************************************************************************************************************************/
-    println!("🟢 13. CloseAccount Device...");
+    println!("🟢 14. CloseAccount Device...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,

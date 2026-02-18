@@ -72,9 +72,10 @@ pub fn process_delete_contributor(
     }
 
     let contributor = Contributor::try_from(contributor_account)?;
-    if contributor.status != ContributorStatus::Activated {
+    if matches!(contributor.status, ContributorStatus::Deleting) {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
+
     if contributor.reference_count > 0 {
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }

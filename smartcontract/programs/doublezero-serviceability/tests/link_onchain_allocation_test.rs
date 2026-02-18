@@ -1050,7 +1050,7 @@ async fn test_closeaccount_link_with_deallocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            desired_status: Some(LinkDesiredStatus::SoftDrained),
+            status: Some(LinkStatus::SoftDrained),
             ..Default::default()
         }),
         vec![

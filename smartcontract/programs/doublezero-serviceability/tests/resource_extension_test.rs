@@ -38,7 +38,7 @@ use doublezero_serviceability::{
     resource::{IdOrIp, ResourceType},
     state::{
         accounttype::AccountType,
-        device::{DeviceDesiredStatus, DeviceType},
+        device::{DeviceDesiredStatus, DeviceStatus, DeviceType},
         interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LoopbackType, RoutingMode},
     },
 };
@@ -1133,7 +1133,7 @@ async fn close_device(
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            desired_status: Some(DeviceDesiredStatus::Drained),
+            status: Some(DeviceStatus::Drained),
             ..Default::default()
         }),
         vec![

@@ -264,7 +264,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	log.Debug("==> Draining link before deletion", "pubkey", linkPubkey)
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", fmt.Sprintf(`
 		set -euo pipefail
-		doublezero link update --pubkey "%s" --desired-status soft-drained
+		doublezero link update --pubkey "%s" --status soft-drained
 	`, linkPubkey)})
 	require.NoError(t, err)
 

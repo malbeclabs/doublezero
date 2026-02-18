@@ -514,7 +514,7 @@ async fn test_device() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            desired_status: Some(DeviceDesiredStatus::Drained),
+            status: Some(DeviceStatus::Drained),
             ..DeviceUpdateArgs::default()
         }),
         vec![
@@ -1059,7 +1059,7 @@ async fn test_delete_device_fails_with_reference_count_not_zero() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            desired_status: Some(DeviceDesiredStatus::Drained),
+            status: Some(DeviceStatus::Drained),
             ..DeviceUpdateArgs::default()
         }),
         vec![

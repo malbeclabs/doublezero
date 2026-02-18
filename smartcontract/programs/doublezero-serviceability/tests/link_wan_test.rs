@@ -742,7 +742,7 @@ async fn test_wan_link() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            desired_status: Some(LinkDesiredStatus::SoftDrained),
+            status: Some(LinkStatus::SoftDrained),
             ..Default::default()
         }),
         vec![
@@ -1315,7 +1315,7 @@ async fn test_link_delete_from_soft_drained() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            desired_status: Some(LinkDesiredStatus::SoftDrained),
+            status: Some(LinkStatus::SoftDrained),
             ..Default::default()
         }),
         vec![
@@ -1401,7 +1401,7 @@ async fn test_link_delete_from_hard_drained() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            desired_status: Some(LinkDesiredStatus::HardDrained),
+            status: Some(LinkStatus::HardDrained),
             ..Default::default()
         }),
         vec![

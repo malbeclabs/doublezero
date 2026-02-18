@@ -536,7 +536,7 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 	// Drain links before deletion (delete not allowed from Activated status)
 	log.Debug("==> Draining links before deletion")
 	for _, pubkey := range linkPubkeys {
-		_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero link update --pubkey " + pubkey + " --desired-status soft-drained"})
+		_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero link update --pubkey " + pubkey + " --status soft-drained"})
 		require.NoError(t, err)
 	}
 

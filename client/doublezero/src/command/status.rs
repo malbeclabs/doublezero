@@ -165,8 +165,10 @@ mod tests {
         AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, User, UserCYOA,
         UserStatus, UserType,
     };
-    use doublezero_serviceability::state::device::{DeviceDesiredStatus, DeviceHealth};
-    use doublezero_serviceability::state::tenant::Tenant;
+    use doublezero_serviceability::state::{
+        device::{DeviceDesiredStatus, DeviceHealth},
+        tenant::Tenant,
+    };
     use mockall::predicate::*;
     use solana_sdk::pubkey::Pubkey;
     use std::net::Ipv4Addr;

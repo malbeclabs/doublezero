@@ -149,6 +149,33 @@ func TestReconcile_ProvisionUnicast(t *testing.T) {
 	}
 }
 
+func TestReconcile_ProvisionUnicast_WithTunnelEndpoint(t *testing.T) {
+	devicePK := [32]byte{1}
+	clientIP := net.IPv4(1, 2, 3, 4).To4()
+
+	user := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)
+	user.TunnelEndpoint = [4]uint8{10, 0, 0, 99}
+
+	mgr := &mockManager{}
+	fetcher := &mockFetcher{
+		data: &serviceability.ProgramData{
+			Config:  testConfig(),
+			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
+			Users:   []serviceability.User{user},
+		},
+	}
+
+	r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
+	r.reconcile(context.Background())
+
+	if len(mgr.provisions) != 1 {
+		t.Fatalf("expected 1 provision call, got %d", len(mgr.provisions))
+	}
+	if !mgr.provisions[0].TunnelDst.Equal(net.IPv4(10, 0, 0, 99)) {
+		t.Fatalf("expected tunnel dst 10.0.0.99 (from TunnelEndpoint), got %v", mgr.provisions[0].TunnelDst)
+	}
+}
+
 func TestReconcile_RemoveUnicast(t *testing.T) {
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 

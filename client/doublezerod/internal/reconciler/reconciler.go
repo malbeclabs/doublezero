@@ -264,8 +264,12 @@ func (r *Reconciler) buildProvisionRequest(
 		return api.ProvisionRequest{}, fmt.Errorf("invalid tunnel net: %v", u.TunnelNet)
 	}
 
-	// Resolve tunnel source IP via kernel route lookup, fall back to clientIP
-	tunnelDst := net.IP(device.PublicIp[:])
+	// Use the user's assigned tunnel endpoint; fall back to device public IP
+	// when unset (0.0.0.0) for backwards compatibility.
+	tunnelDst := net.IP(u.TunnelEndpoint[:])
+	if tunnelDst.Equal(net.IPv4zero) || tunnelDst.IsUnspecified() {
+		tunnelDst = net.IP(device.PublicIp[:])
+	}
 	tunnelSrc := r.clientIP
 	if resolved, err := r.manager.ResolveTunnelSrc(tunnelDst); err == nil && resolved != nil {
 		slog.Info("reconciler: resolved tunnel src", "dst", tunnelDst, "src", resolved)

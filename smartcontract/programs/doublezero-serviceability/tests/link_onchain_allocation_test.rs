@@ -1044,6 +1044,24 @@ async fn test_closeaccount_link_with_deallocation() {
         allocated_tunnel_id, allocated_tunnel_net
     );
 
+    // Drain Link before deletion
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            status: Some(LinkStatus::SoftDrained),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
     // Delete Link (moves to Deleting status)
     execute_transaction(
         &mut banks_client,

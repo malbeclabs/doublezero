@@ -82,6 +82,13 @@ pub fn process_delete_device(
 
     let mut device: Device = Device::try_from(device_account)?;
 
+    if matches!(
+        device.status,
+        DeviceStatus::Activated | DeviceStatus::Deleting
+    ) {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     if device.reference_count > 0 {
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }

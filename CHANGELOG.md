@@ -19,10 +19,13 @@ All notable changes to this project will be documented in this file.
 - Onchain Programs
   - Refactor user creation to validate all limits (max_users, max_multicast_users, max_unicast_users) before incrementing counters — improves efficiency by avoiding wasted work on validation failures and follows fail-fast best practice
   - Serviceability: `UnlinkDeviceInterface` now only allows `Activated` or `Pending` interfaces; when an associated link account is provided for an `Activated` interface, the link must be in `Deleting` status
+  - Links and devices can no longer be deleted from `Activated` status — must be drained first; deletion is rejected with `InvalidStatus`
+  - Contributors, locations, multicast groups, and users can now be deleted from any operational status (not just `Activated`); only `Deleting`/`Updating` states are blocked
   - SDK: `UnlinkDeviceInterfaceCommand` automatically discovers and passes associated link accounts
   - Serviceability: allow contributors to update prefixes when for IBRL when no users are allocated
 - E2E / QA Tests
   - Fix QA unicast test flake caused by RPC 429 rate limiting during concurrent user deletion — treat transient RPC errors as non-fatal in the deletion polling loop
+  - Backward compatibility test: use `--status` instead of `--desired-status` for drain commands; fix version ranges (link drain compatible since v0.7.2, device drain since v0.8.1)
 
 ## [v0.8.9](https://github.com/malbeclabs/doublezero/compare/client/v0.8.8...client/v0.8.9) – 2026-02-16
 

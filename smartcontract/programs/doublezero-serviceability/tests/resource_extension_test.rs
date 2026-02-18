@@ -38,7 +38,7 @@ use doublezero_serviceability::{
     resource::{IdOrIp, ResourceType},
     state::{
         accounttype::AccountType,
-        device::{DeviceDesiredStatus, DeviceType},
+        device::{DeviceDesiredStatus, DeviceStatus, DeviceType},
         interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LoopbackType, RoutingMode},
     },
 };
@@ -1126,6 +1126,24 @@ async fn close_device(
     resource_pdas: Vec<Pubkey>,
 ) {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Drain device before deletion
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            status: Some(DeviceStatus::Drained),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
 
     execute_transaction(
         banks_client,

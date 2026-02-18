@@ -82,6 +82,15 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/device_set_health_2": {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
 	"write/link_set_health":     {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
 	"write/link_set_health_dzx": {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
+
+	// link drain: --status soft-drained was supported since v0.7.2. v0.7.1 and older
+	// fail with "Invalid LinkStatus: soft-drained".
+	"write/link_drain":     {minVersion: "0.7.2"},
+	"write/link_drain_dzx": {minVersion: "0.7.2"},
+
+	// device drain: --status drained (DeviceStatus) was added in v0.8.1.
+	"write/device_drain":   {minVersion: "0.8.1"},
+	"write/device_drain_2": {minVersion: "0.8.1"},
 }
 
 // =============================================================================
@@ -967,9 +976,10 @@ func runWriteWorkflows(
 	}
 
 	type writeStep struct {
-		name      string
-		cmd       string
-		noCascade bool // if true, failure doesn't skip subsequent phases
+		name             string
+		cmd              string
+		noCascade        bool // if true, failure doesn't skip subsequent phases
+		cascadeKnownFail bool // if true, known-incompatible failures also cascade
 	}
 
 	// execStep runs a single write step and records the result.
@@ -990,7 +1000,7 @@ func runWriteWorkflows(
 		if isKnownIncompatible(stepKey, version, cloneEnv) {
 			recordResult(version, stepKey, "KNOWN_FAIL", string(output))
 			log.Debug("--> Command failed (known incompatibility)", "command", ws.cmd)
-			return false
+			return ws.cascadeKnownFail && !ws.noCascade
 		}
 		log.Error("Command failed", "step", ws.name, "command", ws.cmd, "output", string(output))
 		dumpDiagnostics(ws.name)
@@ -1187,7 +1197,7 @@ func runWriteWorkflows(
 			{name: "link_wait_activated_dzx", cmd: `for i in $(seq 1 60); do doublezero link list 2>/dev/null | grep '` + dzxLinkCode + `' | grep -qv '0.0.0.0/0' && exit 0; sleep 1; done; echo "dzx link not activated after 60s"; exit 1`},
 		}},
 
-		// Continue all 4 streams: user1 wait, user2 delete, both link deletes.
+		// Continue all 4 streams: user1 wait, user2 delete, drain both links.
 		{name: "delete_continue", parallel: true, steps: []writeStep{
 			{name: "user_wait_removed", cmd: `for i in $(seq 1 30); do ` +
 				`count=$(doublezero user list 2>/dev/null | grep '` + userClientIP + `' | wc -l); ` +
@@ -1195,6 +1205,12 @@ func runWriteWorkflows(
 				`echo "user1 not removed after 30s"; exit 1`},
 			{name: "user_delete_2", cmd: cli + " user delete --pubkey " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP)},
+			{name: "link_drain", cascadeKnownFail: true, cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", linkCode) + " --status soft-drained"},
+			{name: "link_drain_dzx", cascadeKnownFail: true, cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", dzxLinkCode) + " --status soft-drained"},
+		}},
+
+		// Delete both drained links.
+		{name: "delete_links", parallel: true, steps: []writeStep{
 			{name: "link_delete", cmd: cli + " link delete --pubkey " + lookupPubkeyByCode("link list", linkCode)},
 			{name: "link_delete_dzx", cmd: cli + " link delete --pubkey " + lookupPubkeyByCode("link list", dzxLinkCode)},
 		}},
@@ -1229,6 +1245,12 @@ func runWriteWorkflows(
 			{name: "iface_wait_removed", cmd: `for i in $(seq 1 30); do count=$(doublezero device interface list ` + deviceCode + ` 2>/dev/null | tail -n +2 | wc -l); [ "$count" -eq 0 ] && exit 0; sleep 1; done; echo "interfaces not removed after 30s"; exit 1`},
 			{name: "iface_wait_removed_2", cmd: `for i in $(seq 1 30); do count=$(doublezero device interface list ` + deviceCode2 + ` 2>/dev/null | tail -n +2 | wc -l); [ "$count" -eq 0 ] && exit 0; sleep 1; done; echo "interfaces not removed after 30s"; exit 1`},
 			{name: "exchange_clear_devices", cmd: cli + " exchange set-device --pubkey " + exchangeCode, noCascade: true},
+		}},
+
+		// Drain both devices before deletion (delete not allowed from Activated).
+		{name: "drain_devices", parallel: true, steps: []writeStep{
+			{name: "device_drain", cascadeKnownFail: true, cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode) + " --status drained"},
+			{name: "device_drain_2", cascadeKnownFail: true, cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode2) + " --status drained"},
 		}},
 
 		// Delete both devices in parallel.

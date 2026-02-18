@@ -9,7 +9,7 @@ use doublezero_serviceability::{
             interface::{create::*, unlink::*},
         },
         exchange::create::*,
-        link::{activate::*, create::*, delete::*},
+        link::{activate::*, create::*, delete::*, update::*},
         location::create::*,
     },
     resource::ResourceType,
@@ -659,7 +659,25 @@ async fn test_unlink_activated_with_deleting_link_succeeds() {
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    // Delete the link first
+    // Drain the link first
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            status: Some(LinkStatus::SoftDrained),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Delete the link
     execute_transaction(
         &mut banks_client,
         recent_blockhash,

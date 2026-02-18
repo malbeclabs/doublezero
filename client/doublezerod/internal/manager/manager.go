@@ -21,6 +21,7 @@ type Provisioner interface {
 	Teardown() error
 	Status() (*api.StatusResponse, error) // TODO: what do we return here?
 	ServiceType() services.ServiceType
+	ProvisionRequest() *api.ProvisionRequest
 }
 
 // BgpReaderWriter is an interface for the handling of per
@@ -32,15 +33,6 @@ type BGPServer interface {
 	GetPeerStatus(net.IP) bgp.Session
 }
 
-// DbReaderWriter is an interface for managing the state of
-// services. This is used to persist the last provisioned state
-// to disk so we can recover from it on restart/crash.
-type DbReaderWriter interface {
-	GetState(userTypes ...api.UserType) []*api.ProvisionRequest
-	DeleteState(u api.UserType) error
-	SaveState(p *api.ProvisionRequest) error
-}
-
 type NetlinkManager struct {
 	netlink          routing.Netlinker
 	Routes           []*routing.Route
@@ -49,7 +41,6 @@ type NetlinkManager struct {
 	MulticastService Provisioner
 	DoubleZeroAddr   net.IP
 	bgp              BGPServer
-	db               services.DBReaderWriter
 	pim              services.PIMWriter
 	heartbeat        services.HeartbeatWriter
 	mu               sync.Mutex
@@ -57,35 +48,33 @@ type NetlinkManager struct {
 
 // CreateService creates the appropriate service based on the provisioned
 // user type.
-func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netlinker, db services.DBReaderWriter, pim services.PIMWriter, heartbeat services.HeartbeatWriter) (Provisioner, error) {
+func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netlinker, pim services.PIMWriter, heartbeat services.HeartbeatWriter) (Provisioner, error) {
 	switch u {
 	case api.UserTypeIBRL:
-		return services.NewIBRLService(bgp, nl, db), nil
+		return services.NewIBRLService(bgp, nl), nil
 	case api.UserTypeIBRLWithAllocatedIP:
-		return services.NewIBRLServiceWithAllocatedAddress(bgp, nl, db), nil
+		return services.NewIBRLServiceWithAllocatedAddress(bgp, nl), nil
 	case api.UserTypeEdgeFiltering:
-		return services.NewEdgeFilteringService(bgp, nl, db), nil
+		return services.NewEdgeFilteringService(bgp, nl), nil
 	case api.UserTypeMulticast:
-		return services.NewMulticastService(bgp, nl, db, pim, heartbeat), nil
+		return services.NewMulticastService(bgp, nl, pim, heartbeat), nil
 	default:
 		return nil, fmt.Errorf("unsupported user type: %s", u)
 	}
 }
 
-func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, db services.DBReaderWriter, pim services.PIMWriter, heartbeat services.HeartbeatWriter) *NetlinkManager {
-	manager := &NetlinkManager{netlink: netlink, bgp: bgp, db: db, pim: pim, heartbeat: heartbeat}
+func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, pim services.PIMWriter, heartbeat services.HeartbeatWriter) *NetlinkManager {
+	manager := &NetlinkManager{netlink: netlink, bgp: bgp, pim: pim, heartbeat: heartbeat}
 	return manager
 }
 
 // Provision is the entry point for all user tunnel provisioning. This currently
-// contains logic for IBRL, edge filtering and multicast use cases. After the user
-// tunnel is provisioned, the original request is saved to disk so we're able to
-// handle service restarts.
+// contains logic for IBRL, edge filtering and multicast use cases.
 func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.db, n.pim, n.heartbeat)
+	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.pim, n.heartbeat)
 	if err != nil {
 		return fmt.Errorf("error creating service: %v", err)
 	}
@@ -108,9 +97,6 @@ func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
 		n.MulticastService = svc
 	}
 
-	if err := n.db.SaveState(&pr); err != nil {
-		return fmt.Errorf("db: error saving state file: %v", err)
-	}
 	return nil
 }
 
@@ -120,7 +106,7 @@ func (n *NetlinkManager) Remove(u api.UserType) error {
 	defer n.mu.Unlock()
 
 	// We've never been provisioned
-	if n.db.GetState() == nil {
+	if n.UnicastService == nil && n.MulticastService == nil {
 		return nil
 	}
 
@@ -129,49 +115,20 @@ func (n *NetlinkManager) Remove(u api.UserType) error {
 	}
 
 	if services.IsUnicastUser(u) && n.UnicastService != nil {
-		// Find actual provisioned unicast user type from state
-		actualUserType := n.findProvisionedUserType(services.IsUnicastUser)
-
 		if err := n.UnicastService.Teardown(); err != nil {
 			return fmt.Errorf("error tearing down unicast service: %v", err)
 		}
 		n.UnicastService = nil
-
-		if actualUserType != api.UserTypeUnknown {
-			if err := n.db.DeleteState(actualUserType); err != nil {
-				return fmt.Errorf("db: error deleting state file: %v", err)
-			}
-		}
 	}
 
 	if services.IsMulticastUser(u) && n.MulticastService != nil {
-		// Find actual provisioned multicast user type from state
-		actualUserType := n.findProvisionedUserType(services.IsMulticastUser)
-
 		if err := n.MulticastService.Teardown(); err != nil {
 			return fmt.Errorf("error tearing down multicast service: %v", err)
 		}
 		n.MulticastService = nil
-
-		if actualUserType != api.UserTypeUnknown {
-			if err := n.db.DeleteState(actualUserType); err != nil {
-				return fmt.Errorf("db: error deleting state file: %v", err)
-			}
-		}
 	}
 
 	return nil
-}
-
-// findProvisionedUserType finds the actual user type from state matching the given predicate.
-func (n *NetlinkManager) findProvisionedUserType(matchFn func(api.UserType) bool) api.UserType {
-	state := n.db.GetState()
-	for _, s := range state {
-		if matchFn(s.UserType) {
-			return s.UserType
-		}
-	}
-	return api.UserTypeUnknown
 }
 
 // Close tears down any active services. This is typically called when
@@ -198,7 +155,7 @@ func (n *NetlinkManager) Close() error {
 	return teardownErr
 }
 
-// Serve starts the manager and attempts to recover from the last provisioned state.
+// Serve starts the manager.
 func (n *NetlinkManager) Serve(ctx context.Context) error {
 	errCh := make(chan error)
 	slog.Info("bgp: starting bgp fsm")
@@ -207,11 +164,6 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 		err := n.bgp.Serve([]net.Listener{})
 		errCh <- err
 	}()
-
-	// attempt to recover from last provisioned state
-	if err := n.Recover(); err != nil {
-		slog.Error("netlink: error recovering provisioned state", "error", err)
-	}
 
 	select {
 	case <-ctx.Done():
@@ -222,21 +174,33 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 	}
 }
 
-// Recover attempts to recover from the last provisioned state.
-func (n *NetlinkManager) Recover() error {
-	// check last provisioned state and attempt to recover
-	state := n.db.GetState()
-	if state == nil {
-		return nil
+// HasUnicastService returns true if a unicast service is currently provisioned.
+func (n *NetlinkManager) HasUnicastService() bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.UnicastService != nil
+}
+
+// HasMulticastService returns true if a multicast service is currently provisioned.
+func (n *NetlinkManager) HasMulticastService() bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.MulticastService != nil
+}
+
+// ResolveTunnelSrc performs a kernel route lookup to determine the source IP
+// that would be used to reach the given destination.
+func (n *NetlinkManager) ResolveTunnelSrc(dst net.IP) (net.IP, error) {
+	routes, err := n.netlink.RouteGet(dst)
+	if err != nil {
+		return nil, fmt.Errorf("route lookup failed: %w", err)
 	}
-	slog.Info("netlink: restoring previous provisioned state")
-	// TODO: check state to make sure we adhere to our service iteraction rules
-	for _, p := range state {
-		if err := n.Provision(*p); err != nil {
-			return fmt.Errorf("netlink: error while recovering provisioned state: %v", err)
+	for _, route := range routes {
+		if route.Dst != nil && route.Dst.IP.Equal(dst) {
+			return route.Src, nil
 		}
 	}
-	return nil
+	return nil, fmt.Errorf("no route found to %s", dst)
 }
 
 // TODO: this contains some workarounds that will be removed when multicast
@@ -265,4 +229,23 @@ func (n *NetlinkManager) Status() ([]*api.StatusResponse, error) {
 		resp = append(resp, status)
 	}
 	return resp, nil
+}
+
+// GetProvisionedServices returns the provision requests for all active services.
+func (n *NetlinkManager) GetProvisionedServices() []*api.ProvisionRequest {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	var reqs []*api.ProvisionRequest
+	if n.UnicastService != nil {
+		if pr := n.UnicastService.ProvisionRequest(); pr != nil {
+			reqs = append(reqs, pr)
+		}
+	}
+	if n.MulticastService != nil {
+		if pr := n.MulticastService.ProvisionRequest(); pr != nil {
+			reqs = append(reqs, pr)
+		}
+	}
+	return reqs
 }

@@ -182,9 +182,6 @@ pub fn process_user_event(
                         }
                     }
                 }
-            } else if need_dz_ip {
-                // Onchain allocation: pass UNSPECIFIED so smart contract allocates
-                Ipv4Addr::UNSPECIFIED
             } else {
                 user.client_ip
             };

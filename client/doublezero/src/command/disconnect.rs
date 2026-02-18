@@ -106,7 +106,7 @@ impl DecommissioningCliCommand {
             .await
         {
             Ok(()) => {
-                spinner.println("    Daemon confirmed tunnel(s) removed".to_string());
+                spinner.println("    Daemon confirmed tunnel(s) removed");
             }
             Err(e) => {
                 spinner.println(format!(

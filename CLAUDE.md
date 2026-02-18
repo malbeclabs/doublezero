@@ -116,6 +116,8 @@ make generate-fixtures   # Regenerate .bin/.json fixtures from Rust
 - Focus on "what" and "why", not implementation details
 - Include a "Testing Verification" section
 - Don't mention table-stakes items in testing verification (e.g., "compiles cleanly", "builds successfully", "no lint errors"). Only include meaningful verification like specific test scenarios, behavioral observations, or edge cases validated.
+- Limit the size of each PR to about 500 lines of new code if possible. If not possible, make the operator aware that the size of the PR exceeds doublezero's best practice, and recommend breaking the work apart into multiple PRs.
+- If the change is related to an RFC in the rfcs/ directory, provide the reviewer with a link to the RFC.
 
 ## Local Devnet / E2E Environment
 

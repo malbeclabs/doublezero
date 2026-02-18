@@ -10,11 +10,9 @@
 
 ### Error Handling
 
-1. **Use assertions for impossible conditions**: For checks that should never happen (e.g., `is_signer` checks), use assertions instead of custom errors. This avoids overloading the error enum with conditions that indicate programmer errors rather than user errors.
+1. **Simplify error enum conversions**: Use `#[repr(u32)]` on your error enum and implement `From<YourError> for ProgramError` using `as u32`. This eliminates the need to manually maintain error code mappings when adding new variants. Remove `Custom(u32)` variants unless there's a specific use case.
 
-2. **Simplify error enum conversions**: Use `#[repr(u32)]` on your error enum and implement `From<YourError> for ProgramError` using `as u32`. This eliminates the need to manually maintain error code mappings when adding new variants. Remove `Custom(u32)` variants unless there's a specific use case.
-
-3. **Clear error messages**: Error messages should clearly state what condition is expected, not just what failed. For example, use "Cannot delete GeoProbe. reference_count of {n} > 0" instead of "ReferenceCountNotZero" so users understand what needs to be true.
+2. **Clear error messages**: Error messages should clearly state what condition is expected, not just what failed. For example, use "Cannot delete GeoProbe. reference_count of {n} > 0" instead of "ReferenceCountNotZero" so users understand what needs to be true.
 
 ### Code Organization
 

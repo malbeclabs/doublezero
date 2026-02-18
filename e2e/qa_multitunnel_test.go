@@ -11,6 +11,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestQA_MultiTunnel(t *testing.T) {
@@ -52,17 +53,21 @@ func TestQA_MultiTunnel(t *testing.T) {
 		log := newTestLogger(t)
 		log.Info("Connecting all clients unicast")
 
-		// Connect sequentially to avoid DZ ledger race condition (CreateUser
-		// transactions write to the shared device account).
+		g, gctx := errgroup.WithContext(ctx)
 		for _, client := range clients {
-			err := client.ConnectUserUnicast_AnyDevice_NoWait(ctx)
-			require.NoError(t, err, "failed to connect user unicast")
+			g.Go(func() error {
+				return client.ConnectUserUnicast_AnyDevice_NoWait(gctx)
+			})
 		}
+		require.NoError(t, g.Wait(), "failed to connect users unicast")
 
+		g, gctx = errgroup.WithContext(ctx)
 		for _, client := range clients {
-			err := client.WaitForStatusUp(ctx)
-			require.NoError(t, err, "failed to wait for unicast status up")
+			g.Go(func() error {
+				return client.WaitForStatusUp(gctx)
+			})
 		}
+		require.NoError(t, g.Wait(), "failed to wait for unicast status up")
 	})
 	if t.Failed() {
 		return
@@ -191,22 +196,24 @@ func TestQA_MultiTunnel(t *testing.T) {
 		log := newTestLogger(t)
 		log.Info("Adding multicast tunnels without disconnecting unicast")
 
-		// Connect sequentially to avoid DZ ledger race condition (CreateUser
-		// transactions write to the shared device account).
-		err := publisher.ConnectUserMulticast_Publisher_AddTunnel(ctx, groupA.Code, groupB.Code)
-		require.NoError(t, err, "failed to add publisher multicast tunnel")
-		for _, client := range clients {
-			if client.Host == publisher.Host {
-				continue
-			}
-			err = client.ConnectUserMulticast_Subscriber_AddTunnel(ctx, groupA.Code, groupB.Code)
-			require.NoError(t, err, "failed to add subscriber multicast tunnel")
+		g, gctx := errgroup.WithContext(ctx)
+		g.Go(func() error {
+			return publisher.ConnectUserMulticast_Publisher_AddTunnel(gctx, groupA.Code, groupB.Code)
+		})
+		for _, client := range subscribers {
+			g.Go(func() error {
+				return client.ConnectUserMulticast_Subscriber_AddTunnel(gctx, groupA.Code, groupB.Code)
+			})
 		}
+		require.NoError(t, g.Wait(), "failed to add multicast tunnels")
 
+		g, gctx = errgroup.WithContext(ctx)
 		for _, client := range clients {
-			err = client.WaitForAllStatusesUp(ctx, 2)
-			require.NoError(t, err, "failed to wait for all statuses up")
+			g.Go(func() error {
+				return client.WaitForAllStatusesUp(gctx, 2)
+			})
 		}
+		require.NoError(t, g.Wait(), "failed to wait for all statuses up")
 	})
 	if t.Failed() {
 		return

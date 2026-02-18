@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 )
 
 type mockManager struct {
+	mu            sync.Mutex
 	provisions    []api.ProvisionRequest
 	removes       []api.UserType
 	hasUnicast    bool
@@ -30,11 +32,15 @@ type mockManager struct {
 }
 
 func (m *mockManager) Provision(pr api.ProvisionRequest) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.provisions = append(m.provisions, pr)
 	return m.provisionErr
 }
 
 func (m *mockManager) Remove(ut api.UserType) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.removes = append(m.removes, ut)
 	return m.removeErr
 }
@@ -55,15 +61,36 @@ func (m *mockManager) ResolveTunnelSrc(dst net.IP) (net.IP, error) {
 	return nil, fmt.Errorf("no route found")
 }
 
+func (m *mockManager) Provisions() []api.ProvisionRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]api.ProvisionRequest(nil), m.provisions...)
+}
+
+func (m *mockManager) Removes() []api.UserType {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]api.UserType(nil), m.removes...)
+}
+
 type mockFetcher struct {
+	mu    sync.Mutex
 	data  *serviceability.ProgramData
 	err   error
 	calls int
 }
 
 func (m *mockFetcher) GetProgramData(_ context.Context) (*serviceability.ProgramData, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.calls++
 	return m.data, m.err
+}
+
+func (m *mockFetcher) Calls() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.calls
 }
 
 func testDevice(pk [32]byte, ip [4]uint8, prefixes [][5]uint8) serviceability.Device {
@@ -618,10 +645,10 @@ func TestStart_EnableViaChannel(t *testing.T) {
 	if !r.Enabled() {
 		t.Fatal("expected enabled=true after SetEnabled(true)")
 	}
-	if fetcher.calls < 1 {
+	if fetcher.Calls() < 1 {
 		t.Fatal("expected at least 1 fetch call after enable")
 	}
-	if len(mgr.provisions) < 1 {
+	if len(mgr.Provisions()) < 1 {
 		t.Fatal("expected at least 1 provision after enable")
 	}
 
@@ -630,9 +657,17 @@ func TestStart_EnableViaChannel(t *testing.T) {
 }
 
 func TestStart_DisableViaChannel_TearsDown(t *testing.T) {
+	devicePK := [32]byte{1}
 	mgr := &mockManager{hasUnicast: true, hasMulticast: true}
 	fetcher := &mockFetcher{
-		data: &serviceability.ProgramData{Config: testConfig()},
+		data: &serviceability.ProgramData{
+			Config:  testConfig(),
+			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
+			Users: []serviceability.User{
+				testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated),
+				testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated),
+			},
+		},
 	}
 
 	r := NewReconciler(net.IPv4(1, 2, 3, 4).To4(), mgr, fetcher,
@@ -653,8 +688,8 @@ func TestStart_DisableViaChannel_TearsDown(t *testing.T) {
 	if r.Enabled() {
 		t.Fatal("expected enabled=false after SetEnabled(false)")
 	}
-	if len(mgr.removes) != 2 {
-		t.Fatalf("expected 2 remove calls (unicast + multicast teardown), got %d", len(mgr.removes))
+	if removes := mgr.Removes(); len(removes) != 2 {
+		t.Fatalf("expected 2 remove calls (unicast + multicast teardown), got %d", len(removes))
 	}
 
 	cancel()

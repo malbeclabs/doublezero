@@ -4,6 +4,31 @@ use ipnetwork::Ipv4Network;
 use log::info;
 use std::{collections::HashMap, net::Ipv4Addr};
 
+/// Stateless device state for onchain allocation mode.
+/// Does not track tunnel IDs or DZ IPs locally - allocation is handled by the smart contract.
+#[derive(Debug, Clone)]
+pub struct DeviceStateStateless {
+    pub device: Device,
+}
+
+impl DeviceStateStateless {
+    pub fn new(device: &Device) -> Self {
+        Self {
+            device: device.clone(),
+        }
+    }
+
+    pub fn update(&mut self, device: &Device) {
+        if self.device.dz_prefixes != device.dz_prefixes {
+            self.device = device.clone();
+            info!(
+                "Update Device: {} public_ip: {} dz_prefixes: {} ",
+                self.device.code, &self.device.public_ip, &self.device.dz_prefixes,
+            );
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct DeviceState {
     pub device: Device,

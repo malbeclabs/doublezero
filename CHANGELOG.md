@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - Remove redundant `connect ibrl` unit tests that were duplicates of hybrid-device equivalents
+- Client
+  - Add onchain reconciler to daemon — automatically provisions/removes tunnels by polling onchain User state, replacing CLI-driven provisioning and the `doublezerod.json` state file ([RFC-17](rfcs/rfc17-client-onchain-reconciler.md))
+  - Add `doublezero enable` / `doublezero disable` CLI commands to toggle the reconciler at runtime
 
 ## [v0.8.10](https://github.com/malbeclabs/doublezero/compare/client/v0.8.9...client/v0.8.10) – 2026-02-19
 
@@ -20,7 +23,6 @@ All notable changes to this project will be documented in this file.
 - N/A
 
 ### Changes
-
 - Activator
   - removes accesspass monitor task (that expires access passes)
 - Controller

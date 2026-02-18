@@ -1,10 +1,8 @@
-use borsh::{BorshDeserialize, BorshSerialize};
 use crate::{
-    error::GeolocationError,
-    pda::get_program_config_pda,
-    serializer::try_acc_write,
+    error::GeolocationError, pda::get_program_config_pda, serializer::try_acc_write,
     state::program_config::GeolocationProgramConfig,
 };
+use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,

@@ -1,4 +1,3 @@
-use borsh::{BorshDeserialize, BorshSerialize};
 use crate::{
     error::GeolocationError,
     pda::get_geo_probe_pda,
@@ -8,6 +7,7 @@ use crate::{
     state::{accounttype::AccountType, geo_probe::GeoProbe},
     validation::{validate_code_length, validate_public_ip},
 };
+use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::validate_account_code;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},

@@ -9,7 +9,6 @@ pub use crate::processors::{
     program_config::{init::InitProgramConfigArgs, update::UpdateProgramConfigArgs},
 };
 
-
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub enum GeolocationInstruction {
     InitProgramConfig(InitProgramConfigArgs),

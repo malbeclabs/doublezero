@@ -1,10 +1,10 @@
-use borsh::{BorshDeserialize, BorshSerialize};
 use crate::{
     error::GeolocationError,
     processors::check_foundation_allowlist,
     serializer::try_acc_write,
     state::geo_probe::{GeoProbe, MAX_PARENT_DEVICES},
 };
+use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_serviceability::state::device::{Device, DeviceStatus};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},

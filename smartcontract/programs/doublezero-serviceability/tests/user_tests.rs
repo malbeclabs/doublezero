@@ -6,7 +6,9 @@ use doublezero_serviceability::{
         contributor::create::ContributorCreateArgs,
         device::update::DeviceUpdateArgs,
         tenant::create::TenantCreateArgs,
-        user::{activate::*, ban::*, create::*, delete::*, requestban::*, update::*},
+        user::{
+            activate::*, ban::*, check_access_pass, create::*, delete::*, requestban::*, update::*,
+        },
         *,
     },
     resource::ResourceType,
@@ -20,7 +22,7 @@ use doublezero_serviceability::{
 };
 use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Keypair, signer::Signer};
 use std::net::Ipv4Addr;
 use user::closeaccount::UserCloseAccountArgs;
 
@@ -75,7 +77,7 @@ async fn test_user() {
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/16".parse().unwrap(),
-            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
             next_bgp_community: None,
         }),
         vec![
@@ -303,6 +305,7 @@ async fn test_user() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -565,7 +568,7 @@ async fn test_user_ban_requires_pendingban() {
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/24".parse().unwrap(),
-            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
             next_bgp_community: None,
         }),
         vec![
@@ -734,6 +737,7 @@ async fn test_user_ban_requires_pendingban() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1057,6 +1061,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             client_ip: user_ip_1,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_1_pubkey, false),
@@ -1120,13 +1125,12 @@ async fn test_user_create_tenant_allowlist_validation() {
             client_ip: user_ip_2,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            tenant: tenant_a_pubkey,
         }),
         vec![
             AccountMeta::new(accesspass_2_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(payer.pubkey(), false),
-            AccountMeta::new(Pubkey::default(), false),
-            AccountMeta::new(tenant_a_pubkey, false),
         ],
         &payer,
     )
@@ -1168,16 +1172,14 @@ async fn test_user_create_tenant_allowlist_validation() {
     println!("🟢🟢🟢  End test_user_create_tenant_allowlist_validation  🟢🟢🟢");
 }
 
-#[tokio::test]
-async fn test_user_per_type_limits() {
+/// Helper: set up global state, config, location, exchange, contributor, device (activated),
+/// access pass, user (activated). Returns the keys needed for delete tests.
+async fn setup_activated_user() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey, Pubkey) {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
-
-    println!("🟢 Testing per-type user limits (unicast/multicast)");
 
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
-    // Initialize global state
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1191,7 +1193,6 @@ async fn test_user_per_type_limits() {
     )
     .await;
 
-    // Set global config
     let (config_pubkey, _) = get_globalconfig_pda(&program_id);
     let (device_tunnel_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
@@ -1203,7 +1204,6 @@ async fn test_user_per_type_limits() {
     let (segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
-
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1215,7 +1215,6 @@ async fn test_user_per_type_limits() {
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/24".parse().unwrap(),
             next_bgp_community: None,
-            multicast_publisher_block: "232.0.0.0/24".parse().unwrap(),
         }),
         vec![
             AccountMeta::new(config_pubkey, false),
@@ -1231,7 +1230,6 @@ async fn test_user_per_type_limits() {
     )
     .await;
 
-    // Create location, exchange, contributor
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
 
@@ -1298,7 +1296,6 @@ async fn test_user_per_type_limits() {
     )
     .await;
 
-    // Create device with per-type limits: max_unicast_users=1, max_multicast_users=1
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
 
@@ -1326,15 +1323,12 @@ async fn test_user_per_type_limits() {
     )
     .await;
 
-    // Set max_users, max_unicast_users, and max_multicast_users
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
             max_users: Some(128),
-            max_unicast_users: Some(1),
-            max_multicast_users: Some(1),
             ..DeviceUpdateArgs::default()
         }),
         vec![
@@ -1348,17 +1342,6 @@ async fn test_user_per_type_limits() {
     )
     .await;
 
-    let device = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Unable to get Device")
-        .get_device()
-        .unwrap();
-    assert_eq!(device.max_unicast_users, 1);
-    assert_eq!(device.max_multicast_users, 1);
-    assert_eq!(device.unicast_users_count, 0);
-    assert_eq!(device.multicast_users_count, 0);
-
-    // Activate device
     let (tunnel_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
     let (dz_prefix_pda, _, _) =
@@ -1382,9 +1365,8 @@ async fn test_user_per_type_limits() {
     )
     .await;
 
-    // Create access pass for first unicast user
-    let user1_ip = [100, 0, 0, 10].into();
-    let (accesspass1_pubkey, _) = get_accesspass_pda(&program_id, &user1_ip, &payer.pubkey());
+    let user_ip = [100, 0, 0, 1].into();
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user_ip, &payer.pubkey());
 
     execute_transaction(
         &mut banks_client,
@@ -1392,12 +1374,13 @@ async fn test_user_per_type_limits() {
         program_id,
         DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
             accesspass_type: AccessPassType::Prepaid,
-            client_ip: user1_ip,
+            client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            tenant: Pubkey::default(),
         }),
         vec![
-            AccountMeta::new(accesspass1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(payer.pubkey(), false),
         ],
@@ -1405,217 +1388,28 @@ async fn test_user_per_type_limits() {
     )
     .await;
 
-    // Create first unicast user (should succeed)
-    println!("🟢 Creating first unicast user (should succeed)");
-    let (user1_pubkey, _) = get_user_pda(&program_id, &user1_ip, UserType::IBRL);
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::IBRL);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateUser(UserCreateArgs {
-            client_ip: user1_ip,
+            client_ip: user_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
-            AccountMeta::new(user1_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
             AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(accesspass1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
     .await;
 
-    // Verify counters updated
-    let device = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Unable to get Device")
-        .get_device()
-        .unwrap();
-    assert_eq!(device.unicast_users_count, 1);
-    assert_eq!(device.multicast_users_count, 0);
-    assert_eq!(device.users_count, 1);
-
-    println!("✅ First unicast user created, counters updated correctly");
-
-    // Create access pass for second unicast user
-    let user2_ip = [100, 0, 0, 11].into();
-    let (accesspass2_pubkey, _) = get_accesspass_pda(&program_id, &user2_ip, &payer.pubkey());
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-            accesspass_type: AccessPassType::Prepaid,
-            client_ip: user2_ip,
-            last_access_epoch: 9999,
-            allow_multiple_ip: false,
-        }),
-        vec![
-            AccountMeta::new(accesspass2_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(payer.pubkey(), false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Try to create second unicast user (should fail with MaxUnicastUsersExceeded)
-    println!("🟢 Creating second unicast user (should fail)");
-    let (user2_pubkey, _) = get_user_pda(&program_id, &user2_ip, UserType::IBRL);
-
-    let result = execute_transaction_expect_failure(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateUser(UserCreateArgs {
-            client_ip: user2_ip,
-            user_type: UserType::IBRL,
-            cyoa_type: UserCYOA::GREOverDIA,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user2_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(accesspass2_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Error code 72 = MaxUnicastUsersExceeded
-    assert!(
-        result.is_err(),
-        "Second unicast user creation should have failed"
-    );
-    println!("✅ Second unicast user correctly rejected with MaxUnicastUsersExceeded");
-
-    // Create access pass for first multicast user
-    let mcast1_ip = [100, 0, 0, 20].into();
-    let (accesspass_mcast1_pubkey, _) =
-        get_accesspass_pda(&program_id, &mcast1_ip, &payer.pubkey());
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-            accesspass_type: AccessPassType::Prepaid,
-            client_ip: mcast1_ip,
-            last_access_epoch: 9999,
-            allow_multiple_ip: false,
-        }),
-        vec![
-            AccountMeta::new(accesspass_mcast1_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(payer.pubkey(), false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Create first multicast user (should succeed)
-    println!("🟢 Creating first multicast user (should succeed)");
-    let (mcast1_pubkey, _) = get_user_pda(&program_id, &mcast1_ip, UserType::Multicast);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateUser(UserCreateArgs {
-            client_ip: mcast1_ip,
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(mcast1_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(accesspass_mcast1_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Verify counters updated
-    let device = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Unable to get Device")
-        .get_device()
-        .unwrap();
-    assert_eq!(device.unicast_users_count, 1);
-    assert_eq!(device.multicast_users_count, 1);
-    assert_eq!(device.users_count, 2);
-
-    println!("✅ First multicast user created, counters updated correctly");
-
-    // Create access pass for second multicast user
-    let mcast2_ip = [100, 0, 0, 21].into();
-    let (accesspass_mcast2_pubkey, _) =
-        get_accesspass_pda(&program_id, &mcast2_ip, &payer.pubkey());
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-            accesspass_type: AccessPassType::Prepaid,
-            client_ip: mcast2_ip,
-            last_access_epoch: 9999,
-            allow_multiple_ip: false,
-        }),
-        vec![
-            AccountMeta::new(accesspass_mcast2_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(payer.pubkey(), false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Try to create second multicast user (should fail with MaxMulticastUsersExceeded)
-    println!("🟢 Creating second multicast user (should fail)");
-    let (mcast2_pubkey, _) = get_user_pda(&program_id, &mcast2_ip, UserType::Multicast);
-
-    let result = execute_transaction_expect_failure(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateUser(UserCreateArgs {
-            client_ip: mcast2_ip,
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(mcast2_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(accesspass_mcast2_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Error code 73 = MaxMulticastUsersExceeded
-    assert!(
-        result.is_err(),
-        "Second multicast user creation should have failed"
-    );
-    println!("✅ Second multicast user correctly rejected with MaxMulticastUsersExceeded");
-
-    // =========================================================================
-    // Test counter decrement: delete user and verify counter decreases
-    // =========================================================================
-    println!("🟢 Testing counter decrement on user deletion");
-
-    // First, activate the user (required before deletion - sets dz_ip, tunnel_id, etc.)
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1625,153 +1419,171 @@ async fn test_user_per_type_limits() {
             tunnel_net: "169.254.0.0/25".parse().unwrap(),
             dz_ip: [200, 0, 0, 1].into(),
             dz_prefix_count: 0,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
-            AccountMeta::new(user1_pubkey, false),
-            AccountMeta::new(accesspass1_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
     .await;
 
-    // Delete first unicast user
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Activated);
+
+    (
+        banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+    )
+}
+
+#[tokio::test]
+async fn test_user_delete_from_pending_ban() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, user_pubkey, accesspass_pubkey) =
+        setup_activated_user().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Request ban → PendingBan
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {}),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::PendingBan);
+
+    // Delete from PendingBan should succeed
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
         vec![
-            AccountMeta::new(user1_pubkey, false),
-            AccountMeta::new(accesspass1_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
     .await;
 
-    // Close the user account (this decrements the counter)
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Deleting);
+}
+
+#[tokio::test]
+async fn test_user_delete_from_banned() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, user_pubkey, accesspass_pubkey) =
+        setup_activated_user().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Request ban → PendingBan → Ban → Banned
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-            dz_prefix_count: 0,
-            multicast_publisher_count: 0,
-        }),
+        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {}),
         vec![
-            AccountMeta::new(user1_pubkey, false),
-            AccountMeta::new(payer.pubkey(), false),
-            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
     .await;
-
-    // Verify unicast counter decremented
-    let device = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Unable to get Device")
-        .get_device()
-        .unwrap();
-    assert_eq!(
-        device.unicast_users_count, 0,
-        "Unicast counter should be 0 after deletion"
-    );
-    assert_eq!(
-        device.multicast_users_count, 1,
-        "Multicast counter should still be 1"
-    );
-    assert_eq!(device.users_count, 1, "Total users count should be 1");
-    println!("✅ Counters decremented correctly after user deletion");
-
-    // Now we should be able to create another unicast user (limit is 1, count is 0)
-    println!("🟢 Creating new unicast user after deletion (should succeed)");
-    let (user2_pubkey_new, _) = get_user_pda(&program_id, &user2_ip, UserType::IBRL);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateUser(UserCreateArgs {
-            client_ip: user2_ip,
-            user_type: UserType::IBRL,
-            cyoa_type: UserCYOA::GREOverDIA,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
+        DoubleZeroInstruction::BanUser(UserBanArgs {}),
         vec![
-            AccountMeta::new(user2_pubkey_new, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(accesspass2_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
     .await;
 
-    let device = get_account_data(&mut banks_client, device_pubkey)
+    let user = get_account_data(&mut banks_client, user_pubkey)
         .await
-        .expect("Unable to get Device")
-        .get_device()
+        .unwrap()
+        .get_user()
         .unwrap();
-    assert_eq!(
-        device.unicast_users_count, 1,
-        "Unicast counter should be 1 after new user"
-    );
-    println!("✅ New unicast user created successfully after deletion freed up slot");
+    assert_eq!(user.status, UserStatus::Banned);
 
-    // =========================================================================
-    // Test zero = unlimited: set limits to 0 and create multiple users
-    // =========================================================================
-    println!("🟢 Testing zero = unlimited behavior");
-
-    // Set both limits to 0 (unlimited)
+    // Delete from Banned should succeed
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            max_unicast_users: Some(0),
-            max_multicast_users: Some(0),
-            ..DeviceUpdateArgs::default()
-        }),
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
         vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
     .await;
 
-    let device = get_account_data(&mut banks_client, device_pubkey)
+    let user = get_account_data(&mut banks_client, user_pubkey)
         .await
-        .expect("Unable to get Device")
-        .get_device()
+        .unwrap()
+        .get_user()
         .unwrap();
-    assert_eq!(device.max_unicast_users, 0, "Max unicast should be 0");
-    assert_eq!(device.max_multicast_users, 0, "Max multicast should be 0");
+    assert_eq!(user.status, UserStatus::Deleting);
+}
 
-    // Create additional unicast user (should succeed because 0 = unlimited)
-    let user3_ip = [100, 0, 0, 12].into();
-    let (accesspass3_pubkey, _) = get_accesspass_pda(&program_id, &user3_ip, &payer.pubkey());
+#[tokio::test]
+async fn test_user_delete_from_out_of_credits() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, user_pubkey, accesspass_pubkey) =
+        setup_activated_user().await;
 
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Overwrite the access pass with last_access_epoch: 0 so it expires immediately
+    let user_ip = [100, 0, 0, 1].into();
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
             accesspass_type: AccessPassType::Prepaid,
-            client_ip: user3_ip,
-            last_access_epoch: 9999,
+            client_ip: user_ip,
+            last_access_epoch: 0,
             allow_multiple_ip: false,
+            tenant: Pubkey::default(),
         }),
         vec![
-            AccountMeta::new(accesspass3_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(payer.pubkey(), false),
         ],
@@ -1779,86 +1591,47 @@ async fn test_user_per_type_limits() {
     )
     .await;
 
-    let (user3_pubkey, _) = get_user_pda(&program_id, &user3_ip, UserType::IBRL);
+    // CheckUserAccessPass will see the expired access pass and set user to OutOfCredits
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateUser(UserCreateArgs {
-            client_ip: user3_ip,
-            user_type: UserType::IBRL,
-            cyoa_type: UserCYOA::GREOverDIA,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
+        DoubleZeroInstruction::CheckUserAccessPass(check_access_pass::CheckUserAccessPassArgs {}),
         vec![
-            AccountMeta::new(user3_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(accesspass3_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
     .await;
 
-    // Create additional multicast user (should succeed because 0 = unlimited)
-    let mcast3_ip = [100, 0, 0, 22].into();
-    let (accesspass_mcast3_pubkey, _) =
-        get_accesspass_pda(&program_id, &mcast3_ip, &payer.pubkey());
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-            accesspass_type: AccessPassType::Prepaid,
-            client_ip: mcast3_ip,
-            last_access_epoch: 9999,
-            allow_multiple_ip: false,
-        }),
-        vec![
-            AccountMeta::new(accesspass_mcast3_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(payer.pubkey(), false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let (mcast3_pubkey, _) = get_user_pda(&program_id, &mcast3_ip, UserType::Multicast);
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateUser(UserCreateArgs {
-            client_ip: mcast3_ip,
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(mcast3_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(accesspass_mcast3_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let device = get_account_data(&mut banks_client, device_pubkey)
+    let user = get_account_data(&mut banks_client, user_pubkey)
         .await
-        .expect("Unable to get Device")
-        .get_device()
+        .unwrap()
+        .get_user()
         .unwrap();
-    assert_eq!(
-        device.unicast_users_count, 2,
-        "Should have 2 unicast users with unlimited"
-    );
-    assert_eq!(
-        device.multicast_users_count, 2,
-        "Should have 2 multicast users with unlimited"
-    );
-    println!("✅ Zero = unlimited behavior verified: multiple users created with limit=0");
+    assert_eq!(user.status, UserStatus::OutOfCredits);
 
-    println!("🟢🟢🟢 Per-type user limits test passed 🟢🟢🟢");
+    // Delete from OutOfCredits should succeed
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Deleting);
 }

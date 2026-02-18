@@ -25,10 +25,27 @@ func TestQA_MultiTunnel(t *testing.T) {
 	clients := test.Clients()
 	providedGroups := parseMulticastGroups()
 
-	// Shared state populated by setup subtests.
+	// Shared state populated by setup subtests. These subtests MUST run
+	// sequentially (no t.Parallel) since they write to shared variables.
 	var publisher *qa.Client
 	var subscribers []*qa.Client
 	var groupA, groupB *qa.MulticastGroup
+
+	// Safety net: disconnect any partially-connected clients if the test
+	// fails before the main cleanups are registered (i.e., Phase 1 or 2
+	// fails). Registered first so it runs last in LIFO order; in the
+	// normal case DisconnectUser is a no-op on already-disconnected clients.
+	t.Cleanup(func() {
+		var wg sync.WaitGroup
+		for _, client := range clients {
+			wg.Add(1)
+			go func(client *qa.Client) {
+				defer wg.Done()
+				_ = client.DisconnectUser(context.Background(), true, true)
+			}(client)
+		}
+		wg.Wait()
+	})
 
 	// --- PHASE 1: Unicast connect ---
 	t.Run("unicast_connect", func(t *testing.T) {
@@ -209,9 +226,6 @@ func TestQA_MultiTunnel(t *testing.T) {
 				"IBRL not up on host %s after adding multicast", client.Host)
 		}
 	})
-	if t.Failed() {
-		return
-	}
 
 	// --- PHASE 5: Run validations as subtests ---
 	log.Info("Running connectivity validations")

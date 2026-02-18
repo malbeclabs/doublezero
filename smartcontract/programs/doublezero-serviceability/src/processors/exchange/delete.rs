@@ -1,7 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     serializer::try_acc_close,
-    state::{exchange::*, globalstate::GlobalState},
+    state::{exchange::Exchange, globalstate::GlobalState},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;

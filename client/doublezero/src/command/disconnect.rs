@@ -96,24 +96,22 @@ impl DecommissioningCliCommand {
         }
 
         // Wait for daemon to deprovision the tunnel(s)
-        let user_type_str = match self.dz_mode {
+        let user_type_filter: Option<&str> = match self.dz_mode {
             Some(DzMode::IBRL) => Some("IBRL"),
             Some(DzMode::Multicast) => Some("Multicast"),
             None => None,
         };
-        if let Some(ut) = user_type_str {
-            match self
-                .poll_for_daemon_deprovisioned(&controller, ut, &spinner)
-                .await
-            {
-                Ok(()) => {
-                    spinner.println(format!("    Daemon confirmed {ut} tunnel removed"));
-                }
-                Err(e) => {
-                    spinner.println(format!(
-                        "    Daemon deprovisioning in progress (will complete automatically): {e}"
-                    ));
-                }
+        match self
+            .poll_for_daemon_deprovisioned(&controller, user_type_filter, &spinner)
+            .await
+        {
+            Ok(()) => {
+                spinner.println("    Daemon confirmed tunnel(s) removed".to_string());
+            }
+            Err(e) => {
+                spinner.println(format!(
+                    "    Daemon deprovisioning in progress (will complete automatically): {e}"
+                ));
             }
         }
 
@@ -126,7 +124,7 @@ impl DecommissioningCliCommand {
     async fn poll_for_daemon_deprovisioned<T: ServiceController>(
         &self,
         controller: &T,
-        user_type_str: &str,
+        user_type_filter: Option<&str>,
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {
         let max_attempts = 12;
@@ -144,16 +142,19 @@ impl DecommissioningCliCommand {
 
             match controller.status().await {
                 Ok(statuses) => {
-                    // For IBRL mode, check both IBRL and IBRLWithAllocatedIP
-                    let has_matching = statuses.iter().any(|s| {
-                        s.user_type.as_ref().is_some_and(|ut| {
-                            if user_type_str == "IBRL" {
-                                ut == "IBRL" || ut == "IBRLWithAllocatedIP"
-                            } else {
-                                ut == user_type_str
-                            }
-                        })
-                    });
+                    let has_matching = match user_type_filter {
+                        Some(filter) => statuses.iter().any(|s| {
+                            s.user_type.as_ref().is_some_and(|ut| {
+                                if filter == "IBRL" {
+                                    ut == "IBRL" || ut == "IBRLWithAllocatedIP"
+                                } else {
+                                    ut == filter
+                                }
+                            })
+                        }),
+                        // No filter: wait for all services to be gone
+                        None => !statuses.is_empty(),
+                    };
                     if !has_matching {
                         return Ok(());
                     }

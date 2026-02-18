@@ -1187,7 +1187,7 @@ func runWriteWorkflows(
 			{name: "link_wait_activated_dzx", cmd: `for i in $(seq 1 60); do doublezero link list 2>/dev/null | grep '` + dzxLinkCode + `' | grep -qv '0.0.0.0/0' && exit 0; sleep 1; done; echo "dzx link not activated after 60s"; exit 1`},
 		}},
 
-		// Continue all 4 streams: user1 wait, user2 delete, both link deletes.
+		// Continue all 4 streams: user1 wait, user2 delete, drain both links.
 		{name: "delete_continue", parallel: true, steps: []writeStep{
 			{name: "user_wait_removed", cmd: `for i in $(seq 1 30); do ` +
 				`count=$(doublezero user list 2>/dev/null | grep '` + userClientIP + `' | wc -l); ` +
@@ -1195,6 +1195,12 @@ func runWriteWorkflows(
 				`echo "user1 not removed after 30s"; exit 1`},
 			{name: "user_delete_2", cmd: cli + " user delete --pubkey " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP)},
+			{name: "link_drain", cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", linkCode) + " --desired-status soft-drained"},
+			{name: "link_drain_dzx", cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", dzxLinkCode) + " --desired-status soft-drained"},
+		}},
+
+		// Delete both drained links.
+		{name: "delete_links", parallel: true, steps: []writeStep{
 			{name: "link_delete", cmd: cli + " link delete --pubkey " + lookupPubkeyByCode("link list", linkCode)},
 			{name: "link_delete_dzx", cmd: cli + " link delete --pubkey " + lookupPubkeyByCode("link list", dzxLinkCode)},
 		}},
@@ -1229,6 +1235,12 @@ func runWriteWorkflows(
 			{name: "iface_wait_removed", cmd: `for i in $(seq 1 30); do count=$(doublezero device interface list ` + deviceCode + ` 2>/dev/null | tail -n +2 | wc -l); [ "$count" -eq 0 ] && exit 0; sleep 1; done; echo "interfaces not removed after 30s"; exit 1`},
 			{name: "iface_wait_removed_2", cmd: `for i in $(seq 1 30); do count=$(doublezero device interface list ` + deviceCode2 + ` 2>/dev/null | tail -n +2 | wc -l); [ "$count" -eq 0 ] && exit 0; sleep 1; done; echo "interfaces not removed after 30s"; exit 1`},
 			{name: "exchange_clear_devices", cmd: cli + " exchange set-device --pubkey " + exchangeCode, noCascade: true},
+		}},
+
+		// Drain both devices before deletion (delete not allowed from Activated).
+		{name: "drain_devices", parallel: true, steps: []writeStep{
+			{name: "device_drain", cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode) + " --desired-status drained"},
+			{name: "device_drain_2", cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode2) + " --desired-status drained"},
 		}},
 
 		// Delete both devices in parallel.

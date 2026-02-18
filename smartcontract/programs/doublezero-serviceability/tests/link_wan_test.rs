@@ -735,6 +735,34 @@ async fn test_wan_link() {
 
     println!("✅ Link updated to activated");
     /*****************************************************************************************************************************************************/
+    println!("🟢 13b. Drain Link before deletion...");
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            desired_status: Some(LinkDesiredStatus::SoftDrained),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(tunnel_la.status, LinkStatus::SoftDrained);
+
+    println!("✅ Link drained");
+    /*****************************************************************************************************************************************************/
     println!("🟢 14. Deleting Link...");
     execute_transaction(
         &mut banks_client,
@@ -855,6 +883,8 @@ async fn setup_link_env() -> (
     let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
     let (segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     execute_transaction(
@@ -867,6 +897,7 @@ async fn setup_link_env() -> (
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             multicastgroup_block: "10.0.0.0/24".parse().unwrap(),
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
             next_bgp_community: None,
         }),
         vec![
@@ -877,6 +908,7 @@ async fn setup_link_env() -> (
             AccountMeta::new(multicastgroup_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
             AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
@@ -1163,7 +1195,7 @@ async fn setup_link_env() -> (
 }
 
 #[tokio::test]
-async fn test_link_delete_fails_from_pending() {
+async fn test_link_delete_from_pending() {
     let (
         mut banks_client,
         program_id,
@@ -1187,7 +1219,7 @@ async fn test_link_delete_fails_from_pending() {
         .await
         .expect("Failed to get blockhash");
 
-    let result = try_execute_transaction(
+    execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -1201,13 +1233,12 @@ async fn test_link_delete_fails_from_pending() {
     )
     .await;
 
-    assert!(result.is_err());
-    let error_string = format!("{:?}", result.unwrap_err());
-    assert!(
-        error_string.contains("Custom(7)"),
-        "Expected InvalidStatus (Custom(7)), got: {}",
-        error_string
-    );
+    let link = get_account_data(&mut banks_client, tunnel_pubkey)
+        .await
+        .expect("Link not found")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link.status, LinkStatus::Deleting);
 }
 
 #[tokio::test]
@@ -1254,6 +1285,29 @@ async fn test_link_delete_from_soft_drained() {
         .get_tunnel()
         .unwrap();
     assert_eq!(link.status, LinkStatus::Activated);
+
+    // Delete from Activated should fail (must drain first)
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(result.is_err());
+    let error_string = format!("{:?}", result.unwrap_err());
+    assert!(
+        error_string.contains("Custom(7)"),
+        "Expected InvalidStatus (Custom(7)), got: {}",
+        error_string
+    );
 
     // Drain to SoftDrained
     execute_transaction(

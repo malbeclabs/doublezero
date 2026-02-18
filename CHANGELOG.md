@@ -62,6 +62,8 @@ All notable changes to this project will be documented in this file.
   - Fix panic in heartbeat sender when concurrent teardown requests race on close
 - E2E tests
   - Add daily devnet QA test for device provisioning lifecycle (RFC12) — deletes/recreates device and links, restarts daemons with new pubkey via Ansible
+- Onchain Programs
+  - Serviceability: restrict Delete instructions (Device, Link) to non-Activated statuses, requiring drain before deletion. Allow deletion from Pending, provisioning, and drained states. Other entities (Location, Exchange, Contributor, User, MulticastGroup) retain existing status restrictions.
 
 ## [v0.8.7](https://github.com/malbeclabs/doublezero/compare/client/v0.8.6...client/v0.8.7) – 2026-02-10
 

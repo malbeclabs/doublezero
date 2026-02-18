@@ -1127,6 +1127,24 @@ async fn close_device(
 ) {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
+    // Drain device before deletion
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            desired_status: Some(DeviceDesiredStatus::Drained),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
     execute_transaction(
         banks_client,
         recent_blockhash,

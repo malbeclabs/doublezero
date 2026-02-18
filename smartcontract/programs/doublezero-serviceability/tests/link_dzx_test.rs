@@ -829,6 +829,35 @@ async fn test_dzx_link() {
 
     println!("✅ Link updated to SoftDrained by Contributor B");
     /*****************************************************************************************************************************************************/
+    println!("🟢 19b. Drain Link before deletion...");
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            desired_status: Some(LinkDesiredStatus::SoftDrained),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_dzx_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer2,
+    )
+    .await;
+
+    let link_dzx = get_account_data(&mut banks_client, link_dzx_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link_dzx.status, LinkStatus::SoftDrained);
+
+    println!("✅ Link drained");
+    /*****************************************************************************************************************************************************/
     println!("🟢 20. Deleting Link...");
     execute_transaction(
         &mut banks_client,

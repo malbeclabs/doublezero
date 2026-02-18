@@ -259,9 +259,16 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	// Log allocated resources before deletion (for debugging/audit purposes)
 	log.Debug("==> Allocated resources before deletion", "tunnel_id", activatedLink.TunnelId, "tunnel_net", activatedLink.TunnelNet)
 
-	// Delete link to trigger transition to Deleting status
-	// Must use actual pubkey (base58 encoded), not the code
+	// Drain link before deletion (delete not allowed from Activated status)
 	linkPubkey := base58.Encode(activatedLink.PubKey[:])
+	log.Debug("==> Draining link before deletion", "pubkey", linkPubkey)
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", fmt.Sprintf(`
+		set -euo pipefail
+		doublezero link update --pubkey "%s" --desired-status soft-drained
+	`, linkPubkey)})
+	require.NoError(t, err)
+
+	// Delete link to trigger transition to Deleting status
 	log.Debug("==> Deleting link to trigger deallocation", "pubkey", linkPubkey)
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", fmt.Sprintf(`
 		set -euo pipefail

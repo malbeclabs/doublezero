@@ -76,7 +76,7 @@ pub fn process_delete_link(
     let mut link: Link = Link::try_from(link_account)?;
     if !matches!(
         link.status,
-        LinkStatus::Activated
+        LinkStatus::Pending
             | LinkStatus::Provisioning
             | LinkStatus::SoftDrained
             | LinkStatus::HardDrained

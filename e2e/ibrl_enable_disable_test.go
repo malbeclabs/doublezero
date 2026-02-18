@@ -64,7 +64,7 @@ func TestE2E_IBRL_EnableDisable(t *testing.T) {
 		got, err := client.Exec(t.Context(), []string{"doublezero", "status"})
 		require.NoError(t, err)
 
-		want, err := fixtures.Render("fixtures/ibrl/doublezero_status_disconnected.txt", map[string]any{})
+		want, err := fixtures.Render("fixtures/ibrl/doublezero_status_disconnected.tmpl", map[string]any{"Reconciler": "false"})
 		require.NoError(t, err)
 
 		diff := fixtures.DiffCLITable(got, []byte(want))

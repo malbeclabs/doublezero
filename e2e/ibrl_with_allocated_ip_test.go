@@ -332,8 +332,8 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 		}{
 			{
 				name:        "doublezero_status",
-				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_status_disconnected.txt",
-				data:        map[string]any{},
+				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_status_disconnected.tmpl",
+				data:        map[string]any{"Reconciler": "true"},
 				cmd:         []string{"doublezero", "status"},
 			},
 		}

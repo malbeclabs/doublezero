@@ -8,7 +8,7 @@ use clap::Args;
 use doublezero_cli::{doublezerocommand::CliCommand, helpers::print_error};
 use doublezero_sdk::commands::{
     device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
-    user::list::ListUserCommand,
+    tenant::list::ListTenantCommand, user::list::ListUserCommand,
 };
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
@@ -26,6 +26,8 @@ pub struct StatusCliCommand {
 struct AppendedStatusResponse {
     #[tabled(inline)]
     response: StatusResponse,
+    #[tabled(rename = "Tenant")]
+    tenant: String,
     #[tabled(rename = "Current Device")]
     current_device: String,
     #[tabled(rename = "Lowest Latency Device")]
@@ -57,12 +59,14 @@ impl StatusCliCommand {
         let devices = client.list_device(ListDeviceCommand)?;
         let users = client.list_user(ListUserCommand)?;
         let exchanges = client.list_exchange(ListExchangeCommand)?;
+        let tenants = client.list_tenant(ListTenantCommand {})?;
 
         let status_responses = controller.status().await?;
         let mut responses = Vec::with_capacity(status_responses.len());
         for response in &status_responses {
             let mut current_device: Option<Pubkey> = None;
             let mut metro = None;
+            let mut tenant_code = String::new();
             let user = users
                 .iter()
                 .find(|(_, u)| {
@@ -87,6 +91,12 @@ impl StatusCliCommand {
                 current_device = Some(user.device_pk);
                 if let Some(dev) = devices.get(&user.device_pk) {
                     metro = exchanges.get(&dev.exchange_pk).map(|e| e.name.clone());
+                }
+                if user.tenant_pk != Pubkey::default() {
+                    tenant_code = tenants
+                        .get(&user.tenant_pk)
+                        .map(|t| t.code.clone())
+                        .unwrap_or_default();
                 }
             } else if let Some(ref tunnel_dst) = response.tunnel_dst {
                 // Fallback: match by tunnel_dst (device public IP) for users without dz_ip
@@ -136,6 +146,7 @@ impl StatusCliCommand {
                 lowest_latency_device,
                 metro: metro.unwrap_or_else(|| "N/A".to_string()),
                 network: format!("{}", client.get_environment()),
+                tenant: tenant_code,
             });
         }
 
@@ -155,6 +166,7 @@ mod tests {
         UserStatus, UserType,
     };
     use doublezero_serviceability::state::device::{DeviceDesiredStatus, DeviceHealth};
+    use doublezero_serviceability::state::tenant::Tenant;
     use mockall::predicate::*;
     use solana_sdk::pubkey::Pubkey;
     use std::net::Ipv4Addr;
@@ -341,6 +353,10 @@ mod tests {
                 let exchanges = exchanges.clone();
                 move |_| Ok(exchanges.clone())
             });
+        mock_command
+            .expect_list_tenant()
+            .with(eq(ListTenantCommand {}))
+            .returning(|_| Ok(std::collections::HashMap::<Pubkey, Tenant>::new()));
 
         let result = StatusCliCommand { json: true }
             .command_impl(&mock_command, &mock_controller)
@@ -364,6 +380,7 @@ mod tests {
         assert_eq!(result[0].lowest_latency_device, "device2".to_string());
         assert_eq!(result[0].metro, "metro".to_string());
         assert_eq!(result[0].network, "testnet".to_string());
+        assert_eq!(result[0].tenant, "".to_string());
     }
 
     #[tokio::test]
@@ -524,6 +541,10 @@ mod tests {
                 let exchanges = exchanges.clone();
                 move |_| Ok(exchanges.clone())
             });
+        mock_command
+            .expect_list_tenant()
+            .with(eq(ListTenantCommand {}))
+            .returning(|_| Ok(std::collections::HashMap::<Pubkey, Tenant>::new()));
 
         let result = StatusCliCommand { json: true }
             .command_impl(&mock_command, &mock_controller)
@@ -547,6 +568,7 @@ mod tests {
         assert_eq!(result[0].lowest_latency_device, "device2".to_string());
         assert_eq!(result[0].metro, "N/A".to_string());
         assert_eq!(result[0].network, "testnet".to_string());
+        assert_eq!(result[0].tenant, "".to_string());
     }
 
     #[tokio::test]
@@ -685,6 +707,10 @@ mod tests {
                 let exchanges = exchanges.clone();
                 move |_| Ok(exchanges.clone())
             });
+        mock_command
+            .expect_list_tenant()
+            .with(eq(ListTenantCommand {}))
+            .returning(|_| Ok(std::collections::HashMap::<Pubkey, Tenant>::new()));
 
         let result = StatusCliCommand { json: true }
             .command_impl(&mock_command, &mock_controller)
@@ -813,6 +839,10 @@ mod tests {
                 let exchanges = exchanges.clone();
                 move |_| Ok(exchanges.clone())
             });
+        mock_command
+            .expect_list_tenant()
+            .with(eq(ListTenantCommand {}))
+            .returning(|_| Ok(std::collections::HashMap::<Pubkey, Tenant>::new()));
 
         let result = StatusCliCommand { json: true }
             .command_impl(&mock_command, &mock_controller)
@@ -855,6 +885,7 @@ mod tests {
             lowest_latency_device: "device1".to_string(),
             metro: "amsterdam".to_string(),
             network: "Testnet".to_string(),
+            tenant: "".to_string(),
         };
 
         // JSON output is an array of status responses
@@ -880,6 +911,7 @@ mod tests {
         );
         assert!(status.get("metro").is_some(), "Missing 'metro' field");
         assert!(status.get("network").is_some(), "Missing 'network' field");
+        assert!(status.get("tenant").is_some(), "Missing 'tenant' field");
 
         // Validate response nested fields
         let response = status.get("response").unwrap();
@@ -957,6 +989,7 @@ mod tests {
             lowest_latency_device: "device1".to_string(),
             metro: "amsterdam".to_string(),
             network: "Testnet".to_string(),
+            tenant: "".to_string(),
         };
 
         // JSON output is an array of status responses

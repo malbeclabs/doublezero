@@ -28,9 +28,9 @@ pub fn process_update_program_config(
     let accounts_iter = &mut accounts.iter();
 
     let program_config_account = next_account_info(accounts_iter)?;
+    let program_data_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
-    let program_data_account = next_account_info(accounts_iter)?;
 
     if !payer_account.is_signer {
         msg!("Payer must be a signer");

@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 - Onchain Programs
   - Refactor user creation to validate all limits (max_users, max_multicast_users, max_unicast_users) before incrementing counters — improves efficiency by avoiding wasted work on validation failures and follows fail-fast best practice
   - Serviceability: `UnlinkDeviceInterface` now only allows `Activated` or `Pending` interfaces; when an associated link account is provided for an `Activated` interface, the link must be in `Deleting` status
+  - Restrict Delete instructions to explicit allow-list of valid statuses instead of deny-list — improves clarity and reduces risk when new statuses are added
   - SDK: `UnlinkDeviceInterfaceCommand` automatically discovers and passes associated link accounts
   - Serviceability: allow contributors to update prefixes when for IBRL when no users are allocated
 - E2E / QA Tests
@@ -100,6 +101,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: bypass validation for link delete ([#2934](https://github.com/malbeclabs/doublezero/pull/2934))
   - Serviceability: add per-device unicast and multicast user limits with separate counters and configurable max values ([RFC-14](rfcs/rfc14-per-device-unicast-multicast-user-limits.md))
   - Fix link device & link updates
+  - Serviceability: restrict Delete instructions to explicit allow-list of valid statuses instead of deny-list
 - SDK
   - Add metro_routing and route_liveness fields to CreateTenantCommand and UpdateTenantCommand
   - Add CreateTenant, UpdateTenant (vrf_id only), DeleteTenant, GetTenant, and ListTenant commands with support for code or pubkey lookup

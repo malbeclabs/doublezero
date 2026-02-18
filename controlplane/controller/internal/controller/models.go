@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/malbeclabs/doublezero/controlplane/controller/config"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 )
 
 type InterfaceType uint8

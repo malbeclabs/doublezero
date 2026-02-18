@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/config"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	enricher "github.com/malbeclabs/doublezero/telemetry/flow-enricher/internal/flow-enricher"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 	"github.com/prometheus/client_golang/prometheus"

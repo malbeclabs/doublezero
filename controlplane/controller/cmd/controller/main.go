@@ -27,7 +27,7 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/controller/internal/controller"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 )
 
 var (

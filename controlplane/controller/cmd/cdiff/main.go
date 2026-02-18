@@ -11,7 +11,7 @@ import (
 
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/mr-tron/base58"
 
 	controllerpb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"

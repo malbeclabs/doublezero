@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"testing"
 
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -68,7 +68,7 @@ func TestCompare(t *testing.T) {
 		{
 			name:             "multiple event types",
 			before:           []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusActivated), newTestDevice("2", serviceability.DeviceStatusPending)}, // 2 is removed
-			after:            []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusSuspended), newTestDevice("3", serviceability.DeviceStatusPending)}, // 1 is modified, 3 is added
+			after:            []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusDeleting), newTestDevice("3", serviceability.DeviceStatusPending)},  // 1 is modified, 3 is added
 			expectedAdded:    1,
 			expectedRemoved:  1,
 			expectedModified: 1,

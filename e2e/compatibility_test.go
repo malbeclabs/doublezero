@@ -83,11 +83,6 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/link_set_health":     {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
 	"write/link_set_health_dzx": {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
 
-	// global_config_set: The SetGlobalConfig instruction added new required accounts
-	// (MulticastPublisherBlock, VrfIds) that released CLIs (through v0.8.7) don't
-	// include, causing "insufficient account keys for instruction".
-	"write/global_config_set": {minVersion: "0.8.8"},
-
 	// link drain: --status soft-drained was supported since v0.7.2. v0.7.1 and older
 	// fail with "Invalid LinkStatus: soft-drained".
 	"write/link_drain":     {minVersion: "0.7.2"},

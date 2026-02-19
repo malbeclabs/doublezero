@@ -18,9 +18,10 @@ use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    system_instruction, system_program,
+    system_program,
     transaction::Transaction,
 };
+
 use std::any::type_name;
 
 // Use a fixed byte array to create a constant Keypair for testing
@@ -127,7 +128,7 @@ pub async fn transfer(
 ) {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    let transfer_ix = system_instruction::transfer(&source.pubkey(), destination, lamports);
+    let transfer_ix = solana_system_interface::instruction::transfer(&source.pubkey(), destination, lamports);
     let mut tx = Transaction::new_with_payer(&[transfer_ix], Some(&source.pubkey()));
     tx.sign(&[&source], recent_blockhash);
     banks_client.process_transaction(tx).await.unwrap();

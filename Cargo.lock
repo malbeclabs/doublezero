@@ -1641,6 +1641,7 @@ dependencies = [
  "serde",
  "serde_json",
  "solana-program",
+ "solana-system-interface",
 ]
 
 [[package]]
@@ -1671,6 +1672,7 @@ dependencies = [
  "solana-program",
  "solana-program-test",
  "solana-sdk",
+ "solana-system-interface",
  "strum 0.26.3",
  "strum_macros 0.26.4",
  "thiserror 2.0.17",
@@ -1694,6 +1696,7 @@ dependencies = [
  "solana-program",
  "solana-program-test",
  "solana-sdk",
+ "solana-system-interface",
 ]
 
 [[package]]

@@ -61,6 +61,7 @@ use solana_sdk::{
     system_program,
     transaction::{Transaction, TransactionError, VersionedTransaction},
 };
+
 use std::sync::{Arc, Mutex};
 
 #[ctor::ctor]
@@ -246,7 +247,7 @@ impl LedgerHelper {
             )
         };
         let transfer_instruction =
-            solana_sdk::system_instruction::transfer(&payer.pubkey(), recipient, lamports);
+            solana_system_interface::instruction::transfer(&payer.pubkey(), recipient, lamports);
         let mut transaction =
             Transaction::new_with_payer(&[transfer_instruction], Some(&payer.pubkey()));
         transaction.sign(&[&payer], recent_blockhash);
@@ -261,7 +262,7 @@ impl LedgerHelper {
         space: u64,
         owner: &Pubkey,
     ) -> Result<(), BanksClientError> {
-        let ix = solana_sdk::system_instruction::create_account(
+        let ix = solana_system_interface::instruction::create_account(
             &funder.pubkey(),
             new_account,
             lamports,
@@ -1319,7 +1320,7 @@ pub async fn fund_account(
     recent_blockhash: solana_sdk::hash::Hash,
 ) -> Result<(), BanksClientError> {
     let transfer_instruction =
-        solana_sdk::system_instruction::transfer(&payer.pubkey(), recipient, lamports);
+        solana_system_interface::instruction::transfer(&payer.pubkey(), recipient, lamports);
     let mut transaction =
         Transaction::new_with_payer(&[transfer_instruction], Some(&payer.pubkey()));
     transaction.sign(&[payer], recent_blockhash);

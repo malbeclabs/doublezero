@@ -19,9 +19,9 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
     rent::Rent,
-    system_instruction,
     sysvar::Sysvar,
 };
+
 use std::fmt;
 
 #[cfg(test)]
@@ -156,7 +156,11 @@ pub fn process_create_tenant(
         .saturating_add(globalstate.contributor_airdrop_lamports);
 
     invoke_signed_unchecked(
-        &system_instruction::transfer(payer_account.key, tenant_account.key, deposit),
+        &solana_system_interface::instruction::transfer(
+            payer_account.key,
+            tenant_account.key,
+            deposit,
+        ),
         &[
             payer_account.clone(),
             tenant_account.clone(),

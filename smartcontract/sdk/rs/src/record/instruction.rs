@@ -2,7 +2,6 @@ pub use doublezero_record::instruction::*;
 
 use doublezero_record::{instruction as record_instruction, state::RecordData, ID};
 use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
-use solana_system_interface::instruction as system_instruction;
 
 use crate::record::pubkey::{create_record_key, create_record_seed_string};
 
@@ -35,7 +34,7 @@ impl InitializeRecordInstructions {
         // mitigate this risk by using some more compute units to create the
         // account robustly (and we know that CU do not cost anything on DZ
         // Ledger since priority fees are not required to land transactions).
-        let allocate_ix = system_instruction::allocate_with_seed(
+        let allocate_ix = solana_system_interface::instruction::allocate_with_seed(
             &record_key,
             payer_key,
             &seed_str,
@@ -43,8 +42,12 @@ impl InitializeRecordInstructions {
             &ID,
         );
 
-        let assign_ix =
-            system_instruction::assign_with_seed(&record_key, payer_key, &seed_str, &ID);
+        let assign_ix = solana_system_interface::instruction::assign_with_seed(
+            &record_key,
+            payer_key,
+            &seed_str,
+            &ID,
+        );
 
         let initialize_ix = record_instruction::initialize(&record_key, payer_key);
 

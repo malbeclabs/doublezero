@@ -10,6 +10,14 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.8.10](https://github.com/malbeclabs/doublezero/compare/client/v0.8.9...client/v0.8.10) – 2026-02-19
+
+### Breaking
+
+- N/A
+
+### Changes
+
 - Activator
   - removes accesspass monitor task (that expires access passes)
 - Monitor

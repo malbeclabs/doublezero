@@ -201,9 +201,6 @@ func validateMulticastConnectivity(t *testing.T, ctx context.Context, log *slog.
 // TestQA_MulticastPublisherMultipleGroups tests a single publisher sending to multiple
 // multicast groups, with different subscribers for each group.
 func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
-	if envArg != "devnet" && envArg != "testnet" {
-		t.Skip("Skipping: requires QA agent support for multi-group multicast")
-	}
 	log := newTestLogger(t)
 	ctx := t.Context()
 	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)

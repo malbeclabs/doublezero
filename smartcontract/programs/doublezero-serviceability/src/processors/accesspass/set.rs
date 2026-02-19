@@ -86,7 +86,7 @@ pub fn process_set_access_pass(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
@@ -103,7 +103,7 @@ pub fn process_set_access_pass(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
 
@@ -145,7 +145,7 @@ pub fn process_set_access_pass(
     }
 
     // If account does not exist, create it
-    if *accesspass_account.owner == solana_program::system_program::id() {
+    if *accesspass_account.owner == solana_system_interface::program::ID {
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed,

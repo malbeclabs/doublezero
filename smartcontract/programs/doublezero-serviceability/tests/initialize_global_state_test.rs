@@ -4,7 +4,7 @@ use doublezero_serviceability::{
     programversion::ProgramVersion,
     state::{accounttype::AccountType, globalstate::GlobalState, programconfig::ProgramConfig},
 };
-use solana_program::{rent::Rent, system_program};
+use solana_program::rent::Rent;
 use solana_program_test::*;
 use solana_sdk::{
     account::Account as SolanaAccount, instruction::AccountMeta, pubkey::Pubkey, signature::Signer,
@@ -59,7 +59,7 @@ async fn test_initialize_global_state_resizes_programconfig_and_tops_up_rent() {
                 AccountMeta::new(program_config_pda, false),
                 AccountMeta::new(globalstate_pda, false),
                 AccountMeta::new(payer.pubkey(), true),
-                AccountMeta::new(system_program::id(), false),
+                AccountMeta::new(solana_system_interface::program::ID, false),
             ],
             data,
         }

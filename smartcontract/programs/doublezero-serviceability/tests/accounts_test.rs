@@ -4,7 +4,7 @@ use doublezero_serviceability::{
     programversion::ProgramVersion,
     state::{accounttype::AccountType, programconfig::ProgramConfig},
 };
-use solana_program::{rent::Rent, system_program};
+use solana_program::rent::Rent;
 use solana_program_test::*;
 use solana_sdk::{
     account::Account as SolanaAccount, instruction::AccountMeta, pubkey::Pubkey, signature::Signer,
@@ -66,7 +66,7 @@ async fn test_write_account_realloc_funds_from_payer() {
                 AccountMeta::new(program_config_pda, false),
                 AccountMeta::new(globalstate_pda, false),
                 AccountMeta::new(payer.pubkey(), true),
-                AccountMeta::new(system_program::id(), false),
+                AccountMeta::new(solana_system_interface::program::ID, false),
             ],
             data,
         }

@@ -37,7 +37,7 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
     assert!(payer_account.is_signer, "Payer must be a signer");
     assert_eq!(
         system_account.key,
-        &solana_program::system_program::id(),
+        &solana_system_interface::program::ID,
         "Invalid System Program account"
     );
 

@@ -69,7 +69,7 @@ pub fn process_subscribe_multicastgroup(
     assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     assert!(

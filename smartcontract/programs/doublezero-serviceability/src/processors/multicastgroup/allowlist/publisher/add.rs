@@ -65,7 +65,7 @@ pub fn process_add_multicastgroup_pub_allowlist(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable

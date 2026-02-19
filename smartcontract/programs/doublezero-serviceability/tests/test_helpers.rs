@@ -18,7 +18,6 @@ use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    system_program,
     transaction::Transaction,
 };
 
@@ -128,7 +127,8 @@ pub async fn transfer(
 ) {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    let transfer_ix = solana_system_interface::instruction::transfer(&source.pubkey(), destination, lamports);
+    let transfer_ix =
+        solana_system_interface::instruction::transfer(&source.pubkey(), destination, lamports);
     let mut tx = Transaction::new_with_payer(&[transfer_ix], Some(&source.pubkey()));
     tx.sign(&[&source], recent_blockhash);
     banks_client.process_transaction(tx).await.unwrap();
@@ -190,7 +190,7 @@ async fn execute_transaction_tester(
                 accounts.clone(),
                 vec![
                     AccountMeta::new(test_payer, false),
-                    AccountMeta::new(system_program::id(), false),
+                    AccountMeta::new(solana_system_interface::program::ID, false),
                 ],
             ]
             .concat(),
@@ -286,7 +286,7 @@ pub fn create_transaction_with_extra_accounts(
                 accounts.to_owned(),
                 vec![
                     AccountMeta::new(payer.pubkey(), true),
-                    AccountMeta::new(system_program::id(), false),
+                    AccountMeta::new(solana_system_interface::program::ID, false),
                 ],
                 extra_accounts.to_vec(),
             ]

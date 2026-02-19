@@ -56,7 +56,7 @@ pub fn process_reject_link(
             assert!(payer_account.is_signer, "Payer must be a signer");
             assert_eq!(
                 *system_program.unsigned_key(),
-                solana_program::system_program::id(),
+                solana_system_interface::program::ID,
                 "Invalid System Program Account Owner"
             );
 
@@ -82,7 +82,7 @@ pub fn process_reject_link(
             assert!(payer_account.is_signer, "Payer must be a signer");
             assert_eq!(
                 *system_program.unsigned_key(),
-                solana_program::system_program::id(),
+                solana_system_interface::program::ID,
                 "Invalid System Program Account Owner"
             );
 

@@ -17,7 +17,6 @@ use doublezero_telemetry::{
     processors::telemetry::initialize_device_latency_samples::InitializeDeviceLatencySamplesArgs,
     state::device_latency_samples::DEVICE_LATENCY_SAMPLES_HEADER_SIZE,
 };
-use solana_program::example_mocks::solana_sdk::system_program;
 use solana_program_test::*;
 use solana_sdk::{
     account::Account,
@@ -462,7 +461,7 @@ async fn test_initialize_device_latency_samples_fail_agent_not_signer() {
         AccountMeta::new_readonly(origin_device_pk, false),
         AccountMeta::new_readonly(target_device_pk, false),
         AccountMeta::new_readonly(link_pk, false),
-        AccountMeta::new_readonly(system_program::id(), false),
+        AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         AccountMeta::new_readonly(ledger.serviceability.program_id, false),
     ];
 

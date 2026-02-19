@@ -52,7 +52,8 @@ pub fn try_create_account(
             current_lamports,
             data_len
         );
-        let allocate_ix = solana_system_interface::instruction::allocate(new_account_key, data_len as u64);
+        let allocate_ix =
+            solana_system_interface::instruction::allocate(new_account_key, data_len as u64);
         invoke_signed_unchecked(&allocate_ix, accounts, &[new_account_signer_seeds])?;
 
         let assign_ix = solana_system_interface::instruction::assign(new_account_key, program_id);
@@ -64,7 +65,11 @@ pub fn try_create_account(
         if lamport_diff != 0 {
             #[cfg(test)]
             msg!("Transferring {} lamports to new account", lamport_diff);
-            let transfer_ix = solana_system_interface::instruction::transfer(payer_key, new_account_key, lamport_diff);
+            let transfer_ix = solana_system_interface::instruction::transfer(
+                payer_key,
+                new_account_key,
+                lamport_diff,
+            );
             invoke_signed_unchecked(&transfer_ix, accounts, &[])?;
         }
     }

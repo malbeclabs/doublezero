@@ -534,6 +534,12 @@ func (p *ProvisioningTest) RunAnsibleAgentRestart(ctx context.Context, deviceCod
 		vaultArgs = []string{"--vault-password-file", vaultFile.Name()}
 	}
 
+	// Resolve SSH key path
+	sshKeyFile := os.Getenv("ANSIBLE_SSH_KEY_FILE")
+	if sshKeyFile == "" {
+		sshKeyFile = "~/.ssh/id_runner"
+	}
+
 	// Run agents.yml to restart doublezero-agent
 	p.log.Info("Running Ansible to restart doublezero-agent", "device", deviceCode, "pubkey", newPubkey)
 	agentArgs := []string{
@@ -542,6 +548,7 @@ func (p *ProvisioningTest) RunAnsibleAgentRestart(ctx context.Context, deviceCod
 		"--limit", deviceCode,
 		"-e", fmt.Sprintf("bm_host=%s", p.bmHost),
 		"-e", fmt.Sprintf("env=%s", p.env),
+		"-e", fmt.Sprintf("ansible_ssh_private_key_file=%s", sshKeyFile),
 		filepath.Join(p.infraPath, "ansible/playbooks/agents.yml"),
 	}
 	agentArgs = append(agentArgs, vaultArgs...)
@@ -561,6 +568,7 @@ func (p *ProvisioningTest) RunAnsibleAgentRestart(ctx context.Context, deviceCod
 		"--limit", deviceCode,
 		"-e", fmt.Sprintf("bm_host=%s", p.bmHost),
 		"-e", fmt.Sprintf("env=%s", p.env),
+		"-e", fmt.Sprintf("ansible_ssh_private_key_file=%s", sshKeyFile),
 		filepath.Join(p.infraPath, "ansible/playbooks/device_telemetry_agent.yml"),
 	}
 	telemetryArgs = append(telemetryArgs, vaultArgs...)

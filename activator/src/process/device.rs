@@ -2,8 +2,11 @@ use crate::{
     idallocator::IDAllocator, ipblockallocator::IPBlockAllocator, process::iface_mgr::InterfaceMgr,
 };
 use doublezero_sdk::{
-    commands::device::{activate::ActivateDeviceCommand, closeaccount::CloseAccountDeviceCommand},
-    Device, DeviceStatus, DoubleZeroClient,
+    commands::{
+        device::{activate::ActivateDeviceCommand, closeaccount::CloseAccountDeviceCommand},
+        resource::closeaccount::CloseResourceCommand,
+    },
+    Device, DeviceStatus, DoubleZeroClient, ResourceType,
 };
 use log::info;
 use solana_sdk::pubkey::Pubkey;
@@ -61,7 +64,10 @@ pub fn process_device_event(
             mgr.process_device_interfaces(pubkey, device);
 
             match devices.entry(*pubkey) {
-                Entry::Occupied(mut entry) => entry.get_mut().update(device),
+                Entry::Occupied(mut entry) => {
+                    close_orphaned_dz_prefix_blocks(client, pubkey, &entry.get().device, device);
+                    entry.get_mut().update(device);
+                }
                 Entry::Vacant(entry) => {
                     info!(
                         "Add Device: {} public_ip: {} dz_prefixes: {} ",
@@ -81,7 +87,10 @@ pub fn process_device_event(
             mgr.process_device_interfaces(pubkey, device);
 
             match devices.entry(*pubkey) {
-                Entry::Occupied(mut entry) => entry.get_mut().update(device),
+                Entry::Occupied(mut entry) => {
+                    close_orphaned_dz_prefix_blocks(client, pubkey, &entry.get().device, device);
+                    entry.get_mut().update(device);
+                }
                 Entry::Vacant(entry) => {
                     info!(
                         "Add Device: {} public_ip: {} dz_prefixes: {} ",
@@ -122,6 +131,39 @@ pub fn process_device_event(
             info!("{log_msg}");
         }
         _ => {}
+    }
+}
+
+/// Close orphaned DzPrefixBlock resource accounts when a device's dz_prefixes shrink.
+fn close_orphaned_dz_prefix_blocks(
+    client: &dyn DoubleZeroClient,
+    device_pubkey: &Pubkey,
+    old_device: &Device,
+    new_device: &Device,
+) {
+    let old_count = old_device.dz_prefixes.len();
+    let new_count = new_device.dz_prefixes.len();
+
+    if new_count >= old_count {
+        return;
+    }
+
+    for idx in new_count..old_count {
+        let res = CloseResourceCommand {
+            resource_type: ResourceType::DzPrefixBlock(*device_pubkey, idx),
+        }
+        .execute(client);
+
+        match res {
+            Ok(sig) => info!(
+                "Closed orphaned DzPrefixBlock({}) for device {}: {}",
+                idx, new_device.code, sig
+            ),
+            Err(e) => info!(
+                "Error closing orphaned DzPrefixBlock({}) for device {}: {}",
+                idx, new_device.code, e
+            ),
+        }
     }
 }
 

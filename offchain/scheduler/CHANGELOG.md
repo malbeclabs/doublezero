@@ -6,7 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [v0.1.10](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/offchain-scheduler/v0.1.10) - 2026-02-19
 - result from calculate_distribution_returns value only, not ok tuple ([#270](https://github.com/doublezerofoundation/doublezero-offchain/pull/270))
+
+## [v0.1.9](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/offchain-scheduler/v0.1.9) - 2026-02-12
+- ensure debt is finalized before collection ([#268](https://github.com/doublezerofoundation/doublezero-offchain/pull/268))
 
 ## [v0.1.8](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/offchain-scheduler/v0.1.8) - 2026-02-12
 
@@ -19,7 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.1.6](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/offchain-scheduler/v0.1.6) - 2026-01-12
 
-- ensure debt is finalized before collection ([#268](https://github.com/doublezerofoundation/doublezero-offchain/pull/268))
+- finalize zero debt ([#248](https://github.com/doublezerofoundation/doublezero-offchain/pull/248))
+- filter out epochs with no successful debt collection ([#246](https://github.com/doublezerofoundation/doublezero-offchain/pull/246))
 
 ## [v0.1.5](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/offchain-scheduler/v0.1.5) - 2026-01-08
 

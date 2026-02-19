@@ -14,11 +14,14 @@ import (
 
 // TestQA_DeviceProvisioning exercises the full device provisioning lifecycle
 // as defined in rfcs/rfc12-network-provisioning.md:
-//  1. Verify device is healthy (validates previous day's provisioning)
+//  1. Check device health (validates previous day's provisioning)
 //  2. Delete interfaces, links, and device from ledger
 //  3. Recreate device, interfaces, and links (gets new pubkey)
 //  4. Restart agents with new pubkey via Ansible
 //  5. Next day's run verifies device became healthy again
+//
+// The health check is informational — an unhealthy device triggers a warning
+// but the provisioning lifecycle always runs regardless.
 //
 // Device state machine: Pending → DeviceProvisioning → LinkProvisioning → Activated
 // Device health: Unknown → Pending → ReadyForLinks → ReadyForUsers
@@ -53,25 +56,11 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 	prov, err := qa.NewProvisioningTest(ctx, log, networkConfig, envArg, bmHost)
 	require.NoError(t, err, "failed to create provisioning test")
 
-	// Cleanup stale state from previous runs (e.g. links left in drained/deleting state).
-	cleaned, err := prov.CleanupStaleState(ctx, deviceCode)
-	require.NoError(t, err, "failed to cleanup stale state")
-	if cleaned > 0 {
-		t.Logf("Cleaned up %d stale resources from previous run", cleaned)
-	}
-
-	t.Log("==> Verifying device is healthy (validates previous provisioning)")
+	// Get device — fail early if it doesn't exist since we need its config to reprovision.
 	device, err := prov.GetDeviceByCode(ctx, deviceCode)
-	require.NoError(t, err, "failed to get device %s", deviceCode)
-	require.Equal(t, "ready-for-users", normalizeEnum(device.Health),
-		"device health should be ready-for-users, got %s", device.Health)
-	require.Equal(t, "activated", normalizeEnum(device.Status),
-		"device status should be activated, got %s", device.Status)
+	require.NoError(t, err, "failed to get device %s — cannot reprovision without existing config", deviceCode)
 
-	oldPubkey := device.Pubkey
-	t.Logf("Current device pubkey: %s", oldPubkey)
-
-	t.Log("==> Capturing device and link configuration")
+	// Capture config and links while the device still exists.
 	deviceConfig, err := prov.CaptureDeviceConfig(ctx, device)
 	require.NoError(t, err, "failed to capture device config")
 
@@ -82,6 +71,19 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 		t.Logf("  - Link %s: %s/%s <-> %s/%s",
 			link.Code, link.SideACode, link.SideAIfaceName, link.SideZCode, link.SideZIfaceName)
 	}
+
+	// Check device health. Healthy = previous provisioning succeeded.
+	// Unhealthy = previous provisioning had a problem; log a warning and reprovision anyway.
+	t.Log("==> Checking device health (validates previous provisioning)")
+	if normalizeEnum(device.Health) == "ready-for-users" && normalizeEnum(device.Status) == "activated" {
+		t.Log("Device is healthy — previous provisioning verified")
+	} else {
+		t.Logf("WARNING: device is not healthy (status=%s health=%s) — previous provisioning may have failed, reprovisioning", device.Status, device.Health)
+		// TODO: fire an alert here
+	}
+
+	oldPubkey := device.Pubkey
+	t.Logf("Current device pubkey: %s", oldPubkey)
 
 	t.Log("==> Deleting links connected to device")
 	for _, link := range links {

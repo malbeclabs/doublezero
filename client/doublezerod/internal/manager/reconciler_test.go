@@ -46,15 +46,15 @@ type mockNetlink struct {
 	routes []*routing.Route
 }
 
-func (m *mockNetlink) TunnelAdd(*routing.Tunnel) error             { return nil }
-func (m *mockNetlink) TunnelDelete(*routing.Tunnel) error          { return nil }
-func (m *mockNetlink) TunnelAddrAdd(*routing.Tunnel, string) error { return nil }
-func (m *mockNetlink) TunnelUp(*routing.Tunnel) error              { return nil }
-func (m *mockNetlink) RouteAdd(*routing.Route) error               { return nil }
-func (m *mockNetlink) RouteDelete(*routing.Route) error            { return nil }
-func (m *mockNetlink) RouteGet(net.IP) ([]*routing.Route, error)   { return m.routes, nil }
-func (m *mockNetlink) RuleAdd(*routing.IPRule) error               { return nil }
-func (m *mockNetlink) RuleDel(*routing.IPRule) error               { return nil }
+func (m *mockNetlink) TunnelAdd(*routing.Tunnel) error                  { return nil }
+func (m *mockNetlink) TunnelDelete(*routing.Tunnel) error               { return nil }
+func (m *mockNetlink) TunnelAddrAdd(*routing.Tunnel, string, int) error { return nil }
+func (m *mockNetlink) TunnelUp(*routing.Tunnel) error                   { return nil }
+func (m *mockNetlink) RouteAdd(*routing.Route) error                    { return nil }
+func (m *mockNetlink) RouteDelete(*routing.Route) error                 { return nil }
+func (m *mockNetlink) RouteGet(net.IP) ([]*routing.Route, error)        { return m.routes, nil }
+func (m *mockNetlink) RuleAdd(*routing.IPRule) error                    { return nil }
+func (m *mockNetlink) RuleDel(*routing.IPRule) error                    { return nil }
 func (m *mockNetlink) RouteByProtocol(int) ([]*routing.Route, error) {
 	return m.routes, nil
 }
@@ -388,16 +388,19 @@ func TestParseOnchainNet(t *testing.T) {
 
 func TestReconcile_BothUnicastAndMulticast(t *testing.T) {
 	devicePK := [32]byte{1}
+	mcastGroupPK := [32]byte{2}
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 
 	ibrlUser := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)
 	mcastUser := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
+	mcastUser.Subscribers = [][32]uint8{mcastGroupPK}
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
-			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
-			Users:   []serviceability.User{ibrlUser, mcastUser},
+			Config:          testConfig(),
+			Devices:         []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
+			Users:           []serviceability.User{ibrlUser, mcastUser},
+			MulticastGroups: []serviceability.MulticastGroup{{PubKey: mcastGroupPK, MulticastIp: [4]uint8{239, 0, 0, 1}}},
 		},
 	}
 
@@ -683,7 +686,7 @@ func TestStartReconciler_EnableViaChannel(t *testing.T) {
 	if fetcher.Calls() < 1 {
 		t.Fatal("expected at least 1 fetch call after enable")
 	}
-	if n.UnicastService == nil {
+	if !n.HasUnicastService() {
 		t.Fatal("expected unicast service to be provisioned after enable")
 	}
 
@@ -693,14 +696,20 @@ func TestStartReconciler_EnableViaChannel(t *testing.T) {
 
 func TestStartReconciler_DisableViaChannel_TearsDown(t *testing.T) {
 	devicePK := [32]byte{1}
+	mcastGroupPK := [32]byte{2}
+
+	mcastUser := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
+	mcastUser.Subscribers = [][32]uint8{mcastGroupPK}
+
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
 			Users: []serviceability.User{
 				testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated),
-				testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated),
+				mcastUser,
 			},
+			MulticastGroups: []serviceability.MulticastGroup{{PubKey: mcastGroupPK, MulticastIp: [4]uint8{239, 0, 0, 1}}},
 		},
 	}
 
@@ -723,10 +732,10 @@ func TestStartReconciler_DisableViaChannel_TearsDown(t *testing.T) {
 	if n.Enabled() {
 		t.Fatal("expected enabled=false after SetEnabled(false)")
 	}
-	if n.UnicastService != nil {
+	if n.HasUnicastService() {
 		t.Fatal("expected unicast service to be removed after disable")
 	}
-	if n.MulticastService != nil {
+	if n.HasMulticastService() {
 		t.Fatal("expected multicast service to be removed after disable")
 	}
 
@@ -1285,6 +1294,7 @@ func provisionMulticast(t *testing.T, n *NetlinkManager) {
 		TunnelNet:          &net.IPNet{IP: net.IPv4(169, 254, 0, 0), Mask: net.CIDRMask(31, 32)},
 		DoubleZeroIP:       net.IPv4(10, 0, 0, 1),
 		DoubleZeroPrefixes: []*net.IPNet{{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(24, 32)}},
+		MulticastSubGroups: []net.IP{net.IPv4(239, 0, 0, 1)},
 	}
 	if err := n.Provision(pr); err != nil {
 		t.Fatalf("failed to pre-provision multicast: %v", err)

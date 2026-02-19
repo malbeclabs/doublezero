@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"slices"
+	"syscall"
 	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
@@ -74,7 +75,7 @@ func createBaseTunnel(nl routing.Netlinker, tun *routing.Tunnel) error {
 		}
 	}
 	slog.Info("tunnel: adding address to tunnel interface", "address", tun.LocalOverlay)
-	err = nl.TunnelAddrAdd(tun, tun.LocalOverlay.String()+"/31")
+	err = nl.TunnelAddrAdd(tun, tun.LocalOverlay.String()+"/31", syscall.RT_SCOPE_LINK)
 	if err != nil {
 		if errors.Is(err, routing.ErrAddressExists) {
 			slog.Error("tunnel: address already present on tunnel")
@@ -96,7 +97,7 @@ func createTunnelWithIP(nl routing.Netlinker, tun *routing.Tunnel, dzIp net.IP) 
 	}
 
 	slog.Info("tunnel: adding dz address to tunnel interface", "dz address", dzIp.String()+"/32")
-	err = nl.TunnelAddrAdd(tun, dzIp.String()+"/32")
+	err = nl.TunnelAddrAdd(tun, dzIp.String()+"/32", syscall.RT_SCOPE_UNIVERSE)
 	if err != nil {
 		if errors.Is(err, routing.ErrAddressExists) {
 			slog.Error("tunnel: address already present on tunnel")

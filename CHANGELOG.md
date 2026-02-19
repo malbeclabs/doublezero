@@ -79,6 +79,8 @@ All notable changes to this project will be documented in this file.
   - Fix panic in heartbeat sender when concurrent teardown requests race on close
 - E2E tests
   - Add daily devnet QA test for device provisioning lifecycle (RFC12) — deletes/recreates device and links, restarts daemons with new pubkey via Ansible
+- Serviceability: prevent creating or activating links on interfaces with CYOA or DIA assignments, and prevent setting CYOA/DIA on interfaces that are already linked
+- CLI: add early validation in `link wan-create` and `link dzx-create` to reject interfaces with CYOA or DIA assignments
 
 ## [v0.8.7](https://github.com/malbeclabs/doublezero/compare/client/v0.8.6...client/v0.8.7) – 2026-02-10
 

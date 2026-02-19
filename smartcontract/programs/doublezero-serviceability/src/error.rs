@@ -170,6 +170,8 @@ pub enum DoubleZeroError {
     MaxUnicastUsersExceeded, // variant 81
     #[error("Max multicast users exceeded")]
     MaxMulticastUsersExceeded, // variant 82
+    #[error("Interface cannot have both a link and a CYOA or DIA assignment")]
+    InterfaceHasEdgeAssignment, // variant 83
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -258,6 +260,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidTunnelEndpoint => ProgramError::Custom(80),
             DoubleZeroError::MaxUnicastUsersExceeded => ProgramError::Custom(81),
             DoubleZeroError::MaxMulticastUsersExceeded => ProgramError::Custom(82),
+            DoubleZeroError::InterfaceHasEdgeAssignment => ProgramError::Custom(83),
         }
     }
 }
@@ -347,6 +350,7 @@ impl From<u32> for DoubleZeroError {
             80 => DoubleZeroError::InvalidTunnelEndpoint,
             81 => DoubleZeroError::MaxUnicastUsersExceeded,
             82 => DoubleZeroError::MaxMulticastUsersExceeded,
+            83 => DoubleZeroError::InterfaceHasEdgeAssignment,
             _ => DoubleZeroError::Custom(e),
         }
     }

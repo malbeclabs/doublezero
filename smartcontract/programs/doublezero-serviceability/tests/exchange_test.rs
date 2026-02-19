@@ -250,6 +250,129 @@ async fn test_exchange() {
 }
 
 #[tokio::test]
+async fn test_exchange_delete_from_suspended() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
+            local_asn: 65000,
+            remote_asn: 65001,
+            device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+            user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+            multicastgroup_block: "224.0.0.0/16".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
+            next_bgp_community: None,
+        }),
+        vec![
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            reserved: 0,
+        }),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {}),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let exchange_la = get_account_data(&mut banks_client, exchange_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_exchange()
+        .unwrap();
+    assert_eq!(exchange_la.status, ExchangeStatus::Suspended);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {}),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let exchange_la = get_account_data(&mut banks_client, exchange_pubkey).await;
+    assert_eq!(exchange_la, None);
+}
+
+#[tokio::test]
 async fn test_exchange_owner_and_foundation_can_update_status() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 

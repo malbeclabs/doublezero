@@ -33,3 +33,4 @@ dev/.deploy/
 
 # Ignore the directory used for checking out the monitor tool in CI
 /doublezero_monitor/
+.claude/settings.local.json

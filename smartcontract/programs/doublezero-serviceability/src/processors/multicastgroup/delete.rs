@@ -68,7 +68,7 @@ pub fn process_delete_multicastgroup(
 
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
 
-    if multicastgroup.status != MulticastGroupStatus::Activated {
+    if matches!(multicastgroup.status, MulticastGroupStatus::Deleting) {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 

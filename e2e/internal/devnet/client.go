@@ -450,6 +450,7 @@ type CLIStatusResponse struct {
 	LowestLatencyDevice string               `json:"lowest_latency_device"`
 	Metro               string               `json:"metro"`
 	Network             string               `json:"network"`
+	Tenant              string               `json:"tenant"`
 }
 
 // GetCLIStatus retrieves the full status output from `doublezero status --json`,

@@ -69,9 +69,7 @@ pub fn process_delete_location(
         AccountType::Location,
         "Invalid Account Type"
     );
-    if location.status != LocationStatus::Activated {
-        return Err(DoubleZeroError::InvalidStatus.into());
-    }
+
     if location.reference_count > 0 {
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }

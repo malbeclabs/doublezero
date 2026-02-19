@@ -448,6 +448,14 @@ impl Validate for Interface {
             return Err(DoubleZeroError::CyoaRequiresPhysical);
         }
 
+        // CYOA interfaces must have an ip_net
+        if interface.interface_cyoa != InterfaceCYOA::None
+            && interface.ip_net == NetworkV4::default()
+        {
+            msg!("CYOA interfaces must have an ip_net set");
+            return Err(DoubleZeroError::InvalidInterfaceIp);
+        }
+
         // Only allow private and link-local IPs for non-CYOA and non-DIA interfaces,
         // unless it's a loopback interface with user_tunnel_endpoint set to true.
         if interface.ip_net != NetworkV4::default()
@@ -615,6 +623,7 @@ mod test_interface_validate {
         let mut iface = base_interface();
         iface.interface_type = InterfaceType::Physical;
         iface.interface_cyoa = InterfaceCYOA::GREOverDIA;
+        iface.ip_net = "38.104.127.117/31".parse().unwrap();
         assert!(Interface::V2(iface).validate().is_ok());
     }
 

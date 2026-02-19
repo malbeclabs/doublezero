@@ -1,4 +1,4 @@
-package reconciler
+package manager
 
 import (
 	"context"
@@ -14,64 +14,13 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
-type mockManager struct {
-	mu            sync.Mutex
-	provisions    []api.ProvisionRequest
-	removes       []api.UserType
-	hasUnicast    bool
-	hasMulticast  bool
-	provisionErr  error
-	removeErr     error
-	resolvedSrc   net.IP
-	resolveSrcErr error
-	statusResp    []*api.StatusResponse
-	statusErr     error
-}
-
-func (m *mockManager) Provision(pr api.ProvisionRequest) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.provisions = append(m.provisions, pr)
-	return m.provisionErr
-}
-
-func (m *mockManager) Remove(ut api.UserType) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.removes = append(m.removes, ut)
-	return m.removeErr
-}
-
-func (m *mockManager) HasUnicastService() bool   { return m.hasUnicast }
-func (m *mockManager) HasMulticastService() bool { return m.hasMulticast }
-func (m *mockManager) Status() ([]*api.StatusResponse, error) {
-	return m.statusResp, m.statusErr
-}
-
-func (m *mockManager) ResolveTunnelSrc(dst net.IP) (net.IP, error) {
-	if m.resolveSrcErr != nil {
-		return nil, m.resolveSrcErr
-	}
-	if m.resolvedSrc != nil {
-		return m.resolvedSrc, nil
-	}
-	return nil, fmt.Errorf("no route found")
-}
-
-func (m *mockManager) Provisions() []api.ProvisionRequest {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return append([]api.ProvisionRequest(nil), m.provisions...)
-}
-
-func (m *mockManager) Removes() []api.UserType {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return append([]api.UserType(nil), m.removes...)
-}
+// --- test mocks ---
 
 type mockFetcher struct {
 	mu    sync.Mutex
@@ -91,6 +40,59 @@ func (m *mockFetcher) Calls() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.calls
+}
+
+type mockNetlink struct {
+	routes []*routing.Route
+}
+
+func (m *mockNetlink) TunnelAdd(*routing.Tunnel) error             { return nil }
+func (m *mockNetlink) TunnelDelete(*routing.Tunnel) error          { return nil }
+func (m *mockNetlink) TunnelAddrAdd(*routing.Tunnel, string) error { return nil }
+func (m *mockNetlink) TunnelUp(*routing.Tunnel) error              { return nil }
+func (m *mockNetlink) RouteAdd(*routing.Route) error               { return nil }
+func (m *mockNetlink) RouteDelete(*routing.Route) error            { return nil }
+func (m *mockNetlink) RouteGet(net.IP) ([]*routing.Route, error)   { return m.routes, nil }
+func (m *mockNetlink) RuleAdd(*routing.IPRule) error               { return nil }
+func (m *mockNetlink) RuleDel(*routing.IPRule) error               { return nil }
+func (m *mockNetlink) RouteByProtocol(int) ([]*routing.Route, error) {
+	return m.routes, nil
+}
+
+type mockBgpServer struct{}
+
+func (m *mockBgpServer) Serve([]net.Listener) error                { return nil }
+func (m *mockBgpServer) AddPeer(*bgp.PeerConfig, []bgp.NLRI) error { return nil }
+func (m *mockBgpServer) DeletePeer(net.IP) error                   { return nil }
+func (m *mockBgpServer) GetPeerStatus(net.IP) bgp.Session          { return bgp.Session{} }
+
+type mockPIMServer struct{}
+
+func (m *mockPIMServer) Start(pim.RawConner, string, net.IP, []net.IP) error { return nil }
+func (m *mockPIMServer) Close() error                                        { return nil }
+
+type mockHeartbeatSender struct{}
+
+func (m *mockHeartbeatSender) Start(string, net.IP, []net.IP, int, time.Duration) error {
+	return nil
+}
+func (m *mockHeartbeatSender) Close() error { return nil }
+
+// --- test helpers ---
+
+func newTestNLM(fetcher Fetcher, opts ...Option) *NetlinkManager {
+	nl := &mockNetlink{}
+	bgpSrv := &mockBgpServer{}
+	pimSrv := &mockPIMServer{}
+	hb := &mockHeartbeatSender{}
+	return NewNetlinkManager(nl, bgpSrv, pimSrv, hb, append([]Option{WithFetcher(fetcher)}, opts...)...)
+}
+
+func newTestNLMWithNetlink(nl routing.Netlinker, fetcher Fetcher, opts ...Option) *NetlinkManager {
+	bgpSrv := &mockBgpServer{}
+	pimSrv := &mockPIMServer{}
+	hb := &mockHeartbeatSender{}
+	return NewNetlinkManager(nl, bgpSrv, pimSrv, hb, append([]Option{WithFetcher(fetcher)}, opts...)...)
 }
 
 func testDevice(pk [32]byte, ip [4]uint8, prefixes [][5]uint8) serviceability.Device {
@@ -119,11 +121,12 @@ func testConfig() serviceability.Config {
 	}
 }
 
+// --- reconcile tests ---
+
 func TestReconcile_ProvisionUnicast(t *testing.T) {
 	devicePK := [32]byte{1}
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -132,20 +135,21 @@ func TestReconcile_ProvisionUnicast(t *testing.T) {
 		},
 	}
 
-	r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-	r.reconcile(context.Background())
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
 
-	if len(mgr.provisions) != 1 {
-		t.Fatalf("expected 1 provision call, got %d", len(mgr.provisions))
+	if n.UnicastService == nil {
+		t.Fatal("expected unicast service to be provisioned")
 	}
-	if mgr.provisions[0].UserType != api.UserTypeIBRL {
-		t.Fatalf("expected UserTypeIBRL, got %v", mgr.provisions[0].UserType)
+	pr := n.UnicastService.ProvisionRequest()
+	if pr.UserType != api.UserTypeIBRL {
+		t.Fatalf("expected UserTypeIBRL, got %v", pr.UserType)
 	}
-	if !mgr.provisions[0].TunnelDst.Equal(net.IPv4(5, 6, 7, 8)) {
-		t.Fatalf("expected tunnel dst 5.6.7.8, got %v", mgr.provisions[0].TunnelDst)
+	if !pr.TunnelDst.Equal(net.IPv4(5, 6, 7, 8)) {
+		t.Fatalf("expected tunnel dst 5.6.7.8, got %v", pr.TunnelDst)
 	}
-	if mgr.provisions[0].BgpLocalAsn != 65000 {
-		t.Fatalf("expected bgp local asn 65000, got %d", mgr.provisions[0].BgpLocalAsn)
+	if pr.BgpLocalAsn != 65000 {
+		t.Fatalf("expected bgp local asn 65000, got %d", pr.BgpLocalAsn)
 	}
 }
 
@@ -156,7 +160,6 @@ func TestReconcile_ProvisionUnicast_WithTunnelEndpoint(t *testing.T) {
 	user := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)
 	user.TunnelEndpoint = [4]uint8{10, 0, 0, 99}
 
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -165,21 +168,21 @@ func TestReconcile_ProvisionUnicast_WithTunnelEndpoint(t *testing.T) {
 		},
 	}
 
-	r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-	r.reconcile(context.Background())
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
 
-	if len(mgr.provisions) != 1 {
-		t.Fatalf("expected 1 provision call, got %d", len(mgr.provisions))
+	if n.UnicastService == nil {
+		t.Fatal("expected unicast service to be provisioned")
 	}
-	if !mgr.provisions[0].TunnelDst.Equal(net.IPv4(10, 0, 0, 99)) {
-		t.Fatalf("expected tunnel dst 10.0.0.99 (from TunnelEndpoint), got %v", mgr.provisions[0].TunnelDst)
+	pr := n.UnicastService.ProvisionRequest()
+	if !pr.TunnelDst.Equal(net.IPv4(10, 0, 0, 99)) {
+		t.Fatalf("expected tunnel dst 10.0.0.99 (from TunnelEndpoint), got %v", pr.TunnelDst)
 	}
 }
 
 func TestReconcile_RemoveUnicast(t *testing.T) {
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 
-	mgr := &mockManager{hasUnicast: true}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config: testConfig(),
@@ -187,14 +190,14 @@ func TestReconcile_RemoveUnicast(t *testing.T) {
 		},
 	}
 
-	r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-	r.reconcile(context.Background())
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	// Pre-provision a unicast service so reconcile will remove it
+	provisionUnicast(t, n)
 
-	if len(mgr.removes) != 1 {
-		t.Fatalf("expected 1 remove call, got %d", len(mgr.removes))
-	}
-	if mgr.removes[0] != api.UserTypeIBRL {
-		t.Fatalf("expected remove UserTypeIBRL, got %v", mgr.removes[0])
+	n.reconcile(context.Background())
+
+	if n.UnicastService != nil {
+		t.Fatal("expected unicast service to be removed")
 	}
 }
 
@@ -202,7 +205,6 @@ func TestReconcile_NoopWhenAlreadyProvisioned(t *testing.T) {
 	devicePK := [32]byte{1}
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 
-	mgr := &mockManager{hasUnicast: true}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -211,14 +213,16 @@ func TestReconcile_NoopWhenAlreadyProvisioned(t *testing.T) {
 		},
 	}
 
-	r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-	r.reconcile(context.Background())
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	// Pre-provision
+	provisionUnicast(t, n)
+	origSvc := n.UnicastService
 
-	if len(mgr.provisions) != 0 {
-		t.Fatalf("expected 0 provision calls, got %d", len(mgr.provisions))
-	}
-	if len(mgr.removes) != 0 {
-		t.Fatalf("expected 0 remove calls, got %d", len(mgr.removes))
+	n.reconcile(context.Background())
+
+	// Service should be unchanged (same pointer)
+	if n.UnicastService != origSvc {
+		t.Fatal("expected service to remain unchanged (noop)")
 	}
 }
 
@@ -226,7 +230,6 @@ func TestReconcile_NoopWhenNoMatchingUsers(t *testing.T) {
 	devicePK := [32]byte{1}
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -235,14 +238,14 @@ func TestReconcile_NoopWhenNoMatchingUsers(t *testing.T) {
 		},
 	}
 
-	r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-	r.reconcile(context.Background())
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
 
-	if len(mgr.provisions) != 0 {
-		t.Fatalf("expected 0 provision calls, got %d", len(mgr.provisions))
+	if n.UnicastService != nil {
+		t.Fatal("expected no unicast service")
 	}
-	if len(mgr.removes) != 0 {
-		t.Fatalf("expected 0 remove calls, got %d", len(mgr.removes))
+	if n.MulticastService != nil {
+		t.Fatal("expected no multicast service")
 	}
 }
 
@@ -261,7 +264,6 @@ func TestReconcile_IgnoresNonActivatedStatuses(t *testing.T) {
 	}
 
 	for _, status := range statuses {
-		mgr := &mockManager{}
 		fetcher := &mockFetcher{
 			data: &serviceability.ProgramData{
 				Config:  testConfig(),
@@ -270,11 +272,11 @@ func TestReconcile_IgnoresNonActivatedStatuses(t *testing.T) {
 			},
 		}
 
-		r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-		r.reconcile(context.Background())
+		n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+		n.reconcile(context.Background())
 
-		if len(mgr.provisions) != 0 {
-			t.Fatalf("status %d: expected 0 provision calls, got %d", status, len(mgr.provisions))
+		if n.UnicastService != nil {
+			t.Fatalf("status %d: expected no provision", status)
 		}
 	}
 }
@@ -287,7 +289,6 @@ func TestReconcile_ProvisionMulticast(t *testing.T) {
 	user := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
 	user.Subscribers = [][32]uint8{mcastGroupPK}
 
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:          testConfig(),
@@ -297,27 +298,27 @@ func TestReconcile_ProvisionMulticast(t *testing.T) {
 		},
 	}
 
-	r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-	r.reconcile(context.Background())
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
 
-	if len(mgr.provisions) != 1 {
-		t.Fatalf("expected 1 provision call, got %d", len(mgr.provisions))
+	if n.MulticastService == nil {
+		t.Fatal("expected multicast service to be provisioned")
 	}
-	if mgr.provisions[0].UserType != api.UserTypeMulticast {
-		t.Fatalf("expected UserTypeMulticast, got %v", mgr.provisions[0].UserType)
+	pr := n.MulticastService.ProvisionRequest()
+	if pr.UserType != api.UserTypeMulticast {
+		t.Fatalf("expected UserTypeMulticast, got %v", pr.UserType)
 	}
-	if len(mgr.provisions[0].MulticastSubGroups) != 1 {
-		t.Fatalf("expected 1 sub group, got %d", len(mgr.provisions[0].MulticastSubGroups))
+	if len(pr.MulticastSubGroups) != 1 {
+		t.Fatalf("expected 1 sub group, got %d", len(pr.MulticastSubGroups))
 	}
-	if !mgr.provisions[0].MulticastSubGroups[0].Equal(net.IPv4(239, 0, 0, 1)) {
-		t.Fatalf("expected sub group 239.0.0.1, got %v", mgr.provisions[0].MulticastSubGroups[0])
+	if !pr.MulticastSubGroups[0].Equal(net.IPv4(239, 0, 0, 1)) {
+		t.Fatalf("expected sub group 239.0.0.1, got %v", pr.MulticastSubGroups[0])
 	}
 }
 
 func TestReconcile_RemoveMulticast(t *testing.T) {
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 
-	mgr := &mockManager{hasMulticast: true}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config: testConfig(),
@@ -325,14 +326,14 @@ func TestReconcile_RemoveMulticast(t *testing.T) {
 		},
 	}
 
-	r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-	r.reconcile(context.Background())
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	// Pre-provision a multicast service
+	provisionMulticast(t, n)
 
-	if len(mgr.removes) != 1 {
-		t.Fatalf("expected 1 remove call, got %d", len(mgr.removes))
-	}
-	if mgr.removes[0] != api.UserTypeMulticast {
-		t.Fatalf("expected remove UserTypeMulticast, got %v", mgr.removes[0])
+	n.reconcile(context.Background())
+
+	if n.MulticastService != nil {
+		t.Fatal("expected multicast service to be removed")
 	}
 }
 
@@ -392,7 +393,6 @@ func TestReconcile_BothUnicastAndMulticast(t *testing.T) {
 	ibrlUser := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)
 	mcastUser := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
 
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -401,11 +401,14 @@ func TestReconcile_BothUnicastAndMulticast(t *testing.T) {
 		},
 	}
 
-	r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-	r.reconcile(context.Background())
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
 
-	if len(mgr.provisions) != 2 {
-		t.Fatalf("expected 2 provision calls, got %d", len(mgr.provisions))
+	if n.UnicastService == nil {
+		t.Fatal("expected unicast service to be provisioned")
+	}
+	if n.MulticastService == nil {
+		t.Fatal("expected multicast service to be provisioned")
 	}
 }
 
@@ -414,7 +417,6 @@ func TestReconcile_PrefixesCollectedFromAllDevices(t *testing.T) {
 	devicePK2 := [32]byte{2}
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config: testConfig(),
@@ -426,14 +428,15 @@ func TestReconcile_PrefixesCollectedFromAllDevices(t *testing.T) {
 		},
 	}
 
-	r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-	r.reconcile(context.Background())
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
 
-	if len(mgr.provisions) != 1 {
-		t.Fatalf("expected 1 provision call, got %d", len(mgr.provisions))
+	if n.UnicastService == nil {
+		t.Fatal("expected unicast service to be provisioned")
 	}
-	if len(mgr.provisions[0].DoubleZeroPrefixes) != 2 {
-		t.Fatalf("expected 2 prefixes, got %d", len(mgr.provisions[0].DoubleZeroPrefixes))
+	pr := n.UnicastService.ProvisionRequest()
+	if len(pr.DoubleZeroPrefixes) != 2 {
+		t.Fatalf("expected 2 prefixes, got %d", len(pr.DoubleZeroPrefixes))
 	}
 }
 
@@ -442,7 +445,6 @@ func TestReconcile_ResolveTunnelSrc(t *testing.T) {
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 	resolvedSrc := net.IPv4(10, 0, 0, 99).To4()
 
-	mgr := &mockManager{resolvedSrc: resolvedSrc}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -451,14 +453,20 @@ func TestReconcile_ResolveTunnelSrc(t *testing.T) {
 		},
 	}
 
-	r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-	r.reconcile(context.Background())
-
-	if len(mgr.provisions) != 1 {
-		t.Fatalf("expected 1 provision call, got %d", len(mgr.provisions))
+	nl := &mockNetlink{
+		routes: []*routing.Route{
+			{Src: resolvedSrc, Dst: &net.IPNet{IP: net.IPv4(5, 6, 7, 8), Mask: net.CIDRMask(32, 32)}},
+		},
 	}
-	if !mgr.provisions[0].TunnelSrc.Equal(resolvedSrc) {
-		t.Fatalf("expected tunnel src %v (resolved), got %v", resolvedSrc, mgr.provisions[0].TunnelSrc)
+	n := newTestNLMWithNetlink(nl, fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
+
+	if n.UnicastService == nil {
+		t.Fatal("expected unicast service to be provisioned")
+	}
+	pr := n.UnicastService.ProvisionRequest()
+	if !pr.TunnelSrc.Equal(resolvedSrc) {
+		t.Fatalf("expected tunnel src %v (resolved), got %v", resolvedSrc, pr.TunnelSrc)
 	}
 }
 
@@ -466,8 +474,6 @@ func TestReconcile_ResolveTunnelSrcFallback(t *testing.T) {
 	devicePK := [32]byte{1}
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 
-	// resolvedSrc is nil, resolveSrcErr is nil -> falls back to clientIP
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -476,14 +482,16 @@ func TestReconcile_ResolveTunnelSrcFallback(t *testing.T) {
 		},
 	}
 
-	r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-	r.reconcile(context.Background())
+	// No routes → ResolveTunnelSrc returns error → falls back to clientIP
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
 
-	if len(mgr.provisions) != 1 {
-		t.Fatalf("expected 1 provision call, got %d", len(mgr.provisions))
+	if n.UnicastService == nil {
+		t.Fatal("expected unicast service to be provisioned")
 	}
-	if !mgr.provisions[0].TunnelSrc.Equal(clientIP) {
-		t.Fatalf("expected tunnel src %v (fallback to clientIP), got %v", clientIP, mgr.provisions[0].TunnelSrc)
+	pr := n.UnicastService.ProvisionRequest()
+	if !pr.TunnelSrc.Equal(clientIP) {
+		t.Fatalf("expected tunnel src %v (fallback to clientIP), got %v", clientIP, pr.TunnelSrc)
 	}
 }
 
@@ -494,7 +502,6 @@ func TestReconcile_DuplicateUnicastUsersOnlyProvisionFirst(t *testing.T) {
 	user1 := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)
 	user2 := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeEdgeFiltering, serviceability.UserStatusActivated)
 
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -503,14 +510,15 @@ func TestReconcile_DuplicateUnicastUsersOnlyProvisionFirst(t *testing.T) {
 		},
 	}
 
-	r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-	r.reconcile(context.Background())
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
 
-	if len(mgr.provisions) != 1 {
-		t.Fatalf("expected 1 provision call (first unicast user only), got %d", len(mgr.provisions))
+	if n.UnicastService == nil {
+		t.Fatal("expected unicast service to be provisioned")
 	}
-	if mgr.provisions[0].UserType != api.UserTypeIBRL {
-		t.Fatalf("expected UserTypeIBRL (first user), got %v", mgr.provisions[0].UserType)
+	pr := n.UnicastService.ProvisionRequest()
+	if pr.UserType != api.UserTypeIBRL {
+		t.Fatalf("expected UserTypeIBRL (first user), got %v", pr.UserType)
 	}
 }
 
@@ -526,7 +534,6 @@ func TestReconcile_DuplicateMulticastUsersOnlyProvisionFirst(t *testing.T) {
 	user2 := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
 	user2.Subscribers = [][32]uint8{mcastGroupPK2}
 
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -539,36 +546,37 @@ func TestReconcile_DuplicateMulticastUsersOnlyProvisionFirst(t *testing.T) {
 		},
 	}
 
-	r := &Reconciler{clientIP: clientIP, manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-	r.reconcile(context.Background())
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
 
-	if len(mgr.provisions) != 1 {
-		t.Fatalf("expected 1 provision call (first multicast user only), got %d", len(mgr.provisions))
+	if n.MulticastService == nil {
+		t.Fatal("expected multicast service to be provisioned")
 	}
-	if len(mgr.provisions[0].MulticastSubGroups) != 1 {
-		t.Fatalf("expected 1 sub group from first user, got %d", len(mgr.provisions[0].MulticastSubGroups))
+	pr := n.MulticastService.ProvisionRequest()
+	if len(pr.MulticastSubGroups) != 1 {
+		t.Fatalf("expected 1 sub group from first user, got %d", len(pr.MulticastSubGroups))
 	}
-	if !mgr.provisions[0].MulticastSubGroups[0].Equal(net.IPv4(239, 0, 0, 1)) {
-		t.Fatalf("expected sub group 239.0.0.1, got %v", mgr.provisions[0].MulticastSubGroups[0])
+	if !pr.MulticastSubGroups[0].Equal(net.IPv4(239, 0, 0, 1)) {
+		t.Fatalf("expected sub group 239.0.0.1, got %v", pr.MulticastSubGroups[0])
 	}
 }
 
 // --- Start() lifecycle tests ---
 
-func TestStart_ContextCancellation(t *testing.T) {
-	mgr := &mockManager{}
+func TestStartReconciler_ContextCancellation(t *testing.T) {
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{Config: testConfig()},
 	}
 
-	r := NewReconciler(net.IPv4(1, 2, 3, 4).To4(), mgr, fetcher,
-		WithPollInterval(time.Hour), // long interval — we only care about shutdown
+	n := newTestNLM(fetcher,
+		WithClientIP(net.IPv4(1, 2, 3, 4).To4()),
+		WithPollInterval(time.Hour),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan error, 1)
-	go func() { done <- r.Start(ctx) }()
+	go func() { done <- n.StartReconciler(ctx) }()
 
 	cancel()
 
@@ -578,15 +586,14 @@ func TestStart_ContextCancellation(t *testing.T) {
 			t.Fatalf("expected nil error, got %v", err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("Start did not return after context cancellation")
+		t.Fatal("StartReconciler did not return after context cancellation")
 	}
 }
 
-func TestStart_InitialReconcileWhenEnabled(t *testing.T) {
+func TestStartReconciler_InitialReconcileWhenEnabled(t *testing.T) {
 	devicePK := [32]byte{1}
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -595,15 +602,16 @@ func TestStart_InitialReconcileWhenEnabled(t *testing.T) {
 		},
 	}
 
-	r := NewReconciler(clientIP, mgr, fetcher,
+	n := newTestNLM(fetcher,
+		WithClientIP(clientIP),
 		WithEnabled(true),
-		WithPollInterval(time.Hour), // long interval — we only test initial reconcile
+		WithPollInterval(time.Hour),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan error, 1)
-	go func() { done <- r.Start(ctx) }()
+	go func() { done <- n.StartReconciler(ctx) }()
 
 	// Give the initial reconcile time to execute
 	time.Sleep(100 * time.Millisecond)
@@ -613,18 +621,18 @@ func TestStart_InitialReconcileWhenEnabled(t *testing.T) {
 	if fetcher.calls < 1 {
 		t.Fatal("expected at least 1 fetch call from initial reconcile")
 	}
-	if len(mgr.provisions) != 1 {
-		t.Fatalf("expected 1 provision from initial reconcile, got %d", len(mgr.provisions))
+	if n.UnicastService == nil {
+		t.Fatal("expected unicast service to be provisioned from initial reconcile")
 	}
 }
 
-func TestStart_NoReconcileWhenDisabled(t *testing.T) {
-	mgr := &mockManager{}
+func TestStartReconciler_NoReconcileWhenDisabled(t *testing.T) {
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{Config: testConfig()},
 	}
 
-	r := NewReconciler(net.IPv4(1, 2, 3, 4).To4(), mgr, fetcher,
+	n := newTestNLM(fetcher,
+		WithClientIP(net.IPv4(1, 2, 3, 4).To4()),
 		WithPollInterval(time.Hour),
 	)
 	// Default is disabled (no WithEnabled)
@@ -632,7 +640,7 @@ func TestStart_NoReconcileWhenDisabled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan error, 1)
-	go func() { done <- r.Start(ctx) }()
+	go func() { done <- n.StartReconciler(ctx) }()
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()
@@ -643,11 +651,10 @@ func TestStart_NoReconcileWhenDisabled(t *testing.T) {
 	}
 }
 
-func TestStart_EnableViaChannel(t *testing.T) {
+func TestStartReconciler_EnableViaChannel(t *testing.T) {
 	devicePK := [32]byte{1}
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -656,36 +663,36 @@ func TestStart_EnableViaChannel(t *testing.T) {
 		},
 	}
 
-	r := NewReconciler(clientIP, mgr, fetcher,
+	n := newTestNLM(fetcher,
+		WithClientIP(clientIP),
 		WithPollInterval(time.Hour),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan error, 1)
-	go func() { done <- r.Start(ctx) }()
+	go func() { done <- n.StartReconciler(ctx) }()
 
 	// Send enable signal
-	r.SetEnabled(true)
+	n.SetEnabled(true)
 	time.Sleep(100 * time.Millisecond)
 
-	if !r.Enabled() {
+	if !n.Enabled() {
 		t.Fatal("expected enabled=true after SetEnabled(true)")
 	}
 	if fetcher.Calls() < 1 {
 		t.Fatal("expected at least 1 fetch call after enable")
 	}
-	if len(mgr.Provisions()) < 1 {
-		t.Fatal("expected at least 1 provision after enable")
+	if n.UnicastService == nil {
+		t.Fatal("expected unicast service to be provisioned after enable")
 	}
 
 	cancel()
 	<-done
 }
 
-func TestStart_DisableViaChannel_TearsDown(t *testing.T) {
+func TestStartReconciler_DisableViaChannel_TearsDown(t *testing.T) {
 	devicePK := [32]byte{1}
-	mgr := &mockManager{hasUnicast: true, hasMulticast: true}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -697,7 +704,8 @@ func TestStart_DisableViaChannel_TearsDown(t *testing.T) {
 		},
 	}
 
-	r := NewReconciler(net.IPv4(1, 2, 3, 4).To4(), mgr, fetcher,
+	n := newTestNLM(fetcher,
+		WithClientIP(net.IPv4(1, 2, 3, 4).To4()),
 		WithEnabled(true),
 		WithPollInterval(time.Hour),
 	)
@@ -705,31 +713,34 @@ func TestStart_DisableViaChannel_TearsDown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan error, 1)
-	go func() { done <- r.Start(ctx) }()
+	go func() { done <- n.StartReconciler(ctx) }()
 
 	// Wait for initial reconcile, then disable
 	time.Sleep(100 * time.Millisecond)
-	r.SetEnabled(false)
+	n.SetEnabled(false)
 	time.Sleep(100 * time.Millisecond)
 
-	if r.Enabled() {
+	if n.Enabled() {
 		t.Fatal("expected enabled=false after SetEnabled(false)")
 	}
-	if removes := mgr.Removes(); len(removes) != 2 {
-		t.Fatalf("expected 2 remove calls (unicast + multicast teardown), got %d", len(removes))
+	if n.UnicastService != nil {
+		t.Fatal("expected unicast service to be removed after disable")
+	}
+	if n.MulticastService != nil {
+		t.Fatal("expected multicast service to be removed after disable")
 	}
 
 	cancel()
 	<-done
 }
 
-func TestStart_TickerReconcileWhenEnabled(t *testing.T) {
-	mgr := &mockManager{}
+func TestStartReconciler_TickerReconcileWhenEnabled(t *testing.T) {
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{Config: testConfig()},
 	}
 
-	r := NewReconciler(net.IPv4(1, 2, 3, 4).To4(), mgr, fetcher,
+	n := newTestNLM(fetcher,
+		WithClientIP(net.IPv4(1, 2, 3, 4).To4()),
 		WithEnabled(true),
 		WithPollInterval(50*time.Millisecond),
 	)
@@ -737,7 +748,7 @@ func TestStart_TickerReconcileWhenEnabled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan error, 1)
-	go func() { done <- r.Start(ctx) }()
+	go func() { done <- n.StartReconciler(ctx) }()
 
 	// Wait for initial + a few ticker reconciles
 	time.Sleep(200 * time.Millisecond)
@@ -752,86 +763,78 @@ func TestStart_TickerReconcileWhenEnabled(t *testing.T) {
 
 // --- Teardown tests ---
 
-func TestTeardown_RemovesBothServices(t *testing.T) {
-	mgr := &mockManager{hasUnicast: true, hasMulticast: true}
-	r := &Reconciler{manager: mgr}
+func TestReconcilerTeardown_RemovesBothServices(t *testing.T) {
+	n := newTestNLM(&mockFetcher{data: &serviceability.ProgramData{Config: testConfig()}})
+	provisionUnicast(t, n)
+	provisionMulticast(t, n)
 
-	r.teardown()
+	n.reconcilerTeardown()
 
-	if len(mgr.removes) != 2 {
-		t.Fatalf("expected 2 remove calls, got %d", len(mgr.removes))
+	if n.UnicastService != nil {
+		t.Fatal("expected unicast service to be removed")
 	}
-	if mgr.removes[0] != api.UserTypeIBRL {
-		t.Fatalf("expected first remove UserTypeIBRL, got %v", mgr.removes[0])
-	}
-	if mgr.removes[1] != api.UserTypeMulticast {
-		t.Fatalf("expected second remove UserTypeMulticast, got %v", mgr.removes[1])
+	if n.MulticastService != nil {
+		t.Fatal("expected multicast service to be removed")
 	}
 }
 
-func TestTeardown_SkipsAbsentServices(t *testing.T) {
-	mgr := &mockManager{hasUnicast: false, hasMulticast: false}
-	r := &Reconciler{manager: mgr}
+func TestReconcilerTeardown_SkipsAbsentServices(t *testing.T) {
+	n := newTestNLM(&mockFetcher{data: &serviceability.ProgramData{Config: testConfig()}})
 
-	r.teardown()
+	// Should not panic or error with no services
+	n.reconcilerTeardown()
 
-	if len(mgr.removes) != 0 {
-		t.Fatalf("expected 0 remove calls when no services, got %d", len(mgr.removes))
+	if n.UnicastService != nil {
+		t.Fatal("expected no unicast service")
+	}
+	if n.MulticastService != nil {
+		t.Fatal("expected no multicast service")
 	}
 }
 
-func TestTeardown_OnlyUnicast(t *testing.T) {
-	mgr := &mockManager{hasUnicast: true, hasMulticast: false}
-	r := &Reconciler{manager: mgr}
+func TestReconcilerTeardown_OnlyUnicast(t *testing.T) {
+	n := newTestNLM(&mockFetcher{data: &serviceability.ProgramData{Config: testConfig()}})
+	provisionUnicast(t, n)
 
-	r.teardown()
+	n.reconcilerTeardown()
 
-	if len(mgr.removes) != 1 {
-		t.Fatalf("expected 1 remove call, got %d", len(mgr.removes))
-	}
-	if mgr.removes[0] != api.UserTypeIBRL {
-		t.Fatalf("expected remove UserTypeIBRL, got %v", mgr.removes[0])
+	if n.UnicastService != nil {
+		t.Fatal("expected unicast service to be removed")
 	}
 }
 
-func TestTeardown_OnlyMulticast(t *testing.T) {
-	mgr := &mockManager{hasUnicast: false, hasMulticast: true}
-	r := &Reconciler{manager: mgr}
+func TestReconcilerTeardown_OnlyMulticast(t *testing.T) {
+	n := newTestNLM(&mockFetcher{data: &serviceability.ProgramData{Config: testConfig()}})
+	provisionMulticast(t, n)
 
-	r.teardown()
+	n.reconcilerTeardown()
 
-	if len(mgr.removes) != 1 {
-		t.Fatalf("expected 1 remove call, got %d", len(mgr.removes))
-	}
-	if mgr.removes[0] != api.UserTypeMulticast {
-		t.Fatalf("expected remove UserTypeMulticast, got %v", mgr.removes[0])
+	if n.MulticastService != nil {
+		t.Fatal("expected multicast service to be removed")
 	}
 }
 
 // --- Error handling tests ---
 
 func TestReconcile_FetchError(t *testing.T) {
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		err: fmt.Errorf("rpc error"),
 	}
 
-	r := &Reconciler{clientIP: net.IPv4(1, 2, 3, 4).To4(), manager: mgr, fetcher: fetcher, pollInterval: time.Second}
-	r.reconcile(context.Background())
+	n := newTestNLM(fetcher, WithClientIP(net.IPv4(1, 2, 3, 4).To4()), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
 
-	if len(mgr.provisions) != 0 {
-		t.Fatalf("expected 0 provisions on fetch error, got %d", len(mgr.provisions))
-	}
-	if len(mgr.removes) != 0 {
-		t.Fatalf("expected 0 removes on fetch error, got %d", len(mgr.removes))
+	if n.UnicastService != nil {
+		t.Fatal("expected no provision on fetch error")
 	}
 }
 
 // --- HTTP handler tests ---
 
-func newTestReconciler(mgr *mockManager, stateDir string) *Reconciler {
+func newTestNLMForHTTP(stateDir string) *NetlinkManager {
 	fetcher := &mockFetcher{data: &serviceability.ProgramData{Config: testConfig()}}
-	return NewReconciler(net.IPv4(1, 2, 3, 4).To4(), mgr, fetcher,
+	return newTestNLM(fetcher,
+		WithClientIP(net.IPv4(1, 2, 3, 4).To4()),
 		WithPollInterval(time.Hour),
 		WithStateDir(stateDir),
 	)
@@ -839,12 +842,11 @@ func newTestReconciler(mgr *mockManager, stateDir string) *Reconciler {
 
 func TestServeEnable(t *testing.T) {
 	dir := t.TempDir()
-	mgr := &mockManager{}
-	r := newTestReconciler(mgr, dir)
+	n := newTestNLMForHTTP(dir)
 
 	req := httptest.NewRequest(http.MethodPost, "/enable", nil)
 	w := httptest.NewRecorder()
-	r.ServeEnable(w, req)
+	n.ServeEnable(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -869,7 +871,7 @@ func TestServeEnable(t *testing.T) {
 
 	// Drain the enable signal from the channel
 	select {
-	case enabled := <-r.enableCh:
+	case enabled := <-n.enableCh:
 		if !enabled {
 			t.Fatal("expected enable signal to be true")
 		}
@@ -880,13 +882,12 @@ func TestServeEnable(t *testing.T) {
 
 func TestServeDisable(t *testing.T) {
 	dir := t.TempDir()
-	mgr := &mockManager{}
-	r := newTestReconciler(mgr, dir)
-	r.enabled.Store(true)
+	n := newTestNLMForHTTP(dir)
+	n.enabled.Store(true)
 
 	req := httptest.NewRequest(http.MethodPost, "/disable", nil)
 	w := httptest.NewRecorder()
-	r.ServeDisable(w, req)
+	n.ServeDisable(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -911,7 +912,7 @@ func TestServeDisable(t *testing.T) {
 
 	// Drain the disable signal from the channel
 	select {
-	case enabled := <-r.enableCh:
+	case enabled := <-n.enableCh:
 		if enabled {
 			t.Fatal("expected disable signal to be false")
 		}
@@ -922,9 +923,8 @@ func TestServeDisable(t *testing.T) {
 
 func TestServeEnable_AlreadyEnabled(t *testing.T) {
 	dir := t.TempDir()
-	mgr := &mockManager{}
-	r := newTestReconciler(mgr, dir)
-	r.enabled.Store(true)
+	n := newTestNLMForHTTP(dir)
+	n.enabled.Store(true)
 
 	// Write existing enabled state
 	if err := WriteState(dir, true); err != nil {
@@ -933,7 +933,7 @@ func TestServeEnable_AlreadyEnabled(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/enable", nil)
 	w := httptest.NewRecorder()
-	r.ServeEnable(w, req)
+	n.ServeEnable(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 even when already enabled, got %d", w.Code)
@@ -950,7 +950,7 @@ func TestServeEnable_AlreadyEnabled(t *testing.T) {
 
 	// Channel should still receive the signal (idempotent)
 	select {
-	case enabled := <-r.enableCh:
+	case enabled := <-n.enableCh:
 		if !enabled {
 			t.Fatal("expected enable signal")
 		}
@@ -961,8 +961,7 @@ func TestServeEnable_AlreadyEnabled(t *testing.T) {
 
 func TestServeDisable_AlreadyDisabled(t *testing.T) {
 	dir := t.TempDir()
-	mgr := &mockManager{}
-	r := newTestReconciler(mgr, dir)
+	n := newTestNLMForHTTP(dir)
 	// Default is disabled
 
 	// Write existing disabled state
@@ -972,7 +971,7 @@ func TestServeDisable_AlreadyDisabled(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/disable", nil)
 	w := httptest.NewRecorder()
-	r.ServeDisable(w, req)
+	n.ServeDisable(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 even when already disabled, got %d", w.Code)
@@ -989,12 +988,11 @@ func TestServeDisable_AlreadyDisabled(t *testing.T) {
 
 func TestServeEnable_StateDirNotWritable(t *testing.T) {
 	// Use a path that can't be created
-	mgr := &mockManager{}
-	r := newTestReconciler(mgr, "/dev/null/impossible")
+	n := newTestNLMForHTTP("/dev/null/impossible")
 
 	req := httptest.NewRequest(http.MethodPost, "/enable", nil)
 	w := httptest.NewRecorder()
-	r.ServeEnable(w, req)
+	n.ServeEnable(w, req)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 when state dir is not writable, got %d", w.Code)
@@ -1011,17 +1009,13 @@ func TestServeEnable_StateDirNotWritable(t *testing.T) {
 
 func TestServeV2Status_Enabled_WithServices(t *testing.T) {
 	dir := t.TempDir()
-	mgr := &mockManager{
-		statusResp: []*api.StatusResponse{
-			{TunnelName: "doublezero1", UserType: api.UserTypeIBRL},
-		},
-	}
-	r := newTestReconciler(mgr, dir)
-	r.enabled.Store(true)
+	n := newTestNLMForHTTP(dir)
+	n.enabled.Store(true)
+	provisionUnicast(t, n)
 
 	req := httptest.NewRequest(http.MethodGet, "/v2/status", nil)
 	w := httptest.NewRecorder()
-	r.ServeV2Status(w, req)
+	n.ServeV2Status(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -1037,20 +1031,16 @@ func TestServeV2Status_Enabled_WithServices(t *testing.T) {
 	if len(resp.Services) != 1 {
 		t.Fatalf("expected 1 service, got %d", len(resp.Services))
 	}
-	if resp.Services[0].TunnelName != "doublezero1" {
-		t.Fatalf("expected tunnel name doublezero1, got %s", resp.Services[0].TunnelName)
-	}
 }
 
 func TestServeV2Status_Disabled_NoServices(t *testing.T) {
 	dir := t.TempDir()
-	mgr := &mockManager{}
-	r := newTestReconciler(mgr, dir)
+	n := newTestNLMForHTTP(dir)
 	// Default is disabled, no services
 
 	req := httptest.NewRequest(http.MethodGet, "/v2/status", nil)
 	w := httptest.NewRecorder()
-	r.ServeV2Status(w, req)
+	n.ServeV2Status(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -1068,41 +1058,15 @@ func TestServeV2Status_Disabled_NoServices(t *testing.T) {
 	}
 }
 
-func TestServeV2Status_ManagerError(t *testing.T) {
-	dir := t.TempDir()
-	mgr := &mockManager{statusErr: fmt.Errorf("manager error")}
-	r := newTestReconciler(mgr, dir)
-
-	req := httptest.NewRequest(http.MethodGet, "/v2/status", nil)
-	w := httptest.NewRecorder()
-	r.ServeV2Status(w, req)
-
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", w.Code)
-	}
-
-	var resp map[string]string
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatal(err)
-	}
-	if resp["status"] != "error" {
-		t.Fatalf("expected status=error, got %s", resp["status"])
-	}
-}
-
 // --- Startup migration integration tests ---
-// These simulate the full daemon startup path: LoadOrMigrateState → NewReconciler(WithEnabled(result)) → Start()
 
 func TestStartup_UpgradeFromOldDaemon_WasConnected(t *testing.T) {
-	// Scenario: user was running old daemon with active tunnel (doublezerod.json exists).
-	// After upgrade, LoadOrMigrateState migrates to enabled, reconciler starts and provisions.
 	dir := t.TempDir()
 	oldPath := filepath.Join(dir, oldStateFileName)
 	if err := os.WriteFile(oldPath, []byte(`{"tunnel_src":"1.2.3.4"}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Simulate daemon startup: load state
 	enabled, err := LoadOrMigrateState(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -1111,12 +1075,10 @@ func TestStartup_UpgradeFromOldDaemon_WasConnected(t *testing.T) {
 		t.Fatal("migration from old file should yield enabled=true")
 	}
 
-	// Old file should be cleaned up
 	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
 		t.Fatal("old doublezerod.json should be deleted after migration")
 	}
 
-	// New state.json should exist
 	data, err := os.ReadFile(filepath.Join(dir, stateFileName))
 	if err != nil {
 		t.Fatal(err)
@@ -1125,10 +1087,8 @@ func TestStartup_UpgradeFromOldDaemon_WasConnected(t *testing.T) {
 		t.Fatalf("unexpected state file after migration: %s", data)
 	}
 
-	// Simulate daemon creating reconciler with migrated state
 	devicePK := [32]byte{1}
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -1137,7 +1097,8 @@ func TestStartup_UpgradeFromOldDaemon_WasConnected(t *testing.T) {
 		},
 	}
 
-	r := NewReconciler(clientIP, mgr, fetcher,
+	n := newTestNLM(fetcher,
+		WithClientIP(clientIP),
 		WithEnabled(enabled),
 		WithPollInterval(time.Hour),
 		WithStateDir(dir),
@@ -1145,7 +1106,7 @@ func TestStartup_UpgradeFromOldDaemon_WasConnected(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- r.Start(ctx) }()
+	go func() { done <- n.StartReconciler(ctx) }()
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()
@@ -1154,17 +1115,16 @@ func TestStartup_UpgradeFromOldDaemon_WasConnected(t *testing.T) {
 	if fetcher.calls < 1 {
 		t.Fatal("expected reconciler to fetch after migration-enabled startup")
 	}
-	if len(mgr.provisions) != 1 {
-		t.Fatalf("expected 1 provision after migration-enabled startup, got %d", len(mgr.provisions))
+	if n.UnicastService == nil {
+		t.Fatal("expected unicast service to be provisioned after migration-enabled startup")
 	}
-	if mgr.provisions[0].UserType != api.UserTypeIBRL {
-		t.Fatalf("expected UserTypeIBRL, got %v", mgr.provisions[0].UserType)
+	pr := n.UnicastService.ProvisionRequest()
+	if pr.UserType != api.UserTypeIBRL {
+		t.Fatalf("expected UserTypeIBRL, got %v", pr.UserType)
 	}
 }
 
 func TestStartup_DaemonRestart_WasEnabled(t *testing.T) {
-	// Scenario: daemon was running with reconciler enabled, then restarted.
-	// state.json says enabled → reconciler starts and provisions.
 	dir := t.TempDir()
 	if err := WriteState(dir, true); err != nil {
 		t.Fatal(err)
@@ -1180,7 +1140,6 @@ func TestStartup_DaemonRestart_WasEnabled(t *testing.T) {
 
 	devicePK := [32]byte{1}
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -1189,7 +1148,8 @@ func TestStartup_DaemonRestart_WasEnabled(t *testing.T) {
 		},
 	}
 
-	r := NewReconciler(clientIP, mgr, fetcher,
+	n := newTestNLM(fetcher,
+		WithClientIP(clientIP),
 		WithEnabled(enabled),
 		WithPollInterval(time.Hour),
 		WithStateDir(dir),
@@ -1197,20 +1157,18 @@ func TestStartup_DaemonRestart_WasEnabled(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- r.Start(ctx) }()
+	go func() { done <- n.StartReconciler(ctx) }()
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()
 	<-done
 
-	if len(mgr.provisions) != 1 {
-		t.Fatalf("expected 1 provision after restart with enabled state, got %d", len(mgr.provisions))
+	if n.UnicastService == nil {
+		t.Fatal("expected unicast service to be provisioned after restart with enabled state")
 	}
 }
 
 func TestStartup_FreshInstall_DoesNotProvision(t *testing.T) {
-	// Scenario: fresh install, no state files. Reconciler starts disabled.
-	// Even if an activated user exists onchain, it should NOT provision.
 	dir := t.TempDir()
 
 	enabled, err := LoadOrMigrateState(dir)
@@ -1223,7 +1181,6 @@ func TestStartup_FreshInstall_DoesNotProvision(t *testing.T) {
 
 	devicePK := [32]byte{1}
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -1232,7 +1189,8 @@ func TestStartup_FreshInstall_DoesNotProvision(t *testing.T) {
 		},
 	}
 
-	r := NewReconciler(clientIP, mgr, fetcher,
+	n := newTestNLM(fetcher,
+		WithClientIP(clientIP),
 		WithEnabled(enabled),
 		WithPollInterval(time.Hour),
 		WithStateDir(dir),
@@ -1240,7 +1198,7 @@ func TestStartup_FreshInstall_DoesNotProvision(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- r.Start(ctx) }()
+	go func() { done <- n.StartReconciler(ctx) }()
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()
@@ -1249,14 +1207,12 @@ func TestStartup_FreshInstall_DoesNotProvision(t *testing.T) {
 	if fetcher.calls != 0 {
 		t.Fatalf("expected 0 fetch calls for fresh install (disabled), got %d", fetcher.calls)
 	}
-	if len(mgr.provisions) != 0 {
-		t.Fatalf("expected 0 provisions for fresh install (disabled), got %d", len(mgr.provisions))
+	if n.UnicastService != nil {
+		t.Fatal("expected no provision for fresh install (disabled)")
 	}
 }
 
 func TestStartup_DaemonRestart_WasDisabled(t *testing.T) {
-	// Scenario: daemon was running with reconciler disabled, then restarted.
-	// state.json says disabled → reconciler should NOT provision.
 	dir := t.TempDir()
 	if err := WriteState(dir, false); err != nil {
 		t.Fatal(err)
@@ -1272,7 +1228,6 @@ func TestStartup_DaemonRestart_WasDisabled(t *testing.T) {
 
 	devicePK := [32]byte{1}
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
-	mgr := &mockManager{}
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
 			Config:  testConfig(),
@@ -1281,7 +1236,8 @@ func TestStartup_DaemonRestart_WasDisabled(t *testing.T) {
 		},
 	}
 
-	r := NewReconciler(clientIP, mgr, fetcher,
+	n := newTestNLM(fetcher,
+		WithClientIP(clientIP),
 		WithEnabled(enabled),
 		WithPollInterval(time.Hour),
 		WithStateDir(dir),
@@ -1289,7 +1245,7 @@ func TestStartup_DaemonRestart_WasDisabled(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- r.Start(ctx) }()
+	go func() { done <- n.StartReconciler(ctx) }()
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()
@@ -1298,7 +1254,39 @@ func TestStartup_DaemonRestart_WasDisabled(t *testing.T) {
 	if fetcher.calls != 0 {
 		t.Fatalf("expected 0 fetch calls when restarted disabled, got %d", fetcher.calls)
 	}
-	if len(mgr.provisions) != 0 {
-		t.Fatalf("expected 0 provisions when restarted disabled, got %d", len(mgr.provisions))
+	if n.UnicastService != nil {
+		t.Fatal("expected no provision when restarted disabled")
+	}
+}
+
+// --- helpers to pre-provision services ---
+
+func provisionUnicast(t *testing.T, n *NetlinkManager) {
+	t.Helper()
+	pr := api.ProvisionRequest{
+		UserType:           api.UserTypeIBRL,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		TunnelNet:          &net.IPNet{IP: net.IPv4(169, 254, 0, 0), Mask: net.CIDRMask(31, 32)},
+		DoubleZeroIP:       net.IPv4(10, 0, 0, 1),
+		DoubleZeroPrefixes: []*net.IPNet{{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(24, 32)}},
+	}
+	if err := n.Provision(pr); err != nil {
+		t.Fatalf("failed to pre-provision unicast: %v", err)
+	}
+}
+
+func provisionMulticast(t *testing.T, n *NetlinkManager) {
+	t.Helper()
+	pr := api.ProvisionRequest{
+		UserType:           api.UserTypeMulticast,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		TunnelNet:          &net.IPNet{IP: net.IPv4(169, 254, 0, 0), Mask: net.CIDRMask(31, 32)},
+		DoubleZeroIP:       net.IPv4(10, 0, 0, 1),
+		DoubleZeroPrefixes: []*net.IPNet{{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(24, 32)}},
+	}
+	if err := n.Provision(pr); err != nil {
+		t.Fatalf("failed to pre-provision multicast: %v", err)
 	}
 }

@@ -1,4 +1,4 @@
-package reconciler
+package manager
 
 import (
 	"github.com/prometheus/client_golang/prometheus"

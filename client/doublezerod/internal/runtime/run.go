@@ -20,7 +20,6 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/multicast"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/onchain"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
-	"github.com/malbeclabs/doublezero/client/doublezerod/internal/reconciler"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -70,16 +69,6 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 
 	pim := pim.NewPIMServer()
 	heartbeat := multicast.NewHeartbeatSender()
-	nlm := manager.NewNetlinkManager(nlr, bgp, pim, heartbeat)
-
-	errCh := make(chan error)
-
-	// starting network manager will attempt to recover latest provisioned state
-	slog.Info("network: starting network manager")
-	go func() {
-		err := nlm.Serve(ctx)
-		errCh <- err
-	}()
 
 	// Create a shared caching fetcher for both reconciler and latency manager
 	// to avoid duplicate RPC calls to GetProgramAccounts.
@@ -96,7 +85,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	}
 	slog.Info("reconciler: discovered client IP", "ip", ip.String(), "method", method)
 
-	reconcilerEnabled, err := reconciler.LoadOrMigrateState(stateDir)
+	reconcilerEnabled, err := manager.LoadOrMigrateState(stateDir)
 	if err != nil {
 		return fmt.Errorf("error loading reconciler state: %w", err)
 	}
@@ -106,16 +95,26 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		return fmt.Errorf("reconciler poll interval must be >= 1 second, got %d", reconcilerPollInterval)
 	}
 	pollInterval := time.Duration(reconcilerPollInterval) * time.Second
-	rec := reconciler.NewReconciler(
-		ip,
-		nlm,
-		cachingFetcher,
-		reconciler.WithPollInterval(pollInterval),
-		reconciler.WithEnabled(reconcilerEnabled),
-		reconciler.WithStateDir(stateDir),
+
+	nlm := manager.NewNetlinkManager(nlr, bgp, pim, heartbeat,
+		manager.WithClientIP(ip),
+		manager.WithFetcher(cachingFetcher),
+		manager.WithPollInterval(pollInterval),
+		manager.WithEnabled(reconcilerEnabled),
+		manager.WithStateDir(stateDir),
 	)
+
+	errCh := make(chan error)
+
+	// starting network manager will attempt to recover latest provisioned state
+	slog.Info("network: starting network manager")
 	go func() {
-		err := rec.Start(ctx)
+		err := nlm.Serve(ctx)
+		errCh <- err
+	}()
+
+	go func() {
+		err := nlm.StartReconciler(ctx)
 		errCh <- err
 	}()
 
@@ -123,9 +122,9 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	mux.HandleFunc("POST /provision", nlm.ServeProvision)
 	mux.HandleFunc("POST /remove", nlm.ServeRemove)
 	mux.HandleFunc("GET /status", nlm.ServeStatus)
-	mux.HandleFunc("POST /enable", rec.ServeEnable)
-	mux.HandleFunc("POST /disable", rec.ServeDisable)
-	mux.HandleFunc("GET /v2/status", rec.ServeV2Status)
+	mux.HandleFunc("POST /enable", nlm.ServeEnable)
+	mux.HandleFunc("POST /disable", nlm.ServeDisable)
+	mux.HandleFunc("GET /v2/status", nlm.ServeV2Status)
 	mux.HandleFunc("GET /routes", api.ServeRoutesHandler(nlr, lm, nlm, networkConfig))
 	mux.HandleFunc("POST /resolve-route", api.ServeResolveRouteHandler(nlr, networkConfig))
 

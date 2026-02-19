@@ -1,4 +1,4 @@
-package reconciler
+package manager
 
 import (
 	"os"

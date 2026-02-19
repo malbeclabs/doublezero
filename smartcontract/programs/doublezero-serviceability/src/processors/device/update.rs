@@ -3,7 +3,7 @@ use crate::{
     pda::get_resource_extension_pda,
     processors::resource::create_resource,
     resource::ResourceType,
-    serializer::try_acc_write,
+    serializer::{try_acc_close, try_acc_write},
     state::{
         accounttype::AccountType, contributor::Contributor, device::*, globalstate::GlobalState,
         location::Location, resource_extension::ResourceExtensionBorrowed,
@@ -217,10 +217,12 @@ pub fn process_update_device(
 
     let mut create_dz_prefixes_resources = false;
     let mut new_dz_prefix_count = 0usize;
+    let mut old_dz_prefix_count = 0usize;
     if let Some(dz_prefixes) = &value.dz_prefixes {
         let old_count = device.dz_prefixes.len();
         let new_count = dz_prefixes.len();
         new_dz_prefix_count = new_count;
+        old_dz_prefix_count = old_count;
 
         assert!(
             globalconfig_account.is_some(),
@@ -338,6 +340,19 @@ pub fn process_update_device(
                 accounts,
                 ResourceType::DzPrefixBlock(*device_account.key, i - 1),
             )?;
+        }
+    }
+
+    // Close orphaned DzPrefixBlock accounts when shrinking dz_prefixes.
+    if create_dz_prefixes_resources && old_dz_prefix_count > new_dz_prefix_count {
+        for resource_account in resource_accounts
+            .iter()
+            .skip(new_dz_prefix_count + 1)
+            .take(old_dz_prefix_count - new_dz_prefix_count)
+        {
+            if !resource_account.data_is_empty() {
+                try_acc_close(resource_account, payer_account)?;
+            }
         }
     }
 

@@ -339,3 +339,190 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 
 	log.Debug("==> DzPrefix rollover allocation test completed successfully")
 }
+
+// TestE2E_DzPrefix_GrowAndShrink tests that updating a device's dz-prefixes to add or remove
+// prefixes correctly creates and closes DzPrefixBlock resource accounts. It verifies:
+// - Growing: adding a second prefix creates a new DzPrefixBlock with a loopback reservation
+// - Shrinking: removing that prefix closes the orphaned DzPrefixBlock and returns allocations to baseline
+func TestE2E_DzPrefix_GrowAndShrink(t *testing.T) {
+	t.Parallel()
+
+	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
+	log := newTestLoggerForTest(t)
+
+	log.Debug("==> Starting test devnet with on-chain allocation enabled")
+
+	currentDir, err := os.Getwd()
+	require.NoError(t, err)
+	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
+
+	// Create devnet with on-chain allocation enabled
+	dn, err := devnet.New(devnet.DevnetSpec{
+		DeployID:  deployID,
+		DeployDir: t.TempDir(),
+
+		CYOANetwork: devnet.CYOANetworkSpec{
+			CIDRPrefix: subnetCIDRPrefix,
+		},
+		Manager: devnet.ManagerSpec{
+			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
+		},
+		Activator: devnet.ActivatorSpec{
+			OnchainAllocation: devnet.BoolPtr(true),
+		},
+	}, log, dockerClient, subnetAllocator)
+	require.NoError(t, err)
+
+	ctx := t.Context()
+
+	err = dn.Start(ctx, nil)
+	require.NoError(t, err)
+
+	// =========================================================================
+	// Phase 1: Create device with a single /30 prefix, wait for activation
+	// =========================================================================
+	log.Debug("==> Creating device with a single /30 dz_prefix")
+	output, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
+		set -euo pipefail
+		doublezero device create --code test-dz01 --contributor co01 --location lax --exchange xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.101.0/30" --mgmt-vrf mgmt --desired-status activated 2>&1
+		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
+		doublezero device interface create test-dz01 "Loopback255" --loopback-type vpnv4 -w
+		doublezero device interface create test-dz01 "Loopback256" --loopback-type ipv4 -w
+	`})
+	log.Debug("Device creation output", "output", string(output))
+	require.NoError(t, err, "Device creation failed")
+
+	// Wait for device to be activated and capture device pubkey
+	log.Debug("==> Waiting for device activation")
+	var devicePubkey solana.PublicKey
+	require.Eventually(t, func() bool {
+		client, err := dn.Ledger.GetServiceabilityClient()
+		if err != nil {
+			return false
+		}
+		data, err := client.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		for _, device := range data.Devices {
+			if device.Code == "test-dz01" && device.Status == serviceability.DeviceStatusActivated {
+				devicePubkey = solana.PublicKeyFromBytes(device.PubKey[:])
+				return true
+			}
+		}
+		return false
+	}, 60*time.Second, 2*time.Second, "device was not activated within timeout")
+
+	// Create allocation verifier
+	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
+	require.NoError(t, err)
+	verifier := allocation.NewVerifier(serviceabilityClient)
+
+	// =========================================================================
+	// Phase 2: Capture baseline — expect 1 DzPrefixBlock
+	// =========================================================================
+	log.Debug("==> Capturing baseline resource state")
+
+	// Wait for the DzPrefixBlock to be created by the activator
+	var baselineSnapshot *allocation.ResourceSnapshot
+	require.Eventually(t, func() bool {
+		snap, err := verifier.CaptureSnapshot(ctx)
+		if err != nil {
+			return false
+		}
+		blocks := verifier.FindDzPrefixBlocksForDevice(snap, devicePubkey)
+		if len(blocks) == 1 {
+			baselineSnapshot = snap
+			return true
+		}
+		log.Debug("Waiting for baseline DzPrefixBlock", "count", len(blocks))
+		return false
+	}, 60*time.Second, 2*time.Second, "expected 1 DzPrefixBlock after device activation")
+
+	baselineBlocks := verifier.FindDzPrefixBlocksForDevice(baselineSnapshot, devicePubkey)
+	baselineAllocated := verifier.GetTotalDzPrefixAllocatedForDevice(baselineSnapshot, devicePubkey)
+	log.Debug("Baseline state",
+		"dz_prefix_blocks", len(baselineBlocks),
+		"total_allocated", baselineAllocated)
+	require.Equal(t, 1, len(baselineBlocks), "expected 1 DzPrefixBlock at baseline")
+
+	// =========================================================================
+	// Phase 3: Grow — add a second /30 prefix
+	// =========================================================================
+	log.Debug("==> Growing dz-prefixes: adding second /30 prefix")
+	output, err = dn.Manager.Exec(ctx, []string{"bash", "-c",
+		`doublezero device update --pubkey test-dz01 --dz-prefixes "45.33.101.0/30,45.33.101.4/30" 2>&1`,
+	})
+	log.Debug("Device update (grow) output", "output", string(output))
+	require.NoError(t, err, "Device update (grow) failed")
+
+	// =========================================================================
+	// Phase 4: Verify grow — expect 2 DzPrefixBlocks, total allocated increases
+	// =========================================================================
+	log.Debug("==> Verifying grow: waiting for 2 DzPrefixBlocks")
+	var growSnapshot *allocation.ResourceSnapshot
+	require.Eventually(t, func() bool {
+		snap, err := verifier.CaptureSnapshot(ctx)
+		if err != nil {
+			return false
+		}
+		blocks := verifier.FindDzPrefixBlocksForDevice(snap, devicePubkey)
+		if len(blocks) == 2 {
+			growSnapshot = snap
+			return true
+		}
+		log.Debug("Waiting for second DzPrefixBlock", "count", len(blocks))
+		return false
+	}, 90*time.Second, 2*time.Second, "expected 2 DzPrefixBlocks after grow")
+
+	growBlocks := verifier.FindDzPrefixBlocksForDevice(growSnapshot, devicePubkey)
+	growAllocated := verifier.GetTotalDzPrefixAllocatedForDevice(growSnapshot, devicePubkey)
+	log.Debug("Grow state",
+		"dz_prefix_blocks", len(growBlocks),
+		"total_allocated", growAllocated,
+		"baseline_allocated", baselineAllocated)
+	require.Equal(t, 2, len(growBlocks), "expected 2 DzPrefixBlocks after grow")
+	require.Equal(t, baselineAllocated+1, growAllocated,
+		"expected total allocated to increase by 1 (new loopback reservation)")
+
+	// =========================================================================
+	// Phase 5: Shrink — remove the second prefix
+	// =========================================================================
+	log.Debug("==> Shrinking dz-prefixes: removing second /30 prefix")
+	output, err = dn.Manager.Exec(ctx, []string{"bash", "-c",
+		`doublezero device update --pubkey test-dz01 --dz-prefixes "45.33.101.0/30" 2>&1`,
+	})
+	log.Debug("Device update (shrink) output", "output", string(output))
+	require.NoError(t, err, "Device update (shrink) failed")
+
+	// =========================================================================
+	// Phase 6: Verify shrink — expect 1 DzPrefixBlock, total allocated back to baseline
+	// =========================================================================
+	log.Debug("==> Verifying shrink: waiting for orphaned DzPrefixBlock to be closed")
+	var shrinkSnapshot *allocation.ResourceSnapshot
+	require.Eventually(t, func() bool {
+		snap, err := verifier.CaptureSnapshot(ctx)
+		if err != nil {
+			return false
+		}
+		blocks := verifier.FindDzPrefixBlocksForDevice(snap, devicePubkey)
+		if len(blocks) == 1 {
+			shrinkSnapshot = snap
+			return true
+		}
+		log.Debug("Waiting for orphaned DzPrefixBlock to close", "count", len(blocks))
+		return false
+	}, 90*time.Second, 2*time.Second, "expected 1 DzPrefixBlock after shrink (orphaned block should be closed)")
+
+	shrinkBlocks := verifier.FindDzPrefixBlocksForDevice(shrinkSnapshot, devicePubkey)
+	shrinkAllocated := verifier.GetTotalDzPrefixAllocatedForDevice(shrinkSnapshot, devicePubkey)
+	log.Debug("Shrink state",
+		"dz_prefix_blocks", len(shrinkBlocks),
+		"total_allocated", shrinkAllocated,
+		"baseline_allocated", baselineAllocated)
+	require.Equal(t, 1, len(shrinkBlocks), "expected 1 DzPrefixBlock after shrink")
+	require.Equal(t, baselineAllocated, shrinkAllocated,
+		"expected total allocated to return to baseline after shrink")
+
+	log.Debug("==> DzPrefix grow and shrink test completed successfully")
+}

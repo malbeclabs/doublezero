@@ -2086,3 +2086,155 @@ async fn test_user_allocation_from_dz_prefix_block_skips_first_ip() {
 
     println!("[PASS] test_user_allocation_from_dz_prefix_block_skips_first_ip");
 }
+
+#[tokio::test]
+async fn test_device_update_dz_prefixes_shrink_closes_orphaned_blocks() {
+    println!("[TEST] test_device_update_dz_prefixes_shrink_closes_orphaned_blocks");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    // Step 1: Create a device with 1 prefix and activate it.
+    let (device_pubkey, location_pubkey, _, contributor_pubkey) = setup_device_for_dz_prefix_tests(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+    )
+    .await;
+
+    activate_device(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        device_pubkey,
+        2, // TunnelIds + 1 DzPrefixBlock
+    )
+    .await;
+
+    let (pda_tunnel, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (pda_block0, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
+    let (pda_block1, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 1));
+
+    assert!(
+        get_resource_extension_data(&mut banks_client, pda_block0)
+            .await
+            .is_some(),
+        "DzPrefixBlock[0] should exist after activation"
+    );
+    assert!(
+        get_resource_extension_data(&mut banks_client, pda_block1)
+            .await
+            .is_none(),
+        "DzPrefixBlock[1] should not exist yet"
+    );
+
+    // Step 2: Grow to 2 prefixes.
+    update_device_dz_prefixes(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        device_pubkey,
+        location_pubkey,
+        contributor_pubkey,
+        "110.1.0.0/24,110.2.0.0/24",
+    )
+    .await;
+
+    assert!(
+        get_resource_extension_data(&mut banks_client, pda_block0)
+            .await
+            .is_some(),
+        "DzPrefixBlock[0] should exist after grow"
+    );
+    assert!(
+        get_resource_extension_data(&mut banks_client, pda_block1)
+            .await
+            .is_some(),
+        "DzPrefixBlock[1] should exist after grow"
+    );
+
+    // Step 3: Shrink back to 1 prefix.
+    update_device_dz_prefixes(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        device_pubkey,
+        location_pubkey,
+        contributor_pubkey,
+        "110.1.0.0/24",
+    )
+    .await;
+
+    assert!(
+        get_resource_extension_data(&mut banks_client, pda_block0)
+            .await
+            .is_some(),
+        "DzPrefixBlock[0] should still exist after shrink"
+    );
+    assert!(
+        get_resource_extension_data(&mut banks_client, pda_block1)
+            .await
+            .is_none(),
+        "DzPrefixBlock[1] should be closed after shrink"
+    );
+
+    // Step 4: Close the device with the reduced resource set.
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist");
+
+    let tunnel_resource = get_resource_extension_data(&mut banks_client, pda_tunnel)
+        .await
+        .expect("TunnelIds should exist");
+    let block0_resource = get_resource_extension_data(&mut banks_client, pda_block0)
+        .await
+        .expect("DzPrefixBlock[0] should exist");
+
+    let resource_pdas = vec![
+        pda_tunnel,
+        pda_block0,
+        tunnel_resource.owner,
+        block0_resource.owner,
+    ];
+
+    close_device(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        device_pubkey,
+        device.owner,
+        device.location_pk,
+        device.contributor_pk,
+        device.exchange_pk,
+        resource_pdas,
+    )
+    .await;
+
+    assert!(
+        get_resource_extension_data(&mut banks_client, pda_tunnel)
+            .await
+            .is_none(),
+        "TunnelIds should be closed after device close"
+    );
+    assert!(
+        get_resource_extension_data(&mut banks_client, pda_block0)
+            .await
+            .is_none(),
+        "DzPrefixBlock[0] should be closed after device close"
+    );
+
+    println!("[PASS] test_device_update_dz_prefixes_shrink_closes_orphaned_blocks");
+}

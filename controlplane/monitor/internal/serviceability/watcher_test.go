@@ -235,6 +235,133 @@ func TestWatcher_EpochChangeDetection(t *testing.T) {
 	require.Equal(t, uint64(2), w.currSolanaEpoch)
 }
 
+func TestWatcher_BuildSlackMessage(t *testing.T) {
+	t.Parallel()
+
+	tenantPubKey := [32]byte{1, 2, 3}
+	otherTenantPubKey := [32]byte{4, 5, 6}
+	devicePubKey := [32]byte{10, 11, 12}
+
+	tenants := []serviceability.Tenant{
+		{Code: "acme", PubKey: tenantPubKey},
+	}
+	devices := []serviceability.Device{
+		{Code: "dz1", PubKey: devicePubKey},
+	}
+
+	makeEvent := func(ownerByte byte, tenantPubKey [32]byte) ServiceabilityUserEvent {
+		return ServiceabilityUserEvent{
+			eventType: EventTypeAdded,
+			User: serviceability.User{
+				Owner:        [32]uint8{ownerByte},
+				ClientIp:     [4]uint8{10, 0, 0, ownerByte},
+				DevicePubKey: devicePubKey,
+				TunnelId:     uint16(ownerByte),
+				TenantPubKey: tenantPubKey,
+			},
+		}
+	}
+
+	makeCfg := func(t *testing.T) *ServiceabilityWatcher {
+		t.Helper()
+		w, err := NewServiceabilityWatcher(&Config{
+			Logger: newTestLogger(t),
+			Serviceability: &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{}, nil
+			}},
+			Interval: 10 * time.Millisecond,
+			LedgerRPCClient: &mockLedgerRPC{GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{Epoch: 1}, nil
+			}},
+			SolanaRPCClient: &mockLedgerRPC{GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{Epoch: 1}, nil
+			}},
+		})
+		require.NoError(t, err)
+		return w
+	}
+
+	t.Run("empty events returns empty string", func(t *testing.T) {
+		t.Parallel()
+		w := makeCfg(t)
+		msg, err := w.buildSlackMessage(nil, devices, tenants, 0)
+		require.NoError(t, err)
+		require.Empty(t, msg)
+	})
+
+	t.Run("single user title is singular", func(t *testing.T) {
+		t.Parallel()
+		w := makeCfg(t)
+		events := []ServiceabilityUserEvent{makeEvent(1, tenantPubKey)}
+		msg, err := w.buildSlackMessage(events, devices, tenants, 1)
+		require.NoError(t, err)
+		require.Contains(t, msg, "New DoubleZero User Added!")
+	})
+
+	t.Run("multiple users title is plural", func(t *testing.T) {
+		t.Parallel()
+		w := makeCfg(t)
+		events := []ServiceabilityUserEvent{makeEvent(1, tenantPubKey), makeEvent(2, tenantPubKey)}
+		msg, err := w.buildSlackMessage(events, devices, tenants, 2)
+		require.NoError(t, err)
+		require.Contains(t, msg, "New DoubleZero Users Added!")
+	})
+
+	t.Run("tenant column header is present", func(t *testing.T) {
+		t.Parallel()
+		w := makeCfg(t)
+		events := []ServiceabilityUserEvent{makeEvent(1, tenantPubKey)}
+		msg, err := w.buildSlackMessage(events, devices, tenants, 1)
+		require.NoError(t, err)
+		require.Contains(t, msg, "Tenant")
+	})
+
+	t.Run("known tenant shows tenant code", func(t *testing.T) {
+		t.Parallel()
+		w := makeCfg(t)
+		events := []ServiceabilityUserEvent{makeEvent(1, tenantPubKey)}
+		msg, err := w.buildSlackMessage(events, devices, tenants, 1)
+		require.NoError(t, err)
+		require.Contains(t, msg, "acme")
+	})
+
+	t.Run("unknown tenant shows blank", func(t *testing.T) {
+		t.Parallel()
+		w := makeCfg(t)
+		events := []ServiceabilityUserEvent{makeEvent(1, otherTenantPubKey)}
+		msg, err := w.buildSlackMessage(events, devices, tenants, 1)
+		require.NoError(t, err)
+		require.NotContains(t, msg, "acme")
+		require.NotContains(t, msg, "not found")
+	})
+
+	t.Run("multiple users with different tenants", func(t *testing.T) {
+		t.Parallel()
+		tenants2 := []serviceability.Tenant{
+			{Code: "acme", PubKey: tenantPubKey},
+			{Code: "globex", PubKey: otherTenantPubKey},
+		}
+		w := makeCfg(t)
+		events := []ServiceabilityUserEvent{
+			makeEvent(1, tenantPubKey),
+			makeEvent(2, otherTenantPubKey),
+		}
+		msg, err := w.buildSlackMessage(events, devices, tenants2, 2)
+		require.NoError(t, err)
+		require.Contains(t, msg, "acme")
+		require.Contains(t, msg, "globex")
+	})
+
+	t.Run("total users count in footer", func(t *testing.T) {
+		t.Parallel()
+		w := makeCfg(t)
+		events := []ServiceabilityUserEvent{makeEvent(1, tenantPubKey)}
+		msg, err := w.buildSlackMessage(events, devices, tenants, 42)
+		require.NoError(t, err)
+		require.Contains(t, msg, "42")
+	})
+}
+
 func TestWatcher_BuildEpochChangeSlackMessage(t *testing.T) {
 	t.Parallel()
 

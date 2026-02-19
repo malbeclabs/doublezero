@@ -623,6 +623,7 @@ mod test_interface_validate {
         let mut iface = base_interface();
         iface.interface_type = InterfaceType::Physical;
         iface.interface_cyoa = InterfaceCYOA::GREOverDIA;
+        iface.ip_net = "38.104.127.117/31".parse().unwrap();
         assert!(Interface::V2(iface).validate().is_ok());
     }
 

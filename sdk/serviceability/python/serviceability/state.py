@@ -257,11 +257,11 @@ class LinkHealth(IntEnum):
 class LinkDesiredStatus(IntEnum):
     PENDING = 0
     ACTIVATED = 1
-    HARD_DRAINED = 2
-    SOFT_DRAINED = 3
+    HARD_DRAINED = 6
+    SOFT_DRAINED = 7
 
     def __str__(self) -> str:
-        _names = {0: "pending", 1: "activated", 2: "hard-drained", 3: "soft-drained"}
+        _names = {0: "pending", 1: "activated", 6: "hard-drained", 7: "soft-drained"}
         return _names.get(self.value, "unknown")
 
 

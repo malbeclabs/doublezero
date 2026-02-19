@@ -549,8 +549,8 @@ type LinkDesiredStatus uint8
 const (
 	LinkDesiredStatusPending     LinkDesiredStatus = 0
 	LinkDesiredStatusActivated   LinkDesiredStatus = 1
-	LinkDesiredStatusHardDrained LinkDesiredStatus = 2
-	LinkDesiredStatusSoftDrained LinkDesiredStatus = 3
+	LinkDesiredStatusHardDrained LinkDesiredStatus = 6
+	LinkDesiredStatusSoftDrained LinkDesiredStatus = 7
 )
 
 func (l LinkDesiredStatus) String() string {

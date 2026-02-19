@@ -53,6 +53,13 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 	prov, err := qa.NewProvisioningTest(ctx, log, networkConfig, envArg, bmHost)
 	require.NoError(t, err, "failed to create provisioning test")
 
+	// Cleanup stale state from previous runs (e.g. links left in drained/deleting state).
+	cleaned, err := prov.CleanupStaleState(ctx, deviceCode)
+	require.NoError(t, err, "failed to cleanup stale state")
+	if cleaned > 0 {
+		t.Logf("Cleaned up %d stale resources from previous run", cleaned)
+	}
+
 	t.Log("==> Verifying device is healthy (validates previous provisioning)")
 	device, err := prov.GetDeviceByCode(ctx, deviceCode)
 	require.NoError(t, err, "failed to get device %s", deviceCode)

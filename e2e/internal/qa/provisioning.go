@@ -16,6 +16,7 @@ import (
 
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
+	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/mr-tron/base58"
 )
@@ -273,7 +274,32 @@ func (p *ProvisioningTest) WaitForRefCountZero(ctx context.Context, deviceCode s
 	}
 }
 
+func (p *ProvisioningTest) DrainDevice(ctx context.Context, pubkey string) error {
+	if _, err := p.runCLI(ctx, "device", "update", "--pubkey", pubkey, "--status", "drained"); err != nil {
+		return err
+	}
+	return poll.Until(ctx, func() (bool, error) {
+		data, err := getProgramDataWithRetry(ctx, p.serviceability)
+		if err != nil {
+			return false, err
+		}
+		for _, device := range data.Devices {
+			if base58.Encode(device.PubKey[:]) == pubkey {
+				if device.Status == serviceability.DeviceStatusActivated {
+					p.log.Info("Waiting for device to drain", "pubkey", pubkey, "status", device.Status)
+					return false, nil
+				}
+				return true, nil
+			}
+		}
+		return true, nil // device not found, already gone
+	}, 2*time.Minute, 5*time.Second)
+}
+
 func (p *ProvisioningTest) DeleteDevice(ctx context.Context, pubkey string) error {
+	if err := p.DrainDevice(ctx, pubkey); err != nil {
+		return fmt.Errorf("failed to drain device: %w", err)
+	}
 	_, err := p.runCLI(ctx, "device", "delete", "--pubkey", pubkey)
 	return err
 }
@@ -357,9 +383,97 @@ func (p *ProvisioningTest) CreateInterface(ctx context.Context, deviceCode, ifac
 	return err
 }
 
+func (p *ProvisioningTest) DrainLink(ctx context.Context, pubkey string) error {
+	if _, err := p.runCLI(ctx, "link", "update", "--pubkey", pubkey, "--status", "hard-drained"); err != nil {
+		return err
+	}
+	return poll.Until(ctx, func() (bool, error) {
+		data, err := getProgramDataWithRetry(ctx, p.serviceability)
+		if err != nil {
+			return false, err
+		}
+		for _, link := range data.Links {
+			if base58.Encode(link.PubKey[:]) == pubkey {
+				if link.Status == serviceability.LinkStatusActivated {
+					p.log.Info("Waiting for link to drain", "pubkey", pubkey, "status", link.Status)
+					return false, nil
+				}
+				return true, nil
+			}
+		}
+		return true, nil // link not found, already gone
+	}, 2*time.Minute, 5*time.Second)
+}
+
 func (p *ProvisioningTest) DeleteLink(ctx context.Context, pubkey string) error {
+	if err := p.DrainLink(ctx, pubkey); err != nil {
+		return fmt.Errorf("failed to drain link: %w", err)
+	}
 	_, err := p.runCLI(ctx, "link", "delete", "--pubkey", pubkey)
 	return err
+}
+
+// CleanupStaleState cleans up any state left over from a previous test run:
+// all links connected to the device, all interfaces, and the device itself.
+// Links in Deleting state are skipped since the activator handles them.
+// Returns the number of resources cleaned up.
+func (p *ProvisioningTest) CleanupStaleState(ctx context.Context, deviceCode string) (int, error) {
+	data, err := getProgramDataWithRetry(ctx, p.serviceability)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get program data: %w", err)
+	}
+
+	var device *serviceability.Device
+	for i, d := range data.Devices {
+		if d.Code == deviceCode && d.Status != serviceability.DeviceStatusDeleting {
+			device = &data.Devices[i]
+			break
+		}
+	}
+	if device == nil {
+		return 0, nil
+	}
+
+	p.log.Info("Cleaning up stale state from previous run", "code", deviceCode, "status", device.Status, "health", device.DeviceHealth)
+
+	cleaned := 0
+
+	for _, link := range data.Links {
+		if link.SideAPubKey != device.PubKey && link.SideZPubKey != device.PubKey {
+			continue
+		}
+		if link.Status == serviceability.LinkStatusDeleting {
+			p.log.Info("Skipping link in Deleting state", "code", link.Code)
+			continue
+		}
+		pubkey := base58.Encode(link.PubKey[:])
+		p.log.Info("Deleting stale link", "code", link.Code, "pubkey", pubkey, "status", link.Status)
+		if err := p.DeleteLink(ctx, pubkey); err != nil {
+			p.log.Info("Failed to delete stale link", "code", link.Code, "error", err)
+			continue
+		}
+		cleaned++
+	}
+
+	for _, iface := range device.Interfaces {
+		p.log.Info("Deleting stale interface", "iface", iface.Name)
+		if err := p.DeleteInterface(ctx, deviceCode, iface.Name); err != nil {
+			p.log.Info("Failed to delete stale interface", "iface", iface.Name, "error", err)
+		}
+	}
+
+	if err := p.WaitForRefCountZero(ctx, deviceCode); err != nil {
+		return cleaned, fmt.Errorf("timed out waiting for ref count to reach zero during cleanup: %w", err)
+	}
+
+	pubkey := base58.Encode(device.PubKey[:])
+	if err := p.DeleteDevice(ctx, pubkey); err != nil {
+		return cleaned, fmt.Errorf("failed to delete device during cleanup: %w", err)
+	}
+	p.log.Info("Deleted device during cleanup", "code", deviceCode, "pubkey", pubkey)
+	cleaned++
+
+	return cleaned, nil
 }
 
 func (p *ProvisioningTest) CreateLink(ctx context.Context, link *LinkInfo) error {

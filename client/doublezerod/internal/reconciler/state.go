@@ -2,6 +2,7 @@ package reconciler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,6 +33,9 @@ func LoadOrMigrateState(stateDir string) (bool, error) {
 		}
 		return state.ReconcilerEnabled, nil
 	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("error reading state file: %w", err)
+	}
 
 	// Check for old doublezerod.json (migration from pre-reconciler daemon)
 	oldPath := filepath.Join(stateDir, oldStateFileName)
@@ -52,7 +56,8 @@ func LoadOrMigrateState(stateDir string) (bool, error) {
 	return false, nil
 }
 
-// WriteState writes the reconciler enabled state to the state file.
+// WriteState writes the reconciler enabled state to the state file atomically.
+// It writes to a temporary file and renames it to prevent corruption on crash.
 func WriteState(stateDir string, enabled bool) error {
 	statePath := filepath.Join(stateDir, stateFileName)
 	state := State{ReconcilerEnabled: enabled}
@@ -63,8 +68,12 @@ func WriteState(stateDir string, enabled bool) error {
 	if err := os.MkdirAll(stateDir, 0755); err != nil {
 		return fmt.Errorf("error creating state directory: %w", err)
 	}
-	if err := os.WriteFile(statePath, data, 0644); err != nil {
-		return fmt.Errorf("error writing state file: %w", err)
+	tmpPath := statePath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return fmt.Errorf("error writing temp state file: %w", err)
+	}
+	if err := os.Rename(tmpPath, statePath); err != nil {
+		return fmt.Errorf("error renaming state file: %w", err)
 	}
 	return nil
 }

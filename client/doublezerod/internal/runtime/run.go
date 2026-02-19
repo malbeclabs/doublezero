@@ -102,6 +102,9 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	}
 	slog.Info("reconciler: loaded state", "enabled", reconcilerEnabled)
 
+	if reconcilerPollInterval < 1 {
+		return fmt.Errorf("reconciler poll interval must be >= 1 second, got %d", reconcilerPollInterval)
+	}
 	pollInterval := time.Duration(reconcilerPollInterval) * time.Second
 	rec := reconciler.NewReconciler(
 		ip,

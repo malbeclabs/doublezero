@@ -195,10 +195,17 @@ func (n *NetlinkManager) ResolveTunnelSrc(dst net.IP) (net.IP, error) {
 	if err != nil {
 		return nil, fmt.Errorf("route lookup failed: %w", err)
 	}
+	var firstSrc net.IP
 	for _, route := range routes {
-		if route.Dst != nil && route.Dst.IP.Equal(dst) {
+		if route.Src != nil && firstSrc == nil {
+			firstSrc = route.Src
+		}
+		if route.Dst != nil && route.Dst.IP.Equal(dst) && route.Src != nil {
 			return route.Src, nil
 		}
+	}
+	if firstSrc != nil {
+		return firstSrc, nil
 	}
 	return nil, fmt.Errorf("no route found to %s", dst)
 }

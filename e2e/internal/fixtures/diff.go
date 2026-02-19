@@ -64,6 +64,10 @@ func mapFromTable(output []byte, ignoreKeys []string) []map[string]string {
 		sliceOfMaps = append(sliceOfMaps, formattedMap)
 	}
 
+	if err := scanner.Err(); err != nil {
+		return nil
+	}
+
 	sortMaps(sliceOfMaps, ignoreKeys)
 
 	return sliceOfMaps

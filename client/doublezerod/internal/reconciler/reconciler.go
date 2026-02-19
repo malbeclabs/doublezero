@@ -83,7 +83,13 @@ func NewReconciler(clientIP net.IP, mgr Manager, fetcher Fetcher, opts ...Option
 }
 
 // SetEnabled sends an enable/disable signal to the reconciler loop.
+// Non-blocking: drains any pending value so back-to-back calls don't hang.
 func (r *Reconciler) SetEnabled(enabled bool) {
+	// Drain any pending value so we don't block.
+	select {
+	case <-r.enableCh:
+	default:
+	}
 	r.enableCh <- enabled
 }
 

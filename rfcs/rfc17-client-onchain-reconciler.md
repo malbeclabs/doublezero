@@ -203,7 +203,7 @@ type Manager interface {
 
 - **CLI**: The `/provision` and `/remove` HTTP endpoints are still present on the daemon for now but are unused by the CLI. They will be removed in a future cleanup since the daemon and CLI are always packaged and released together.
 - **Daemon without `--client-ip`**: If the flag is not set, the daemon auto-discovers the client IP from local interfaces or an external lookup. If discovery fails (e.g., no network connectivity), the daemon exits with a fatal error — the reconciler requires a client IP to function and there is no fallback mode.
-- **Rollout**: The reconciler is enabled by default via IP auto-discovery. Operators can override with `--client-ip` if needed. No coordinated rollout required.
+- **Rollout**: The daemon auto-discovers the client IP on startup (overridable with `--client-ip`). Fresh installs start with the reconciler disabled; operators run `doublezero enable` after the first `doublezero connect`. Existing installs that already have a `doublezerod.json` state file are migrated to enabled automatically.
 
 ## Open Questions
 

@@ -2146,3 +2146,301 @@ func TestEndToEnd(t *testing.T) {
 		})
 	}
 }
+
+func Test_deduplicateTunnels_RemovesDuplicates(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	controller := &Controller{
+		log: logger,
+	}
+
+	device := &Device{
+		PubKey: "testdevice123",
+		Code:   "dz1",
+		Tunnels: []*Tunnel{
+			{
+				Id:            500,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				PubKey:        "user1",
+				Allocated:     true,
+				VrfId:         1,
+			},
+			{
+				Id:            501,
+				UnderlaySrcIP: net.IP{3, 3, 3, 3},
+				UnderlayDstIP: net.IP{4, 4, 4, 4},
+				PubKey:        "user2",
+				Allocated:     true,
+				VrfId:         1,
+			},
+			{
+				Id:            502,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				PubKey:        "user3",
+				Allocated:     true,
+				VrfId:         1,
+			},
+		},
+	}
+
+	result := controller.deduplicateTunnels(device)
+
+	if len(result) != 2 {
+		t.Errorf("expected 2 tunnels after deduplication, got %d", len(result))
+	}
+
+	// Verify the first occurrence was kept
+	if result[0].Id != 500 || result[0].PubKey != "user1" {
+		t.Errorf("expected first tunnel to be kept (ID 500, user1), got ID %d, user %s", result[0].Id, result[0].PubKey)
+	}
+
+	// Verify the unique second tunnel was kept
+	if result[1].Id != 501 || result[1].PubKey != "user2" {
+		t.Errorf("expected second tunnel to be kept (ID 501, user2), got ID %d, user %s", result[1].Id, result[1].PubKey)
+	}
+}
+
+func Test_deduplicateTunnels_KeepsFirstOccurrence(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	controller := &Controller{
+		log: logger,
+	}
+
+	device := &Device{
+		PubKey: "testdevice123",
+		Code:   "dz1",
+		Tunnels: []*Tunnel{
+			{
+				Id:            500,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				PubKey:        "user1",
+				Allocated:     true,
+			},
+			{
+				Id:            501,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				PubKey:        "user2",
+				Allocated:     true,
+			},
+			{
+				Id:            502,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				PubKey:        "user3",
+				Allocated:     true,
+			},
+		},
+	}
+
+	result := controller.deduplicateTunnels(device)
+
+	if len(result) != 1 {
+		t.Errorf("expected 1 tunnel after deduplication, got %d", len(result))
+	}
+
+	if result[0].Id != 500 || result[0].PubKey != "user1" {
+		t.Errorf("expected first tunnel to be kept (ID 500, user1), got ID %d, user %s", result[0].Id, result[0].PubKey)
+	}
+}
+
+func Test_deduplicateTunnels_IgnoresUnallocated(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	controller := &Controller{
+		log: logger,
+	}
+
+	device := &Device{
+		PubKey: "testdevice123",
+		Code:   "dz1",
+		Tunnels: []*Tunnel{
+			{
+				Id:            500,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				PubKey:        "user1",
+				Allocated:     true,
+			},
+			{
+				Id:            501,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				Allocated:     false, // unallocated
+			},
+			{
+				Id:            502,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				PubKey:        "user2",
+				Allocated:     true,
+			},
+		},
+	}
+
+	result := controller.deduplicateTunnels(device)
+
+	// Should have 2 tunnels: one allocated (first), one unallocated
+	// The duplicate allocated tunnel should be removed
+	if len(result) != 2 {
+		t.Errorf("expected 2 tunnels after deduplication, got %d", len(result))
+	}
+
+	// First should be the allocated tunnel
+	if result[0].Id != 500 || !result[0].Allocated {
+		t.Errorf("expected first tunnel to be allocated (ID 500), got ID %d, allocated %v", result[0].Id, result[0].Allocated)
+	}
+
+	// Second should be the unallocated tunnel
+	if result[1].Id != 501 || result[1].Allocated {
+		t.Errorf("expected second tunnel to be unallocated (ID 501), got ID %d, allocated %v", result[1].Id, result[1].Allocated)
+	}
+}
+
+func Test_deduplicateTunnels_EmptyList(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	controller := &Controller{
+		log: logger,
+	}
+
+	device := &Device{
+		PubKey:  "testdevice123",
+		Code:    "dz1",
+		Tunnels: []*Tunnel{},
+	}
+
+	result := controller.deduplicateTunnels(device)
+
+	if len(result) != 0 {
+		t.Errorf("expected 0 tunnels, got %d", len(result))
+	}
+}
+
+func Test_GetConfig_DuplicateTunnelPairs_Integration(t *testing.T) {
+	listener := bufconn.Listen(1024 * 1024)
+	server := grpc.NewServer()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	controller := &Controller{
+		log:            logger,
+		deviceLocalASN: 65342,
+	}
+	pb.RegisterControllerServer(server, controller)
+
+	go func() {
+		if err := server.Serve(listener); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return listener.Dial()
+		}),
+	}
+	conn, err := grpc.NewClient("passthrough://bufnet", opts...)
+	if err != nil {
+		t.Fatalf("error creating controller client: %v", err)
+	}
+	defer conn.Close()
+	defer cancel()
+
+	agent := pb.NewControllerClient(conn)
+
+	// Create a state cache with duplicate tunnel pairs
+	stateCache := stateCache{
+		Config: serviceability.Config{
+			MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+		},
+		UnicastVrfs: []uint16{1},
+		Devices: map[string]*Device{
+			"abc123": {
+				PubKey:                "abc123",
+				Code:                  "dz1",
+				Interfaces:            []Interface{},
+				ExchangeCode:          "tst",
+				BgpCommunity:          10050,
+				PublicIP:              net.IP{7, 7, 7, 7},
+				Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+				Ipv4LoopbackIP:        net.IP{15, 15, 15, 15},
+				Vpn4vLoopbackIntfName: "Loopback255",
+				Ipv4LoopbackIntfName:  "Loopback0",
+				IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+				DevicePathologies:     []string{},
+				Tunnels: []*Tunnel{
+					{
+						Id:            500,
+						UnderlaySrcIP: net.IP{1, 1, 1, 1},
+						UnderlayDstIP: net.IP{2, 2, 2, 2},
+						OverlaySrcIP:  net.IP{169, 254, 0, 0},
+						OverlayDstIP:  net.IP{169, 254, 0, 1},
+						DzIp:          net.IP{100, 0, 0, 0},
+						PubKey:        "user1",
+						Allocated:     true,
+						VrfId:         1,
+						MetroRouting:  true,
+					},
+					{
+						Id:            501,
+						UnderlaySrcIP: net.IP{3, 3, 3, 3},
+						UnderlayDstIP: net.IP{4, 4, 4, 4},
+						OverlaySrcIP:  net.IP{169, 254, 0, 2},
+						OverlayDstIP:  net.IP{169, 254, 0, 3},
+						DzIp:          net.IP{100, 0, 0, 1},
+						PubKey:        "user2",
+						Allocated:     true,
+						VrfId:         1,
+						MetroRouting:  true,
+					},
+					{
+						// Duplicate of tunnel 500
+						Id:            502,
+						UnderlaySrcIP: net.IP{1, 1, 1, 1},
+						UnderlayDstIP: net.IP{2, 2, 2, 2},
+						OverlaySrcIP:  net.IP{169, 254, 0, 4},
+						OverlayDstIP:  net.IP{169, 254, 0, 5},
+						DzIp:          net.IP{100, 0, 0, 2},
+						PubKey:        "user3",
+						Allocated:     true,
+						VrfId:         1,
+						MetroRouting:  true,
+					},
+				},
+			},
+		},
+	}
+
+	controller.swapCache(stateCache)
+
+	// Fetch config
+	resp, err := agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: "abc123"})
+	if err != nil {
+		t.Fatalf("error fetching config: %v", err)
+	}
+
+	// Verify that the rendered config only contains unique tunnel pairs
+	config := resp.Config
+
+	// Check that interface Tunnel500 appears (first occurrence)
+	if !strings.Contains(config, "interface Tunnel500") {
+		t.Errorf("expected config to contain 'interface Tunnel500'")
+	}
+
+	// Check that interface Tunnel501 appears (unique tunnel)
+	if !strings.Contains(config, "interface Tunnel501") {
+		t.Errorf("expected config to contain 'interface Tunnel501'")
+	}
+
+	// Check that interface Tunnel502 does NOT appear (duplicate)
+	if strings.Contains(config, "interface Tunnel502") {
+		t.Errorf("expected config to NOT contain 'interface Tunnel502' (duplicate)")
+	}
+
+	// Count occurrences of "tunnel source" to verify we only have 2 tunnels
+	tunnelSourceCount := strings.Count(config, "tunnel source")
+	if tunnelSourceCount != 2 {
+		t.Errorf("expected 2 tunnels in config (2 'tunnel source' lines), got %d", tunnelSourceCount)
+	}
+}

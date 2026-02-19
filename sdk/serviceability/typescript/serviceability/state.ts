@@ -192,8 +192,8 @@ export function linkHealthString(v: number): string {
 const LINK_DESIRED_STATUS_NAMES: Record<number, string> = {
   0: "pending",
   1: "activated",
-  2: "hard-drained",
-  3: "soft-drained",
+  6: "hard-drained",
+  7: "soft-drained",
 };
 export function linkDesiredStatusString(v: number): string {
   return LINK_DESIRED_STATUS_NAMES[v] ?? "unknown";

@@ -526,19 +526,25 @@ func (l LinkHealth) MarshalJSON() ([]byte, error) {
 type LinkDesiredStatus uint8
 
 const (
-	LinkDesiredStatusPending LinkDesiredStatus = iota
-	LinkDesiredStatusActivated
-	LinkDesiredStatusHardDrained
-	LinkDesiredStatusSoftDrained
+	LinkDesiredStatusPending     LinkDesiredStatus = 0
+	LinkDesiredStatusActivated   LinkDesiredStatus = 1
+	LinkDesiredStatusHardDrained LinkDesiredStatus = 6
+	LinkDesiredStatusSoftDrained LinkDesiredStatus = 7
 )
 
 func (l LinkDesiredStatus) String() string {
-	return [...]string{
-		"pending",
-		"activated",
-		"hard-drained",
-		"soft-drained",
-	}[l]
+	switch l {
+	case LinkDesiredStatusPending:
+		return "pending"
+	case LinkDesiredStatusActivated:
+		return "activated"
+	case LinkDesiredStatusHardDrained:
+		return "hard-drained"
+	case LinkDesiredStatusSoftDrained:
+		return "soft-drained"
+	default:
+		return "unknown"
+	}
 }
 
 func (l LinkDesiredStatus) MarshalJSON() ([]byte, error) {

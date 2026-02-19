@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
   - Add `GetMulticastPublisherBlockResourceExtension()` method to serviceability client for fetching the global multicast publisher IP allocation bitmap
   - Fix LinkDesiredStatus discriminants (hard-drained=6, soft-drained=7)
 - Onchain Programs
+  - Upgrade programs from system_instruction to solana_system_interface
   - Refactor user creation to validate all limits (max_users, max_multicast_users, max_unicast_users) before incrementing counters — improves efficiency by avoiding wasted work on validation failures and follows fail-fast best practice
   - Serviceability: `UnlinkDeviceInterface` now only allows `Activated` or `Pending` interfaces; when an associated link account is provided for an `Activated` interface, the link must be in `Deleting` status
   - Links and devices can no longer be deleted from `Activated` status — must be drained first; deletion is rejected with `InvalidStatus`

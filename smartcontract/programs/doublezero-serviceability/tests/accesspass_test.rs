@@ -25,7 +25,7 @@ use solana_program::rent::Rent;
 use solana_program_test::*;
 use solana_sdk::{
     account::Account as SolanaAccount, instruction::AccountMeta, pubkey::Pubkey,
-    signature::Keypair, signer::Signer, system_program,
+    signature::Keypair, signer::Signer,
 };
 use std::net::Ipv4Addr;
 
@@ -266,7 +266,7 @@ async fn test_accesspass() {
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(payer.pubkey(), false),
-            AccountMeta::new(system_program::id(), false),
+            AccountMeta::new(solana_system_interface::program::ID, false),
         ],
         &another_payer,
     )

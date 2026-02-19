@@ -21,9 +21,9 @@ use solana_program::{
     program::invoke_signed_unchecked,
     pubkey::Pubkey,
     rent::Rent,
-    system_instruction,
     sysvar::Sysvar,
 };
+
 use std::net::Ipv4Addr;
 
 // Value to rent exempt two `User` accounts + configurable amount for connect/disconnect txns
@@ -86,7 +86,7 @@ pub fn process_set_access_pass(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
@@ -103,7 +103,7 @@ pub fn process_set_access_pass(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
 
@@ -145,7 +145,7 @@ pub fn process_set_access_pass(
     }
 
     // If account does not exist, create it
-    if *accesspass_account.owner == solana_program::system_program::id() {
+    if *accesspass_account.owner == solana_system_interface::program::ID {
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed,
@@ -297,7 +297,7 @@ pub fn process_set_access_pass(
 
     msg!("Airdropping {} lamports to user account", deposit);
     invoke_signed_unchecked(
-        &system_instruction::transfer(payer_account.key, user_payer.key, deposit),
+        &solana_system_interface::instruction::transfer(payer_account.key, user_payer.key, deposit),
         &[
             payer_account.clone(),
             user_payer.clone(),

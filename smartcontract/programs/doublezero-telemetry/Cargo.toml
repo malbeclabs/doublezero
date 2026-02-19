@@ -30,6 +30,7 @@ ctor.workspace = true
 env_logger.workspace = true
 log.workspace = true
 solana-sdk.workspace = true
+solana-system-interface.workspace = true
 solana-program-test.workspace = true
 
 [build-dependencies]

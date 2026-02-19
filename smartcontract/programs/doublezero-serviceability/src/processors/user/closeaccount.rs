@@ -125,7 +125,7 @@ pub fn process_closeaccount_user(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
@@ -489,7 +489,7 @@ mod tests {
             false,
             Epoch::default(),
         );
-        let system_program_id = solana_program::system_program::id();
+        let system_program_id = solana_system_interface::program::ID;
         let mut system_program_lamports = 0u64;
         let system_program_account = AccountInfo::new(
             &system_program_id,

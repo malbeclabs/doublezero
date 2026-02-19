@@ -9,7 +9,6 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::{Transaction, TransactionError},
 };
-use solana_system_interface::instruction as system_instruction;
 
 fn program_test() -> ProgramTest {
     ProgramTest::new("doublezero_record", ID, processor!(process_instruction))
@@ -26,7 +25,7 @@ async fn initialize_storage_account(
         .unwrap();
     let transaction = Transaction::new_signed_with_payer(
         &[
-            system_instruction::create_account(
+            solana_system_interface::instruction::create_account(
                 &context.payer.pubkey(),
                 &account.pubkey(),
                 1.max(Rent::default().minimum_balance(account_length)),
@@ -83,7 +82,7 @@ async fn initialize_with_seed_success() {
         .unwrap();
     let transaction = Transaction::new_signed_with_payer(
         &[
-            system_instruction::create_account_with_seed(
+            solana_system_interface::instruction::create_account_with_seed(
                 &context.payer.pubkey(),
                 &account,
                 &authority.pubkey(),
@@ -538,7 +537,7 @@ async fn reallocate_success() {
     let transaction = Transaction::new_signed_with_payer(
         &[
             instruction::reallocate(&account.pubkey(), &authority.pubkey(), new_data_length),
-            system_instruction::transfer(
+            solana_system_interface::instruction::transfer(
                 &context.payer.pubkey(),
                 &account.pubkey(),
                 additional_lamports_needed,
@@ -616,7 +615,7 @@ async fn reallocate_fail_wrong_authority() {
                 ],
                 data: instruction::RecordInstruction::Reallocate(new_data_length).pack(),
             },
-            system_instruction::transfer(
+            solana_system_interface::instruction::transfer(
                 &context.payer.pubkey(),
                 &account.pubkey(),
                 additional_lamports_needed,
@@ -665,7 +664,7 @@ async fn reallocate_fail_unsigned() {
                 ],
                 data: instruction::RecordInstruction::Reallocate(new_data_length).pack(),
             },
-            system_instruction::transfer(
+            solana_system_interface::instruction::transfer(
                 &context.payer.pubkey(),
                 &account.pubkey(),
                 additional_lamports_needed,

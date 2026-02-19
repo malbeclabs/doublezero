@@ -58,9 +58,9 @@ use solana_sdk::{
     message::{v0::Message, VersionedMessage},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    system_program,
     transaction::{Transaction, TransactionError, VersionedTransaction},
 };
+
 use std::sync::{Arc, Mutex};
 
 #[ctor::ctor]
@@ -246,7 +246,7 @@ impl LedgerHelper {
             )
         };
         let transfer_instruction =
-            solana_sdk::system_instruction::transfer(&payer.pubkey(), recipient, lamports);
+            solana_system_interface::instruction::transfer(&payer.pubkey(), recipient, lamports);
         let mut transaction =
             Transaction::new_with_payer(&[transfer_instruction], Some(&payer.pubkey()));
         transaction.sign(&[&payer], recent_blockhash);
@@ -261,7 +261,7 @@ impl LedgerHelper {
         space: u64,
         owner: &Pubkey,
     ) -> Result<(), BanksClientError> {
-        let ix = solana_sdk::system_instruction::create_account(
+        let ix = solana_system_interface::instruction::create_account(
             &funder.pubkey(),
             new_account,
             lamports,
@@ -488,7 +488,7 @@ impl TelemetryProgramHelper {
             vec![
                 AccountMeta::new(latency_samples_pda, false),
                 AccountMeta::new(agent.pubkey(), true),
-                AccountMeta::new_readonly(system_program::id(), false),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             ],
         )
         .await
@@ -519,7 +519,7 @@ impl TelemetryProgramHelper {
                 AccountMeta::new_readonly(origin_device_pk, false),
                 AccountMeta::new_readonly(target_device_pk, false),
                 AccountMeta::new_readonly(link_pk, false),
-                AccountMeta::new_readonly(solana_program::system_program::id(), false),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             ],
         )
         .await?;
@@ -546,7 +546,7 @@ impl TelemetryProgramHelper {
         let accounts = vec![
             AccountMeta::new(latency_samples_pda, false),
             AccountMeta::new_readonly(agent.pubkey(), true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ];
 
         let instruction = solana_sdk::instruction::Instruction {
@@ -632,7 +632,7 @@ impl TelemetryProgramHelper {
                 AccountMeta::new(agent.pubkey(), true),
                 AccountMeta::new(origin_location_pk, false),
                 AccountMeta::new(target_location_pk, false),
-                AccountMeta::new(solana_program::system_program::id(), false),
+                AccountMeta::new(solana_system_interface::program::ID, false),
             ],
         )
         .await?;
@@ -656,7 +656,7 @@ impl TelemetryProgramHelper {
             vec![
                 AccountMeta::new(latency_samples_pda, false),
                 AccountMeta::new(agent.pubkey(), true),
-                AccountMeta::new(solana_program::system_program::id(), false),
+                AccountMeta::new(solana_system_interface::program::ID, false),
             ],
         )
         .await
@@ -681,7 +681,7 @@ impl TelemetryProgramHelper {
         let accounts = vec![
             AccountMeta::new(latency_samples_pda, false),
             AccountMeta::new(agent.pubkey(), true),
-            AccountMeta::new(solana_program::system_program::id(), false),
+            AccountMeta::new(solana_system_interface::program::ID, false),
         ];
 
         let instruction = Instruction {
@@ -1319,7 +1319,7 @@ pub async fn fund_account(
     recent_blockhash: solana_sdk::hash::Hash,
 ) -> Result<(), BanksClientError> {
     let transfer_instruction =
-        solana_sdk::system_instruction::transfer(&payer.pubkey(), recipient, lamports);
+        solana_system_interface::instruction::transfer(&payer.pubkey(), recipient, lamports);
     let mut transaction =
         Transaction::new_with_payer(&[transfer_instruction], Some(&payer.pubkey()));
     transaction.sign(&[payer], recent_blockhash);
@@ -1374,7 +1374,10 @@ pub async fn execute_serviceability_instruction(
 ) -> Result<(), BanksClientError> {
     // Automatically append payer and system_program
     accounts.push(AccountMeta::new(payer.pubkey(), true));
-    accounts.push(AccountMeta::new_readonly(system_program::id(), false));
+    accounts.push(AccountMeta::new_readonly(
+        solana_system_interface::program::ID,
+        false,
+    ));
 
     let instruction_data = borsh::to_vec(&instruction).unwrap();
 

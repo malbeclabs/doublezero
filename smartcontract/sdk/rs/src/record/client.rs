@@ -11,7 +11,6 @@ use solana_sdk::{
     signer::Signer,
     transaction::VersionedTransaction,
 };
-use solana_system_interface::instruction as system_instruction;
 
 use crate::record::instruction::{InitializeRecordInstructions, RecordWriteChunk};
 
@@ -49,7 +48,11 @@ pub async fn try_create_record(
     let rent_exemption_lamports = rpc_client
         .get_minimum_balance_for_rent_exemption(total_space)
         .await?;
-    let transfer_ix = system_instruction::transfer(&payer_key, record_key, rent_exemption_lamports);
+    let transfer_ix = solana_system_interface::instruction::transfer(
+        &payer_key,
+        record_key,
+        rent_exemption_lamports,
+    );
 
     let transaction = new_transaction(
         recent_blockhash,

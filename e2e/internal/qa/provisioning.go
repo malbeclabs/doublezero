@@ -413,9 +413,12 @@ func (p *ProvisioningTest) DeleteLink(ctx context.Context, pubkey string) error 
 	return err
 }
 
-// CleanupStaleState cleans up any state left over from a previous test run:
-// all links connected to the device, all interfaces, and the device itself.
-// Links in Deleting state are skipped since the activator handles them.
+// CleanupStaleState cleans up state left over from a failed previous test run.
+// If the device is healthy (activated + ready-for-users), no cleanup is needed —
+// the health check and the test's own deletion logic will handle it.
+// If the device is in any other state, it tears down all links, interfaces, and
+// the device itself so the test can reprovision from scratch.
+// Links already in Deleting state are skipped since the activator handles them.
 // Returns the number of resources cleaned up.
 func (p *ProvisioningTest) CleanupStaleState(ctx context.Context, deviceCode string) (int, error) {
 	data, err := getProgramDataWithRetry(ctx, p.serviceability)
@@ -434,7 +437,12 @@ func (p *ProvisioningTest) CleanupStaleState(ctx context.Context, deviceCode str
 		return 0, nil
 	}
 
-	p.log.Info("Cleaning up stale state from previous run", "code", deviceCode, "status", device.Status, "health", device.DeviceHealth)
+	if device.Status == serviceability.DeviceStatusActivated &&
+		device.DeviceHealth == serviceability.DeviceHealthReadyForUsers {
+		return 0, nil
+	}
+
+	p.log.Info("Device is not healthy, cleaning up stale state", "code", deviceCode, "status", device.Status, "health", device.DeviceHealth)
 
 	cleaned := 0
 

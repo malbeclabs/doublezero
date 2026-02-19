@@ -65,6 +65,7 @@ impl Environment {
                 serviceability_program_id: ENV_MAINNET_BETA_SERVICEABILITY_PUBKEY,
                 telemetry_program_id: ENV_MAINNET_BETA_TELEMETRY_PUBKEY,
                 internet_latency_collector_pk: ENV_MAINNET_BETA_INTERNET_LATENCY_COLLECTOR_PUBKEY,
+                geolocation_program_id: ENV_MAINNET_BETA_GEOLOCATION_PUBKEY,
             },
             Environment::Testnet => NetworkConfig {
                 ledger_public_rpc_url: ENV_TESTNET_DOUBLEZERO_LEDGER_RPC_URL.to_string(),
@@ -72,6 +73,7 @@ impl Environment {
                 serviceability_program_id: ENV_TESTNET_SERVICEABILITY_PUBKEY,
                 telemetry_program_id: ENV_TESTNET_TELEMETRY_PUBKEY,
                 internet_latency_collector_pk: ENV_TESTNET_INTERNET_LATENCY_COLLECTOR_PUBKEY,
+                geolocation_program_id: ENV_TESTNET_GEOLOCATION_PUBKEY,
             },
             Environment::Devnet => NetworkConfig {
                 ledger_public_rpc_url: ENV_DEVNET_DOUBLEZERO_LEDGER_RPC_URL.to_string(),
@@ -79,6 +81,7 @@ impl Environment {
                 serviceability_program_id: ENV_DEVNET_SERVICEABILITY_PUBKEY,
                 telemetry_program_id: ENV_DEVNET_TELEMETRY_PUBKEY,
                 internet_latency_collector_pk: ENV_DEVNET_INTERNET_LATENCY_COLLECTOR_PUBKEY,
+                geolocation_program_id: ENV_DEVNET_GEOLOCATION_PUBKEY,
             },
             Environment::Local => NetworkConfig {
                 ledger_public_rpc_url: ENV_LOCAL_DOUBLEZERO_LEDGER_RPC_URL.to_string(),
@@ -86,6 +89,7 @@ impl Environment {
                 serviceability_program_id: ENV_LOCAL_SERVICEABILITY_PUBKEY,
                 telemetry_program_id: ENV_LOCAL_TELEMETRY_PUBKEY,
                 internet_latency_collector_pk: ENV_LOCAL_INTERNET_LATENCY_COLLECTOR_PUBKEY,
+                geolocation_program_id: ENV_LOCAL_GEOLOCATION_PUBKEY,
             },
         };
 
@@ -107,6 +111,7 @@ pub struct NetworkConfig {
     pub serviceability_program_id: Pubkey,
     pub telemetry_program_id: Pubkey,
     pub internet_latency_collector_pk: Pubkey,
+    pub geolocation_program_id: Pubkey,
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 use doublezero_geolocation::{
     instructions::{GeolocationInstruction, UpdateGeoProbeArgs},
-    validation::validate_code_length,
     pda,
+    validation::validate_code_length,
 };
 use doublezero_program_common::validate_account_code;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};

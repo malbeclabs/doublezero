@@ -97,7 +97,7 @@ defmodule Scheduler.DoubleZeroNIF do
     - `{:error, reason}` on failure
   """
   @callback calculate_distribution(solana_rpc :: String.t(), post_to_slack :: boolean()) ::
-              {:ok, non_neg_integer()} | {:error, term()}
+              non_neg_integer() | {:error, term()}
 
   @doc """
   Finalize the distribution for a specific epoch.

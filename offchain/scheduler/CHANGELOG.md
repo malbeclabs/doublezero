@@ -6,13 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-- ensure debt is finalized before collection ([#268](https://github.com/doublezerofoundation/doublezero-offchain/pull/268))
+- result from calculate_distribution_returns value only, not ok tuple ([#270](https://github.com/doublezerofoundation/doublezero-offchain/pull/270))
+
+## [v0.1.8](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/offchain-scheduler/v0.1.8) - 2026-02-12
+
 - remove dz_ledger as argument ([#255](https://github.com/doublezerofoundation/doublezero-offchain/pull/255))
+
+## [v0.1.7](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/offchain-scheduler/v0.1.7) - 2026-01-14
+
+- use vote key from past ([#250](https://github.com/doublezerofoundation/doublezero-offchain/pull/250))
 - add check and filter for 0 total debt messages posted to slack ([#247](https://github.com/doublezerofoundation/doublezero-offchain/pull/247))
 
-## [v0.1.6] - 2026-01-12
+## [v0.1.6](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/offchain-scheduler/v0.1.6) - 2026-01-12
 
-## [v0.1.5] - 2026-01-08
+- ensure debt is finalized before collection ([#268](https://github.com/doublezerofoundation/doublezero-offchain/pull/268))
+
+## [v0.1.5](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/offchain-scheduler/v0.1.5) - 2026-01-08
 
 - shutdown `:normal` after successful distribution initialized ([#245](https://github.com/doublezerofoundation/doublezero-offchain/pull/245))
 - add compute unit price handling for wallet ([#243](https://github.com/doublezerofoundation/doublezero-offchain/pull/243))

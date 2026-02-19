@@ -20,14 +20,14 @@ defmodule Scheduler.Worker.CalculateDistribution do
            solana_rpc(),
            true
          ) do
-      {:error, error} ->
-        Logger.error("calculate_distribution: received error: #{inspect(error)}")
-        {:stop, :shutdown, state}
-
-      {:ok, dz_epoch} ->
+      dz_epoch when is_integer(dz_epoch) ->
         Logger.info("Proceeding to finalize debt for dz epoch #{dz_epoch}")
         state = Map.put(state, :dz_epoch, dz_epoch)
         {:noreply, state, {:continue, :finalize_distribution}}
+
+      {:error, error} ->
+        Logger.error("calculate_distribution: received error: #{inspect(error)}")
+        {:stop, :shutdown, state}
     end
   end
 
@@ -36,14 +36,14 @@ defmodule Scheduler.Worker.CalculateDistribution do
            solana_rpc(),
            false
          ) do
-      {:error, error} ->
-        Logger.error("calculate_distribution: received error: #{inspect(error)}")
-        {:stop, :shutdown, state}
-
-      {:ok, _dz_epoch} ->
+      dz_epoch when is_integer(dz_epoch) ->
         state = %{state | count: state.count + 1}
         Logger.info("Completed calculation for debt ##{state.count}")
         {:noreply, state, {:continue, :calculate_distribution}}
+
+      {:error, error} ->
+        Logger.error("calculate_distribution: received error: #{inspect(error)}")
+        {:stop, :shutdown, state}
     end
   end
 

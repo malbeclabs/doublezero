@@ -129,16 +129,16 @@ defmodule Scheduler.WorkerIntegrationTest do
     test "runs calculate 3 times then finalizes on success" do
       # First two calls with post_to_slack=false
       expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, false ->
-        {:ok, 42}
+        42
       end)
 
       expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, false ->
-        {:ok, 42}
+        42
       end)
 
       # Third call with post_to_slack=true (count == 2)
       expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, true ->
-        {:ok, 42}
+        42
       end)
 
       # Then finalize with dz_epoch=42
@@ -169,9 +169,9 @@ defmodule Scheduler.WorkerIntegrationTest do
     test "passes dz_epoch from calculate to finalize" do
       dz_epoch = 99
 
-      expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, false -> {:ok, dz_epoch} end)
-      expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, false -> {:ok, dz_epoch} end)
-      expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, true -> {:ok, dz_epoch} end)
+      expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, false -> dz_epoch end)
+      expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, false -> dz_epoch end)
+      expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, true -> dz_epoch end)
 
       expect(Scheduler.MockNIF, :finalize_distribution, fn ^dz_epoch, _rpc ->
         {}
@@ -218,7 +218,7 @@ defmodule Scheduler.WorkerIntegrationTest do
     test "stops with shutdown on second calculation error" do
       # First call succeeds
       expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, false ->
-        {:ok, 42}
+        42
       end)
 
       # Second call fails
@@ -247,11 +247,11 @@ defmodule Scheduler.WorkerIntegrationTest do
     test "stops with shutdown on third calculation error" do
       # First two calls succeed
       expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, false ->
-        {:ok, 42}
+        42
       end)
 
       expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, false ->
-        {:ok, 42}
+        42
       end)
 
       # Third call fails
@@ -280,9 +280,9 @@ defmodule Scheduler.WorkerIntegrationTest do
 
     test "finalization error logs but worker stops normally" do
       # All three calculations succeed
-      expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, false -> {:ok, 42} end)
-      expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, false -> {:ok, 42} end)
-      expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, true -> {:ok, 42} end)
+      expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, false -> 42 end)
+      expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, false -> 42 end)
+      expect(Scheduler.MockNIF, :calculate_distribution, fn _rpc, true -> 42 end)
 
       # Finalization fails
       expect(Scheduler.MockNIF, :finalize_distribution, fn 42, _rpc ->

@@ -837,10 +837,18 @@ impl ProvisioningCliCommand {
         spinner.inc(1);
 
         // Enable the reconciler (no-op if already enabled).
-        match controller.enable().await {
-            Ok(()) => {}
-            Err(e) => {
-                spinner.println(format!("    Warning: failed to enable reconciler: {e}"));
+        if let Err(e) = controller.enable().await {
+            // Check if the reconciler is already enabled despite the enable call failing.
+            let already_enabled = controller
+                .v2_status()
+                .await
+                .map(|s| s.reconciler_enabled)
+                .unwrap_or(false);
+            if !already_enabled {
+                spinner.println(format!(
+                    "    Error: failed to enable reconciler: {e}. Tunnel will not be provisioned."
+                ));
+                return;
             }
         }
 
@@ -959,7 +967,7 @@ fn exclude_ips(
 mod tests {
     use super::*;
     use crate::servicecontroller::{
-        DoubleZeroStatus, LatencyRecord, MockServiceController, StatusResponse,
+        DoubleZeroStatus, LatencyRecord, MockServiceController, StatusResponse, V2StatusResponse,
     };
     use doublezero_cli::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
     use doublezero_config::Environment;
@@ -1026,6 +1034,15 @@ mod tests {
         pub fn new_with_failing_enable() -> Self {
             let mut fixture = Self::new_base();
             fixture.setup_enable(|| Err(eyre::eyre!("enable failed")));
+            // When enable fails, the connect flow checks v2_status to see if the
+            // reconciler is already enabled. Return disabled to simulate a genuine
+            // enable failure.
+            fixture.controller.expect_v2_status().returning(|| {
+                Ok(V2StatusResponse {
+                    reconciler_enabled: false,
+                    services: vec![],
+                })
+            });
             fixture
         }
 
@@ -2477,9 +2494,9 @@ mod tests {
         );
     }
 
-    /// Test that connect succeeds even when enable() fails.
-    /// The enable call is best-effort; a failure is logged as a warning
-    /// but does not abort the connect flow.
+    /// Test that connect completes even when enable() fails.
+    /// When the reconciler can't be enabled and isn't already enabled,
+    /// the connect flow skips tunnel polling and returns early.
     #[tokio::test]
     async fn test_connect_enable_failure_is_nonfatal() {
         let mut fixture = TestFixture::new_with_failing_enable();

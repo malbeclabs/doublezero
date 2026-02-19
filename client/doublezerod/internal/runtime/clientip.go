@@ -55,8 +55,15 @@ func IsPublicIPv4(ip net.IP) bool {
 //
 // Resolution order:
 //  1. If explicit is non-empty, parse and return it.
-//  2. Scan local network interfaces for a publicly routable IPv4 address.
+//  2. Ask the kernel for the default route's source address (via a UDP
+//     dial to 8.8.8.8 — no packets are sent). If the source is a publicly
+//     routable IPv4 address, use it.
 //  3. Fall back to querying https://ifconfig.me/ip (5s timeout).
+//
+// Step 2 replaces the previous approach of scanning all network interfaces
+// for the first public IP, which was unsafe on multi-homed hosts: it could
+// pick an address on an interface that doesn't match the default route,
+// causing a mismatch with the onchain User's ClientIp.
 //
 // The second return value describes the discovery method for logging.
 func DiscoverClientIP(explicit string) (net.IP, string, error) {
@@ -73,9 +80,11 @@ func DiscoverClientIP(explicit string) (net.IP, string, error) {
 		return ip, "explicit flag", nil
 	}
 
-	// 2. Scan local interfaces.
-	if ip, err := discoverFromInterfaces(); err == nil {
-		return ip, "local interface", nil
+	// 2. Default route source hint.
+	if ip, err := discoverFromDefaultRoute(); err == nil {
+		return ip, "default route", nil
+	} else {
+		slog.Debug("client-ip: default route discovery failed, falling back to external", "error", err)
 	}
 
 	// 3. External discovery.
@@ -86,38 +95,30 @@ func DiscoverClientIP(explicit string) (net.IP, string, error) {
 	return ip, "external discovery (ifconfig.me)", nil
 }
 
-// discoverFromInterfaces scans local network interfaces for a publicly
-// routable IPv4 address. On multi-homed hosts the first public IP found
-// is returned; use the explicit --client-ip flag if a specific interface
-// is required.
-func discoverFromInterfaces() (net.IP, error) {
-	ifaces, err := net.Interfaces()
+// discoverFromDefaultRoute performs a kernel route lookup by dialing a
+// well-known public IP over UDP (no packets are actually sent). The local
+// address chosen by the kernel reflects the default route's source hint,
+// which is the address that outbound traffic would actually use.
+func discoverFromDefaultRoute() (net.IP, error) {
+	conn, err := net.Dial("udp4", "8.8.8.8:80")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("route lookup failed: %w", err)
 	}
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			slog.Debug("client-ip: error reading addrs from interface", "iface", iface.Name, "error", err)
-			continue
-		}
-		for _, addr := range addrs {
-			var ip net.IP
-			switch v := addr.(type) {
-			case *net.IPNet:
-				ip = v.IP
-			case *net.IPAddr:
-				ip = v.IP
-			}
-			if IsPublicIPv4(ip) {
-				return ip.To4(), nil
-			}
-		}
+	defer conn.Close()
+
+	localAddr, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		return nil, fmt.Errorf("unexpected local address type: %T", conn.LocalAddr())
 	}
-	return nil, fmt.Errorf("no public IPv4 address found on local interfaces")
+
+	ip := localAddr.IP.To4()
+	if ip == nil {
+		return nil, fmt.Errorf("default route source is not IPv4: %v", localAddr.IP)
+	}
+	if !IsPublicIPv4(ip) {
+		return nil, fmt.Errorf("default route source %s is not publicly routable", ip)
+	}
+	return ip, nil
 }
 
 func discoverFromExternal() (net.IP, error) {

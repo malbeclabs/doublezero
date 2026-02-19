@@ -1,19 +1,64 @@
 use backon::{BlockingRetryable, ExponentialBuilder};
 use doublezero_cli::helpers::get_public_ipv4;
 use indicatif::ProgressBar;
-use std::{net::Ipv4Addr, time::Duration};
+use std::{
+    net::{Ipv4Addr, UdpSocket},
+    time::Duration,
+};
 
 pub async fn look_for_ip(
     client_ip: &Option<String>,
     spinner: &ProgressBar,
 ) -> eyre::Result<(Ipv4Addr, String)> {
-    look_for_ip_with(client_ip, spinner, get_public_ipv4).await
+    look_for_ip_with(client_ip, spinner, discover_public_ip).await
+}
+
+/// Discovers the client's public IP address.
+///
+/// Resolution order:
+///  1. Ask the kernel for the default route's source address (via a UDP
+///     connect to 8.8.8.8 — no packets are sent). If the source is a
+///     publicly routable IPv4 address, use it.
+///  2. Fall back to querying ifconfig.me/ip.
+///
+/// This matches the daemon's discovery logic so both always agree on the IP.
+fn discover_public_ip() -> Result<String, Box<dyn std::error::Error>> {
+    // Try default route source hint first.
+    if let Ok(ip) = discover_from_default_route() {
+        return Ok(ip.to_string());
+    }
+
+    // Fall back to external discovery.
+    get_public_ipv4()
+}
+
+/// Performs a kernel route lookup by binding a UDP socket to a well-known
+/// public IP. The local address chosen by the kernel reflects the default
+/// route's source hint. Returns the IP only if it's publicly routable.
+fn discover_from_default_route() -> Result<Ipv4Addr, Box<dyn std::error::Error>> {
+    let socket = UdpSocket::bind("0.0.0.0:0")?;
+    socket.connect("8.8.8.8:80")?;
+    let local_addr = socket.local_addr()?;
+    let ip = match local_addr.ip() {
+        std::net::IpAddr::V4(ip) => ip,
+        _ => return Err("default route source is not IPv4".into()),
+    };
+    if ip.is_loopback()
+        || ip.is_private()
+        || ip.is_link_local()
+        || ip.is_multicast()
+        || ip.is_broadcast()
+        || ip.is_unspecified()
+    {
+        return Err(format!("default route source {ip} is not publicly routable").into());
+    }
+    Ok(ip)
 }
 
 async fn look_for_ip_with(
     client_ip: &Option<String>,
     spinner: &ProgressBar,
-    ip_fetch_func: impl FnMut() -> eyre::Result<String, Box<dyn std::error::Error>>,
+    ip_fetch_func: impl FnMut() -> Result<String, Box<dyn std::error::Error>>,
 ) -> eyre::Result<(Ipv4Addr, String)> {
     let client_ip = match client_ip {
         Some(ip) => {

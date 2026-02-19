@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/services"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
@@ -190,14 +191,14 @@ func (r *Reconciler) reconcile(ctx context.Context) {
 		if daemonUserType == api.UserTypeUnknown {
 			continue
 		}
-		if isUnicastUser(daemonUserType) {
+		if services.IsUnicastUser(daemonUserType) {
 			if len(wantUnicast) > 0 {
 				slog.Warn("reconciler: multiple activated unicast users for this client IP, ignoring extra", "user_type", daemonUserType)
 				continue
 			}
 			wantUnicast = append(wantUnicast, u)
 		}
-		if isMulticastUser(daemonUserType) {
+		if services.IsMulticastUser(daemonUserType) {
 			if len(wantMulticast) > 0 {
 				slog.Warn("reconciler: multiple activated multicast users for this client IP, ignoring extra", "user_type", daemonUserType)
 				continue
@@ -313,14 +314,6 @@ func (r *Reconciler) buildProvisionRequest(
 		MulticastPubGroups: pubGroups,
 		MulticastSubGroups: subGroups,
 	}, nil
-}
-
-func isUnicastUser(u api.UserType) bool {
-	return u == api.UserTypeIBRL || u == api.UserTypeIBRLWithAllocatedIP || u == api.UserTypeEdgeFiltering
-}
-
-func isMulticastUser(u api.UserType) bool {
-	return u == api.UserTypeMulticast
 }
 
 // mapUserType maps onchain UserUserType to daemon api.UserType.

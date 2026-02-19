@@ -33,23 +33,26 @@ The current provisioning flow has the CLI acting as an orchestrator: it creates 
 
 ### Architecture
 
-The reconciler runs as a goroutine inside the daemon, alongside the existing BGP, PIM, multicast, and API subsystems. It is enabled when the client IP is known — either via the `--client-ip` flag or auto-discovered from local interfaces / external lookup.
+The reconciler runs as a goroutine inside the network manager (`NetlinkManager`), alongside the existing BGP, PIM, multicast, and API subsystems. It is enabled when the client IP is known — either via the `--client-ip` flag or auto-discovered via default route / external lookup.
 
 ```
-                        ┌──────────────────────────────────────────┐
-                        │              doublezerod                  │
-                        │                                          │
-                        │  ┌────────────┐     ┌─────────────────┐  │
-  DZ Ledger RPC ◄───────│──│ Reconciler │────►│ Network Manager │  │
-  (poll every 10s)      │  └────────────┘     └────────┬────────┘  │
-                        │                              │           │
-                        │                     ┌────────┴────────┐  │
-                        │                     │ BGP / PIM /     │  │
-                        │                     │ Multicast /     │  │
-                        │                     │ Tunnel setup    │  │
-                        │                     └─────────────────┘  │
-                        └──────────────────────────────────────────┘
+                  ┌────────────────────────────────────────┐
+                  │            doublezerod                 │
+                  │                                        │
+                  │  ┌──────────────────────────────────┐  │
+DZ Ledger RPC ◄───│──│      Network Manager             │  │
+(poll every 10s)  │  │ (reconciler loop + provisioning) │  │
+                  │  └────────────────┬─────────────────┘  │
+                  │                   │                    │
+                  │         ┌─────────┴──────────┐         │
+                  │         │ BGP / PIM /        │         │
+                  │         │ Multicast /        │         │
+                  │         │ Tunnel setup       │         │
+                  │         └────────────────────┘         │
+                  └────────────────────────────────────────┘
 ```
+
+The reconciler is not a separate component — it lives on `NetlinkManager` and calls provisioning/removal methods directly, avoiding an intermediary interface.
 
 ### Reconciliation Loop
 
@@ -149,28 +152,18 @@ The CLI drops ~400 lines of networking logic (device fetching, global config fet
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--client-ip` | (auto-discovered) | Client's public IP. Optional — if not set, the daemon auto-discovers the IP by scanning local interfaces for a publicly routable IPv4 address, falling back to an external lookup via `ifconfig.me`. Explicit value takes precedence. |
+| `--client-ip` | (auto-discovered) | Client's public IP. Optional — if not set, the daemon auto-discovers the IP via a kernel default-route source hint (UDP dial to a well-known public IP), falling back to an external lookup via `ifconfig.me`. The default-route approach avoids the ambiguity of interface scanning on multi-homed hosts. Explicit value takes precedence. |
 | `--reconciler-poll-interval` | 10 | Seconds between reconciliation polls. |
 | `--state-dir` | `/var/lib/doublezerod` | Directory for persistent state files (`state.json`). |
 
 ### Interface Design
 
-The reconciler depends on two interfaces, keeping it decoupled from ledger SDK details and the daemon's internal networking:
+The reconciler depends on one interface for onchain data retrieval. It does not need a `Manager` interface because it lives directly on `NetlinkManager` and calls provisioning/removal methods on `self`:
 
 ```go
 // Fetcher abstracts onchain data retrieval.
 type Fetcher interface {
     GetProgramData(ctx context.Context) (*serviceability.ProgramData, error)
-}
-
-// Manager abstracts daemon service provisioning.
-type Manager interface {
-    Provision(api.ProvisionRequest) error
-    Remove(api.UserType) error
-    HasUnicastService() bool
-    HasMulticastService() bool
-    ResolveTunnelSrc(dst net.IP) (net.IP, error)
-    Status() ([]*api.StatusResponse, error)
 }
 ```
 
@@ -178,8 +171,8 @@ type Manager interface {
 
 ### Codebase
 
-- **New code**: `client/doublezerod/internal/reconciler/` (~290 lines implementation, ~420 lines tests), client IP auto-discovery in `runtime/clientip.go`.
-- **Removed code**: `client/doublezerod/internal/manager/db.go` (209 lines), DB test fixtures, `Recover()` method, CLI provisioning logic (~400 lines from `connect.rs`).
+- **New code**: Reconciler logic on `NetlinkManager` in `client/doublezerod/internal/manager/manager.go`, state persistence in `manager/state.go`, metrics in `manager/metrics.go`, client IP auto-discovery in `runtime/clientip.go`, caching fetcher in `onchain/fetcher.go`.
+- **Removed code**: `client/doublezerod/internal/manager/db.go` (on-disk JSON state database), DB test fixtures, `Recover()` method, CLI provisioning logic (~400 lines from `connect.rs`).
 - **Modified**: Manager, service implementations (IBRL, EdgeFiltering, Multicast), routes API handler, CLI connect/disconnect commands.
 
 ### Operational
@@ -202,7 +195,7 @@ type Manager interface {
 ## Backward Compatibility
 
 - **CLI**: The `/provision` and `/remove` HTTP endpoints are still present on the daemon for now but are unused by the CLI. They will be removed in a future cleanup since the daemon and CLI are always packaged and released together.
-- **Daemon without `--client-ip`**: If the flag is not set, the daemon auto-discovers the client IP from local interfaces or an external lookup. If discovery fails (e.g., no network connectivity), the daemon exits with a fatal error — the reconciler requires a client IP to function and there is no fallback mode.
+- **Daemon without `--client-ip`**: If the flag is not set, the daemon auto-discovers the client IP via default route or external lookup. If discovery fails (e.g., no network connectivity), the daemon exits with a fatal error — the reconciler requires a client IP to function and there is no fallback mode.
 - **Rollout**: The daemon auto-discovers the client IP on startup (overridable with `--client-ip`). Fresh installs start with the reconciler disabled; operators run `doublezero enable` after the first `doublezero connect`. Existing installs that already have a `doublezerod.json` state file are migrated to enabled automatically.
 
 ## Open Questions

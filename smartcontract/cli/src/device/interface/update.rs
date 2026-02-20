@@ -29,10 +29,10 @@ pub struct UpdateDeviceInterfaceCliCommand {
     /// DIA Port (for DIA interfaces)
     #[arg(long)]
     pub interface_dia: Option<types::InterfaceDIA>,
-    /// Bandwidth in Mbps
+    /// Bandwidth. Accepts values in Kbps, Mbps, or Gbps.
     #[arg(long, value_parser = validate_parse_bandwidth)]
     pub bandwidth: Option<u64>,
-    /// Committed Information Rate in Mbps
+    /// Committed Information Rate. Accepts values in Kbps, Mbps, or Gbps.
     #[arg(long, value_parser = validate_parse_bandwidth)]
     pub cir: Option<u64>,
     /// MTU

@@ -1,6 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
-use doublezero_program_common::types::NetworkV4;
+use doublezero_program_common::types::{parse_utils::bandwidth_to_string, NetworkV4};
 use doublezero_sdk::{
     commands::device::{get::GetDeviceCommand, list::ListDeviceCommand},
     CurrentInterfaceVersion, InterfaceType,
@@ -33,8 +33,8 @@ pub struct DeviceInterfaceDisplay {
     pub loopback_type: LoopbackType,
     pub interface_cyoa: InterfaceCYOA,
     pub interface_dia: InterfaceDIA,
-    pub bandwidth: u64,
-    pub cir: u64,
+    pub bandwidth: String,
+    pub cir: String,
     pub mtu: u16,
     pub routing_mode: RoutingMode,
     pub vlan_id: u16,
@@ -96,8 +96,8 @@ fn build_display(iface: &CurrentInterfaceVersion, device_code: &str) -> DeviceIn
         loopback_type: iface.loopback_type,
         interface_cyoa: iface.interface_cyoa,
         interface_dia: iface.interface_dia,
-        bandwidth: iface.bandwidth,
-        cir: iface.cir,
+        bandwidth: bandwidth_to_string(&iface.bandwidth),
+        cir: bandwidth_to_string(&iface.cir),
         mtu: iface.mtu,
         routing_mode: iface.routing_mode,
         vlan_id: iface.vlan_id,

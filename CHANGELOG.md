@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - Device interface `--bandwidth` and `--cir` flags now accept Kbps, Mbps, or Gbps units; `interface list` displays those values as human-readable strings
+
 ## [v0.8.10](https://github.com/malbeclabs/doublezero/compare/client/v0.8.9...client/v0.8.10) – 2026-02-19
 
 ### Breaking

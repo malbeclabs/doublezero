@@ -102,8 +102,8 @@ fn create_client(
 }
 
 fn version_check(client: &DZClient) -> eyre::Result<()> {
-    let stdout = std::io::stdout();
-    let mut handle = stdout.lock();
+    let stderr = std::io::stderr();
+    let mut handle = stderr.lock();
 
     let cli = CliCommandImpl::new(client);
     check_version(&cli, &mut handle, ProgramVersion::current())?;

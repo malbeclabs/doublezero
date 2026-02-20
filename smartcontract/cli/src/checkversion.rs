@@ -2,7 +2,6 @@ use crate::doublezerocommand::CliCommand;
 use doublezero_sdk::{commands::programconfig::get::GetProgramConfigCommand, ProgramVersion};
 use std::io::Write;
 
-// NOTE: if the client is out of date, there is an error because the client warning will cause the json to be malformed. This was resolved in this PR (https://github.com/malbeclabs/doublezero/pull/2807) but the global monitor and maybe other things will break so these tests capture the expected format. The json response should be fixed sooner than later.
 pub fn check_version<C: CliCommand, W: Write>(
     client: &C,
     out: &mut W,

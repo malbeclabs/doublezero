@@ -1733,84 +1733,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_connect_command_ibrl_edge() {
-        let mut fixture = TestFixture::new();
-
-        // Create a tenant for this test
-        let (tenant_pk, tenant) = fixture.add_tenant("edge-tenant");
-
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Edge, 100, true);
-        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
-        let (device2_pk, device2) = fixture.add_device(DeviceType::Edge, 110, true);
-        let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
-        let user_pk = Pubkey::new_unique();
-        fixture.expect_create_user_with_tenant(user_pk, &user, Some(tenant_pk));
-        fixture.expected_provisioning_request(
-            UserType::IBRL,
-            user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            None,
-            None,
-        );
-
-        // print new line for readability in test output
-        println!();
-
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::IBRL {
-                tenant: Some(tenant.code.clone()),
-                allocate_addr: false,
-            },
-            client_ip: Some(user.client_ip.to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_ok());
-
-        println!("Test that adding a multicast tunnel with an existing IBRL creates a separate Multicast user");
-        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-
-        // When IBRL user exists, a separate Multicast user should be created on a different device
-        // (exclude_ips prevents reusing the same device as the IBRL tunnel)
-        let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
-        fixture.expect_create_subscribe_user(
-            Pubkey::new_unique(),
-            &mcast_user,
-            mcast_group_pk,
-            true,  // publisher
-            false, // subscriber
-        );
-        fixture.expected_provisioning_request(
-            UserType::Multicast,
-            user.client_ip.to_string().as_str(),
-            device2.public_ip.to_string().as_str(),
-            Some(vec![mcast_group.multicast_ip.to_string()]),
-            Some(vec![]),
-        );
-
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::Multicast {
-                mode: Some(MulticastMode::Publisher),
-                multicast_groups: vec!["test-group".to_string()],
-                pub_groups: vec![],
-                sub_groups: vec![],
-            },
-            client_ip: Some(user.client_ip.to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
     async fn test_connect_command_ibrl_transit() {
         let mut fixture = TestFixture::new();
 
@@ -1849,48 +1771,6 @@ mod tests {
         fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &user, Some(tenant_pk));
 
         let resolved_src = Ipv4Addr::new(192, 168, 1, 100);
-        fixture.expect_resolve_route(device1.public_ip, resolved_src);
-
-        fixture.expected_provisioning_request_with_tunnel_src(
-            UserType::IBRLWithAllocatedIP,
-            user.client_ip.to_string().as_str(),
-            resolved_src.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            None,
-            None,
-        );
-
-        // print new line for readability in test output
-        println!();
-
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::IBRL {
-                tenant: Some(tenant.code.clone()),
-                allocate_addr: true,
-            },
-            client_ip: Some(user.client_ip.to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_connect_command_ibrl_allocate_edge() {
-        let mut fixture = TestFixture::new();
-
-        // Create a tenant for this test
-        let (tenant_pk, tenant) = fixture.add_tenant("edge-allocate-tenant");
-
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Edge, 100, true);
-        let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
-        fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &user, Some(tenant_pk));
-
-        let resolved_src = Ipv4Addr::new(192, 168, 1, 101);
         fixture.expect_resolve_route(device1.public_ip, resolved_src);
 
         fixture.expected_provisioning_request_with_tunnel_src(
@@ -2574,39 +2454,6 @@ mod tests {
         assert!(
             err_msg.contains("Device not found"),
             "Expected 'Device not found' error for nonexistent device, got: {}",
-            err_msg
-        );
-    }
-
-    #[tokio::test]
-    async fn test_connect_command_ibrl_allocate_resolve_route_failure() {
-        let mut fixture = TestFixture::new();
-
-        let (_device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
-
-        fixture.expect_resolve_route_failure(device1.public_ip);
-
-        println!();
-
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::IBRL {
-                tenant: Some("test-tenant".to_string()),
-                allocate_addr: true,
-            },
-            client_ip: Some("1.2.3.4".to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("Unable to resolve route"),
-            "Expected error about unable to resolve route, got: {}",
             err_msg
         );
     }

@@ -15,6 +15,7 @@ func DeserializeGlobalState(reader *ByteReader, gs *GlobalState) {
 	gs.UserAirdropLamports = reader.ReadU64()
 	gs.HealthOraclePK = reader.ReadPubkey()
 	gs.QAAllowlist = reader.ReadPubkeySlice()
+	gs.FeatureFlags = reader.ReadU128()
 }
 
 func DeserializeGlobalConfig(reader *ByteReader, cfg *GlobalConfig) {

@@ -14,8 +14,8 @@ use crate::cli::{
     device::{DeviceCommands, InterfaceCommands},
     exchange::ExchangeCommands,
     globalconfig::{
-        AirdropCommands, AuthorityCommands, FoundationAllowlistCommands, GlobalConfigCommands,
-        QaAllowlistCommands,
+        AirdropCommands, AuthorityCommands, FeatureFlagsCommands, FoundationAllowlistCommands,
+        GlobalConfigCommands, QaAllowlistCommands,
     },
     link::LinkCommands,
     location::LocationCommands,
@@ -139,6 +139,10 @@ async fn main() -> eyre::Result<()> {
                 QaAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
             },
             GlobalConfigCommands::SetVersion(args) => args.execute(&client, &mut handle),
+            GlobalConfigCommands::FeatureFlags(command) => match command.command {
+                FeatureFlagsCommands::Get(args) => args.execute(&client, &mut handle),
+                FeatureFlagsCommands::Set(args) => args.execute(&client, &mut handle),
+            },
         },
         Command::Account(args) => args.execute(&dzclient, &mut handle),
         Command::Accounts(args) => args.execute(&dzclient, &mut handle),

@@ -239,12 +239,12 @@
     },
     {
       "name": "MaxUnicastUsers",
-      "value": "80",
+      "value": "50",
       "typ": "u16"
     },
     {
       "name": "MaxMulticastUsers",
-      "value": "20",
+      "value": "50",
       "typ": "u16"
     }
   ]

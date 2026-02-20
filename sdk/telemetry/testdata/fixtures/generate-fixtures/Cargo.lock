@@ -582,7 +582,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-config"
-version = "0.8.4"
+version = "0.8.10"
 dependencies = [
  "eyre",
  "serde",
@@ -591,18 +591,19 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.8.4"
+version = "0.8.10"
 dependencies = [
  "borsh 1.6.0",
  "byteorder",
  "ipnetwork",
  "serde",
  "solana-program",
+ "solana-system-interface",
 ]
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.8.4"
+version = "0.8.10"
 dependencies = [
  "bitflags",
  "borsh 1.6.0",
@@ -611,12 +612,13 @@ dependencies = [
  "doublezero-program-common",
  "ipnetwork",
  "solana-program",
+ "solana-system-interface",
  "thiserror",
 ]
 
 [[package]]
 name = "doublezero-telemetry"
-version = "0.8.4"
+version = "0.8.10"
 dependencies = [
  "borsh 1.6.0",
  "borsh-incremental",

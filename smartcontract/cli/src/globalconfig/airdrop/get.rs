@@ -59,6 +59,7 @@ mod tests {
             user_airdrop_lamports: 40_000,
             health_oracle_pk: Pubkey::default(),
             qa_allowlist: vec![],
+            feature_flags: 0,
         };
 
         client

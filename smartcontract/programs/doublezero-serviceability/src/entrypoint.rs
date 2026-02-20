@@ -44,7 +44,8 @@ use crate::{
         globalconfig::set::process_set_globalconfig,
         globalstate::{
             initialize::initialize_global_state, setairdrop::process_set_airdrop,
-            setauthority::process_set_authority, setversion::process_set_version,
+            setauthority::process_set_authority, setfeatureflags::process_set_feature_flags,
+            setversion::process_set_version,
         },
         link::{
             accept::process_accept_link, activate::process_activate_link,
@@ -387,6 +388,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::UpdatePaymentStatus(value) => {
             process_update_payment_status(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetFeatureFlags(value) => {
+            process_set_feature_flags(program_id, accounts, &value)?
         }
     };
     Ok(())

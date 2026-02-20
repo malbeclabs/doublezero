@@ -105,6 +105,7 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         user_airdrop_lamports: 40_000,
         health_oracle_pk: *payer_account.key,
         qa_allowlist: vec![*payer_account.key],
+        feature_flags: 0,
     };
 
     try_acc_create(

@@ -10,6 +10,7 @@ use doublezero_cli::{
     globalconfig::{
         airdrop::{get::GetAirdropCliCommand, set::SetAirdropCliCommand},
         authority::{get::GetAuthorityCliCommand, set::SetAuthorityCliCommand},
+        featureflags::{get::GetFeatureFlagsCliCommand, set::SetFeatureFlagsCliCommand},
         get::GetGlobalConfigCliCommand,
         set::SetGlobalConfigCliCommand,
         setversion::SetVersionCliCommand,
@@ -45,6 +46,9 @@ pub enum GlobalConfigCommands {
     /// Set the minimum compatible client version
     #[clap(hide = true)]
     SetVersion(SetVersionCliCommand),
+    /// Manage feature flags
+    #[clap(hide = true)]
+    FeatureFlags(FeatureFlagsCommand),
 }
 
 #[derive(Args, Debug)]
@@ -115,4 +119,20 @@ pub enum QaAllowlistCommands {
     /// Remove a pubkey from the QA allowlist
     #[clap()]
     Remove(RemoveQaCliCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct FeatureFlagsCommand {
+    #[command(subcommand)]
+    pub command: FeatureFlagsCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum FeatureFlagsCommands {
+    /// Get the current feature flags
+    #[clap()]
+    Get(GetFeatureFlagsCliCommand),
+    /// Set feature flags
+    #[clap()]
+    Set(SetFeatureFlagsCliCommand),
 }

@@ -122,24 +122,24 @@ echo "Creating devices"
 
 ### Initialize device interfaces
 echo "Creating device interfaces"
-./target/doublezero device interface create la2-dz01 "Switch1/1/1" --ip-net "10.0.1.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create la2-dz01 "Switch1/1/2" --ip-net "10.0.1.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create la2-dz01 "Switch1/1/3" --ip-net "10.0.1.9/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create ny5-dz01 "Switch1/1/1" --ip-net "10.0.2.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create ny5-dz01 "Switch1/1/2" --ip-net "10.0.2.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create ld4-dz01 "Switch1/1/1" --ip-net "10.0.3.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create ld4-dz01 "Switch1/1/2" --ip-net "10.0.3.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create ld4-dz01 "Switch1/1/3" --ip-net "10.0.3.9/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create frk-dz01 "Switch1/1/1" --ip-net "10.0.4.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create frk-dz01 "Switch1/1/2" --ip-net "10.0.4.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create sg1-dz01 "Switch1/1/1" --ip-net "10.0.5.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create sg1-dz01 "Switch1/1/2" --ip-net "10.0.5.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create ty2-dz01 "Switch1/1/1" --ip-net "10.0.6.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create ty2-dz01 "Switch1/1/2" --ip-net "10.0.6.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create pit-dz01 "Switch1/1/1" --ip-net "10.0.7.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create pit-dz01 "Switch1/1/2" --ip-net "10.0.7.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create ams-dz01 "Switch1/1/1" --ip-net "10.0.8.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
-./target/doublezero device interface create ams-dz01 "Switch1/1/2" --ip-net "10.0.8.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create la2-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create la2-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create la2-dz01 "Switch1/1/3" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ny5-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ny5-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ld4-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ld4-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ld4-dz01 "Switch1/1/3" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create frk-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create frk-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create sg1-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create sg1-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ty2-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ty2-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create pit-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create pit-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ams-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ams-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
 
 ### Initialize links
 echo "Creating internal links"
@@ -161,7 +161,7 @@ echo "Creating devices"
 
 ### Initialize device interfaces
 echo "Creating device interfaces"
-./target/doublezero device interface create la2-dz02 "Switch1/1/1" --ip-net "10.0.9.1/30" --bandwidth 1000 --cir 0 --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create la2-dz02 "Switch1/1/1" --bandwidth 1000 --cir 0 --mtu 1500 --routing-mode static -w
 
 ### Initialize links
 echo "Creating external links"

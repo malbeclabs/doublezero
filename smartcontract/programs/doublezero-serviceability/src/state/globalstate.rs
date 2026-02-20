@@ -7,6 +7,53 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeatureFlag {
+    OnChainAllocation = 0,
+}
+
+impl FeatureFlag {
+    pub fn all_variants() -> &'static [FeatureFlag] {
+        &[FeatureFlag::OnChainAllocation]
+    }
+
+    pub fn to_mask(self) -> u128 {
+        1u128 << self as u8
+    }
+}
+
+impl fmt::Display for FeatureFlag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FeatureFlag::OnChainAllocation => write!(f, "onchain-allocation"),
+        }
+    }
+}
+
+impl std::str::FromStr for FeatureFlag {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "onchain-allocation" => Ok(FeatureFlag::OnChainAllocation),
+            _ => Err(format!("unknown feature flag: {s}")),
+        }
+    }
+}
+
+pub fn is_feature_enabled(flags: u128, flag: FeatureFlag) -> bool {
+    flags & flag.to_mask() != 0
+}
+
+pub fn enabled_flags(flags: u128) -> Vec<FeatureFlag> {
+    FeatureFlag::all_variants()
+        .iter()
+        .filter(|f| is_feature_enabled(flags, **f))
+        .copied()
+        .collect()
+}
+
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GlobalState {
@@ -28,6 +75,7 @@ pub struct GlobalState {
     pub user_airdrop_lamports: u64,        // 8
     pub health_oracle_pk: Pubkey,          // 32
     pub qa_allowlist: Vec<Pubkey>,         // 4 + 32 * len
+    pub feature_flags: u128,               // 16
 }
 
 impl Default for GlobalState {
@@ -45,6 +93,7 @@ impl Default for GlobalState {
             user_airdrop_lamports: 0,
             health_oracle_pk: Pubkey::default(),
             qa_allowlist: Vec::new(),
+            feature_flags: 0,
         }
     }
 }
@@ -73,7 +122,8 @@ health_oracle_pk: {:?}",
             self.contributor_airdrop_lamports,
             self.user_airdrop_lamports,
             self.health_oracle_pk,
-        )
+        )?;
+        write!(f, ", feature_flags: {}", self.feature_flags)
     }
 }
 
@@ -95,6 +145,7 @@ impl TryFrom<&[u8]> for GlobalState {
             user_airdrop_lamports: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             health_oracle_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             qa_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
+            feature_flags: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::GlobalState {
@@ -167,6 +218,7 @@ mod tests {
         assert_eq!(val.sentinel_authority_pk, Pubkey::default());
         assert_eq!(val.contributor_airdrop_lamports, 0);
         assert_eq!(val.user_airdrop_lamports, 0);
+        assert_eq!(val.feature_flags, 0);
     }
 
     #[test]
@@ -184,6 +236,7 @@ mod tests {
             user_airdrop_lamports: 40_000,
             health_oracle_pk: Pubkey::new_unique(),
             qa_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            feature_flags: 1,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -212,6 +265,7 @@ mod tests {
             val2.contributor_airdrop_lamports
         );
         assert_eq!(val.user_airdrop_lamports, val2.user_airdrop_lamports);
+        assert_eq!(val.feature_flags, val2.feature_flags);
     }
 
     #[test]
@@ -229,9 +283,37 @@ mod tests {
             user_airdrop_lamports: 40_000,
             health_oracle_pk: Pubkey::new_unique(),
             qa_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            feature_flags: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
+    }
+
+    #[test]
+    fn test_feature_flag_mask_and_helpers() {
+        let mask = FeatureFlag::OnChainAllocation.to_mask();
+        assert_eq!(mask, 1u128);
+        assert!(is_feature_enabled(mask, FeatureFlag::OnChainAllocation));
+        assert!(!is_feature_enabled(0u128, FeatureFlag::OnChainAllocation));
+
+        let flags = enabled_flags(1u128);
+        assert_eq!(flags.len(), 1);
+        assert_eq!(flags[0], FeatureFlag::OnChainAllocation);
+
+        assert_eq!(enabled_flags(0u128).len(), 0);
+    }
+
+    #[test]
+    fn test_feature_flag_display_and_from_str() {
+        assert_eq!(
+            FeatureFlag::OnChainAllocation.to_string(),
+            "onchain-allocation"
+        );
+        assert_eq!(
+            "onchain-allocation".parse::<FeatureFlag>().unwrap(),
+            FeatureFlag::OnChainAllocation
+        );
+        assert!("unknown-flag".parse::<FeatureFlag>().is_err());
     }
 }

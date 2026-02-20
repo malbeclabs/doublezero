@@ -24,10 +24,14 @@ var (
 	envFlag         = flag.String("env", "", "environment to run in (devnet, testnet, mainnet-beta)")
 	debug           = flag.Bool("debug", false, "enable debug logging")
 	multiTunnelFlag = flag.Bool("multi-tunnel", false, "enable multi-tunnel mode (connect unicast + multicast simultaneously)")
+	deviceFlag      = flag.String("device", "", "device code for provisioning test (e.g., chi-dn-dzd4)")
+	bmHostFlag      = flag.String("bm-host", "", "BM host to SSH to for CLI commands (e.g., chi-dn-bm4)")
 
 	hostsArg      []string
 	portArg       int
 	envArg        string
+	deviceArg     string
+	bmHostArg     string
 	networkConfig *config.NetworkConfig
 )
 
@@ -48,6 +52,8 @@ func TestMain(m *testing.M) {
 		log.Fatalf("Invalid value for -port flag: %q. Must be an integer", *portFlag)
 	}
 	envArg = *envFlag
+	deviceArg = *deviceFlag
+	bmHostArg = *bmHostFlag
 
 	networkConfig, err = config.NetworkConfigForEnv(envArg)
 	if err != nil {

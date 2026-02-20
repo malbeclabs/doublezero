@@ -732,7 +732,7 @@ func (q *QAAgent) GetPublicIP(ctx context.Context, req *emptypb.Empty) (*pb.GetP
 // the `doublezero status --json` command.
 func (q *QAAgent) fetchStatus(ctx context.Context) ([]StatusResponse, error) {
 	cmd := exec.CommandContext(ctx, "doublezero", "status", "--json")
-	output, err := cmd.CombinedOutput()
+	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute doublezero status command: %w, output: %s", err, string(output))
 	}
@@ -748,7 +748,7 @@ func (q *QAAgent) fetchStatus(ctx context.Context) ([]StatusResponse, error) {
 // the `doublezero latency --json` command.
 func (q *QAAgent) fetchLatency(ctx context.Context) ([]LatencyResponse, error) {
 	cmd := exec.CommandContext(ctx, "doublezero", "latency", "--json")
-	output, err := cmd.CombinedOutput()
+	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute doublezero latency command: %w, output: %s", err, string(output))
 	}

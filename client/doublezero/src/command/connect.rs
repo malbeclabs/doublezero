@@ -184,7 +184,29 @@ impl ProvisioningCliCommand {
         // Check user status
         match user.status {
             UserStatus::Activated => {
-                // User is activated
+                // If the daemon already has a unicast service, check its status before
+                // attempting to provision. This avoids a confusing error when the user
+                // reconnects while a stale or active tunnel is still in the daemon.
+                if let Ok(statuses) = controller.status().await {
+                    if let Some(existing) = statuses.iter().find(|s| {
+                        s.user_type
+                            .as_ref()
+                            .is_some_and(|t| !t.eq_ignore_ascii_case("multicast"))
+                    }) {
+                        let session_status = &existing.doublezero_status.session_status;
+                        if session_status.eq_ignore_ascii_case("BGP Session Up") {
+                            spinner.println("✅  IBRL tunnel is already active.");
+                            spinner.finish_and_clear();
+                            return Ok(());
+                        }
+                        eyre::bail!(
+                            "An IBRL tunnel is already provisioned but not active \
+                             (status: {session_status}). Run `doublezero disconnect ibrl` \
+                             to reset it, then reconnect."
+                        );
+                    }
+                }
+
                 self.user_activated(
                     client,
                     controller,
@@ -1079,8 +1101,8 @@ fn exclude_ips(
 mod tests {
     use super::*;
     use crate::servicecontroller::{
-        LatencyRecord, MockServiceController, ProvisioningResponse, ResolveRouteRequest,
-        ResolveRouteResponse,
+        DoubleZeroStatus, LatencyRecord, MockServiceController, ProvisioningResponse,
+        ResolveRouteRequest, ResolveRouteResponse, StatusResponse,
     };
     use doublezero_cli::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
     use doublezero_config::Environment;
@@ -1131,6 +1153,7 @@ mod tests {
         pub mcast_groups: Arc<Mutex<HashMap<Pubkey, MulticastGroup>>>,
         pub tenants: Arc<Mutex<HashMap<Pubkey, Tenant>>>,
         pub default_tenant_pk: Pubkey,
+        pub daemon_status: Arc<Mutex<Vec<StatusResponse>>>,
     }
 
     impl TestFixture {
@@ -1176,6 +1199,7 @@ mod tests {
                 mcast_groups: Arc::new(Mutex::new(HashMap::new())),
                 tenants: Arc::new(Mutex::new(tenants)),
                 default_tenant_pk,
+                daemon_status: Arc::new(Mutex::new(vec![])),
             };
 
             fixture
@@ -1198,10 +1222,11 @@ mod tests {
                 .expect_service_controller_can_open()
                 .return_const(true);
 
+            let daemon_status = fixture.daemon_status.clone();
             fixture
                 .controller
                 .expect_status()
-                .returning_st(|| Ok(vec![]));
+                .returning_st(move || Ok(daemon_status.lock().unwrap().clone()));
 
             let latencies = fixture.latencies.clone();
             fixture
@@ -1851,6 +1876,106 @@ mod tests {
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_connect_ibrl_already_active_skips_provision() {
+        // When the daemon already has an active IBRL tunnel (BGP Session Up),
+        // connect should succeed immediately without re-provisioning.
+        let mut fixture = TestFixture::new();
+
+        let (device_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let user = fixture.create_user(UserType::IBRL, device_pk, "1.2.3.4");
+        fixture.add_user(&user);
+
+        // Set daemon status: reports an active unicast service.
+        *fixture.daemon_status.lock().unwrap() = vec![StatusResponse {
+            doublezero_status: DoubleZeroStatus {
+                session_status: "BGP Session Up".to_string(),
+                last_session_update: None,
+            },
+            tunnel_name: Some("doublezero0".to_string()),
+            tunnel_src: Some("1.2.3.4".to_string()),
+            tunnel_dst: Some("5.6.7.1".to_string()),
+            doublezero_ip: Some("1.2.3.4".to_string()),
+            user_type: Some("IBRL".to_string()),
+        }];
+
+        // No expect_provisioning set — mockall panics if provision is unexpectedly called,
+        // which is exactly the assertion: provisioning must NOT happen here.
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                tenant: None,
+                allocate_addr: false,
+            },
+            client_ip: Some("1.2.3.4".to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_ok(),
+            "connect should succeed when tunnel is already active: {:?}",
+            result.err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_connect_ibrl_stale_tunnel_returns_error() {
+        // When the daemon has a unicast service that is not active (e.g. Network Unreachable),
+        // connect should return an error with instructions to disconnect and reconnect.
+        let mut fixture = TestFixture::new();
+
+        let (device_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let user = fixture.create_user(UserType::IBRL, device_pk, "1.2.3.4");
+        fixture.add_user(&user);
+
+        // Set daemon status: reports a stale unicast service.
+        *fixture.daemon_status.lock().unwrap() = vec![StatusResponse {
+            doublezero_status: DoubleZeroStatus {
+                session_status: "Network Unreachable".to_string(),
+                last_session_update: None,
+            },
+            tunnel_name: Some("doublezero0".to_string()),
+            tunnel_src: Some("1.2.3.4".to_string()),
+            tunnel_dst: Some("5.6.7.1".to_string()),
+            doublezero_ip: Some("1.2.3.4".to_string()),
+            user_type: Some("IBRL".to_string()),
+        }];
+
+        // No expect_provisioning set — mockall panics if provision is unexpectedly called.
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                tenant: None,
+                allocate_addr: false,
+            },
+            client_ip: Some("1.2.3.4".to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_err(), "connect should fail when tunnel is stale");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("Network Unreachable"),
+            "error should include the current tunnel status: {err}"
+        );
+        assert!(
+            err.contains("doublezero disconnect ibrl"),
+            "error should suggest the disconnect command: {err}"
+        );
     }
 
     #[tokio::test]

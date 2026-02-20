@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - Remove redundant `connect ibrl` unit tests that were duplicates of hybrid-device equivalents
+  - `doublezero connect ibrl` now checks the daemon's tunnel status before attempting to provision. If an IBRL tunnel is already active (BGP Session Up), the command exits successfully without re-provisioning. If a tunnel exists but is not active (e.g. stale after a daemon restart), the command returns a clear error directing the user to run `doublezero disconnect ibrl` first.
 
 ## [v0.8.10](https://github.com/malbeclabs/doublezero/compare/client/v0.8.9...client/v0.8.10) – 2026-02-19
 

@@ -1,3 +1,6 @@
 [toolchain]
-# version supported by solana can be found with "cargo build-sbf --version"
-channel = "1.84.1"
+# The host toolchain must be >= 1.85.0 to parse edition2024 manifests in
+# transitive deps (e.g. base64ct 1.8.3 pulled in by solana-secp256k1-recover).
+# cargo build-sbf uses its own bundled Rust (platform-tools v1.51, rustc 1.84.1)
+# for the actual SBF bytecode compilation regardless of the host toolchain.
+channel = "1.90.0"

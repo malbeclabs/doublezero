@@ -157,6 +157,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 			fixturePath string
 			data        map[string]any
 			cmd         []string
+			output      []byte
 		}{
 			{
 				name:        "doublezero_user_list",
@@ -170,7 +171,8 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 					"AllocatedUserTunnelID":     allocatedUserTunnelID,
 					"AllocatedUserTunnelNet":    allocatedUserTunnelNet,
 				},
-				cmd: []string{"doublezero", "user", "list"},
+				cmd:    []string{"doublezero", "user", "list"},
+				output: userListOutput,
 			},
 			{
 				name:        "doublezero_device_list",
@@ -198,8 +200,12 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 			if !t.Run(test.name, func(t *testing.T) {
 				t.Parallel()
 
-				got, err := client.Exec(t.Context(), test.cmd)
-				require.NoError(t, err, "error executing command on client")
+				got := test.output
+				if got == nil {
+					var err error
+					got, err = client.Exec(t.Context(), test.cmd)
+					require.NoError(t, err, "error executing command on client")
+				}
 
 				want, err := fixtures.Render(test.fixturePath, test.data)
 				require.NoError(t, err, "error reading fixture")

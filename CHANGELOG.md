@@ -77,6 +77,8 @@ All notable changes to this project will be documented in this file.
 - Client
   - Add multicast publisher heartbeat sender — sends periodic UDP packets to each multicast group to keep PIM (S,G) mroute state alive on devices
   - Fix panic in heartbeat sender when concurrent teardown requests race on close
+- Onchain programs
+  - Add `doublezero-geolocation` program with 3 account types, 12 instructions, and foundation allowlist integration via serviceability CPI
 - E2E tests
   - Add daily devnet QA test for device provisioning lifecycle (RFC12) — deletes/recreates device and links, restarts daemons with new pubkey via Ansible
 - Serviceability: prevent creating or activating links on interfaces with CYOA or DIA assignments, and prevent setting CYOA/DIA on interfaces that are already linked

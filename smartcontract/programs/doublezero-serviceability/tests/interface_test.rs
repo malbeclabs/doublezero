@@ -1264,5 +1264,78 @@ async fn test_device_interfaces() {
     );
 
     println!("✅ Contributor owner can update their own interface");
+
+    /*****************************************************************************************************************************************************/
+    println!("🟢 12b. Non-foundation contributor owner cannot set node_segment_idx via update...");
+
+    // Contributor owner tries to set node_segment_idx — should fail with NotAllowed
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
+            name: "ethernet1/1".to_string(),
+            node_segment_idx: Some(42),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &contributor_owner,
+    )
+    .await;
+    assert!(
+        res.unwrap_err()
+            .to_string()
+            .contains("custom program error: 0x8"),
+        "Non-foundation contributor owner should not be able to set node_segment_idx (NotAllowed)"
+    );
+
+    // Verify node_segment_idx was NOT changed
+    let device2 = get_account_data(&mut banks_client, device2_pubkey)
+        .await
+        .expect("Unable to get Device")
+        .get_device()
+        .unwrap();
+    let iface = device2.find_interface("Ethernet1/1").unwrap().1;
+    assert_eq!(
+        iface.node_segment_idx, 0,
+        "node_segment_idx should be unchanged after rejected update"
+    );
+
+    // Foundation member (payer) CAN set node_segment_idx
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
+            name: "ethernet1/1".to_string(),
+            node_segment_idx: Some(42),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify foundation member's update succeeded
+    let device2 = get_account_data(&mut banks_client, device2_pubkey)
+        .await
+        .expect("Unable to get Device")
+        .get_device()
+        .unwrap();
+    let iface = device2.find_interface("Ethernet1/1").unwrap().1;
+    assert_eq!(
+        iface.node_segment_idx, 42,
+        "Foundation member should be able to set node_segment_idx"
+    );
+
+    println!("✅ node_segment_idx restricted to foundation_allowlist");
     println!("🟢🟢🟢  End test_device_interfaces  🟢🟢🟢");
 }

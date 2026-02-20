@@ -61,7 +61,7 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 	require.NoError(t, err, "failed to get device %s — cannot reprovision without existing config", deviceCode)
 
 	// Capture config and links while the device still exists.
-	deviceConfig, err := prov.CaptureDeviceConfig(ctx, device)
+	deviceConfig, err := prov.GetDeviceSpec(ctx, device)
 	require.NoError(t, err, "failed to capture device config")
 
 	links, err := prov.GetLinksForDevice(ctx, deviceCode)

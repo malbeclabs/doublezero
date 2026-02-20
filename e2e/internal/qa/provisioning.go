@@ -53,7 +53,7 @@ type InterfaceInfo struct {
 	LoopbackType string
 }
 
-type DeviceConfig struct {
+type DeviceSpec struct {
 	Code            string
 	ContributorCode string
 	LocationCode    string
@@ -175,8 +175,8 @@ func (p *ProvisioningTest) GetDeviceByCode(ctx context.Context, code string) (*D
 	return nil, fmt.Errorf("device %q not found", code)
 }
 
-func (p *ProvisioningTest) CaptureDeviceConfig(ctx context.Context, device *DeviceInfo) (*DeviceConfig, error) {
-	return &DeviceConfig{
+func (p *ProvisioningTest) GetDeviceSpec(ctx context.Context, device *DeviceInfo) (*DeviceSpec, error) {
+	return &DeviceSpec{
 		Code:            device.Code,
 		ContributorCode: device.ContributorCode,
 		LocationCode:    device.LocationCode,
@@ -304,7 +304,7 @@ func (p *ProvisioningTest) DeleteDevice(ctx context.Context, pubkey string) erro
 	return err
 }
 
-func (p *ProvisioningTest) CreateDevice(ctx context.Context, cfg *DeviceConfig) (string, error) {
+func (p *ProvisioningTest) CreateDevice(ctx context.Context, cfg *DeviceSpec) (string, error) {
 	mgmtVrf := cfg.MgmtVrf
 	if mgmtVrf == "" {
 		mgmtVrf = "default"

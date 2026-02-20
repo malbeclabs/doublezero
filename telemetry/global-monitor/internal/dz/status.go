@@ -21,22 +21,31 @@ func GetStatus(ctx context.Context) (*Status, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute doublezero status command: %w", err)
 	}
+	return parseStatus(output)
+}
+
+func parseStatus(data []byte) (*Status, error) {
 	var res []statusResponse
-	if err := json.Unmarshal(output, &res); err != nil {
+	if err := json.Unmarshal(data, &res); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal status response: %w", err)
 	}
 	if len(res) == 0 {
 		return nil, fmt.Errorf("no status response")
 	}
-	if len(res) > 1 {
-		return nil, fmt.Errorf("multiple status responses")
+	// Use the first non-multicast entry as the primary status, falling back
+	// to the first entry if all entries are multicast.
+	primary := res[0]
+	for _, r := range res {
+		if r.Response.UserType != "Multicast" {
+			primary = r
+			break
+		}
 	}
-	status := Status{
-		CurrentDeviceCode: res[0].CurrentDevice,
-		MetroName:         res[0].Metro,
-		NetworkSlug:       res[0].Network,
-	}
-	return &status, nil
+	return &Status{
+		CurrentDeviceCode: primary.CurrentDevice,
+		MetroName:         primary.Metro,
+		NetworkSlug:       primary.Network,
+	}, nil
 }
 
 type statusResponse struct {

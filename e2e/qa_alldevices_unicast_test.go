@@ -247,9 +247,8 @@ func printTestReportTable(log *slog.Logger, batchData qa.BatchData, clientLatenc
 		}
 	}
 
-	batchColWidth := 1
 	// Calculate batch column width based on max batch number.
-	batchColWidth = len(fmt.Sprintf("Batch %d", batchNums[len(batchNums)-1]+1))
+	batchColWidth := len(fmt.Sprintf("Batch %d", batchNums[len(batchNums)-1]+1))
 
 	var sb strings.Builder
 	sb.WriteString("\n")

@@ -10,7 +10,9 @@ use eyre::{eyre, OptionExt};
 use log::debug;
 use mockall::automock;
 use solana_client::rpc_client::RpcClient;
+use solana_rpc_client_api::config::RpcProgramAccountsConfig;
 use solana_sdk::{
+    account::Account,
     commitment_config::CommitmentConfig,
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
@@ -23,6 +25,13 @@ use std::{path::PathBuf, str::FromStr};
 #[automock]
 pub trait GeolocationClient {
     fn get_program_id(&self) -> Pubkey;
+    fn get_payer(&self) -> Pubkey;
+    fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account>;
+    fn get_program_accounts(
+        &self,
+        program_id: &Pubkey,
+        config: RpcProgramAccountsConfig,
+    ) -> eyre::Result<Vec<(Pubkey, Account)>>;
     fn execute_transaction(
         &self,
         instruction: GeolocationInstruction,
@@ -69,6 +78,24 @@ impl GeoClient {
 impl GeolocationClient for GeoClient {
     fn get_program_id(&self) -> Pubkey {
         self.program_id
+    }
+
+    fn get_payer(&self) -> Pubkey {
+        self.payer.as_ref().map(|k| k.pubkey()).unwrap_or_default()
+    }
+
+    fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account> {
+        self.client.get_account(&pubkey).map_err(|e| eyre!(e))
+    }
+
+    fn get_program_accounts(
+        &self,
+        program_id: &Pubkey,
+        config: RpcProgramAccountsConfig,
+    ) -> eyre::Result<Vec<(Pubkey, Account)>> {
+        self.client
+            .get_program_accounts_with_config(program_id, config)
+            .map_err(|e| eyre!(e))
     }
 
     fn execute_transaction(

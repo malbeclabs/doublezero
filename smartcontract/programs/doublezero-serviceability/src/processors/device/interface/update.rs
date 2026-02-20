@@ -175,6 +175,9 @@ pub fn process_update_device_interface(
         iface.ip_net = ip_net;
     }
     if let Some(node_segment_idx) = value.node_segment_idx {
+        if !globalstate.foundation_allowlist.contains(payer_account.key) {
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
         iface.node_segment_idx = node_segment_idx;
     }
     // until we have release V2 version for interfaces, always convert to v1

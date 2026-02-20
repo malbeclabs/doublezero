@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- E2E tests
+  - Publish `TestQA_AllDevices_UnicastConnectivity` results to ClickHouse (`qa_alldevices_results` and `qa_alldevices_metadata` tables) in addition to InfluxDB; configured via `CLICKHOUSE_ADDR` env var, skipped gracefully when not set
+
 ## [v0.8.10](https://github.com/malbeclabs/doublezero/compare/client/v0.8.9...client/v0.8.10) – 2026-02-19
 
 ### Breaking

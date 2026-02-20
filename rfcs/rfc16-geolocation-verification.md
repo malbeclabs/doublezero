@@ -258,8 +258,13 @@ pub enum GeolocationInstruction {
 
     // --- Billing (foundation-gated via Serviceability CPI) ---
     UpdatePaymentStatus {                           // variant 11
-        payment_status: GeolocationPaymentStatus,
+        payment_status: u8,                         // GeolocationPaymentStatus as u8 for wire format consistency
         last_deduction_dz_epoch: Option<u64>,
+    },
+
+    // --- Program Config Update ---
+    UpdateProgramConfig {                           // variant 12
+        serviceability_program_id: Option<Pubkey>,
     },
 }
 ```
@@ -554,7 +559,7 @@ pub struct GeolocationUser {
 }
 ```
 
-**PDA Seeds:** `["doublezero", "geolocation_user", code.as_bytes()]`
+**PDA Seeds:** `["doublezero", "geouser", code.as_bytes()]`
 
 **Purpose:** Enables onchain configuration of which target IPs should be measured by which exchange's probes. Replaces hardcoded target IP lists.
 

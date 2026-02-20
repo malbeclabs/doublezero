@@ -82,7 +82,6 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/device_set_health_2": {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
 	"write/link_set_health":     {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
 	"write/link_set_health_dzx": {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
-
 }
 
 // =============================================================================

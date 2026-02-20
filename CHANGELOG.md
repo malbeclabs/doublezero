@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - CLI
+  - Fix `doublezero status` showing "Current Device" and "Metro" as N/A for multicast subscribers when the tunnel destination is a `user_tunnel_endpoint` loopback interface IP rather than the device's `public_ip`
   - Remove redundant `connect ibrl` unit tests that were duplicates of hybrid-device equivalents
   - `doublezero global-config feature-flags` commands added
   - Fix multicast subscriber tunnel source resolution for NAT environments — resolve local interface IP instead of using public IP

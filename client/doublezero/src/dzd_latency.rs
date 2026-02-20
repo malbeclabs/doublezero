@@ -6,7 +6,7 @@ use std::{collections::HashMap, net::Ipv4Addr, str::FromStr, time::Duration};
 
 /// Get all tunnel endpoints for a device.
 /// Returns the device's public_ip plus any UserTunnelEndpoint interface IPs.
-fn get_device_tunnel_endpoints(device: &Device) -> Vec<Ipv4Addr> {
+pub(crate) fn get_device_tunnel_endpoints(device: &Device) -> Vec<Ipv4Addr> {
     let mut endpoints = vec![device.public_ip];
 
     // Add all UserTunnelEndpoint interfaces

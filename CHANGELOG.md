@@ -35,6 +35,7 @@ All notable changes to this project will be documented in this file.
   - Contributors, locations, multicast groups, and users can now be deleted from any operational status (not just `Activated`); only `Deleting`/`Updating` states are blocked
   - SDK: `UnlinkDeviceInterfaceCommand` automatically discovers and passes associated link accounts
   - Serviceability: allow contributors to update prefixes when for IBRL when no users are allocated
+  - Serviceability: require foundation_allowlist privileges to update node_segment_idx on a device interface
 - CLI
   - `doublezero status` now shows a `Tenant` column (between `User Type` and `Current Device`) with the tenant code associated with the user; empty when no tenant is assigned
 - Client

@@ -177,7 +177,7 @@ pub fn process_instruction(
                     .checked_sub(data_info.data_len())
                     .unwrap(),
             );
-            data_info.realloc(needed_account_length, false)?;
+            data_info.resize(needed_account_length)?;
             Ok(())
         }
     }

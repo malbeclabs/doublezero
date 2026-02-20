@@ -192,8 +192,8 @@ pub fn get_doublezero_pubkey() -> eyre::Result<Keypair> {
         Err(_) => eyre::bail!("Unable to read configured keypair_path"),
         Ok(key_content) => {
             let key_bytes: Vec<u8> = serde_json::from_str(&key_content)?;
-            let key = Keypair::from_bytes(&key_bytes)?;
-            Ok(key)
+            let secret: [u8; 32] = key_bytes[..32].try_into()?;
+            Ok(Keypair::new_from_array(secret))
         }
     }
 }
@@ -232,7 +232,7 @@ mod tests {
 
         let contents = fs::read_to_string(&keypair_path).unwrap();
         let bytes: Vec<u8> = serde_json::from_str(&contents).unwrap();
-        let deserialized = Keypair::from_bytes(&bytes).unwrap();
+        let deserialized = Keypair::try_from(bytes.as_slice()).unwrap();
         assert_eq!(deserialized.pubkey(), key.pubkey());
     }
 
@@ -300,7 +300,7 @@ mod tests {
 
         let contents = fs::read_to_string(&outfile_path).unwrap();
         let bytes: Vec<u8> = serde_json::from_str(&contents).unwrap();
-        let restored = Keypair::from_bytes(&bytes).unwrap();
+        let restored = Keypair::try_from(bytes.as_slice()).unwrap();
         assert_eq!(key.pubkey(), restored.pubkey());
     }
 

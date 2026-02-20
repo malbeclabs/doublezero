@@ -5,6 +5,7 @@ use solana_sdk::{
 use std::io;
 use thiserror::Error as ThisError;
 
+#[allow(clippy::large_enum_variant)]
 #[derive(ThisError, Debug)]
 pub enum ErrorKind {
     #[error(transparent)]
@@ -34,7 +35,7 @@ impl ErrorKind {
                         },
                     ),
                 ..
-            }) => Some(tx_err.clone()),
+            }) => Some(tx_err.clone().into()),
             Self::TransactionError(tx_err) => Some(tx_err.clone()),
             _ => None,
         }

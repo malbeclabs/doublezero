@@ -199,7 +199,7 @@ async fn test_initialize_device_latency_samples_success_suspended_origin_device(
         .get_device(origin_device_pk)
         .await
         .unwrap();
-    assert_eq!(device.status, DeviceStatus::Drained);
+    assert_eq!(device.desired_status, DeviceDesiredStatus::Drained);
 
     // Execute initialize latency samples transaction.
     let latency_samples_pda = ledger
@@ -268,7 +268,7 @@ async fn test_initialize_device_latency_samples_success_suspended_target_device(
         .get_device(target_device_pk)
         .await
         .unwrap();
-    assert_eq!(device.status, DeviceStatus::Drained);
+    assert_eq!(device.desired_status, DeviceDesiredStatus::Drained);
 
     // Execute initialize latency samples transaction.
     let latency_samples_pda = ledger
@@ -333,7 +333,7 @@ async fn test_initialize_device_latency_samples_success_suspended_link() {
 
     // Check that the link is suspended.
     let link = ledger.serviceability.get_link(link_pk).await.unwrap();
-    assert_eq!(link.status, LinkStatus::SoftDrained);
+    assert_eq!(link.desired_status, LinkDesiredStatus::SoftDrained);
 
     // Execute initialize latency samples transaction.
     let latency_samples_pda = ledger

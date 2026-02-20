@@ -1,8 +1,9 @@
 use crate::doublezeroclient::{AsyncDoubleZeroClient, SubscribeResult};
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::nonblocking::pubsub_client::PubsubClient;
+use solana_commitment_config::CommitmentConfig;
 use solana_rpc_client_api::config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
+use solana_sdk::pubkey::Pubkey;
 
 pub struct AsyncDZClient {
     program_id: Pubkey,

@@ -59,4 +59,4 @@ build: build-programs
 build-programs:
 	cd programs/doublezero-record && cargo build-sbf
 	cd programs/doublezero-serviceability && cargo build-sbf
-	cd programs/doublezero-telemetry && cargo build-sbf --features $(env)
+	cd programs/doublezero-telemetry && cargo build-sbf --features $(env) -- --ignore-rust-version

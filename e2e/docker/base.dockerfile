@@ -48,8 +48,8 @@ RUN ARCH="$(uname -m)" && \
     curl -sSL "https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz" | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:/root/go/bin:${PATH}"
 
-# Install rust
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+# Install rust (version must match rust-toolchain.toml)
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.90.0
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Copy all the solana binaries
@@ -167,7 +167,7 @@ RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=
     --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
     --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-telemetry && \
-    cargo build-sbf --features localnet && \
+    cargo build-sbf --features localnet -- --ignore-rust-version && \
     cp /target-sbf/deploy/doublezero_telemetry.so ${BIN_DIR}/doublezero_telemetry.so
 
 # Force COPY in later stages to always copy the programs, even if they appear to be the same.

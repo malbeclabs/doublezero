@@ -23,6 +23,7 @@ serde_bytes = { workspace = true, optional = true }
 solana-program.workspace = true
 doublezero-program-common.workspace = true
 doublezero-serviceability.workspace = true
+solana-commitment-config.workspace = true
 
 [dev-dependencies]
 bincode.workspace = true

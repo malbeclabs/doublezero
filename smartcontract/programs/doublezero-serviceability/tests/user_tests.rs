@@ -1002,7 +1002,7 @@ async fn test_user_create_tenant_allowlist_validation() {
         program_id,
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: tenant_a_code.to_string(),
-            administrator: Pubkey::new_unique(),
+            administrator: payer.pubkey(),
             token_account: None,
             metro_routing: true,
             route_liveness: false,
@@ -1026,7 +1026,7 @@ async fn test_user_create_tenant_allowlist_validation() {
         program_id,
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: tenant_b_code.to_string(),
-            administrator: Pubkey::new_unique(),
+            administrator: payer.pubkey(),
             token_account: None,
             metro_routing: true,
             route_liveness: false,

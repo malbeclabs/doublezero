@@ -28,7 +28,7 @@ pub const WRITE_INTERNET_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 3;
 impl TelemetryInstruction {
     pub fn pack(&self) -> Result<Vec<u8>, ProgramError> {
         match borsh::to_vec(&self) {
-            Err(e) => Err(ProgramError::BorshIoError(e.to_string())),
+            Err(_) => Err(ProgramError::BorshIoError),
             Ok(packed) => Ok(packed),
         }
     }

@@ -20,6 +20,8 @@ All notable changes to this project will be documented in this file.
 
 - Activator
   - removes accesspass monitor task (that expires access passes)
+- Controller
+  - detect duplicate (UnderlaySrcIP, UnderlayDstIP) pairs for tunnels and only render the first to the device config and write a log error for the second
 - Monitor
   - Add Prometheus metrics for multicast publisher block utilization (`doublezero_multicast_publisher_block_total_ips`, `doublezero_multicast_publisher_block_allocated_ips`, `doublezero_multicast_publisher_block_utilization_percent`) — enables Grafana alerting on IP pool exhaustion thresholds
 - SDK (Go)

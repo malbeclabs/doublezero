@@ -629,6 +629,58 @@ func (c *Controller) Run(ctx context.Context) error {
 	}
 }
 
+// deduplicateTunnels removes tunnels with duplicate (UnderlaySrcIP, UnderlayDstIP) pairs.
+// Returns a new slice containing only unique tunnel pairs. Keeps the first occurrence of
+// each pair. Logs an error and increments metrics when duplicates are found.
+func (c *Controller) deduplicateTunnels(device *Device) []*Tunnel {
+	if len(device.Tunnels) == 0 {
+		return device.Tunnels
+	}
+
+	// Track seen (UnderlaySrcIP, UnderlayDstIP) pairs
+	seen := make(map[string]*Tunnel)
+	unique := make([]*Tunnel, 0, len(device.Tunnels))
+	duplicateCount := 0
+
+	for _, tunnel := range device.Tunnels {
+		// Only check allocated tunnels (unallocated slots don't render config)
+		if !tunnel.Allocated {
+			unique = append(unique, tunnel)
+			continue
+		}
+
+		// Create unique key from underlay IP pair
+		key := fmt.Sprintf("%s:%s", tunnel.UnderlaySrcIP.String(), tunnel.UnderlayDstIP.String())
+
+		if existing, found := seen[key]; found {
+			// Duplicate detected - log and skip
+			duplicateCount++
+			c.log.Error("duplicate tunnel pair detected, removing from config",
+				"device_pubkey", device.PubKey,
+				"device_code", device.Code,
+				"kept_tunnel_id", existing.Id,
+				"kept_user_pubkey", existing.PubKey,
+				"removed_tunnel_id", tunnel.Id,
+				"removed_user_pubkey", tunnel.PubKey,
+				"underlay_src_ip", tunnel.UnderlaySrcIP.String(),
+				"underlay_dst_ip", tunnel.UnderlayDstIP.String(),
+				"vrf_id", tunnel.VrfId,
+			)
+		} else {
+			// First occurrence - keep it
+			seen[key] = tunnel
+			unique = append(unique, tunnel)
+		}
+	}
+
+	// Increment metric if duplicates found
+	if duplicateCount > 0 {
+		duplicateTunnelPairs.WithLabelValues(device.PubKey, device.Code).Add(float64(duplicateCount))
+	}
+
+	return unique
+}
+
 // GetConfig renders the latest device configuration based on cached device data
 func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.ConfigResponse, error) {
 	reqStart := time.Now()
@@ -644,6 +696,10 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		err := status.Errorf(codes.FailedPrecondition, "cannot render config for device %s: %v", req.Pubkey, device.DevicePathologies)
 		return nil, err
 	}
+
+	// Create shallow copy of device with deduplicated tunnels
+	deviceForRender := *device
+	deviceForRender.Tunnels = c.deduplicateTunnels(device)
 
 	agentVersion := req.GetAgentVersion()
 	agentCommit := req.GetAgentCommit()
@@ -664,7 +720,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 
 	// compare peers from device to on-chain
 	peerFound := func(peer net.IP) bool {
-		for _, tun := range device.Tunnels {
+		for _, tun := range deviceForRender.Tunnels {
 			if tun.OverlayDstIP.Equal(peer) {
 				return true
 			}
@@ -705,7 +761,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	// router msdp
 	// ```
 	ipv4Peers := c.cache.Ipv4BgpPeers
-	if len(ipv4Peers) == 1 && ipv4Peers[0].PeerIP.Equal(device.Ipv4LoopbackIP) {
+	if len(ipv4Peers) == 1 && ipv4Peers[0].PeerIP.Equal(deviceForRender.Ipv4LoopbackIP) {
 		ipv4Peers = nil
 	}
 
@@ -730,7 +786,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 
 	data := templateData{
 		MulticastGroupBlock:      multicastGroupBlock,
-		Device:                   device,
+		Device:                   &deviceForRender,
 		Vpnv4BgpPeers:            c.cache.Vpnv4BgpPeers,
 		Ipv4BgpPeers:             ipv4Peers,
 		UnknownBgpPeers:          unknownPeers,

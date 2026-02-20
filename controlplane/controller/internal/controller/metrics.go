@@ -29,6 +29,13 @@ var (
 		[]string{"pubkey"},
 	)
 
+	duplicateTunnelPairs = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "controller_duplicate_tunnel_pairs_total",
+		Help: "The total number of duplicate tunnel pairs detected during config rendering",
+	},
+		[]string{"pubkey", "device_code"},
+	)
+
 	getConfigOps = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "controller_grpc_getconfig_requests_total",
 		Help: "The total number of getconfig requests",
@@ -92,6 +99,7 @@ func init() {
 	// gRPC metrics
 	prometheus.MustRegister(getConfigPubkeyErrors)
 	prometheus.MustRegister(getConfigRenderErrors)
+	prometheus.MustRegister(duplicateTunnelPairs)
 	prometheus.MustRegister(getConfigOps)
 	prometheus.MustRegister(getConfigMsgSize)
 	prometheus.MustRegister(getConfigDuration)

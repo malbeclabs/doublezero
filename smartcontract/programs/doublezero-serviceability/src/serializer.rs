@@ -95,7 +95,7 @@ pub fn try_acc_close(
     **close_account.lamports.borrow_mut() = 0;
 
     // Close the account
-    close_account.realloc(0, false)?;
+    close_account.resize(0)?;
     close_account.assign(&solana_system_interface::program::ID);
 
     Ok(())

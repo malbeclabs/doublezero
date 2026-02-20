@@ -281,16 +281,7 @@ mod tests {
         let account_pk = Pubkey::new_unique();
         let owner_pk = Pubkey::new_unique();
         ResourceExtensionBorrowed::construct_resource(
-            &AccountInfo::new(
-                &account_pk,
-                false,
-                true,
-                &mut 0,
-                buffer,
-                &owner_pk,
-                false,
-                0,
-            ),
+            &AccountInfo::new(&account_pk, false, true, &mut 0, buffer, &owner_pk, false),
             &owner_pk,
             1,
             &Pubkey::default(),

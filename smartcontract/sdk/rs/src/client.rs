@@ -15,9 +15,9 @@ use solana_client::{
     rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
     rpc_filter::{Memcmp, MemcmpEncodedBytes, RpcFilterType},
 };
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
     account::Account,
-    commitment_config::CommitmentConfig,
     instruction::{AccountMeta, Instruction, InstructionError},
     program_error::ProgramError,
     pubkey::Pubkey,
@@ -325,12 +325,15 @@ impl DoubleZeroClient for DZClient {
             }
         }
 
-        if let Some(TransactionError::InstructionError(_index, InstructionError::Custom(number))) =
-            result.value.err
-        {
-            return Err(eyre!(DoubleZeroError::from(number)));
-        } else if let Some(err) = result.value.err {
-            return Err(eyre!(err));
+        if let Some(ui_err) = result.value.err {
+            let tx_err: TransactionError = ui_err.into();
+            if let TransactionError::InstructionError(_index, InstructionError::Custom(number)) =
+                tx_err
+            {
+                return Err(eyre!(DoubleZeroError::from(number)));
+            } else {
+                return Err(eyre!(tx_err));
+            }
         }
 
         self.client

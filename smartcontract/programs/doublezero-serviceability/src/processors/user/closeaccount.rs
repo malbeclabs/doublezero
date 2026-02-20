@@ -373,7 +373,7 @@ pub fn process_closeaccount_user(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use solana_program::{account_info::AccountInfo, clock::Epoch};
+    use solana_program::account_info::AccountInfo;
 
     #[test]
     fn test_closeaccount_user_fails_when_publishers_or_subscribers_not_empty() {
@@ -446,7 +446,6 @@ mod tests {
             &mut user_data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let mut owner_lamports = 0u64;
         let owner_account = AccountInfo::new(
@@ -457,7 +456,6 @@ mod tests {
             &mut [],
             &program_id,
             false,
-            Epoch::default(),
         );
         let device_account = AccountInfo::new(
             &device_pk,
@@ -467,7 +465,6 @@ mod tests {
             &mut device_data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let globalstate_account = AccountInfo::new(
             &globalstate_pk,
@@ -477,7 +474,6 @@ mod tests {
             &mut globalstate_data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let payer_account = AccountInfo::new(
             &payer_pk,
@@ -487,7 +483,6 @@ mod tests {
             &mut [],
             &program_id,
             false,
-            Epoch::default(),
         );
         let system_program_id = solana_system_interface::program::ID;
         let mut system_program_lamports = 0u64;
@@ -499,7 +494,6 @@ mod tests {
             &mut [],
             &system_program_id,
             false,
-            Epoch::default(),
         );
 
         let accounts = vec![

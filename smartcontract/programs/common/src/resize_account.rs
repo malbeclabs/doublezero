@@ -46,8 +46,8 @@ pub fn resize_account_if_needed(
 
         // Resize the account to accommodate the expanded data.
         account
-            .realloc(new_len, false)
-            .expect("Unable to realloc the account");
+            .resize(new_len)
+            .expect("Unable to resize the account");
         msg!("Resized account from {} to {}", actual_len, new_len);
     }
 

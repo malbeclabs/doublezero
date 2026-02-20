@@ -52,7 +52,6 @@ use doublezero_telemetry::entrypoint::process_instruction as telemetry_process_i
 use solana_program_test::*;
 use solana_sdk::{
     account::Account,
-    commitment_config::CommitmentLevel,
     hash::Hash,
     instruction::{AccountMeta, Instruction, InstructionError},
     message::{v0::Message, VersionedMessage},
@@ -781,6 +780,8 @@ impl ServiceabilityProgramHelper {
                 get_resource_extension_pda(&program_id, ResourceType::LinkIds);
             let (segment_routing_ids_pda, _, _) =
                 get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+            let (multicast_publisher_block_pda, _, _) =
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
             let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
             execute_serviceability_instruction(
                 &mut banks_client,
@@ -804,6 +805,7 @@ impl ServiceabilityProgramHelper {
                     AccountMeta::new(multicastgroup_block_pda, false),
                     AccountMeta::new(link_ids_pda, false),
                     AccountMeta::new(segment_routing_ids_pda, false),
+                    AccountMeta::new(multicast_publisher_block_pda, false),
                     AccountMeta::new(vrf_ids_pda, false),
                 ],
             )
@@ -1354,7 +1356,10 @@ pub async fn execute_transaction(
         VersionedTransaction::try_new(VersionedMessage::V0(message), signers).unwrap();
 
     banks_client
-        .process_transaction_with_commitment(transaction, CommitmentLevel::Processed)
+        .process_transaction_with_commitment(
+            transaction,
+            solana_commitment_config::CommitmentLevel::Processed,
+        )
         .await
         .map_err(|e| {
             println!("Transaction failed: {e:?}");
@@ -1410,7 +1415,11 @@ pub fn setup_test_programs() -> (ProgramTest, Pubkey, Pubkey) {
 
     // Add serviceability program with its actual processor
     let serviceability_program_id = serviceability_program_id();
-    program_test.add_program("doublezero_serviceability", serviceability_program_id, None);
+    program_test.add_program(
+        "doublezero_serviceability",
+        serviceability_program_id,
+        processor!(doublezero_serviceability::entrypoint::process_instruction),
+    );
 
     (
         program_test,

@@ -32,9 +32,13 @@ pub fn parse_keypair_json(json_str: &str, source_desc: &str) -> Result<Keypair, 
             message: e.to_string(),
         })?;
 
-    Keypair::from_bytes(&secret_key_bytes).map_err(|_| KeypairLoadError::InvalidKeypairBytes {
-        origin: source_desc.to_string(),
-    })
+    let secret: [u8; 32] =
+        secret_key_bytes[..32]
+            .try_into()
+            .map_err(|_| KeypairLoadError::InvalidKeypairBytes {
+                origin: source_desc.to_string(),
+            })?;
+    Ok(Keypair::new_from_array(secret))
 }
 
 /// Read keypair from a file path

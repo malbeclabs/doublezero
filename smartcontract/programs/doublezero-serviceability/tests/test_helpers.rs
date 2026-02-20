@@ -35,7 +35,7 @@ pub const TEST_PAYER_BYTES: [u8; 64] = [
 
 #[allow(dead_code)]
 pub fn test_payer() -> Keypair {
-    Keypair::from_bytes(&TEST_PAYER_BYTES).unwrap()
+    Keypair::try_from(TEST_PAYER_BYTES.as_slice()).unwrap()
 }
 
 #[allow(dead_code)]

@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain Programs
+  - Upgrade Solana SDK from 2.2.x to 3.0.0
+
 ## [v0.8.10](https://github.com/malbeclabs/doublezero/compare/client/v0.8.9...client/v0.8.10) – 2026-02-19
 
 ### Breaking

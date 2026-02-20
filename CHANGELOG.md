@@ -12,6 +12,14 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - Remove redundant `connect ibrl` unit tests that were duplicates of hybrid-device equivalents
+  - `doublezero global-config feature-flags` commands added
+- Controller
+  - detect duplicate (UnderlaySrcIP, UnderlayDstIP) pairs for tunnels and only render the first to the device config and write a log error for the second
+- Onchain Programs
+  - Serviceability: require foundation_allowlist privileges to update node_segment_idx on a device interface
+  - Serviceability: add feature flags support
+- SDK
+  - SetFeatureFlagCommand added to manage on-chain feature flags for conditional behavior rollouts
 
 ## [v0.8.10](https://github.com/malbeclabs/doublezero/compare/client/v0.8.9...client/v0.8.10) – 2026-02-19
 
@@ -23,8 +31,6 @@ All notable changes to this project will be documented in this file.
 
 - Activator
   - removes accesspass monitor task (that expires access passes)
-- Controller
-  - detect duplicate (UnderlaySrcIP, UnderlayDstIP) pairs for tunnels and only render the first to the device config and write a log error for the second
 - Monitor
   - Add Prometheus metrics for multicast publisher block utilization (`doublezero_multicast_publisher_block_total_ips`, `doublezero_multicast_publisher_block_allocated_ips`, `doublezero_multicast_publisher_block_utilization_percent`) — enables Grafana alerting on IP pool exhaustion thresholds
 - SDK (Go)
@@ -38,7 +44,6 @@ All notable changes to this project will be documented in this file.
   - Contributors, locations, multicast groups, and users can now be deleted from any operational status (not just `Activated`); only `Deleting`/`Updating` states are blocked
   - SDK: `UnlinkDeviceInterfaceCommand` automatically discovers and passes associated link accounts
   - Serviceability: allow contributors to update prefixes when for IBRL when no users are allocated
-  - Serviceability: require foundation_allowlist privileges to update node_segment_idx on a device interface
 - CLI
   - `doublezero status` now shows a `Tenant` column (between `User Type` and `Current Device`) with the tenant code associated with the user; empty when no tenant is assigned
 - Client

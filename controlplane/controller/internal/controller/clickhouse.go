@@ -66,7 +66,7 @@ func NewClickhouseWriter(log *slog.Logger, addr, db, user, pass string, disableT
 
 func (cw *ClickhouseWriter) CreateTable(ctx context.Context) error {
 	err := cw.conn.Exec(ctx, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.controller_grpc_getconfig_success (
+		CREATE TABLE IF NOT EXISTS "%s".controller_grpc_getconfig_success (
 			timestamp DateTime64(3),
 			device_pubkey LowCardinality(String)
 		) ENGINE = MergeTree
@@ -110,7 +110,7 @@ func (cw *ClickhouseWriter) flush(ctx context.Context) {
 	cw.mu.Unlock()
 
 	batch, err := cw.conn.PrepareBatch(ctx, fmt.Sprintf(
-		`INSERT INTO %s.controller_grpc_getconfig_success (timestamp, device_pubkey)`, cw.db,
+		`INSERT INTO "%s".controller_grpc_getconfig_success (timestamp, device_pubkey)`, cw.db,
 	))
 	if err != nil {
 		cw.log.Error("error preparing clickhouse batch", "error", err)

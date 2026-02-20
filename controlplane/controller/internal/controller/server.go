@@ -574,9 +574,11 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	if c.clickhouse != nil {
 		if err := c.clickhouse.CreateTable(ctx); err != nil {
-			return fmt.Errorf("error creating clickhouse table: %w", err)
+			c.log.Warn("error creating clickhouse table, continuing without clickhouse", "error", err)
+			c.clickhouse = nil
+		} else {
+			go c.clickhouse.Run(ctx)
 		}
-		go c.clickhouse.Run(ctx)
 	}
 
 	// start on-chain fetcher

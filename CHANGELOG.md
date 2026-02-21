@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - Remove redundant `connect ibrl` unit tests that were duplicates of hybrid-device equivalents
+
 ## [v0.8.10](https://github.com/malbeclabs/doublezero/compare/client/v0.8.9...client/v0.8.10) – 2026-02-19
 
 ### Breaking

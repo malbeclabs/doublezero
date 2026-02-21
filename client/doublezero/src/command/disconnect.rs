@@ -62,6 +62,7 @@ impl DecommissioningCliCommand {
 
         let users = client.list_user(ListUserCommand)?;
 
+        let mut removed_from_daemon = false;
         for (pubkey, user) in users.iter().filter(|(_, u)| u.client_ip == client_ip) {
             match self.dz_mode {
                 Some(DzMode::IBRL) => {
@@ -97,8 +98,40 @@ impl DecommissioningCliCommand {
                     user_type: user.user_type.to_string(),
                 })
                 .await;
+            removed_from_daemon = true;
 
             self.poll_for_user_closed(client, pubkey, &spinner)?;
+        }
+
+        // If no onchain user was found (e.g. already deleted by an admin unban), the
+        // loop above never called controller.remove(). Query the daemon directly and
+        // remove any stale services so a subsequent connect does not hit the
+        // "already provisioned" guard.
+        if !removed_from_daemon {
+            if let Ok(statuses) = controller.status().await {
+                for status in &statuses {
+                    let matches_mode = match &self.dz_mode {
+                        Some(DzMode::IBRL) => status.user_type.as_deref().is_some_and(|t| {
+                            t.eq_ignore_ascii_case("IBRL")
+                                || t.eq_ignore_ascii_case("IBRLWithAllocatedIP")
+                        }),
+                        Some(DzMode::Multicast) => status
+                            .user_type
+                            .as_deref()
+                            .is_some_and(|t| t.eq_ignore_ascii_case("Multicast")),
+                        None => true,
+                    };
+                    if matches_mode {
+                        if let Some(user_type) = &status.user_type {
+                            let _ = controller
+                                .remove(RemoveTunnelCliCommand {
+                                    user_type: user_type.clone(),
+                                })
+                                .await;
+                        }
+                    }
+                }
+            }
         }
 
         spinner.println("✅  Deprovisioning Complete");

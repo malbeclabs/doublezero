@@ -141,7 +141,9 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 		}
 
 		if !t.Run("wait_for_user_activation", func(t *testing.T) {
-			err := dn.WaitForUserActivation(t)
+			// 6 users expected: 1 IBRLWithAllocatedIP + 5 IBRL created by
+			// createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs.
+			err := dn.WaitForUserActivation(t, 6)
 			require.NoError(t, err, "error waiting for user activation")
 		}) {
 			t.Fail()

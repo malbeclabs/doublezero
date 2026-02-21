@@ -193,13 +193,15 @@ async fn test_initialize_device_latency_samples_success_suspended_origin_device(
     // Wait for a new blockhash before moving on.
     ledger.wait_for_new_blockhash().await.unwrap();
 
-    // Check that the origin device is suspended.
+    // Check that the origin device has desired_status Drained.
+    // Note: check_status_transition is a no-op (waiting for health oracle),
+    // so status remains Activated but desired_status is Drained.
     let device = ledger
         .serviceability
         .get_device(origin_device_pk)
         .await
         .unwrap();
-    assert_eq!(device.status, DeviceStatus::Drained);
+    assert_eq!(device.desired_status, DeviceDesiredStatus::Drained);
 
     // Execute initialize latency samples transaction.
     let latency_samples_pda = ledger
@@ -252,7 +254,7 @@ async fn test_initialize_device_latency_samples_success_suspended_target_device(
         .await
         .unwrap();
 
-    // Suspend the target device.
+    // Drain the target device.
     ledger
         .serviceability
         .softdrained_device(contributor_pk, target_device_pk)
@@ -262,13 +264,13 @@ async fn test_initialize_device_latency_samples_success_suspended_target_device(
     // Wait for a new blockhash before moving on.
     ledger.wait_for_new_blockhash().await.unwrap();
 
-    // Check that the target device is suspended.
+    // Check that the target device has desired_status Drained.
     let device = ledger
         .serviceability
         .get_device(target_device_pk)
         .await
         .unwrap();
-    assert_eq!(device.status, DeviceStatus::Drained);
+    assert_eq!(device.desired_status, DeviceDesiredStatus::Drained);
 
     // Execute initialize latency samples transaction.
     let latency_samples_pda = ledger
@@ -321,7 +323,7 @@ async fn test_initialize_device_latency_samples_success_suspended_link() {
         .await
         .unwrap();
 
-    // Suspend the link.
+    // Drain the link.
     ledger
         .serviceability
         .soft_drain_link(contributor_pk, link_pk)
@@ -331,9 +333,9 @@ async fn test_initialize_device_latency_samples_success_suspended_link() {
     // Wait for a new blockhash before moving on.
     ledger.wait_for_new_blockhash().await.unwrap();
 
-    // Check that the link is suspended.
+    // Check that the link has desired_status SoftDrained.
     let link = ledger.serviceability.get_link(link_pk).await.unwrap();
-    assert_eq!(link.status, LinkStatus::SoftDrained);
+    assert_eq!(link.desired_status, LinkDesiredStatus::SoftDrained);
 
     // Execute initialize latency samples transaction.
     let latency_samples_pda = ledger

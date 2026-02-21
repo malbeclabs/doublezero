@@ -781,6 +781,8 @@ impl ServiceabilityProgramHelper {
                 get_resource_extension_pda(&program_id, ResourceType::LinkIds);
             let (segment_routing_ids_pda, _, _) =
                 get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+            let (multicast_publisher_block_pda, _, _) =
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
             let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
             execute_serviceability_instruction(
                 &mut banks_client,
@@ -804,6 +806,7 @@ impl ServiceabilityProgramHelper {
                     AccountMeta::new(multicastgroup_block_pda, false),
                     AccountMeta::new(link_ids_pda, false),
                     AccountMeta::new(segment_routing_ids_pda, false),
+                    AccountMeta::new(multicast_publisher_block_pda, false),
                     AccountMeta::new(vrf_ids_pda, false),
                 ],
             )

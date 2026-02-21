@@ -68,12 +68,12 @@ async fn setup_user_onchain_allocation_test(
 ) -> (
     BanksClient,
     solana_sdk::signature::Keypair,
-    Pubkey,                   // program_id
-    Pubkey,                   // globalstate_pubkey
-    Pubkey,                   // device_pubkey
-    Pubkey,                   // user_pubkey
-    Pubkey,                   // accesspass_pubkey
-    (Pubkey, Pubkey, Pubkey), // (user_tunnel_block, tunnel_ids, dz_prefix_block)
+    Pubkey,                           // program_id
+    Pubkey,                           // globalstate_pubkey
+    Pubkey,                           // device_pubkey
+    Pubkey,                           // user_pubkey
+    Pubkey,                           // accesspass_pubkey
+    (Pubkey, Pubkey, Pubkey, Pubkey), // (user_tunnel_block, multicast_publisher_block, tunnel_ids, dz_prefix_block)
 ) {
     // Initialize program with link-local user_tunnel_block from the start
     // (user_tunnel_block is immutable once set, so we can't override it later)
@@ -342,6 +342,7 @@ async fn setup_user_onchain_allocation_test(
         accesspass_pubkey,
         (
             user_tunnel_block_pubkey,
+            multicast_publisher_block_pda,
             tunnel_ids_pubkey,
             dz_prefix_block_pubkey,
         ),
@@ -365,7 +366,12 @@ async fn test_activate_user_with_onchain_allocation() {
         _device_pubkey,
         user_pubkey,
         accesspass_pubkey,
-        (user_tunnel_block_pubkey, tunnel_ids_pubkey, dz_prefix_block_pubkey),
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
     ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -387,6 +393,7 @@ async fn test_activate_user_with_onchain_allocation() {
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
             AccountMeta::new(tunnel_ids_pubkey, false),
             AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
@@ -520,7 +527,12 @@ async fn test_closeaccount_user_with_deallocation() {
         device_pubkey,
         user_pubkey,
         accesspass_pubkey,
-        (user_tunnel_block_pubkey, tunnel_ids_pubkey, dz_prefix_block_pubkey),
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
     ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -542,6 +554,7 @@ async fn test_closeaccount_user_with_deallocation() {
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
             AccountMeta::new(tunnel_ids_pubkey, false),
             AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
@@ -595,14 +608,14 @@ async fn test_closeaccount_user_with_deallocation() {
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
-    // CloseAccount with deallocation (9 accounts)
+    // CloseAccount with deallocation
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
             dz_prefix_count: 1,
-            multicast_publisher_count: 0, // 1 DzPrefixBlock account provided
+            multicast_publisher_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -674,7 +687,12 @@ async fn test_activate_user_foundation_allowlist() {
         _device_pubkey,
         user_pubkey,
         accesspass_pubkey,
-        (user_tunnel_block_pubkey, tunnel_ids_pubkey, dz_prefix_block_pubkey),
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
     ) = setup_user_onchain_allocation_test(UserType::IBRL, client_ip).await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -696,6 +714,7 @@ async fn test_activate_user_foundation_allowlist() {
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
             AccountMeta::new(tunnel_ids_pubkey, false),
             AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
@@ -735,7 +754,12 @@ async fn test_activate_user_ibrl_uses_client_ip() {
         _device_pubkey,
         user_pubkey,
         accesspass_pubkey,
-        (user_tunnel_block_pubkey, tunnel_ids_pubkey, dz_prefix_block_pubkey),
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
     ) = setup_user_onchain_allocation_test(UserType::IBRL, client_ip).await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -757,6 +781,7 @@ async fn test_activate_user_ibrl_uses_client_ip() {
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
             AccountMeta::new(tunnel_ids_pubkey, false),
             AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
@@ -802,7 +827,12 @@ async fn test_activate_user_ibrl_with_allocated_ip() {
         _device_pubkey,
         user_pubkey,
         accesspass_pubkey,
-        (user_tunnel_block_pubkey, tunnel_ids_pubkey, dz_prefix_block_pubkey),
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
     ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -824,6 +854,7 @@ async fn test_activate_user_ibrl_with_allocated_ip() {
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
             AccountMeta::new(tunnel_ids_pubkey, false),
             AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
@@ -875,7 +906,12 @@ async fn test_activate_user_edge_filtering() {
         _device_pubkey,
         user_pubkey,
         accesspass_pubkey,
-        (user_tunnel_block_pubkey, tunnel_ids_pubkey, dz_prefix_block_pubkey),
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
     ) = setup_user_onchain_allocation_test(UserType::EdgeFiltering, client_ip).await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -897,6 +933,7 @@ async fn test_activate_user_edge_filtering() {
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
             AccountMeta::new(tunnel_ids_pubkey, false),
             AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
@@ -953,7 +990,12 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
         _device_pubkey,
         user_pubkey,
         accesspass_pubkey,
-        (user_tunnel_block_pubkey, tunnel_ids_pubkey, dz_prefix_block_pubkey),
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
     ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -977,6 +1019,7 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
             AccountMeta::new(tunnel_ids_pubkey, false),
             AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
@@ -1173,6 +1216,7 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
             AccountMeta::new(tunnel_ids_pubkey, false),
             AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
@@ -1212,15 +1256,15 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
         user.dz_ip, original_dz_ip,
         "dz_ip should be allocated after re-activation (publishers not empty)"
     );
-    // Verify dz_ip is from DzPrefixBlock range (110.1.0.0/24)
+    // Verify dz_ip is from MulticastPublisherBlock range (148.51.120.0/21)
     let dz_ip_octets = user.dz_ip.octets();
     assert_eq!(
-        dz_ip_octets[0], 110,
-        "dz_ip should be from device's dz_prefix"
+        dz_ip_octets[0], 148,
+        "dz_ip should be from MulticastPublisherBlock"
     );
     assert_eq!(
-        dz_ip_octets[1], 1,
-        "dz_ip should be from device's dz_prefix"
+        dz_ip_octets[1], 51,
+        "dz_ip should be from MulticastPublisherBlock"
     );
 
     println!("  After re-activation:");
@@ -1270,13 +1314,11 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
         tunnel_ids_count_before, tunnel_ids_count_after
     );
 
-    // DzPrefixBlock should increase by 1 (new dz_ip allocation)
+    // DzPrefixBlock should be unchanged (multicast publishers get dz_ip from MulticastPublisherBlock)
     assert_eq!(
-        dz_prefix_count_after,
-        dz_prefix_count_before + 1,
-        "DzPrefixBlock should have 1 more allocation for dz_ip (was: {}, now: {})",
-        dz_prefix_count_before,
-        dz_prefix_count_after
+        dz_prefix_count_after, dz_prefix_count_before,
+        "DzPrefixBlock allocation count should be unchanged (was: {}, now: {})",
+        dz_prefix_count_before, dz_prefix_count_after
     );
 
     println!("[PASS] test_multicast_subscribe_reactivation_preserves_allocations");
@@ -1306,11 +1348,13 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
         device_pubkey,
         user_pubkey,
         accesspass_pubkey,
-        (user_tunnel_block_pubkey, tunnel_ids_pubkey, dz_prefix_block_pubkey),
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
     ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
-
-    let (multicast_publisher_block_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
 
     // =========================================================================
     // Step 1: First activation (Multicast with no publishers → dz_ip = client_ip)
@@ -1483,7 +1527,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
     assert_ne!(first_dz_ip, Ipv4Addr::from(client_ip));
     assert_eq!(
         first_dz_ip.octets()[0..2],
-        [147, 51],
+        [148, 51],
         "dz_ip should be from MulticastPublisherBlock (148.51.120.0/21)"
     );
     println!("  First publisher dz_ip: {}", first_dz_ip);
@@ -1775,7 +1819,12 @@ async fn test_activate_user_already_activated_fails() {
         _device_pubkey,
         user_pubkey,
         accesspass_pubkey,
-        (user_tunnel_block_pubkey, tunnel_ids_pubkey, dz_prefix_block_pubkey),
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
     ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -1797,6 +1846,7 @@ async fn test_activate_user_already_activated_fails() {
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
             AccountMeta::new(tunnel_ids_pubkey, false),
             AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
@@ -1823,6 +1873,7 @@ async fn test_activate_user_already_activated_fails() {
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
             AccountMeta::new(tunnel_ids_pubkey, false),
             AccountMeta::new(dz_prefix_block_pubkey, false),
         ],

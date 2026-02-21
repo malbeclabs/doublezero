@@ -1187,8 +1187,8 @@ async fn test_wan_link_rejects_cyoa_interface() {
 
     let error_string = format!("{:?}", res.unwrap_err());
     assert!(
-        error_string.contains("Custom(81)"),
-        "Expected InterfaceHasEdgeAssignment error (Custom(81)), got: {}",
+        error_string.contains("Custom(83)"),
+        "Expected InterfaceHasEdgeAssignment error (Custom(83)), got: {}",
         error_string
     );
 
@@ -1277,8 +1277,8 @@ async fn test_wan_link_rejects_cyoa_interface() {
 
     let error_string = format!("{:?}", res.unwrap_err());
     assert!(
-        error_string.contains("Custom(81)"),
-        "Expected InterfaceHasEdgeAssignment error (Custom(81)), got: {}",
+        error_string.contains("Custom(83)"),
+        "Expected InterfaceHasEdgeAssignment error (Custom(83)), got: {}",
         error_string
     );
 
@@ -1390,8 +1390,8 @@ async fn test_wan_link_rejects_cyoa_interface() {
 
     let error_string = format!("{:?}", res.unwrap_err());
     assert!(
-        error_string.contains("Custom(81)"),
-        "Expected InterfaceHasEdgeAssignment error (Custom(81)), got: {}",
+        error_string.contains("Custom(83)"),
+        "Expected InterfaceHasEdgeAssignment error (Custom(83)), got: {}",
         error_string
     );
 }
@@ -1789,8 +1789,8 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
 
     let error_string = format!("{:?}", res.unwrap_err());
     assert!(
-        error_string.contains("Custom(81)"),
-        "Expected InterfaceHasEdgeAssignment error (Custom(81)), got: {}",
+        error_string.contains("Custom(83)"),
+        "Expected InterfaceHasEdgeAssignment error (Custom(83)), got: {}",
         error_string
     );
 
@@ -1825,8 +1825,8 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
 
     let error_string = format!("{:?}", res.unwrap_err());
     assert!(
-        error_string.contains("Custom(81)"),
-        "Expected InterfaceHasEdgeAssignment error (Custom(81)), got: {}",
+        error_string.contains("Custom(83)"),
+        "Expected InterfaceHasEdgeAssignment error (Custom(83)), got: {}",
         error_string
     );
 }

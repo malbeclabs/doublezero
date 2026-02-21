@@ -467,6 +467,7 @@ async fn test_tenant_add_duplicate_administrator_fails() {
     assert_eq!(tenant.administrators.len(), 2); // Initial administrator + admin
 
     // Try to add the same administrator again (should fail)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,

@@ -34,6 +34,9 @@ solana-program-test.workspace = true
 base64.workspace = true
 strum = { workspace = true }
 strum_macros = { workspace = true }
+ctor.workspace = true
+env_logger.workspace = true
+log.workspace = true
 
 [features]
 default = []

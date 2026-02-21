@@ -318,6 +318,14 @@ By routing traffic through the GRE tunnel and across the DoubleZero backbone, th
 
 The integration is seamless from the user’s perspective, with the CLI and daemon abstracting the complexities of tunnel management and dynamic route handling.
 
+## Testing
+
+Program integration tests suppress Solana program logs by default to keep output readable. To enable program logs (useful for debugging test failures), set the `PROGRAM_LOG` environment variable:
+
+```bash
+PROGRAM_LOG=1 cargo test-sbf -p doublezero-serviceability
+```
+
 ```mermaid
 flowchart LR
     subgraph Client_Server["Client Server"]

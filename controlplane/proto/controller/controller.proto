@@ -8,6 +8,8 @@ option go_package = "github.com/malbeclabs/doublezero/controlplane/proto/control
 service Controller {
     // Returns the latest configuration of a DoubleZero node based on on-chain data
     rpc GetConfig (ConfigRequest) returns (ConfigResponse) {}
+    // Returns only the hash of the latest configuration (lightweight check for changes)
+    rpc GetConfigHash (ConfigRequest) returns (ConfigHashResponse) {}
 }
 
 // Request for latest configuration of a DoubleZero node based on its public key
@@ -30,4 +32,9 @@ message BgpPeers {
 message ConfigResponse {
     string config = 1;
     string hash = 2;
+}
+
+// Response containing only the config hash
+message ConfigHashResponse {
+    string hash = 1;
 }

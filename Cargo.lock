@@ -1663,15 +1663,18 @@ dependencies = [
  "borsh 1.5.7",
  "borsh-incremental",
  "bytemuck",
+ "ctor",
  "doublezero-program-common",
+ "env_logger",
  "ipnetwork",
+ "log",
  "serde",
  "serde_bytes",
  "solana-program",
  "solana-program-test",
  "solana-sdk",
  "solana-system-interface",
- "strum 0.26.3",
+ "strum 0.27.2",
  "strum_macros 0.26.4",
  "thiserror 2.0.17",
 ]
@@ -8251,9 +8254,9 @@ dependencies = [
 
 [[package]]
 name = "strum"
-version = "0.26.3"
+version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06"
+checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
 
 [[package]]
 name = "strum_macros"

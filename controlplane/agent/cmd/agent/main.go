@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
@@ -20,16 +22,17 @@ import (
 )
 
 var (
-	localDevicePubkey          = flag.String("pubkey", "frtyt4WKYudUpqTsvJzwN6Bd4btYxrkaYNhBNAaUVGWn", "This device's public key on the doublezero network")
-	controllerAddress          = flag.String("controller", "18.116.166.35:7000", "The DoubleZero controller IP address and port to connect to")
-	device                     = flag.String("device", "127.0.0.1:9543", "IP Address and port of the Arist EOS API. Should always be the local switch at 127.0.0.1:9543.")
-	sleepIntervalInSeconds     = flag.Float64("sleep-interval-in-seconds", 5, "How long to sleep in between polls")
-	controllerTimeoutInSeconds = flag.Float64("controller-timeout-in-seconds", 30, "How long to wait for a response from the controller before giving up")
-	maxLockAge                 = flag.Int("max-lock-age-in-seconds", 3600, "If agent detects a config lock that older than the specified age, it will force unlock.")
-	verbose                    = flag.Bool("verbose", false, "Enable verbose logging")
-	showVersion                = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
-	metricsEnable              = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
-	metricsAddr                = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
+	localDevicePubkey           = flag.String("pubkey", "frtyt4WKYudUpqTsvJzwN6Bd4btYxrkaYNhBNAaUVGWn", "This device's public key on the doublezero network")
+	controllerAddress           = flag.String("controller", "18.116.166.35:7000", "The DoubleZero controller IP address and port to connect to")
+	device                      = flag.String("device", "127.0.0.1:9543", "IP Address and port of the Arist EOS API. Should always be the local switch at 127.0.0.1:9543.")
+	sleepIntervalInSeconds      = flag.Float64("sleep-interval-in-seconds", 5, "How long to sleep in between polls")
+	controllerTimeoutInSeconds  = flag.Float64("controller-timeout-in-seconds", 30, "How long to wait for a response from the controller before giving up")
+	configCacheTimeoutInSeconds = flag.Int("config-cache-timeout-in-seconds", 60, "Force full config fetch after this many seconds, even if hash unchanged")
+	maxLockAge                  = flag.Int("max-lock-age-in-seconds", 3600, "If agent detects a config lock that older than the specified age, it will force unlock.")
+	verbose                     = flag.Bool("verbose", false, "Enable verbose logging")
+	showVersion                 = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
+	metricsEnable               = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
+	metricsAddr                 = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
 
 	// set by LDFLAGS
 	version = "dev"
@@ -37,35 +40,33 @@ var (
 	date    = "unknown"
 )
 
-func pollControllerAndConfigureDevice(ctx context.Context, dzclient pb.ControllerClient, eapiClient *arista.EAPIClient, pubkey string, verbose *bool, maxLockAge int, agentVersion string, agentCommit string, agentDate string) error {
-	var err error
+func computeChecksum(data string) string {
+	hash := sha256.Sum256([]byte(data))
+	return hex.EncodeToString(hash[:])
+}
 
-	// The dz controller needs to know what BGP sessions we have configured locally
-	var neighborIpMap map[string][]string
-	neighborIpMap, err = eapiClient.GetBgpNeighbors(ctx)
-	if err != nil {
-		log.Println("pollControllerAndConfigureDevice: eapiClient.GetBgpNeighbors returned error:", err)
-		agent.ErrorsBgpNeighbors.Inc()
-	}
-
-	var configText string
+func fetchConfigFromController(ctx context.Context, dzclient pb.ControllerClient, pubkey string, neighborIpMap map[string][]string, verbose *bool, agentVersion string, agentCommit string, agentDate string) (configText string, configHash string, err error) {
 	configText, err = agent.GetConfigFromServer(ctx, dzclient, pubkey, neighborIpMap, controllerTimeoutInSeconds, agentVersion, agentCommit, agentDate)
 	if err != nil {
-		log.Printf("pollControllerAndConfigureDevice failed to call agent.GetConfigFromServer: %q", err)
+		log.Printf("fetchConfigFromController failed to call agent.GetConfigFromServer: %q", err)
 		agent.ErrorsGetConfig.Inc()
-		return err
+		return "", "", err
 	}
 
 	if *verbose {
 		log.Printf("controller returned the following config: '%s'", configText)
 	}
 
+	configHash = computeChecksum(configText)
+	return configText, configHash, nil
+}
+
+func applyConfig(ctx context.Context, eapiClient *arista.EAPIClient, configText string, maxLockAge int) error {
 	if configText == "" {
-		// Controller returned empty config
 		return nil
 	}
 
-	_, err = eapiClient.AddConfigToDevice(ctx, configText, nil, maxLockAge) // 3rd arg (diffCmd) is only used for testing
+	_, err := eapiClient.AddConfigToDevice(ctx, configText, nil, maxLockAge)
 	if err != nil {
 		agent.ErrorsApplyConfig.Inc()
 		return err
@@ -121,15 +122,55 @@ func main() {
 	client := aristapb.NewEapiMgrServiceClient(clientConn)
 	eapiClient = arista.NewEAPIClient(slog.Default(), client)
 
+	var cachedConfigHash string
+	var configCacheTime time.Time
+	configCacheTimeout := time.Duration(*configCacheTimeoutInSeconds) * time.Second
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			err := pollControllerAndConfigureDevice(ctx, dzclient, eapiClient, *localDevicePubkey, verbose, *maxLockAge, version, commit, date)
+			neighborIpMap, err := eapiClient.GetBgpNeighbors(ctx)
 			if err != nil {
-				log.Println("ERROR: pollAndConfigureDevice returned", err)
+				log.Println("ERROR: eapiClient.GetBgpNeighbors returned", err)
+				agent.ErrorsBgpNeighbors.Inc()
 			}
+
+			shouldFetchAndApply := false
+
+			if cachedConfigHash == "" {
+				shouldFetchAndApply = true
+			} else if time.Since(configCacheTime) >= configCacheTimeout {
+				shouldFetchAndApply = true
+			} else {
+				hash, err := agent.GetConfigHashFromServer(ctx, dzclient, *localDevicePubkey, neighborIpMap, controllerTimeoutInSeconds, version, commit, date)
+				if err != nil {
+					log.Println("ERROR: GetConfigHashFromServer returned", err)
+					continue
+				}
+				if hash != cachedConfigHash {
+					shouldFetchAndApply = true
+				}
+			}
+
+			if !shouldFetchAndApply {
+				continue
+			}
+
+			configText, configHash, err := fetchConfigFromController(ctx, dzclient, *localDevicePubkey, neighborIpMap, verbose, version, commit, date)
+			if err != nil {
+				log.Println("ERROR: fetchConfigFromController returned", err)
+				continue
+			}
+
+			err = applyConfig(ctx, eapiClient, configText, *maxLockAge)
+			if err != nil {
+				log.Println("ERROR: applyConfig returned", err)
+				continue
+			}
+			cachedConfigHash = configHash
+			configCacheTime = time.Now()
 		}
 	}
 }

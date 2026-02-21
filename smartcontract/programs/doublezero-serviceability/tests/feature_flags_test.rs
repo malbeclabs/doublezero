@@ -49,7 +49,7 @@ async fn test_set_feature_flags_success() {
     let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate.feature_flags, 1);
     assert!(
-        doublezero_serviceability::state::globalstate::is_feature_enabled(
+        doublezero_serviceability::state::feature_flags::is_feature_enabled(
             globalstate.feature_flags,
             FeatureFlag::OnChainAllocation,
         )

@@ -22,16 +22,17 @@ import (
 )
 
 var (
-	localDevicePubkey          = flag.String("pubkey", "frtyt4WKYudUpqTsvJzwN6Bd4btYxrkaYNhBNAaUVGWn", "This device's public key on the doublezero network")
-	controllerAddress          = flag.String("controller", "18.116.166.35:7000", "The DoubleZero controller IP address and port to connect to")
-	device                     = flag.String("device", "127.0.0.1:9543", "IP Address and port of the Arist EOS API. Should always be the local switch at 127.0.0.1:9543.")
-	sleepIntervalInSeconds     = flag.Float64("sleep-interval-in-seconds", 5, "How long to sleep in between polls")
-	controllerTimeoutInSeconds = flag.Float64("controller-timeout-in-seconds", 30, "How long to wait for a response from the controller before giving up")
-	maxLockAge                 = flag.Int("max-lock-age-in-seconds", 3600, "If agent detects a config lock that older than the specified age, it will force unlock.")
-	verbose                    = flag.Bool("verbose", false, "Enable verbose logging")
-	showVersion                = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
-	metricsEnable              = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
-	metricsAddr                = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
+	localDevicePubkey                = flag.String("pubkey", "frtyt4WKYudUpqTsvJzwN6Bd4btYxrkaYNhBNAaUVGWn", "This device's public key on the doublezero network")
+	controllerAddress                = flag.String("controller", "18.116.166.35:7000", "The DoubleZero controller IP address and port to connect to")
+	device                           = flag.String("device", "127.0.0.1:9543", "IP Address and port of the Arist EOS API. Should always be the local switch at 127.0.0.1:9543.")
+	sleepIntervalInSeconds           = flag.Float64("sleep-interval-in-seconds", 5, "How long to sleep in between polls")
+	controllerTimeoutInSeconds       = flag.Float64("controller-timeout-in-seconds", 30, "How long to wait for a response from the controller before giving up")
+	configCacheTimeoutInSeconds      = flag.Int("config-cache-timeout-in-seconds", 60, "Force full config fetch after this many seconds, even if hash unchanged")
+	maxLockAge                       = flag.Int("max-lock-age-in-seconds", 3600, "If agent detects a config lock that older than the specified age, it will force unlock.")
+	verbose                          = flag.Bool("verbose", false, "Enable verbose logging")
+	showVersion                      = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
+	metricsEnable                    = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
+	metricsAddr                      = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
 
 	// set by LDFLAGS
 	version = "dev"
@@ -44,8 +45,8 @@ func computeChecksum(data string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func fetchConfigFromController(ctx context.Context, dzclient pb.ControllerClient, pubkey string, neighborIpMap map[string][]string, verbose *bool, agentVersion string, agentCommit string, agentDate string) (string, string, error) {
-	configText, err := agent.GetConfigFromServer(ctx, dzclient, pubkey, neighborIpMap, controllerTimeoutInSeconds, agentVersion, agentCommit, agentDate)
+func fetchConfigFromController(ctx context.Context, dzclient pb.ControllerClient, pubkey string, neighborIpMap map[string][]string, verbose *bool, agentVersion string, agentCommit string, agentDate string) (configText string, configHash string, err error) {
+	configText, err = agent.GetConfigFromServer(ctx, dzclient, pubkey, neighborIpMap, controllerTimeoutInSeconds, agentVersion, agentCommit, agentDate)
 	if err != nil {
 		log.Printf("fetchConfigFromController failed to call agent.GetConfigFromServer: %q", err)
 		agent.ErrorsGetConfig.Inc()
@@ -56,8 +57,8 @@ func fetchConfigFromController(ctx context.Context, dzclient pb.ControllerClient
 		log.Printf("controller returned the following config: '%s'", configText)
 	}
 
-	checksum := computeChecksum(configText)
-	return configText, checksum, nil
+	configHash = computeChecksum(configText)
+	return configText, configHash, nil
 }
 
 func applyConfig(ctx context.Context, eapiClient *arista.EAPIClient, configText string, maxLockAge int) error {
@@ -121,9 +122,9 @@ func main() {
 	client := aristapb.NewEapiMgrServiceClient(clientConn)
 	eapiClient = arista.NewEAPIClient(slog.Default(), client)
 
-	var lastChecksum string
-	var lastApplyTime time.Time
-	const forceApplyInterval = 300 * time.Second
+	var cachedConfigHash string
+	var configCacheTime time.Time
+	configCacheTimeout := time.Duration(*configCacheTimeoutInSeconds) * time.Second
 
 	for {
 		select {
@@ -138,9 +139,9 @@ func main() {
 
 			shouldFetchAndApply := false
 
-			if lastChecksum == "" {
+			if cachedConfigHash == "" {
 				shouldFetchAndApply = true
-			} else if time.Since(lastApplyTime) >= forceApplyInterval {
+			} else if time.Since(configCacheTime) >= configCacheTimeout {
 				shouldFetchAndApply = true
 			} else {
 				hash, err := agent.GetConfigHashFromServer(ctx, dzclient, *localDevicePubkey, neighborIpMap, controllerTimeoutInSeconds, version, commit, date)
@@ -148,7 +149,7 @@ func main() {
 					log.Println("ERROR: GetConfigHashFromServer returned", err)
 					continue
 				}
-				if hash != lastChecksum {
+				if hash != cachedConfigHash {
 					shouldFetchAndApply = true
 				}
 			}
@@ -157,7 +158,7 @@ func main() {
 				continue
 			}
 
-			configText, checksum, err := fetchConfigFromController(ctx, dzclient, *localDevicePubkey, neighborIpMap, verbose, version, commit, date)
+			configText, configHash, err := fetchConfigFromController(ctx, dzclient, *localDevicePubkey, neighborIpMap, verbose, version, commit, date)
 			if err != nil {
 				log.Println("ERROR: fetchConfigFromController returned", err)
 				continue
@@ -168,8 +169,8 @@ func main() {
 				log.Println("ERROR: applyConfig returned", err)
 				continue
 			}
-			lastChecksum = checksum
-			lastApplyTime = time.Now()
+			cachedConfigHash = configHash
+			configCacheTime = time.Now()
 		}
 	}
 }

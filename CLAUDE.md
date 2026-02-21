@@ -93,6 +93,10 @@ cd sdk/<module>/python && uv run pytest
 make generate-fixtures   # Regenerate .bin/.json fixtures from Rust
 ```
 
+## Test Failures
+
+- Main is expected to be green. If a test fails on your branch, your changes most likely broke it — investigate and fix it rather than assuming the failure is pre-existing.
+
 ## RFCs and Documentation
 
 - When asked if a doc is up to date, evaluate it against its intended purpose and scope — not against whatever was most recently worked on. Implementation bug fixes and edge-case handling are not design decisions. Don't inflate docs with implementation details just because they're fresh in context.

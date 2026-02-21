@@ -4,6 +4,7 @@ pub mod accounttype;
 pub mod contributor;
 pub mod device;
 pub mod exchange;
+pub mod feature_flags;
 pub mod globalconfig;
 pub mod globalstate;
 pub mod interface;

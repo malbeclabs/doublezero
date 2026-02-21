@@ -1,7 +1,7 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::GetGlobalStateCommand;
-use doublezero_serviceability::state::globalstate::enabled_flags;
+use doublezero_serviceability::state::feature_flags::enabled_flags;
 use std::io::Write;
 
 #[derive(Args, Debug)]

@@ -6,7 +6,7 @@ use clap::Args;
 use doublezero_sdk::{
     commands::globalstate::setfeatureflags::SetFeatureFlagsCommand, GetGlobalStateCommand,
 };
-use doublezero_serviceability::state::globalstate::FeatureFlag;
+use doublezero_serviceability::state::feature_flags::FeatureFlag;
 use std::io::Write;
 
 #[derive(Args, Debug)]

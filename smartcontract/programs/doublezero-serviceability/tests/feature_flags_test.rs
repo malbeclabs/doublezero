@@ -1,6 +1,6 @@
 use doublezero_serviceability::{
     instructions::*, pda::*, processors::globalstate::setfeatureflags::SetFeatureFlagsArgs,
-    state::globalstate::FeatureFlag,
+    state::feature_flags::FeatureFlag,
 };
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, signature::Signer};

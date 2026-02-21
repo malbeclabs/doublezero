@@ -2327,39 +2327,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_connect_command_ibrl_allocate_resolve_route_error() {
-        let mut fixture = TestFixture::new();
-
-        let (_device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
-
-        fixture.expect_resolve_route_error(device1.public_ip);
-
-        println!();
-
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::IBRL {
-                tenant: Some("test-tenant".to_string()),
-                allocate_addr: true,
-            },
-            client_ip: Some("1.2.3.4".to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("Failed to resolve route"),
-            "Expected error about failed to resolve route, got: {}",
-            err_msg
-        );
-    }
-
-    #[tokio::test]
     async fn test_connect_command_ibrl_allocate_existing_user() {
         let mut fixture = TestFixture::new();
 

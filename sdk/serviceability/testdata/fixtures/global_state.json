@@ -71,6 +71,11 @@
       "name": "QaAllowlist0",
       "value": "LX3EUdRUBUa3TbsYXLEUdj9J3prXkWXvLYSWyYyc2Jj",
       "typ": "pubkey"
+    },
+    {
+      "name": "FeatureFlags",
+      "value": "1",
+      "typ": "u128"
     }
   ]
 }

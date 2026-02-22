@@ -32,7 +32,8 @@ use crate::processors::{
     },
     globalconfig::set::SetGlobalConfigArgs,
     globalstate::{
-        setairdrop::SetAirdropArgs, setauthority::SetAuthorityArgs, setversion::SetVersionArgs,
+        setairdrop::SetAirdropArgs, setauthority::SetAuthorityArgs,
+        setfeatureflags::SetFeatureFlagsArgs, setversion::SetVersionArgs,
     },
     link::{
         accept::LinkAcceptArgs, activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
@@ -200,6 +201,7 @@ pub enum DoubleZeroInstruction {
     TenantAddAdministrator(TenantAddAdministratorArgs), // variant 91
     TenantRemoveAdministrator(TenantRemoveAdministratorArgs), // variant 92
     UpdatePaymentStatus(UpdatePaymentStatusArgs),       // variant 93
+    SetFeatureFlags(SetFeatureFlagsArgs),               // variant 94
 }
 
 impl DoubleZeroInstruction {
@@ -323,6 +325,7 @@ impl DoubleZeroInstruction {
             91 => Ok(Self::TenantAddAdministrator(TenantAddAdministratorArgs::try_from(rest).unwrap())),
             92 => Ok(Self::TenantRemoveAdministrator(TenantRemoveAdministratorArgs::try_from(rest).unwrap())),
             93 => Ok(Self::UpdatePaymentStatus(UpdatePaymentStatusArgs::try_from(rest).unwrap())),
+            94 => Ok(Self::SetFeatureFlags(SetFeatureFlagsArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -444,6 +447,7 @@ impl DoubleZeroInstruction {
             Self::TenantAddAdministrator(_) => "TenantAddAdministrator".to_string(), // variant 91
             Self::TenantRemoveAdministrator(_) => "TenantRemoveAdministrator".to_string(), // variant 92
             Self::UpdatePaymentStatus(_) => "UpdatePaymentStatus".to_string(), // variant 93
+            Self::SetFeatureFlags(_) => "SetFeatureFlags".to_string(),         // variant 94
         }
     }
 
@@ -557,6 +561,7 @@ impl DoubleZeroInstruction {
             Self::TenantAddAdministrator(args) => format!("{args:?}"), // variant 91
             Self::TenantRemoveAdministrator(args) => format!("{args:?}"), // variant 92
             Self::UpdatePaymentStatus(args) => format!("{args:?}"), // variant 93
+            Self::SetFeatureFlags(args) => format!("{args:?}"), // variant 94
         }
     }
 }
@@ -1187,6 +1192,10 @@ mod tests {
                 last_deduction_dz_epoch: None,
             }),
             "UpdatePaymentStatus",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs { feature_flags: 1 }),
+            "SetFeatureFlags",
         );
     }
 }

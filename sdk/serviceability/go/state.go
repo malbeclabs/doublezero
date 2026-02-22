@@ -336,6 +336,7 @@ type GlobalState struct {
 	UserAirdropLamports        uint64
 	HealthOraclePK             [32]byte
 	QAAllowlist                [][32]byte
+	FeatureFlags               Uint128
 	PubKey                     [32]byte
 }
 

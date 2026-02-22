@@ -114,6 +114,7 @@ fn generate_global_state(dir: &Path) {
         user_airdrop_lamports: 50_000,
         health_oracle_pk,
         qa_allowlist: vec![qa_pk],
+        feature_flags: 1,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -136,6 +137,7 @@ fn generate_global_state(dir: &Path) {
             FieldValue { name: "HealthOraclePk".into(), value: pubkey_bs58(&health_oracle_pk), typ: "pubkey".into() },
             FieldValue { name: "QaAllowlistLen".into(), value: "1".into(), typ: "u32".into() },
             FieldValue { name: "QaAllowlist0".into(), value: pubkey_bs58(&qa_pk), typ: "pubkey".into() },
+            FieldValue { name: "FeatureFlags".into(), value: "1".into(), typ: "u128".into() },
         ],
     };
 
@@ -325,6 +327,10 @@ fn generate_device(dir: &Path) {
         max_users: 100,
         device_health: DeviceHealth::ReadyForUsers,
         desired_status: DeviceDesiredStatus::Activated,
+        unicast_users_count: 3,
+        multicast_users_count: 2,
+        max_unicast_users: 50,
+        max_multicast_users: 50,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -380,6 +386,10 @@ fn generate_device(dir: &Path) {
             FieldValue { name: "MaxUsers".into(), value: "100".into(), typ: "u16".into() },
             FieldValue { name: "DeviceHealth".into(), value: "3".into(), typ: "u8".into() },
             FieldValue { name: "DesiredStatus".into(), value: "1".into(), typ: "u8".into() },
+            FieldValue { name: "UnicastUsersCount".into(), value: "3".into(), typ: "u16".into() },
+            FieldValue { name: "MulticastUsersCount".into(), value: "2".into(), typ: "u16".into() },
+            FieldValue { name: "MaxUnicastUsers".into(), value: "50".into(), typ: "u16".into() },
+            FieldValue { name: "MaxMulticastUsers".into(), value: "50".into(), typ: "u16".into() },
         ],
     };
 

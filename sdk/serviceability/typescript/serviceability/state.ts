@@ -293,6 +293,7 @@ export interface GlobalState {
   userAirdropLamports: bigint;
   healthOraclePk: PublicKey;
   qaAllowlist: PublicKey[];
+  featureFlags: bigint;
 }
 
 export function deserializeGlobalState(data: Uint8Array): GlobalState {
@@ -309,6 +310,7 @@ export function deserializeGlobalState(data: Uint8Array): GlobalState {
   const userAirdropLamports = r.readU64();
   const healthOraclePk = readPubkey(r);
   const qaAllowlist = readPubkeyVec(r);
+  const featureFlags = r.readU128();
   return {
     accountType,
     bumpSeed,
@@ -320,6 +322,7 @@ export function deserializeGlobalState(data: Uint8Array): GlobalState {
     userAirdropLamports,
     healthOraclePk,
     qaAllowlist,
+    featureFlags,
   };
 }
 

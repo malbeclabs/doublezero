@@ -28,6 +28,7 @@ pub struct GlobalState {
     pub user_airdrop_lamports: u64,        // 8
     pub health_oracle_pk: Pubkey,          // 32
     pub qa_allowlist: Vec<Pubkey>,         // 4 + 32 * len
+    pub feature_flags: u128,               // 16
 }
 
 impl Default for GlobalState {
@@ -45,6 +46,7 @@ impl Default for GlobalState {
             user_airdrop_lamports: 0,
             health_oracle_pk: Pubkey::default(),
             qa_allowlist: Vec::new(),
+            feature_flags: 0,
         }
     }
 }
@@ -73,7 +75,8 @@ health_oracle_pk: {:?}",
             self.contributor_airdrop_lamports,
             self.user_airdrop_lamports,
             self.health_oracle_pk,
-        )
+        )?;
+        write!(f, ", feature_flags: {}", self.feature_flags)
     }
 }
 
@@ -95,6 +98,7 @@ impl TryFrom<&[u8]> for GlobalState {
             user_airdrop_lamports: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             health_oracle_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             qa_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
+            feature_flags: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::GlobalState {
@@ -167,6 +171,7 @@ mod tests {
         assert_eq!(val.sentinel_authority_pk, Pubkey::default());
         assert_eq!(val.contributor_airdrop_lamports, 0);
         assert_eq!(val.user_airdrop_lamports, 0);
+        assert_eq!(val.feature_flags, 0);
     }
 
     #[test]
@@ -184,6 +189,7 @@ mod tests {
             user_airdrop_lamports: 40_000,
             health_oracle_pk: Pubkey::new_unique(),
             qa_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            feature_flags: 1,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -212,6 +218,7 @@ mod tests {
             val2.contributor_airdrop_lamports
         );
         assert_eq!(val.user_airdrop_lamports, val2.user_airdrop_lamports);
+        assert_eq!(val.feature_flags, val2.feature_flags);
     }
 
     #[test]
@@ -229,6 +236,7 @@ mod tests {
             user_airdrop_lamports: 40_000,
             health_oracle_pk: Pubkey::new_unique(),
             qa_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            feature_flags: 0,
         };
         let err = val.validate();
         assert!(err.is_err());

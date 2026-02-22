@@ -293,15 +293,15 @@ impl ProvisioningCliCommand {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let tunnel_src = if user.has_allocated_dz_ip() {
-            let devices = client.list_device(ListDeviceCommand)?;
-            let device = devices
-                .get(&user.device_pk)
-                .ok_or_else(|| eyre::eyre!("Device not found for user"))?;
-            resolve_tunnel_src(controller, device).await?
-        } else {
-            client_ip
-        };
+        // Always resolve tunnel src for multicast users. Behind NAT the public
+        // IP isn't bound to a local interface, so we need the actual local IP
+        // from the routing table to set up the GRE tunnel. Publishers previously
+        // got this via has_allocated_dz_ip() but subscribers did not.
+        let devices = client.list_device(ListDeviceCommand)?;
+        let device = devices
+            .get(&user.device_pk)
+            .ok_or_else(|| eyre::eyre!("Device not found for user"))?;
+        let tunnel_src = resolve_tunnel_src(controller, device).await?;
 
         match user.status {
             UserStatus::Activated => {
@@ -458,6 +458,8 @@ impl ProvisioningCliCommand {
         Ok((device_pk, device, tunnel_endpoint))
     }
 
+    /// Find or create a user for IBRL connections only. Multicast uses
+    /// [find_or_create_user_and_subscribe] instead.
     async fn find_or_create_user<T: ServiceController>(
         &self,
         client: &dyn CliCommand,
@@ -500,6 +502,7 @@ impl ProvisioningCliCommand {
                     pubkey
                 ))?;
 
+                // Only IBRL uses this path; multicast resolves tunnel src in execute_multicast.
                 if user_type == UserType::IBRLWithAllocatedIP {
                     tunnel_src = resolve_tunnel_src(controller, device).await?;
                 }
@@ -1706,9 +1709,12 @@ mod tests {
             true,  // publisher
             false, // subscriber
         );
-        fixture.expected_provisioning_request(
+        let resolved_src = Ipv4Addr::new(192, 168, 1, 100);
+        fixture.expect_resolve_route(device2.public_ip, resolved_src);
+        fixture.expected_provisioning_request_with_tunnel_src(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
+            resolved_src.to_string().as_str(),
             device2.public_ip.to_string().as_str(),
             Some(vec![mcast_group.multicast_ip.to_string()]),
             Some(vec![]),
@@ -1867,9 +1873,12 @@ mod tests {
             true,
             false,
         );
-        fixture.expected_provisioning_request(
+        let resolved_src = Ipv4Addr::new(192, 168, 1, 100);
+        fixture.expect_resolve_route(device1.public_ip, resolved_src);
+        fixture.expected_provisioning_request_with_tunnel_src(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
+            resolved_src.to_string().as_str(),
             device1.public_ip.to_string().as_str(),
             Some(vec![mcast_group.multicast_ip.to_string()]),
             Some(vec![]),
@@ -1948,9 +1957,12 @@ mod tests {
             )
         };
 
-        fixture.expected_provisioning_request(
+        let resolved_src = Ipv4Addr::new(192, 168, 1, 100);
+        fixture.expect_resolve_route(device1.public_ip, resolved_src);
+        fixture.expected_provisioning_request_with_tunnel_src(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
+            resolved_src.to_string().as_str(),
             device1.public_ip.to_string().as_str(),
             expect_publishers,
             expect_subscribers,
@@ -2033,9 +2045,12 @@ mod tests {
             true,
         );
 
-        fixture.expected_provisioning_request(
+        let resolved_src = Ipv4Addr::new(192, 168, 1, 100);
+        fixture.expect_resolve_route(device1.public_ip, resolved_src);
+        fixture.expected_provisioning_request_with_tunnel_src(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
+            resolved_src.to_string().as_str(),
             device1.public_ip.to_string().as_str(),
             Some(vec![mcast_group.multicast_ip.to_string()]),
             Some(vec![mcast_group2.multicast_ip.to_string()]),
@@ -2085,9 +2100,12 @@ mod tests {
             false,
         );
 
-        fixture.expected_provisioning_request(
+        let resolved_src = Ipv4Addr::new(192, 168, 1, 100);
+        fixture.expect_resolve_route(device1.public_ip, resolved_src);
+        fixture.expected_provisioning_request_with_tunnel_src(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
+            resolved_src.to_string().as_str(),
             device1.public_ip.to_string().as_str(),
             Some(vec![mcast_group2.multicast_ip.to_string()]),
             Some(vec![mcast_group.multicast_ip.to_string()]),
@@ -2146,9 +2164,12 @@ mod tests {
 
         fixture.add_user(&user);
 
-        fixture.expected_provisioning_request(
+        let resolved_src = Ipv4Addr::new(192, 168, 1, 100);
+        fixture.expect_resolve_route(device1.public_ip, resolved_src);
+        fixture.expected_provisioning_request_with_tunnel_src(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
+            resolved_src.to_string().as_str(),
             device1.public_ip.to_string().as_str(),
             expect_publishers,
             expect_subscribers,
@@ -2202,9 +2223,12 @@ mod tests {
             false,
             true,
         );
-        fixture.expected_provisioning_request(
+        let resolved_src = Ipv4Addr::new(192, 168, 1, 100);
+        fixture.expect_resolve_route(device1.public_ip, resolved_src);
+        fixture.expected_provisioning_request_with_tunnel_src(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
+            resolved_src.to_string().as_str(),
             device1.public_ip.to_string().as_str(),
             Some(vec![]),
             Some(vec![mcast_group.multicast_ip.to_string()]),
@@ -2273,9 +2297,12 @@ mod tests {
             false,
             true,
         );
-        fixture.expected_provisioning_request(
+        let resolved_src = Ipv4Addr::new(192, 168, 1, 100);
+        fixture.expect_resolve_route(device1.public_ip, resolved_src);
+        fixture.expected_provisioning_request_with_tunnel_src(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
+            resolved_src.to_string().as_str(),
             device1.public_ip.to_string().as_str(),
             Some(vec![]),
             Some(vec![mcast_group.multicast_ip.to_string()]),
@@ -2594,9 +2621,12 @@ mod tests {
             true,  // subscriber
         );
 
-        fixture.expected_provisioning_request(
+        let resolved_src = Ipv4Addr::new(192, 168, 1, 100);
+        fixture.expect_resolve_route(device2.public_ip, resolved_src);
+        fixture.expected_provisioning_request_with_tunnel_src(
             UserType::Multicast,
             mcast_user.client_ip.to_string().as_str(),
+            resolved_src.to_string().as_str(),
             device2.public_ip.to_string().as_str(),
             Some(vec![]),
             Some(vec![mcast_group.multicast_ip.to_string()]),
@@ -2692,5 +2722,56 @@ mod tests {
             mcast_user_pk,
             users_for_ip.iter().map(|u| u.user_type).collect::<Vec<_>>()
         );
+    }
+
+    /// Multicast behind NAT: the public IP (client_ip) isn't bound to a local
+    /// interface, so the tunnel source must be resolved from the routing table.
+    /// Verifies that execute_multicast always calls resolve_tunnel_src and uses
+    /// the resolved local IP as tunnel_src.
+    #[tokio::test]
+    async fn test_connect_command_multicast_resolves_tunnel_src_for_nat() {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &user,
+            mcast_group_pk,
+            true,
+            false,
+        );
+
+        // Simulate NAT: resolved local IP differs from public client_ip
+        let resolved_local_ip = Ipv4Addr::new(10, 20, 0, 162);
+        fixture.expect_resolve_route(device1.public_ip, resolved_local_ip);
+
+        // Provisioning should use the resolved local IP as tunnel_src, not client_ip
+        fixture.expected_provisioning_request_with_tunnel_src(
+            UserType::Multicast,
+            user.client_ip.to_string().as_str(),
+            resolved_local_ip.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
+            Some(vec![mcast_group.multicast_ip.to_string()]),
+            Some(vec![]),
+        );
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: Some(MulticastMode::Publisher),
+                multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_ok());
     }
 }

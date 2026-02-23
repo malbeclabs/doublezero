@@ -2,7 +2,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 mod cli;
-use cli::{command::Command, probe::ProbeCommands};
+use cli::{command::Command, config::ConfigCommands, probe::ProbeCommands};
 use doublezero_cli::geoclicommand::GeoCliCommandImpl;
 use doublezero_config::Environment;
 use doublezero_sdk::geolocation::client::GeoClient;
@@ -36,6 +36,17 @@ struct App {
 fn main() -> eyre::Result<()> {
     let app = App::parse();
 
+    let stdout = std::io::stdout();
+    let mut handle = stdout.lock();
+
+    // Config commands don't need an RPC connection
+    if let Command::Config(cmd) = app.command {
+        return match cmd.command {
+            ConfigCommands::Get(args) => args.execute(&mut handle),
+            ConfigCommands::Set(args) => args.execute(&mut handle),
+        };
+    }
+
     let (url, geo_program_id, svc_program_id) = if let Some(env) = app.env {
         let config = env.parse::<Environment>()?.config()?;
         (
@@ -46,7 +57,13 @@ fn main() -> eyre::Result<()> {
     } else {
         let svc_pid = match &app.serviceability_program_id {
             Some(id) => id.parse::<solana_sdk::pubkey::Pubkey>()?,
-            None => doublezero_sdk::default_program_id(),
+            None => {
+                let (_, cfg) = doublezero_sdk::read_doublezero_config()?;
+                match cfg.program_id {
+                    Some(id) => id.parse()?,
+                    None => doublezero_sdk::default_program_id(),
+                }
+            }
         };
         (app.url, app.geo_program_id, svc_pid)
     };
@@ -54,9 +71,6 @@ fn main() -> eyre::Result<()> {
     let geoclient = GeoClient::new(url, geo_program_id, app.keypair)?;
     let (globalstate_pk, _) = get_globalstate_pda(&svc_program_id);
     let client = GeoCliCommandImpl::new(&geoclient, globalstate_pk);
-
-    let stdout = std::io::stdout();
-    let mut handle = stdout.lock();
 
     match app.command {
         Command::Probe(cmd) => match cmd.command {
@@ -69,5 +83,6 @@ fn main() -> eyre::Result<()> {
             ProbeCommands::RemoveParent(args) => args.execute(&client, &mut handle),
         },
         Command::InitConfig(args) => args.execute(&client, &mut handle),
+        Command::Config(_) => unreachable!(),
     }
 }

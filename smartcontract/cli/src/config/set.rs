@@ -303,6 +303,7 @@ mod tests {
             geo_program_id: None,
             tenant: None,
             address_labels: Default::default(),
+            geo_program_id: None,
         };
 
         mutator(&mut cfg);

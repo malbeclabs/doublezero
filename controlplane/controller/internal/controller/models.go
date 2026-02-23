@@ -254,6 +254,7 @@ var bgpMartianNets = func() []*net.IPNet {
 		"172.16.0.0/12",   // private (RFC 1918)
 		"192.0.2.0/24",    // documentation TEST-NET-1 (RFC 5737)
 		"192.168.0.0/16",  // private (RFC 1918)
+		// 198.18.0.0/15 — benchmarking (RFC 2544) — allowed for DZ use
 		"198.51.100.0/24", // documentation TEST-NET-2 (RFC 5737)
 		"203.0.113.0/24",  // documentation TEST-NET-3 (RFC 5737)
 		"224.0.0.0/4",     // multicast (RFC 5771)

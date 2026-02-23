@@ -371,6 +371,85 @@ async fn test_reserve_connection_at_capacity() {
 }
 
 #[tokio::test]
+async fn test_reserve_connection_at_capacity_with_users_count() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
+        setup_device_for_reservations(2).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Set users_count=1 via UpdateDevice so capacity is max_users(2) - users_count(1) = 1 seat
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            users_count: Some(1),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(device.contributor_pk, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // First reservation takes the last available seat (users_count=1, reserved_seats=1, max=2)
+    let client_ip_1: std::net::Ipv4Addr = [10, 0, 0, 1].into();
+    let (reservation_pubkey_1, _) = get_reservation_pda(&program_id, &device_pubkey, &client_ip_1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs {
+            client_ip: client_ip_1,
+        }),
+        vec![
+            AccountMeta::new(reservation_pubkey_1, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Second reservation should fail: users_count(1) + reserved_seats(1) >= max_users(2)
+    let client_ip_2: std::net::Ipv4Addr = [10, 0, 0, 2].into();
+    let (reservation_pubkey_2, _) = get_reservation_pda(&program_id, &device_pubkey, &client_ip_2);
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs {
+            client_ip: client_ip_2,
+        }),
+        vec![
+            AccountMeta::new(reservation_pubkey_2, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // MaxUsersExceeded = Custom(20)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(20),
+        ))) => {}
+        _ => panic!(
+            "Expected MaxUsersExceeded error (Custom(20)), got {:?}",
+            result
+        ),
+    }
+}
+
+#[tokio::test]
 async fn test_close_reservation() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
         setup_device_for_reservations(128).await;

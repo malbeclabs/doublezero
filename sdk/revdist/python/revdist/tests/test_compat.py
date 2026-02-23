@@ -193,16 +193,16 @@ class TestCompatValidatorDebts:
         skip_unless_compat()
         client = compat_client()
 
-        config = client.fetch_config()
-        epoch = config.next_completed_dz_epoch - 5
+        # Use a known epoch that has validator debts on mainnet.
+        epoch = 100
 
         debts = client.fetch_validator_debts(epoch)
 
+        assert len(debts.debts) > 0, "expected validator debts for epoch 100"
         assert debts.last_solana_epoch > 0, "LastSolanaEpoch should be > 0"
         assert debts.first_solana_epoch <= debts.last_solana_epoch, (
             f"FirstSolanaEpoch ({debts.first_solana_epoch}) > LastSolanaEpoch ({debts.last_solana_epoch})"
         )
-        assert len(debts.debts) > 0, "no validator debts found on mainnet"
 
 
 class TestCompatRewardShares:

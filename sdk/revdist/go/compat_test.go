@@ -284,18 +284,17 @@ func TestCompatValidatorDebts(t *testing.T) {
 	client, _ := compatClient(t)
 	ctx := context.Background()
 
-	// Fetch config and use an older epoch that is more likely to have ledger records.
-	progConfig, err := client.FetchConfig(ctx)
-	if err != nil {
-		t.Fatalf("FetchConfig: %v", err)
-	}
-	epoch := progConfig.NextCompletedDZEpoch - 5
+	// Use a known epoch that has validator debts on mainnet.
+	epoch := uint64(100)
 
 	debts, err := client.FetchValidatorDebts(ctx, epoch)
 	if err != nil {
 		t.Fatalf("FetchValidatorDebts(%d): %v", epoch, err)
 	}
 
+	if len(debts.Debts) == 0 {
+		t.Fatal("expected validator debts for epoch 100")
+	}
 	if debts.LastSolanaEpoch == 0 {
 		t.Error("LastSolanaEpoch is 0, expected > 0 on mainnet")
 	}

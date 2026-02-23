@@ -37,7 +37,12 @@ impl UpdateLinkCommand {
         let code = self
             .code
             .as_ref()
-            .map(|code| validate_account_code(code))
+            .map(|code| {
+                validate_account_code(code).map(|mut c| {
+                    c.make_ascii_lowercase();
+                    c
+                })
+            })
             .transpose()
             .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 

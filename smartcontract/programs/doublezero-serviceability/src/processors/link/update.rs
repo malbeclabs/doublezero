@@ -152,8 +152,10 @@ pub fn process_update_link(
     // can be updated by contributor A
     if link.contributor_pk == *contributor_account.key {
         if let Some(ref code) = value.code {
-            link.code =
+            let mut code =
                 validate_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+            code.make_ascii_lowercase();
+            link.code = code;
         }
         if let Some(tunnel_type) = value.tunnel_type {
             link.link_type = tunnel_type;

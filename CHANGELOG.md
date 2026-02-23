@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
 - Smartcontract
   - Serviceability: add `Reservation` account and `ReserveConnection`/`CloseReservation` instructions for pre-reserving connection seats on devices, with `reserved_seats` factored into capacity checks on both reservation and user creation
   - Allow sentinel authority to add/remove multicast publisher and subscriber allowlist entries
+  - Serviceability: fix `validate_account_code` forcing lowercase on all entity types — restrict lowercase normalization to device and link codes only, preserving original case for locations, exchanges, contributors, and other entities
 - Telemetry
   - Add `geoprobe-target-sender` CLI tool for sending signed TWAMP probes to a GeoProbe and verifying signed replies (RFC16 inbound probing flow)
   - Add Signed TWAMP reflector to geoprobe-agent with configurable listen port and allowed-pubkeys allowlist

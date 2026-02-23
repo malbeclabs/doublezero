@@ -83,10 +83,7 @@ pub fn is_global(ip: Ipv4Addr) -> bool {
     if octets[0] == 192 && octets[1] == 0 && octets[2] == 0 {
         return false;
     }
-    // 198.18.0.0/15 — benchmarking (RFC 2544)
-    if octets[0] == 198 && (octets[1] & 0xFE) == 18 {
-        return false;
-    }
+    // 198.18.0.0/15 — benchmarking (RFC 2544) — allowed for DZ use
     // 224.0.0.0/4 — multicast (RFC 5771)
     if (octets[0] & 0xF0) == 224 {
         return false;
@@ -125,8 +122,8 @@ mod tests {
         assert!(is_global(Ipv4Addr::new(100, 128, 0, 0))); // just above CGNAT
         assert!(is_global(Ipv4Addr::new(172, 15, 255, 255))); // just below 172.16/12
         assert!(is_global(Ipv4Addr::new(172, 32, 0, 0))); // just above 172.16/12
-        assert!(is_global(Ipv4Addr::new(198, 17, 255, 255))); // just below benchmarking
-        assert!(is_global(Ipv4Addr::new(198, 20, 0, 0))); // just above benchmarking
+        assert!(is_global(Ipv4Addr::new(198, 18, 0, 1))); // benchmarking — allowed
+        assert!(is_global(Ipv4Addr::new(198, 19, 0, 1))); // benchmarking — allowed
         assert!(is_global(Ipv4Addr::new(203, 0, 114, 1))); // just above TEST-NET-3
 
         // BGP martians (should all be rejected)
@@ -143,8 +140,6 @@ mod tests {
         assert!(!is_global(Ipv4Addr::new(192, 0, 0, 1))); // IETF protocol assignments
         assert!(!is_global(Ipv4Addr::new(192, 0, 2, 1))); // TEST-NET-1
         assert!(!is_global(Ipv4Addr::new(192, 168, 0, 1))); // private
-        assert!(!is_global(Ipv4Addr::new(198, 18, 0, 1))); // benchmarking
-        assert!(!is_global(Ipv4Addr::new(198, 19, 0, 1)));
         assert!(!is_global(Ipv4Addr::new(198, 51, 100, 1))); // TEST-NET-2
         assert!(!is_global(Ipv4Addr::new(203, 0, 113, 1))); // TEST-NET-3
         assert!(!is_global(Ipv4Addr::new(224, 0, 0, 1))); // multicast

@@ -104,10 +104,7 @@ fn is_bgp_martian(ip: Ipv4Addr) -> Option<&'static str> {
     if octets[0] == 192 && octets[1] == 168 {
         return Some("private (192.168.0.0/16)");
     }
-    // 198.18.0.0/15 — benchmarking (RFC 2544)
-    if octets[0] == 198 && (octets[1] & 0xFE) == 18 {
-        return Some("benchmarking (198.18.0.0/15)");
-    }
+    // 198.18.0.0/15 — benchmarking (RFC 2544) — allowed for DZ use
     // 198.51.100.0/24 — documentation TEST-NET-2 (RFC 5737)
     if octets[0] == 198 && octets[1] == 51 && octets[2] == 100 {
         return Some("documentation TEST-NET-2 (198.51.100.0/24)");
@@ -229,8 +226,6 @@ mod tests {
         assert!(is_bgp_martian(Ipv4Addr::new(192, 0, 0, 1)).is_some());
         assert!(is_bgp_martian(Ipv4Addr::new(192, 0, 2, 1)).is_some());
         assert!(is_bgp_martian(Ipv4Addr::new(192, 168, 0, 1)).is_some());
-        assert!(is_bgp_martian(Ipv4Addr::new(198, 18, 0, 1)).is_some());
-        assert!(is_bgp_martian(Ipv4Addr::new(198, 19, 0, 1)).is_some());
         assert!(is_bgp_martian(Ipv4Addr::new(198, 51, 100, 1)).is_some());
         assert!(is_bgp_martian(Ipv4Addr::new(203, 0, 113, 1)).is_some());
         assert!(is_bgp_martian(Ipv4Addr::new(224, 0, 0, 1)).is_some());
@@ -245,8 +240,8 @@ mod tests {
         assert!(is_bgp_martian(Ipv4Addr::new(100, 128, 0, 0)).is_none()); // just above CGNAT
         assert!(is_bgp_martian(Ipv4Addr::new(172, 15, 255, 255)).is_none()); // just below 172.16/12
         assert!(is_bgp_martian(Ipv4Addr::new(172, 32, 0, 0)).is_none()); // just above 172.16/12
-        assert!(is_bgp_martian(Ipv4Addr::new(198, 17, 255, 255)).is_none()); // just below benchmarking
-        assert!(is_bgp_martian(Ipv4Addr::new(198, 20, 0, 0)).is_none()); // just above benchmarking
+        assert!(is_bgp_martian(Ipv4Addr::new(198, 18, 0, 1)).is_none()); // benchmarking — allowed
+        assert!(is_bgp_martian(Ipv4Addr::new(198, 19, 0, 1)).is_none()); // benchmarking — allowed
         assert!(is_bgp_martian(Ipv4Addr::new(203, 0, 114, 1)).is_none()); // just above TEST-NET-3
     }
 

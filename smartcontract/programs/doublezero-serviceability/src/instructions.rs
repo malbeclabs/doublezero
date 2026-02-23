@@ -66,9 +66,7 @@ use crate::processors::{
         suspend::MulticastGroupSuspendArgs,
         update::MulticastGroupUpdateArgs,
     },
-    reservation::{
-        prune::PruneReservationArgs, reserve::ReserveConnectionArgs, settle::SettleReservationArgs,
-    },
+    reservation::{close::CloseReservationArgs, reserve::ReserveConnectionArgs},
     resource::{
         allocate::ResourceAllocateArgs, closeaccount::ResourceExtensionCloseAccountArgs,
         create::ResourceCreateArgs, deallocate::ResourceDeallocateArgs,
@@ -207,8 +205,7 @@ pub enum DoubleZeroInstruction {
     SetFeatureFlags(SetFeatureFlagsArgs),               // variant 94
 
     ReserveConnection(ReserveConnectionArgs), // variant 95
-    PruneReservation(PruneReservationArgs),   // variant 96
-    SettleReservation(SettleReservationArgs), // variant 97
+    CloseReservation(CloseReservationArgs),   // variant 96
 }
 
 impl DoubleZeroInstruction {
@@ -335,8 +332,7 @@ impl DoubleZeroInstruction {
             94 => Ok(Self::SetFeatureFlags(SetFeatureFlagsArgs::try_from(rest).unwrap())),
 
             95 => Ok(Self::ReserveConnection(ReserveConnectionArgs::try_from(rest).unwrap())),
-            96 => Ok(Self::PruneReservation(PruneReservationArgs::try_from(rest).unwrap())),
-            97 => Ok(Self::SettleReservation(SettleReservationArgs::try_from(rest).unwrap())),
+            96 => Ok(Self::CloseReservation(CloseReservationArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -461,8 +457,7 @@ impl DoubleZeroInstruction {
             Self::SetFeatureFlags(_) => "SetFeatureFlags".to_string(),         // variant 94
 
             Self::ReserveConnection(_) => "ReserveConnection".to_string(), // variant 95
-            Self::PruneReservation(_) => "PruneReservation".to_string(),   // variant 96
-            Self::SettleReservation(_) => "SettleReservation".to_string(), // variant 97
+            Self::CloseReservation(_) => "CloseReservation".to_string(),   // variant 96
         }
     }
 
@@ -579,8 +574,7 @@ impl DoubleZeroInstruction {
             Self::SetFeatureFlags(args) => format!("{args:?}"), // variant 94
 
             Self::ReserveConnection(args) => format!("{args:?}"), // variant 95
-            Self::PruneReservation(args) => format!("{args:?}"),  // variant 96
-            Self::SettleReservation(args) => format!("{args:?}"), // variant 97
+            Self::CloseReservation(args) => format!("{args:?}"),  // variant 96
         }
     }
 }
@@ -1223,12 +1217,8 @@ mod tests {
             "ReserveConnection",
         );
         test_instruction(
-            DoubleZeroInstruction::PruneReservation(PruneReservationArgs {}),
-            "PruneReservation",
-        );
-        test_instruction(
-            DoubleZeroInstruction::SettleReservation(SettleReservationArgs {}),
-            "SettleReservation",
+            DoubleZeroInstruction::CloseReservation(CloseReservationArgs {}),
+            "CloseReservation",
         );
     }
 }

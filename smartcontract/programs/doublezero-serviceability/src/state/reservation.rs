@@ -6,38 +6,6 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, net::Ipv4Addr};
 
-#[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Default, Copy, Clone, PartialEq)]
-#[borsh(use_discriminant = true)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ReservationStatus {
-    #[default]
-    Reserved = 0,
-    Settled = 1,
-    Pruned = 2,
-}
-
-impl From<u8> for ReservationStatus {
-    fn from(value: u8) -> Self {
-        match value {
-            0 => ReservationStatus::Reserved,
-            1 => ReservationStatus::Settled,
-            2 => ReservationStatus::Pruned,
-            _ => ReservationStatus::Reserved,
-        }
-    }
-}
-
-impl fmt::Display for ReservationStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ReservationStatus::Reserved => write!(f, "reserved"),
-            ReservationStatus::Settled => write!(f, "settled"),
-            ReservationStatus::Pruned => write!(f, "pruned"),
-        }
-    }
-}
-
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Reservation {
@@ -60,7 +28,6 @@ pub struct Reservation {
     )]
     pub device_pk: Pubkey, // 32
     pub client_ip: Ipv4Addr,       // 4
-    pub status: ReservationStatus, // 1
 }
 
 impl Default for Reservation {
@@ -71,7 +38,6 @@ impl Default for Reservation {
             bump_seed: 0,
             device_pk: Pubkey::default(),
             client_ip: Ipv4Addr::UNSPECIFIED,
-            status: ReservationStatus::Reserved,
         }
     }
 }
@@ -80,8 +46,8 @@ impl fmt::Display for Reservation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, device_pk: {}, client_ip: {}, status: {}",
-            self.account_type, self.owner, self.device_pk, self.client_ip, self.status,
+            "account_type: {}, owner: {}, device_pk: {}, client_ip: {}",
+            self.account_type, self.owner, self.device_pk, self.client_ip,
         )
     }
 }
@@ -96,7 +62,6 @@ impl TryFrom<&[u8]> for Reservation {
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             device_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             client_ip: BorshDeserialize::deserialize(&mut data).unwrap_or(Ipv4Addr::UNSPECIFIED),
-            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Reservation {
@@ -150,7 +115,6 @@ mod tests {
         assert_eq!(val.bump_seed, 0);
         assert_eq!(val.device_pk, Pubkey::default());
         assert_eq!(val.client_ip, Ipv4Addr::UNSPECIFIED);
-        assert_eq!(val.status, ReservationStatus::Reserved);
     }
 
     #[test]
@@ -161,7 +125,6 @@ mod tests {
             bump_seed: 1,
             device_pk: Pubkey::new_unique(),
             client_ip: [10, 0, 0, 1].into(),
-            status: ReservationStatus::Reserved,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -178,7 +141,6 @@ mod tests {
         assert_eq!(val.bump_seed, val2.bump_seed);
         assert_eq!(val.device_pk, val2.device_pk);
         assert_eq!(val.client_ip, val2.client_ip);
-        assert_eq!(val.status, val2.status);
         assert_eq!(
             data.len(),
             borsh::object_length(&val).unwrap(),
@@ -194,7 +156,6 @@ mod tests {
             bump_seed: 1,
             device_pk: Pubkey::new_unique(),
             client_ip: [10, 0, 0, 1].into(),
-            status: ReservationStatus::Reserved,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
@@ -208,17 +169,8 @@ mod tests {
             bump_seed: 1,
             device_pk: Pubkey::default(),
             client_ip: [10, 0, 0, 1].into(),
-            status: ReservationStatus::Reserved,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDevicePubkey);
-    }
-
-    #[test]
-    fn test_reservation_status_from_u8() {
-        assert_eq!(ReservationStatus::from(0), ReservationStatus::Reserved);
-        assert_eq!(ReservationStatus::from(1), ReservationStatus::Settled);
-        assert_eq!(ReservationStatus::from(2), ReservationStatus::Pruned);
-        assert_eq!(ReservationStatus::from(255), ReservationStatus::Reserved);
     }
 }

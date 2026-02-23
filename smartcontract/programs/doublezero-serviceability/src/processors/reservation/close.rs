@@ -1,12 +1,8 @@
 use crate::{
     error::DoubleZeroError,
     pda::*,
-    serializer::try_acc_write,
-    state::{
-        device::Device,
-        globalstate::GlobalState,
-        reservation::{Reservation, ReservationStatus},
-    },
+    serializer::{try_acc_close, try_acc_write},
+    state::{device::Device, globalstate::GlobalState, reservation::Reservation},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -18,18 +14,18 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
-pub struct PruneReservationArgs {}
+pub struct CloseReservationArgs {}
 
-impl fmt::Debug for PruneReservationArgs {
+impl fmt::Debug for CloseReservationArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "")
     }
 }
 
-pub fn process_prune_reservation(
+pub fn process_close_reservation(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    _value: &PruneReservationArgs,
+    _value: &CloseReservationArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -71,20 +67,14 @@ pub fn process_prune_reservation(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    // Load reservation and validate status
-    let mut reservation = Reservation::try_from(reservation_account)?;
-    if reservation.status != ReservationStatus::Reserved {
-        return Err(DoubleZeroError::InvalidStatus.into());
-    }
-
-    // Validate that reservation belongs to this device
+    // Load reservation and validate that it belongs to this device
+    let reservation = Reservation::try_from(reservation_account)?;
     if reservation.device_pk != *device_account.key {
         return Err(DoubleZeroError::InvalidDevicePubkey.into());
     }
 
-    // Update reservation status
-    reservation.status = ReservationStatus::Pruned;
-    try_acc_write(&reservation, reservation_account, payer_account, accounts)?;
+    // Close the reservation account (returns rent to payer)
+    try_acc_close(reservation_account, payer_account)?;
 
     // Decrement reserved seats on device
     let mut device = Device::try_from(device_account)?;

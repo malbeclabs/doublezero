@@ -99,7 +99,6 @@ pub fn process_reserve_connection(
         bump_seed,
         device_pk: *device_account.key,
         client_ip: value.client_ip,
-        status: crate::state::reservation::ReservationStatus::Reserved,
     };
 
     try_acc_create(

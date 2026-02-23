@@ -100,10 +100,10 @@ pub fn process_update_program_config(
         program_config.version = version;
     }
     if let Some(min_compatible_version) = args.min_compatible_version {
-        if min_compatible_version > program_config.version {
-            return Err(GeolocationError::InvalidMinCompatibleVersion.into());
-        }
         program_config.min_compatible_version = min_compatible_version;
+    }
+    if program_config.min_compatible_version > program_config.version {
+        return Err(GeolocationError::InvalidMinCompatibleVersion.into());
     }
 
     try_acc_write(

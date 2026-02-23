@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Remove redundant `connect ibrl` unit tests that were duplicates of hybrid-device equivalents
   - `doublezero global-config feature-flags` commands added
+  - Fix multicast subscriber tunnel source resolution for NAT environments — resolve local interface IP instead of using public IP
 - Controller
   - detect duplicate (UnderlaySrcIP, UnderlayDstIP) pairs for tunnels and only render the first to the device config and write a log error for the second
 - Onchain Programs

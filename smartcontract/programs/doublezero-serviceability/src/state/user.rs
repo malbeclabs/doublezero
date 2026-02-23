@@ -332,10 +332,6 @@ impl User {
         self.tunnel_endpoint != Ipv4Addr::UNSPECIFIED
     }
 
-    pub fn has_allocated_dz_ip(&self) -> bool {
-        self.dz_ip != Ipv4Addr::UNSPECIFIED && self.dz_ip != self.client_ip
-    }
-
     pub fn is_publisher(&self) -> bool {
         !self.publishers.is_empty()
     }
@@ -744,23 +740,6 @@ mod tests {
     }
 
     #[test]
-    fn test_has_allocated_dz_ip() {
-        let mut user = create_test_user();
-        user.client_ip = [192, 168, 1, 1].into();
-        user.dz_ip = Ipv4Addr::UNSPECIFIED;
-        // UNSPECIFIED dz_ip means no allocation
-        assert!(!user.has_allocated_dz_ip());
-
-        // Same as client_ip means no allocation
-        user.dz_ip = [192, 168, 1, 1].into();
-        assert!(!user.has_allocated_dz_ip());
-
-        // Different from client_ip means allocated
-        user.dz_ip = [10, 0, 0, 1].into();
-        assert!(user.has_allocated_dz_ip());
-    }
-
-    #[test]
     fn test_is_publisher() {
         let mut user = create_test_user();
         user.publishers = vec![];
@@ -875,36 +854,5 @@ mod tests {
         // But if they're also a subscriber, they DO need multicast
         user.subscribers.push(Pubkey::new_unique());
         assert!(user.needs_multicast());
-    }
-
-    #[test]
-    fn test_has_allocated_dz_ip_edge_cases() {
-        let mut user = create_test_user();
-
-        // Edge case 1: dz_ip is explicitly UNSPECIFIED (0.0.0.0)
-        user.client_ip = Ipv4Addr::new(1, 2, 3, 4);
-        user.dz_ip = Ipv4Addr::UNSPECIFIED;
-        assert!(!user.has_allocated_dz_ip());
-
-        // Edge case 2: both client_ip and dz_ip are UNSPECIFIED
-        user.client_ip = Ipv4Addr::UNSPECIFIED;
-        user.dz_ip = Ipv4Addr::UNSPECIFIED;
-        assert!(!user.has_allocated_dz_ip());
-
-        // Edge case 3: client_ip is UNSPECIFIED but dz_ip is set
-        // This is an unusual state but should return true (dz_ip != client_ip)
-        user.client_ip = Ipv4Addr::UNSPECIFIED;
-        user.dz_ip = Ipv4Addr::new(10, 0, 0, 1);
-        assert!(user.has_allocated_dz_ip());
-
-        // Edge case 4: both are the same non-UNSPECIFIED IP (no allocation)
-        user.client_ip = Ipv4Addr::new(8, 8, 8, 8);
-        user.dz_ip = Ipv4Addr::new(8, 8, 8, 8);
-        assert!(!user.has_allocated_dz_ip());
-
-        // Edge case 5: different IPs, both non-UNSPECIFIED (allocated)
-        user.client_ip = Ipv4Addr::new(8, 8, 8, 8);
-        user.dz_ip = Ipv4Addr::new(10, 0, 0, 1);
-        assert!(user.has_allocated_dz_ip());
     }
 }

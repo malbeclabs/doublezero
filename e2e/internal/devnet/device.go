@@ -362,6 +362,7 @@ func (d *Device) Start(ctx context.Context) error {
 	for name, ifaceType := range spec.Interfaces {
 		out, err := d.dn.Manager.Exec(ctx, []string{
 			"doublezero", "device", "interface", "create", spec.Code, name,
+			"--bandwidth", "10G",
 		}, docker.NoPrintOnError())
 		if err != nil {
 			if strings.Contains(string(out), "already exists") {
@@ -403,7 +404,7 @@ func (d *Device) Start(ctx context.Context) error {
 
 	// Create loopback interfaces onchain.
 	for name, loopbackType := range spec.LoopbackInterfaces {
-		out, err := d.dn.Manager.Exec(ctx, []string{"doublezero", "device", "interface", "create", spec.Code, name, "--loopback-type", loopbackType}, docker.NoPrintOnError())
+		out, err := d.dn.Manager.Exec(ctx, []string{"doublezero", "device", "interface", "create", spec.Code, name, "--loopback-type", loopbackType, "--bandwidth", "10G"}, docker.NoPrintOnError())
 		if err != nil {
 			if strings.Contains(string(out), "already exists") {
 				d.log.Debug("--> Loopback interface already exists onchain", "code", spec.Code, "name", name, "loopbackType", loopbackType)
@@ -459,6 +460,7 @@ func (d *Device) Start(ctx context.Context) error {
 			"doublezero", "device", "interface", "create", spec.Code, ute.InterfaceName,
 			"--ip-net", ipNet,
 			"--user-tunnel-endpoint", "true",
+			"--bandwidth", "10G",
 		}, docker.NoPrintOnError())
 		if err != nil {
 			if strings.Contains(string(out), "already exists") {

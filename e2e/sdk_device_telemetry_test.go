@@ -67,22 +67,22 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		doublezero device update --pubkey ld4-dz01 --max-users 128 --desired-status activated
 		doublezero device update --pubkey frk-dz01 --max-users 128 --desired-status activated
 
-		doublezero device interface create la2-dz01 "Switch1/1/1"
-		doublezero device interface create ny5-dz01 "Switch1/1/1"
-		doublezero device interface create ny5-dz01 "Switch1/1/2"
-		doublezero device interface create ld4-dz01 "Switch1/1/1"
-		doublezero device interface create ld4-dz01 "Switch1/1/2"
-		doublezero device interface create frk-dz01 "Switch1/1/1"
+		doublezero device interface create la2-dz01 "Switch1/1/1" --bandwidth 10G
+		doublezero device interface create ny5-dz01 "Switch1/1/1" --bandwidth 10G
+		doublezero device interface create ny5-dz01 "Switch1/1/2" --bandwidth 10G
+		doublezero device interface create ld4-dz01 "Switch1/1/1" --bandwidth 10G
+		doublezero device interface create ld4-dz01 "Switch1/1/2" --bandwidth 10G
+		doublezero device interface create frk-dz01 "Switch1/1/1" --bandwidth 10G
 
-		doublezero device interface create la2-dz01 "Loopback255" --loopback-type vpnv4
-		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4
-		doublezero device interface create ld4-dz01 "Loopback255" --loopback-type vpnv4
-		doublezero device interface create frk-dz01 "Loopback255" --loopback-type vpnv4
+		doublezero device interface create la2-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
+		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
+		doublezero device interface create ld4-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
+		doublezero device interface create frk-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
 
-		doublezero device interface create la2-dz01 "Loopback256" --loopback-type ipv4
-		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4
-		doublezero device interface create ld4-dz01 "Loopback256" --loopback-type ipv4
-		doublezero device interface create frk-dz01 "Loopback256" --loopback-type ipv4
+		doublezero device interface create la2-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G
+		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G
+		doublezero device interface create ld4-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G
+		doublezero device interface create frk-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G
 
 		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Switch1/1/1 --side-z ny5-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
 		doublezero link update --pubkey "la2-dz01:ny5-dz01" --desired-status activated

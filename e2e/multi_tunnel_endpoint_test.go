@@ -106,14 +106,14 @@ func setupMultiTunnelDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devn
 		set -euo pipefail
 
 		echo "==> Create device interfaces for ny5-dz01"
-		doublezero device interface create ny5-dz01 "Ethernet2" -w
-		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create ny5-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
 
 		echo "==> Create device interfaces for pit-dz01"
-		doublezero device interface create pit-dz01 "Ethernet2" -w
-		doublezero device interface create pit-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create pit-dz01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create pit-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create pit-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create pit-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
 
 		echo "--> Device interfaces created"
 	`})
@@ -386,9 +386,9 @@ func setupSimultaneousTunnelDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device
 		set -euo pipefail
 
 		echo "==> Create device interfaces for ewr-dz01"
-		doublezero device interface create ewr-dz01 "Ethernet2" -w
-		doublezero device interface create ewr-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create ewr-dz01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create ewr-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create ewr-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create ewr-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
 
 		echo "--> Device interfaces created"
 	`})

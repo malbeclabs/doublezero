@@ -1065,10 +1065,10 @@ func runWriteWorkflows(
 
 		// Interface creates use counter-based PDA derivation — must be sequential.
 		{name: "create_interfaces", parallel: false, steps: []writeStep{
-			{name: "device_interface_create", cmd: cli + " device interface create " + deviceCode + " " + ifaceName},
-			{name: "device_interface_create_2", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName},
-			{name: "device_interface_create_3", cmd: cli + " device interface create " + deviceCode + " " + ifaceName2},
-			{name: "device_interface_create_4", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName2},
+			{name: "device_interface_create", cmd: cli + " device interface create " + deviceCode + " " + ifaceName + " --bandwidth 10G"},
+			{name: "device_interface_create_2", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName + " --bandwidth 10G"},
+			{name: "device_interface_create_3", cmd: cli + " device interface create " + deviceCode + " " + ifaceName2 + " --bandwidth 10G"},
+			{name: "device_interface_create_4", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName2 + " --bandwidth 10G"},
 		}},
 
 		// Transition all 4 interfaces to "unlinked" (required before link creation).

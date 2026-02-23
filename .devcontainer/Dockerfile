@@ -35,8 +35,10 @@ RUN curl https://gotest-release.s3.amazonaws.com/gotest_linux > gotest && \
     chmod +x gotest && \
     mv gotest /usr/local/bin/gotest
 
-# Allow pkg-config to return results for x86_64 when cross-compiling from arm64
-ENV PKG_CONFIG_ALLOW_CROSS=1
+# Install Solana platform tools (provides cargo build-sbf / cargo test-sbf)
+ENV SOLANA_INSTALL_DIR=/root/.local/share/solana
+RUN sh -c "$(curl -sSfL https://release.anza.xyz/v2.2.7/install)"
+ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
 
 # Alias to access the DinD container's published ports from inside the container,
 # since localhost does not route through NAT. Used in place of `localhost`.

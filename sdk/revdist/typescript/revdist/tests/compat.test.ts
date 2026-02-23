@@ -203,14 +203,14 @@ describe("compat: ValidatorDebts", () => {
     }
 
     const client = compatClient();
-    const config = await client.fetchConfig();
-    const epoch = config.nextCompletedDzEpoch - 5n;
+    // Use a known epoch that has validator debts on mainnet.
+    const epoch = 100n;
 
     const debts = await client.fetchValidatorDebts(epoch);
 
+    expect(debts.debts.length).toBeGreaterThan(0);
     expect(debts.lastSolanaEpoch > 0n).toBe(true);
     expect(debts.firstSolanaEpoch <= debts.lastSolanaEpoch).toBe(true);
-    expect(debts.debts.length).toBeGreaterThan(0);
   });
 });
 

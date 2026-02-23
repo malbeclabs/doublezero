@@ -1,9 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_program_common::{
-    serializer,
-    types::{parse_utils::bandwidth_to_string, NetworkV4},
-};
+use doublezero_program_common::{serializer, types::NetworkV4};
 use doublezero_sdk::{
     commands::{
         contributor::{get::GetContributorCommand, list::ListContributorCommand},
@@ -78,7 +75,8 @@ pub struct LinkDisplay {
     pub side_z_name: String,
     pub side_z_iface_name: String,
     pub link_type: LinkLinkType,
-    pub bandwidth: String,
+    #[tabled(display = "crate::util::display_as_bandwidth", rename = "bandwidth")]
+    pub bandwidth: u64,
     pub mtu: u32,
     #[tabled(display = "crate::util::display_as_ms", rename = "delay_ms")]
     pub delay_ns: u64,
@@ -208,7 +206,7 @@ impl ListLinkCliCommand {
                     side_z_name,
                     side_z_iface_name: link.side_z_iface_name,
                     link_type: link.link_type,
-                    bandwidth: bandwidth_to_string(&link.bandwidth),
+                    bandwidth: link.bandwidth,
                     mtu: link.mtu,
                     delay_ns: link.delay_ns,
                     jitter_ns: link.jitter_ns,
@@ -421,7 +419,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"WAN\",\"bandwidth\":\"10Gbps\",\"mtu\":4500,\"delay_ns\":20000,\"jitter_ns\":1121,\"delay_override_ns\":0,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"desired_status\":\"Activated\",\"status\":\"Activated\",\"health\":\"ReadyForService\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"WAN\",\"bandwidth\":10000000000,\"mtu\":4500,\"delay_ns\":20000,\"jitter_ns\":1121,\"delay_override_ns\":0,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"desired_status\":\"Activated\",\"status\":\"Activated\",\"health\":\"ReadyForService\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
     }
 
     #[test]

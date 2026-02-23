@@ -1,3 +1,4 @@
+mod configure_contributor_rewards;
 mod contributor_rewards;
 mod convert_2z;
 mod fetch;
@@ -45,6 +46,11 @@ pub enum RevenueDistributionSubcommand {
     /// Contributor rewards account management.
     ContributorRewards(contributor_rewards::ContributorRewardsCommand),
 
+    /// Configure a contributor rewards account: set recipient shares and/or
+    /// control whether protocol management can change the rewards manager.
+    #[command(name = "configure-contributor-rewards")]
+    ConfigureContributorRewards(configure_contributor_rewards::ConfigureContributorRewardsCommand),
+
     /// Using the Revenue Distribution program's SOL liquidity, convert 2Z
     /// tokens to SOL. If there is not enough SOL liquidity for the
     /// fixed-quantity conversion, the command will fail.
@@ -67,6 +73,7 @@ impl RevenueDistributionSubcommand {
         match self {
             Self::Fetch(command) => command.try_into_execute().await,
             Self::ContributorRewards(command) => command.try_into_execute().await,
+            Self::ConfigureContributorRewards(command) => command.try_into_execute().await,
             Self::Convert2z(command) => command.try_into_execute().await,
             Self::Harvest2z(command) => command.try_into_execute().await,
             Self::ValidatorDeposit(command) => command.try_into_execute().await,

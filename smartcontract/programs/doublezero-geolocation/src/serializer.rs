@@ -3,7 +3,11 @@ use borsh::BorshSerialize;
 use doublezero_program_common::{
     create_account::try_create_account, resize_account::resize_account_if_needed,
 };
-use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, pubkey::Pubkey};
+#[allow(deprecated)] // system_program not yet migrated to solana_sdk_ids crate-wide
+use solana_program::{
+    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
+    pubkey::Pubkey, system_program,
+};
 
 #[cfg(test)]
 use solana_program::msg;
@@ -70,6 +74,23 @@ where
 
     let mut data = &mut account.data.borrow_mut()[..];
     value.serialize(&mut data)?;
+
+    Ok(())
+}
+
+#[allow(deprecated)] // solana_program::system_program not yet migrated to solana_sdk_ids
+pub fn try_acc_close(
+    close_account: &AccountInfo,
+    receiving_account: &AccountInfo,
+) -> ProgramResult {
+    **receiving_account.lamports.borrow_mut() = receiving_account
+        .lamports()
+        .checked_add(close_account.lamports())
+        .ok_or(ProgramError::InsufficientFunds)?;
+    **close_account.lamports.borrow_mut() = 0;
+
+    close_account.realloc(0, false)?;
+    close_account.assign(&system_program::ID);
 
     Ok(())
 }

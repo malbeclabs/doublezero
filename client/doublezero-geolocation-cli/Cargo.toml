@@ -1,0 +1,25 @@
+[package]
+name = "doublezero-geolocation-cli"
+
+# Workspace inherited keys
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "doublezero-geolocation"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+eyre.workspace = true
+solana-sdk.workspace = true
+
+doublezero-config.workspace = true
+doublezero-geolocation.workspace = true
+doublezero-serviceability.workspace = true
+doublezero_cli.workspace = true
+doublezero_sdk.workspace = true

@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "client/doublezero",
+    "client/doublezero-geolocation-cli",
     "activator",
     "config",
     "controlplane/doublezero-admin",

@@ -10,6 +10,7 @@ pub mod processors;
 pub mod seeds;
 mod serializer;
 pub mod state;
+pub mod validation;
 
 use solana_program::pubkey::Pubkey;
 

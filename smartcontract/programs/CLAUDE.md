@@ -2,7 +2,7 @@
 
 ### Security
 
-1. **PDA ownership verification**: Always verify the owner of PDA accounts (both internal PDAs and those from other programs like serviceability) to prevent being tricked into reading an account owned by another program. For serviceability accounts, verify the owner is the serviceability program ID. For your own PDAs, verify the owner is `program_id`.
+1. **PDA ownership verification**: Always verify the owner of PDA accounts (both internal PDAs and those from other programs like serviceability) to prevent being tricked into reading an account owned by another program. For serviceability accounts, verify the owner is the serviceability program ID. For your own PDAs, verify the owner is `program_id`. Exception: for singleton PDAs (e.g., ProgramConfig, GlobalState) the account type discriminator check via `try_from` is sufficient — the ownership check is harmless but redundant since there is only one valid account.
 
 2. **System program validation**: Checks for the system program are unnecessary because the system interface builds instructions using the system program as the program ID. If the wrong program is provided, you'll get a revert automatically.
 
@@ -27,6 +27,12 @@
 1. **Prefer standard derives**: Use `BorshDeserialize` when possible instead of implementing custom deserialization. Custom `unpack()` methods that manually match on instruction indices often duplicate what Borsh's derive already provides.
 
 2. **Use BorshDeserializeIncremental**: For instruction arguments that may gain new optional fields over time, use `BorshDeserializeIncremental` or derive `BorshDeserialize`.
+
+### Testing
+
+1. **Assert specific errors**: Tests should assert specific error types (e.g., `ProgramError::Custom(17)`), not just `.is_err()`. This catches regressions where the instruction fails for the wrong reason.
+
+2. **Don't test framework functionality**: Avoid writing tests that only exercise SDK/framework behavior (e.g., testing that `Pubkey::find_program_address` is deterministic or produces different outputs for different inputs). Focus tests on your program's logic.
 
 ### Program Upgrades
 

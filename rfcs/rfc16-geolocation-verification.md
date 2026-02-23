@@ -196,6 +196,7 @@ pub struct GeoProbe {
     pub location_offset_port: u16,             // UDP listen port (default 8923)
     pub metrics_publisher_pk: Pubkey,          // Signing key for telemetry
     pub reference_count: u32,                  // GeolocationTargets referencing this probe
+    // Variable-length fields must be at the end for Borsh deserialization
     pub code: String,                          // e.g., "ams-probe-01" (max 32 bytes)
     pub parent_devices: Vec<Pubkey>,           // DZDs that measure this probe
 }

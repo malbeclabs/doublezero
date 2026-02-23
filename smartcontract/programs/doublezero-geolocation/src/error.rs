@@ -8,6 +8,18 @@ pub enum GeolocationError {
     InvalidAccountType = 1,
     #[error("Not allowed")]
     NotAllowed = 2,
+    #[error("Invalid code length (max 32 bytes)")]
+    InvalidCodeLength = 4,
+    #[error("Invalid IP address: not publicly routable")]
+    InvalidIpAddress = 5,
+    #[error("Maximum parent devices reached")]
+    MaxParentDevicesReached = 6,
+    #[error("Invalid serviceability program ID")]
+    InvalidServiceabilityProgramId = 11,
+    #[error("Invalid account code")]
+    InvalidAccountCode = 12,
+    #[error("Reference count is not zero")]
+    ReferenceCountNotZero = 15,
     #[error("Unauthorized: payer is not the upgrade authority")]
     UnauthorizedInitializer = 17,
     #[error("min_compatible_version cannot exceed version")]
@@ -32,6 +44,12 @@ mod tests {
         vec![
             (GeolocationError::InvalidAccountType, 1),
             (GeolocationError::NotAllowed, 2),
+            (GeolocationError::InvalidCodeLength, 4),
+            (GeolocationError::InvalidIpAddress, 5),
+            (GeolocationError::MaxParentDevicesReached, 6),
+            (GeolocationError::InvalidServiceabilityProgramId, 11),
+            (GeolocationError::InvalidAccountCode, 12),
+            (GeolocationError::ReferenceCountNotZero, 15),
             (GeolocationError::UnauthorizedInitializer, 17),
             (GeolocationError::InvalidMinCompatibleVersion, 18),
         ]
@@ -59,5 +77,9 @@ mod tests {
             "Invalid account type"
         );
         assert_eq!(GeolocationError::NotAllowed.to_string(), "Not allowed");
+        assert_eq!(
+            GeolocationError::InvalidIpAddress.to_string(),
+            "Invalid IP address: not publicly routable"
+        );
     }
 }

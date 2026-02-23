@@ -1,3 +1,4 @@
+pub mod geo_probe;
 pub mod program_config;
 
 use crate::{error::GeolocationError, state::program_config::GeolocationProgramConfig};

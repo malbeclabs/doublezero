@@ -41,7 +41,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: add feature flags support
   - Serviceability: expand `is_global` to reject all BGP martian address ranges (CGNAT 100.64/10, IETF 192.0.0/24, benchmarking 198.18/15, multicast 224/4, reserved 240/4, 0/8)
   - Serviceability: allow update and deletion of interfaces even when sibling interfaces have invalid CYOA configuration
-  - Geolocation: add `doublezero-geolocation` program scaffolding as per rfcs/rfc16-geolocation-verification.md
+  - Geolocation: add `doublezero-geolocation` program scaffolding and GeoProbe account type and related instructions as per rfcs/rfc16-geolocation-verification.md
 - SDK
   - SetFeatureFlagCommand added to manage on-chain feature flags for conditional behavior rollouts
 - Dependencies

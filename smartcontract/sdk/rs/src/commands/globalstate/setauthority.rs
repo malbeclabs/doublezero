@@ -22,6 +22,7 @@ impl SetAuthorityCommand {
                 activator_authority_pk: self.activator_authority_pk,
                 sentinel_authority_pk: self.sentinel_authority_pk,
                 health_oracle_pk: self.health_oracle_pk,
+                reservation_authority_pk: None,
             }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
         )
@@ -58,6 +59,7 @@ mod tests {
                     activator_authority_pk: Some(activator_authority_pk),
                     sentinel_authority_pk: Some(sentinel_authority_pk),
                     health_oracle_pk: Some(health_oracle_pk),
+                    reservation_authority_pk: None,
                 })),
                 predicate::eq(vec![AccountMeta::new(globalstate_pubkey, false)]),
             )

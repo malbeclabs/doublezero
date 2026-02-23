@@ -36,6 +36,7 @@ pub mod utils {
             health_oracle_pk: payer,
             qa_allowlist: vec![],
             feature_flags: 0,
+            reservation_authority_pk: Pubkey::default(),
         };
 
         let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);

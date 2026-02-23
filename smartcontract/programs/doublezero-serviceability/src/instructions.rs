@@ -66,6 +66,9 @@ use crate::processors::{
         suspend::MulticastGroupSuspendArgs,
         update::MulticastGroupUpdateArgs,
     },
+    reservation::{
+        prune::PruneReservationArgs, reserve::ReserveConnectionArgs, settle::SettleReservationArgs,
+    },
     resource::{
         allocate::ResourceAllocateArgs, closeaccount::ResourceExtensionCloseAccountArgs,
         create::ResourceCreateArgs, deallocate::ResourceDeallocateArgs,
@@ -202,6 +205,10 @@ pub enum DoubleZeroInstruction {
     TenantRemoveAdministrator(TenantRemoveAdministratorArgs), // variant 92
     UpdatePaymentStatus(UpdatePaymentStatusArgs),       // variant 93
     SetFeatureFlags(SetFeatureFlagsArgs),               // variant 94
+
+    ReserveConnection(ReserveConnectionArgs), // variant 95
+    PruneReservation(PruneReservationArgs),   // variant 96
+    SettleReservation(SettleReservationArgs), // variant 97
 }
 
 impl DoubleZeroInstruction {
@@ -327,6 +334,10 @@ impl DoubleZeroInstruction {
             93 => Ok(Self::UpdatePaymentStatus(UpdatePaymentStatusArgs::try_from(rest).unwrap())),
             94 => Ok(Self::SetFeatureFlags(SetFeatureFlagsArgs::try_from(rest).unwrap())),
 
+            95 => Ok(Self::ReserveConnection(ReserveConnectionArgs::try_from(rest).unwrap())),
+            96 => Ok(Self::PruneReservation(PruneReservationArgs::try_from(rest).unwrap())),
+            97 => Ok(Self::SettleReservation(SettleReservationArgs::try_from(rest).unwrap())),
+
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -448,6 +459,10 @@ impl DoubleZeroInstruction {
             Self::TenantRemoveAdministrator(_) => "TenantRemoveAdministrator".to_string(), // variant 92
             Self::UpdatePaymentStatus(_) => "UpdatePaymentStatus".to_string(), // variant 93
             Self::SetFeatureFlags(_) => "SetFeatureFlags".to_string(),         // variant 94
+
+            Self::ReserveConnection(_) => "ReserveConnection".to_string(), // variant 95
+            Self::PruneReservation(_) => "PruneReservation".to_string(),   // variant 96
+            Self::SettleReservation(_) => "SettleReservation".to_string(), // variant 97
         }
     }
 
@@ -562,6 +577,10 @@ impl DoubleZeroInstruction {
             Self::TenantRemoveAdministrator(args) => format!("{args:?}"), // variant 92
             Self::UpdatePaymentStatus(args) => format!("{args:?}"), // variant 93
             Self::SetFeatureFlags(args) => format!("{args:?}"), // variant 94
+
+            Self::ReserveConnection(args) => format!("{args:?}"), // variant 95
+            Self::PruneReservation(args) => format!("{args:?}"),  // variant 96
+            Self::SettleReservation(args) => format!("{args:?}"), // variant 97
         }
     }
 }
@@ -1196,6 +1215,20 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs { feature_flags: 1 }),
             "SetFeatureFlags",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs {
+                client_ip: [10, 0, 0, 1].into(),
+            }),
+            "ReserveConnection",
+        );
+        test_instruction(
+            DoubleZeroInstruction::PruneReservation(PruneReservationArgs {}),
+            "PruneReservation",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SettleReservation(SettleReservationArgs {}),
+            "SettleReservation",
         );
     }
 }

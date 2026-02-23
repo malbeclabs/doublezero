@@ -83,47 +83,47 @@ func TestE2E_Multicast(t *testing.T) {
 		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
 		doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt --desired-status activated
 
-		doublezero device interface create ny5-dz01 "Ethernet2" -w
-		doublezero device interface create ny5-dz01 "Vlan4001" -w
-		doublezero device interface create ny5-dz01 "Ethernet4" -w
-		doublezero device interface create ny5-dz01 "Ethernet5" -w
-		doublezero device interface create ny5-dz01 "Ethernet6" -w
-		doublezero device interface create la2-dz01 "Ethernet2" -w
-		doublezero device interface create la2-dz01 "Ethernet3" -w
-		doublezero device interface create la2-dz01 "Ethernet4" -w
-		doublezero device interface create la2-dz01 "Ethernet5" -w
-		doublezero device interface create la2-dz01 "Ethernet6" -w
-		doublezero device interface create ld4-dz01 "Vlan4001" -w
-		doublezero device interface create ld4-dz01 "Ethernet3" -w
-		doublezero device interface create ld4-dz01 "Ethernet4" -w
-		doublezero device interface create frk-dz01 "Ethernet2" -w
-		doublezero device interface create frk-dz01 "Ethernet3" -w
-		doublezero device interface create sg1-dz01 "Ethernet2" -w
-		doublezero device interface create sg1-dz01 "Ethernet3" -w
-		doublezero device interface create ty2-dz01 "Ethernet2" -w
-		doublezero device interface create ty2-dz01 "Ethernet3" -w
-		doublezero device interface create pit-dzd01 "Ethernet2" -w
-		doublezero device interface create pit-dzd01 "Ethernet3" -w
-		doublezero device interface create ams-dz001 "Ethernet2" -w
-		doublezero device interface create ams-dz001 "Ethernet3" -w
+		doublezero device interface create ny5-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Vlan4001" --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Ethernet4" --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Ethernet5" --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Ethernet6" --bandwidth 10G -w
+		doublezero device interface create la2-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create la2-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create la2-dz01 "Ethernet4" --bandwidth 10G -w
+		doublezero device interface create la2-dz01 "Ethernet5" --bandwidth 10G -w
+		doublezero device interface create la2-dz01 "Ethernet6" --bandwidth 10G -w
+		doublezero device interface create ld4-dz01 "Vlan4001" --bandwidth 10G -w
+		doublezero device interface create ld4-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create ld4-dz01 "Ethernet4" --bandwidth 10G -w
+		doublezero device interface create frk-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create frk-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create sg1-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create sg1-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create ty2-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create ty2-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create pit-dzd01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create pit-dzd01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create ams-dz001 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create ams-dz001 "Ethernet3" --bandwidth 10G -w
 
-		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create la2-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create ld4-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create frk-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create sg1-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create ty2-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create pit-dzd01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create ams-dz001 "Loopback255" --loopback-type vpnv4 -w
+		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create la2-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create ld4-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create frk-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create sg1-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create ty2-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create pit-dzd01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create ams-dz001 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
 
-		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 -w
-		doublezero device interface create la2-dz01 "Loopback256" --loopback-type ipv4 -w
-		doublezero device interface create ld4-dz01 "Loopback256" --loopback-type ipv4 -w
-		doublezero device interface create frk-dz01 "Loopback256" --loopback-type ipv4 -w
-		doublezero device interface create sg1-dz01 "Loopback256" --loopback-type ipv4 -w
-		doublezero device interface create ty2-dz01 "Loopback256" --loopback-type ipv4 -w
-		doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4 -w
-		doublezero device interface create ams-dz001 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
+		doublezero device interface create la2-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
+		doublezero device interface create ld4-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
+		doublezero device interface create frk-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
+		doublezero device interface create sg1-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
+		doublezero device interface create ty2-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
+		doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
+		doublezero device interface create ams-dz001 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
 
 		doublezero device update --pubkey ld4-dz01 --max-users 128
 		doublezero device update --pubkey frk-dz01 --max-users 128

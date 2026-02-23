@@ -244,6 +244,7 @@ func TestE2E_ContributorAuth(t *testing.T) {
 			"test-dev-co04", "Ethernet1",
 			"--interface-cyoa", "gre-over-dia",
 			"--ip-net", "45.33.100.80/31",
+			"--bandwidth", "10G",
 		})
 		require.NoError(t, err, "failed to create interface on test-dev-co04")
 

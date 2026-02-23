@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
   - `doublezero global-config feature-flags` commands added
   - Fix multicast subscriber tunnel source resolution for NAT environments — resolve local interface IP instead of using public IP
   - Added multicast filters to access-pass list, enabling filtering by publisher/subscriber role and identifying access passes not authorized for a specific multicast group.
+  - Device interface `--bandwidth` and `--cir` flags now accept Kbps, Mbps, or Gbps units; `interface list` displays those values as human-readable strings
 - Client
   - Reject BGP martian addresses (CGNAT, multicast, reserved, benchmarking, etc.) as client IP during `connect`
 - Controller

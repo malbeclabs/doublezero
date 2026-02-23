@@ -21,6 +21,8 @@ All notable changes to this project will be documented in this file.
   - Serviceability: add feature flags support
 - SDK
   - SetFeatureFlagCommand added to manage on-chain feature flags for conditional behavior rollouts
+- Dependencies
+  - Upgrade Solana SDK workspace dependencies from 2.2.7 to 2.3.x (`solana-sdk`, `solana-client`, `solana-program-test`, and others)
 
 ## [v0.8.10](https://github.com/malbeclabs/doublezero/compare/client/v0.8.9...client/v0.8.10) – 2026-02-19
 

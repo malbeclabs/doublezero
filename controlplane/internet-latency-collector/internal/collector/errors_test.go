@@ -115,18 +115,25 @@ func TestInternetLatency_Errors_WithContext(t *testing.T) {
 
 	err := NewError(ErrorTypeAPI, "test", "test", nil)
 
-	// Test adding context
-	_ = err.WithContext("key1", "value1")
-	require.Equal(t, "value1", err.GetContext("key1"))
+	// WithContext returns a new error with the added context.
+	err1 := err.WithContext("key1", "value1")
+	require.Equal(t, "value1", err1.GetContext("key1"))
+
+	// Original is unmodified.
+	require.Nil(t, err.GetContext("key1"))
 
 	// Test chaining context
-	_ = err.WithContext("key2", 123).WithContext("key3", true)
-	require.Equal(t, 123, err.GetContext("key2"))
-	require.Equal(t, true, err.GetContext("key3"))
+	err2 := err1.WithContext("key2", 123).WithContext("key3", true)
+	require.Equal(t, "value1", err2.GetContext("key1"))
+	require.Equal(t, 123, err2.GetContext("key2"))
+	require.Equal(t, true, err2.GetContext("key3"))
 
 	// Test overwriting context
-	_ = err.WithContext("key1", "new_value")
-	require.Equal(t, "new_value", err.GetContext("key1"))
+	err3 := err1.WithContext("key1", "new_value")
+	require.Equal(t, "new_value", err3.GetContext("key1"))
+
+	// Previous copy is unaffected by the overwrite.
+	require.Equal(t, "value1", err1.GetContext("key1"))
 }
 
 func TestInternetLatency_Errors_WithContext_NilContext(t *testing.T) {
@@ -140,9 +147,9 @@ func TestInternetLatency_Errors_WithContext_NilContext(t *testing.T) {
 		context:   nil, // Explicitly nil
 	}
 
-	_ = err.WithContext("key", "value")
-	require.NotNil(t, err.GetContext("key"))
-	require.Equal(t, "value", err.GetContext("key"))
+	err2 := err.WithContext("key", "value")
+	require.NotNil(t, err2.GetContext("key"))
+	require.Equal(t, "value", err2.GetContext("key"))
 }
 
 func TestInternetLatency_Errors_NewAPIError(t *testing.T) {
@@ -225,11 +232,9 @@ func TestInternetLatency_Errors_ErrorConstantsWithContext(t *testing.T) {
 	require.Equal(t, "test.csv", err.GetContext("filename"))
 	require.Equal(t, 10, err.GetContext("line"))
 
-	// The WithContext method modifies the error in place, so the original will be modified
-	// This is actually expected behavior for the current implementation
-	if len(ErrLocationNotFound.GetContextMap()) == originalLen {
-		t.Logf("Note: WithContext modifies the original error constant (expected behavior)")
-	}
+	// WithContext returns a copy — the original sentinel must be unmodified.
+	require.Len(t, ErrLocationNotFound.GetContextMap(), originalLen,
+		"WithContext must not mutate the original error sentinel")
 }
 
 func TestCollectorError_IsType(t *testing.T) {

@@ -70,8 +70,9 @@ pub fn process_create_link(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate and normalize code
-    let code =
+    let mut code =
         validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+    code.make_ascii_lowercase();
 
     assert_eq!(
         contributor_account.owner, program_id,

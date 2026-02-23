@@ -4,7 +4,7 @@ pub fn validate_account_code(val: &str) -> Result<String, &'static str> {
     val.chars()
         .try_fold(String::with_capacity(val.len()), |mut code, char| {
             if char.is_alphanumeric() || char == ':' || char == '_' || char == '-' {
-                code.push(char.to_ascii_lowercase());
+                code.push(char);
             } else {
                 return Err("name must be alphanumeric, `_`, `-`, or `:` only");
             }
@@ -17,17 +17,17 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_valid_code_lowercased() {
+    fn test_valid_code() {
         let input = "my_device:-01".to_string();
         let output = validate_account_code(&input).unwrap();
         assert_eq!(output, input);
     }
 
     #[test]
-    fn test_valid_code_mixed_case_normalized() {
+    fn test_valid_code_preserves_case() {
         let input = "My_Device:-01".to_string();
         let output = validate_account_code(&input).unwrap();
-        assert_eq!(output, "my_device:-01".to_string());
+        assert_eq!(output, input);
     }
 
     #[test]

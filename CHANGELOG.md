@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: require foundation_allowlist privileges to update node_segment_idx on a device interface
   - Serviceability: add feature flags support
   - Serviceability: expand `is_global` to reject all BGP martian address ranges (CGNAT 100.64/10, IETF 192.0.0/24, benchmarking 198.18/15, multicast 224/4, reserved 240/4, 0/8)
+  - Serviceability: fix `validate_account_code` forcing lowercase on all entity types — restrict lowercase normalization to device and link codes only, preserving original case for locations, exchanges, contributors, and other entities
 - SDK
   - SetFeatureFlagCommand added to manage on-chain feature flags for conditional behavior rollouts
 

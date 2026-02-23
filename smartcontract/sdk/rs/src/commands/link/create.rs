@@ -26,8 +26,9 @@ pub struct CreateLinkCommand {
 
 impl CreateLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let code =
+        let mut code =
             validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+        code.make_ascii_lowercase();
 
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)

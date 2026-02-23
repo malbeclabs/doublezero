@@ -1,6 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
-use doublezero_program_common::types::{parse_utils::bandwidth_to_string, NetworkV4};
+use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::device::{get::GetDeviceCommand, list::ListDeviceCommand},
     CurrentInterfaceVersion, InterfaceType,
@@ -33,8 +33,10 @@ pub struct DeviceInterfaceDisplay {
     pub loopback_type: LoopbackType,
     pub interface_cyoa: InterfaceCYOA,
     pub interface_dia: InterfaceDIA,
-    pub bandwidth: String,
-    pub cir: String,
+    #[tabled(display = "crate::util::display_as_bandwidth", rename = "bandwidth")]
+    pub bandwidth: u64,
+    #[tabled(display = "crate::util::display_as_bandwidth", rename = "cir")]
+    pub cir: u64,
     pub mtu: u16,
     pub routing_mode: RoutingMode,
     pub vlan_id: u16,
@@ -96,8 +98,8 @@ fn build_display(iface: &CurrentInterfaceVersion, device_code: &str) -> DeviceIn
         loopback_type: iface.loopback_type,
         interface_cyoa: iface.interface_cyoa,
         interface_dia: iface.interface_dia,
-        bandwidth: bandwidth_to_string(&iface.bandwidth),
-        cir: bandwidth_to_string(&iface.cir),
+        bandwidth: iface.bandwidth,
+        cir: iface.cir,
         mtu: iface.mtu,
         routing_mode: iface.routing_mode,
         vlan_id: iface.vlan_id,
@@ -225,6 +227,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"device\":\"device1_code\",\"name\":\"eth0\",\"interface_type\":\"Physical\",\"loopback_type\":\"None\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":\"1Kbps\",\"cir\":\"500bps\",\"mtu\":1500,\"routing_mode\":\"Static\",\"vlan_id\":0,\"ip_net\":\"10.0.0.1/24\",\"node_segment_idx\":12,\"user_tunnel_endpoint\":true,\"status\":\"activated\"},{\"device\":\"device1_code\",\"name\":\"lo0\",\"interface_type\":\"Loopback\",\"loopback_type\":\"Vpnv4\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":\"100bps\",\"cir\":\"50bps\",\"mtu\":1400,\"routing_mode\":\"Static\",\"vlan_id\":16,\"ip_net\":\"10.0.1.1/24\",\"node_segment_idx\":13,\"user_tunnel_endpoint\":false,\"status\":\"activated\"}]\n");
+        assert_eq!(output_str, "[{\"device\":\"device1_code\",\"name\":\"eth0\",\"interface_type\":\"Physical\",\"loopback_type\":\"None\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":1000,\"cir\":500,\"mtu\":1500,\"routing_mode\":\"Static\",\"vlan_id\":0,\"ip_net\":\"10.0.0.1/24\",\"node_segment_idx\":12,\"user_tunnel_endpoint\":true,\"status\":\"activated\"},{\"device\":\"device1_code\",\"name\":\"lo0\",\"interface_type\":\"Loopback\",\"loopback_type\":\"Vpnv4\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":100,\"cir\":50,\"mtu\":1400,\"routing_mode\":\"Static\",\"vlan_id\":16,\"ip_net\":\"10.0.1.1/24\",\"node_segment_idx\":13,\"user_tunnel_endpoint\":false,\"status\":\"activated\"}]\n");
     }
 }

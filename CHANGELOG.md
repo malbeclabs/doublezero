@@ -25,6 +25,8 @@ All notable changes to this project will be documented in this file.
   - Serviceability: expand `is_global` to reject all BGP martian address ranges (CGNAT 100.64/10, IETF 192.0.0/24, benchmarking 198.18/15, multicast 224/4, reserved 240/4, 0/8)
 - SDK
   - SetFeatureFlagCommand added to manage on-chain feature flags for conditional behavior rollouts
+- Dependencies
+  - Upgrade Solana SDK workspace dependencies from 2.2.7 to 2.3.x (`solana-sdk`, `solana-client`, `solana-program-test`, and others)
 
 ## [v0.8.10](https://github.com/malbeclabs/doublezero/compare/client/v0.8.9...client/v0.8.10) – 2026-02-19
 

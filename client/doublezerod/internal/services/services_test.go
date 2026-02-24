@@ -104,17 +104,6 @@ func (m *MockNetlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return m.routes, nil
 }
 
-type MockDb struct {
-	state []*api.ProvisionRequest
-}
-
-func (m *MockDb) GetState(usertypes ...api.UserType) []*api.ProvisionRequest {
-	return m.state
-}
-
-func (m *MockDb) DeleteState(u api.UserType) error        { return nil }
-func (m *MockDb) SaveState(p *api.ProvisionRequest) error { return nil }
-
 type MockPIMServer struct{}
 
 func (m *MockPIMServer) Start(conn pim.RawConner, iface string, tunnelAddr net.IP, group []net.IP) error {
@@ -609,11 +598,10 @@ func TestServices(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockBgp := &MockBgpServer{}
 			mockNetlink := &MockNetlink{}
-			mockDb := &MockDb{}
 			mockPim := &MockPIMServer{}
 			mockHeartbeat := &MockHeartbeatSender{}
 
-			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockDb, mockPim, mockHeartbeat)
+			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockPim, mockHeartbeat)
 			if err != nil {
 				t.Fatalf("failed to create service: %v", err)
 			}
@@ -692,11 +680,10 @@ func TestServices(t *testing.T) {
 func TestMulticastService_DoubleTeardown(t *testing.T) {
 	mockBgp := &MockBgpServer{}
 	mockNetlink := &MockNetlink{}
-	mockDb := &MockDb{}
 	mockPim := &MockPIMServer{}
 	mockHeartbeat := &MockHeartbeatSender{}
 
-	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockDb, mockPim, mockHeartbeat)
+	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}

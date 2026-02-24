@@ -87,6 +87,66 @@ type ProvisionRequest struct {
 	BgpRemoteAsn       uint32       `json:"bgp_remote_asn"`
 }
 
+// Equal reports whether two ProvisionRequests describe the same desired state.
+func (p *ProvisionRequest) Equal(other *ProvisionRequest) bool {
+	if p == nil || other == nil {
+		return p == other
+	}
+	if p.UserType != other.UserType {
+		return false
+	}
+	if !p.TunnelSrc.Equal(other.TunnelSrc) || !p.TunnelDst.Equal(other.TunnelDst) {
+		return false
+	}
+	if !ipNetsEqual(p.TunnelNet, other.TunnelNet) {
+		return false
+	}
+	if !p.DoubleZeroIP.Equal(other.DoubleZeroIP) {
+		return false
+	}
+	if p.BgpLocalAsn != other.BgpLocalAsn || p.BgpRemoteAsn != other.BgpRemoteAsn {
+		return false
+	}
+	if !ipSlicesEqual(p.MulticastPubGroups, other.MulticastPubGroups) {
+		return false
+	}
+	if !ipSlicesEqual(p.MulticastSubGroups, other.MulticastSubGroups) {
+		return false
+	}
+	return ipNetSlicesEqual(p.DoubleZeroPrefixes, other.DoubleZeroPrefixes)
+}
+
+func ipNetsEqual(a, b *net.IPNet) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.IP.Equal(b.IP) && fmt.Sprint(a.Mask) == fmt.Sprint(b.Mask)
+}
+
+func ipSlicesEqual(a, b []net.IP) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !a[i].Equal(b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func ipNetSlicesEqual(a, b []*net.IPNet) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !ipNetsEqual(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 func (p *ProvisionRequest) Validate() error {
 	// TODO: tunneldst cannot be nil
 	// TODO: tunnelnet cannot be nil

@@ -131,7 +131,15 @@ func UdpPing(ctx context.Context, target ProbeTarget) LatencyResult {
 	return results
 }
 
-type SmartContractorFunc func(context.Context, string, string) (*ContractData, error)
+type ContractData struct {
+	Locations []serviceability.Location
+	Devices   []serviceability.Device
+	Exchanges []serviceability.Exchange
+	Links     []serviceability.Link
+	Users     []serviceability.User
+}
+
+type SmartContractorFunc func(context.Context) (*ContractData, error)
 
 type DeviceCache struct {
 	Devices []serviceability.Device
@@ -176,13 +184,17 @@ func (l *LatencyResults) MarshalJSON() ([]byte, error) {
 	return json.Marshal(l.Results)
 }
 
+// Fetcher is the interface for fetching onchain program data.
+type Fetcher interface {
+	GetProgramData(ctx context.Context) (*serviceability.ProgramData, error)
+}
+
 type LatencyManager struct {
 	SmartContractFunc    SmartContractorFunc
+	fetcher              Fetcher
 	proberFunc           ProberFunc
 	DeviceCache          *DeviceCache
 	ResultsCache         *LatencyResults
-	programId            string
-	rpcEndpoint          string
 	probeInterval        time.Duration
 	cacheUpdateInterval  time.Duration
 	metricsEnabled       bool
@@ -196,7 +208,6 @@ func NewLatencyManager(options ...Option) *LatencyManager {
 		DeviceCache:  &DeviceCache{Devices: []serviceability.Device{}, Lock: sync.Mutex{}},
 		ResultsCache: &LatencyResults{Results: []LatencyResult{}, Lock: sync.RWMutex{}},
 		// Set default values
-		SmartContractFunc:   FetchContractData,
 		proberFunc:          UdpPing,
 		probeInterval:       10 * time.Second,
 		cacheUpdateInterval: 300 * time.Second,
@@ -217,18 +228,6 @@ func WithSmartContractFunc(f SmartContractorFunc) Option {
 func WithProberFunc(f ProberFunc) Option {
 	return func(l *LatencyManager) {
 		l.proberFunc = f
-	}
-}
-
-func WithProgramID(id string) Option {
-	return func(l *LatencyManager) {
-		l.programId = id
-	}
-}
-
-func WithRpcEndpoint(endpoint string) Option {
-	return func(l *LatencyManager) {
-		l.rpcEndpoint = endpoint
 	}
 }
 
@@ -256,26 +255,45 @@ func WithProbeTunnelEndpoints(enabled bool) Option {
 	}
 }
 
+func WithFetcher(f Fetcher) Option {
+	return func(l *LatencyManager) {
+		l.fetcher = f
+	}
+}
+
 func (l *LatencyManager) Start(ctx context.Context) error {
 
 	// start goroutine for fetching smartcontract devices
 	go func() {
 		fetch := func() {
-			ctx, cancel := context.WithTimeout(ctx, serviceabilityProgramDataFetchTimeout)
-			defer cancel()
-			contractData, err := l.SmartContractFunc(ctx, l.programId, l.rpcEndpoint)
-			if err != nil {
-				slog.Error("latency: error fetching smart contract data", "error", err)
-				return
+			var devices []serviceability.Device
+			if l.fetcher != nil {
+				ctx, cancel := context.WithTimeout(ctx, serviceabilityProgramDataFetchTimeout)
+				defer cancel()
+				data, err := l.fetcher.GetProgramData(ctx)
+				if err != nil {
+					slog.Error("latency: error fetching program data", "error", err)
+					return
+				}
+				devices = data.Devices
+			} else {
+				ctx, cancel := context.WithTimeout(ctx, serviceabilityProgramDataFetchTimeout)
+				defer cancel()
+				contractData, err := l.SmartContractFunc(ctx)
+				if err != nil {
+					slog.Error("latency: error fetching smart contract data", "error", err)
+					return
+				}
+				devices = contractData.Devices
 			}
 
-			if len(contractData.Devices) == 0 {
+			if len(devices) == 0 {
 				slog.Warn("latency: smartcontract data contained 0 devices")
 				return
 			}
-			slog.Debug("latency: updating cache", "number of devices updated", len(contractData.Devices))
+			slog.Debug("latency: updating cache", "number of devices updated", len(devices))
 			l.DeviceCache.Lock.Lock()
-			l.DeviceCache.Devices = contractData.Devices
+			l.DeviceCache.Devices = devices
 			l.DeviceCache.Lock.Unlock()
 		}
 		// don't wait for first tick and populate cache

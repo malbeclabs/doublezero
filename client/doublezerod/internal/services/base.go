@@ -25,12 +25,6 @@ type HeartbeatWriter interface {
 	Close() error
 }
 
-type DBReaderWriter interface {
-	GetState(userTypes ...api.UserType) []*api.ProvisionRequest
-	DeleteState(u api.UserType) error
-	SaveState(p *api.ProvisionRequest) error
-}
-
 type BGPReaderWriter interface {
 	AddPeer(*bgp.PeerConfig, []bgp.NLRI) error
 	DeletePeer(net.IP) error

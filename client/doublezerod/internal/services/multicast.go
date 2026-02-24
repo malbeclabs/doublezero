@@ -3,7 +3,6 @@ package services
 import (
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"syscall"
@@ -20,23 +19,22 @@ import (
 type MulticastService struct {
 	bgp                BGPReaderWriter
 	nl                 routing.Netlinker
-	db                 DBReaderWriter
 	pim                PIMWriter
 	heartbeat          HeartbeatWriter
 	Tunnel             *routing.Tunnel
 	DoubleZeroAddr     net.IP
 	MulticastPubGroups []net.IP
 	MulticastSubGroups []net.IP
+	provisionReq       *api.ProvisionRequest
 }
 
 func (s *MulticastService) UserType() api.UserType   { return api.UserTypeMulticast }
 func (s *MulticastService) ServiceType() ServiceType { return ServiceTypeMulticast }
 
-func NewMulticastService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter, pim PIMWriter, heartbeat HeartbeatWriter) *MulticastService {
+func NewMulticastService(bgp BGPReaderWriter, nl routing.Netlinker, pim PIMWriter, heartbeat HeartbeatWriter) *MulticastService {
 	return &MulticastService{
 		bgp:       bgp,
 		nl:        nl,
-		db:        db,
 		pim:       pim,
 		heartbeat: heartbeat,
 	}
@@ -134,6 +132,7 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 	}
 
 	s.Tunnel = tun
+	s.provisionReq = p
 
 	peer := &bgp.PeerConfig{
 		RemoteAddress: s.Tunnel.RemoteOverlay,
@@ -195,12 +194,6 @@ func (s *MulticastService) Teardown() error {
 }
 
 func (s *MulticastService) Status() (*api.StatusResponse, error) {
-	state := s.db.GetState(s.UserType())
-	if state == nil {
-		log.Printf("netlink: no state found for %v", s.UserType())
-		return nil, nil
-	}
-
 	if s.Tunnel == nil {
 		return nil, fmt.Errorf("netlink: saved state is not programmed into client")
 	}
@@ -214,6 +207,10 @@ func (s *MulticastService) Status() (*api.StatusResponse, error) {
 		DoubleZeroStatus: peerStatus,
 		UserType:         s.UserType(),
 	}, nil
+}
+
+func (s *MulticastService) ProvisionRequest() *api.ProvisionRequest {
+	return s.provisionReq
 }
 
 func containsIP(ips []net.IP, target net.IP) bool {

@@ -2,11 +2,12 @@ use crate::{
     error::{GeolocationError, Validate},
     state::accounttype::AccountType,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError};
 
-#[derive(BorshSerialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GeolocationProgramConfig {
     pub account_type: AccountType,   // 1
@@ -25,38 +26,20 @@ impl fmt::Display for GeolocationProgramConfig {
     }
 }
 
-impl TryFrom<&[u8]> for GeolocationProgramConfig {
-    type Error = ProgramError;
-
-    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
-        let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            version: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            min_compatible_version: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-        };
-
-        if out.account_type != AccountType::ProgramConfig {
-            return Err(ProgramError::InvalidAccountData);
-        }
-
-        Ok(out)
-    }
-}
-
 impl TryFrom<&AccountInfo<'_>> for GeolocationProgramConfig {
     type Error = ProgramError;
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        let res = Self::try_from(&data[..]);
-        if res.is_err() {
-            msg!(
-                "Failed to deserialize GeolocationProgramConfig: {:?}",
-                res.as_ref().err()
-            );
+        let config = Self::try_from(&data[..]).map_err(|e| {
+            msg!("Failed to deserialize GeolocationProgramConfig: {}", e);
+            ProgramError::InvalidAccountData
+        })?;
+        if config.account_type != AccountType::ProgramConfig {
+            msg!("Invalid account type: {}", config.account_type);
+            return Err(ProgramError::InvalidAccountData);
         }
-        res
+        Ok(config)
     }
 }
 
@@ -119,16 +102,19 @@ mod tests {
             version: 3,
             min_compatible_version: 1,
         };
-        let err = val.validate();
-        assert!(err.is_err());
-        assert_eq!(err.unwrap_err(), GeolocationError::InvalidAccountType);
+        assert_eq!(
+            val.validate().unwrap_err(),
+            GeolocationError::InvalidAccountType
+        );
     }
 
     #[test]
     fn test_state_programconfig_try_from_invalid_account_type() {
         let data = [AccountType::None as u8];
-        let result = GeolocationProgramConfig::try_from(&data[..]);
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), ProgramError::InvalidAccountData);
+        let val = GeolocationProgramConfig::try_from(&data[..]).unwrap();
+        assert_eq!(
+            val.validate().unwrap_err(),
+            GeolocationError::InvalidAccountType
+        );
     }
 }

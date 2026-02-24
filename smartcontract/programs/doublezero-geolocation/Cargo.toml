@@ -17,16 +17,18 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 borsh.workspace = true
+borsh-incremental.workspace = true
 serde = { workspace = true, optional = true }
 serde_bytes = { workspace = true, optional = true }
-solana-bincode = "2.2.1"
-solana-loader-v3-interface = { version = "3.0.0", features = ["serde"] }
+solana-bincode.workspace = true
+solana-loader-v3-interface.workspace = true
 solana-program.workspace = true
 doublezero-program-common.workspace = true
 doublezero-serviceability.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+bincode.workspace = true
 solana-sdk.workspace = true
 solana-program-test.workspace = true
 

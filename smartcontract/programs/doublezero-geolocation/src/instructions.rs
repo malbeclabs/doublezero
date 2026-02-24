@@ -1,5 +1,4 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::program_error::ProgramError;
 
 pub use crate::processors::program_config::{
     init::InitProgramConfigArgs, update::UpdateProgramConfigArgs,
@@ -11,54 +10,33 @@ pub enum GeolocationInstruction {
     UpdateProgramConfig(UpdateProgramConfigArgs),
 }
 
-impl GeolocationInstruction {
-    pub fn pack(&self) -> Vec<u8> {
-        borsh::to_vec(&self).unwrap()
-    }
-
-    pub fn unpack(data: &[u8]) -> Result<Self, ProgramError> {
-        borsh::from_slice(data).map_err(|_| ProgramError::InvalidInstructionData)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn test_instruction(instruction: GeolocationInstruction) {
-        let packed = instruction.pack();
-        let unpacked = GeolocationInstruction::unpack(&packed).unwrap();
-        assert_eq!(instruction, unpacked, "Instruction mismatch");
-    }
-
     #[test]
-    fn test_pack_unpack_all_instructions() {
-        test_instruction(GeolocationInstruction::InitProgramConfig(
-            InitProgramConfigArgs {},
-        ));
-        test_instruction(GeolocationInstruction::UpdateProgramConfig(
-            UpdateProgramConfigArgs {
+    fn test_roundtrip_all_instructions() {
+        let cases = vec![
+            GeolocationInstruction::InitProgramConfig(InitProgramConfigArgs {}),
+            GeolocationInstruction::UpdateProgramConfig(UpdateProgramConfigArgs {
                 version: Some(2),
                 min_compatible_version: Some(1),
-            },
-        ));
-        test_instruction(GeolocationInstruction::UpdateProgramConfig(
-            UpdateProgramConfigArgs {
+            }),
+            GeolocationInstruction::UpdateProgramConfig(UpdateProgramConfigArgs {
                 version: None,
                 min_compatible_version: None,
-            },
-        ));
+            }),
+        ];
+        for instruction in cases {
+            let data = borsh::to_vec(&instruction).unwrap();
+            let decoded: GeolocationInstruction = borsh::from_slice(&data).unwrap();
+            assert_eq!(instruction, decoded);
+        }
     }
 
     #[test]
-    fn test_unpack_invalid() {
-        assert_eq!(
-            GeolocationInstruction::unpack(&[]).unwrap_err(),
-            ProgramError::InvalidInstructionData,
-        );
-        assert_eq!(
-            GeolocationInstruction::unpack(&[255]).unwrap_err(),
-            ProgramError::InvalidInstructionData,
-        );
+    fn test_deserialize_invalid() {
+        assert!(borsh::from_slice::<GeolocationInstruction>(&[]).is_err());
+        assert!(borsh::from_slice::<GeolocationInstruction>(&[255]).is_err());
     }
 }

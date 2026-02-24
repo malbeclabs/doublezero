@@ -1,9 +1,6 @@
 pub mod program_config;
 
-use crate::{
-    error::GeolocationError, pda::get_program_config_pda,
-    state::program_config::GeolocationProgramConfig,
-};
+use crate::{error::GeolocationError, state::program_config::GeolocationProgramConfig};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 
 pub fn check_foundation_allowlist(
@@ -17,13 +14,6 @@ pub fn check_foundation_allowlist(
         return Err(ProgramError::IllegalOwner);
     }
 
-    // Verify ProgramConfig PDA address
-    let (expected_config_pda, _) = get_program_config_pda(program_id);
-    if program_config_account.key != &expected_config_pda {
-        msg!("Invalid ProgramConfig PDA");
-        return Err(ProgramError::InvalidSeeds);
-    }
-
     let program_config = GeolocationProgramConfig::try_from(program_config_account)?;
 
     let serviceability_program_id = &crate::serviceability_program_id();
@@ -34,14 +24,6 @@ pub fn check_foundation_allowlist(
             serviceability_globalstate_account.owner
         );
         return Err(ProgramError::IncorrectProgramId);
-    }
-
-    // Verify serviceability GlobalState PDA address
-    let (expected_gs_pda, _) =
-        doublezero_serviceability::pda::get_globalstate_pda(serviceability_program_id);
-    if serviceability_globalstate_account.key != &expected_gs_pda {
-        msg!("Invalid Serviceability GlobalState PDA");
-        return Err(ProgramError::InvalidSeeds);
     }
 
     let globalstate = doublezero_serviceability::state::globalstate::GlobalState::try_from(

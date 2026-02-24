@@ -1,19 +1,21 @@
 use doublezero_geolocation::{
     entrypoint::process_instruction,
+    error::GeolocationError,
     instructions::GeolocationInstruction,
     pda::get_program_config_pda,
     processors::program_config::{init::InitProgramConfigArgs, update::UpdateProgramConfigArgs},
     state::program_config::GeolocationProgramConfig,
 };
+use solana_loader_v3_interface::state::UpgradeableLoaderState;
 #[allow(deprecated)]
 use solana_program::bpf_loader_upgradeable;
 use solana_program_test::*;
 use solana_sdk::{
     account::AccountSharedData,
-    instruction::{AccountMeta, Instruction},
+    instruction::{AccountMeta, Instruction, InstructionError},
     pubkey::Pubkey,
     signature::Signer,
-    transaction::Transaction,
+    transaction::{Transaction, TransactionError},
 };
 
 /// Builds a bincode-serialized UpgradeableLoaderState::ProgramData account
@@ -22,16 +24,11 @@ use solana_sdk::{
 /// upgradeable loader program_data account that the geolocation program
 /// requires for upgrade-authority verification.
 fn build_program_data_account(upgrade_authority: &Pubkey) -> AccountSharedData {
-    // bincode layout of UpgradeableLoaderState::ProgramData:
-    //   u32 discriminant = 3 (ProgramData variant)
-    //   u64 slot = 0
-    //   u8  option tag = 1 (Some)
-    //   [u8; 32] pubkey
-    let mut data = Vec::with_capacity(45);
-    data.extend_from_slice(&3u32.to_le_bytes());
-    data.extend_from_slice(&0u64.to_le_bytes());
-    data.push(1); // Some
-    data.extend_from_slice(upgrade_authority.as_ref());
+    let state = UpgradeableLoaderState::ProgramData {
+        slot: 0,
+        upgrade_authority_address: Some(*upgrade_authority),
+    };
+    let data = bincode::serde::encode_to_vec(state, bincode::config::legacy()).unwrap();
 
     let mut account =
         AccountSharedData::new(1_000_000_000, data.len(), &bpf_loader_upgradeable::id());
@@ -126,6 +123,22 @@ async fn send_update(
     banks_client.process_transaction(tx).await
 }
 
+fn assert_geolocation_error(result: Result<(), BanksClientError>, expected: GeolocationError) {
+    let expected_code = expected.clone() as u32;
+    match result {
+        Ok(_) => panic!("Expected error {:?}, but got Ok", expected),
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(code),
+        ))) => assert_eq!(
+            code, expected_code,
+            "Expected {:?} ({}), got {}",
+            expected, expected_code, code
+        ),
+        Err(other) => panic!("Expected {:?}, got {:?}", expected, other),
+    }
+}
+
 #[tokio::test]
 async fn test_update_program_config_version_downgrade_below_min_compatible_version() {
     let (mut banks_client, payer, program_id) = setup().await;
@@ -159,10 +172,7 @@ async fn test_update_program_config_version_downgrade_below_min_compatible_versi
         },
     )
     .await;
-    assert!(
-        result.is_err(),
-        "downgrading version below min_compatible_version must fail"
-    );
+    assert_geolocation_error(result, GeolocationError::InvalidMinCompatibleVersion);
 
     // State must be unchanged
     let config = read_program_config(&mut banks_client, &program_id).await;
@@ -186,10 +196,7 @@ async fn test_update_program_config_min_compatible_version_exceeds_version() {
         },
     )
     .await;
-    assert!(
-        result.is_err(),
-        "min_compatible_version exceeding version must fail"
-    );
+    assert_geolocation_error(result, GeolocationError::InvalidMinCompatibleVersion);
 }
 
 #[tokio::test]

@@ -1,5 +1,5 @@
 use crate::{
-    error::GeolocationError, pda::get_program_config_pda, serializer::try_acc_write,
+    error::GeolocationError, serializer::try_acc_write,
     state::program_config::GeolocationProgramConfig,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -83,12 +83,6 @@ pub fn process_update_program_config(
         }
     }
     drop(program_data);
-
-    let (expected_pda, _) = get_program_config_pda(program_id);
-    if program_config_account.key != &expected_pda {
-        msg!("Invalid ProgramConfig Pubkey");
-        return Err(ProgramError::InvalidSeeds);
-    }
 
     let mut program_config = GeolocationProgramConfig::try_from(program_config_account)?;
 

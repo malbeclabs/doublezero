@@ -5,7 +5,10 @@ use crate::{
     },
 };
 
-use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, msg, pubkey::Pubkey};
+use solana_program::{
+    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
+    pubkey::Pubkey,
+};
 
 #[cfg(not(feature = "no-entrypoint"))]
 solana_program::entrypoint!(process_instruction);
@@ -15,7 +18,8 @@ pub fn process_instruction(
     accounts: &[AccountInfo],
     data: &[u8],
 ) -> ProgramResult {
-    let instruction = GeolocationInstruction::unpack(data)?;
+    let instruction: GeolocationInstruction =
+        borsh::from_slice(data).map_err(|_| ProgramError::InvalidInstructionData)?;
 
     msg!("Instruction: {:?}", instruction);
 

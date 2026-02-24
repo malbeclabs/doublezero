@@ -275,6 +275,11 @@ impl TryFrom<&AccountInfo<'_>> for User {
 
 impl Validate for User {
     fn validate(&self) -> Result<(), DoubleZeroError> {
+        // If the user is in the process of being deleted, we can skip validation to allow it to be cleaned up without issues. This is necessary to prevent a scenario where a user gets stuck in the deleting state because some aspect of their data becomes invalid (e.g. due to changes in validation rules over time).
+        if self.status == UserStatus::Deleting {
+            return Ok(());
+        }
+
         // Account type must be User
         if self.account_type != AccountType::User {
             msg!("account_type: {}", self.account_type);
@@ -829,6 +834,34 @@ mod tests {
         user.publishers = vec![];
         user.subscribers.push(mcast_group);
         assert!(user.is_multicast_participant());
+    }
+
+    #[test]
+    fn test_validate_skips_validation_when_deleting() {
+        // A user in Deleting status should always pass validation, even if fields
+        // would otherwise be invalid. This prevents users from getting stuck in the
+        // deleting state due to changed validation rules.
+        let val = User {
+            account_type: AccountType::AccessPass, // invalid account type
+            owner: Pubkey::default(),
+            index: 0,
+            bump_seed: 0,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            device_pk: Pubkey::default(),    // invalid: zero pubkey
+            cyoa_type: UserCYOA::None,
+            client_ip: [0, 0, 0, 0].into(), // invalid: not global
+            dz_ip: [0, 0, 0, 0].into(),     // invalid: not global
+            tunnel_id: 9999,                 // invalid: > 1024
+            tunnel_net: "8.8.8.8/25".parse().unwrap(), // invalid: not link-local
+            status: UserStatus::Deleting,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 1), // invalid: private IP
+        };
+
+        assert!(val.validate().is_ok());
     }
 
     #[test]

@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
   - Remove redundant `connect ibrl` unit tests that were duplicates of hybrid-device equivalents
   - `doublezero global-config feature-flags` commands added
   - Fix multicast subscriber tunnel source resolution for NAT environments — resolve local interface IP instead of using public IP
+  - Added multicast filters to access-pass list, enabling filtering by publisher/subscriber role and identifying access passes not authorized for a specific multicast group.
 - Client
   - Reject BGP martian addresses (CGNAT, multicast, reserved, benchmarking, etc.) as client IP during `connect`
 - Controller

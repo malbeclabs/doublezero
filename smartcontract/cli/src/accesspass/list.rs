@@ -31,6 +31,19 @@ pub struct ListAccessPassCliCommand {
     /// Tenant code
     #[arg(long)]
     pub tenant: Option<String>,
+
+    /// Access passes that allowlist the multicast group publisher with the specified code
+    #[arg(long)]
+    pub multicast_group_publisher: Option<String>,
+    /// Access passes that do not allowlist the multicast group publisher with the specified code
+    #[arg(long)]
+    pub not_multicast_group_publisher: Option<String>,
+    /// Access passes that allowlist the multicast group subscriber with the specified code
+    #[arg(long)]
+    pub multicast_group_subscriber: Option<String>,
+    /// Access passes that do not allowlist the multicast group subscriber with the specified code
+    #[arg(long)]
+    pub not_multicast_group_subscriber: Option<String>,
     /// Output as pretty JSON
     #[arg(long, default_value_t = false)]
     pub json: bool,
@@ -113,6 +126,54 @@ impl ListAccessPassCliCommand {
                     .tenant_allowlist
                     .iter()
                     .any(|tenant_pk| tenant_pk == &search_tenant_pk)
+            });
+        }
+
+        if let Some(multicast_publisher) = self.multicast_group_publisher {
+            access_passes.retain(|(_, access_pass)| {
+                access_pass.mgroup_pub_allowlist.iter().any(|mg_pub| {
+                    if let Some(mg) = mgroups.get(mg_pub) {
+                        mg.code == multicast_publisher
+                    } else {
+                        false
+                    }
+                })
+            });
+        }
+
+        if let Some(multicast_group_subscriber) = self.multicast_group_subscriber {
+            access_passes.retain(|(_, access_pass)| {
+                access_pass.mgroup_sub_allowlist.iter().any(|mg_sub| {
+                    if let Some(mg) = mgroups.get(mg_sub) {
+                        mg.code == multicast_group_subscriber
+                    } else {
+                        false
+                    }
+                })
+            });
+        }
+
+        if let Some(not_multicast_group_publisher) = self.not_multicast_group_publisher {
+            access_passes.retain(|(_, access_pass)| {
+                !access_pass.mgroup_pub_allowlist.iter().any(|mg_pub| {
+                    if let Some(mg) = mgroups.get(mg_pub) {
+                        mg.code == not_multicast_group_publisher
+                    } else {
+                        false
+                    }
+                })
+            });
+        }
+
+        if let Some(not_multicast_group_subscriber) = self.not_multicast_group_subscriber {
+            access_passes.retain(|(_, access_pass)| {
+                !access_pass.mgroup_sub_allowlist.iter().any(|mg_sub| {
+                    if let Some(mg) = mgroups.get(mg_sub) {
+                        mg.code == not_multicast_group_subscriber
+                    } else {
+                        false
+                    }
+                })
             });
         }
 
@@ -298,6 +359,10 @@ mod tests {
             tenant: None,
             solana_validator: false,
             solana_identity: None,
+            multicast_group_publisher: None,
+            multicast_group_subscriber: None,
+            not_multicast_group_publisher: None,
+            not_multicast_group_subscriber: None,
             json: false,
             json_compact: false,
         }
@@ -316,6 +381,10 @@ mod tests {
             json_compact: true,
             client_ip: None,
             user_payer: None,
+            multicast_group_publisher: None,
+            multicast_group_subscriber: None,
+            not_multicast_group_publisher: None,
+            not_multicast_group_subscriber: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -345,5 +414,181 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+    }
+
+    fn setup_multicast_client() -> (
+        crate::doublezerocommand::MockCliCommand,
+        Pubkey,
+        Pubkey,
+        Pubkey,
+    ) {
+        let mut client = create_test_client();
+
+        let mgroup_pubkey = Pubkey::from_str_const("1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM");
+        let mgroup = doublezero_sdk::MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            index: 1,
+            bump_seed: 1,
+            owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
+            tenant_pk: Pubkey::new_unique(),
+            multicast_ip: [239, 0, 0, 1].into(),
+            max_bandwidth: 1000000000,
+            status: doublezero_sdk::MulticastGroupStatus::Activated,
+            code: "test".to_string(),
+            publisher_count: 5,
+            subscriber_count: 10,
+        };
+
+        // access1: publisher of "test", IP 1.2.3.4
+        let access1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let access1 = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 2,
+            client_ip: "1.2.3.4".parse().unwrap(),
+            accesspass_type: AccessPassType::Prepaid,
+            user_payer: access1_pubkey,
+            last_access_epoch: 100,
+            owner: access1_pubkey,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![mgroup_pubkey],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            flags: 0,
+        };
+
+        // access2: subscriber of "test", IP 0.0.0.0
+        let access2_pubkey = mgroup_pubkey;
+        let access2 = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 2,
+            client_ip: "0.0.0.0".parse().unwrap(),
+            accesspass_type: AccessPassType::Prepaid,
+            user_payer: access2_pubkey,
+            last_access_epoch: 100,
+            owner: access2_pubkey,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![mgroup_pubkey],
+            tenant_allowlist: vec![],
+            flags: 0,
+        };
+
+        // access3: publisher of "test", IP 2.3.4.5
+        let access3_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9");
+        let access3 = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 2,
+            client_ip: "2.3.4.5".parse().unwrap(),
+            accesspass_type: AccessPassType::Prepaid,
+            user_payer: access3_pubkey,
+            last_access_epoch: 100,
+            owner: access3_pubkey,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![mgroup_pubkey],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            flags: 0,
+        };
+
+        client.expect_list_multicastgroup().returning(move |_| {
+            let mut mgroups = std::collections::HashMap::new();
+            mgroups.insert(mgroup_pubkey, mgroup.clone());
+            Ok(mgroups)
+        });
+        client
+            .expect_list_tenant()
+            .returning(|_| Ok(std::collections::HashMap::new()));
+        client.expect_list_accesspass().returning(move |_| {
+            let mut passes = std::collections::HashMap::new();
+            passes.insert(access1_pubkey, access1.clone());
+            passes.insert(access2_pubkey, access2.clone());
+            passes.insert(access3_pubkey, access3.clone());
+            Ok(passes)
+        });
+
+        (client, access1_pubkey, access2_pubkey, access3_pubkey)
+    }
+
+    #[test]
+    fn test_filter_multicast_group_publisher() {
+        let (client, access1_pubkey, access2_pubkey, access3_pubkey) = setup_multicast_client();
+
+        let mut output = Vec::new();
+        let res = ListAccessPassCliCommand {
+            multicast_group_publisher: Some("test".to_string()),
+            ..Default::default()
+        }
+        .execute(&client, &mut output);
+
+        assert!(res.is_ok());
+        let out = String::from_utf8(output).unwrap();
+        // access1 and access3 have "test" in their pub_allowlist
+        assert!(out.contains(&access1_pubkey.to_string()));
+        assert!(out.contains(&access3_pubkey.to_string()));
+        // access2 has no publishers — excluded
+        assert!(!out.contains(&access2_pubkey.to_string()));
+    }
+
+    #[test]
+    fn test_filter_multicast_group_subscriber() {
+        let (client, access1_pubkey, access2_pubkey, access3_pubkey) = setup_multicast_client();
+
+        let mut output = Vec::new();
+        let res = ListAccessPassCliCommand {
+            multicast_group_subscriber: Some("test".to_string()),
+            ..Default::default()
+        }
+        .execute(&client, &mut output);
+
+        assert!(res.is_ok());
+        let out = String::from_utf8(output).unwrap();
+        // access2 has "test" in its sub_allowlist
+        assert!(out.contains(&access2_pubkey.to_string()));
+        // access1 and access3 have no subscribers — excluded
+        assert!(!out.contains(&access1_pubkey.to_string()));
+        assert!(!out.contains(&access3_pubkey.to_string()));
+    }
+
+    #[test]
+    fn test_filter_not_multicast_group_publisher() {
+        let (client, access1_pubkey, access2_pubkey, access3_pubkey) = setup_multicast_client();
+
+        let mut output = Vec::new();
+        let res = ListAccessPassCliCommand {
+            not_multicast_group_publisher: Some("test".to_string()),
+            ..Default::default()
+        }
+        .execute(&client, &mut output);
+
+        assert!(res.is_ok());
+        let out = String::from_utf8(output).unwrap();
+        // access2 does not have "test" in its pub_allowlist — retained
+        assert!(out.contains(&access2_pubkey.to_string()));
+        // access1 and access3 have "test" as a publisher — excluded
+        assert!(!out.contains(&access1_pubkey.to_string()));
+        assert!(!out.contains(&access3_pubkey.to_string()));
+    }
+
+    #[test]
+    fn test_filter_not_multicast_group_subscriber() {
+        let (client, access1_pubkey, access2_pubkey, access3_pubkey) = setup_multicast_client();
+
+        let mut output = Vec::new();
+        let res = ListAccessPassCliCommand {
+            not_multicast_group_subscriber: Some("test".to_string()),
+            ..Default::default()
+        }
+        .execute(&client, &mut output);
+
+        assert!(res.is_ok());
+        let out = String::from_utf8(output).unwrap();
+        // access1 and access3 do not have "test" in their sub_allowlist — retained
+        assert!(out.contains(&access1_pubkey.to_string()));
+        assert!(out.contains(&access3_pubkey.to_string()));
+        // access2 has "test" as a subscriber — excluded
+        assert!(!out.contains(&access2_pubkey.to_string()));
     }
 }

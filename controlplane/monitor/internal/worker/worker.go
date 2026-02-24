@@ -34,6 +34,7 @@ func New(cfg *Config) (*Worker, error) {
 		Serviceability:  cfg.Serviceability,
 		Interval:        cfg.Interval,
 		SlackWebhookURL: cfg.SlackWebhookURL,
+		AllowOwnUsers:   cfg.AllowOwnUsers,
 		InfluxWriter:    cfg.InfluxWriter,
 		Env:             cfg.Env,
 		LedgerRPCClient: cfg.LedgerRPCClient,

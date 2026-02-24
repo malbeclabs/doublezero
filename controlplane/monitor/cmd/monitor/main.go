@@ -42,6 +42,7 @@ var (
 	showVersion                = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
 	metricsAddr                = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
 	slackWebhookURL            = flag.String("slack-webhook-url", "", "The Slack webhook URL to send alerts")
+	allowOwnUsers              = flag.Bool("allow-own-users", false, "Include DoubleZero's own users instead of filtering them out")
 	twoZOracleInterval         = flag.Duration("twoz-oracle-interval", defaultTwoZOracleInterval, "interval to execute twoz oracle watcher ticks")
 	solBalanceAccounts         = flag.String("sol-balance-accounts", "", "comma-separated label:pubkey pairs (e.g., debt_accountant:ABC123,rewards_accountant:XYZ789)")
 	solBalanceThreshold        = flag.Float64("sol-balance-threshold", defaultSolBalanceThreshold, "SOL balance threshold for warning logs")
@@ -219,6 +220,7 @@ func main() {
 		InternetLatencyCollectorPK: networkConfig.InternetLatencyCollectorPK,
 		Interval:                   *interval,
 		SlackWebhookURL:            *slackWebhookURL,
+		AllowOwnUsers:              *allowOwnUsers,
 		TwoZOracleClient:           twoZOracleClient,
 		TwoZOracleInterval:         *twoZOracleInterval,
 		InfluxWriter:               influxWriter,

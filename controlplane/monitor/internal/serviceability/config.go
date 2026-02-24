@@ -35,6 +35,7 @@ type Config struct {
 	Env             string
 	LedgerRPCClient LedgerRPCClient
 	SolanaRPCClient LedgerRPCClient
+	AllowOwnUsers   bool
 }
 
 func (c *Config) Validate() error {

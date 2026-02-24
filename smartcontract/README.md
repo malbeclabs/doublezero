@@ -478,7 +478,7 @@ To disconnect a server from the DoubleZero network, users can use the `doublezer
 ### Example Usage
 
 ```bash
-doublezero disconnect ibrl --client-ip 203.0.113.42 --device la2-dz01
+doublezero disconnect ibrl --device la2-dz01
 ```
 
 ### Parameters
@@ -493,10 +493,10 @@ doublezero disconnect ibrl --client-ip 203.0.113.42 --device la2-dz01
     
     (Optional) Specifies the Device to disconnect from, using either the short code (e.g., `la2-dz01`) or the Device’s public key. If omitted, the daemon will determine the active Device based on session state.
     
-- **`-client-ip <CLIENT_IP>`**
-    
-    (Optional) Defines the public IP address of the server to be disconnected. This ensures that the disconnect operation targets the correct tunnel and route entries, especially in multi-interface or multi-user environments.
-    
+- **`--client-ip <CLIENT_IP>`**
+
+    (Deprecated) Previously used to specify the client IP for disconnect. The daemon (doublezerod) now manages the client IP — set `--client-ip` on the daemon instead.
+
 
 ---
 

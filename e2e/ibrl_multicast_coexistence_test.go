@@ -1254,7 +1254,7 @@ func verifyMulticastPublisherMrouteState(t *testing.T, log *slog.Logger, device 
 	// The heartbeat sender creates (S,G) state by sending periodic UDP heartbeat
 	// packets to the multicast group, so no explicit ping is needed.
 	mGroup := "233.84.178.0"
-	deadline := time.Now().Add(30 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 
 		mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())

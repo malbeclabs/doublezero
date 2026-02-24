@@ -9,6 +9,13 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 )
 
+// V2StatusResponse is the response for the /v2/status endpoint.
+type V2StatusResponse struct {
+	ReconcilerEnabled bool                  `json:"reconciler_enabled"`
+	ClientIP          string                `json:"client_ip"`
+	Services          []*api.StatusResponse `json:"services"`
+}
+
 /*
 ServeProvision handles local provisioning of a double zero tunnel. The following is an example payload:
 
@@ -96,4 +103,47 @@ func (n *NetlinkManager) ServeStatus(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(fmt.Sprintf(`{"status": "error", "description": "error while encoding status: %v"}`, err)))
 		return
 	}
+}
+
+// ServeEnable handles POST /enable requests.
+func (n *NetlinkManager) ServeEnable(w http.ResponseWriter, _ *http.Request) {
+	if err := WriteState(n.stateDir, true); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": err.Error()}) //nolint:errcheck
+		return
+	}
+	n.SetEnabled(true)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
+}
+
+// ServeDisable handles POST /disable requests.
+func (n *NetlinkManager) ServeDisable(w http.ResponseWriter, _ *http.Request) {
+	if err := WriteState(n.stateDir, false); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": err.Error()}) //nolint:errcheck
+		return
+	}
+	n.SetEnabled(false)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
+}
+
+// ServeV2Status handles GET /v2/status requests.
+func (n *NetlinkManager) ServeV2Status(w http.ResponseWriter, _ *http.Request) {
+	services, err := n.Status()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": err.Error()}) //nolint:errcheck
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(V2StatusResponse{ //nolint:errcheck
+		ReconcilerEnabled: n.enabled.Load(),
+		ClientIP:          n.clientIP.String(),
+		Services:          services,
+	})
 }

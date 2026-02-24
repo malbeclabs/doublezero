@@ -25,8 +25,8 @@ func TestServeRoutesHandler_NoLiveness_EmptyRoutes(t *testing.T) {
 		},
 	}
 	nc := &config.NetworkConfig{Moniker: config.EnvLocalnet}
-	db := &mockDBReader{
-		GetStateFunc: func(userTypes ...UserType) []*ProvisionRequest {
+	db := &mockServiceStateReader{
+		GetProvisionedServicesFunc: func() []*ProvisionRequest {
 			return nil
 		},
 	}
@@ -100,8 +100,8 @@ func TestServeRoutesHandler_NoLiveness_WithIPv4AndIPv6(t *testing.T) {
 		},
 	}
 	nc := &config.NetworkConfig{Moniker: config.EnvLocalnet}
-	db := &mockDBReader{
-		GetStateFunc: func(userTypes ...UserType) []*ProvisionRequest {
+	db := &mockServiceStateReader{
+		GetProvisionedServicesFunc: func() []*ProvisionRequest {
 			return []*ProvisionRequest{svc1, svc2}
 		},
 	}
@@ -159,8 +159,8 @@ func TestServeRoutesHandler_RouteByProtocolError(t *testing.T) {
 		},
 	}
 	nc := &config.NetworkConfig{Moniker: config.EnvLocalnet}
-	db := &mockDBReader{
-		GetStateFunc: func(userTypes ...UserType) []*ProvisionRequest {
+	db := &mockServiceStateReader{
+		GetProvisionedServicesFunc: func() []*ProvisionRequest {
 			return nil
 		},
 	}
@@ -209,8 +209,8 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_KernelOnly(t *testing.T) {
 		},
 	}
 	nc := &config.NetworkConfig{Moniker: config.EnvLocalnet}
-	db := &mockDBReader{
-		GetStateFunc: func(userTypes ...UserType) []*ProvisionRequest {
+	db := &mockServiceStateReader{
+		GetProvisionedServicesFunc: func() []*ProvisionRequest {
 			return []*ProvisionRequest{svc}
 		},
 	}
@@ -283,8 +283,8 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_PresentInBoth(t *testing.T) 
 		},
 	}
 	nc := &config.NetworkConfig{Moniker: config.EnvLocalnet}
-	db := &mockDBReader{
-		GetStateFunc: func(userTypes ...UserType) []*ProvisionRequest {
+	db := &mockServiceStateReader{
+		GetProvisionedServicesFunc: func() []*ProvisionRequest {
 			return []*ProvisionRequest{svc}
 		},
 	}
@@ -357,8 +357,8 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T)
 		},
 	}
 	nc := &config.NetworkConfig{Moniker: config.EnvLocalnet}
-	db := &mockDBReader{
-		GetStateFunc: func(userTypes ...UserType) []*ProvisionRequest {
+	db := &mockServiceStateReader{
+		GetProvisionedServicesFunc: func() []*ProvisionRequest {
 			return []*ProvisionRequest{svc}
 		},
 	}
@@ -429,8 +429,8 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_SetsLivenessStateReason(t *t
 		},
 	}
 	nc := &config.NetworkConfig{Moniker: config.EnvLocalnet}
-	db := &mockDBReader{
-		GetStateFunc: func(userTypes ...UserType) []*ProvisionRequest {
+	db := &mockServiceStateReader{
+		GetProvisionedServicesFunc: func() []*ProvisionRequest {
 			return []*ProvisionRequest{svc}
 		},
 	}
@@ -490,8 +490,8 @@ func TestServeRoutesHandler_UsesDoubleZeroIP_NotTunnelSrc(t *testing.T) {
 
 	nc := &config.NetworkConfig{Moniker: config.EnvLocalnet}
 
-	db := &mockDBReader{
-		GetStateFunc: func(userTypes ...UserType) []*ProvisionRequest {
+	db := &mockServiceStateReader{
+		GetProvisionedServicesFunc: func() []*ProvisionRequest {
 			return []*ProvisionRequest{svc}
 		},
 	}
@@ -538,8 +538,8 @@ func TestServeRoutesHandler_RequiresDoubleZeroIPForKernelMatch(t *testing.T) {
 		RouteByProtocolFunc: func(_ int) ([]*routing.Route, error) { return routes, nil },
 	}
 	nc := &config.NetworkConfig{Moniker: config.EnvLocalnet}
-	db := &mockDBReader{
-		GetStateFunc: func(userTypes ...UserType) []*ProvisionRequest { return []*ProvisionRequest{svc} },
+	db := &mockServiceStateReader{
+		GetProvisionedServicesFunc: func() []*ProvisionRequest { return []*ProvisionRequest{svc} },
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/routes", nil)
@@ -566,15 +566,15 @@ func (m *mockLivenessManager) GetSessions() []liveness.SessionSnapshot {
 	return m.GetSessionsFunc()
 }
 
-type mockDBReader struct {
-	GetStateFunc func(userTypes ...UserType) []*ProvisionRequest
+type mockServiceStateReader struct {
+	GetProvisionedServicesFunc func() []*ProvisionRequest
 }
 
-func (m *mockDBReader) GetState(userTypes ...UserType) []*ProvisionRequest {
-	if m.GetStateFunc == nil {
+func (m *mockServiceStateReader) GetProvisionedServices() []*ProvisionRequest {
+	if m.GetProvisionedServicesFunc == nil {
 		return nil
 	}
-	return m.GetStateFunc(userTypes...)
+	return m.GetProvisionedServicesFunc()
 }
 
 type mockRouteReaderWriter struct {

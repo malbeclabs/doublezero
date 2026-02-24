@@ -100,6 +100,7 @@ fn generate_global_state(dir: &Path) {
     let sentinel_pk = pubkey_from_byte(0x03);
     let health_oracle_pk = pubkey_from_byte(0x04);
     let qa_pk = pubkey_from_byte(0x05);
+    let reservation_authority_pk = pubkey_from_byte(0x06);
 
     let val = GlobalState {
         account_type: AccountType::GlobalState,
@@ -115,6 +116,7 @@ fn generate_global_state(dir: &Path) {
         health_oracle_pk,
         qa_allowlist: vec![qa_pk],
         feature_flags: 1,
+        reservation_authority_pk: reservation_authority_pk,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -138,6 +140,7 @@ fn generate_global_state(dir: &Path) {
             FieldValue { name: "QaAllowlistLen".into(), value: "1".into(), typ: "u32".into() },
             FieldValue { name: "QaAllowlist0".into(), value: pubkey_bs58(&qa_pk), typ: "pubkey".into() },
             FieldValue { name: "FeatureFlags".into(), value: "1".into(), typ: "u128".into() },
+            FieldValue { name: "ReservationAuthorityPk".into(), value: pubkey_bs58(&reservation_authority_pk), typ: "pubkey".into() },
         ],
     };
 
@@ -331,6 +334,7 @@ fn generate_device(dir: &Path) {
         multicast_users_count: 2,
         max_unicast_users: 50,
         max_multicast_users: 50,
+        reserved_seats: 3,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -390,6 +394,7 @@ fn generate_device(dir: &Path) {
             FieldValue { name: "MulticastUsersCount".into(), value: "2".into(), typ: "u16".into() },
             FieldValue { name: "MaxUnicastUsers".into(), value: "50".into(), typ: "u16".into() },
             FieldValue { name: "MaxMulticastUsers".into(), value: "50".into(), typ: "u16".into() },
+            FieldValue { name: "ReservedSeats".into(), value: "3".into(), typ: "u16".into() },
         ],
     };
 

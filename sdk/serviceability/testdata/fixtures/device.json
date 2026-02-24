@@ -246,6 +246,11 @@
       "name": "MaxMulticastUsers",
       "value": "50",
       "typ": "u16"
+    },
+    {
+      "name": "ReservedSeats",
+      "value": "3",
+      "typ": "u16"
     }
   ]
 }

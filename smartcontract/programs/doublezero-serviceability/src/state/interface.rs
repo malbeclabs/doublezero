@@ -448,13 +448,10 @@ impl Validate for Interface {
             return Err(DoubleZeroError::CyoaRequiresPhysical);
         }
 
-        // CYOA interfaces must have an ip_net
-        if interface.interface_cyoa != InterfaceCYOA::None
-            && interface.ip_net == NetworkV4::default()
-        {
-            msg!("CYOA interfaces must have an ip_net set");
-            return Err(DoubleZeroError::InvalidInterfaceIp);
-        }
+        // NOTE: The CYOA ip_net check is intentionally NOT here. It is enforced
+        // at the handler level (create.rs and update.rs) where it can distinguish
+        // new mutations from pre-existing state. Checking it here would block all
+        // operations on a device that contains legacy CYOA interfaces without ip_net.
 
         // Only allow private and link-local IPs for non-CYOA and non-DIA interfaces,
         // unless it's a loopback interface with user_tunnel_endpoint set to true.

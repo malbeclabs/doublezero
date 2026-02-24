@@ -24,12 +24,12 @@ use test_helpers::*;
 
 /// Regression test: deleting an interface must succeed even when a sibling
 /// interface on the same device is in an invalid state (CYOA set without
-/// ip_net).  Before the fix, `process_delete_device_interface` used
-/// `try_acc_write` which validated the *entire* device — including siblings
-/// that were not being modified — and the invalid sibling caused the
-/// transaction to fail.  After switching to `try_acc_write_unchecked` the
-/// delete only changes the target interface's status to Deleting without
-/// re-validating unrelated interfaces.
+/// ip_net).  Before the fix, `Interface::validate()` enforced the CYOA ip_net
+/// check, which caused `try_acc_write` to reject writes to any device
+/// containing a legacy CYOA interface without ip_net — even when the operation
+/// didn't touch that interface.  The CYOA ip_net check is now enforced only at
+/// the handler level (create.rs and update.rs), so `validate()` no longer
+/// blocks unrelated operations.
 #[tokio::test]
 async fn test_delete_cyoa_interface_with_invalid_sibling() {
     let program_id = Pubkey::new_unique();
@@ -257,7 +257,7 @@ async fn test_delete_cyoa_interface_with_invalid_sibling() {
 }
 
 /// Same regression as above but for the update path: updating an interface must
-/// succeed even when a sibling interface would fail full device validation.
+/// succeed even when a sibling interface has legacy invalid CYOA state.
 #[tokio::test]
 async fn test_update_cyoa_interface_with_invalid_sibling() {
     let program_id = Pubkey::new_unique();

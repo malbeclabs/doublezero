@@ -1,6 +1,6 @@
 use crate::{
     error::DoubleZeroError,
-    serializer::try_acc_write_unchecked,
+    serializer::try_acc_write,
     state::{
         accounttype::AccountType, contributor::Contributor, device::*, globalstate::GlobalState,
         interface::InterfaceStatus,
@@ -97,7 +97,7 @@ pub fn process_delete_device_interface(
     iface.status = InterfaceStatus::Deleting;
     device.interfaces[idx] = iface.to_interface();
 
-    try_acc_write_unchecked(&device, device_account, payer_account, accounts)?;
+    try_acc_write(&device, device_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Deleting interface: {} from {:?}", value.name, device);

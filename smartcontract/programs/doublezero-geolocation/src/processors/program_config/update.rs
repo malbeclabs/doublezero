@@ -15,7 +15,6 @@ use super::parse_upgrade_authority;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct UpdateProgramConfigArgs {
-    pub serviceability_program_id: Option<Pubkey>,
     pub version: Option<u32>,
     pub min_compatible_version: Option<u32>,
 }
@@ -93,9 +92,6 @@ pub fn process_update_program_config(
 
     let mut program_config = GeolocationProgramConfig::try_from(program_config_account)?;
 
-    if let Some(serviceability_program_id) = args.serviceability_program_id {
-        program_config.serviceability_program_id = serviceability_program_id;
-    }
     if let Some(version) = args.version {
         program_config.version = version;
     }

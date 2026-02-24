@@ -58,4 +58,4 @@ build-programs:
 	cd programs/doublezero-record && cargo build-sbf
 	cd programs/doublezero-serviceability && cargo build-sbf
 	cd programs/doublezero-telemetry && cargo build-sbf --features $(env)
-	cd programs/doublezero-geolocation && cargo build-sbf
+	cd programs/doublezero-geolocation && cargo build-sbf --features $(env)

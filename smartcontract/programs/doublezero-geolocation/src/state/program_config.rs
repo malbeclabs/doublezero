@@ -4,7 +4,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError};
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -13,22 +13,14 @@ pub struct GeolocationProgramConfig {
     pub bump_seed: u8,               // 1
     pub version: u32,                // 4
     pub min_compatible_version: u32, // 4
-    #[cfg_attr(
-        feature = "serde",
-        serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
-            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
-        )
-    )]
-    pub serviceability_program_id: Pubkey, // 32
 }
 
 impl fmt::Display for GeolocationProgramConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, bump_seed: {}, version: {}, min_compatible_version: {}, serviceability_program_id: {}",
-            self.account_type, self.bump_seed, self.version, self.min_compatible_version, self.serviceability_program_id,
+            "account_type: {}, bump_seed: {}, version: {}, min_compatible_version: {}",
+            self.account_type, self.bump_seed, self.version, self.min_compatible_version,
         )
     }
 }
@@ -42,7 +34,6 @@ impl TryFrom<&[u8]> for GeolocationProgramConfig {
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             version: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             min_compatible_version: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            serviceability_program_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::ProgramConfig {
@@ -90,7 +81,6 @@ mod tests {
 
         assert_eq!(val.version, 0);
         assert_eq!(val.min_compatible_version, 0);
-        assert_eq!(val.serviceability_program_id, Pubkey::default());
     }
 
     #[test]
@@ -100,7 +90,6 @@ mod tests {
             bump_seed: 1,
             version: 3,
             min_compatible_version: 1,
-            serviceability_program_id: Pubkey::new_unique(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -116,10 +105,6 @@ mod tests {
         assert_eq!(val.version, val2.version);
         assert_eq!(val.min_compatible_version, val2.min_compatible_version);
         assert_eq!(
-            val.serviceability_program_id,
-            val2.serviceability_program_id
-        );
-        assert_eq!(
             data.len(),
             borsh::object_length(&val).unwrap(),
             "Invalid Size"
@@ -133,7 +118,6 @@ mod tests {
             bump_seed: 1,
             version: 3,
             min_compatible_version: 1,
-            serviceability_program_id: Pubkey::new_unique(),
         };
         let err = val.validate();
         assert!(err.is_err());

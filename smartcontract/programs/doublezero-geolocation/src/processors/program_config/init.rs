@@ -17,14 +17,12 @@ use solana_program::{
 use super::parse_upgrade_authority;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
-pub struct InitProgramConfigArgs {
-    pub serviceability_program_id: Pubkey,
-}
+pub struct InitProgramConfigArgs {}
 
 pub fn process_init_program_config(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    args: &InitProgramConfigArgs,
+    _args: &InitProgramConfigArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -86,7 +84,6 @@ pub fn process_init_program_config(
         bump_seed,
         version: 1,
         min_compatible_version: 1,
-        serviceability_program_id: args.serviceability_program_id,
     };
 
     try_acc_create(

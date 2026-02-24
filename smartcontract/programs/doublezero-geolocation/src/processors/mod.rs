@@ -26,19 +26,19 @@ pub fn check_foundation_allowlist(
 
     let program_config = GeolocationProgramConfig::try_from(program_config_account)?;
 
-    if *serviceability_globalstate_account.owner != program_config.serviceability_program_id {
+    let serviceability_program_id = &crate::serviceability_program_id();
+    if serviceability_globalstate_account.owner != serviceability_program_id {
         msg!(
             "Expected serviceability program: {}, got: {}",
-            program_config.serviceability_program_id,
+            serviceability_program_id,
             serviceability_globalstate_account.owner
         );
-        return Err(GeolocationError::InvalidServiceabilityProgramId.into());
+        return Err(ProgramError::IncorrectProgramId);
     }
 
     // Verify serviceability GlobalState PDA address
-    let (expected_gs_pda, _) = doublezero_serviceability::pda::get_globalstate_pda(
-        &program_config.serviceability_program_id,
-    );
+    let (expected_gs_pda, _) =
+        doublezero_serviceability::pda::get_globalstate_pda(serviceability_program_id);
     if serviceability_globalstate_account.key != &expected_gs_pda {
         msg!("Invalid Serviceability GlobalState PDA");
         return Err(ProgramError::InvalidSeeds);

@@ -99,9 +99,7 @@ async fn init_program_config(
     let accounts = build_accounts(program_id, &payer.pubkey());
     let ix = build_instruction(
         program_id,
-        &GeolocationInstruction::InitProgramConfig(InitProgramConfigArgs {
-            serviceability_program_id: Pubkey::new_unique(),
-        }),
+        &GeolocationInstruction::InitProgramConfig(InitProgramConfigArgs {}),
         accounts,
     );
     let blockhash = banks_client.get_latest_blockhash().await.unwrap();
@@ -139,7 +137,6 @@ async fn test_update_program_config_version_downgrade_below_min_compatible_versi
         &payer,
         &program_id,
         UpdateProgramConfigArgs {
-            serviceability_program_id: None,
             version: Some(5),
             min_compatible_version: Some(3),
         },
@@ -157,7 +154,6 @@ async fn test_update_program_config_version_downgrade_below_min_compatible_versi
         &payer,
         &program_id,
         UpdateProgramConfigArgs {
-            serviceability_program_id: None,
             version: Some(1),
             min_compatible_version: None,
         },
@@ -185,7 +181,6 @@ async fn test_update_program_config_min_compatible_version_exceeds_version() {
         &payer,
         &program_id,
         UpdateProgramConfigArgs {
-            serviceability_program_id: None,
             version: None,
             min_compatible_version: Some(5),
         },
@@ -212,7 +207,6 @@ async fn test_update_program_config_success() {
         &payer,
         &program_id,
         UpdateProgramConfigArgs {
-            serviceability_program_id: None,
             version: Some(5),
             min_compatible_version: None,
         },
@@ -226,7 +220,6 @@ async fn test_update_program_config_success() {
         &payer,
         &program_id,
         UpdateProgramConfigArgs {
-            serviceability_program_id: None,
             version: None,
             min_compatible_version: Some(3),
         },

@@ -8,8 +8,6 @@ pub enum GeolocationError {
     InvalidAccountType = 1,
     #[error("Not allowed")]
     NotAllowed = 2,
-    #[error("Invalid serviceability program ID")]
-    InvalidServiceabilityProgramId = 11,
     #[error("Unauthorized: payer is not the upgrade authority")]
     UnauthorizedInitializer = 17,
     #[error("min_compatible_version cannot exceed version")]
@@ -34,7 +32,6 @@ mod tests {
         vec![
             (GeolocationError::InvalidAccountType, 1),
             (GeolocationError::NotAllowed, 2),
-            (GeolocationError::InvalidServiceabilityProgramId, 11),
             (GeolocationError::UnauthorizedInitializer, 17),
             (GeolocationError::InvalidMinCompatibleVersion, 18),
         ]

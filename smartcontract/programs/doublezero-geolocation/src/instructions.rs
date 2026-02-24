@@ -24,7 +24,6 @@ impl GeolocationInstruction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use solana_program::pubkey::Pubkey;
 
     fn test_instruction(instruction: GeolocationInstruction) {
         let packed = instruction.pack();
@@ -35,20 +34,16 @@ mod tests {
     #[test]
     fn test_pack_unpack_all_instructions() {
         test_instruction(GeolocationInstruction::InitProgramConfig(
-            InitProgramConfigArgs {
-                serviceability_program_id: Pubkey::new_unique(),
-            },
+            InitProgramConfigArgs {},
         ));
         test_instruction(GeolocationInstruction::UpdateProgramConfig(
             UpdateProgramConfigArgs {
-                serviceability_program_id: Some(Pubkey::new_unique()),
                 version: Some(2),
                 min_compatible_version: Some(1),
             },
         ));
         test_instruction(GeolocationInstruction::UpdateProgramConfig(
             UpdateProgramConfigArgs {
-                serviceability_program_id: None,
                 version: None,
                 min_compatible_version: None,
             },

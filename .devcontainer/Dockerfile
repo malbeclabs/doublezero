@@ -1,9 +1,10 @@
 FROM mcr.microsoft.com/devcontainers/go:1.25
 
-# Install goreleaser, mtr
-RUN echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | tee /etc/apt/sources.list.d/goreleaser.list && \
+# Install goreleaser, mtr, and cross-compilation dependencies
+RUN dpkg --add-architecture amd64 && \
+    echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | tee /etc/apt/sources.list.d/goreleaser.list && \
     apt update -qq && \
-    apt install -y goreleaser-pro gcc-x86-64-linux-gnu mtr libpcap-dev && \
+    apt install -y goreleaser-pro gcc-x86-64-linux-gnu mtr libpcap-dev libssl-dev:amd64 && \
     apt clean -y && \
     rm -rf /var/lib/apt/lists/*
 
@@ -33,6 +34,9 @@ RUN apt-get update && apt-get install -y \
 RUN curl https://gotest-release.s3.amazonaws.com/gotest_linux > gotest && \
     chmod +x gotest && \
     mv gotest /usr/local/bin/gotest
+
+# Allow pkg-config to return results for x86_64 when cross-compiling from arm64
+ENV PKG_CONFIG_ALLOW_CROSS=1
 
 # Alias to access the DinD container's published ports from inside the container,
 # since localhost does not route through NAT. Used in place of `localhost`.

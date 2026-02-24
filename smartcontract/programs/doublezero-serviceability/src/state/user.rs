@@ -848,11 +848,11 @@ mod tests {
             bump_seed: 0,
             tenant_pk: Pubkey::default(),
             user_type: UserType::IBRL,
-            device_pk: Pubkey::default(),    // invalid: zero pubkey
+            device_pk: Pubkey::default(), // invalid: zero pubkey
             cyoa_type: UserCYOA::None,
             client_ip: [0, 0, 0, 0].into(), // invalid: not global
             dz_ip: [0, 0, 0, 0].into(),     // invalid: not global
-            tunnel_id: 9999,                 // invalid: > 1024
+            tunnel_id: 9999,                // invalid: > 1024
             tunnel_net: "8.8.8.8/25".parse().unwrap(), // invalid: not link-local
             status: UserStatus::Deleting,
             publishers: vec![],

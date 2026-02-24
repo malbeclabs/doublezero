@@ -92,6 +92,8 @@ async fn main() -> eyre::Result<()> {
     // Skip version check for Status command to allow checking status of services when the program is running
     if !app.no_version_warning
         && !matches!(app.command, Command::Status(_))
+        && !matches!(app.command, Command::Enable(_))
+        && !matches!(app.command, Command::Disable(_))
         && !matches!(app.command, Command::Address(_))
         && !matches!(app.command, Command::Balance(_))
         && !matches!(app.command, Command::Export(_))
@@ -106,6 +108,8 @@ async fn main() -> eyre::Result<()> {
         Command::Address(args) => args.execute(&client, &mut handle),
         Command::Balance(args) => args.execute(&client, &mut handle),
         Command::Connect(args) => args.execute(&client).await,
+        Command::Enable(args) => args.execute(&client).await,
+        Command::Disable(args) => args.execute(&client).await,
         Command::Status(args) => args.execute(&client).await,
         Command::Disconnect(args) => args.execute(&client).await,
         Command::Latency(args) => args.execute(&client).await,

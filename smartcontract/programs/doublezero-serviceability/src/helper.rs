@@ -83,7 +83,6 @@ pub fn is_global(ip: Ipv4Addr) -> bool {
     if octets[0] == 192 && octets[1] == 0 && octets[2] == 0 {
         return false;
     }
-    // 198.18.0.0/15 — benchmarking (RFC 2544) — allowed for DZ use
     // 224.0.0.0/4 — multicast (RFC 5771)
     if (octets[0] & 0xF0) == 224 {
         return false;

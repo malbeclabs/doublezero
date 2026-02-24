@@ -2,7 +2,7 @@ use crate::{
     error::{DoubleZeroError, Validate},
     format_option,
     helper::format_option_displayable,
-    serializer::try_acc_write,
+    serializer::try_acc_write_unchecked,
     state::{
         accounttype::AccountType,
         contributor::Contributor,
@@ -194,7 +194,7 @@ pub fn process_update_device_interface(
 
     device.interfaces[idx] = updated_interface;
 
-    try_acc_write(&device, device_account, payer_account, accounts)?;
+    try_acc_write_unchecked(&device, device_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", device);

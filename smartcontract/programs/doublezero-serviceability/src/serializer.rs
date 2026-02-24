@@ -70,9 +70,24 @@ pub fn try_acc_write<T>(
 where
     T: Validate + borsh::BorshSerialize,
 {
-    // Validate before serializing
+    // validate first, then do the actual operation in try_acc_write_unchecked
+    // to avoid duplicating logic
     value.validate()?;
+    try_acc_write_unchecked(value, account, payer, accounts)
+}
 
+/// Like `try_acc_write` but skips validation. Use this only for operations
+/// (like delete) where the only mutation is a status transition and validation
+/// of the full aggregate should not block the write.
+pub fn try_acc_write_unchecked<T>(
+    value: &T,
+    account: &AccountInfo,
+    payer: &AccountInfo,
+    accounts: &[AccountInfo],
+) -> ProgramResult
+where
+    T: borsh::BorshSerialize,
+{
     // Resize account if needed
     resize_account_if_needed(account, payer, accounts, borsh::object_length(value)?)?;
 

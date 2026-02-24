@@ -495,7 +495,7 @@ async fn test_wan_link() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateLink(LinkCreateArgs {
-            code: "la".to_string(),
+            code: "LA".to_string(),
             link_type: LinkLinkType::WAN,
             bandwidth: 20000000000,
             mtu: 9000,
@@ -588,7 +588,7 @@ async fn test_wan_link() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            code: Some("la2".to_string()),
+            code: Some("LA2".to_string()),
             contributor_pk: Some(contributor_pubkey),
             tunnel_type: Some(LinkLinkType::WAN),
             bandwidth: Some(20000000000),

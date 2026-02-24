@@ -50,7 +50,7 @@ async fn test_location() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
-            code: "la".to_string(),
+            code: "LA".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
             lat: 1.234,
@@ -71,7 +71,7 @@ async fn test_location() {
         .get_location()
         .unwrap();
     assert_eq!(location_la.account_type, AccountType::Location);
-    assert_eq!(location_la.code, "la".to_string());
+    assert_eq!(location_la.code, "LA".to_string());
     assert_eq!(location_la.status, LocationStatus::Activated);
 
     println!("✅ Location initialized successfully",);
@@ -151,7 +151,7 @@ async fn test_location() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
-            code: Some("la2".to_string()),
+            code: Some("LA2".to_string()),
             name: Some("Los Angeles - Los Angeles".to_string()),
             country: Some("CA".to_string()),
             lat: Some(3.433),
@@ -172,7 +172,7 @@ async fn test_location() {
         .get_location()
         .unwrap();
     assert_eq!(location_la.account_type, AccountType::Location);
-    assert_eq!(location_la.code, "la2".to_string());
+    assert_eq!(location_la.code, "LA2".to_string());
     assert_eq!(location_la.name, "Los Angeles - Los Angeles".to_string());
     assert_eq!(location_la.status, LocationStatus::Activated);
 

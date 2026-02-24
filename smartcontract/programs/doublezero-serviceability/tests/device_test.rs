@@ -409,7 +409,7 @@ async fn test_device() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            code: Some("la2".to_string()),
+            code: Some("LA2".to_string()),
             device_type: Some(DeviceType::Hybrid),
             contributor_pk: None,
             public_ip: Some([8, 8, 8, 8].into()), // Global public IP

@@ -100,7 +100,7 @@ async fn test_exchange() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
-            code: "la".to_string(),
+            code: "LA".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,
             lng: 4.567,
@@ -121,7 +121,7 @@ async fn test_exchange() {
         .get_exchange()
         .unwrap();
     assert_eq!(exchange_la.account_type, AccountType::Exchange);
-    assert_eq!(exchange_la.code, "la".to_string());
+    assert_eq!(exchange_la.code, "LA".to_string());
     assert_eq!(exchange_la.status, ExchangeStatus::Activated);
 
     println!("✅ Exchange initialized successfully",);
@@ -201,7 +201,7 @@ async fn test_exchange() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
-            code: Some("la2".to_string()),
+            code: Some("LA2".to_string()),
             name: Some("Los Angeles - Los Angeles".to_string()),
             lat: Some(3.433),
             lng: Some(23.223),
@@ -222,7 +222,7 @@ async fn test_exchange() {
         .get_exchange()
         .unwrap();
     assert_eq!(exchange_la.account_type, AccountType::Exchange);
-    assert_eq!(exchange_la.code, "la2".to_string());
+    assert_eq!(exchange_la.code, "LA2".to_string());
     assert_eq!(exchange_la.name, "Los Angeles - Los Angeles".to_string());
     assert_eq!(exchange_la.status, ExchangeStatus::Activated);
 

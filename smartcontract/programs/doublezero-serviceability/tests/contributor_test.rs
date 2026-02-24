@@ -61,7 +61,7 @@ async fn test_contributor() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-            code: "la".to_string(),
+            code: "LA".to_string(),
         }),
         vec![
             AccountMeta::new(contributor_pubkey, false),
@@ -78,7 +78,7 @@ async fn test_contributor() {
         .get_contributor()
         .unwrap();
     assert_eq!(contributor_la.account_type, AccountType::Contributor);
-    assert_eq!(contributor_la.code, "la".to_string());
+    assert_eq!(contributor_la.code, "LA".to_string());
     assert_eq!(contributor_la.status, ContributorStatus::Activated);
     assert_eq!(contributor_la.ops_manager_pk, Pubkey::default());
 
@@ -161,7 +161,7 @@ async fn test_contributor() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
-            code: Some("la2".to_string()),
+            code: Some("LA2".to_string()),
             owner: Some(new_owner),
             ops_manager_pk: Some(ops_manager_pk),
         }),
@@ -179,7 +179,7 @@ async fn test_contributor() {
         .get_contributor()
         .unwrap();
     assert_eq!(contributor_la.account_type, AccountType::Contributor);
-    assert_eq!(contributor_la.code, "la2".to_string());
+    assert_eq!(contributor_la.code, "LA2".to_string());
     assert_eq!(contributor_la.status, ContributorStatus::Activated);
     assert_eq!(contributor_la.ops_manager_pk, ops_manager_pk);
     assert_eq!(contributor_la.owner, new_owner);

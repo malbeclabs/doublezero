@@ -36,6 +36,8 @@ All notable changes to this project will be documented in this file.
   - Fix BGP `OnClose` deleting routes from all peers instead of only the closing peer, preventing multicast teardown from nuking unicast routes
   - Skip route deletion on `OnClose` for `NoInstall` peers (multicast) since they never install kernel routes
   - Reject BGP martian addresses (CGNAT, multicast, reserved, benchmarking, etc.) as client IP during `connect`
+  - Add onchain reconciler to daemon — automatically provisions/removes tunnels by polling onchain User state, replacing CLI-driven provisioning and the `doublezerod.json` state file ([RFC-17](rfcs/rfc17-client-onchain-reconciler.md))
+  - Add `doublezero enable` / `doublezero disable` CLI commands to toggle the reconciler at runtime
 - Controller
   - detect duplicate (UnderlaySrcIP, UnderlayDstIP) pairs for tunnels and only render the first to the device config and write a log error for the second
 - Onchain Programs
@@ -70,7 +72,6 @@ All notable changes to this project will be documented in this file.
 - N/A
 
 ### Changes
-
 - Activator
   - removes accesspass monitor task (that expires access passes)
 - Monitor

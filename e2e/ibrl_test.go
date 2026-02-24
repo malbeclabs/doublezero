@@ -350,8 +350,8 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 			},
 			{
 				name:        "doublezero_status",
-				fixturePath: "fixtures/ibrl/doublezero_status_disconnected.txt",
-				data:        map[string]any{},
+				fixturePath: "fixtures/ibrl/doublezero_status_disconnected.tmpl",
+				data:        map[string]any{"Reconciler": "true"},
 				cmd:         []string{"doublezero", "status"},
 			},
 		}

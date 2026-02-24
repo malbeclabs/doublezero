@@ -67,12 +67,12 @@ doublezero multicast group allowlist subscriber add --code mg02 --user-payer <CL
 
 ### Connect publisher to mg01
 ```bash
-docker exec dz-local-client-<CLIENT_100_PUBKEY> doublezero connect multicast publisher mg01 --client-ip 9.169.90.100
+docker exec dz-local-client-<CLIENT_100_PUBKEY> doublezero connect multicast publisher mg01
 ```
 
 ### Connect subscriber to mg02
 ```bash
-docker exec dz-local-client-<CLIENT_101_PUBKEY> doublezero connect multicast subscriber mg02 --client-ip 9.169.90.101
+docker exec dz-local-client-<CLIENT_101_PUBKEY> doublezero connect multicast subscriber mg02
 ```
 
 ## 7. Verify Sessions

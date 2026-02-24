@@ -46,6 +46,7 @@ type Config struct {
 	InternetLatencyCollectorPK solana.PublicKey
 	Interval                   time.Duration
 	SlackWebhookURL            string
+	AllowOwnUsers              bool
 	TwoZOracleClient           twozoracle.TwoZOracleClient
 	TwoZOracleInterval         time.Duration
 	InfluxWriter               InfluxWriter

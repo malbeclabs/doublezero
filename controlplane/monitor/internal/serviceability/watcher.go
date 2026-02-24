@@ -103,10 +103,12 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 		data.Devices[i].UsersCount = 0
 		data.Devices[i].ReferenceCount = 0
 	}
-	// filter out our own users
-	data.Users = slices.DeleteFunc(data.Users, func(u serviceability.User) bool {
-		return base58.Encode(u.Owner[:]) == doubleZeroPubKey
-	})
+	if !w.cfg.AllowOwnUsers {
+		// filter out our own users
+		data.Users = slices.DeleteFunc(data.Users, func(u serviceability.User) bool {
+			return base58.Encode(u.Owner[:]) == doubleZeroPubKey
+		})
+	}
 
 	w.processEvents(data)
 	w.runAudits(data)

@@ -57,6 +57,7 @@ All notable changes to this project will be documented in this file.
 - Client
   - Fix tunnel overlay address scope to prevent kernel from selecting link-local /31 as source for routed traffic
   - Serviceability: close orphaned blocks when dz_prefixes shrink
+  - Serviceability: require ip-net for CYOA interfaces
 - E2E / QA Tests
   - Fix QA unicast test flake caused by RPC 429 rate limiting during concurrent user deletion — treat transient RPC errors as non-fatal in the deletion polling loop
   - Backward compatibility test: use `--status` instead of `--desired-status` for drain commands; fix version ranges (link drain compatible since v0.7.2, device drain since v0.8.1)

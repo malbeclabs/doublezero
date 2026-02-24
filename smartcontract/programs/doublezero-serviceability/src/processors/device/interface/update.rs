@@ -180,6 +180,13 @@ pub fn process_update_device_interface(
         }
         iface.node_segment_idx = node_segment_idx;
     }
+
+    // CYOA interfaces must have an ip_net — prevent setting CYOA without ip_net
+    // or clearing ip_net from a CYOA interface via update
+    if iface.interface_cyoa != InterfaceCYOA::None && iface.ip_net == NetworkV4::default() {
+        return Err(DoubleZeroError::InvalidInterfaceIp.into());
+    }
+
     // until we have release V2 version for interfaces, always convert to v1
     let updated_interface = iface.to_interface();
 

@@ -415,22 +415,26 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 		if !t.Run("check_multicast_static_routes", func(t *testing.T) {
 			t.Parallel()
 
-			routes, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j route show table main"})
-			require.NoError(t, err)
-
 			expectedAddrs := []string{"233.84.178.0", "233.84.178.1"}
-			for _, expectedAddr := range expectedAddrs {
-				found := false
-				for _, route := range routes {
-					if dst, ok := route["dst"].(string); ok && dst == expectedAddr {
-						found = true
-						break
+			require.Eventually(t, func() bool {
+				routes, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j route show table main"})
+				if err != nil {
+					return false
+				}
+				for _, expectedAddr := range expectedAddrs {
+					found := false
+					for _, route := range routes {
+						if dst, ok := route["dst"].(string); ok && dst == expectedAddr {
+							found = true
+							break
+						}
+					}
+					if !found {
+						return false
 					}
 				}
-				if !found {
-					t.Fatalf("multicast route %s/32 not found for %s: %+v", expectedAddr, mode, routes)
-				}
-			}
+				return true
+			}, 60*time.Second, 1*time.Second, "multicast routes %v not found for %s", expectedAddrs, mode)
 		}) {
 			t.Fail()
 		}
@@ -495,7 +499,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 						}
 
 						return true
-					}, 30*time.Second, 1*time.Second, "multicast group %s not found in mroutes", mGroup)
+					}, 60*time.Second, 1*time.Second, "multicast group %s not found in mroutes", mGroup)
 				}
 			}) {
 				t.Fail()

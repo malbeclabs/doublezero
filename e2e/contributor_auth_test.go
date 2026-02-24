@@ -316,7 +316,7 @@ func TestE2E_ContributorAuth(t *testing.T) {
 	// === Tier 3: Contributor Owner Update Operations ===
 
 	// Subtest: contributor_owner_update_ops_manager
-	t.Run("contributor_owner_update_ops_manager", func(t *testing.T) {
+	if !t.Run("contributor_owner_update_ops_manager", func(t *testing.T) {
 		log.Debug("==> Testing contributor owner can update their own ops_manager")
 
 		// Generate a pubkey to use as the ops manager
@@ -371,5 +371,285 @@ func TestE2E_ContributorAuth(t *testing.T) {
 		require.Error(t, err, "contributor owner should not be able to update contributor code (foundation only)")
 
 		log.Debug("--> Contributor owner ops_manager update test completed")
+	}) {
+		t.FailNow()
+	}
+
+	// === Tier 4: Ownership Transfer, Ref-Count Lifecycle, Cross-Contributor Isolation ===
+
+	// Subtest: owner_transfer_revokes_old_owner_access
+	if !t.Run("owner_transfer_revokes_old_owner_access", func(t *testing.T) {
+		log.Debug("==> Testing that transferring contributor ownership revokes old owner's access")
+
+		// Step 1: Generate a new keypair for the new owner
+		_, err := dn.Manager.Exec(t.Context(), []string{
+			"solana-keygen", "new", "--no-bip39-passphrase", "-o", "/tmp/new-co-owner.json", "--force",
+		})
+		require.NoError(t, err, "failed to generate new contributor owner keypair")
+
+		newOwnerPubkeyOutput, err := dn.Manager.Exec(t.Context(), []string{
+			"solana", "address", "-k", "/tmp/new-co-owner.json",
+		})
+		require.NoError(t, err, "failed to get new contributor owner pubkey")
+		newOwnerPubkey := strings.TrimSpace(string(newOwnerPubkeyOutput))
+		log.Debug("New contributor owner pubkey", "pubkey", newOwnerPubkey)
+
+		// Step 2: Fund the new owner
+		_, err = dn.Manager.Exec(t.Context(), []string{
+			"solana", "transfer", "--allow-unfunded-recipient", newOwnerPubkey, "10",
+		})
+		require.NoError(t, err, "failed to fund new contributor owner keypair")
+
+		// Step 3: Extract test-co04 account pubkey
+		co04GetOutput, err := dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "contributor", "get",
+			"--code", "test-co04",
+		})
+		require.NoError(t, err, "failed to get contributor test-co04")
+		var co04Pubkey string
+		for _, line := range strings.Split(string(co04GetOutput), "\n") {
+			line = strings.TrimSpace(strings.ReplaceAll(line, "\r", ""))
+			if strings.HasPrefix(line, "account:") {
+				co04Pubkey = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "account:"), ","))
+				break
+			}
+		}
+		require.NotEmpty(t, co04Pubkey, "could not extract pubkey from contributor get output: %s", string(co04GetOutput))
+
+		// Step 4: Foundation transfers ownership of test-co04 to the new owner
+		_, err = dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "contributor", "update",
+			"--pubkey", co04Pubkey,
+			"--owner", newOwnerPubkey,
+		})
+		require.NoError(t, err, "failed to transfer contributor ownership to new owner")
+
+		// Step 5: Old owner attempts interface update → expect error
+		log.Debug("==> Old owner attempting interface update (should fail)")
+		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
+			set -euo pipefail
+			DOUBLEZERO_KEYPAIR=/tmp/co-owner.json doublezero device interface update test-dev-co04 Ethernet1 --mtu 1400 2>&1
+		`})
+		require.Error(t, err, "old owner should no longer be able to update interface after ownership transfer")
+
+		// Step 6: New owner updates MTU → expect success
+		log.Debug("==> New owner updating interface (should succeed)")
+		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
+			set -euo pipefail
+			DOUBLEZERO_KEYPAIR=/tmp/new-co-owner.json doublezero device interface update test-dev-co04 Ethernet1 --mtu 1500 2>&1
+		`})
+		require.NoError(t, err, "new owner should be able to update interface after ownership transfer")
+
+		// Step 7: Verify via SDK
+		iface, err := waitForInterfaceUpdate(t.Context(), dn, "test-dev-co04", "Ethernet1", serviceability.LoopbackTypeNone, 1500, 30*time.Second)
+		require.NoError(t, err, "timed out waiting for interface update after ownership transfer")
+		require.Equal(t, uint16(1500), iface.Mtu, "mtu should be updated to 1500 by new owner")
+
+		log.Debug("--> Owner transfer access revocation test completed")
+	}) {
+		t.FailNow()
+	}
+
+	// Subtest: reference_count_full_lifecycle
+	if !t.Run("reference_count_full_lifecycle", func(t *testing.T) {
+		log.Debug("==> Testing reference count decrement on device deletion enables contributor deletion")
+
+		// Step 1: Create contributor test-co05
+		_, err := dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "contributor", "create",
+			"--code", "test-co05",
+			"--owner", "me",
+		})
+		require.NoError(t, err, "failed to create contributor test-co05")
+
+		// Step 2: Create device under test-co05
+		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
+			set -euo pipefail
+			doublezero device create --code test-dev-co05 --contributor test-co05 --location lax --exchange xlax --public-ip "45.33.100.5" --dz-prefixes "45.33.100.40/29" --mgmt-vrf mgmt --desired-status activated 2>&1
+		`})
+		require.NoError(t, err, "failed to create device test-dev-co05")
+
+		// Step 3: Wait for device activation via SDK
+		log.Debug("==> Waiting for device test-dev-co05 to be activated")
+		require.Eventually(t, func() bool {
+			client, err := dn.Ledger.GetServiceabilityClient()
+			if err != nil {
+				return false
+			}
+			data, err := client.GetProgramData(t.Context())
+			if err != nil {
+				return false
+			}
+			for _, device := range data.Devices {
+				if device.Code == "test-dev-co05" && device.Status == serviceability.DeviceStatusActivated {
+					return true
+				}
+			}
+			return false
+		}, 60*time.Second, 2*time.Second, "device test-dev-co05 was not activated within timeout")
+
+		// Step 4: Attempt contributor delete → expect error (ref_count > 0)
+		log.Debug("==> Attempting to delete contributor with active device (should fail)")
+		_, err = dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "contributor", "delete",
+			"--pubkey", "test-co05",
+		})
+		require.Error(t, err, "deleting contributor with active device should fail")
+
+		// Step 5: Drain then delete the device
+		log.Debug("==> Draining and deleting device test-dev-co05")
+		_, err = dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "device", "update",
+			"--pubkey", "test-dev-co05",
+			"--status", "drained",
+		})
+		require.NoError(t, err, "failed to drain device test-dev-co05")
+
+		_, err = dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "device", "delete",
+			"--pubkey", "test-dev-co05",
+		})
+		require.NoError(t, err, "failed to delete device test-dev-co05")
+
+		// Step 6: Wait for device removal from ledger
+		log.Debug("==> Waiting for device test-dev-co05 to be removed from ledger")
+		require.Eventually(t, func() bool {
+			client, err := dn.Ledger.GetServiceabilityClient()
+			if err != nil {
+				return false
+			}
+			data, err := client.GetProgramData(t.Context())
+			if err != nil {
+				return false
+			}
+			for _, device := range data.Devices {
+				if device.Code == "test-dev-co05" {
+					return false
+				}
+			}
+			return true
+		}, 60*time.Second, 2*time.Second, "device test-dev-co05 was not removed from ledger within timeout")
+
+		// Step 7: Delete contributor → expect success
+		log.Debug("==> Deleting contributor test-co05 (should succeed now)")
+		_, err = dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "contributor", "delete",
+			"--pubkey", "test-co05",
+		})
+		require.NoError(t, err, "failed to delete contributor test-co05 after device removal")
+
+		// Step 8: Verify contributor is gone
+		output, err := dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "contributor", "list",
+		})
+		require.NoError(t, err, "failed to list contributors after delete")
+		require.NotContains(t, string(output), "test-co05",
+			"deleted contributor test-co05 should not appear in list")
+
+		log.Debug("--> Reference count full lifecycle test completed")
+	}) {
+		t.FailNow()
+	}
+
+	// Subtest: cross_contributor_isolation
+	t.Run("cross_contributor_isolation", func(t *testing.T) {
+		log.Debug("==> Testing cross-contributor isolation: owners cannot modify other contributors' devices")
+
+		// Step 1: Generate keypair for owner-B
+		_, err := dn.Manager.Exec(t.Context(), []string{
+			"solana-keygen", "new", "--no-bip39-passphrase", "-o", "/tmp/co-owner-b.json", "--force",
+		})
+		require.NoError(t, err, "failed to generate owner-B keypair")
+
+		ownerBPubkeyOutput, err := dn.Manager.Exec(t.Context(), []string{
+			"solana", "address", "-k", "/tmp/co-owner-b.json",
+		})
+		require.NoError(t, err, "failed to get owner-B pubkey")
+		ownerBPubkey := strings.TrimSpace(string(ownerBPubkeyOutput))
+		log.Debug("Owner-B pubkey", "pubkey", ownerBPubkey)
+
+		// Step 2: Fund owner-B
+		_, err = dn.Manager.Exec(t.Context(), []string{
+			"solana", "transfer", "--allow-unfunded-recipient", ownerBPubkey, "10",
+		})
+		require.NoError(t, err, "failed to fund owner-B keypair")
+
+		// Step 3: Create contributor test-co06 with owner-B
+		_, err = dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "contributor", "create",
+			"--code", "test-co06",
+			"--owner", ownerBPubkey,
+		})
+		require.NoError(t, err, "failed to create contributor test-co06 with owner-B")
+
+		// Step 4: Create device under test-co06
+		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
+			set -euo pipefail
+			doublezero device create --code test-dev-co06 --contributor test-co06 --location lhr --exchange xlhr --public-ip "45.33.100.6" --dz-prefixes "45.33.100.48/29" --mgmt-vrf mgmt --desired-status activated 2>&1
+		`})
+		require.NoError(t, err, "failed to create device test-dev-co06")
+
+		// Step 5: Create a CYOA interface on test-dev-co06
+		_, err = dn.Manager.Exec(t.Context(), []string{
+			"doublezero", "device", "interface", "create",
+			"test-dev-co06", "Ethernet1",
+			"--interface-cyoa", "gre-over-dia",
+			"--ip-net", "45.33.100.82/31",
+		})
+		require.NoError(t, err, "failed to create interface on test-dev-co06")
+
+		// Step 6: Wait for interface to be unlinked
+		log.Debug("==> Waiting for test-dev-co06 Ethernet1 to be unlinked")
+		require.Eventually(t, func() bool {
+			client, err := dn.Ledger.GetServiceabilityClient()
+			if err != nil {
+				return false
+			}
+			data, err := client.GetProgramData(t.Context())
+			if err != nil {
+				return false
+			}
+			for _, device := range data.Devices {
+				if device.Code == "test-dev-co06" {
+					for _, iface := range device.Interfaces {
+						if iface.Name == "Ethernet1" && iface.Status == serviceability.InterfaceStatusUnlinked {
+							return true
+						}
+					}
+				}
+			}
+			return false
+		}, 60*time.Second, 2*time.Second, "test-dev-co06 Ethernet1 was not unlinked within timeout")
+
+		// Step 7: Owner-B tries to update test-dev-co04 (owned by different contributor) → expect error
+		log.Debug("==> Owner-B attempting to update test-dev-co04 (should fail)")
+		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
+			set -euo pipefail
+			DOUBLEZERO_KEYPAIR=/tmp/co-owner-b.json doublezero device interface update test-dev-co04 Ethernet1 --mtu 1400 2>&1
+		`})
+		require.Error(t, err, "owner-B should not be able to update interface on another contributor's device")
+
+		// Step 8: test-co04 owner tries to update test-dev-co06 (owned by owner-B) → expect error
+		log.Debug("==> test-co04 owner attempting to update test-dev-co06 (should fail)")
+		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
+			set -euo pipefail
+			DOUBLEZERO_KEYPAIR=/tmp/new-co-owner.json doublezero device interface update test-dev-co06 Ethernet1 --mtu 1400 2>&1
+		`})
+		require.Error(t, err, "test-co04 owner should not be able to update interface on owner-B's device")
+
+		// Step 9: Owner-B updates their own device → expect success
+		log.Debug("==> Owner-B updating their own device (should succeed)")
+		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
+			set -euo pipefail
+			DOUBLEZERO_KEYPAIR=/tmp/co-owner-b.json doublezero device interface update test-dev-co06 Ethernet1 --mtu 9000 2>&1
+		`})
+		require.NoError(t, err, "owner-B should be able to update interface on their own device")
+
+		// Step 10: Verify via SDK
+		iface, err := waitForInterfaceUpdate(t.Context(), dn, "test-dev-co06", "Ethernet1", serviceability.LoopbackTypeNone, 9000, 30*time.Second)
+		require.NoError(t, err, "timed out waiting for owner-B interface update")
+		require.Equal(t, uint16(9000), iface.Mtu, "mtu should be updated to 9000 by owner-B")
+
+		log.Debug("--> Cross-contributor isolation test completed")
 	})
 }

@@ -419,14 +419,22 @@ func (dn *TestDevnet) WaitForAgentConfigMatchViaController(t *testing.T, deviceA
 	return fmt.Errorf("output mismatch: +(want), -(got): %s", diff)
 }
 
-func (dn *TestDevnet) WaitForUserActivation(t *testing.T) error {
+func (dn *TestDevnet) WaitForUserActivation(t *testing.T, minUsers ...int) error {
 	client, err := dn.Ledger.GetServiceabilityClient()
 	require.NoError(t, err, "error getting serviceability client")
+
+	minCount := 0
+	if len(minUsers) > 0 {
+		minCount = minUsers[0]
+	}
 
 	condition := func() (bool, error) {
 		data, err := client.GetProgramData(t.Context())
 		if err != nil {
 			return false, err
+		}
+		if len(data.Users) < minCount {
+			return false, nil
 		}
 		for _, user := range data.Users {
 			if user.Status != serviceability.UserStatusActivated {

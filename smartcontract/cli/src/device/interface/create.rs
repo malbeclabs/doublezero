@@ -32,11 +32,11 @@ pub struct CreateDeviceInterfaceCliCommand {
     /// IP Network
     #[arg(long)]
     pub ip_net: Option<NetworkV4>,
-    /// Bandwidth in Mbps
-    #[arg(long, value_parser = validate_parse_bandwidth, default_value = "0")]
+    /// Bandwidth. Accepts values in Kbps, Mbps, or Gbps.
+    #[arg(long, value_parser = validate_parse_bandwidth)]
     pub bandwidth: u64,
-    /// Committed Information Rate in Mbps
-    #[arg(long, value_parser = validate_parse_bandwidth, default_value = "0")]
+    /// Committed Information Rate. Accepts values in Kbps, Mbps, or Gbps.
+    #[arg(long, value_parser = validate_parse_bandwidth, default_value = "0bps")]
     pub cir: u64,
     /// MTU
     #[arg(long, default_value = "1500")]

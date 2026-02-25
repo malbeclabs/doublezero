@@ -65,8 +65,8 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 		echo "==> Creating device"
 		doublezero device create --code test-dz01 --contributor co01 --location lax --exchange xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.100.8/29" --mgmt-vrf mgmt --desired-status activated 2>&1
 		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
-		doublezero device interface create test-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create test-dz01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create test-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create test-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
 	`})
 	log.Debug("Device creation output", "output", string(output))
 	require.NoError(t, err, "Device creation failed")
@@ -440,11 +440,11 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
 		doublezero device update --pubkey test-dz02 --max-users 128 2>&1
 		doublezero device update --pubkey test-dz03 --max-users 128 2>&1
-		doublezero device interface create test-dz01 "Ethernet1" 2>&1
-		doublezero device interface create test-dz01 "Ethernet2" 2>&1
-		doublezero device interface create test-dz02 "Ethernet1" 2>&1
-		doublezero device interface create test-dz02 "Ethernet2" 2>&1
-		doublezero device interface create test-dz03 "Ethernet1" 2>&1
+		doublezero device interface create test-dz01 "Ethernet1" --bandwidth 10G 2>&1
+		doublezero device interface create test-dz01 "Ethernet2" --bandwidth 10G 2>&1
+		doublezero device interface create test-dz02 "Ethernet1" --bandwidth 10G 2>&1
+		doublezero device interface create test-dz02 "Ethernet2" --bandwidth 10G 2>&1
+		doublezero device interface create test-dz03 "Ethernet1" --bandwidth 10G 2>&1
 	`})
 	log.Debug("Device creation output", "output", string(output))
 	require.NoError(t, err, "Device creation failed")
@@ -1019,7 +1019,7 @@ func TestE2E_LoopbackInterface_AllocationLifecycle(t *testing.T) {
 	// Create loopback interface with vpnv4 type (allocates ip_net and node_segment_idx)
 	log.Debug("==> Creating loopback interface")
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
-		doublezero device interface create test-dz01 "Loopback255" --loopback-type vpnv4 -w
+		doublezero device interface create test-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
 	`})
 	require.NoError(t, err, "Loopback interface creation failed")
 

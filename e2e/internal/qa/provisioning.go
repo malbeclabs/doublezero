@@ -372,6 +372,7 @@ func (p *ProvisioningTest) CreateInterface(ctx context.Context, deviceCode, ifac
 	args := []string{
 		"device", "interface", "create",
 		deviceCode, ifaceName,
+		"--bandwidth", "10G",
 		"-w", // wait for completion
 	}
 

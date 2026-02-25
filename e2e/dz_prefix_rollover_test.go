@@ -72,8 +72,8 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 		echo "==> Creating device with multiple dz_prefixes"
 		doublezero device create --code test-dz01 --contributor co01 --location lax --exchange xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.101.0/30,45.33.101.4/30" --mgmt-vrf mgmt --desired-status activated 2>&1
 		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
-		doublezero device interface create test-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create test-dz01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create test-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create test-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
 	`})
 	log.Debug("Device creation output", "output", string(output))
 	require.NoError(t, err, "Device creation failed")
@@ -386,9 +386,9 @@ func TestE2E_DzPrefix_GrowAndShrink(t *testing.T) {
 		set -euo pipefail
 		doublezero device create --code test-dz01 --contributor co01 --location lax --exchange xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.101.0/30" --mgmt-vrf mgmt --desired-status activated 2>&1
 		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
-		doublezero device interface create test-dz01 "Ethernet1" --interface-cyoa gre-over-dia --ip-net "45.33.100.62/31" 2>&1
-		doublezero device interface create test-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create test-dz01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create test-dz01 "Ethernet1" --interface-cyoa gre-over-dia --ip-net "45.33.100.62/31" --bandwidth 10G 2>&1
+		doublezero device interface create test-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create test-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
 	`})
 	log.Debug("Device creation output", "output", string(output))
 	require.NoError(t, err, "Device creation failed")

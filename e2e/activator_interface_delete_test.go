@@ -43,6 +43,7 @@ func TestE2E_ActivatorInterfaceDeleteOutOfPoolIP(t *testing.T) {
 			testDeviceCode, testInterfaceName,
 			"--ip-net", outOfPoolIP,
 			"--user-tunnel-endpoint", "true",
+			"--bandwidth", "10G",
 		})
 		require.NoError(t, err, "failed to create loopback interface with out-of-pool IP")
 

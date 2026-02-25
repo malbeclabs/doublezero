@@ -33,7 +33,9 @@ pub struct DeviceInterfaceDisplay {
     pub loopback_type: LoopbackType,
     pub interface_cyoa: InterfaceCYOA,
     pub interface_dia: InterfaceDIA,
+    #[tabled(display = "crate::util::display_as_bandwidth", rename = "bandwidth")]
     pub bandwidth: u64,
+    #[tabled(display = "crate::util::display_as_bandwidth", rename = "cir")]
     pub cir: u64,
     pub mtu: u16,
     pub routing_mode: RoutingMode,
@@ -214,7 +216,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " device       | name | interface_type | loopback_type | interface_cyoa | interface_dia | bandwidth | cir | mtu  | routing_mode | vlan_id | ip_net      | node_segment_idx | user_tunnel_endpoint | status    \n device1_code | eth0 | physical       | none          | none           | none          | 1000      | 500 | 1500 | static       | 0       | 10.0.0.1/24 | 12               | true                 | activated \n device1_code | lo0  | loopback       | vpnv4         | none           | none          | 100       | 50  | 1400 | static       | 16      | 10.0.1.1/24 | 13               | false                | activated \n");
+        assert_eq!(output_str, " device       | name | interface_type | loopback_type | interface_cyoa | interface_dia | bandwidth | cir    | mtu  | routing_mode | vlan_id | ip_net      | node_segment_idx | user_tunnel_endpoint | status    \n device1_code | eth0 | physical       | none          | none           | none          | 1Kbps     | 500bps | 1500 | static       | 0       | 10.0.0.1/24 | 12               | true                 | activated \n device1_code | lo0  | loopback       | vpnv4         | none           | none          | 100bps    | 50bps  | 1400 | static       | 16      | 10.0.1.1/24 | 13               | false                | activated \n");
 
         let mut output = Vec::new();
         let res = ListDeviceInterfaceCliCommand {

@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
-- N/A
+- CLI: `--bandwidth` is now a required argument for `doublezero device interface create` and `doublezero device interface update`; callers that previously omitted it (relying on the default of `0`) must now explicitly pass a value with a unit (e.g. `--bandwidth 10Gbps`)
 
 ### Changes
 
@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
   - `doublezero global-config feature-flags` commands added
   - Fix multicast subscriber tunnel source resolution for NAT environments — resolve local interface IP instead of using public IP
   - Added multicast filters to access-pass list, enabling filtering by publisher/subscriber role and identifying access passes not authorized for a specific multicast group.
+  - Device interface `--bandwidth` and `--cir` flags now accept Kbps, Mbps, or Gbps units; `interface list` displays those values as human-readable strings
 - Client
   - Reject BGP martian addresses (CGNAT, multicast, reserved, benchmarking, etc.) as client IP during `connect`
 - Controller

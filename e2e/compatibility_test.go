@@ -65,7 +65,10 @@ var knownIncompatibilities = map[string]knownIncompat{
 	// All multicast operations that depend on multicast_group_create. When the group
 	// can't be created (< 0.8.1), these all fail with "MulticastGroup not found".
 	"write/multicast_group_wait_activated":       {minVersion: "0.8.1"},
-	"write/multicast_group_update":               {minVersion: "0.8.1"},
+	// multicast_group_update: In addition to the dependency above, v0.8.1-v0.8.8 parsed
+	// --max-bandwidth as a plain integer. v0.8.9 added validate_parse_bandwidth (a855ca7a)
+	// which accepts unit strings like "200Mbps".
+	"write/multicast_group_update":               {minVersion: "0.8.9"},
 	"write/multicast_group_pub_allowlist_add":    {minVersion: "0.8.1"},
 	"write/multicast_group_pub_allowlist_remove": {minVersion: "0.8.1"},
 	"write/multicast_group_sub_allowlist_add":    {minVersion: "0.8.1"},
@@ -1065,10 +1068,10 @@ func runWriteWorkflows(
 
 		// Interface creates use counter-based PDA derivation — must be sequential.
 		{name: "create_interfaces", parallel: false, steps: []writeStep{
-			{name: "device_interface_create", cmd: cli + " device interface create " + deviceCode + " " + ifaceName},
-			{name: "device_interface_create_2", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName},
-			{name: "device_interface_create_3", cmd: cli + " device interface create " + deviceCode + " " + ifaceName2},
-			{name: "device_interface_create_4", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName2},
+			{name: "device_interface_create", cmd: cli + " device interface create " + deviceCode + " " + ifaceName + " --bandwidth 10G"},
+			{name: "device_interface_create_2", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName + " --bandwidth 10G"},
+			{name: "device_interface_create_3", cmd: cli + " device interface create " + deviceCode + " " + ifaceName2 + " --bandwidth 10G"},
+			{name: "device_interface_create_4", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName2 + " --bandwidth 10G"},
 		}},
 
 		// Transition all 4 interfaces to "unlinked" (required before link creation).
@@ -1098,7 +1101,7 @@ func runWriteWorkflows(
 				" --side-z " + deviceCode2 +
 				` --bandwidth "10 Gbps" --mtu 9000 --delay-ms 1 --jitter-ms 0.01`},
 			{name: "multicast_group_create", cmd: cli + " multicast group create --code " + multicastCode +
-				" --max-bandwidth 100 --owner me", noCascade: true},
+				" --max-bandwidth 100Mbps --owner me", noCascade: true},
 			{name: "accesspass_set", cmd: cli + " access-pass set --accesspass-type prepaid --client-ip " + userClientIP +
 				" --user-payer me", noCascade: true},
 			{name: "accesspass_set_2", cmd: cli + " access-pass set --accesspass-type prepaid --client-ip " + user2ClientIP +
@@ -1125,7 +1128,7 @@ func runWriteWorkflows(
 			{name: "user_wait_activated_2", cmd: `for i in $(seq 1 60); do doublezero user list 2>/dev/null | grep '` + user2ClientIP + ` ' | grep -q activated && exit 0; sleep 1; done; echo "user2 not activated after 60s"; exit 1`, noCascade: true},
 			{name: "multicast_group_wait_activated", cmd: `for i in $(seq 1 60); do doublezero multicast group list 2>/dev/null | grep '` + multicastCode + `' | grep -q activated && exit 0; sleep 1; done; echo "multicast group not activated after 60s"; exit 1`, noCascade: true},
 			{name: "multicast_group_update", cmd: cli + " multicast group update --pubkey " + multicastCode +
-				" --max-bandwidth 200", noCascade: true},
+				" --max-bandwidth 200Mbps", noCascade: true},
 		}},
 
 		// User update + multicast allowlist operations (need user activated).

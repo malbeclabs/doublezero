@@ -38,6 +38,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 			"doublezero", "device", "interface", "create",
 			testDeviceCode, testInterfaceName,
 			"--interface-cyoa", "gre-over-dia",
+			"--bandwidth", "10G",
 		})
 
 		require.Error(t, err, "expected error when creating loopback with CYOA")
@@ -62,6 +63,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 			testDeviceCode, testInterfaceName,
 			"--interface-cyoa", "gre-over-dia",
 			"--ip-net", "45.33.100.50/31",
+			"--bandwidth", "10G",
 		})
 		require.NoError(t, err, "failed to create physical interface with CYOA")
 
@@ -87,6 +89,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 			testDeviceCode, testInterfaceName,
 			"--ip-net", publicIP,
 			"--user-tunnel-endpoint", "true",
+			"--bandwidth", "10G",
 		})
 		require.NoError(t, err, "failed to create loopback interface with public IP and user_tunnel_endpoint")
 
@@ -117,6 +120,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 			testDeviceCode, testInterfaceName,
 			"--ip-net", publicIP,
 			"--user-tunnel-endpoint", "false",
+			"--bandwidth", "10G",
 		})
 
 		require.Error(t, err, "expected error when creating loopback with public IP but without user_tunnel_endpoint")
@@ -141,6 +145,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		_, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "create",
 			testDeviceCode, testInterfaceName,
+			"--bandwidth", "10G",
 		})
 		require.NoError(t, err, "failed to create loopback interface")
 
@@ -181,6 +186,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 			"doublezero", "device", "interface", "create",
 			testDeviceCode, testInterfaceName,
 			"--user-tunnel-endpoint", "true",
+			"--bandwidth", "10G",
 		})
 		require.NoError(t, err, "failed to create loopback interface")
 
@@ -221,6 +227,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 			"doublezero", "device", "interface", "create",
 			testDeviceCode, testInterfaceName,
 			"--ip-net", "45.33.100.50/31",
+			"--bandwidth", "10G",
 		})
 
 		require.Error(t, err, "expected error when creating plain physical interface with ip_net")
@@ -246,6 +253,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 			testDeviceCode, testInterfaceName,
 			"--interface-cyoa", "gre-over-dia",
 			"--ip-net", "45.33.100.60/31",
+			"--bandwidth", "10G",
 		})
 		require.NoError(t, err, "failed to create CYOA physical interface with ip_net")
 
@@ -270,6 +278,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		_, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "create",
 			testDeviceCode, testInterfaceName,
+			"--bandwidth", "10G",
 		})
 		require.NoError(t, err, "failed to create plain physical interface")
 
@@ -311,6 +320,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 			testDeviceCode, testInterfaceName,
 			"--ip-net", publicIP,
 			"--user-tunnel-endpoint", "true",
+			"--bandwidth", "10G",
 		})
 		require.NoError(t, err, "failed to create loopback interface")
 

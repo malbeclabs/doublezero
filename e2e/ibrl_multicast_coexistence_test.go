@@ -416,12 +416,12 @@ func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, 
 		set -euo pipefail
 
 		echo "==> Populate device interface information onchain"
-		doublezero device interface create ny5-dz01 "Ethernet2" -w
-		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 -w
-		doublezero device interface create pit-dz01 "Ethernet2" -w
-		doublezero device interface create pit-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create pit-dz01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create ny5-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
+		doublezero device interface create pit-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create pit-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create pit-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
 
 		echo "--> Device information onchain:"
 		doublezero device list
@@ -705,12 +705,12 @@ func setupCoexistenceTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -euo pipefail
 		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
-		doublezero device interface create ny5-dz01 "Ethernet2" -w
-		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 -w
-		doublezero device interface create pit-dzd01 "Ethernet2" -w
-		doublezero device interface create pit-dzd01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create ny5-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
+		doublezero device interface create pit-dzd01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create pit-dzd01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
 		doublezero device update --pubkey pit-dzd01 --max-users 128
 	`})
 	require.NoError(t, err)

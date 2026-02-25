@@ -35,6 +35,9 @@ RUN curl https://gotest-release.s3.amazonaws.com/gotest_linux > gotest && \
     chmod +x gotest && \
     mv gotest /usr/local/bin/gotest
 
+# Allow pkg-config to return results for x86_64 when cross-compiling from arm64
+ENV PKG_CONFIG_ALLOW_CROSS=1
+
 # Alias to access the DinD container's published ports from inside the container,
 # since localhost does not route through NAT. Used in place of `localhost`.
 ENV DIND_LOCALHOST=host.docker.internal

@@ -121,27 +121,34 @@ func (d DeviceDeviceType) String() string {
 type DeviceStatus uint8
 
 const (
-	DeviceStatusPending DeviceStatus = iota
-	DeviceStatusActivated
-	DeviceStatusSuspended
-	DeviceStatusDeleted
-	DeviceStatusRejected
-	DeviceStatusDrained
-	DeviceStatusDeviceProvisioning
-	DeviceStatusLinkProvisioning
+	DeviceStatusPending            DeviceStatus = 0
+	DeviceStatusActivated          DeviceStatus = 1
+	DeviceStatusDeleting           DeviceStatus = 3
+	DeviceStatusRejected           DeviceStatus = 4
+	DeviceStatusDrained            DeviceStatus = 5
+	DeviceStatusDeviceProvisioning DeviceStatus = 6
+	DeviceStatusLinkProvisioning   DeviceStatus = 7
 )
 
 func (d DeviceStatus) String() string {
-	return [...]string{
-		"pending",
-		"activated",
-		"suspended",
-		"deleted",
-		"rejected",
-		"drained",
-		"device-provisioning",
-		"link-provisioning",
-	}[d]
+	switch d {
+	case DeviceStatusPending:
+		return "pending"
+	case DeviceStatusActivated:
+		return "activated"
+	case DeviceStatusDeleting:
+		return "deleting"
+	case DeviceStatusRejected:
+		return "rejected"
+	case DeviceStatusDrained:
+		return "drained"
+	case DeviceStatusDeviceProvisioning:
+		return "device-provisioning"
+	case DeviceStatusLinkProvisioning:
+		return "link-provisioning"
+	default:
+		return "unknown"
+	}
 }
 
 func (d DeviceStatus) IsDrained() bool {
@@ -155,21 +162,28 @@ func (d DeviceStatus) MarshalJSON() ([]byte, error) {
 type DeviceHealth uint8
 
 const (
-	DeviceHealthUnknown       DeviceHealth = iota
-	DeviceHealthPending                    // 1
-	DeviceHealthReadyForLinks              // 2
-	DeviceHealthReadyForUsers              // 3
-	DeviceHealthImpaired                   // 4
+	DeviceHealthUnknown       DeviceHealth = 0
+	DeviceHealthPending       DeviceHealth = 1
+	DeviceHealthReadyForLinks DeviceHealth = 2
+	DeviceHealthReadyForUsers DeviceHealth = 3
+	DeviceHealthImpaired      DeviceHealth = 4
 )
 
 func (d DeviceHealth) String() string {
-	return [...]string{
-		"unknown",
-		"pending",
-		"ready_for_links",
-		"ready_for_users",
-		"impaired",
-	}[d]
+	switch d {
+	case DeviceHealthUnknown:
+		return "unknown"
+	case DeviceHealthPending:
+		return "pending"
+	case DeviceHealthReadyForLinks:
+		return "ready_for_links"
+	case DeviceHealthReadyForUsers:
+		return "ready_for_users"
+	case DeviceHealthImpaired:
+		return "impaired"
+	default:
+		return fmt.Sprintf("DeviceHealth(%d)", d)
+	}
 }
 
 func (d DeviceHealth) MarshalJSON() ([]byte, error) {
@@ -471,29 +485,37 @@ func (l LinkLinkType) MarshalJSON() ([]byte, error) {
 type LinkStatus uint8
 
 const (
-	LinkStatusPending LinkStatus = iota
-	LinkStatusActivated
-	LinkStatusSuspended
-	LinkStatusDeleted
-	LinkStatusRejected
-	LinkStatusRequested
-	LinkStatusHardDrained
-	LinkStatusSoftDrained
-	LinkStatusProvisioning
+	LinkStatusPending      LinkStatus = 0
+	LinkStatusActivated    LinkStatus = 1
+	LinkStatusDeleting     LinkStatus = 3
+	LinkStatusRejected     LinkStatus = 4
+	LinkStatusRequested    LinkStatus = 5
+	LinkStatusHardDrained  LinkStatus = 6
+	LinkStatusSoftDrained  LinkStatus = 7
+	LinkStatusProvisioning LinkStatus = 8
 )
 
 func (l LinkStatus) String() string {
-	return [...]string{
-		"pending",
-		"activated",
-		"suspended",
-		"deleted",
-		"rejected",
-		"requested",
-		"hard-drained",
-		"soft-drained",
-		"provisioning",
-	}[l]
+	switch l {
+	case LinkStatusPending:
+		return "pending"
+	case LinkStatusActivated:
+		return "activated"
+	case LinkStatusDeleting:
+		return "deleting"
+	case LinkStatusRejected:
+		return "rejected"
+	case LinkStatusRequested:
+		return "requested"
+	case LinkStatusHardDrained:
+		return "hard-drained"
+	case LinkStatusSoftDrained:
+		return "soft-drained"
+	case LinkStatusProvisioning:
+		return "provisioning"
+	default:
+		return "unknown"
+	}
 }
 
 // IsHardDrained returns true if the link status is hard-drained
@@ -508,17 +530,25 @@ func (l LinkStatus) MarshalJSON() ([]byte, error) {
 type LinkHealth uint8
 
 const (
-	LinkHealthPending LinkHealth = iota
-	LinkHealthReadyForService
-	LinkHealthImpaired
+	LinkHealthUnknown         LinkHealth = 0
+	LinkHealthPending         LinkHealth = 1
+	LinkHealthReadyForService LinkHealth = 2
+	LinkHealthImpaired        LinkHealth = 3
 )
 
 func (l LinkHealth) String() string {
-	return [...]string{
-		"pending",
-		"ready_for_service",
-		"impaired",
-	}[l]
+	switch l {
+	case LinkHealthUnknown:
+		return "unknown"
+	case LinkHealthPending:
+		return "pending"
+	case LinkHealthReadyForService:
+		return "ready_for_service"
+	case LinkHealthImpaired:
+		return "impaired"
+	default:
+		return fmt.Sprintf("LinkHealth(%d)", l)
+	}
 }
 
 func (l LinkHealth) MarshalJSON() ([]byte, error) {

@@ -17,7 +17,7 @@
   },
   "dependencies": {},
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/bun": "^1",
     "typescript": "^5"
   }
 }

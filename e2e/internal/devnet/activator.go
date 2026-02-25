@@ -128,13 +128,6 @@ func (a *Activator) Start(ctx context.Context) error {
 		"DZ_LEDGER_WS":                 a.dn.Ledger.InternalRPCWSURL,
 		"DZ_SERVICEABILITY_PROGRAM_ID": a.dn.Manager.ServiceabilityProgramID,
 	}
-	// Set DZ_ONCHAIN_ALLOCATION based on the spec. After Validate(), this is always non-nil.
-	if a.dn.Spec.Activator.OnchainAllocation != nil && *a.dn.Spec.Activator.OnchainAllocation {
-		env["DZ_ONCHAIN_ALLOCATION"] = "true"
-	} else {
-		env["DZ_ONCHAIN_ALLOCATION"] = "false"
-	}
-
 	req := testcontainers.ContainerRequest{
 		Image: a.dn.Spec.Activator.ContainerImage,
 		Name:  a.dockerContainerName(),

@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 - Activator
     - Adds a stateless mode for when onchain allocation is enabled. This prevents activator/onchain from becoming out-of-sync.
+    - `--onchain-allocation` cli flag replaced with feature flag from GlobalState onchain
 - CLI
   - Fix `doublezero status` showing "Current Device" and "Metro" as N/A for multicast subscribers when the tunnel destination is a `user_tunnel_endpoint` loopback interface IP rather than the device's `public_ip`
   - Remove redundant `connect ibrl` unit tests that were duplicates of hybrid-device equivalents

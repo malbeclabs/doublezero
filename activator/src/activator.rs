@@ -3,8 +3,9 @@ use doublezero_cli::{checkversion::check_version, doublezerocommand::CliCommandI
 use doublezero_sdk::{
     doublezeroclient::{AsyncDoubleZeroClient, DoubleZeroClient},
     rpckeyedaccount_decode::rpckeyedaccount_decode,
-    AccountData, AsyncDZClient, DZClient, ProgramVersion,
+    AccountData, AsyncDZClient, DZClient, GetGlobalStateCommand, ProgramVersion,
 };
+use doublezero_serviceability::state::feature_flags::{is_feature_enabled, FeatureFlag};
 use futures::stream::StreamExt;
 use log::{error, info};
 use solana_sdk::pubkey::Pubkey;
@@ -20,7 +21,6 @@ pub async fn run_activator(
     websocket_url: Option<String>,
     program_id: Option<String>,
     keypair: Option<PathBuf>,
-    use_onchain_allocation: bool,
 ) -> eyre::Result<()> {
     let client = create_client(rpc_url, websocket_url, program_id, keypair)?;
 
@@ -31,6 +31,8 @@ pub async fn run_activator(
         move || AsyncDZClient::new(rpc_url_clone.clone(), ws_url_clone.clone(), program_id);
 
     version_check(client.as_ref())?;
+
+    let use_onchain_allocation = read_onchain_allocation_flag(client.as_ref())?;
 
     run_activator_with_client(client, async_client_factory, use_onchain_allocation).await
 }
@@ -145,6 +147,16 @@ where
 
     info!("Activator handler finished");
     Ok(())
+}
+
+fn read_onchain_allocation_flag(client: &dyn DoubleZeroClient) -> eyre::Result<bool> {
+    let (_, global_state) = GetGlobalStateCommand.execute(client)?;
+    let enabled = is_feature_enabled(global_state.feature_flags, FeatureFlag::OnChainAllocation);
+    info!(
+        "Onchain allocation feature flag: {} (feature_flags={})",
+        enabled, global_state.feature_flags
+    );
+    Ok(enabled)
 }
 
 fn create_client(

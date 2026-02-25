@@ -40,12 +40,6 @@ struct AppArgs {
 
     #[arg(long, default_value = "info")]
     log_level: String,
-
-    /// Enable on-chain IP allocation for MulticastGroup activation.
-    /// When set, the activator uses the ResourceExtension on-chain bitmap
-    /// instead of local IPBlockAllocator.
-    #[arg(long, default_value = "false")]
-    onchain_allocation: bool,
 }
 
 #[tokio::main]
@@ -86,7 +80,6 @@ async fn main() -> eyre::Result<()> {
         Some(ws_url.clone()),
         Some(program_id.clone()),
         Some(keypair.clone()),
-        args.onchain_allocation,
     )
     .await?;
 

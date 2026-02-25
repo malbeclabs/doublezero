@@ -445,10 +445,9 @@ pub enum DeviceHealth {
 #### - serviceability: add device.desired_status
 ```
 pub enum DeviceDesiredStatus {
-    Unknown = 0,
+    Pending = 0,
     Activated = 1,
-    Drained = 2,
-    Deleted = 3,
+    Drained = 6,
 }
 ```
 

@@ -238,6 +238,8 @@ All notable changes to this project will be documented in this file.
 - Client
   - Cache network interface index/name lookups in liveness UDP service to fix high CPU usage caused by per-packet RTM_GETLINK netlink dumps
   - Add observability to BGP handleUpdate: log withdrawal/NLRI counts per batch and track processing duration via `doublezero_bgp_handle_update_duration_seconds` histogram
+- Device Health Oracle
+  - Add device-health-oracle to provisioning workflow, matching current behavior by promoting link and device health to ready without actually performing any health checks
 - E2E tests
   - The QA alldevices test now skips devices that are not calling the controller
   - e2e: Expand RFC11 end-to-end testing ([#2801](https://github.com/malbeclabs/doublezero/pull/2801))
@@ -281,11 +283,10 @@ All notable changes to this project will be documented in this file.
   - feat(smartcontract): add use_onchain_deallocation flag to MulticastGroup ([#2748](https://github.com/malbeclabs/doublezero/pull/2748))
 - CLI
   - Remove restriction for a single tunnel per user; now a user can have a unicast and multicast tunnel concurrently (but can only be a publisher _or_ a subscriber) ([2728](https://github.com/malbeclabs/doublezero/pull/2728))
-
-## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
-
 - Data
   - Add indexer that syncs serviceability and telemetry data to ClickHouse and Neo4J
+
+## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
 
 ### Breaking
 

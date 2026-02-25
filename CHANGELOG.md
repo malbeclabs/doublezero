@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
-- N/A
+- CLI: `--bandwidth` is now a required argument for `doublezero device interface create` and `doublezero device interface update`; callers that previously omitted it (relying on the default of `0`) must now explicitly pass a value with a unit (e.g. `--bandwidth 10Gbps`)
 
 ### Changes
 

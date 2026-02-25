@@ -18,7 +18,8 @@
             "version": "1.90.0"
         },
     },
-    "postCreateCommand": "rustup component add --toolchain nightly rustfmt",
+    "postCreateCommand": "sudo chown vscode:vscode /workspaces/doublezero/target && rustup component add --toolchain nightly rustfmt",
+    "postStartCommand": "sudo chmod 666 /var/run/docker.sock && sudo chown -R vscode:vscode /home/vscode/.docker",
     "customizations": {
         "vscode": {
             "extensions": [
@@ -53,7 +54,8 @@
             }
         }
     },
-    "remoteUser": "root",
+    "remoteUser": "vscode",
+    "updateRemoteUserUID": true,
     "mounts": [
         "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
         "source=devcontainer-target,target=/workspaces/doublezero/target,type=volume"

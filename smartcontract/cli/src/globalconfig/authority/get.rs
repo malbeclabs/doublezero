@@ -22,6 +22,8 @@ pub struct AuthorityDisplay {
     pub access_authority: Pubkey,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub feed_authority: Pubkey,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub health_oracle: Pubkey,
 }
 
 impl GetAuthorityCliCommand {
@@ -32,6 +34,7 @@ impl GetAuthorityCliCommand {
             activator_authority: gstate.activator_authority_pk,
             access_authority: gstate.sentinel_authority_pk,
             feed_authority: gstate.feed_authority_pk,
+            health_oracle: gstate.health_oracle_pk,
         };
 
         if self.json {
@@ -111,6 +114,10 @@ mod tests {
             has_row("feed_authority", &feed_authority.to_string()),
             "feed_authority row should contain value"
         );
+        assert!(
+            has_row("health_oracle", &Pubkey::default().to_string()),
+            "health_oracle row should contain value"
+        );
 
         // JSON output
         let mut output = Vec::new();
@@ -129,6 +136,10 @@ mod tests {
         assert_eq!(
             json["feed_authority"].as_str().unwrap(),
             feed_authority.to_string()
+        );
+        assert_eq!(
+            json["health_oracle"].as_str().unwrap(),
+            Pubkey::default().to_string()
         );
     }
 }

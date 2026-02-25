@@ -543,29 +543,27 @@ pub fn process_user_event_stateless(
             )
             .unwrap();
 
-            let device_state =
-                match get_or_insert_device_state_stateless(client, pubkey, devices, user) {
-                    Some(ds) => ds,
-                    None => {
-                        // Reject user since we couldn't get their user block
-                        let res = reject_user(client, pubkey, "Error: Device not found");
-                        match res {
-                            Ok(signature) => {
-                                write!(
-                                    &mut log_msg,
-                                    " Reject(Device not found) Rejected {signature}"
-                                )
-                                .unwrap();
-                            }
-                            Err(e) => {
-                                write!(&mut log_msg, " Reject(Device not found) Error: {e}")
-                                    .unwrap();
-                            }
+            let device_state = match get_or_insert_device_state_stateless(client, devices, user) {
+                Some(ds) => ds,
+                None => {
+                    // Reject user since we couldn't get their user block
+                    let res = reject_user(client, pubkey, "Error: Device not found");
+                    match res {
+                        Ok(signature) => {
+                            write!(
+                                &mut log_msg,
+                                " Reject(Device not found) Rejected {signature}"
+                            )
+                            .unwrap();
                         }
-                        info!("{log_msg}");
-                        return;
+                        Err(e) => {
+                            write!(&mut log_msg, " Reject(Device not found) Error: {e}").unwrap();
+                        }
                     }
-                };
+                    info!("{log_msg}");
+                    return;
+                }
+            };
 
             write!(&mut log_msg, " for: {}", device_state.device.code).unwrap();
 
@@ -607,11 +605,10 @@ pub fn process_user_event_stateless(
             )
             .unwrap();
 
-            let device_state =
-                match get_or_insert_device_state_stateless(client, pubkey, devices, user) {
-                    Some(ds) => ds,
-                    None => return,
-                };
+            let device_state = match get_or_insert_device_state_stateless(client, devices, user) {
+                Some(ds) => ds,
+                None => return,
+            };
 
             write!(
                 &mut log_msg,
@@ -717,7 +714,6 @@ pub fn process_user_event_stateless(
 
 fn get_or_insert_device_state_stateless<'a>(
     client: &dyn DoubleZeroClient,
-    _pubkey: &Pubkey,
     devices: &'a mut DeviceMapStateless,
     user: &User,
 ) -> Option<&'a mut DeviceStateStateless> {

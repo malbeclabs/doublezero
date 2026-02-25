@@ -62,8 +62,6 @@ pub struct ProcessorStateless<T: DoubleZeroClient> {
     rx: mpsc::Receiver<(Box<Pubkey>, Box<AccountData>)>,
     client: Arc<T>,
     devices: DeviceMapStateless,
-    locations: LocationMap,
-    exchanges: ExchangeMap,
     multicastgroups: MulticastGroupMap,
 }
 
@@ -309,10 +307,6 @@ impl<T: DoubleZeroClient> ProcessorStateless<T> {
         // In stateless mode, we still cache device/location/exchange info for logging/context,
         // but we don't track allocation state
         let devices = ListDeviceCommand.execute(client.as_ref())?;
-        let links = ListLinkCommand.execute(client.as_ref())?;
-        let users = ListUserCommand.execute(client.as_ref())?;
-        let locations = ListLocationCommand.execute(client.as_ref())?;
-        let exchanges = ListExchangeCommand.execute(client.as_ref())?;
 
         let mut device_map: DeviceMapStateless = DeviceMapStateless::new();
 
@@ -326,19 +320,12 @@ impl<T: DoubleZeroClient> ProcessorStateless<T> {
                 .or_insert_with(|| DeviceStateStateless::new(device));
         }
 
-        info!(
-            "Number of - devices: {} links: {} users: {} (stateless mode)",
-            devices.len(),
-            links.len(),
-            users.len(),
-        );
+        info!("Number of - devices: {} (stateless mode)", devices.len(),);
 
         Ok(Self {
             rx,
             client,
             devices: device_map,
-            locations,
-            exchanges,
             multicastgroups: HashMap::new(),
         })
     }
@@ -370,12 +357,6 @@ impl<T: DoubleZeroClient> ProcessorStateless<T> {
             }
             AccountData::User(user) => {
                 process_user_event_stateless(self.client.as_ref(), pubkey, &mut self.devices, user);
-            }
-            AccountData::Location(location) => {
-                process_location_event(pubkey, &mut self.locations, location);
-            }
-            AccountData::Exchange(exchange) => {
-                process_exchange_event(pubkey, &mut self.exchanges, exchange);
             }
             AccountData::MulticastGroup(multicastgroup) => {
                 let _ = process_multicastgroup_event_stateless(

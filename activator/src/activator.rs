@@ -111,7 +111,7 @@ where
     A: AsyncDoubleZeroClient + Send + Sync + 'static,
 {
     loop {
-        info!("Activator handler loop started (stateless/onchain allocation mode)");
+        info!("Activator handler loop started stateless mode (onchain allocation)");
 
         let (tx, rx) = mpsc::channel(128);
         let mut processor = ProcessorStateless::new(rx, client.clone())?;

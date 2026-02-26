@@ -466,6 +466,7 @@ async fn test_dzx_link() {
             side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: None,
             desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
@@ -863,7 +864,9 @@ async fn test_dzx_link() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
             AccountMeta::new(contributor1_pubkey, false),
@@ -976,6 +979,7 @@ async fn test_dzx_link() {
             side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: None,
             desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(link_reject_pubkey, false),

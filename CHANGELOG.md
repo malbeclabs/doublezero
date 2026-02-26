@@ -22,6 +22,8 @@ All notable changes to this project will be documented in this file.
   - Added multicast filters to access-pass list, enabling filtering by publisher/subscriber role and identifying access passes not authorized for a specific multicast group.
   - Device interface `--bandwidth` and `--cir` flags now accept Kbps, Mbps, or Gbps units; `interface list` displays those values as human-readable strings
 - Client
+  - Fix BGP `OnClose` deleting routes from all peers instead of only the closing peer, preventing multicast teardown from nuking unicast routes
+  - Skip route deletion on `OnClose` for `NoInstall` peers (multicast) since they never install kernel routes
   - Reject BGP martian addresses (CGNAT, multicast, reserved, benchmarking, etc.) as client IP during `connect`
 - Controller
   - detect duplicate (UnderlaySrcIP, UnderlayDstIP) pairs for tunnels and only render the first to the device config and write a log error for the second

@@ -790,6 +790,7 @@ async fn test_doublezero_program() {
         cyoa_type: UserCYOA::GREOverDIA,
         client_ip: user_ip,
         tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        dz_prefix_count: 0,
     };
 
     println!("Testing User1 initialization...");

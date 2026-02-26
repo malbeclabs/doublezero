@@ -340,6 +340,7 @@ async fn test_user() {
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -757,6 +758,7 @@ async fn test_user_ban_requires_pendingban() {
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1081,6 +1083,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_1_pubkey, false),
@@ -1146,6 +1149,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_2_pubkey, false),
@@ -1400,6 +1404,7 @@ async fn setup_activated_user() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

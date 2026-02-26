@@ -172,6 +172,8 @@ pub enum DoubleZeroError {
     MaxMulticastUsersExceeded, // variant 82
     #[error("Interface cannot have both a link and a CYOA or DIA assignment")]
     InterfaceHasEdgeAssignment, // variant 83
+    #[error("Feature not enabled")]
+    FeatureNotEnabled, // variant 84
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -261,6 +263,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::MaxUnicastUsersExceeded => ProgramError::Custom(81),
             DoubleZeroError::MaxMulticastUsersExceeded => ProgramError::Custom(82),
             DoubleZeroError::InterfaceHasEdgeAssignment => ProgramError::Custom(83),
+            DoubleZeroError::FeatureNotEnabled => ProgramError::Custom(84),
         }
     }
 }
@@ -351,6 +354,7 @@ impl From<u32> for DoubleZeroError {
             81 => DoubleZeroError::MaxUnicastUsersExceeded,
             82 => DoubleZeroError::MaxMulticastUsersExceeded,
             83 => DoubleZeroError::InterfaceHasEdgeAssignment,
+            84 => DoubleZeroError::FeatureNotEnabled,
             _ => DoubleZeroError::Custom(e),
         }
     }

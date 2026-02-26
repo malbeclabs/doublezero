@@ -1,12 +1,12 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
+    processors::resource::{allocate_id, allocate_ip, allocate_ip_from_first_available},
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
         accesspass::AccessPass,
         globalstate::GlobalState,
-        resource_extension::ResourceExtensionBorrowed,
         user::{User, UserStatus, UserType},
     },
 };
@@ -250,22 +250,12 @@ pub fn process_activate_user(
         // Allocate tunnel_net from global UserTunnelBlock (only if not already allocated)
         // This check handles re-activation (Updating status) where resources are already assigned
         if user.tunnel_net == NetworkV4::default() {
-            let mut buffer = global_resource_ext.data.borrow_mut();
-            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-            user.tunnel_net = resource
-                .allocate(2)?
-                .as_ip()
-                .ok_or(DoubleZeroError::InvalidArgument)?;
+            user.tunnel_net = allocate_ip(global_resource_ext, 2)?;
         }
 
         // Allocate tunnel_id from device TunnelIds (only if not already allocated)
         if user.tunnel_id == 0 {
-            let mut buffer = device_tunnel_ids_ext.data.borrow_mut();
-            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-            user.tunnel_id = resource
-                .allocate(1)?
-                .as_id()
-                .ok_or(DoubleZeroError::InvalidArgument)?;
+            user.tunnel_id = allocate_id(device_tunnel_ids_ext)?;
         }
 
         // Conditionally allocate dz_ip based on user_type (matching activator behavior)
@@ -280,34 +270,14 @@ pub fn process_activate_user(
         // - dz_ip == client_ip: Multicast user that didn't need dz_ip before (no publishers)
         // If dz_ip is already a dedicated IP (not UNSPECIFIED or client_ip), keep it
         if need_dz_ip && (user.dz_ip == Ipv4Addr::UNSPECIFIED || user.dz_ip == user.client_ip) {
-            let allocated_dz_ip = if user.user_type == UserType::Multicast
-                && !user.publishers.is_empty()
-            {
-                // Multicast publishers: allocate from global MulticastPublisherBlock
-                let mut buffer = multicast_publisher_block_ext.data.borrow_mut();
-                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-
-                resource
-                    .allocate(1)
-                    .and_then(|v| v.as_ip().ok_or(DoubleZeroError::InvalidArgument))
-                    .map(|ip| ip.ip())?
-            } else {
-                // EdgeFiltering/IBRL: allocate from device DzPrefixBlock
-                let mut allocated_ip = None;
-                for dz_prefix_account in dz_prefix_accounts.iter() {
-                    let mut buffer = dz_prefix_account.data.borrow_mut();
-                    let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-
-                    if let Ok(ip) = resource
-                        .allocate(1)
-                        .and_then(|v| v.as_ip().ok_or(DoubleZeroError::InvalidArgument))
-                    {
-                        allocated_ip = Some(ip.ip());
-                        break;
-                    }
-                }
-                allocated_ip.ok_or(DoubleZeroError::AllocationFailed)?
-            };
+            let allocated_dz_ip =
+                if user.user_type == UserType::Multicast && !user.publishers.is_empty() {
+                    // Multicast publishers: allocate from global MulticastPublisherBlock
+                    allocate_ip(multicast_publisher_block_ext, 1)?.ip()
+                } else {
+                    // EdgeFiltering/IBRL: allocate from device DzPrefixBlock
+                    allocate_ip_from_first_available(&dz_prefix_accounts)?
+                };
 
             user.dz_ip = allocated_dz_ip;
         } else if !need_dz_ip && user.dz_ip == Ipv4Addr::UNSPECIFIED {

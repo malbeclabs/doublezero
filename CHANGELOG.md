@@ -65,6 +65,7 @@ All notable changes to this project will be documented in this file.
 - SDK
   - SetFeatureFlagCommand added to manage on-chain feature flags for conditional behavior rollouts
   - Serviceability: CreateUser instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
+  - Serviceability: DeleteUser instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
 - Dependencies
   - Upgrade Solana SDK workspace dependencies from 2.2.7 to 2.3.x (`solana-sdk`, `solana-client`, `solana-program-test`, and others)
 - Internet telemetry

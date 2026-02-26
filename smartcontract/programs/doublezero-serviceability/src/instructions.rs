@@ -808,7 +808,10 @@ mod tests {
         test_instruction(DoubleZeroInstruction::SuspendUser(), "SuspendUser");
         test_instruction(DoubleZeroInstruction::ResumeUser(), "ResumeUser");
         test_instruction(
-            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
+            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+                dz_prefix_count: 0,
+                multicast_publisher_count: 0,
+            }),
             "DeleteUser",
         );
         test_instruction(

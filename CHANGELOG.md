@@ -12,8 +12,10 @@ All notable changes to this project will be documented in this file.
 
 - Activator
     - Adds a stateless mode for when onchain allocation is enabled. This prevents activator/onchain from becoming out-of-sync.
+    - Move multicast group cleanup from CLI to activator — unsubscribe users from all groups server-side before CloseAccount/Ban, eliminating intermediate `Updating` states that caused unnecessary daemon re-provisioning
 - SDK
   - Add retry with exponential backoff (3 retries, 500ms–5s) to all read-only RPC calls in `DZClient`, improving resilience to transient RPC timeouts
+  - Remove client-side multicast group unsubscribe loop and retry/polling from `DeleteUserCommand` — cleanup is now handled by the activator
 - CLI
   - Fix `doublezero status` showing "Current Device" and "Metro" as N/A for multicast subscribers when the tunnel destination is a `user_tunnel_endpoint` loopback interface IP rather than the device's `public_ip`
   - Remove redundant `connect ibrl` unit tests that were duplicates of hybrid-device equivalents
@@ -28,6 +30,7 @@ All notable changes to this project will be documented in this file.
 - Controller
   - detect duplicate (UnderlaySrcIP, UnderlayDstIP) pairs for tunnels and only render the first to the device config and write a log error for the second
 - Onchain Programs
+  - Serviceability: allow `DeleteUser` with non-empty publisher/subscriber lists and permit subscribe/unsubscribe for users in `Deleting` status, enabling server-side group cleanup
   - Serviceability: skip field validation for users in `Deleting` status to prevent accounts from getting stuck during cleanup when validation rules change
   - Serviceability: require foundation_allowlist privileges to update node_segment_idx on a device interface
   - Serviceability: add feature flags support

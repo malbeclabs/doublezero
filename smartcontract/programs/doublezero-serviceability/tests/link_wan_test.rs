@@ -768,7 +768,9 @@ async fn test_wan_link() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
@@ -2212,7 +2214,9 @@ async fn test_link_delete_from_pending() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
@@ -2280,7 +2284,9 @@ async fn test_link_delete_from_soft_drained() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
@@ -2328,7 +2334,9 @@ async fn test_link_delete_from_soft_drained() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
@@ -2414,7 +2422,9 @@ async fn test_link_delete_from_hard_drained() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),

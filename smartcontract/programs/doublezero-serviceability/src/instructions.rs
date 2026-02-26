@@ -757,7 +757,9 @@ mod tests {
         test_instruction(DoubleZeroInstruction::SuspendLink(), "SuspendLink");
         test_instruction(DoubleZeroInstruction::ResumeLink(), "ResumeLink");
         test_instruction(
-            DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+            DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+                use_onchain_deallocation: false,
+            }),
             "DeleteLink",
         );
         test_instruction(

@@ -863,7 +863,9 @@ async fn test_dzx_link() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
             AccountMeta::new(contributor1_pubkey, false),

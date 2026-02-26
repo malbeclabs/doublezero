@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"slices"
+	"strings"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 )
@@ -114,6 +115,57 @@ func (p *ProvisionRequest) Equal(other *ProvisionRequest) bool {
 		return false
 	}
 	return ipNetSlicesEqual(p.DoubleZeroPrefixes, other.DoubleZeroPrefixes)
+}
+
+// Diff returns a human-readable summary of fields that differ between two
+// ProvisionRequests. Returns an empty string if they are equal.
+func (p *ProvisionRequest) Diff(other *ProvisionRequest) string {
+	if p == nil && other == nil {
+		return ""
+	}
+	if p == nil {
+		return "current is nil"
+	}
+	if other == nil {
+		return "new is nil"
+	}
+
+	var diffs []string
+	if p.UserType != other.UserType {
+		diffs = append(diffs, fmt.Sprintf("UserType: %s -> %s", p.UserType, other.UserType))
+	}
+	if !p.TunnelSrc.Equal(other.TunnelSrc) {
+		diffs = append(diffs, fmt.Sprintf("TunnelSrc: %s -> %s", p.TunnelSrc, other.TunnelSrc))
+	}
+	if !p.TunnelDst.Equal(other.TunnelDst) {
+		diffs = append(diffs, fmt.Sprintf("TunnelDst: %s -> %s", p.TunnelDst, other.TunnelDst))
+	}
+	if !ipNetsEqual(p.TunnelNet, other.TunnelNet) {
+		diffs = append(diffs, fmt.Sprintf("TunnelNet: %s -> %s", p.TunnelNet, other.TunnelNet))
+	}
+	if !p.DoubleZeroIP.Equal(other.DoubleZeroIP) {
+		diffs = append(diffs, fmt.Sprintf("DoubleZeroIP: %s -> %s", p.DoubleZeroIP, other.DoubleZeroIP))
+	}
+	if p.BgpLocalAsn != other.BgpLocalAsn {
+		diffs = append(diffs, fmt.Sprintf("BgpLocalAsn: %d -> %d", p.BgpLocalAsn, other.BgpLocalAsn))
+	}
+	if p.BgpRemoteAsn != other.BgpRemoteAsn {
+		diffs = append(diffs, fmt.Sprintf("BgpRemoteAsn: %d -> %d", p.BgpRemoteAsn, other.BgpRemoteAsn))
+	}
+	if !ipSlicesEqual(p.MulticastPubGroups, other.MulticastPubGroups) {
+		diffs = append(diffs, fmt.Sprintf("MulticastPubGroups: %v -> %v", p.MulticastPubGroups, other.MulticastPubGroups))
+	}
+	if !ipSlicesEqual(p.MulticastSubGroups, other.MulticastSubGroups) {
+		diffs = append(diffs, fmt.Sprintf("MulticastSubGroups: %v -> %v", p.MulticastSubGroups, other.MulticastSubGroups))
+	}
+	if !ipNetSlicesEqual(p.DoubleZeroPrefixes, other.DoubleZeroPrefixes) {
+		diffs = append(diffs, fmt.Sprintf("DoubleZeroPrefixes: count %d -> %d", len(p.DoubleZeroPrefixes), len(other.DoubleZeroPrefixes)))
+	}
+
+	if len(diffs) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("[%s]", strings.Join(diffs, ", "))
 }
 
 func ipNetsEqual(a, b *net.IPNet) bool {

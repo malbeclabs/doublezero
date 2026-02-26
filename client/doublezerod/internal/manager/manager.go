@@ -517,7 +517,11 @@ func (n *NetlinkManager) reconcileService(
 			if currentPR != nil && currentPR.Equal(&pr) {
 				return
 			}
-			slog.Info("reconciler: onchain state changed, re-provisioning service", "service", serviceType)
+			diff := ""
+			if currentPR != nil {
+				diff = currentPR.Diff(&pr)
+			}
+			slog.Info("reconciler: onchain state changed, re-provisioning service", "service", serviceType, "diff", diff)
 			if err := n.Remove(removeAsType); err != nil {
 				slog.Error("reconciler: error removing service for re-provision", "service", serviceType, "error", err)
 				metricRemovalsTotal.WithLabelValues(serviceType, statusError).Inc()

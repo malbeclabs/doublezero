@@ -50,6 +50,7 @@ type LocationOffset struct {
     Lng             float64   // Reference point longitude (WGS84)
     MeasuredRttNs   uint64    // Measured RTT in nanoseconds, minimum
     RttNs           uint64    // RTT to target in ns, from lat/lng
+    TargetIP        uint32    // IPv4 Address from TWAMP measurement **NEW**
     NumReferences   uint8     // Number of reference offsets in chain
     References      []Offset  // Reference offsets (empty for DZD→Probe)
 }

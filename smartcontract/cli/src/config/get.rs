@@ -110,6 +110,7 @@ mod tests {
             program_id: Some(devnet_config.serviceability_program_id.to_string()),
             tenant: None,
             address_labels: Default::default(),
+            geo_program_id: None,
         };
 
         mutator(&mut cfg);

@@ -2,8 +2,8 @@ use crate::doublezerocommand::CliCommand;
 use clap::{ArgGroup, Args};
 use doublezero_config::Environment;
 use doublezero_sdk::{
-    convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker,
-    read_doublezero_config, write_doublezero_config,
+    convert_geo_program_moniker, convert_program_moniker, convert_url_moniker, convert_url_to_ws,
+    convert_ws_moniker, read_doublezero_config, write_doublezero_config,
 };
 use std::{io::Write, path::PathBuf};
 
@@ -40,7 +40,7 @@ pub struct SetConfigCliCommand {
 
 impl SetConfigCliCommand {
     pub fn execute<W: Write>(self, _client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
-        let (ledger_url, ledger_ws, program_id) = if let Some(env) = self.env {
+        let (ledger_url, ledger_ws, program_id, geo_program_id) = if let Some(env) = self.env {
             if self.url.is_some() || self.ws.is_some() || self.program_id.is_some() {
                 writeln!(
                     out,
@@ -54,9 +54,10 @@ impl SetConfigCliCommand {
                 Some(config.ledger_public_rpc_url),
                 Some(config.ledger_public_ws_rpc_url),
                 Some(config.serviceability_program_id.to_string()),
+                Some(config.geolocation_program_id.to_string()),
             )
         } else {
-            (self.url, self.ws, self.program_id)
+            (self.url, self.ws, self.program_id, None)
         };
 
         if ledger_url.is_none()
@@ -84,6 +85,9 @@ impl SetConfigCliCommand {
         }
         if let Some(program_id) = program_id {
             config.program_id = Some(convert_program_moniker(program_id));
+        }
+        if let Some(geo_program_id) = geo_program_id {
+            config.geo_program_id = Some(convert_geo_program_moniker(geo_program_id));
         }
         if self.no_tenant {
             config.tenant = None;
@@ -302,6 +306,7 @@ mod tests {
             program_id: Some(devnet_config.serviceability_program_id.to_string()),
             tenant: None,
             address_labels: Default::default(),
+            geo_program_id: None,
         };
 
         mutator(&mut cfg);

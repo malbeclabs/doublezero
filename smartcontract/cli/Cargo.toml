@@ -30,12 +30,14 @@ serde_yaml.workspace = true
 solana-client.workspace = true
 solana-program.workspace = true
 solana-pubsub-client.workspace = true
+solana-rpc-client-api.workspace = true
 solana-sdk.workspace = true
 tabled.workspace = true
 tokio.workspace = true
 
 # Dependencies from this workspace
 doublezero-config.workspace = true
+doublezero-geolocation = { workspace = true, features = ["no-entrypoint"] }
 doublezero-program-common.workspace = true
 doublezero_sdk.workspace = true
 doublezero-serviceability = { workspace = true, features = ["serde"] }

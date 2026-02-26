@@ -86,8 +86,12 @@ system control-plane
 !
 {{- range .Device.Interfaces }}
 interface {{ .Name }}
-   {{- if and .IsPhysical .Mtu }}
+   {{- if .IsPhysical }}
+      {{- if .Mtu }}
    mtu {{ .Mtu }}
+      {{- else }}
+   mtu 2048
+      {{- end }}
    {{- end }}
    {{- if and .IsPhysical (not .IsSubInterface) (not .IsVlanInterface) }}
    no switchport

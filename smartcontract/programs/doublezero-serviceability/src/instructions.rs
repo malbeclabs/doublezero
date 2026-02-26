@@ -728,6 +728,7 @@ mod tests {
                 side_a_iface_name: "eth0".to_string(),
                 side_z_iface_name: Some("eth1".to_string()),
                 desired_status: None,
+                use_onchain_allocation: false,
             }),
             "CreateLink",
         );

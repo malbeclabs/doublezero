@@ -645,6 +645,7 @@ async fn test_doublezero_program() {
         side_a_iface_name: "Ethernet0".to_string(),
         side_z_iface_name: Some("Ethernet1".to_string()),
         desired_status: Some(LinkDesiredStatus::Activated),
+        use_onchain_allocation: false,
     };
 
     println!("Testing Link LA-NY initialization...");

@@ -8,7 +8,7 @@ use crate::{
         contributor::Contributor,
         device::Device,
         globalstate::GlobalState,
-        interface::{InterfaceCYOA, InterfaceDIA},
+        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus},
         link::*,
     },
 };
@@ -25,6 +25,8 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
+use super::resource_onchain_helpers;
+
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct LinkCreateArgs {
     pub code: String,
@@ -36,6 +38,10 @@ pub struct LinkCreateArgs {
     pub side_a_iface_name: String,
     pub side_z_iface_name: Option<String>,
     pub desired_status: Option<LinkDesiredStatus>,
+    /// When true, on-chain allocation is used (ResourceExtension accounts required).
+    /// Performs atomic create+allocate+activate in a single transaction.
+    #[incremental(default = false)]
+    pub use_onchain_allocation: bool,
 }
 
 impl fmt::Debug for LinkCreateArgs {
@@ -60,6 +66,20 @@ pub fn process_create_link(
     let side_a_account = next_account_info(accounts_iter)?;
     let side_z_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+
+    // Optional: ResourceExtension accounts for on-chain allocation (before payer)
+    // Account layout WITH ResourceExtension (use_onchain_allocation = true):
+    //   [link, contributor, side_a, side_z, globalstate, device_tunnel_block, link_ids, payer, system]
+    // Account layout WITHOUT (legacy, use_onchain_allocation = false):
+    //   [link, contributor, side_a, side_z, globalstate, payer, system]
+    let resource_extension_accounts = if value.use_onchain_allocation {
+        let device_tunnel_block_ext = next_account_info(accounts_iter)?;
+        let link_ids_ext = next_account_info(accounts_iter)?;
+        Some((device_tunnel_block_ext, link_ids_ext))
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -206,6 +226,53 @@ pub fn process_create_link(
     };
 
     link.check_status_transition();
+
+    // Atomic create+allocate+activate if on-chain allocation is enabled
+    if let Some((device_tunnel_block_ext, link_ids_ext)) = resource_extension_accounts {
+        let globalstate_ref = GlobalState::try_from(globalstate_account)?;
+        resource_onchain_helpers::validate_and_allocate_link_resources(
+            program_id,
+            &mut link,
+            device_tunnel_block_ext,
+            link_ids_ext,
+            &globalstate_ref,
+        )?;
+
+        // Validate interfaces are Unlinked (required for activation)
+        let (idx_a, side_a_iface) = side_a_dev
+            .find_interface(&link.side_a_iface_name)
+            .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
+        if side_a_iface.status != InterfaceStatus::Unlinked {
+            return Err(DoubleZeroError::InvalidStatus.into());
+        }
+
+        // Set side A interface to Activated with IP from tunnel_net
+        let mut updated_iface_a = side_a_iface.clone();
+        updated_iface_a.status = InterfaceStatus::Activated;
+        if updated_iface_a.ip_net == NetworkV4::default() {
+            updated_iface_a.ip_net =
+                NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix()).unwrap();
+        }
+        side_a_dev.interfaces[idx_a] = updated_iface_a.to_interface();
+
+        // Set side Z interface to Activated with IP from tunnel_net
+        if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface(&link.side_z_iface_name) {
+            if side_z_iface.status != InterfaceStatus::Unlinked {
+                return Err(DoubleZeroError::InvalidStatus.into());
+            }
+            let mut updated_iface_z = side_z_iface.clone();
+            updated_iface_z.status = InterfaceStatus::Activated;
+            if updated_iface_z.ip_net == NetworkV4::default() {
+                updated_iface_z.ip_net =
+                    NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix())
+                        .unwrap();
+            }
+            side_z_dev.interfaces[idx_z] = updated_iface_z.to_interface();
+        }
+
+        link.status = LinkStatus::Activated;
+        link.check_status_transition();
+    }
 
     try_acc_create(
         &link,

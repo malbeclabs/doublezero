@@ -168,7 +168,12 @@ func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, pim services.PI
 func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	return n.provisionLocked(pr)
+}
 
+// provisionLocked creates and sets up a service for the given provision request.
+// Caller must hold n.mu.
+func (n *NetlinkManager) provisionLocked(pr api.ProvisionRequest) error {
 	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.pim, n.heartbeat)
 	if err != nil {
 		return fmt.Errorf("error creating service: %v", err)
@@ -199,7 +204,12 @@ func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
 func (n *NetlinkManager) Remove(u api.UserType) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	return n.removeLocked(u)
+}
 
+// removeLocked tears down the service for the given user type.
+// Caller must hold n.mu.
+func (n *NetlinkManager) removeLocked(u api.UserType) error {
 	// We've never been provisioned
 	if n.UnicastService == nil && n.MulticastService == nil {
 		return nil
@@ -224,6 +234,19 @@ func (n *NetlinkManager) Remove(u api.UserType) error {
 	}
 
 	return nil
+}
+
+// Reprovision atomically tears down the existing service and provisions a new
+// one, holding the lock across both operations so that Status() never observes
+// a nil-service window.
+func (n *NetlinkManager) Reprovision(u api.UserType, pr api.ProvisionRequest) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if err := n.removeLocked(u); err != nil {
+		return fmt.Errorf("error removing service: %v", err)
+	}
+	return n.provisionLocked(pr)
 }
 
 // Close tears down any active services. This is typically called when
@@ -522,12 +545,15 @@ func (n *NetlinkManager) reconcileService(
 				diff = currentPR.Diff(&pr)
 			}
 			slog.Info("reconciler: onchain state changed, re-provisioning service", "service", serviceType, "diff", diff)
-			if err := n.Remove(removeAsType); err != nil {
-				slog.Error("reconciler: error removing service for re-provision", "service", serviceType, "error", err)
+			// Reprovision atomically so Status() never sees a nil-service window.
+			if err := n.Reprovision(removeAsType, pr); err != nil {
+				slog.Error("reconciler: error re-provisioning service", "service", serviceType, "error", err)
 				metricRemovalsTotal.WithLabelValues(serviceType, statusError).Inc()
 				return
 			}
 			metricRemovalsTotal.WithLabelValues(serviceType, statusSuccess).Inc()
+			metricProvisionsTotal.WithLabelValues(serviceType, statusSuccess).Inc()
+			return
 		}
 
 		slog.Info("reconciler: provisioning service", "service", serviceType, "user_type", pr.UserType)

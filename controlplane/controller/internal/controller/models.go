@@ -35,6 +35,7 @@ type Interface struct {
 	VlanId               uint16
 	Ip                   netip.Prefix
 	NodeSegmentIdx       uint16
+	Mtu                  uint16
 	IsSubInterface       bool
 	IsSubInterfaceParent bool
 	InterfaceType        InterfaceType
@@ -91,6 +92,7 @@ func toInterface(iface serviceability.Interface) (Interface, error) {
 		VlanId:               iface.VlanId,
 		Ip:                   prefix,
 		NodeSegmentIdx:       iface.NodeSegmentIdx,
+		Mtu:                  iface.Mtu,
 		IsSubInterface:       subIntf,
 		IsSubInterfaceParent: false,
 		InterfaceType:        ifType,
@@ -151,6 +153,7 @@ func (i Interface) GetParent() (Interface, error) {
 	}
 	return Interface{
 		Name:                 parentName,
+		Mtu:                  i.Mtu,
 		IsSubInterface:       false,
 		IsSubInterfaceParent: true,
 		InterfaceType:        i.InterfaceType,

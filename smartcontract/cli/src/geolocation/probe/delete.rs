@@ -19,7 +19,7 @@ impl DeleteGeoProbeCliCommand {
             serviceability_globalstate_pk,
         })?;
 
-        writeln!(out, "signature: {sig}")?;
+        writeln!(out, "Signature: {sig}")?;
 
         Ok(())
     }
@@ -63,6 +63,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert!(output_str.contains("signature:"));
+        assert!(output_str.contains("Signature:"));
     }
 }

@@ -5,7 +5,7 @@ use crate::{
 use clap::Args;
 use doublezero_sdk::geolocation::geo_probe::remove_parent_device::RemoveParentDeviceCommand;
 use solana_sdk::pubkey::Pubkey;
-use std::{io::Write, str::FromStr};
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct RemoveParentGeoProbeCliCommand {
@@ -19,8 +19,7 @@ pub struct RemoveParentGeoProbeCliCommand {
 
 impl RemoveParentGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let device_pk =
-            Pubkey::from_str(&self.device).map_err(|_| eyre::eyre!("Invalid device pubkey"))?;
+        let device_pk = Pubkey::try_from(self.device.as_str()).unwrap();
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
         let sig = client.remove_parent_device(RemoveParentDeviceCommand {
@@ -29,7 +28,7 @@ impl RemoveParentGeoProbeCliCommand {
             serviceability_globalstate_pk,
         })?;
 
-        writeln!(out, "signature: {sig}")?;
+        writeln!(out, "Signature: {sig}")?;
 
         Ok(())
     }
@@ -76,6 +75,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert!(output_str.contains("signature:"));
+        assert!(output_str.contains("Signature:"));
     }
 }

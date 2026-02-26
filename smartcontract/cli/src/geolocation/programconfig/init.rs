@@ -2,7 +2,7 @@ use crate::{geoclicommand::GeoCliCommand, validators::validate_pubkey};
 use clap::Args;
 use doublezero_sdk::geolocation::programconfig::init::InitProgramConfigCommand;
 use solana_sdk::pubkey::Pubkey;
-use std::{io::Write, str::FromStr};
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct InitProgramConfigCliCommand {
@@ -13,14 +13,14 @@ pub struct InitProgramConfigCliCommand {
 
 impl InitProgramConfigCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let serviceability_program_id = Pubkey::from_str(&self.serviceability_program_id)
-            .map_err(|_| eyre::eyre!("Invalid serviceability program ID"))?;
+        let serviceability_program_id =
+            Pubkey::try_from(self.serviceability_program_id.as_str()).unwrap();
 
         let (sig, pda) = client.init_program_config(InitProgramConfigCommand {
             serviceability_program_id,
         })?;
 
-        writeln!(out, "signature: {sig}\r\naccount: {pda}")?;
+        writeln!(out, "Signature: {sig}\r\nAccount: {pda}")?;
 
         Ok(())
     }
@@ -60,7 +60,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert!(output_str.contains("signature:"));
+        assert!(output_str.contains("Signature:"));
         assert!(output_str.contains(&config_pda.to_string()));
     }
 }

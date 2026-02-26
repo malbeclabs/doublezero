@@ -1,14 +1,11 @@
-use doublezero_geolocation::state::{
-    geo_probe::GeoProbe, program_config::GeolocationProgramConfig,
-};
+use doublezero_geolocation::state::geo_probe::GeoProbe;
 use doublezero_sdk::geolocation::{
-    client::GeolocationClient,
     geo_probe::{
         add_parent_device::AddParentDeviceCommand, create::CreateGeoProbeCommand,
         delete::DeleteGeoProbeCommand, get::GetGeoProbeCommand, list::ListGeoProbeCommand,
         remove_parent_device::RemoveParentDeviceCommand, update::UpdateGeoProbeCommand,
     },
-    programconfig::{get::GetProgramConfigCommand, init::InitProgramConfigCommand},
+    programconfig::init::InitProgramConfigCommand,
 };
 use mockall::automock;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -16,9 +13,7 @@ use std::collections::HashMap;
 
 #[automock]
 pub trait GeoCliCommand {
-    fn get_geo_program_id(&self) -> Pubkey;
     fn get_serviceability_globalstate_pk(&self) -> Pubkey;
-    fn get_payer(&self) -> Pubkey;
 
     fn create_geo_probe(&self, cmd: CreateGeoProbeCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn update_geo_probe(&self, cmd: UpdateGeoProbeCommand) -> eyre::Result<Signature>;
@@ -31,10 +26,6 @@ pub trait GeoCliCommand {
         &self,
         cmd: InitProgramConfigCommand,
     ) -> eyre::Result<(Signature, Pubkey)>;
-    fn get_program_config(
-        &self,
-        cmd: GetProgramConfigCommand,
-    ) -> eyre::Result<(Pubkey, GeolocationProgramConfig)>;
 }
 
 pub struct GeoCliCommandImpl<'a> {
@@ -55,16 +46,8 @@ impl<'a> GeoCliCommandImpl<'a> {
 }
 
 impl GeoCliCommand for GeoCliCommandImpl<'_> {
-    fn get_geo_program_id(&self) -> Pubkey {
-        self.client.get_program_id()
-    }
-
     fn get_serviceability_globalstate_pk(&self) -> Pubkey {
         self.serviceability_globalstate_pk
-    }
-
-    fn get_payer(&self) -> Pubkey {
-        self.client.get_payer()
     }
 
     fn create_geo_probe(&self, cmd: CreateGeoProbeCommand) -> eyre::Result<(Signature, Pubkey)> {
@@ -99,13 +82,6 @@ impl GeoCliCommand for GeoCliCommandImpl<'_> {
         &self,
         cmd: InitProgramConfigCommand,
     ) -> eyre::Result<(Signature, Pubkey)> {
-        cmd.execute(self.client)
-    }
-
-    fn get_program_config(
-        &self,
-        cmd: GetProgramConfigCommand,
-    ) -> eyre::Result<(Pubkey, GeolocationProgramConfig)> {
         cmd.execute(self.client)
     }
 }

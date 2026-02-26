@@ -42,11 +42,9 @@ impl SetGeoConfigCliCommand {
                 || self.program_id.is_some()
                 || self.geo_program_id.is_some()
             {
-                writeln!(
-                    out,
+                return Err(eyre::eyre!(
                     "Invalid flag combination: Use either --env for environment shortcuts OR individual flags, but not both."
-                )?;
-                return Ok(());
+                ));
             }
 
             let config = env.parse::<Environment>()?.config()?;

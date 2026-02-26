@@ -1,4 +1,4 @@
-use crate::geoclicommand::GeoCliCommand;
+use crate::{geoclicommand::GeoCliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
 use doublezero_sdk::geolocation::geo_probe::get::GetGeoProbeCommand;
 use std::io::Write;
@@ -6,6 +6,7 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct GetGeoProbeCliCommand {
     /// Probe pubkey or code to retrieve
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub code: String,
 }
 

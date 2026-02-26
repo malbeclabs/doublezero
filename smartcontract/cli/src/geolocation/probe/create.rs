@@ -5,7 +5,7 @@ use crate::{
 use clap::Args;
 use doublezero_sdk::geolocation::geo_probe::create::CreateGeoProbeCommand;
 use solana_sdk::pubkey::Pubkey;
-use std::{io::Write, net::Ipv4Addr, str::FromStr};
+use std::{io::Write, net::Ipv4Addr};
 
 #[derive(Args, Debug)]
 pub struct CreateGeoProbeCliCommand {
@@ -28,15 +28,8 @@ pub struct CreateGeoProbeCliCommand {
 
 impl CreateGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let exchange_pk =
-            Pubkey::from_str(&self.exchange).map_err(|_| eyre::eyre!("Invalid exchange pubkey"))?;
-
-        let metrics_publisher_pk = if self.metrics_publisher == "me" {
-            client.get_payer()
-        } else {
-            Pubkey::from_str(&self.metrics_publisher)
-                .map_err(|_| eyre::eyre!("Invalid metrics publisher pubkey"))?
-        };
+        let exchange_pk = Pubkey::try_from(self.exchange.as_str()).unwrap();
+        let metrics_publisher_pk = Pubkey::try_from(self.metrics_publisher.as_str()).unwrap();
 
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
@@ -49,7 +42,7 @@ impl CreateGeoProbeCliCommand {
             metrics_publisher_pk,
         })?;
 
-        writeln!(out, "signature: {sig}\r\naccount: {pda}")?;
+        writeln!(out, "Signature: {sig}\r\nAccount: {pda}")?;
 
         Ok(())
     }
@@ -104,7 +97,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert!(output_str.contains("signature:"));
+        assert!(output_str.contains("Signature:"));
         assert!(output_str.contains(&probe_pda.to_string()));
     }
 }

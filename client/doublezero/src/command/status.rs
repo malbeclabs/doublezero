@@ -140,6 +140,7 @@ mod tests {
     };
     use doublezero_cli::doublezerocommand::MockCliCommand;
 
+    #[allow(clippy::too_many_arguments)]
     fn make_v2_service(
         session_status: &str,
         tunnel_name: Option<&str>,

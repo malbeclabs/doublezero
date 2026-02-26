@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"maps"
 	"net"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -419,11 +417,15 @@ func (c *Client) WaitForRoutes(ctx context.Context, expectedIPs []net.IP) error 
 		for _, route := range installedRoutes {
 			installedIPs[route.DstIp] = struct{}{}
 		}
-		c.log.Debug("Waiting for routes to be installed", "host", c.Host, "installedIPs", slices.Sorted(maps.Keys(installedIPs)), "expectedIPs", expectedIPs)
+		var missingIPs []string
 		for _, expectedIP := range expectedIPs {
 			if _, ok := installedIPs[expectedIP.To4().String()]; !ok {
-				return false, nil
+				missingIPs = append(missingIPs, expectedIP.String())
 			}
+		}
+		if len(missingIPs) > 0 {
+			c.log.Debug("Waiting for routes to be installed", "host", c.Host, "installedCount", len(installedIPs), "missingIPs", missingIPs)
+			return false, nil
 		}
 		return true, nil
 	}, waitForRoutesTimeout, waitInterval)

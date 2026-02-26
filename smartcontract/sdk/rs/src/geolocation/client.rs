@@ -60,7 +60,14 @@ impl GeoClient {
             .map(|r| r.keypair);
 
         let program_id = match program_id {
-            None => default_geolocation_program_id(),
+            None => match &config.geo_program_id {
+                Some(id) => {
+                    let converted = convert_geo_program_moniker(id.clone());
+                    Pubkey::from_str(&converted)
+                        .map_err(|_| eyre!("Invalid geo_program_id in config"))?
+                }
+                None => default_geolocation_program_id(),
+            },
             Some(pg_id) => {
                 let converted_id = convert_geo_program_moniker(pg_id);
                 Pubkey::from_str(&converted_id).map_err(|_| eyre!("Invalid program ID"))?

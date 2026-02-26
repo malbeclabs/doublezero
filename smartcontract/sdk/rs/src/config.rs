@@ -56,6 +56,8 @@ pub struct ClientConfig {
     pub tenant: Option<String>,
     #[serde(default)]
     pub address_labels: HashMap<String, String>,
+    #[serde(default)]
+    pub geo_program_id: Option<String>,
 }
 
 fn default_keypair_path() -> PathBuf {
@@ -73,6 +75,7 @@ impl Default for ClientConfig {
             program_id: None,
             tenant: None,
             address_labels: HashMap::new(),
+            geo_program_id: None,
         }
     }
 }
@@ -242,6 +245,7 @@ mod tests {
             program_id: None,
             tenant: None,
             address_labels: Default::default(),
+            geo_program_id: None,
         };
 
         write_doublezero_config(&cfg).unwrap();
@@ -272,6 +276,7 @@ mod tests {
             program_id: None,
             tenant: None,
             address_labels: Default::default(),
+            geo_program_id: None,
         };
 
         write_doublezero_config(&cfg).unwrap();
@@ -298,6 +303,7 @@ mod tests {
             program_id: None,
             tenant: None,
             address_labels: Default::default(),
+            geo_program_id: None,
         };
 
         write_doublezero_config(&cfg).unwrap();

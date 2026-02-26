@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use doublezero_geolocation::state::{accounttype::AccountType, geo_probe::GeoProbe};
+use solana_account_decoder::UiAccountEncoding;
 use solana_rpc_client_api::{
-    config::RpcProgramAccountsConfig,
+    config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
     filter::{Memcmp, MemcmpEncodedBytes, RpcFilterType},
 };
 use solana_sdk::pubkey::Pubkey;
@@ -27,6 +28,10 @@ impl ListGeoProbeCommand {
             &program_id,
             RpcProgramAccountsConfig {
                 filters: Some(filters),
+                account_config: RpcAccountInfoConfig {
+                    encoding: Some(UiAccountEncoding::Base64),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         )?;

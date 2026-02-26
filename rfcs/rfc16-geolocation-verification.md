@@ -117,8 +117,8 @@ IP    │ │ Offset        Target IPs │  │ Measured             Offset │
 Inbound Probing Flow
 ```
   ┌──────────┐                  ┌───────────┐                  ┌───────────┐
-  │          │<─────Reply───────│           │───Signed Reply──>│           │
-  │   DZD    │──────TWAMP──────>│   Probe   │<──Signed Probe───│  Target   │
+  │          │<─────Reply───────│           │<──Signed Probe───│           │
+  │   DZD    │──────TWAMP──────>│   Probe   │───Signed Reply──>│  Target   │
   │          │──Signed Offset──>│           │                  │           │
   └──────────┘                  └───────────┘                  └───────────┘
       ^ │ Measured                 ^  │                             │

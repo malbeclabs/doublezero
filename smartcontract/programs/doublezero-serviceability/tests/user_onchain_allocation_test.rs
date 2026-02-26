@@ -25,6 +25,7 @@ use doublezero_serviceability::{
         },
         exchange::create::ExchangeCreateArgs,
         globalconfig::set::SetGlobalConfigArgs,
+        globalstate::setfeatureflags::SetFeatureFlagsArgs,
         location::create::LocationCreateArgs,
         multicastgroup::{
             activate::MulticastGroupActivateArgs,
@@ -40,6 +41,7 @@ use doublezero_serviceability::{
     state::{
         accesspass::AccessPassType,
         device::DeviceType,
+        feature_flags::FeatureFlag,
         user::{UserCYOA, UserStatus, UserType},
     },
 };
@@ -321,6 +323,7 @@ async fn setup_user_onchain_allocation_test(
             user_type,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1688,6 +1691,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey2, false),
@@ -1899,3 +1903,459 @@ async fn test_activate_user_already_activated_fails() {
 // Note: test_activate_user_bitmap_full_error would require filling up the entire
 // ResourceExtension bitmap before attempting activation. This is resource-intensive
 // and may be better suited for a stress test file.
+
+// ============================================================================
+// Atomic Create+Allocate+Activate Tests (Issue 2402)
+// ============================================================================
+
+/// Setup helper that does everything EXCEPT CreateUser.
+/// Returns all pubkeys needed to call CreateUser with atomic allocation.
+async fn setup_user_infra_without_user(
+    user_type: UserType,
+    client_ip: [u8; 4],
+) -> (
+    BanksClient,
+    solana_sdk::signature::Keypair,
+    Pubkey,                           // program_id
+    Pubkey,                           // globalstate_pubkey
+    Pubkey,                           // device_pubkey
+    Pubkey,                           // user_pubkey
+    Pubkey,                           // accesspass_pubkey
+    (Pubkey, Pubkey, Pubkey, Pubkey), // (user_tunnel_block, multicast_publisher_block, tunnel_ids, dz_prefix_block)
+) {
+    let program_id = Pubkey::new_unique();
+
+    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+        "doublezero_serviceability",
+        program_id,
+        processor!(process_instruction),
+    )
+    .start()
+    .await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pubkey, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+
+    // Initialize global state
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Set global config
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
+            local_asn: 65000,
+            remote_asn: 65001,
+            device_tunnel_block: "10.100.0.0/24".parse().unwrap(),
+            user_tunnel_block: "169.254.0.0/24".parse().unwrap(),
+            multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
+            next_bgp_community: None,
+        }),
+        vec![
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create Location
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (location_pubkey, _) = get_location_pda(&program_id, globalstate.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+            code: "test".to_string(),
+            name: "Test Location".to_string(),
+            country: "us".to_string(),
+            lat: 0.0,
+            lng: 0.0,
+            loc_id: 0,
+        }),
+        vec![
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create Exchange
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+            code: "test".to_string(),
+            name: "Test Exchange".to_string(),
+            lat: 0.0,
+            lng: 0.0,
+            reserved: 0,
+        }),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create Contributor
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (contributor_pubkey, _) = get_contributor_pda(&program_id, globalstate.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "test".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create Device
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (device_pubkey, _) = get_device_pda(&program_id, globalstate.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
+            code: "test-dev".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [100, 0, 0, 1].into(),
+            dz_prefixes: "110.1.0.0/24".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: None,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Update Device max_users
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            max_users: Some(128),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Activate Device (creates TunnelIds and DzPrefixBlock)
+    let (tunnel_ids_pubkey, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_block_pubkey, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create AccessPass
+    let (accesspass_pubkey, _) =
+        get_accesspass_pda(&program_id, &client_ip.into(), &payer.pubkey());
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: client_ip.into(),
+            last_access_epoch: 9999,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &client_ip.into(), user_type);
+
+    (
+        banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pda,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
+    )
+}
+
+/// Test atomic create+allocate+activate for IBRL user
+#[tokio::test]
+async fn test_create_user_atomic_with_onchain_allocation() {
+    println!("[TEST] test_create_user_atomic_with_onchain_allocation");
+
+    let client_ip = [100, 0, 0, 1];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        (user_tunnel_block, _multicast_publisher_block, tunnel_ids, dz_prefix_block),
+    ) = setup_user_infra_without_user(UserType::IBRL, client_ip).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Enable feature flag
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // Atomic create+allocate+activate
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: client_ip.into(),
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(_multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify user is Activated with allocated resources
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Activated);
+    assert_ne!(user.tunnel_id, 0, "tunnel_id should be allocated");
+    assert_ne!(
+        user.tunnel_net,
+        doublezero_program_common::types::NetworkV4::default(),
+        "tunnel_net should be allocated"
+    );
+    // IBRL users get dz_ip = client_ip (no dedicated allocation)
+    assert_eq!(user.dz_ip, Ipv4Addr::from(client_ip));
+
+    println!(
+        "User activated: tunnel_id={}, tunnel_net={}, dz_ip={}",
+        user.tunnel_id, user.tunnel_net, user.dz_ip
+    );
+    println!("[PASS] test_create_user_atomic_with_onchain_allocation");
+}
+
+/// Test backward compatibility: dz_prefix_count=0 uses legacy path (Pending status)
+#[tokio::test]
+async fn test_create_user_atomic_backward_compat() {
+    println!("[TEST] test_create_user_atomic_backward_compat");
+
+    let client_ip = [100, 0, 0, 2];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        _resource_pdas,
+    ) = setup_user_infra_without_user(UserType::IBRL, client_ip).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Legacy create (dz_prefix_count=0)
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: client_ip.into(),
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify user is in Pending status (legacy path)
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Pending);
+    assert_eq!(user.tunnel_id, 0, "tunnel_id should not be allocated");
+
+    println!("[PASS] test_create_user_atomic_backward_compat");
+}
+
+/// Test that atomic create fails when feature flag is disabled
+#[tokio::test]
+async fn test_create_user_atomic_feature_flag_disabled() {
+    println!("[TEST] test_create_user_atomic_feature_flag_disabled");
+
+    let client_ip = [100, 0, 0, 3];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        (user_tunnel_block, multicast_publisher_block, tunnel_ids, dz_prefix_block),
+    ) = setup_user_infra_without_user(UserType::IBRL, client_ip).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Feature flag NOT enabled — atomic create should fail
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: client_ip.into(),
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(result.is_err(), "Should fail when feature flag is disabled");
+
+    // Verify user account was NOT created
+    let user_data = get_account_data(&mut banks_client, user_pubkey).await;
+    assert!(user_data.is_none(), "User account should not exist");
+
+    println!("[PASS] test_create_user_atomic_feature_flag_disabled");
+}

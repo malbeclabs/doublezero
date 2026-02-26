@@ -9,6 +9,9 @@ use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::{
         device::get::GetDeviceCommand,
+        multicastgroup::{
+            list::ListMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+        },
         user::{
             activate::ActivateUserCommand, ban::BanUserCommand,
             closeaccount::CloseAccountUserCommand, reject::RejectUserCommand,
@@ -376,6 +379,9 @@ pub fn process_user_event(
                 )
                 .unwrap();
 
+                // Unsubscribe from all multicast groups before closing/banning
+                unsubscribe_all_multicast_groups(client, pubkey, user, &mut log_msg);
+
                 if user.status == UserStatus::Deleting {
                     let res = CloseAccountUserCommand {
                         pubkey: *pubkey,
@@ -501,6 +507,57 @@ fn deallocate_publisher_dz_ip(user: &User, publisher_dz_ips: &mut IPBlockAllocat
                 "Deallocated publisher dz_ip {} from global pool",
                 user.dz_ip
             );
+        }
+    }
+}
+
+/// Unsubscribe a user from all multicast groups (both publisher and subscriber).
+/// Called before CloseAccount/Ban so the activator handles cleanup server-side.
+fn unsubscribe_all_multicast_groups(
+    client: &dyn DoubleZeroClient,
+    pubkey: &Pubkey,
+    user: &User,
+    log_msg: &mut String,
+) {
+    let unique_mgroup_pks: Vec<Pubkey> = user
+        .publishers
+        .iter()
+        .chain(user.subscribers.iter())
+        .copied()
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    if unique_mgroup_pks.is_empty() {
+        return;
+    }
+
+    let multicastgroups = match (ListMulticastGroupCommand {}).execute(client) {
+        Ok(groups) => groups,
+        Err(e) => {
+            warn!("Error listing multicast groups for cleanup: {e}");
+            return;
+        }
+    };
+
+    for mgroup_pk in &unique_mgroup_pks {
+        if multicastgroups.contains_key(mgroup_pk) {
+            let res = SubscribeMulticastGroupCommand {
+                group_pk: *mgroup_pk,
+                user_pk: *pubkey,
+                client_ip: user.client_ip,
+                publisher: false,
+                subscriber: false,
+            }
+            .execute(client);
+            match res {
+                Ok(sig) => {
+                    write!(log_msg, " Unsubscribed({mgroup_pk}) {sig}").unwrap();
+                }
+                Err(e) => {
+                    warn!("Error unsubscribing from group {mgroup_pk}: {e}");
+                }
+            }
         }
     }
 }
@@ -662,6 +719,9 @@ pub fn process_user_event_stateless(
                     device_state.device.code, &user.tunnel_net, user.tunnel_id, &user.dz_ip
                 )
                 .unwrap();
+
+                // Unsubscribe from all multicast groups before closing/banning
+                unsubscribe_all_multicast_groups(client, pubkey, user, &mut log_msg);
 
                 if user.status == UserStatus::Deleting {
                     let res = CloseAccountUserCommand {

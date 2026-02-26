@@ -41,7 +41,7 @@ impl SubscribeMulticastGroupCommand {
         .execute(client)
         .map_err(|_err| eyre::eyre!("User not found"))?;
 
-        if user.status != UserStatus::Activated {
+        if user.status != UserStatus::Activated && user.status != UserStatus::Deleting {
             eyre::bail!("User not active");
         }
 

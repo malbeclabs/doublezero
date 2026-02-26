@@ -278,15 +278,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::User(user_clone2.clone())));
 
-        // 3. DeleteUserCommand internally: gets(AccountType::MulticastGroup) - empty
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::MulticastGroup))
-            .times(1)
-            .in_sequence(&mut seq)
-            .returning(|_| Ok(HashMap::new()));
-
-        // 4. DeleteUserCommand internally: execute_transaction(DeleteUser)
+        // 3. DeleteUserCommand internally: execute_transaction(DeleteUser)
         client
             .expect_execute_transaction()
             .with(

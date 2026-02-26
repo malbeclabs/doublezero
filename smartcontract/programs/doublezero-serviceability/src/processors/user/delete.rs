@@ -128,11 +128,6 @@ pub fn process_delete_user(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    if !user.publishers.is_empty() || !user.subscribers.is_empty() {
-        msg!("{:?}", user);
-        return Err(DoubleZeroError::ReferenceCountNotZero.into());
-    }
-
     user.status = UserStatus::Deleting;
 
     try_acc_write(&user, user_account, payer_account, accounts)?;

@@ -88,7 +88,10 @@ pub fn process_subscribe_multicastgroup(
     }
 
     let mut user: User = User::try_from(user_account)?;
-    if user.status != UserStatus::Activated && user.status != UserStatus::Updating {
+    if user.status != UserStatus::Activated
+        && user.status != UserStatus::Updating
+        && user.status != UserStatus::Deleting
+    {
         msg!("UserStatus: {:?}", user.status);
         return Err(DoubleZeroError::InvalidStatus.into());
     }

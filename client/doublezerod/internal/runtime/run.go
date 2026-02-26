@@ -96,13 +96,31 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	}
 	pollInterval := time.Duration(reconcilerPollInterval) * time.Second
 
-	nlm := manager.NewNetlinkManager(nlr, bgp, pim, heartbeat,
+	// Create latency manager before the netlink manager so it can be passed
+	// as a LatencyProvider for status enrichment.
+	var latencyManager *latency.LatencyManager
+	if enableLatencyProbing {
+		latencyManager = latency.NewLatencyManager(
+			latency.WithFetcher(cachingFetcher),
+			latency.WithProbeInterval(time.Duration(probeInterval)*time.Second),
+			latency.WithCacheUpdateInterval(time.Duration(cacheUpdateInterval)*time.Second),
+			latency.WithMetricsEnabled(enableLatencyMetrics),
+			latency.WithProbeTunnelEndpoints(latencyProbeTunnelEndpoints),
+		)
+	}
+
+	nlmOpts := []manager.Option{
 		manager.WithClientIP(ip),
 		manager.WithFetcher(cachingFetcher),
 		manager.WithPollInterval(pollInterval),
 		manager.WithEnabled(reconcilerEnabled),
 		manager.WithStateDir(stateDir),
-	)
+		manager.WithNetwork(networkConfig.Moniker),
+	}
+	if latencyManager != nil {
+		nlmOpts = append(nlmOpts, manager.WithLatencyProvider(latencyManager))
+	}
+	nlm := manager.NewNetlinkManager(nlr, bgp, pim, heartbeat, nlmOpts...)
 
 	errCh := make(chan error)
 
@@ -128,14 +146,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	mux.HandleFunc("GET /routes", api.ServeRoutesHandler(nlr, lm, nlm, networkConfig))
 	mux.HandleFunc("POST /resolve-route", api.ServeResolveRouteHandler(nlr, networkConfig))
 
-	if enableLatencyProbing {
-		latencyManager := latency.NewLatencyManager(
-			latency.WithFetcher(cachingFetcher),
-			latency.WithProbeInterval(time.Duration(probeInterval)*time.Second),
-			latency.WithCacheUpdateInterval(time.Duration(cacheUpdateInterval)*time.Second),
-			latency.WithMetricsEnabled(enableLatencyMetrics),
-			latency.WithProbeTunnelEndpoints(latencyProbeTunnelEndpoints),
-		)
+	if latencyManager != nil {
 		go func() {
 			err := latencyManager.Start(ctx)
 			errCh <- err

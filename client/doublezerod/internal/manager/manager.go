@@ -12,6 +12,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/services"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -44,6 +45,11 @@ type BGPServer interface {
 // Fetcher is the interface for fetching onchain program data.
 type Fetcher interface {
 	GetProgramData(ctx context.Context) (*serviceability.ProgramData, error)
+}
+
+// LatencyProvider is the interface for retrieving cached latency results.
+type LatencyProvider interface {
+	GetResultsCache() []latency.LatencyResult
 }
 
 // Option configures a NetlinkManager.
@@ -84,6 +90,20 @@ func WithStateDir(dir string) Option {
 	}
 }
 
+// WithLatencyProvider sets the latency provider for status enrichment.
+func WithLatencyProvider(lp LatencyProvider) Option {
+	return func(n *NetlinkManager) {
+		n.latencyProvider = lp
+	}
+}
+
+// WithNetwork sets the network moniker (e.g. "mainnet", "testnet").
+func WithNetwork(network string) Option {
+	return func(n *NetlinkManager) {
+		n.network = network
+	}
+}
+
 type NetlinkManager struct {
 	netlink          routing.Netlinker
 	Routes           []*routing.Route
@@ -104,6 +124,10 @@ type NetlinkManager struct {
 	enableCh       chan bool
 	stateDir       string
 	tunnelSrcCache map[string]net.IP // cached resolved tunnel src keyed by dst IP string
+
+	// Status enrichment fields
+	latencyProvider LatencyProvider
+	network         string
 }
 
 // CreateService creates the appropriate service based on the provisioned

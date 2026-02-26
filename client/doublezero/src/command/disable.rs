@@ -28,7 +28,7 @@ impl DisableCliCommand {
                 return Ok(());
             }
             // Check if any services are active and warn the user.
-            let has_active = v2.services.iter().any(|s| s.user_type.is_some());
+            let has_active = v2.services.iter().any(|s| s.status.user_type.is_some());
             if has_active {
                 println!("Active tunnel(s) will be torn down");
             }
@@ -57,6 +57,7 @@ mod tests {
             Ok(V2StatusResponse {
                 reconciler_enabled: true,
                 client_ip: String::new(),
+                network: String::new(),
                 services: vec![],
             })
         });

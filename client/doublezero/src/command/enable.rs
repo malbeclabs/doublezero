@@ -50,6 +50,7 @@ mod tests {
             Ok(V2StatusResponse {
                 reconciler_enabled: false,
                 client_ip: String::new(),
+                network: String::new(),
                 services: vec![],
             })
         });

@@ -1045,6 +1045,7 @@ mod tests {
                 Ok(V2StatusResponse {
                     reconciler_enabled: false,
                     client_ip: "1.2.3.4".to_string(),
+                    network: String::new(),
                     services: vec![],
                 })
             });
@@ -1062,6 +1063,7 @@ mod tests {
                 Ok(V2StatusResponse {
                     reconciler_enabled: false,
                     client_ip: "1.2.3.4".to_string(),
+                    network: String::new(),
                     services: vec![],
                 })
             });

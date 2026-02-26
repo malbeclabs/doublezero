@@ -194,10 +194,10 @@ pub struct GeoProbe {
     pub exchange_pk: Pubkey,                   // Reference to Serviceability Exchange account
     pub public_ip: Ipv4Addr,                   // Where probe listens
     pub location_offset_port: u16,             // UDP listen port (default 8923)
-    pub code: String,                          // e.g., "ams-probe-01" (max 32 bytes)
-    pub parent_devices: Vec<Pubkey>,           // DZDs that measure this probe
     pub metrics_publisher_pk: Pubkey,          // Signing key for telemetry
     pub reference_count: u32,                  // GeolocationTargets referencing this probe
+    pub code: String,                          // e.g., "ams-probe-01" (max 32 bytes)
+    pub parent_devices: Vec<Pubkey>,           // DZDs that measure this probe
 }
 ```
 **PDA Seeds:** `["doublezero", "probe", code.as_bytes()]`

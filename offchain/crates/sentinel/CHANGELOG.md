@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-
+- feat: autojoin validators to approved mcast pub groups
 - feat: billing sentinel for tenant payment status monitoring ([#265](https://github.com/doublezerofoundation/doublezero-offchain/pull/265))
 - change default leader schedule lookahead from 2 epochs to 1 ([#259](https://github.com/doublezerofoundation/doublezero-offchain/pull/259))
 - fix(sentinel): improve retry handling for transient RPC errors([#220](https://github.com/doublezerofoundation/doublezero-offchain/pull/220))

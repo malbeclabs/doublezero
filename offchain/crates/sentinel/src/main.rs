@@ -44,6 +44,25 @@ async fn main() -> anyhow::Result<()> {
         "DoubleZero Ledger Sentinel starting"
     );
 
+    let multicast_group_codes = settings.multicast_group_codes();
+    let multicast_group_pdas = if multicast_group_codes.is_empty() {
+        info!("multicast publisher allowlisting disabled (no codes configured)");
+        vec![]
+    } else {
+        let dz_client = DzRpcClient::new(dz_rpc_url.clone(), keypair.clone(), serviceability_id);
+        let resolved = dz_client
+            .resolve_multicast_group_codes(&multicast_group_codes)
+            .await?;
+        let pdas: Vec<_> = resolved.iter().map(|(_, pda)| *pda).collect();
+        info!(
+            count = pdas.len(),
+            codes = ?multicast_group_codes,
+            pdas = ?pdas,
+            "multicast publisher allowlisting enabled"
+        );
+        pdas
+    };
+
     let mut polling_sentinel = PollingSentinel::new(
         dz_rpc_url.clone(),
         sol_rpc_url.clone(),
@@ -51,6 +70,7 @@ async fn main() -> anyhow::Result<()> {
         serviceability_id,
         args.poll_interval,
         ENV_PREVIOUS_LEADER_EPOCHS,
+        multicast_group_pdas,
     )
     .await?;
 

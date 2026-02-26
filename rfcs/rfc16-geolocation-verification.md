@@ -38,7 +38,7 @@ A server that acts as an intermediary for latency measurements. geoProbes:
 - Are registered onchain in the Telemetry Program
 
 ### Location Offset
-A signed data structure containing a DZD's geographic location (latitude and longitude) and a chain of latency relationship between two entities (DZD↔Probe or Probe↔Target) and is sent to the Probe or Target. This is sent via UDP to the next link in the chain (From DZD->Probe and From Probe->Target). RttNs is the sum of the reference rtt plus measured rtt, and lat/lng are copied from the reference.
+A signed data structure containing a DZD's geographic location (latitude and longitude) and a chain of latency relationships between two entities (DZD↔Probe or Probe↔Target) and is sent to the Probe or Target. This is sent via UDP to the next link in the chain (From DZD->Probe and From Probe->Target). RttNs is the sum of the reference rtt plus measured rtt, and lat/lng are copied from the reference.
 
 ```go
 type LocationOffset struct {
@@ -60,9 +60,6 @@ type LocationOffset struct {
 **Probe-generated Offsets** include references to DZD Offsets, enabling targets to verify the entire measurement chain.
 
 > 💡 An enterprising user could use the existing link telemetry to confirm locations of DZDs relative to other DZDs. This is not covered by this RFC.
-
-### Location Offset
-The RTT to a target from the lat/lng in the Offset struct.
 
 ### Child Probe
 A geoProbe assigned to a specific DZD for periodic latency measurement, defined onchain. DZDs only measure and send `LocationOffset` datagrams to their child geoProbes.
@@ -98,7 +95,7 @@ A geoProbe assigned to a specific DZD for periodic latency measurement, defined 
 
 ### Architecture Overview
 
-Active Probing Flow
+Outbound Probing Flow
 ```
   ┌──────────┐                  ┌───────────┐                  ┌───────────┐
   │          │<─────Reply───────│           │<─────Reply───────│           │
@@ -117,7 +114,7 @@ IP    │ │ Offset        Target IPs │  │ Measured             Offset │
   └───────────┘                                                └───────────┘
 ```
 
-Passive Probing Flow
+Inbound Probing Flow
 ```
   ┌──────────┐                  ┌───────────┐                  ┌───────────┐
   │          │<─────Reply───────│           │───Signed Reply──>│           │
@@ -146,23 +143,23 @@ _Async:_
 - Client Oracle submits Target IPs that should have locations verified.
 - Client Oracle submits Target Pubkeys that Probe will reflect Signed Probe Messages from 
 
-_Active Measurement Flow_
+_Outbound Measurement Flow_
 1. **DZD→Probe Measurement (10s interval):** DZD sends TWAMP probe, measures RTT
 2. **Offset Generation:** DZD creates Offset with lat/lng, latency, timestamp, signs with Ed25519
 3. **Dual Posting:** DZD submits samples to `ProbeLatencySamples` PDA onchain AND sends Offset to Probe via UDP
 4. **Probe Caching:** Probe verifies DZD signature, caches Offset
 5. **Probe→Target Measurement:** Probe measures RTT to target using TWAMP
 6. **Composite Offset:** Probe creates new Offset with DZD Offset as reference, signs it
-8. **Target Verification:** Target verifies signature chain, uses `lat/lng` + `rtt_ns` to determine location 
+7. **Target Verification:** Target verifies signature chain, uses `lat/lng` + `rtt_ns` to determine location
 
-_Passive Measurement Flow_
+_Inbound Measurement Flow_
 1. **DZD→Probe Measurement (10s interval):** DZD sends TWAMP probe, measures RTT
 2. **Offset Generation:** DZD creates Offset with lat/lng, latency, timestamp, signs with Ed25519
 3. **Dual Posting:** DZD submits samples to `ProbeLatencySamples` PDA onchain
-4. **Target Probes** Target sends a signed probe message, containing its Pubkey as well as Ed25519 signature of the probe packet contents.
-5. **Probe Might Reply** Probe receives probe, and veriies that the Pubkey is registered. If so, it embeds the original probe message into its response, appends its Pubkey, a Ed25519 signature of the whole packet, and sends it.
-6. **Target Verifies Reply** Target verifies that the reply is for the message it sent, and has not been tampered with. Forwards to Client Oracle.
-7. **Client Oracle Gets Probe Offset** Client Oracle gets the probe's LocationOffset from the DZ ledger, and uses that along with the Target's reported latency to compute location.
+4. **Target Probes:** Target sends a signed probe message, containing its Pubkey as well as Ed25519 signature of the probe packet contents.
+5. **Probe Might Reply:** Probe receives probe, and verifies that the Pubkey is registered. If so, it embeds the original probe message into its response, appends its Pubkey, an Ed25519 signature of the whole packet, and sends it.
+6. **Target Verifies Reply:** Target verifies that the reply is for the message it sent, and has not been tampered with. Forwards to Client Oracle.
+7. **Client Oracle Gets Probe Offset:** Client Oracle gets the probe's LocationOffset from the DZ ledger, and uses that along with the Target's reported latency to compute location.
 
 ### Smart Contract Changes
 
@@ -213,15 +210,15 @@ pub enum GeolocationUserStatus {
     Suspended = 1,  // Lack of Payment
 }
 pub enum GeoLocationTargetType {
-    ProbeSends = 0,
-    TargetSends = 1,
+    Outbound = 0,   // GeoProbe sends TWAMP
+    Inbound = 1,    // Target Sends SignedTWAMP
 }
 
 pub struct GeolocationTarget {
-    pub type: GeoLocationTargetType,
-    pub ip_address: Ipv4Addr,       // Only for ProbeSeends
-    pub location_offset_port: u16,  // Only for ProbeSends
-    pub target_pk: Pubkey,          // Only for TargetSends
+    pub target_type: GeoLocationTargetType,
+    pub ip_address: Ipv4Addr,       // Only for Outbound
+    pub location_offset_port: u16,  // Only for Outbound
+    pub target_pk: Pubkey,          // Only for Inbound
     pub geoprobe_pk: Pubkey,        // Which probe measures this target
 }
 
@@ -308,14 +305,15 @@ pub enum GeolocationInstruction {
 
 #### Access Control
 
-| Instruction | Required Authority |
-|---|---|
-| InitProgramConfig | Program deploy authority (one-time) |
-| CreateGeoProbe, UpdateGeoProbe, ActivateGeoProbe, SuspendGeoProbe, ResumeGeoProbe, DeleteGeoProbe | Foundation allowlist (via Serviceability CPI) |
-| AddParentDevice, RemoveParentDevice | Foundation allowlist (via Serviceability CPI) |
-| CreateGeolocationUser, UpdateGeolocationUser, DeleteGeolocationUser | Any signer (self-service, signer becomes owner) |
-| AddTarget, RemoveTarget | GeolocationUser owner |
-| UpdatePaymentStatus | Foundation allowlist (via Serviceability CPI) |
+| Instruction                                     | Required Authority |
+|-------------------------------------------------|-------------------------------------------------|
+| InitProgramConfig                               | Program deploy authority (one-time)             |
+| CreateGeoProbe, UpdateGeoProbe, DeleteGeoProbe  | Foundation allowlist (via Serviceability CPI)   |
+| AddParentDevice, RemoveParentDevice             | Foundation allowlist (via Serviceability CPI)   |
+| CreateGeolocationUser, UpdateGeolocationUser,   | Any signer (self-service, signer becomes owner) |
+| DeleteGeolocationUser                                                                            
+| AddTarget, RemoveTarget                         | GeolocationUser owner                           |
+| UpdatePaymentStatus                             | Foundation allowlist (via Serviceability CPI)   |
 
 #### GeoProbe Onboarding
 
@@ -332,7 +330,7 @@ pub enum GeolocationInstruction {
 
 ### Signed Probes
 
-Signed probes support the **passive probing flow**, where the Target initiates latency measurement toward the Probe.
+Signed probes support the **inbound probing flow**, where the Target initiates latency measurement toward the Probe.
 
 The mechanism extends DoubleZero's existing TWAMP-light implementation (`tools/twamp/pkg/light/`) with new signed variants. New `SignedSender` and `SignedReflector` types are added to the package, reusing the NTP timestamp encoding, kernel timestamping, and socket infrastructure.
 
@@ -367,14 +365,14 @@ The probe's signature covers `[Probe, ReflectorPubkey]` (bytes 0–139)
 #### Interfaces
 
 ```go
-// SignedSender is used by the Target to initiate passive probing.
+// SignedSender is used by the Target to initiate inbound probing.
 type SignedSender interface {
     Probe(ctx context.Context) (time.Duration, *SignedReplyPacket, error)
     Close() error
     LocalAddr() *net.UDPAddr
 }
 
-// SignedReflector is used by the Probe to respond to passive probes.
+// SignedReflector is used by the Probe to respond to inbound probes.
 type SignedReflector interface {
     Run(ctx context.Context) error
     Close() error
@@ -519,8 +517,8 @@ PoC CLI will be a separate `doublezero-geolocation` CLI, future work will integr
 
 - New CLI module `smartcontract/cli/src/geolocation/probe/`
 - Commands for probe management:
-    - `doublezero-geolocation probe create` — creates a GeoProbe account (args: code, exchange, public-ip, port, latency-threshold-ns, metrics-publisher-pk)
-    - `doublezero-geolocation probe update` — updates GeoProbe fields (public-ip, port, latency-threshold-ns, metrics-publisher-pk)
+    - `doublezero-geolocation probe create` — creates a GeoProbe account (args: code, exchange, public-ip, port, metrics-publisher-pk)
+    - `doublezero-geolocation probe update` — updates GeoProbe fields (public-ip, port, metrics-publisher-pk)
     - `doublezero-geolocation probe delete` — deletes a GeoProbe account
     - `doublezero-geolocation probe list` — lists all GeoProbe accounts
     - `doublezero-geolocation probe get` — gets a specific GeoProbe by code
@@ -529,11 +527,11 @@ PoC CLI will be a separate `doublezero-geolocation` CLI, future work will integr
     - `doublezero-geolocation init-config` — initializes the GeolocationProgramConfig (one-time)
 - Commands for user management: 
     - `doublezero-geolocation user create` - Creates a GeoLocation User (args: Code, token_account)
-    - `doublezero-geolocation user list` - lists all GeoLocation useres
+    - `doublezero-geolocation user list` - lists all GeoLocation users
     - `doublezero-geolocation user delete` - Deletes a GeoLocation User (must be that user or foundation)
     - `doublezero-geolocation add-target` - Adds targets to be covered by a user (Args: code, ip or pubkey)
     - `doublezero-geolocation remove-target` - removes a target from a user  (Args: code, ip or pubkey)
-    - `doublezero-geolocation probe get` - Gets offset from a probe (args: Probe Code(s), optoinal: epoch)
+    - `doublezero-geolocation probe get` - Gets offset from a probe (args: Probe Code(s), optional: epoch)
 
 
 ### POC Requirements
@@ -567,14 +565,14 @@ PoC CLI will be a separate `doublezero-geolocation` CLI, future work will integr
     - Target Deployment of Snapshot Example Target to `fra-tn-qa01` in Testnet
 
 #### Phase 1.5:
-**Goal:** Add "passive mode" where geoprobes respond to SignedTWAMP probes
+**Goal:** Add "inbound mode" where geoprobes respond to SignedTWAMP probes
 
 1. Implement Signed TWAMP
     - Create new TWAMP Sender
     - Create new TWAMP Reflector
 2. Add Signed TWAMP reflector to `doublezero-geoprobe-agent`
     - Separate from standard TWAMP reflector for DZDs
-    - Add commandline to allowlist additional puhbkeys for SignedTWAMP
+    - Add commandline to allowlist additional pubkeys for SignedTWAMP
 3. Create Example Target Software (Signed TWAMP Sender)
     - Uses CLI to specify probe to ping
 
@@ -755,7 +753,7 @@ pub struct GeolocationSamples {
 
 **Problem:** GeoProbes reference serviceability Devices via `parent_devices` to establish authoritative basis for their location. If a parent device is deleted or suspended in the serviceability program, the GeoProbe retains a stale reference, invalidating its location attestation.
 
-**Current Behavior:** Phase 1 implementation validates parent devices exist and are activated only at `AddParentDevice` instruction time. This creates a "soft reference" that is not enforced onchain. The telemetry agent polls onchain for GeoProbe updates and periodically updates a cached copy of it's associated device's lat/lng values. If the device disappears in the next poll cycle, the telemetry agent stops any geolocation measurements and begins raising errors. The geoprobe agent also stops any geolocation measurements associated with the removed device.
+**Current Behavior:** Phase 1 implementation validates parent devices exist and are activated only at `AddParentDevice` instruction time. This creates a "soft reference" that is not enforced onchain. The telemetry agent polls onchain for GeoProbe updates and periodically updates a cached copy of its associated device's lat/lng values. If the device disappears in the next poll cycle, the telemetry agent stops any geolocation measurements and begins raising errors. The geoprobe agent also stops any geolocation measurements associated with the removed device.
 
 **Proposed Solution: Cross-Program Reference Counting via CPI**
 

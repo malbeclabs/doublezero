@@ -1,6 +1,5 @@
 use crate::{
     command::util,
-    dzd_latency::best_latency,
     requirements::check_doublezero,
     servicecontroller::{
         DoubleZeroStatus, ServiceController, ServiceControllerImpl, StatusResponse,
@@ -8,13 +7,7 @@ use crate::{
 };
 use clap::Args;
 use doublezero_cli::{doublezerocommand::CliCommand, helpers::print_error};
-use doublezero_sdk::commands::{
-    device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
-    tenant::list::ListTenantCommand, user::list::ListUserCommand,
-};
 use serde::{Deserialize, Serialize};
-use solana_sdk::pubkey::Pubkey;
-use std::{net::Ipv4Addr, str::FromStr};
 use tabled::Tabled;
 
 #[derive(Args, Debug)]
@@ -60,18 +53,12 @@ impl StatusCliCommand {
         client: &dyn CliCommand,
         controller: &T,
     ) -> eyre::Result<Vec<AppendedStatusResponse>> {
-        let devices = client.list_device(ListDeviceCommand)?;
-        let users = client.list_user(ListUserCommand)?;
-        let exchanges = client.list_exchange(ListExchangeCommand)?;
-        let tenants = client.list_tenant(ListTenantCommand {})?;
-
         let v2_status = controller.v2_status().await?;
-        let status_responses = v2_status.services;
 
         // When no services are running, synthesize a "disconnected" entry to match
         // the legacy /status endpoint behavior. The QA agent and other tooling
         // expect at least one entry in the status array.
-        if status_responses.is_empty() {
+        if v2_status.services.is_empty() {
             return Ok(vec![AppendedStatusResponse {
                 response: StatusResponse {
                     doublezero_status: DoubleZeroStatus {
@@ -89,96 +76,54 @@ impl StatusCliCommand {
                 current_device: "N/A".to_string(),
                 lowest_latency_device: "N/A".to_string(),
                 metro: "N/A".to_string(),
-                network: format!("{}", client.get_environment()),
+                network: if v2_status.network.is_empty() {
+                    format!("{}", client.get_environment())
+                } else {
+                    v2_status.network.clone()
+                },
             }]);
         }
 
-        let mut responses = Vec::with_capacity(status_responses.len());
-        for response in &status_responses {
-            let mut current_device: Option<Pubkey> = None;
-            let mut metro = None;
-            let mut tenant_code = String::new();
-            let user = users
-                .iter()
-                .find(|(_, u)| {
-                    let user_type_matches = response
-                        .user_type
-                        .as_ref()
-                        .map(|t| u.user_type.to_string() == *t)
-                        .unwrap_or(false);
-                    if !user_type_matches {
-                        return false;
-                    }
-                    // Match by dz_ip if doublezero_ip is present
-                    if let Some(ref dz_ip) = response.doublezero_ip {
-                        if !dz_ip.is_empty() {
-                            return u.dz_ip.to_string() == *dz_ip;
-                        }
-                    }
-                    false
-                })
-                .map(|(_, u)| u);
-            if let Some(user) = user {
-                current_device = Some(user.device_pk);
-                if let Some(dev) = devices.get(&user.device_pk) {
-                    metro = exchanges.get(&dev.exchange_pk).map(|e| e.name.clone());
-                }
-                if user.tenant_pk != Pubkey::default() {
-                    tenant_code = tenants
-                        .get(&user.tenant_pk)
-                        .map(|t| t.code.clone())
-                        .unwrap_or_default();
-                }
-            } else if let Some(ref tunnel_dst) = response.tunnel_dst {
-                // Fallback: match by tunnel_dst (device public IP) for users without dz_ip
-                // This is needed for multicast subscribers who don't have a doublezero_ip
-                if let Ok(tunnel_ip) = Ipv4Addr::from_str(tunnel_dst) {
-                    if let Some((device_pk, dev)) =
-                        devices.iter().find(|(_, d)| d.public_ip == tunnel_ip)
-                    {
-                        current_device = Some(*device_pk);
-                        metro = exchanges.get(&dev.exchange_pk).map(|e| e.name.clone());
-                    }
-                }
-            }
-            let lowest_latency_device = match best_latency(
-                controller,
-                &devices,
-                true,
-                None,
-                current_device.as_ref(),
-                &[],
-            )
-            .await
-            {
-                Ok(best) => {
-                    let is_current = current_device
-                        .map(|d| best.device_pk == d.to_string())
-                        .unwrap_or(false);
-                    if self.json || response.doublezero_status.session_status != "BGP Session Up" {
-                        best.device_code
-                    } else if is_current {
-                        format!("✅ {}", best.device_code)
-                    } else if current_device.is_some() {
-                        format!("⚠️ {}", best.device_code)
-                    } else {
-                        best.device_code
-                    }
-                }
-                Err(_) => "N/A".to_string(),
+        let network = if v2_status.network.is_empty() {
+            format!("{}", client.get_environment())
+        } else {
+            v2_status.network.clone()
+        };
+
+        let mut responses = Vec::with_capacity(v2_status.services.len());
+        for svc in &v2_status.services {
+            let current_device = if svc.current_device.is_empty() {
+                "N/A".to_string()
+            } else {
+                svc.current_device.clone()
+            };
+            let metro = if svc.metro.is_empty() {
+                "N/A".to_string()
+            } else {
+                svc.metro.clone()
+            };
+
+            // Apply display formatting for lowest_latency_device.
+            let lowest_latency_device = if svc.lowest_latency_device.is_empty() {
+                "N/A".to_string()
+            } else if self.json || svc.status.doublezero_status.session_status != "BGP Session Up" {
+                svc.lowest_latency_device.clone()
+            } else if svc.lowest_latency_device == current_device {
+                format!("✅ {}", svc.lowest_latency_device)
+            } else if current_device != "N/A" {
+                format!("⚠️ {}", svc.lowest_latency_device)
+            } else {
+                svc.lowest_latency_device.clone()
             };
 
             responses.push(AppendedStatusResponse {
-                response: response.clone(),
+                response: svc.status.clone(),
                 reconciler_enabled: v2_status.reconciler_enabled,
-                current_device: current_device
-                    .and_then(|d| devices.get(&d))
-                    .map(|d| d.code.clone())
-                    .unwrap_or_else(|| "N/A".to_string()),
+                current_device,
                 lowest_latency_device,
-                metro: metro.unwrap_or_else(|| "N/A".to_string()),
-                network: format!("{}", client.get_environment()),
-                tenant: tenant_code,
+                metro,
+                network: network.clone(),
+                tenant: svc.tenant.clone(),
             });
         }
 
@@ -191,218 +136,70 @@ impl StatusCliCommand {
 mod tests {
     use super::*;
     use crate::servicecontroller::{
-        DoubleZeroStatus, LatencyRecord, MockServiceController, V2StatusResponse,
+        DoubleZeroStatus, MockServiceController, V2ServiceStatus, V2StatusResponse,
     };
     use doublezero_cli::doublezerocommand::MockCliCommand;
-    use doublezero_program_common::types::{NetworkV4, NetworkV4List};
-    use doublezero_sdk::{
-        AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, User, UserCYOA,
-        UserStatus, UserType,
-    };
-    use doublezero_serviceability::state::{
-        device::{DeviceDesiredStatus, DeviceHealth},
-        tenant::Tenant,
-    };
-    use mockall::predicate::*;
-    use solana_sdk::pubkey::Pubkey;
-    use std::net::Ipv4Addr;
+
+    fn make_v2_service(
+        session_status: &str,
+        tunnel_name: Option<&str>,
+        tunnel_src: Option<&str>,
+        tunnel_dst: Option<&str>,
+        doublezero_ip: Option<&str>,
+        user_type: Option<&str>,
+        current_device: &str,
+        lowest_latency_device: &str,
+        metro: &str,
+        tenant: &str,
+    ) -> V2ServiceStatus {
+        V2ServiceStatus {
+            status: StatusResponse {
+                doublezero_status: DoubleZeroStatus {
+                    session_status: session_status.to_string(),
+                    last_session_update: Some(1625247600),
+                },
+                tunnel_name: tunnel_name.map(String::from),
+                tunnel_src: tunnel_src.map(String::from),
+                tunnel_dst: tunnel_dst.map(String::from),
+                doublezero_ip: doublezero_ip.map(String::from),
+                user_type: user_type.map(String::from),
+            },
+            current_device: current_device.to_string(),
+            lowest_latency_device: lowest_latency_device.to_string(),
+            metro: metro.to_string(),
+            tenant: tenant.to_string(),
+        }
+    }
 
     #[tokio::test]
     async fn test_status_command_tunnel_up() {
-        let mut mock_command = MockCliCommand::new();
+        let mock_command = MockCliCommand::new();
         let mut mock_controller = MockServiceController::new();
 
-        let mut devices = std::collections::HashMap::<Pubkey, Device>::new();
-        let mut users = std::collections::HashMap::<Pubkey, User>::new();
-        let mut exchanges = std::collections::HashMap::<Pubkey, Exchange>::new();
-        let status_responses = vec![StatusResponse {
-            doublezero_status: DoubleZeroStatus {
-                session_status: "BGP Session Up".to_string(),
-                last_session_update: Some(1625247600),
-            },
-            tunnel_name: Some("tunnel_name".to_string()),
-            tunnel_src: Some("1.2.3.4".to_string()),
-            tunnel_dst: Some("42.42.42.42".to_string()),
-            doublezero_ip: Some("1.2.3.4".to_string()),
-            user_type: Some("IBRL".to_string()),
-        }];
-
-        let exchange_pk = Pubkey::new_unique();
-        exchanges.insert(
-            exchange_pk,
-            Exchange {
-                account_type: AccountType::Exchange,
-                owner: Pubkey::default(),
-                index: 0,
-                bump_seed: 0,
-                lat: 0.0,
-                lng: 0.0,
-                bgp_community: 0,
-                unused: 0,
-                status: ExchangeStatus::Activated,
-                code: "met".to_string(),
-                name: "metro".to_string(),
-                reference_count: 0,
-                device1_pk: Pubkey::default(),
-                device2_pk: Pubkey::default(),
-            },
-        );
-
-        let device1_pk = Pubkey::new_unique();
-        devices.insert(
-            device1_pk,
-            Device {
-                account_type: AccountType::Device,
-                owner: Pubkey::default(),
-                index: 0,
-                bump_seed: 0,
-                location_pk: Pubkey::default(),
-                exchange_pk,
-                device_type: DeviceType::Hybrid,
-                public_ip: "5.6.7.8".parse().unwrap(),
-                status: DeviceStatus::Activated,
-                code: "device1".to_string(),
-                dz_prefixes: NetworkV4List::default(),
-                metrics_publisher_pk: Pubkey::default(),
-                contributor_pk: Pubkey::default(),
-                mgmt_vrf: "default".to_string(),
-                interfaces: vec![],
-                reference_count: 0,
-                users_count: 64,
-                max_users: 128,
-                device_health:
-                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
-                desired_status:
-                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
-                unicast_users_count: 0,
-                multicast_users_count: 0,
-                max_unicast_users: 0,
-                max_multicast_users: 0,
-            },
-        );
-
-        let device2_pk = Pubkey::new_unique();
-        devices.insert(
-            device2_pk,
-            Device {
-                account_type: AccountType::Device,
-                owner: Pubkey::default(),
-                index: 0,
-                bump_seed: 0,
-                location_pk: Pubkey::default(),
-                exchange_pk,
-                device_type: DeviceType::Hybrid,
-                public_ip: "5.6.7.9".parse().unwrap(),
-                status: DeviceStatus::Activated,
-                code: "device2".to_string(),
-                dz_prefixes: NetworkV4List::default(),
-                metrics_publisher_pk: Pubkey::default(),
-                contributor_pk: Pubkey::default(),
-                mgmt_vrf: "default".to_string(),
-                interfaces: vec![],
-                reference_count: 0,
-                users_count: 64,
-                max_users: 128,
-                device_health:
-                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
-                desired_status:
-                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
-                unicast_users_count: 0,
-                multicast_users_count: 0,
-                max_unicast_users: 0,
-                max_multicast_users: 0,
-            },
-        );
-
-        let user_pk = Pubkey::new_unique();
-        users.insert(
-            user_pk,
-            User {
-                account_type: AccountType::User,
-                owner: Pubkey::default(),
-                index: 0,
-                bump_seed: 0,
-                user_type: UserType::IBRL,
-                tenant_pk: Pubkey::default(),
-                device_pk: device1_pk,
-                cyoa_type: UserCYOA::GREOverDIA,
-                client_ip: "1.2.3.4".parse().unwrap(),
-                dz_ip: "1.2.3.4".parse().unwrap(),
-                tunnel_id: 501,
-                tunnel_net: NetworkV4::default(),
-                status: UserStatus::Activated,
-                publishers: vec![],
-                subscribers: vec![],
-                validator_pubkey: Pubkey::default(),
-                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            },
-        );
-
-        let latencies = vec![
-            LatencyRecord {
-                device_pk: device1_pk.to_string(),
-                device_code: "device1".to_string(),
-                device_ip: "5.6.7.8".to_string(),
-                min_latency_ns: 10000000,
-                max_latency_ns: 10000000,
-                avg_latency_ns: 10000000,
-                reachable: true,
-            },
-            LatencyRecord {
-                device_pk: device2_pk.to_string(),
-                device_code: "device2".to_string(),
-                device_ip: "5.6.7.9".to_string(),
-                min_latency_ns: 3000000,
-                max_latency_ns: 3000000,
-                avg_latency_ns: 3000000,
-                reachable: true,
-            },
-        ];
-
-        mock_controller.expect_v2_status().returning(move || {
+        mock_controller.expect_v2_status().returning(|| {
             Ok(V2StatusResponse {
                 reconciler_enabled: true,
                 client_ip: String::new(),
-                services: status_responses.clone(),
+                network: "testnet".to_string(),
+                services: vec![make_v2_service(
+                    "BGP Session Up",
+                    Some("tunnel_name"),
+                    Some("1.2.3.4"),
+                    Some("42.42.42.42"),
+                    Some("1.2.3.4"),
+                    Some("IBRL"),
+                    "device1",
+                    "device2",
+                    "metro",
+                    "",
+                )],
             })
         });
-        mock_controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
-        mock_command
-            .expect_get_environment()
-            .return_const(doublezero_config::Environment::Testnet);
-        mock_command
-            .expect_list_device()
-            .with(eq(ListDeviceCommand))
-            .returning({
-                let devices = devices.clone();
-                move |_| Ok(devices.clone())
-            });
-        mock_command
-            .expect_list_user()
-            .with(eq(ListUserCommand))
-            .returning({
-                let users = users.clone();
-                move |_| Ok(users.clone())
-            });
-        mock_command
-            .expect_list_exchange()
-            .with(eq(ListExchangeCommand))
-            .returning({
-                let exchanges = exchanges.clone();
-                move |_| Ok(exchanges.clone())
-            });
-        mock_command
-            .expect_list_tenant()
-            .with(eq(ListTenantCommand {}))
-            .returning(|_| Ok(std::collections::HashMap::<Pubkey, Tenant>::new()));
 
         let result = StatusCliCommand { json: true }
             .command_impl(&mock_command, &mock_controller)
             .await;
 
-        // Assert that the result is Ok
         assert!(result.is_ok());
         let result = result.unwrap();
         assert_eq!(result.len(), 1);
@@ -416,185 +213,47 @@ mod tests {
         assert_eq!(status_response.tunnel_dst.as_deref(), Some("42.42.42.42"));
         assert_eq!(status_response.doublezero_ip.as_deref(), Some("1.2.3.4"));
         assert_eq!(status_response.user_type.as_deref(), Some("IBRL"));
-        assert_eq!(result[0].current_device, "device1".to_string());
-        assert_eq!(result[0].lowest_latency_device, "device2".to_string());
-        assert_eq!(result[0].metro, "metro".to_string());
-        assert_eq!(result[0].network, "testnet".to_string());
-        assert_eq!(result[0].tenant, "".to_string());
+        assert_eq!(result[0].current_device, "device1");
+        assert_eq!(result[0].lowest_latency_device, "device2");
+        assert_eq!(result[0].metro, "metro");
+        assert_eq!(result[0].network, "testnet");
+        assert_eq!(result[0].tenant, "");
     }
 
     #[tokio::test]
     async fn test_status_command_tunnel_down() {
-        let mut mock_command = MockCliCommand::new();
+        let mock_command = MockCliCommand::new();
         let mut mock_controller = MockServiceController::new();
 
-        let mut devices = std::collections::HashMap::<Pubkey, Device>::new();
-        let users = std::collections::HashMap::<Pubkey, User>::new();
-        let mut exchanges = std::collections::HashMap::<Pubkey, Exchange>::new();
-        let status_responses = vec![StatusResponse {
-            doublezero_status: DoubleZeroStatus {
-                session_status: "BGP Session Down".to_string(),
-                last_session_update: None,
-            },
-            tunnel_name: None,
-            tunnel_src: None,
-            tunnel_dst: None,
-            doublezero_ip: None,
-            user_type: None,
-        }];
-
-        let exchange_pk = Pubkey::new_unique();
-        exchanges.insert(
-            exchange_pk,
-            Exchange {
-                account_type: AccountType::Exchange,
-                owner: Pubkey::default(),
-                index: 0,
-                bump_seed: 0,
-                lat: 0.0,
-                lng: 0.0,
-                bgp_community: 0,
-                unused: 0,
-                status: ExchangeStatus::Activated,
-                code: "met".to_string(),
-                name: "metro".to_string(),
-                reference_count: 0,
-                device1_pk: Pubkey::default(),
-                device2_pk: Pubkey::default(),
-            },
-        );
-
-        let device1_pk = Pubkey::new_unique();
-        devices.insert(
-            device1_pk,
-            Device {
-                account_type: AccountType::Device,
-                owner: Pubkey::default(),
-                index: 0,
-                bump_seed: 0,
-                location_pk: Pubkey::default(),
-                exchange_pk,
-                device_type: DeviceType::Hybrid,
-                public_ip: "5.6.7.8".parse().unwrap(),
-                status: DeviceStatus::Activated,
-                code: "device1".to_string(),
-                dz_prefixes: NetworkV4List::default(),
-                metrics_publisher_pk: Pubkey::default(),
-                contributor_pk: Pubkey::default(),
-                mgmt_vrf: "default".to_string(),
-                interfaces: vec![],
-                reference_count: 0,
-                users_count: 64,
-                max_users: 128,
-                device_health:
-                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
-                desired_status:
-                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
-                unicast_users_count: 0,
-                multicast_users_count: 0,
-                max_unicast_users: 0,
-                max_multicast_users: 0,
-            },
-        );
-
-        let device2_pk = Pubkey::new_unique();
-        devices.insert(
-            device2_pk,
-            Device {
-                account_type: AccountType::Device,
-                owner: Pubkey::default(),
-                index: 0,
-                bump_seed: 0,
-                location_pk: Pubkey::default(),
-                exchange_pk,
-                device_type: DeviceType::Hybrid,
-                public_ip: "5.6.7.9".parse().unwrap(),
-                status: DeviceStatus::Activated,
-                code: "device2".to_string(),
-                dz_prefixes: NetworkV4List::default(),
-                metrics_publisher_pk: Pubkey::default(),
-                contributor_pk: Pubkey::default(),
-                mgmt_vrf: "default".to_string(),
-                interfaces: vec![],
-                reference_count: 0,
-                users_count: 64,
-                max_users: 128,
-                device_health:
-                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
-                desired_status:
-                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
-                unicast_users_count: 0,
-                multicast_users_count: 0,
-                max_unicast_users: 0,
-                max_multicast_users: 0,
-            },
-        );
-
-        let latencies = vec![
-            LatencyRecord {
-                device_pk: device1_pk.to_string(),
-                device_code: "device1".to_string(),
-                device_ip: "5.6.7.8".to_string(),
-                min_latency_ns: 5000000,
-                max_latency_ns: 5000000,
-                avg_latency_ns: 5000000,
-                reachable: true,
-            },
-            LatencyRecord {
-                device_pk: device2_pk.to_string(),
-                device_code: "device2".to_string(),
-                device_ip: "5.6.7.9".to_string(),
-                min_latency_ns: 3000000,
-                max_latency_ns: 3000000,
-                avg_latency_ns: 3000000,
-                reachable: true,
-            },
-        ];
-
-        mock_controller.expect_v2_status().returning(move || {
+        mock_controller.expect_v2_status().returning(|| {
             Ok(V2StatusResponse {
                 reconciler_enabled: true,
                 client_ip: String::new(),
-                services: status_responses.clone(),
+                network: "testnet".to_string(),
+                services: vec![V2ServiceStatus {
+                    status: StatusResponse {
+                        doublezero_status: DoubleZeroStatus {
+                            session_status: "BGP Session Down".to_string(),
+                            last_session_update: None,
+                        },
+                        tunnel_name: None,
+                        tunnel_src: None,
+                        tunnel_dst: None,
+                        doublezero_ip: None,
+                        user_type: None,
+                    },
+                    current_device: String::new(),
+                    lowest_latency_device: "device2".to_string(),
+                    metro: String::new(),
+                    tenant: String::new(),
+                }],
             })
         });
-        mock_controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
-        mock_command
-            .expect_get_environment()
-            .return_const(doublezero_config::Environment::Testnet);
-        mock_command
-            .expect_list_device()
-            .with(eq(ListDeviceCommand))
-            .returning({
-                let devices = devices.clone();
-                move |_| Ok(devices.clone())
-            });
-        mock_command
-            .expect_list_user()
-            .with(eq(ListUserCommand))
-            .returning({
-                let users = users.clone();
-                move |_| Ok(users.clone())
-            });
-        mock_command
-            .expect_list_exchange()
-            .with(eq(ListExchangeCommand))
-            .returning({
-                let exchanges = exchanges.clone();
-                move |_| Ok(exchanges.clone())
-            });
-        mock_command
-            .expect_list_tenant()
-            .with(eq(ListTenantCommand {}))
-            .returning(|_| Ok(std::collections::HashMap::<Pubkey, Tenant>::new()));
 
         let result = StatusCliCommand { json: true }
             .command_impl(&mock_command, &mock_controller)
             .await;
 
-        // Assert that the result is Ok
         assert!(result.is_ok());
         let result = result.unwrap();
         assert_eq!(result.len(), 1);
@@ -608,157 +267,37 @@ mod tests {
         assert_eq!(status_response.tunnel_dst.as_deref(), None);
         assert_eq!(status_response.doublezero_ip.as_deref(), None);
         assert_eq!(status_response.user_type.as_deref(), None);
-        assert_eq!(result[0].current_device, "N/A".to_string());
-        assert_eq!(result[0].lowest_latency_device, "device2".to_string());
-        assert_eq!(result[0].metro, "N/A".to_string());
-        assert_eq!(result[0].network, "testnet".to_string());
-        assert_eq!(result[0].tenant, "".to_string());
+        assert_eq!(result[0].current_device, "N/A");
+        assert_eq!(result[0].lowest_latency_device, "device2");
+        assert_eq!(result[0].metro, "N/A");
+        assert_eq!(result[0].network, "testnet");
+        assert_eq!(result[0].tenant, "");
     }
 
     #[tokio::test]
-    async fn test_status_command_matches_dz_ip_not_client_ip() {
-        let mut mock_command = MockCliCommand::new();
+    async fn test_status_command_enriched_from_daemon() {
+        let mock_command = MockCliCommand::new();
         let mut mock_controller = MockServiceController::new();
 
-        let mut devices = std::collections::HashMap::<Pubkey, Device>::new();
-        let mut users = std::collections::HashMap::<Pubkey, User>::new();
-        let mut exchanges = std::collections::HashMap::<Pubkey, Exchange>::new();
-        let status_responses = vec![StatusResponse {
-            doublezero_status: DoubleZeroStatus {
-                session_status: "BGP Session Up".to_string(),
-                last_session_update: Some(1625247600),
-            },
-            tunnel_name: Some("tunnel_name".to_string()),
-            tunnel_src: Some("20.20.20.20".to_string()),
-            tunnel_dst: Some("42.42.42.42".to_string()),
-            doublezero_ip: Some("1.2.3.4".to_string()),
-            user_type: Some("IBRL".to_string()),
-        }];
-
-        let exchange_pk = Pubkey::new_unique();
-        exchanges.insert(
-            exchange_pk,
-            Exchange {
-                account_type: AccountType::Exchange,
-                owner: Pubkey::default(),
-                index: 0,
-                bump_seed: 0,
-                lat: 0.0,
-                lng: 0.0,
-                bgp_community: 0,
-                unused: 0,
-                status: ExchangeStatus::Activated,
-                code: "met".to_string(),
-                name: "metro".to_string(),
-                reference_count: 0,
-                device1_pk: Pubkey::default(),
-                device2_pk: Pubkey::default(),
-            },
-        );
-
-        let device1_pk = Pubkey::new_unique();
-        devices.insert(
-            device1_pk,
-            Device {
-                account_type: AccountType::Device,
-                owner: Pubkey::default(),
-                index: 0,
-                bump_seed: 0,
-                location_pk: Pubkey::default(),
-                exchange_pk,
-                device_type: DeviceType::Hybrid,
-                public_ip: "5.6.7.8".parse().unwrap(),
-                status: DeviceStatus::Activated,
-                code: "device1".to_string(),
-                dz_prefixes: NetworkV4List::default(),
-                metrics_publisher_pk: Pubkey::default(),
-                contributor_pk: Pubkey::default(),
-                mgmt_vrf: "default".to_string(),
-                interfaces: vec![],
-                reference_count: 0,
-                users_count: 64,
-                max_users: 128,
-                desired_status: DeviceDesiredStatus::Activated,
-                device_health: DeviceHealth::ReadyForUsers,
-                unicast_users_count: 0,
-                multicast_users_count: 0,
-                max_unicast_users: 0,
-                max_multicast_users: 0,
-            },
-        );
-
-        let user_pk = Pubkey::new_unique();
-        users.insert(
-            user_pk,
-            User {
-                account_type: AccountType::User,
-                owner: Pubkey::default(),
-                index: 0,
-                bump_seed: 0,
-                user_type: UserType::IBRL,
-                tenant_pk: Pubkey::default(),
-                device_pk: device1_pk,
-                cyoa_type: UserCYOA::GREOverDIA,
-                client_ip: "10.10.10.10".parse().unwrap(),
-                dz_ip: "1.2.3.4".parse().unwrap(),
-                tunnel_id: 501,
-                tunnel_net: NetworkV4::default(),
-                status: UserStatus::Activated,
-                publishers: vec![],
-                subscribers: vec![],
-                validator_pubkey: Pubkey::default(),
-                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            },
-        );
-
-        let latencies = vec![LatencyRecord {
-            device_pk: device1_pk.to_string(),
-            device_code: "device1".to_string(),
-            device_ip: "5.6.7.8".to_string(),
-            min_latency_ns: 5000000,
-            max_latency_ns: 5000000,
-            avg_latency_ns: 5000000,
-            reachable: true,
-        }];
-
-        mock_controller.expect_v2_status().returning(move || {
+        mock_controller.expect_v2_status().returning(|| {
             Ok(V2StatusResponse {
                 reconciler_enabled: true,
                 client_ip: String::new(),
-                services: status_responses.clone(),
+                network: "testnet".to_string(),
+                services: vec![make_v2_service(
+                    "BGP Session Up",
+                    Some("tunnel_name"),
+                    Some("20.20.20.20"),
+                    Some("42.42.42.42"),
+                    Some("1.2.3.4"),
+                    Some("IBRL"),
+                    "device1",
+                    "device1",
+                    "metro",
+                    "",
+                )],
             })
         });
-        mock_controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
-        mock_command
-            .expect_get_environment()
-            .return_const(doublezero_config::Environment::Testnet);
-        mock_command
-            .expect_list_device()
-            .with(eq(ListDeviceCommand))
-            .returning({
-                let devices = devices.clone();
-                move |_| Ok(devices.clone())
-            });
-        mock_command
-            .expect_list_user()
-            .with(eq(ListUserCommand))
-            .returning({
-                let users = users.clone();
-                move |_| Ok(users.clone())
-            });
-        mock_command
-            .expect_list_exchange()
-            .with(eq(ListExchangeCommand))
-            .returning({
-                let exchanges = exchanges.clone();
-                move |_| Ok(exchanges.clone())
-            });
-        mock_command
-            .expect_list_tenant()
-            .with(eq(ListTenantCommand {}))
-            .returning(|_| Ok(std::collections::HashMap::<Pubkey, Tenant>::new()));
 
         let result = StatusCliCommand { json: true }
             .command_impl(&mock_command, &mock_controller)
@@ -767,134 +306,39 @@ mod tests {
         assert!(result.is_ok());
         let result = result.unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].current_device, "device1".to_string());
-        assert_eq!(result[0].metro, "metro".to_string());
+        assert_eq!(result[0].current_device, "device1");
+        assert_eq!(result[0].metro, "metro");
     }
 
-    /// Test that multicast subscribers (which have no dz_ip) can still be matched
-    /// to their device via tunnel_dst (device public IP) fallback
     #[tokio::test]
-    async fn test_status_command_multicast_subscriber_matches_by_tunnel_dst() {
-        let mut mock_command = MockCliCommand::new();
+    async fn test_status_command_multicast_subscriber() {
+        let mock_command = MockCliCommand::new();
         let mut mock_controller = MockServiceController::new();
 
-        let mut devices = std::collections::HashMap::<Pubkey, Device>::new();
-        let users = std::collections::HashMap::<Pubkey, User>::new(); // No users - subscriber has no dz_ip
-        let mut exchanges = std::collections::HashMap::<Pubkey, Exchange>::new();
-
-        // Multicast subscriber: has tunnel_dst but no doublezero_ip
-        let status_responses = vec![StatusResponse {
-            doublezero_status: DoubleZeroStatus {
-                session_status: "BGP Session Up".to_string(),
-                last_session_update: Some(1625247600),
-            },
-            tunnel_name: Some("doublezero1".to_string()),
-            tunnel_src: Some("10.10.10.10".to_string()),
-            tunnel_dst: Some("5.6.7.8".to_string()), // Device public IP
-            doublezero_ip: None,                     // Subscribers don't have dz_ip
-            user_type: Some("Multicast".to_string()),
-        }];
-
-        let exchange_pk = Pubkey::new_unique();
-        exchanges.insert(
-            exchange_pk,
-            Exchange {
-                account_type: AccountType::Exchange,
-                owner: Pubkey::default(),
-                index: 0,
-                bump_seed: 0,
-                lat: 0.0,
-                lng: 0.0,
-                bgp_community: 0,
-                unused: 0,
-                status: ExchangeStatus::Activated,
-                code: "met".to_string(),
-                name: "metro".to_string(),
-                reference_count: 0,
-                device1_pk: Pubkey::default(),
-                device2_pk: Pubkey::default(),
-            },
-        );
-
-        let device1_pk = Pubkey::new_unique();
-        devices.insert(
-            device1_pk,
-            Device {
-                account_type: AccountType::Device,
-                owner: Pubkey::default(),
-                index: 0,
-                bump_seed: 0,
-                location_pk: Pubkey::default(),
-                exchange_pk,
-                device_type: DeviceType::Hybrid,
-                public_ip: "5.6.7.8".parse().unwrap(), // Matches tunnel_dst
-                status: DeviceStatus::Activated,
-                code: "device1".to_string(),
-                dz_prefixes: NetworkV4List::default(),
-                metrics_publisher_pk: Pubkey::default(),
-                contributor_pk: Pubkey::default(),
-                mgmt_vrf: "default".to_string(),
-                interfaces: vec![],
-                reference_count: 0,
-                users_count: 64,
-                max_users: 128,
-                device_health: DeviceHealth::ReadyForUsers,
-                desired_status: DeviceDesiredStatus::Activated,
-                unicast_users_count: 0,
-                multicast_users_count: 0,
-                max_unicast_users: 0,
-                max_multicast_users: 0,
-            },
-        );
-
-        let latencies = vec![LatencyRecord {
-            device_pk: device1_pk.to_string(),
-            device_code: "device1".to_string(),
-            device_ip: "5.6.7.8".to_string(),
-            min_latency_ns: 5000000,
-            max_latency_ns: 5000000,
-            avg_latency_ns: 5000000,
-            reachable: true,
-        }];
-
-        mock_controller.expect_v2_status().returning(move || {
+        mock_controller.expect_v2_status().returning(|| {
             Ok(V2StatusResponse {
                 reconciler_enabled: true,
                 client_ip: String::new(),
-                services: status_responses.clone(),
+                network: "testnet".to_string(),
+                services: vec![V2ServiceStatus {
+                    status: StatusResponse {
+                        doublezero_status: DoubleZeroStatus {
+                            session_status: "BGP Session Up".to_string(),
+                            last_session_update: Some(1625247600),
+                        },
+                        tunnel_name: Some("doublezero1".to_string()),
+                        tunnel_src: Some("10.10.10.10".to_string()),
+                        tunnel_dst: Some("5.6.7.8".to_string()),
+                        doublezero_ip: None,
+                        user_type: Some("Multicast".to_string()),
+                    },
+                    current_device: "device1".to_string(),
+                    lowest_latency_device: "device1".to_string(),
+                    metro: "metro".to_string(),
+                    tenant: String::new(),
+                }],
             })
         });
-        mock_controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
-        mock_command
-            .expect_get_environment()
-            .return_const(doublezero_config::Environment::Testnet);
-        mock_command
-            .expect_list_device()
-            .with(eq(ListDeviceCommand))
-            .returning({
-                let devices = devices.clone();
-                move |_| Ok(devices.clone())
-            });
-        mock_command
-            .expect_list_user()
-            .with(eq(ListUserCommand))
-            .returning({
-                let users = users.clone();
-                move |_| Ok(users.clone())
-            });
-        mock_command
-            .expect_list_exchange()
-            .with(eq(ListExchangeCommand))
-            .returning({
-                let exchanges = exchanges.clone();
-                move |_| Ok(exchanges.clone())
-            });
-        mock_command
-            .expect_list_tenant()
-            .with(eq(ListTenantCommand {}))
-            .returning(|_| Ok(std::collections::HashMap::<Pubkey, Tenant>::new()));
 
         let result = StatusCliCommand { json: true }
             .command_impl(&mock_command, &mock_controller)
@@ -903,11 +347,9 @@ mod tests {
         assert!(result.is_ok());
         let result = result.unwrap();
         assert_eq!(result.len(), 1);
-        // Should match device by tunnel_dst even though there's no dz_ip
-        assert_eq!(result[0].current_device, "device1".to_string());
-        assert_eq!(result[0].metro, "metro".to_string());
-        // Should show checkmark since current_device matches lowest_latency_device
-        assert_eq!(result[0].lowest_latency_device, "device1".to_string());
+        assert_eq!(result[0].current_device, "device1");
+        assert_eq!(result[0].metro, "metro");
+        assert_eq!(result[0].lowest_latency_device, "device1");
     }
 
     /// Test that validates the JSON output format for the status command.
@@ -1082,52 +524,28 @@ mod tests {
 
     #[tokio::test]
     async fn test_status_reconciler_disabled() {
-        let mut mock_command = MockCliCommand::new();
+        let mock_command = MockCliCommand::new();
         let mut mock_controller = MockServiceController::new();
 
-        let devices = std::collections::HashMap::<Pubkey, Device>::new();
-        let users = std::collections::HashMap::<Pubkey, User>::new();
-        let exchanges = std::collections::HashMap::<Pubkey, Exchange>::new();
-
-        let status_responses = vec![StatusResponse {
-            doublezero_status: DoubleZeroStatus {
-                session_status: "BGP Session Up".to_string(),
-                last_session_update: Some(1625247600),
-            },
-            tunnel_name: Some("doublezero1".to_string()),
-            tunnel_src: Some("1.2.3.4".to_string()),
-            tunnel_dst: Some("5.6.7.8".to_string()),
-            doublezero_ip: Some("10.0.0.1".to_string()),
-            user_type: Some("IBRL".to_string()),
-        }];
-
-        mock_controller.expect_v2_status().returning(move || {
+        mock_controller.expect_v2_status().returning(|| {
             Ok(V2StatusResponse {
                 reconciler_enabled: false,
                 client_ip: String::new(),
-                services: status_responses.clone(),
+                network: "testnet".to_string(),
+                services: vec![make_v2_service(
+                    "BGP Session Up",
+                    Some("doublezero1"),
+                    Some("1.2.3.4"),
+                    Some("5.6.7.8"),
+                    Some("10.0.0.1"),
+                    Some("IBRL"),
+                    "",
+                    "",
+                    "",
+                    "",
+                )],
             })
         });
-        mock_controller.expect_latency().returning(|| Ok(vec![]));
-        mock_command
-            .expect_get_environment()
-            .return_const(doublezero_config::Environment::Testnet);
-        mock_command
-            .expect_list_device()
-            .with(eq(ListDeviceCommand))
-            .returning(move |_| Ok(devices.clone()));
-        mock_command
-            .expect_list_user()
-            .with(eq(ListUserCommand))
-            .returning(move |_| Ok(users.clone()));
-        mock_command
-            .expect_list_exchange()
-            .with(eq(ListExchangeCommand))
-            .returning(move |_| Ok(exchanges.clone()));
-        mock_command
-            .expect_list_tenant()
-            .with(eq(ListTenantCommand {}))
-            .returning(|_| Ok(std::collections::HashMap::<Pubkey, Tenant>::new()));
 
         let result = StatusCliCommand { json: true }
             .command_impl(&mock_command, &mock_controller)
@@ -1144,36 +562,17 @@ mod tests {
         let mut mock_command = MockCliCommand::new();
         let mut mock_controller = MockServiceController::new();
 
-        let devices = std::collections::HashMap::<Pubkey, Device>::new();
-        let users = std::collections::HashMap::<Pubkey, User>::new();
-        let exchanges = std::collections::HashMap::<Pubkey, Exchange>::new();
-
         mock_controller.expect_v2_status().returning(|| {
             Ok(V2StatusResponse {
                 reconciler_enabled: false,
                 client_ip: String::new(),
+                network: "testnet".to_string(),
                 services: vec![],
             })
         });
         mock_command
             .expect_get_environment()
             .return_const(doublezero_config::Environment::Testnet);
-        mock_command
-            .expect_list_device()
-            .with(eq(ListDeviceCommand))
-            .returning(move |_| Ok(devices.clone()));
-        mock_command
-            .expect_list_user()
-            .with(eq(ListUserCommand))
-            .returning(move |_| Ok(users.clone()));
-        mock_command
-            .expect_list_exchange()
-            .with(eq(ListExchangeCommand))
-            .returning(move |_| Ok(exchanges.clone()));
-        mock_command
-            .expect_list_tenant()
-            .with(eq(ListTenantCommand {}))
-            .returning(|_| Ok(std::collections::HashMap::<Pubkey, Tenant>::new()));
 
         let result = StatusCliCommand { json: true }
             .command_impl(&mock_command, &mock_controller)
@@ -1190,5 +589,67 @@ mod tests {
         assert!(!result[0].reconciler_enabled);
         assert_eq!(result[0].current_device, "N/A");
         assert_eq!(result[0].network, "testnet");
+    }
+
+    /// Test that the lowest_latency_device display formatting works correctly.
+    /// When session is up, json=true returns raw device code.
+    #[tokio::test]
+    async fn test_status_lowest_latency_display_json() {
+        let mock_command = MockCliCommand::new();
+        let mut mock_controller = MockServiceController::new();
+
+        mock_controller.expect_v2_status().returning(|| {
+            Ok(V2StatusResponse {
+                reconciler_enabled: true,
+                client_ip: String::new(),
+                network: "testnet".to_string(),
+                services: vec![make_v2_service(
+                    "BGP Session Up",
+                    Some("doublezero1"),
+                    Some("1.2.3.4"),
+                    Some("5.6.7.8"),
+                    Some("10.0.0.1"),
+                    Some("IBRL"),
+                    "device1",
+                    "device2", // different from current
+                    "metro",
+                    "",
+                )],
+            })
+        });
+
+        // json=true: raw device code, no emoji
+        let result = StatusCliCommand { json: true }
+            .command_impl(&mock_command, &mock_controller)
+            .await
+            .unwrap();
+        assert_eq!(result[0].lowest_latency_device, "device2");
+
+        // json=false: should get warning emoji since lowest != current
+        let mut mock_controller2 = MockServiceController::new();
+        mock_controller2.expect_v2_status().returning(|| {
+            Ok(V2StatusResponse {
+                reconciler_enabled: true,
+                client_ip: String::new(),
+                network: "testnet".to_string(),
+                services: vec![make_v2_service(
+                    "BGP Session Up",
+                    Some("doublezero1"),
+                    Some("1.2.3.4"),
+                    Some("5.6.7.8"),
+                    Some("10.0.0.1"),
+                    Some("IBRL"),
+                    "device1",
+                    "device2",
+                    "metro",
+                    "",
+                )],
+            })
+        });
+        let result = StatusCliCommand { json: false }
+            .command_impl(&mock_command, &mock_controller2)
+            .await
+            .unwrap();
+        assert_eq!(result[0].lowest_latency_device, "⚠️ device2");
     }
 }

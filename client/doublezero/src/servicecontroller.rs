@@ -124,12 +124,28 @@ pub struct ErrorResponse {
     pub description: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct V2ServiceStatus {
+    #[serde(flatten)]
+    pub status: StatusResponse,
+    #[serde(default)]
+    pub current_device: String,
+    #[serde(default)]
+    pub lowest_latency_device: String,
+    #[serde(default)]
+    pub metro: String,
+    #[serde(default)]
+    pub tenant: String,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct V2StatusResponse {
     pub reconciler_enabled: bool,
     #[serde(default)]
     pub client_ip: String,
-    pub services: Vec<StatusResponse>,
+    #[serde(default)]
+    pub network: String,
+    pub services: Vec<V2ServiceStatus>,
 }
 
 #[automock]

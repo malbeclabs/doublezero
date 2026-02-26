@@ -1189,6 +1189,111 @@ func TestServeV2Status_Disabled_NoServices(t *testing.T) {
 	}
 }
 
+func TestServeV2Status_Enrichment(t *testing.T) {
+	devicePK := [32]byte{1}
+	exchangePK := [32]byte{2}
+	tenantPK := [32]byte{3}
+	clientIP := net.IPv4(1, 2, 3, 4).To4()
+
+	device := testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})
+	device.ExchangePubKey = exchangePK
+	device.Code = "dz1"
+	device.Status = serviceability.DeviceStatusActivated
+
+	user := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)
+	user.TenantPubKey = tenantPK
+
+	fetcher := &mockFetcher{
+		data: &serviceability.ProgramData{
+			Config:  testConfig(),
+			Devices: []serviceability.Device{device},
+			Users:   []serviceability.User{user},
+			Exchanges: []serviceability.Exchange{
+				{PubKey: exchangePK, Name: "Amsterdam"},
+			},
+			Tenants: []serviceability.Tenant{
+				{PubKey: tenantPK, Code: "acme"},
+			},
+		},
+	}
+
+	dir := t.TempDir()
+	n := newTestNLM(fetcher,
+		WithClientIP(clientIP),
+		WithPollInterval(time.Hour),
+		WithStateDir(dir),
+		WithEnabled(true),
+		WithNetwork("testnet"),
+	)
+
+	// Let reconciler provision the service so Status() returns data.
+	n.reconcile(context.Background())
+
+	req := httptest.NewRequest(http.MethodGet, "/v2/status", nil)
+	w := httptest.NewRecorder()
+	n.ServeV2Status(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp V2StatusResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.Network != "testnet" {
+		t.Fatalf("expected network=testnet, got %s", resp.Network)
+	}
+	if len(resp.Services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(resp.Services))
+	}
+
+	svc := resp.Services[0]
+	if svc.CurrentDevice != "dz1" {
+		t.Fatalf("expected current_device=dz1, got %s", svc.CurrentDevice)
+	}
+	if svc.Metro != "Amsterdam" {
+		t.Fatalf("expected metro=Amsterdam, got %s", svc.Metro)
+	}
+	if svc.Tenant != "acme" {
+		t.Fatalf("expected tenant=acme, got %s", svc.Tenant)
+	}
+}
+
+func TestServeV2Status_NoFetcher(t *testing.T) {
+	dir := t.TempDir()
+	// Create NLM with a nil-data fetcher to verify enrichment handles missing data gracefully.
+	fetcher := &mockFetcher{data: nil, err: fmt.Errorf("no data")}
+	n := newTestNLM(fetcher,
+		WithClientIP(net.IPv4(1, 2, 3, 4).To4()),
+		WithPollInterval(time.Hour),
+		WithStateDir(dir),
+	)
+	n.enabled.Store(true)
+	provisionUnicast(t, n)
+
+	req := httptest.NewRequest(http.MethodGet, "/v2/status", nil)
+	w := httptest.NewRecorder()
+	n.ServeV2Status(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp V2StatusResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(resp.Services))
+	}
+	// Without fetcher, enriched fields should be empty.
+	if resp.Services[0].CurrentDevice != "" {
+		t.Fatalf("expected empty current_device without fetcher, got %s", resp.Services[0].CurrentDevice)
+	}
+}
+
 // --- Startup migration integration tests ---
 
 func TestStartup_UpgradeFromOldDaemon_WasConnected(t *testing.T) {

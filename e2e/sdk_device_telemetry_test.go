@@ -67,12 +67,12 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		doublezero device update --pubkey ld4-dz01 --max-users 128 --desired-status activated
 		doublezero device update --pubkey frk-dz01 --max-users 128 --desired-status activated
 
-		doublezero device interface create la2-dz01 "Switch1/1/1" --bandwidth 10G
-		doublezero device interface create ny5-dz01 "Switch1/1/1" --bandwidth 10G
-		doublezero device interface create ny5-dz01 "Switch1/1/2" --bandwidth 10G
-		doublezero device interface create ld4-dz01 "Switch1/1/1" --bandwidth 10G
-		doublezero device interface create ld4-dz01 "Switch1/1/2" --bandwidth 10G
-		doublezero device interface create frk-dz01 "Switch1/1/1" --bandwidth 10G
+		doublezero device interface create la2-dz01 "Switch1/1/1" --bandwidth 10G --mtu 2048
+		doublezero device interface create ny5-dz01 "Switch1/1/1" --bandwidth 10G --mtu 2048
+		doublezero device interface create ny5-dz01 "Switch1/1/2" --bandwidth 10G --mtu 2048
+		doublezero device interface create ld4-dz01 "Switch1/1/1" --bandwidth 10G --mtu 2048
+		doublezero device interface create ld4-dz01 "Switch1/1/2" --bandwidth 10G --mtu 2048
+		doublezero device interface create frk-dz01 "Switch1/1/1" --bandwidth 10G --mtu 2048
 
 		doublezero device interface create la2-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
 		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G

@@ -448,6 +448,7 @@ func TestRenderConfig(t *testing.T) {
 						{
 							Name:          "Switch1/1/1",
 							Ip:            netip.MustParsePrefix("172.16.0.0/31"),
+							Mtu:           9100,
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        40000,
 							IsLink:        true,
@@ -455,6 +456,7 @@ func TestRenderConfig(t *testing.T) {
 						},
 						{
 							Name:                 "Switch1/1/2",
+							Mtu:                  9100,
 							IsSubInterfaceParent: true,
 							InterfaceType:        InterfaceTypePhysical,
 						},
@@ -462,6 +464,7 @@ func TestRenderConfig(t *testing.T) {
 							Name:           "Switch1/1/2.100",
 							Ip:             netip.MustParsePrefix("172.16.0.2/31"),
 							VlanId:         100,
+							Mtu:            9100,
 							IsSubInterface: true,
 							InterfaceType:  InterfaceTypePhysical,
 							Metric:         0,
@@ -471,6 +474,7 @@ func TestRenderConfig(t *testing.T) {
 							Name:           "Switch1/1/2.200",
 							Ip:             netip.MustParsePrefix("172.16.0.6/31"),
 							VlanId:         200,
+							Mtu:            9100,
 							IsSubInterface: true,
 							InterfaceType:  InterfaceTypePhysical,
 							Metric:         40000, // Metric w/ IsLink false should not render isis config
@@ -480,6 +484,7 @@ func TestRenderConfig(t *testing.T) {
 							Name:           "Switch1/1/2.300",
 							Ip:             netip.MustParsePrefix("172.16.0.8/31"),
 							VlanId:         300,
+							Mtu:            9100,
 							IsSubInterface: true,
 							InterfaceType:  InterfaceTypePhysical,
 							Metric:         40000,
@@ -489,6 +494,7 @@ func TestRenderConfig(t *testing.T) {
 						{
 							Name:          "Vlan4001",
 							Ip:            netip.MustParsePrefix("172.16.0.4/31"),
+							Mtu:           9100,
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        10000,
 							IsLink:        true,
@@ -497,6 +503,7 @@ func TestRenderConfig(t *testing.T) {
 						{
 							Name:          "Switch1/1/3",
 							Ip:            netip.MustParsePrefix("172.16.0.10/31"),
+							Mtu:           9100,
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        1000000,
 							IsLink:        true,
@@ -505,6 +512,7 @@ func TestRenderConfig(t *testing.T) {
 						{
 							Name:          "Switch1/1/4",
 							Ip:            netip.MustParsePrefix("172.16.0.12/31"),
+							Mtu:           9100,
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        30000,
 							IsLink:        true,
@@ -513,6 +521,7 @@ func TestRenderConfig(t *testing.T) {
 						{
 							Name:          "Switch1/1/5",
 							Ip:            netip.MustParsePrefix("172.16.0.14/31"),
+							Mtu:           9100,
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        20000,
 							IsLink:        true,
@@ -522,6 +531,7 @@ func TestRenderConfig(t *testing.T) {
 						{
 							Name:          "Switch1/1/6",
 							Ip:            netip.MustParsePrefix("172.16.0.16/31"),
+							Mtu:           9100,
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        25000,
 							IsLink:        true,
@@ -562,6 +572,7 @@ func TestRenderConfig(t *testing.T) {
 							Name:          "Ethernet1/1",
 							InterfaceType: InterfaceTypePhysical,
 							Ip:            netip.MustParsePrefix("172.16.0.2/31"),
+							Mtu:           9100,
 							Metric:        40000,
 							IsLink:        true,
 						},
@@ -569,6 +580,7 @@ func TestRenderConfig(t *testing.T) {
 							Name:          "Ethernet1/2",
 							InterfaceType: InterfaceTypePhysical,
 							Ip:            netip.MustParsePrefix("172.16.0.4/31"),
+							Mtu:           9100,
 						},
 					},
 					Vpn4vLoopbackIntfName: "Loopback255",
@@ -618,6 +630,7 @@ func TestRenderConfig(t *testing.T) {
 							Name:          "Ethernet1/1",
 							InterfaceType: InterfaceTypePhysical,
 							Ip:            netip.MustParsePrefix("172.16.0.2/31"),
+							Mtu:           9100,
 							Metric:        40000,
 							IsLink:        true,
 						},
@@ -625,6 +638,7 @@ func TestRenderConfig(t *testing.T) {
 							Name:          "Ethernet1/2",
 							InterfaceType: InterfaceTypePhysical,
 							Ip:            netip.MustParsePrefix("172.16.0.4/31"),
+							Mtu:           9100,
 						},
 					},
 					Vpn4vLoopbackIntfName: "Loopback255",

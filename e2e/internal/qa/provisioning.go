@@ -376,6 +376,7 @@ func (p *ProvisioningTest) CreateInterface(ctx context.Context, deviceCode, ifac
 		"device", "interface", "create",
 		deviceCode, ifaceName,
 		"--bandwidth", "10G",
+		"--mtu", "2048",
 		"-w", // wait for completion
 	}
 

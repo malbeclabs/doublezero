@@ -70,7 +70,7 @@ interface Loopback255
    isis enable 1
 !
 interface Ethernet1/1
-   mtu 2048
+   mtu 9100
    no switchport
    ip address 172.16.0.2/31
    pim ipv4 sparse-mode
@@ -83,7 +83,7 @@ interface Ethernet1/1
    isis network point-to-point
 !
 interface Ethernet1/2
-   mtu 2048
+   mtu 9100
    no switchport
    ip address 172.16.0.4/31
    pim ipv4 sparse-mode

@@ -440,11 +440,11 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
 		doublezero device update --pubkey test-dz02 --max-users 128 2>&1
 		doublezero device update --pubkey test-dz03 --max-users 128 2>&1
-		doublezero device interface create test-dz01 "Ethernet1" --bandwidth 10G 2>&1
-		doublezero device interface create test-dz01 "Ethernet2" --bandwidth 10G 2>&1
-		doublezero device interface create test-dz02 "Ethernet1" --bandwidth 10G 2>&1
-		doublezero device interface create test-dz02 "Ethernet2" --bandwidth 10G 2>&1
-		doublezero device interface create test-dz03 "Ethernet1" --bandwidth 10G 2>&1
+		doublezero device interface create test-dz01 "Ethernet1" --bandwidth 10G --mtu 2048 2>&1
+		doublezero device interface create test-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 2>&1
+		doublezero device interface create test-dz02 "Ethernet1" --bandwidth 10G --mtu 2048 2>&1
+		doublezero device interface create test-dz02 "Ethernet2" --bandwidth 10G --mtu 2048 2>&1
+		doublezero device interface create test-dz03 "Ethernet1" --bandwidth 10G --mtu 2048 2>&1
 	`})
 	log.Debug("Device creation output", "output", string(output))
 	require.NoError(t, err, "Device creation failed")

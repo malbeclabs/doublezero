@@ -16,12 +16,14 @@ name = "doublezero_sdk"
 async-trait.workspace = true
 backon.workspace = true
 base64.workspace = true
+borsh.workspace = true
 bytemuck.workspace = true
 bincode.workspace = true
 chrono.workspace = true
 directories-next.workspace = true
 dirs-next.workspace = true
 doublezero-config.workspace = true
+doublezero-geolocation = { workspace = true, features = ["no-entrypoint"] }
 doublezero-program-common.workspace = true
 doublezero-record.workspace = true
 doublezero-serviceability.workspace = true

@@ -28,8 +28,8 @@ type FlowConsumer interface {
 	Close() error
 }
 
-// Clicker defines the minimal interface the Enricher needs to interact with ClickHouse.
-type Clicker interface {
+// FlowWriter defines the minimal interface the Enricher needs to write flows.
+type FlowWriter interface {
 	BatchInsert(context.Context, []FlowSample) error
 }
 
@@ -39,8 +39,8 @@ type ServiceabilityFetcher interface {
 
 type EnricherOption func(*Enricher)
 
-// WithClickhouseWriter injects a Clicker implementation into the Enricher.
-func WithClickhouseWriter(writer Clicker) EnricherOption {
+// WithClickhouseWriter injects a FlowWriter implementation into the Enricher.
+func WithClickhouseWriter(writer FlowWriter) EnricherOption {
 	return func(e *Enricher) {
 		e.chWriter = writer
 	}
@@ -79,7 +79,7 @@ func WithServiceabilityFetchInterval(interval time.Duration) EnricherOption {
 }
 
 type Enricher struct {
-	chWriter                    Clicker
+	chWriter                    FlowWriter
 	flowConsumer                FlowConsumer
 	serviceability              ServiceabilityFetcher
 	annotators                  []Annotator
@@ -171,7 +171,7 @@ func (e *Enricher) Run(ctx context.Context) error {
 			}
 
 			if err := e.chWriter.BatchInsert(ctx, samples); err != nil {
-				e.logger.Error("error inserting batch via Clicker", "error", err)
+				e.logger.Error("error inserting batch via FlowWriter", "error", err)
 				e.metrics.ClickhouseInsertErrors.Inc()
 				continue
 			}

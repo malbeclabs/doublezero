@@ -188,17 +188,25 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
 		Session:  Session{SessionStatus: SessionStatusDown, LastSessionUpdate: time.Now().Unix()},
 	}
-	slog.Info("bgp: sending peer flush message", "peer", peer.RemoteAddress)
+	// If NoInstall is set, this peer never installed routes into the kernel,
+	// so there is nothing to clean up.
+	if !p.NoInstall {
+		peerGw := peer.RemoteAddress.AsSlice()
+		slog.Info("bgp: flushing routes for peer", "peer", peer.RemoteAddress)
 
-	protocol := unix.RTPROT_BGP // 186
-	routes, err := p.RouteReaderWriter.RouteByProtocol(protocol)
-	if err != nil {
-		slog.Error("routes: error getting routes by protocol on peer close", "protocol", protocol, "error", err)
-	}
-	for _, route := range routes {
-		if err := p.RouteReaderWriter.RouteDelete(route); err != nil {
-			slog.Error("routes: error deleting route on peer close", "route", route.String(), "error", err)
-			continue
+		protocol := unix.RTPROT_BGP // 186
+		routes, err := p.RouteReaderWriter.RouteByProtocol(protocol)
+		if err != nil {
+			slog.Error("routes: error getting routes by protocol on peer close", "protocol", protocol, "error", err)
+		}
+		for _, route := range routes {
+			if !route.NextHop.Equal(net.IP(peerGw)) {
+				continue
+			}
+			if err := p.RouteReaderWriter.RouteDelete(route); err != nil {
+				slog.Error("routes: error deleting route on peer close", "route", route.String(), "error", err)
+				continue
+			}
 		}
 	}
 

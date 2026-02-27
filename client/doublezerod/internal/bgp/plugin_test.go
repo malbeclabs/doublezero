@@ -112,22 +112,27 @@ func TestClient_BGPPlugin_OnCloseDeletesRoutesAndSendsDownStatus(t *testing.T) {
 	peerStatus := make(chan SessionEvent, 1)
 
 	var gotProtocol int
-	var deletedRoute *routing.Route
+	var deletedRoutes []*routing.Route
+
+	peerIP := net.ParseIP("203.0.113.1")
+	otherPeerIP := net.ParseIP("203.0.113.2")
 
 	mockRW := &MockRouteReaderWriter{
 		RouteByProtocolFunc: func(p int) ([]*routing.Route, error) {
 			gotProtocol = p
 			return []*routing.Route{
 				{
-					Dst: &net.IPNet{
-						IP:   net.IP{1, 1, 1, 1},
-						Mask: net.CIDRMask(32, 32),
-					},
+					Dst:     &net.IPNet{IP: net.IP{1, 1, 1, 1}, Mask: net.CIDRMask(32, 32)},
+					NextHop: peerIP,
+				},
+				{
+					Dst:     &net.IPNet{IP: net.IP{2, 2, 2, 2}, Mask: net.CIDRMask(32, 32)},
+					NextHop: otherPeerIP,
 				},
 			}, nil
 		},
 		RouteDeleteFunc: func(r *routing.Route) error {
-			deletedRoute = r
+			deletedRoutes = append(deletedRoutes, r)
 			return nil
 		},
 	}
@@ -151,9 +156,44 @@ func TestClient_BGPPlugin_OnCloseDeletesRoutesAndSendsDownStatus(t *testing.T) {
 	}
 
 	require.Equal(t, unix.RTPROT_BGP, gotProtocol)
-	require.NotNil(t, deletedRoute)
-	require.NotNil(t, deletedRoute.Dst)
-	require.Equal(t, "1.1.1.1/32", deletedRoute.Dst.String())
+	require.Len(t, deletedRoutes, 1, "should only delete routes matching the closed peer's gateway")
+	require.Equal(t, "1.1.1.1/32", deletedRoutes[0].Dst.String())
+	require.True(t, deletedRoutes[0].NextHop.Equal(peerIP))
+}
+
+func TestClient_BGPPlugin_OnCloseSkipsRouteDeletionWhenNoInstall(t *testing.T) {
+	t.Parallel()
+
+	peerStatus := make(chan SessionEvent, 1)
+	routeByProtocolCalled := false
+
+	mockRW := &MockRouteReaderWriter{
+		RouteByProtocolFunc: func(p int) ([]*routing.Route, error) {
+			routeByProtocolCalled = true
+			return nil, nil
+		},
+	}
+
+	p := &Plugin{
+		PeerStatusChan:    peerStatus,
+		NoInstall:         true,
+		RouteReaderWriter: mockRW,
+	}
+
+	peer := corebgp.PeerConfig{
+		RemoteAddress: netip.MustParseAddr("203.0.113.1"),
+	}
+
+	p.OnClose(peer)
+
+	select {
+	case ev := <-peerStatus:
+		require.Equal(t, SessionStatusDown, ev.Session.SessionStatus)
+	default:
+		require.Fail(t, "expected a SessionEvent on PeerStatusChan")
+	}
+
+	require.False(t, routeByProtocolCalled, "should not query routes when NoInstall is set")
 }
 
 func TestClient_BGPPlugin_HandleUpdateWithdrawDeletesRouteWithPeerAsNextHop(t *testing.T) {

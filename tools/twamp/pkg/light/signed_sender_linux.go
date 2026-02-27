@@ -161,27 +161,19 @@ func (s *LinuxSignedSender) Probe(ctx context.Context) (time.Duration, *SignedRe
 			continue
 		}
 
-		// Verify the embedded probe matches what we sent.
 		if reply.Probe.Seq != probe.Seq || reply.Probe.Sec != probe.Sec || reply.Probe.Frac != probe.Frac {
 			continue
 		}
-
-		// Verify the embedded probe signature.
 		if !VerifyProbe(&reply.Probe) {
 			continue
 		}
-
-		// Verify the reflector's pubkey matches expected.
 		if reply.ReflectorPubkey != s.remotePubkey {
 			continue
 		}
-
-		// Verify the reply signature.
 		if !VerifyReply(reply) {
 			continue
 		}
 
-		// Parse control message for kernel timestamp.
 		cmsgs, err := syscall.ParseSocketControlMessage(s.oob[:oobn])
 		if err != nil {
 			return 0, nil, fmt.Errorf("parse cmsg: %w", err)

@@ -77,13 +77,11 @@ func NewLinuxSignedReflector(addr string, timeout time.Duration, privateKey ed25
 }
 
 func (r *LinuxSignedReflector) SetAuthorizedKeys(keys [][32]byte) {
-	// Build new set.
 	newKeys := make(map[[32]byte]struct{}, len(keys))
 	for _, key := range keys {
 		newKeys[key] = struct{}{}
 	}
 
-	// Remove keys no longer authorized.
 	r.authorizedKeys.Range(func(key, _ any) bool {
 		k := key.([32]byte)
 		if _, ok := newKeys[k]; !ok {
@@ -92,7 +90,6 @@ func (r *LinuxSignedReflector) SetAuthorizedKeys(keys [][32]byte) {
 		return true
 	})
 
-	// Add new keys.
 	for _, key := range keys {
 		r.authorizedKeys.Store(key, struct{}{})
 	}
@@ -151,13 +148,11 @@ func (r *LinuxSignedReflector) Run(ctx context.Context) error {
 				continue
 			}
 
-			// Check pubkey against allowlist.
 			if _, ok := r.authorizedKeys.Load(probe.SenderPubkey); !ok {
 				continue
 			}
 
-			// Rate-limit signature verifications per pubkey to bound CPU
-			// cost from attackers replaying a known authorized pubkey.
+			// Rate-limit signature verifications per pubkey.
 			now := time.Now()
 			if interval := SignedReflectorVerifyInterval; interval > 0 {
 				if last, ok := r.lastVerify.Load(probe.SenderPubkey); ok {
@@ -168,12 +163,10 @@ func (r *LinuxSignedReflector) Run(ctx context.Context) error {
 			}
 			r.lastVerify.Store(probe.SenderPubkey, now)
 
-			// Verify probe signature.
 			if !VerifyProbe(probe) {
 				continue
 			}
 
-			// Construct signed reply.
 			reply := NewSignedReplyPacket(probe, r.privateKey)
 			var replyBuf [SignedReplyPacketSize]byte
 			_ = reply.Marshal(replyBuf[:])

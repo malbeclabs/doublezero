@@ -14,7 +14,6 @@ type SignedSender interface {
 	LocalAddr() *net.UDPAddr
 }
 
-// NewSignedSender creates a new SignedSender (Linux only).
 func NewSignedSender(ctx context.Context, iface string, localAddr, remoteAddr *net.UDPAddr, privateKey ed25519.PrivateKey, remotePubkey [32]byte) (SignedSender, error) {
 	return NewLinuxSignedSender(ctx, iface, localAddr, remoteAddr, privateKey, remotePubkey)
 }

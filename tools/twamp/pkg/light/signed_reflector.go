@@ -21,7 +21,6 @@ type SignedReflector interface {
 	SetAuthorizedKeys(keys [][32]byte)
 }
 
-// NewSignedReflector creates a new SignedReflector (Linux only).
 func NewSignedReflector(addr string, timeout time.Duration, privateKey ed25519.PrivateKey, authorizedKeys [][32]byte) (SignedReflector, error) {
 	return NewLinuxSignedReflector(addr, timeout, privateKey, authorizedKeys)
 }

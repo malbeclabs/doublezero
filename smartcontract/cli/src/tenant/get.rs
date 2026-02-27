@@ -22,6 +22,7 @@ impl GetTenantCliCommand {
         writeln!(out, "metro_routing: {}", tenant.metro_routing)?;
         writeln!(out, "route_liveness: {}", tenant.route_liveness)?;
         writeln!(out, "reference_count: {}", tenant.reference_count)?;
+        writeln!(out, "administrators: {:?}", tenant.administrators)?;
         writeln!(out, "owner: {}", tenant.owner)?;
 
         Ok(())
@@ -95,7 +96,7 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,
-            "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\ncode: test-tenant\nvrf_id: 100\nmetro_routing: true\nroute_liveness: false\nreference_count: 0\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n"
+            "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\ncode: test-tenant\nvrf_id: 100\nmetro_routing: true\nroute_liveness: false\nreference_count: 0\nadministrators: []\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n"
         );
 
         // Expected success by code

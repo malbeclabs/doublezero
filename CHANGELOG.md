@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
   - Fix multicast subscriber tunnel source resolution for NAT environments — resolve local interface IP instead of using public IP
   - Added multicast filters to access-pass list, enabling filtering by publisher/subscriber role and identifying access passes not authorized for a specific multicast group.
   - Device interface `--bandwidth` and `--cir` flags now accept Kbps, Mbps, or Gbps units; `interface list` displays those values as human-readable strings
+  - Add duplicate IP check to prevent a user from assigning the same IP more than once
 - Client
   - Fix BGP `OnClose` deleting routes from all peers instead of only the closing peer, preventing multicast teardown from nuking unicast routes
   - Skip route deletion on `OnClose` for `NoInstall` peers (multicast) since they never install kernel routes

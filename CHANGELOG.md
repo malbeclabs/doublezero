@@ -46,6 +46,8 @@ All notable changes to this project will be documented in this file.
   - SetFeatureFlagCommand added to manage on-chain feature flags for conditional behavior rollouts
 - Dependencies
   - Upgrade Solana SDK workspace dependencies from 2.2.7 to 2.3.x (`solana-sdk`, `solana-client`, `solana-program-test`, and others)
+- E2E
+  - e2e: add multi-tenant access control negative tests ([#3081](https://github.com/malbeclabs/doublezero/pull/3081))
 
 ## [v0.8.11](https://github.com/malbeclabs/doublezero/compare/client/v0.8.10...client/v0.8.11) - 2026-02-27
 

@@ -37,6 +37,7 @@ All notable changes to this project will be documented in this file.
   - Geolocation: add `doublezero-geolocation` program scaffolding as per rfcs/rfc16-geolocation-verification.md
 - SDK
   - SetFeatureFlagCommand added to manage on-chain feature flags for conditional behavior rollouts
+  - Serviceability: DeleteUser instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
 - Dependencies
   - Upgrade Solana SDK workspace dependencies from 2.2.7 to 2.3.x (`solana-sdk`, `solana-client`, `solana-program-test`, and others)
 

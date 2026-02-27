@@ -25,6 +25,7 @@ use doublezero_serviceability::{
         },
         exchange::create::ExchangeCreateArgs,
         globalconfig::set::SetGlobalConfigArgs,
+        globalstate::setfeatureflags::SetFeatureFlagsArgs,
         location::create::LocationCreateArgs,
         multicastgroup::{
             activate::MulticastGroupActivateArgs,
@@ -40,6 +41,7 @@ use doublezero_serviceability::{
     state::{
         accesspass::AccessPassType,
         device::DeviceType,
+        feature_flags::FeatureFlag,
         user::{UserCYOA, UserStatus, UserType},
     },
 };
@@ -596,7 +598,10 @@ async fn test_closeaccount_user_with_deallocation() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
@@ -1611,7 +1616,10 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
@@ -1899,3 +1907,328 @@ async fn test_activate_user_already_activated_fails() {
 // Note: test_activate_user_bitmap_full_error would require filling up the entire
 // ResourceExtension bitmap before attempting activation. This is resource-intensive
 // and may be better suited for a stress test file.
+
+// ============================================================================
+// DeleteUser Atomic Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_delete_user_atomic_with_deallocation() {
+    println!("[TEST] test_delete_user_atomic_with_deallocation");
+
+    let client_ip = [100, 0, 0, 10];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
+    ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    // Enable OnChainAllocation feature flag
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    // Activate user with on-chain allocation
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify allocations exist
+    let user_tunnel_before =
+        get_resource_extension_data(&mut banks_client, user_tunnel_block_pubkey)
+            .await
+            .expect("UserTunnelBlock should exist");
+    let tunnel_ids_before = get_resource_extension_data(&mut banks_client, tunnel_ids_pubkey)
+        .await
+        .expect("TunnelIds should exist");
+    let dz_prefix_before = get_resource_extension_data(&mut banks_client, dz_prefix_block_pubkey)
+        .await
+        .expect("DzPrefixBlock should exist");
+
+    assert_eq!(user_tunnel_before.iter_allocated().len(), 2);
+    assert_eq!(tunnel_ids_before.iter_allocated().len(), 1);
+    assert_eq!(dz_prefix_before.iter_allocated().len(), 2); // reserved first IP + user
+
+    // Verify device counters before delete
+    let device_before = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_before.users_count, 1);
+    assert_eq!(device_before.unicast_users_count, 1);
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    // Atomic DeleteUser: should deallocate resources and close the account
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 1,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false), // owner
+        ],
+        &payer,
+    )
+    .await;
+
+    // User account should be closed
+    let user = get_account_data(&mut banks_client, user_pubkey).await;
+    assert!(
+        user.is_none(),
+        "User account should be closed after atomic delete"
+    );
+
+    // Verify bitmap bits were deallocated
+    let user_tunnel_after =
+        get_resource_extension_data(&mut banks_client, user_tunnel_block_pubkey)
+            .await
+            .expect("UserTunnelBlock should exist");
+    let tunnel_ids_after = get_resource_extension_data(&mut banks_client, tunnel_ids_pubkey)
+        .await
+        .expect("TunnelIds should exist");
+    let dz_prefix_after = get_resource_extension_data(&mut banks_client, dz_prefix_block_pubkey)
+        .await
+        .expect("DzPrefixBlock should exist");
+
+    assert!(
+        user_tunnel_after.iter_allocated().is_empty(),
+        "UserTunnelBlock should have no allocations after atomic delete"
+    );
+    assert!(
+        tunnel_ids_after.iter_allocated().is_empty(),
+        "TunnelIds should have no allocations after atomic delete"
+    );
+    assert_eq!(
+        dz_prefix_after.iter_allocated().len(),
+        1,
+        "DzPrefixBlock should have only reserved first IP after atomic delete"
+    );
+
+    // Verify device counters decremented
+    let device_after = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_after.users_count, 0);
+    assert_eq!(device_after.unicast_users_count, 0);
+
+    println!("[PASS] test_delete_user_atomic_with_deallocation");
+}
+
+#[tokio::test]
+async fn test_delete_user_atomic_backward_compat() {
+    println!("[TEST] test_delete_user_atomic_backward_compat");
+
+    let client_ip = [100, 0, 0, 11];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        _device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        _resource_pubkeys,
+    ) = setup_user_onchain_allocation_test(UserType::IBRL, client_ip).await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    // Activate user with legacy path
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 501,
+            tunnel_net: "169.254.0.0/25".parse().unwrap(),
+            dz_ip: [200, 0, 0, 1].into(),
+            dz_prefix_count: 0,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    // Legacy delete (dz_prefix_count=0) should set status to Deleting
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // User should still exist with Deleting status
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should still exist after legacy delete")
+        .get_user()
+        .unwrap();
+    assert_eq!(
+        user.status,
+        UserStatus::Deleting,
+        "User should be in Deleting status after legacy delete"
+    );
+
+    println!("[PASS] test_delete_user_atomic_backward_compat");
+}
+
+#[tokio::test]
+async fn test_delete_user_atomic_feature_flag_disabled() {
+    println!("[TEST] test_delete_user_atomic_feature_flag_disabled");
+
+    let client_ip = [100, 0, 0, 12];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        (
+            user_tunnel_block_pubkey,
+            _multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
+    ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    // Activate user with legacy path (no feature flag needed for legacy activate)
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 501,
+            tunnel_net: "169.254.0.0/25".parse().unwrap(),
+            dz_ip: [200, 0, 0, 1].into(),
+            dz_prefix_count: 0,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    // Atomic delete WITHOUT feature flag enabled should fail
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 1,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false), // owner
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "Atomic delete should fail when OnChainAllocation feature flag is disabled"
+    );
+
+    // User should still exist (not closed)
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should still exist after failed atomic delete")
+        .get_user()
+        .unwrap();
+    assert_eq!(
+        user.status,
+        UserStatus::Activated,
+        "User status should be unchanged after failed atomic delete"
+    );
+
+    println!("[PASS] test_delete_user_atomic_feature_flag_disabled");
+}

@@ -60,7 +60,6 @@ type MeasurementDefinition struct {
 	AF             int      `json:"af"`
 	Interval       int      `json:"interval"`
 	Packets        int      `json:"packets"`
-	Size           int      `json:"size"`
 	PacketInterval int      `json:"packet_interval"`
 	Target         string   `json:"target"`
 	Description    string   `json:"description"`

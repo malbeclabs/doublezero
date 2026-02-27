@@ -1,0 +1,45 @@
+[package]
+name = "doublezero-geolocation"
+
+# clippy ignores rust-version.toml
+rust-version = "1.84.1" # cargo build-sbf --version
+
+# Workspace inherited keys
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+borsh.workspace = true
+borsh-incremental.workspace = true
+serde = { workspace = true, optional = true }
+serde_bytes = { workspace = true, optional = true }
+solana-bincode.workspace = true
+solana-loader-v3-interface.workspace = true
+solana-program.workspace = true
+doublezero-program-common.workspace = true
+doublezero-serviceability.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+bincode.workspace = true
+solana-sdk.workspace = true
+solana-program-test.workspace = true
+
+[build-dependencies]
+doublezero-config.workspace = true
+
+[features]
+default = []
+localnet = []
+testnet = []
+devnet = []
+mainnet-beta = []
+no-entrypoint = []
+serde = ["dep:serde", "dep:serde_bytes"]

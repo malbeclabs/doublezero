@@ -258,11 +258,8 @@ func (s *MulticastService) UpdateGroups(newPR *api.ProvisionRequest) error {
 
 	// Restart heartbeat if publisher groups changed
 	if isPublisher && (len(pubAdded) > 0 || len(pubRemoved) > 0) {
-		if err := s.heartbeat.Close(); err != nil {
-			slog.Error("error stopping heartbeat sender during group update", "error", err)
-		}
-		if err := s.heartbeat.Start(s.Tunnel.Name, s.DoubleZeroAddr, newPR.MulticastPubGroups, multicast.DefaultHeartbeatTTL, multicast.DefaultHeartbeatInterval); err != nil {
-			return fmt.Errorf("error restarting heartbeat sender: %v", err)
+		if err := s.heartbeat.UpdateGroups(newPR.MulticastPubGroups); err != nil {
+			return fmt.Errorf("error updating heartbeat groups: %v", err)
 		}
 	}
 
@@ -301,14 +298,8 @@ func (s *MulticastService) UpdateGroups(newPR *api.ProvisionRequest) error {
 		}
 	}
 
-	// Start or restart PIM if subscriber groups changed.
-	if isSubscriber && (len(subAdded) > 0 || len(subRemoved) > 0) {
-		if wasSubscriber {
-			if err := s.pim.Close(); err != nil {
-				slog.Error("error stopping pim FSM during group update", "error", err)
-			}
-		}
-
+	// Start PIM if gaining subscriber role.
+	if !wasSubscriber && isSubscriber {
 		c, err := net.ListenPacket("ip4:103", "0.0.0.0")
 		if err != nil {
 			return fmt.Errorf("failed to listen: %v", err)
@@ -319,7 +310,12 @@ func (s *MulticastService) UpdateGroups(newPR *api.ProvisionRequest) error {
 		}
 
 		if err := s.pim.Start(r, s.Tunnel.Name, s.Tunnel.RemoteOverlay, newPR.MulticastSubGroups); err != nil {
-			return fmt.Errorf("error restarting pim FSM: %v", err)
+			return fmt.Errorf("error starting pim FSM: %v", err)
+		}
+	} else if isSubscriber && (len(subAdded) > 0 || len(subRemoved) > 0) {
+		// Update PIM groups if subscriber groups changed.
+		if err := s.pim.UpdateGroups(newPR.MulticastSubGroups); err != nil {
+			return fmt.Errorf("error updating pim groups: %v", err)
 		}
 	}
 

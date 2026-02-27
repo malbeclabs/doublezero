@@ -56,6 +56,7 @@ On each tick (default 10 seconds, configurable via `--reconciler-poll-interval`)
    - If no unicast users but a unicast service is running → remove.
    - Same logic independently for multicast.
    - Unicast and multicast are reconciled independently — a client can have one of each running simultaneously.
+   - **Incremental multicast group updates**: When an existing multicast service's `ProvisionRequest` differs from the desired state but only in multicast group lists (all infrastructure fields — tunnel endpoints, ASNs, DZ IP, prefixes — are unchanged), the reconciler applies an incremental update instead of a full teardown/reprovision. This adds/removes static multicast routes for changed groups and restarts PIM (subscriber) or heartbeat (publisher) with the new group lists, keeping the GRE tunnel and BGP session untouched. If the incremental update fails (e.g., a publisher role transition that requires adding/removing the DZ IP on the tunnel interface), the reconciler falls back to a full reprovision.
 
    In practice, the activator enforces one user per type per client IP, so multiple matching unicast users shouldn't occur. If they do, the reconciler uses the first one it encounters.
 5. **Build** a `ProvisionRequest` from onchain data when provisioning:

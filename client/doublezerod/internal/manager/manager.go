@@ -33,6 +33,12 @@ type Provisioner interface {
 	ProvisionRequest() *api.ProvisionRequest
 }
 
+// GroupUpdater is an optional interface that services can implement to support
+// incremental multicast group updates without a full teardown/reprovision cycle.
+type GroupUpdater interface {
+	UpdateGroups(newPR *api.ProvisionRequest) error
+}
+
 // BgpReaderWriter is an interface for the handling of per
 // service bgp sessions.
 type BGPServer interface {
@@ -544,6 +550,23 @@ func (n *NetlinkManager) reconcileService(
 			if currentPR != nil {
 				diff = currentPR.Diff(&pr)
 			}
+
+			// Try incremental group update when only multicast groups changed.
+			if currentPR != nil && currentPR.InfraEqual(&pr) {
+				if svc := n.currentService(serviceType); svc != nil {
+					if gu, ok := svc.(GroupUpdater); ok {
+						slog.Info("reconciler: groups changed, attempting incremental update", "service", serviceType, "diff", diff)
+						if err := gu.UpdateGroups(&pr); err == nil {
+							metricUpdatesTotal.WithLabelValues(serviceType, statusSuccess).Inc()
+							return
+						} else {
+							slog.Warn("reconciler: incremental group update failed, falling back to full reprovision", "service", serviceType, "error", err)
+							metricUpdatesTotal.WithLabelValues(serviceType, statusError).Inc()
+						}
+					}
+				}
+			}
+
 			slog.Info("reconciler: onchain state changed, re-provisioning service", "service", serviceType, "diff", diff)
 			// Reprovision atomically so Status() never sees a nil-service window.
 			if err := n.Reprovision(removeAsType, pr); err != nil {
@@ -577,15 +600,19 @@ func (n *NetlinkManager) reconcileService(
 // currentProvisionRequest returns the ProvisionRequest for the currently
 // provisioned service of the given type, or nil if none is provisioned.
 func (n *NetlinkManager) currentProvisionRequest(serviceType string) *api.ProvisionRequest {
+	if svc := n.currentService(serviceType); svc != nil {
+		return svc.ProvisionRequest()
+	}
+	return nil
+}
+
+// currentService returns the Provisioner for the given service type, or nil.
+func (n *NetlinkManager) currentService(serviceType string) Provisioner {
 	switch serviceType {
 	case serviceUnicast:
-		if n.UnicastService != nil {
-			return n.UnicastService.ProvisionRequest()
-		}
+		return n.UnicastService
 	case serviceMulticast:
-		if n.MulticastService != nil {
-			return n.MulticastService.ProvisionRequest()
-		}
+		return n.MulticastService
 	}
 	return nil
 }

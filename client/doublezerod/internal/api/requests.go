@@ -168,6 +168,56 @@ func (p *ProvisionRequest) Diff(other *ProvisionRequest) string {
 	return fmt.Sprintf("[%s]", strings.Join(diffs, ", "))
 }
 
+// InfraEqual reports whether the infrastructure fields (everything except
+// multicast group lists) of two ProvisionRequests are identical. When this
+// returns true and Equal returns false, only the multicast groups have changed
+// and an incremental update can be applied without tearing down the tunnel.
+func (p *ProvisionRequest) InfraEqual(other *ProvisionRequest) bool {
+	if p == nil || other == nil {
+		return p == other
+	}
+	if p.UserType != other.UserType {
+		return false
+	}
+	if !p.TunnelSrc.Equal(other.TunnelSrc) || !p.TunnelDst.Equal(other.TunnelDst) {
+		return false
+	}
+	if !ipNetsEqual(p.TunnelNet, other.TunnelNet) {
+		return false
+	}
+	if !p.DoubleZeroIP.Equal(other.DoubleZeroIP) {
+		return false
+	}
+	if p.BgpLocalAsn != other.BgpLocalAsn || p.BgpRemoteAsn != other.BgpRemoteAsn {
+		return false
+	}
+	return ipNetSlicesEqual(p.DoubleZeroPrefixes, other.DoubleZeroPrefixes)
+}
+
+// IPSetDiff computes the added and removed IPs between two slices, treating
+// them as sets keyed by their string representation.
+func IPSetDiff(oldIPs, newIPs []net.IP) (added, removed []net.IP) {
+	oldSet := make(map[string]net.IP, len(oldIPs))
+	for _, ip := range oldIPs {
+		oldSet[ip.String()] = ip
+	}
+	newSet := make(map[string]net.IP, len(newIPs))
+	for _, ip := range newIPs {
+		newSet[ip.String()] = ip
+	}
+	for k, ip := range newSet {
+		if _, ok := oldSet[k]; !ok {
+			added = append(added, ip)
+		}
+	}
+	for k, ip := range oldSet {
+		if _, ok := newSet[k]; !ok {
+			removed = append(removed, ip)
+		}
+	}
+	return added, removed
+}
+
 func ipNetsEqual(a, b *net.IPNet) bool {
 	if a == nil || b == nil {
 		return a == b

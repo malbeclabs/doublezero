@@ -213,6 +213,122 @@ func (s *MulticastService) ProvisionRequest() *api.ProvisionRequest {
 	return s.provisionReq
 }
 
+// UpdateGroups incrementally applies multicast group changes without tearing
+// down the tunnel or BGP session. It returns an error if a publisher role
+// transition is detected (gaining or losing publisher status requires
+// adding/removing the DZ IP on the tunnel interface, so a full reprovision is
+// needed).
+func (s *MulticastService) UpdateGroups(newPR *api.ProvisionRequest) error {
+	wasPublisher := s.isPublisher()
+	isPublisher := len(newPR.MulticastPubGroups) > 0
+
+	// Gaining or losing publisher role requires adding/removing the DZ IP on
+	// the tunnel interface and changing BGP NLRI — can't be done incrementally.
+	if wasPublisher != isPublisher {
+		return fmt.Errorf("publisher role transition detected (was=%t, now=%t): full reprovision required", wasPublisher, isPublisher)
+	}
+
+	wasSubscriber := s.isSubscriber()
+	isSubscriber := len(newPR.MulticastSubGroups) > 0
+
+	pubAdded, pubRemoved := api.IPSetDiff(s.MulticastPubGroups, newPR.MulticastPubGroups)
+	subAdded, subRemoved := api.IPSetDiff(s.MulticastSubGroups, newPR.MulticastSubGroups)
+
+	// Update publisher routes
+	for _, group := range pubRemoved {
+		_, groupNet, err := net.ParseCIDR(fmt.Sprintf("%s/32", group))
+		if err != nil {
+			return fmt.Errorf("error parsing multicast group address: %v", err)
+		}
+		mroute := &routing.Route{Dst: groupNet, NextHop: s.Tunnel.RemoteOverlay, Table: syscall.RT_TABLE_MAIN, Src: s.DoubleZeroAddr, Protocol: unix.RTPROT_STATIC}
+		if err := s.nl.RouteDelete(mroute); err != nil {
+			return fmt.Errorf("error deleting publisher multicast route: %v", err)
+		}
+	}
+	for _, group := range pubAdded {
+		_, groupNet, err := net.ParseCIDR(fmt.Sprintf("%s/32", group))
+		if err != nil {
+			return fmt.Errorf("error parsing multicast group address: %v", err)
+		}
+		mroute := &routing.Route{Dst: groupNet, NextHop: s.Tunnel.RemoteOverlay, Table: syscall.RT_TABLE_MAIN, Src: s.DoubleZeroAddr, Protocol: unix.RTPROT_STATIC}
+		if err := s.nl.RouteAdd(mroute); err != nil {
+			return fmt.Errorf("error adding publisher multicast route: %v", err)
+		}
+	}
+
+	// Restart heartbeat if publisher groups changed
+	if isPublisher && (len(pubAdded) > 0 || len(pubRemoved) > 0) {
+		if err := s.heartbeat.Close(); err != nil {
+			slog.Error("error stopping heartbeat sender during group update", "error", err)
+		}
+		if err := s.heartbeat.Start(s.Tunnel.Name, s.DoubleZeroAddr, newPR.MulticastPubGroups, multicast.DefaultHeartbeatTTL, multicast.DefaultHeartbeatInterval); err != nil {
+			return fmt.Errorf("error restarting heartbeat sender: %v", err)
+		}
+	}
+
+	// Update subscriber routes
+	for _, group := range subRemoved {
+		if isPublisher && containsIP(newPR.MulticastPubGroups, group) {
+			continue
+		}
+		_, groupNet, err := net.ParseCIDR(fmt.Sprintf("%s/32", group))
+		if err != nil {
+			return fmt.Errorf("error parsing multicast group address: %v", err)
+		}
+		mroute := &routing.Route{Dst: groupNet, NextHop: s.Tunnel.RemoteOverlay, Table: syscall.RT_TABLE_MAIN, Protocol: unix.RTPROT_STATIC}
+		if err := s.nl.RouteDelete(mroute); err != nil {
+			return fmt.Errorf("error deleting subscriber multicast route: %v", err)
+		}
+	}
+	for _, group := range subAdded {
+		if isPublisher && containsIP(newPR.MulticastPubGroups, group) {
+			continue
+		}
+		_, groupNet, err := net.ParseCIDR(fmt.Sprintf("%s/32", group))
+		if err != nil {
+			return fmt.Errorf("error parsing multicast group address: %v", err)
+		}
+		mroute := &routing.Route{Dst: groupNet, NextHop: s.Tunnel.RemoteOverlay, Table: syscall.RT_TABLE_MAIN, Protocol: unix.RTPROT_STATIC}
+		if err := s.nl.RouteAdd(mroute); err != nil {
+			return fmt.Errorf("error adding subscriber multicast route: %v", err)
+		}
+	}
+
+	// Stop PIM if losing subscriber role.
+	if wasSubscriber && !isSubscriber {
+		if err := s.pim.Close(); err != nil {
+			slog.Error("error stopping pim FSM during group update", "error", err)
+		}
+	}
+
+	// Start or restart PIM if subscriber groups changed.
+	if isSubscriber && (len(subAdded) > 0 || len(subRemoved) > 0) {
+		if wasSubscriber {
+			if err := s.pim.Close(); err != nil {
+				slog.Error("error stopping pim FSM during group update", "error", err)
+			}
+		}
+
+		c, err := net.ListenPacket("ip4:103", "0.0.0.0")
+		if err != nil {
+			return fmt.Errorf("failed to listen: %v", err)
+		}
+		r, err := ipv4.NewRawConn(c)
+		if err != nil {
+			return fmt.Errorf("failed to create raw conn: %v", err)
+		}
+
+		if err := s.pim.Start(r, s.Tunnel.Name, s.Tunnel.RemoteOverlay, newPR.MulticastSubGroups); err != nil {
+			return fmt.Errorf("error restarting pim FSM: %v", err)
+		}
+	}
+
+	s.MulticastPubGroups = newPR.MulticastPubGroups
+	s.MulticastSubGroups = newPR.MulticastSubGroups
+	s.provisionReq = newPR
+	return nil
+}
+
 func containsIP(ips []net.IP, target net.IP) bool {
 	for _, ip := range ips {
 		if ip.Equal(target) {

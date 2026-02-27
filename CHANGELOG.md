@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
   - Reject BGP martian addresses (CGNAT, multicast, reserved, benchmarking, etc.) as client IP during `connect`
 - Controller
   - detect duplicate (UnderlaySrcIP, UnderlayDstIP) pairs for tunnels and only render the first to the device config and write a log error for the second
+  - allow MTU to be configurable
 - Onchain Programs
   - Serviceability: skip field validation for users in `Deleting` status to prevent accounts from getting stuck during cleanup when validation rules change
   - Serviceability: require foundation_allowlist privileges to update node_segment_idx on a device interface

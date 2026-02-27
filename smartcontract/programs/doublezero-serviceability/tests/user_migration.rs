@@ -333,6 +333,7 @@ async fn test_user_migration() {
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_old_pubkey, false),

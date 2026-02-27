@@ -766,6 +766,7 @@ mod tests {
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: [1, 2, 3, 4].into(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                dz_prefix_count: 0,
             }),
             "CreateUser",
         );

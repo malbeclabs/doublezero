@@ -1,4 +1,5 @@
 use crate::{
+    error::DoubleZeroError,
     pda::{get_globalconfig_pda, get_resource_extension_pda},
     resource::ResourceType,
     seeds::SEED_PREFIX,
@@ -8,8 +9,12 @@ use crate::{
         resource_extension::{ResourceExtensionBorrowed, ResourceExtensionRange},
     },
 };
-use doublezero_program_common::create_account::try_create_account;
-use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, pubkey::Pubkey};
+use doublezero_program_common::{create_account::try_create_account, types::NetworkV4};
+use solana_program::{
+    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
+    pubkey::Pubkey,
+};
+use std::net::Ipv4Addr;
 
 pub mod allocate;
 pub mod closeaccount;
@@ -167,4 +172,36 @@ pub fn create_resource(
     }
 
     Ok(())
+}
+
+/// Borrow a ResourceExtension account, deserialize it, and allocate `count` IPs.
+pub fn allocate_ip(account: &AccountInfo, count: usize) -> Result<NetworkV4, ProgramError> {
+    let mut buffer = account.data.borrow_mut();
+    let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+    resource
+        .allocate(count)?
+        .as_ip()
+        .ok_or(DoubleZeroError::InvalidArgument.into())
+}
+
+/// Borrow a ResourceExtension account, deserialize it, and allocate a single ID.
+pub fn allocate_id(account: &AccountInfo) -> Result<u16, ProgramError> {
+    let mut buffer = account.data.borrow_mut();
+    let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+    resource
+        .allocate(1)?
+        .as_id()
+        .ok_or(DoubleZeroError::InvalidArgument.into())
+}
+
+/// Try each account in order and return the first successful single-IP allocation.
+pub fn allocate_ip_from_first_available(
+    accounts: &[&AccountInfo],
+) -> Result<Ipv4Addr, ProgramError> {
+    for account in accounts {
+        if let Ok(ip) = allocate_ip(account, 1) {
+            return Ok(ip.ip());
+        }
+    }
+    Err(DoubleZeroError::AllocationFailed.into())
 }

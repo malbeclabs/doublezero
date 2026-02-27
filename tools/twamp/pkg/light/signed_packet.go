@@ -16,7 +16,6 @@ const (
 )
 
 // SignedProbePacket is sent from Target to Probe in the inbound probing flow.
-// Total size: 108 bytes.
 type SignedProbePacket struct {
 	Seq          uint32   // Bytes 0-3: Sequence number (big-endian)
 	Sec          uint32   // Bytes 4-7: NTP timestamp seconds
@@ -26,15 +25,12 @@ type SignedProbePacket struct {
 }
 
 // SignedReplyPacket is sent from Probe to Target in the inbound probing flow.
-// Total size: 204 bytes.
 type SignedReplyPacket struct {
 	Probe           SignedProbePacket // Bytes 0-107: Complete original signed probe (echoed)
 	ReflectorPubkey [32]byte         // Bytes 108-139: Probe's Ed25519 public key
 	Signature       [64]byte         // Bytes 140-203: Ed25519 signature over bytes 0-139
 }
 
-// NewSignedProbePacket creates a new SignedProbePacket with the given sequence number,
-// signed with the provided private key. The public key is embedded in the packet.
 func NewSignedProbePacket(seq uint32, privateKey ed25519.PrivateKey) *SignedProbePacket {
 	sec, frac := ntpTimestamp(time.Now())
 	pub := privateKey.Public().(ed25519.PublicKey)
@@ -59,7 +55,6 @@ func NewSignedProbePacket(seq uint32, privateKey ed25519.PrivateKey) *SignedProb
 	return p
 }
 
-// Marshal serializes the SignedProbePacket into buf.
 func (p *SignedProbePacket) Marshal(buf []byte) error {
 	if len(buf) < SignedProbePacketSize {
 		return fmt.Errorf("buffer too small: %d < %d", len(buf), SignedProbePacketSize)
@@ -73,7 +68,6 @@ func (p *SignedProbePacket) Marshal(buf []byte) error {
 	return nil
 }
 
-// UnmarshalSignedProbePacket deserializes a SignedProbePacket from buf.
 func UnmarshalSignedProbePacket(buf []byte) (*SignedProbePacket, error) {
 	if len(buf) != SignedProbePacketSize {
 		return nil, ErrInvalidPacket
@@ -89,7 +83,6 @@ func UnmarshalSignedProbePacket(buf []byte) (*SignedProbePacket, error) {
 	return p, nil
 }
 
-// VerifyProbe verifies the Ed25519 signature on a SignedProbePacket.
 func VerifyProbe(p *SignedProbePacket) bool {
 	var payload [signedProbePayloadSize]byte
 	binary.BigEndian.PutUint32(payload[0:4], p.Seq)
@@ -100,7 +93,6 @@ func VerifyProbe(p *SignedProbePacket) bool {
 	return ed25519.Verify(ed25519.PublicKey(p.SenderPubkey[:]), payload[:], p.Signature[:])
 }
 
-// Marshal serializes the SignedReplyPacket into buf.
 func (r *SignedReplyPacket) Marshal(buf []byte) error {
 	if len(buf) < SignedReplyPacketSize {
 		return fmt.Errorf("buffer too small: %d < %d", len(buf), SignedReplyPacketSize)
@@ -114,7 +106,6 @@ func (r *SignedReplyPacket) Marshal(buf []byte) error {
 	return nil
 }
 
-// UnmarshalSignedReplyPacket deserializes a SignedReplyPacket from buf.
 func UnmarshalSignedReplyPacket(buf []byte) (*SignedReplyPacket, error) {
 	if len(buf) != SignedReplyPacketSize {
 		return nil, ErrInvalidPacket
@@ -133,8 +124,6 @@ func UnmarshalSignedReplyPacket(buf []byte) (*SignedReplyPacket, error) {
 	return r, nil
 }
 
-// NewSignedReplyPacket creates a SignedReplyPacket echoing the original probe,
-// signed with the reflector's private key.
 func NewSignedReplyPacket(probe *SignedProbePacket, privateKey ed25519.PrivateKey) *SignedReplyPacket {
 	pub := privateKey.Public().(ed25519.PublicKey)
 
@@ -154,7 +143,6 @@ func NewSignedReplyPacket(probe *SignedProbePacket, privateKey ed25519.PrivateKe
 	return r
 }
 
-// VerifyReply verifies the Ed25519 signature on a SignedReplyPacket.
 func VerifyReply(r *SignedReplyPacket) bool {
 	var payload [signedReplyPayloadSize]byte
 	_ = r.Probe.Marshal(payload[0:108])

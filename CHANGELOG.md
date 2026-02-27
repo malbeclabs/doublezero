@@ -40,6 +40,17 @@ All notable changes to this project will be documented in this file.
 - Dependencies
   - Upgrade Solana SDK workspace dependencies from 2.2.7 to 2.3.x (`solana-sdk`, `solana-client`, `solana-program-test`, and others)
 
+## [v0.8.11](https://github.com/malbeclabs/doublezero/compare/client/v0.8.10...client/v0.8.11) - 2026-02-27
+
+### Breaking
+
+- N/A
+
+### Changes
+
+- Client
+  - Fix BGP `OnClose` deleting routes from all peers instead of only the closing peer, preventing multicast teardown from nuking unicast routes
+
 ## [v0.8.10](https://github.com/malbeclabs/doublezero/compare/client/v0.8.9...client/v0.8.10) – 2026-02-19
 
 ### Breaking

@@ -35,6 +35,7 @@ All notable changes to this project will be documented in this file.
   - Reject BGP martian addresses (CGNAT, multicast, reserved, benchmarking, etc.) as client IP during `connect`
 - Controller
   - detect duplicate (UnderlaySrcIP, UnderlayDstIP) pairs for tunnels and only render the first to the device config and write a log error for the second
+  - Clear stale node_segment_idx when changing loopback type from vpnv4 to another type 
 - Onchain Programs
   - Serviceability: skip field validation for users in `Deleting` status to prevent accounts from getting stuck during cleanup when validation rules change
   - Serviceability: require foundation_allowlist privileges to update node_segment_idx on a device interface
@@ -42,6 +43,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: expand `is_global` to reject all BGP martian address ranges (CGNAT 100.64/10, IETF 192.0.0/24, benchmarking 198.18/15, multicast 224/4, reserved 240/4, 0/8)
   - Serviceability: allow update and deletion of interfaces even when sibling interfaces have invalid CYOA configuration
   - Geolocation: add `doublezero-geolocation` program scaffolding as per rfcs/rfc16-geolocation-verification.md
+  - Serviceability: Clear stale node_segment_idx when changing loopback type from vpnv4 to another type
 - SDK
   - SetFeatureFlagCommand added to manage on-chain feature flags for conditional behavior rollouts
 - Dependencies

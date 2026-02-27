@@ -82,15 +82,18 @@ func toInterface(iface serviceability.Interface) (Interface, error) {
 		loopbackType = LoopbackTypeIpv4
 	}
 
-	if loopbackType != LoopbackTypeVpnv4 && iface.NodeSegmentIdx != 0 {
-		return Interface{}, fmt.Errorf("node segment cannot be defined on non-vpnv4 loopbacks")
+	// Only vpnv4 loopbacks use node segments; ignore stale values on other types
+	// (can happen if a loopback was changed from vpnv4 to another type).
+	nodeSegmentIdx := iface.NodeSegmentIdx
+	if loopbackType != LoopbackTypeVpnv4 {
+		nodeSegmentIdx = 0
 	}
 
 	return Interface{
 		Name:                 iface.Name,
 		VlanId:               iface.VlanId,
 		Ip:                   prefix,
-		NodeSegmentIdx:       iface.NodeSegmentIdx,
+		NodeSegmentIdx:       nodeSegmentIdx,
 		IsSubInterface:       subIntf,
 		IsSubInterfaceParent: false,
 		InterfaceType:        ifType,

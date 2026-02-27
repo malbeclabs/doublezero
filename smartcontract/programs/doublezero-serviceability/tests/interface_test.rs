@@ -1423,5 +1423,97 @@ async fn test_device_interfaces() {
     );
 
     println!("✅ Updating ip_net on CYOA interface succeeds and persists");
+
+    /*****************************************************************************************************************************************************/
+    println!("🟢 13. Changing loopback type from vpnv4 to ipv4 should clear node_segment_idx...");
+
+    // Create a vpnv4 loopback on device2
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "loopback255".to_string(),
+            loopback_type: LoopbackType::Vpnv4,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            bandwidth: 0,
+            cir: 0,
+            ip_net: None,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Foundation member sets node_segment_idx on the vpnv4 loopback
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
+            name: "loopback255".to_string(),
+            node_segment_idx: Some(90),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify the vpnv4 loopback has node_segment_idx set
+    let device2 = get_account_data(&mut banks_client, device2_pubkey)
+        .await
+        .expect("Unable to get Device")
+        .get_device()
+        .unwrap();
+    let iface = device2.find_interface("Loopback255").unwrap().1;
+    assert_eq!(iface.loopback_type, LoopbackType::Vpnv4);
+    assert_eq!(iface.node_segment_idx, 90);
+
+    // Change loopback type from vpnv4 to ipv4
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
+            name: "loopback255".to_string(),
+            loopback_type: Some(LoopbackType::Ipv4),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device2 = get_account_data(&mut banks_client, device2_pubkey)
+        .await
+        .expect("Unable to get Device")
+        .get_device()
+        .unwrap();
+    let iface = device2.find_interface("Loopback255").unwrap().1;
+    assert_eq!(iface.loopback_type, LoopbackType::Ipv4);
+    assert_eq!(
+        iface.node_segment_idx, 0,
+        "node_segment_idx should be cleared when loopback type changes away from vpnv4"
+    );
+
+    println!("✅ Changing loopback type clears stale node_segment_idx");
     println!("🟢🟢🟢  End test_device_interfaces  🟢🟢🟢");
 }

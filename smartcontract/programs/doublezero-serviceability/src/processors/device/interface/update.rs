@@ -123,6 +123,10 @@ pub fn process_update_device_interface(
         if *loopback_type == LoopbackType::None {
             return Err(DoubleZeroError::InvalidLoopbackType.into());
         }
+        // Clear node_segment_idx when changing away from vpnv4
+        if *loopback_type != LoopbackType::Vpnv4 {
+            iface.node_segment_idx = 0;
+        }
         iface.loopback_type = *loopback_type;
     }
     if let Some(interface_cyoa) = &value.interface_cyoa {

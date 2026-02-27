@@ -39,6 +39,8 @@ All notable changes to this project will be documented in this file.
   - SetFeatureFlagCommand added to manage on-chain feature flags for conditional behavior rollouts
 - Dependencies
   - Upgrade Solana SDK workspace dependencies from 2.2.7 to 2.3.x (`solana-sdk`, `solana-client`, `solana-program-test`, and others)
+- Internet telemetry
+  - Reduce RIPE Atlas sampling interval from 6 minutes to 10 minutes to work around service limit of 100_000 samples per day
 
 ## [v0.8.11](https://github.com/malbeclabs/doublezero/compare/client/v0.8.10...client/v0.8.11) - 2026-02-27
 

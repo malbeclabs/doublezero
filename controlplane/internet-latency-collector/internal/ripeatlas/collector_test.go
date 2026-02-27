@@ -852,8 +852,8 @@ func TestInternetLatency_RIPEAtlas_ExpectedDailyCreditsMetric(t *testing.T) {
 		},
 	}
 
-	// Test with 6 minute interval (240 samples per day)
-	samplingInterval := 6 * time.Minute
+	// Test with 10 minute interval (144 samples per day)
+	samplingInterval := 10 * time.Minute
 	err := c.RunRipeAtlasMeasurementCreation(t.Context(), false, 1, t.TempDir(), samplingInterval)
 	require.NoError(t, err)
 
@@ -862,11 +862,11 @@ func TestInternetLatency_RIPEAtlas_ExpectedDailyCreditsMetric(t *testing.T) {
 	// - lon gets measurement from nyc (1 source)
 	// - nyc gets no measurements (0 sources)
 	// Total sources = 2 + 1 + 0 = 3
-	// Expected daily credits = 3 sources * 240 samples/day = 720
+	// Expected daily credits = 3 sources * 144 samples/day = 432
 
 	// Note: We can't directly check the metric value in tests, but we can verify
 	// the log output contains the expected calculation
-	t.Log("Test completed - metric should show 720 expected daily credits")
+	t.Log("Test completed - metric should show 432 expected daily credits")
 }
 
 func TestInternetLatency_RIPEAtlas_RunRipeAtlasMeasurementCreation(t *testing.T) {

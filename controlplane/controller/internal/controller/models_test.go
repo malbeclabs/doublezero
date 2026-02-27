@@ -2,8 +2,60 @@ package controller
 
 import (
 	"net"
+	"net/netip"
 	"testing"
+
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
+
+func TestToInterface_StaleNodeSegmentIdx(t *testing.T) {
+	// Simulates a loopback that was changed from vpnv4 to ipv4 but still has
+	// a stale NodeSegmentIdx from the old vpnv4 config. toInterface should
+	// zero it out instead of returning an error.
+	iface := serviceability.Interface{
+		Name:           "Loopback256",
+		InterfaceType:  serviceability.InterfaceTypeLoopback,
+		LoopbackType:   serviceability.LoopbackTypeIpv4,
+		IpNet:          [5]uint8{172, 16, 1, 195, 32},
+		NodeSegmentIdx: 90, // stale from when it was vpnv4
+	}
+
+	got, err := toInterface(iface)
+	if err != nil {
+		t.Fatalf("toInterface returned error for ipv4 loopback with stale NodeSegmentIdx: %v", err)
+	}
+	if got.NodeSegmentIdx != 0 {
+		t.Errorf("NodeSegmentIdx = %d, want 0 (should be zeroed for non-vpnv4 loopback)", got.NodeSegmentIdx)
+	}
+	if got.LoopbackType != LoopbackTypeIpv4 {
+		t.Errorf("LoopbackType = %v, want LoopbackTypeIpv4", got.LoopbackType)
+	}
+	if got.Ip != netip.MustParsePrefix("172.16.1.195/32") {
+		t.Errorf("Ip = %v, want 172.16.1.195/32", got.Ip)
+	}
+}
+
+func TestToInterface_Vpnv4KeepsNodeSegmentIdx(t *testing.T) {
+	// Vpnv4 loopbacks should preserve their NodeSegmentIdx.
+	iface := serviceability.Interface{
+		Name:           "Loopback255",
+		InterfaceType:  serviceability.InterfaceTypeLoopback,
+		LoopbackType:   serviceability.LoopbackTypeVpnv4,
+		IpNet:          [5]uint8{14, 14, 14, 14, 32},
+		NodeSegmentIdx: 101,
+	}
+
+	got, err := toInterface(iface)
+	if err != nil {
+		t.Fatalf("toInterface returned error: %v", err)
+	}
+	if got.NodeSegmentIdx != 101 {
+		t.Errorf("NodeSegmentIdx = %d, want 101", got.NodeSegmentIdx)
+	}
+	if got.LoopbackType != LoopbackTypeVpnv4 {
+		t.Errorf("LoopbackType = %v, want LoopbackTypeVpnv4", got.LoopbackType)
+	}
+}
 
 func TestIsBgpMartian(t *testing.T) {
 	tests := []struct {

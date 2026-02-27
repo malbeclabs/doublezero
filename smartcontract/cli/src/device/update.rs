@@ -254,6 +254,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -281,6 +282,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let device3 = Device {
             account_type: AccountType::Device,
@@ -308,6 +310,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let device_list = HashMap::from([
             (pda_pubkey, device1.clone()),
@@ -425,6 +428,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -452,6 +456,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 
@@ -536,6 +541,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -563,6 +569,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 

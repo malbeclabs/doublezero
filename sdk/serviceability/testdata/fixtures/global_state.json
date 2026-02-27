@@ -76,6 +76,11 @@
       "name": "FeatureFlags",
       "value": "1",
       "typ": "u128"
+    },
+    {
+      "name": "ReservationAuthorityPk",
+      "value": "QRSsyMWN1yHT9ir42bgNZUNZ4PdEhcSWCrL2AryKpy5",
+      "typ": "pubkey"
     }
   ]
 }

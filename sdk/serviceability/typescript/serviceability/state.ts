@@ -294,6 +294,7 @@ export interface GlobalState {
   healthOraclePk: PublicKey;
   qaAllowlist: PublicKey[];
   featureFlags: bigint;
+  reservationAuthorityPk: PublicKey;
 }
 
 export function deserializeGlobalState(data: Uint8Array): GlobalState {
@@ -311,6 +312,7 @@ export function deserializeGlobalState(data: Uint8Array): GlobalState {
   const healthOraclePk = readPubkey(r);
   const qaAllowlist = readPubkeyVec(r);
   const featureFlags = r.readU128();
+  const reservationAuthorityPk = readPubkey(r);
   return {
     accountType,
     bumpSeed,
@@ -323,6 +325,7 @@ export function deserializeGlobalState(data: Uint8Array): GlobalState {
     healthOraclePk,
     qaAllowlist,
     featureFlags,
+    reservationAuthorityPk,
   };
 }
 
@@ -557,6 +560,7 @@ export interface Device {
   multicastUsersCount: number;
   maxUnicastUsers: number;
   maxMulticastUsers: number;
+  reservedSeats: number;
 }
 
 export function deserializeDevice(data: Uint8Array): Device {
@@ -591,6 +595,7 @@ export function deserializeDevice(data: Uint8Array): Device {
   const multicastUsersCount = r.readU16();
   const maxUnicastUsers = r.readU16();
   const maxMulticastUsers = r.readU16();
+  const reservedSeats = r.readU16();
 
   return {
     accountType,
@@ -617,6 +622,7 @@ export function deserializeDevice(data: Uint8Array): Device {
     multicastUsersCount,
     maxUnicastUsers,
     maxMulticastUsers,
+    reservedSeats,
   };
 }
 

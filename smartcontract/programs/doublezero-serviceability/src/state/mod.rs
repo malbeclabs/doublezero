@@ -12,6 +12,7 @@ pub mod link;
 pub mod location;
 pub mod multicastgroup;
 pub mod programconfig;
+pub mod reservation;
 pub mod resource_extension;
 pub mod tenant;
 pub mod user;

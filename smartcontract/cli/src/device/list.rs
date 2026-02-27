@@ -363,6 +363,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client.expect_list_device().returning(move |_| {
@@ -503,6 +504,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -532,6 +534,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client.expect_list_device().returning(move |_| {
@@ -657,6 +660,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -686,6 +690,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client.expect_list_device().returning(move |_| {
@@ -811,6 +816,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -839,6 +845,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client.expect_list_device().returning(move |_| {
@@ -981,6 +988,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1010,6 +1018,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1158,6 +1167,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1187,6 +1197,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1331,6 +1342,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1360,6 +1372,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1502,6 +1515,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1531,6 +1545,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1656,6 +1671,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1685,6 +1701,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1810,6 +1827,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1838,6 +1856,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1963,6 +1982,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client.expect_list_device().returning(move |_| {
@@ -2411,6 +2431,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -2440,6 +2461,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let device3_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPF");
@@ -2469,6 +2491,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client.expect_list_device().returning(move |_| {

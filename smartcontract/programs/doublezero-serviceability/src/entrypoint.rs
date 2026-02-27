@@ -80,6 +80,7 @@ use crate::{
             suspend::process_suspend_multicastgroup,
             update::process_update_multicastgroup,
         },
+        reservation::{close::process_close_reservation, reserve::process_reserve_connection},
         resource::{
             allocate::process_allocate_resource,
             closeaccount::process_closeaccount_resource_extension, create::process_create_resource,
@@ -391,6 +392,12 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::SetFeatureFlags(value) => {
             process_set_feature_flags(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::ReserveConnection(value) => {
+            process_reserve_connection(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CloseReservation(value) => {
+            process_close_reservation(program_id, accounts, &value)?
         }
     };
     Ok(())

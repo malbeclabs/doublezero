@@ -337,6 +337,7 @@ type GlobalState struct {
 	HealthOraclePK             [32]byte
 	QAAllowlist                [][32]byte
 	FeatureFlags               Uint128
+	ReservationAuthorityPK     [32]byte
 	PubKey                     [32]byte
 }
 
@@ -412,6 +413,7 @@ type Device struct {
 	MulticastUsersCount    uint16
 	MaxUnicastUsers        uint16
 	MaxMulticastUsers      uint16
+	ReservedSeats          uint16
 	PubKey                 [32]byte
 }
 

@@ -90,6 +90,7 @@ mod tests {
             health_oracle_pk: Pubkey::default(),
             qa_allowlist: vec![],
             feature_flags,
+            reservation_authority_pk: Pubkey::default(),
         }
     }
 

@@ -167,6 +167,7 @@ pub fn process_create_device(
         multicast_users_count: 0,
         max_unicast_users: 0, // Initially locked, must be set via device update
         max_multicast_users: 0, // Initially locked, must be set via device update
+        reserved_seats: 0,
     };
 
     device.check_status_transition();

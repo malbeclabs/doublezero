@@ -73,6 +73,7 @@ func TestFixtureGlobalState(t *testing.T) {
 		"ActivatorAuthorityPK":       solana.PublicKey(gs.ActivatorAuthorityPK),
 		"SentinelAuthorityPK":        solana.PublicKey(gs.SentinelAuthorityPK),
 		"HealthOraclePK":             solana.PublicKey(gs.HealthOraclePK),
+		"ReservationAuthorityPk":     solana.PublicKey(gs.ReservationAuthorityPK),
 	})
 }
 
@@ -155,6 +156,7 @@ func TestFixtureDevice(t *testing.T) {
 		"MulticastUsersCount": dev.MulticastUsersCount,
 		"MaxUnicastUsers":     dev.MaxUnicastUsers,
 		"MaxMulticastUsers":   dev.MaxMulticastUsers,
+		"ReservedSeats":       dev.ReservedSeats,
 	})
 
 	// Verify DzPrefixes

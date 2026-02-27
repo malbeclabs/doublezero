@@ -76,6 +76,7 @@ class TestFixtureGlobalState:
                 "ActivatorAuthorityPk": gs.activator_authority_pk,
                 "SentinelAuthorityPk": gs.sentinel_authority_pk,
                 "HealthOraclePk": gs.health_oracle_pk,
+                "ReservationAuthorityPk": gs.reservation_authority_pk,
             },
         )
 
@@ -158,6 +159,7 @@ class TestFixtureDevice:
                 "MulticastUsersCount": dev.multicast_users_count,
                 "MaxUnicastUsers": dev.max_unicast_users,
                 "MaxMulticastUsers": dev.max_multicast_users,
+                "ReservedSeats": dev.reserved_seats,
                 "MetricsPublisherPk": dev.metrics_publisher_pub_key,
                 "ContributorPk": dev.contributor_pub_key,
             },

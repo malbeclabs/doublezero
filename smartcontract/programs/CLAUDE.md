@@ -34,6 +34,12 @@
 
 2. **Don't test framework functionality**: Avoid writing tests that only exercise SDK/framework behavior (e.g., testing that `Pubkey::find_program_address` is deterministic or produces different outputs for different inputs). Focus tests on your program's logic.
 
+3. **Integration tests for all processors**: Every processor function (instruction handler) should have corresponding integration tests in the `tests/` directory. These tests should cover:
+   - Success cases with valid inputs
+   - All error cases (invalid inputs, unauthorized signers, wrong account states)
+   - Edge cases (boundary values, empty collections, maximum sizes)
+   - State transitions (account creation, updates, deletion)
+
 ### Program Upgrades
 
 1. **Use standard interfaces**: Use `solana-loader-v3-interface` to parse `UpgradeableLoaderState` rather than implementing your own parser. The interface crate provides well-tested, maintained implementations.

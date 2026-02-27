@@ -55,9 +55,9 @@ dependencies = [
 
 [[package]]
 name = "bitflags"
-version = "2.10.0"
+version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
+checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
 
 [[package]]
 name = "blake3"
@@ -346,7 +346,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.8.10"
+version = "0.9.0"
 dependencies = [
  "borsh 1.6.0",
  "byteorder",
@@ -358,7 +358,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.8.10"
+version = "0.9.0"
 dependencies = [
  "bitflags",
  "borsh 1.6.0",
@@ -528,9 +528,9 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "libc"
-version = "0.2.180"
+version = "0.2.182"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcc35a38544a891a5f7c865aca548a982ccb3b8650a5b06d0fd33a10283c56fc"
+checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
 
 [[package]]
 name = "libsecp256k1"

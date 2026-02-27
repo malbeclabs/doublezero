@@ -98,8 +98,8 @@ A geoProbe assigned to a specific DZD for periodic latency measurement, defined 
 Outbound Probing Flow
 ```
   ┌──────────┐                  ┌───────────┐                  ┌───────────┐
-  │          │<─────Reply───────│           │<─────Reply───────│           │
-  │   DZD    │──────TWAMP──────>│   Probe   │──────Probe──────>│  Target   │
+  │          │──────TWAMP──────>│           │──────Probe──────>│           │
+  │   DZD    │<─────Reply───────│   Probe   │<─────Reply───────│  Target   │
   │          │──Signed Offset──>│           │──Signed Offset──>│           │
   └──────────┘                  └───────────┘  w/ references   └───────────┘
       ^ │                          ^  │                             │
@@ -117,8 +117,8 @@ IP    │ │ Offset        Target IPs │  │ Measured             Offset │
 Inbound Probing Flow
 ```
   ┌──────────┐                  ┌───────────┐                  ┌───────────┐
-  │          │<─────Reply───────│           │<──Signed Probe───│           │
-  │   DZD    │──────TWAMP──────>│   Probe   │───Signed Reply──>│  Target   │
+  │          │──────TWAMP──────>│           │<──Signed Probe───│           │
+  │   DZD    │<─────Reply───────│   Probe   │───Signed Reply──>│  Target   │
   │          │──Signed Offset──>│           │                  │           │
   └──────────┘                  └───────────┘                  └───────────┘
       ^ │ Measured                 ^  │                             │

@@ -79,7 +79,7 @@ impl CreateDeviceInterfaceCliCommand {
 
         if let Some(ref ip_net) = self.ip_net {
             let devices = client.list_device(ListDeviceCommand)?;
-            for (_pk, dev) in &devices {
+            for dev in devices.values() {
                 if dev.contributor_pk != device.contributor_pk {
                     continue;
                 }

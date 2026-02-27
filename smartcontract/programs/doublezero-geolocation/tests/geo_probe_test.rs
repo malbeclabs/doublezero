@@ -15,7 +15,7 @@ use solana_program_test::*;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction, InstructionError},
     pubkey::Pubkey,
-    signature::Keypair,
+    signature::Signer,
     transaction::{Transaction, TransactionError},
 };
 use std::net::Ipv4Addr;
@@ -23,7 +23,7 @@ use test_helpers::setup_test_with_exchange;
 
 #[tokio::test]
 async fn test_create_geo_probe_success() {
-    let (mut banks_client, program_id, recent_blockhash, payer_pubkey, exchange_pubkey) =
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
         setup_test_with_exchange(ExchangeStatus::Activated).await;
 
     // Create GeoProbe
@@ -48,16 +48,14 @@ async fn test_create_geo_probe_success() {
             AccountMeta::new_readonly(exchange_pubkey, false),
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
-            AccountMeta::new(payer_pubkey, true),
+            AccountMeta::new(payer.pubkey(), true),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
         ],
     );
 
-    // Use a deterministic keypair for the test payer
-    let payer = Keypair::from_bytes(&[0u8; 64]).unwrap();
     let tx = Transaction::new_signed_with_payer(
         &[ix],
-        Some(&payer_pubkey),
+        Some(&payer.pubkey()),
         &[&payer],
         *recent_blockhash.read().await,
     );
@@ -68,7 +66,7 @@ async fn test_create_geo_probe_success() {
     let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
 
     assert_eq!(probe.account_type, AccountType::GeoProbe);
-    assert_eq!(probe.owner, payer_pubkey);
+    assert_eq!(probe.owner, payer.pubkey());
     assert_eq!(probe.exchange_pk, exchange_pubkey);
     assert_eq!(probe.public_ip, Ipv4Addr::new(8, 8, 8, 8));
     assert_eq!(probe.location_offset_port, 4242);
@@ -80,12 +78,15 @@ async fn test_create_geo_probe_success() {
 
 #[tokio::test]
 async fn test_create_geo_probe_invalid_code_length() {
-    let (mut banks_client, program_id, recent_blockhash, payer_pubkey, exchange_pubkey) =
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
         setup_test_with_exchange(ExchangeStatus::Activated).await;
 
     // Try to create GeoProbe with code that's too long
-    let code = "a".repeat(33); // Exceeds 32 char limit
-    let (probe_pda, _) = get_geo_probe_pda(&program_id, &code);
+    // Use exactly 33 chars which exceeds the 32 byte limit
+    let code = "a123456789012345678901234567890ab".to_string();
+    assert_eq!(code.len(), 33); // Verify it's indeed 33 chars
+                                // For PDA, we'll use truncated version to avoid panic
+    let (probe_pda, _) = get_geo_probe_pda(&program_id, &code[..32]);
     let program_config_pda = doublezero_geolocation::pda::get_program_config_pda(&program_id).0;
     let serviceability_globalstate_pda =
         doublezero_serviceability::pda::get_globalstate_pda(&serviceability_program_id()).0;
@@ -105,15 +106,14 @@ async fn test_create_geo_probe_invalid_code_length() {
             AccountMeta::new_readonly(exchange_pubkey, false),
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
-            AccountMeta::new(payer_pubkey, true),
+            AccountMeta::new(payer.pubkey(), true),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
         ],
     );
 
-    let payer = Keypair::from_bytes(&[0u8; 64]).unwrap();
     let tx = Transaction::new_signed_with_payer(
         &[ix],
-        Some(&payer_pubkey),
+        Some(&payer.pubkey()),
         &[&payer],
         *recent_blockhash.read().await,
     );
@@ -132,7 +132,7 @@ async fn test_create_geo_probe_invalid_code_length() {
 
 #[tokio::test]
 async fn test_create_geo_probe_exchange_not_activated() {
-    let (mut banks_client, program_id, recent_blockhash, payer_pubkey, exchange_pubkey) =
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
         setup_test_with_exchange(ExchangeStatus::Pending).await;
 
     let code = "probe-pending";
@@ -156,15 +156,14 @@ async fn test_create_geo_probe_exchange_not_activated() {
             AccountMeta::new_readonly(exchange_pubkey, false),
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
-            AccountMeta::new(payer_pubkey, true),
+            AccountMeta::new(payer.pubkey(), true),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
         ],
     );
 
-    let payer = Keypair::from_bytes(&[0u8; 64]).unwrap();
     let tx = Transaction::new_signed_with_payer(
         &[ix],
-        Some(&payer_pubkey),
+        Some(&payer.pubkey()),
         &[&payer],
         *recent_blockhash.read().await,
     );
@@ -176,7 +175,7 @@ async fn test_create_geo_probe_exchange_not_activated() {
 
 #[tokio::test]
 async fn test_update_geo_probe_success() {
-    let (mut banks_client, program_id, recent_blockhash, payer_pubkey, exchange_pubkey) =
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
         setup_test_with_exchange(ExchangeStatus::Activated).await;
 
     // First create a GeoProbe
@@ -202,15 +201,14 @@ async fn test_update_geo_probe_success() {
             AccountMeta::new_readonly(exchange_pubkey, false),
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
-            AccountMeta::new(payer_pubkey, true),
+            AccountMeta::new(payer.pubkey(), true),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
         ],
     );
 
-    let payer = Keypair::from_bytes(&[0u8; 64]).unwrap();
     let tx = Transaction::new_signed_with_payer(
         &[create_ix],
-        Some(&payer_pubkey),
+        Some(&payer.pubkey()),
         &[&payer],
         *recent_blockhash.read().await,
     );
@@ -231,13 +229,13 @@ async fn test_update_geo_probe_success() {
             AccountMeta::new(probe_pda, false),
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
-            AccountMeta::new(payer_pubkey, true),
+            AccountMeta::new(payer.pubkey(), true),
         ],
     );
 
     let tx = Transaction::new_signed_with_payer(
         &[update_ix],
-        Some(&payer_pubkey),
+        Some(&payer.pubkey()),
         &[&payer],
         *recent_blockhash.read().await,
     );
@@ -257,7 +255,7 @@ async fn test_update_geo_probe_success() {
 
 #[tokio::test]
 async fn test_delete_geo_probe_success() {
-    let (mut banks_client, program_id, recent_blockhash, payer_pubkey, exchange_pubkey) =
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
         setup_test_with_exchange(ExchangeStatus::Activated).await;
 
     // First create a GeoProbe
@@ -283,15 +281,14 @@ async fn test_delete_geo_probe_success() {
             AccountMeta::new_readonly(exchange_pubkey, false),
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
-            AccountMeta::new(payer_pubkey, true),
+            AccountMeta::new(payer.pubkey(), true),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
         ],
     );
 
-    let payer = Keypair::from_bytes(&[0u8; 64]).unwrap();
     let tx = Transaction::new_signed_with_payer(
         &[create_ix],
-        Some(&payer_pubkey),
+        Some(&payer.pubkey()),
         &[&payer],
         *recent_blockhash.read().await,
     );
@@ -305,13 +302,13 @@ async fn test_delete_geo_probe_success() {
             AccountMeta::new(probe_pda, false),
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
-            AccountMeta::new(payer_pubkey, true),
+            AccountMeta::new(payer.pubkey(), true),
         ],
     );
 
     let tx = Transaction::new_signed_with_payer(
         &[delete_ix],
-        Some(&payer_pubkey),
+        Some(&payer.pubkey()),
         &[&payer],
         *recent_blockhash.read().await,
     );

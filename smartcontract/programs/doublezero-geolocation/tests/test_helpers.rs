@@ -14,32 +14,32 @@ use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_program::bpf_loader_upgradeable;
 use solana_program_test::*;
 use solana_sdk::{
-    account::Account,
+    account::AccountSharedData,
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
-    signature::Signer,
+    signature::{Keypair, Signer},
     transaction::Transaction,
 };
 
 /// Builds a bincode-serialized UpgradeableLoaderState::ProgramData account
-pub fn build_program_data_account(upgrade_authority: &Pubkey) -> Account {
+pub fn build_program_data_account(upgrade_authority: &Pubkey) -> AccountSharedData {
     let state = UpgradeableLoaderState::ProgramData {
         slot: 0,
         upgrade_authority_address: Some(*upgrade_authority),
     };
     let data = bincode::serde::encode_to_vec(state, bincode::config::legacy()).unwrap();
 
-    Account {
-        lamports: 1_000_000_000,
-        data,
-        owner: bpf_loader_upgradeable::id(),
-        executable: false,
-        rent_epoch: 0,
-    }
+    let mut account =
+        AccountSharedData::new(1_000_000_000, data.len(), &bpf_loader_upgradeable::id());
+    account.set_data_from_slice(&data);
+    account
 }
 
-/// Creates a mock Exchange account owned by the serviceability program
-pub fn create_mock_exchange_account(owner: &Pubkey, status: ExchangeStatus) -> Account {
+/// Creates a mock Exchange account owned by the serviceability program (for set_account)
+pub fn create_mock_exchange_account_shared(
+    owner: &Pubkey,
+    status: ExchangeStatus,
+) -> AccountSharedData {
     let exchange = Exchange {
         account_type: doublezero_serviceability::state::accounttype::AccountType::Exchange,
         owner: *owner,
@@ -58,17 +58,16 @@ pub fn create_mock_exchange_account(owner: &Pubkey, status: ExchangeStatus) -> A
     };
 
     let data = borsh::to_vec(&exchange).unwrap();
-    Account {
-        lamports: 1_000_000_000,
-        data,
-        owner: serviceability_program_id(),
-        executable: false,
-        rent_epoch: 0,
-    }
+    let mut account =
+        AccountSharedData::new(1_000_000_000, data.len(), &serviceability_program_id());
+    account.set_data_from_slice(&data);
+    account
 }
 
-/// Creates a mock GlobalState account for serviceability
-pub fn create_mock_globalstate_account(foundation_allowlist: Vec<Pubkey>) -> Account {
+/// Creates a mock GlobalState account for serviceability (for set_account)
+pub fn create_mock_globalstate_account_shared(
+    foundation_allowlist: Vec<Pubkey>,
+) -> AccountSharedData {
     let globalstate = GlobalState {
         account_type: doublezero_serviceability::state::accounttype::AccountType::GlobalState,
         bump_seed: 1,
@@ -86,69 +85,10 @@ pub fn create_mock_globalstate_account(foundation_allowlist: Vec<Pubkey>) -> Acc
     };
 
     let data = borsh::to_vec(&globalstate).unwrap();
-    Account {
-        lamports: 1_000_000_000,
-        data,
-        owner: serviceability_program_id(),
-        executable: false,
-        rent_epoch: 0,
-    }
-}
-
-/// Sets up a test environment with initialized ProgramConfig
-#[allow(dead_code)]
-pub async fn setup_test_with_config() -> (
-    BanksClient,
-    Pubkey,
-    tokio::sync::RwLock<solana_sdk::hash::Hash>,
-    Pubkey,
-) {
-    let program_id = Pubkey::new_unique();
-    let mut program_test = ProgramTest::new(
-        "doublezero_geolocation",
-        program_id,
-        processor!(process_instruction),
-    );
-
-    // Add program data account
-    let payer_pubkey = Pubkey::new_unique();
-    let (program_data_pda, _) =
-        Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id());
-    program_test.add_account(program_data_pda, build_program_data_account(&payer_pubkey));
-
-    // Add serviceability GlobalState with foundation allowlist
-    let serviceability_globalstate_pubkey =
-        doublezero_serviceability::pda::get_globalstate_pda(&serviceability_program_id()).0;
-    program_test.add_account(
-        serviceability_globalstate_pubkey,
-        create_mock_globalstate_account(vec![payer_pubkey]),
-    );
-
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
-    let recent_blockhash = tokio::sync::RwLock::new(recent_blockhash);
-
-    // Initialize ProgramConfig
-    let (program_config_pda, _) = get_program_config_pda(&program_id);
-    let ix = Instruction::new_with_borsh(
-        program_id,
-        &GeolocationInstruction::InitProgramConfig(InitProgramConfigArgs {}),
-        vec![
-            AccountMeta::new(program_config_pda, false),
-            AccountMeta::new_readonly(program_data_pda, false),
-            AccountMeta::new(payer.pubkey(), true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
-        ],
-    );
-
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&payer.pubkey()),
-        &[&payer],
-        *recent_blockhash.read().await,
-    );
-    banks_client.process_transaction(tx).await.unwrap();
-
-    (banks_client, program_id, recent_blockhash, payer.pubkey())
+    let mut account =
+        AccountSharedData::new(1_000_000_000, data.len(), &serviceability_program_id());
+    account.set_data_from_slice(&data);
+    account
 }
 
 /// Sets up test with config and an exchange
@@ -158,37 +98,36 @@ pub async fn setup_test_with_exchange(
     BanksClient,
     Pubkey,
     tokio::sync::RwLock<solana_sdk::hash::Hash>,
-    Pubkey,
+    Keypair,
     Pubkey,
 ) {
     let program_id = Pubkey::new_unique();
-    let mut program_test = ProgramTest::new(
+    let program_test = ProgramTest::new(
         "doublezero_geolocation",
         program_id,
         processor!(process_instruction),
     );
 
-    // Add program data account
-    let payer_pubkey = Pubkey::new_unique();
+    // Start with context to be able to set accounts after
+    let mut context = program_test.start_with_context().await;
+    let payer_pubkey = context.payer.pubkey();
+
+    // Inject the program_data account that the upgrade-authority check expects.
     let (program_data_pda, _) =
         Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id());
-    program_test.add_account(program_data_pda, build_program_data_account(&payer_pubkey));
+    let program_data_account = build_program_data_account(&payer_pubkey);
+    context.set_account(&program_data_pda, &program_data_account);
 
-    // Add serviceability GlobalState with foundation allowlist
+    // Add serviceability GlobalState with foundation allowlist including the payer
     let serviceability_globalstate_pubkey =
         doublezero_serviceability::pda::get_globalstate_pda(&serviceability_program_id()).0;
-    program_test.add_account(
-        serviceability_globalstate_pubkey,
-        create_mock_globalstate_account(vec![payer_pubkey]),
-    );
+    let globalstate_account = create_mock_globalstate_account_shared(vec![payer_pubkey]);
+    context.set_account(&serviceability_globalstate_pubkey, &globalstate_account);
 
     // Add exchange account
     let exchange_pubkey = Pubkey::new_unique();
-    let exchange_account = create_mock_exchange_account(&payer_pubkey, exchange_status);
-    program_test.add_account(exchange_pubkey, exchange_account);
-
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
-    let recent_blockhash = tokio::sync::RwLock::new(recent_blockhash);
+    let exchange_account = create_mock_exchange_account_shared(&payer_pubkey, exchange_status);
+    context.set_account(&exchange_pubkey, &exchange_account);
 
     // Initialize ProgramConfig
     let (program_config_pda, _) = get_program_config_pda(&program_id);
@@ -198,24 +137,26 @@ pub async fn setup_test_with_exchange(
         vec![
             AccountMeta::new(program_config_pda, false),
             AccountMeta::new_readonly(program_data_pda, false),
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(payer_pubkey, true),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
         ],
     );
 
     let tx = Transaction::new_signed_with_payer(
         &[ix],
-        Some(&payer.pubkey()),
-        &[&payer],
-        *recent_blockhash.read().await,
+        Some(&payer_pubkey),
+        &[&context.payer],
+        context.last_blockhash,
     );
-    banks_client.process_transaction(tx).await.unwrap();
+    context.banks_client.process_transaction(tx).await.unwrap();
+
+    let recent_blockhash = tokio::sync::RwLock::new(context.last_blockhash);
 
     (
-        banks_client,
+        context.banks_client,
         program_id,
         recent_blockhash,
-        payer.pubkey(),
+        context.payer,
         exchange_pubkey,
     )
 }

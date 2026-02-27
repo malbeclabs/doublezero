@@ -1,9 +1,9 @@
 name: e2e
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'hotfix/**' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, 'hotfix/**' ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}

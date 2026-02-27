@@ -18,8 +18,8 @@ import (
 )
 
 // TestE2E_Link_OnchainAllocation tests that links are activated with on-chain resource allocation.
-// When the activator runs with --onchain-allocation flag, it should allocate tunnel_id and tunnel_net
-// from the ResourceExtension bitmaps on-chain, rather than from local allocators.
+// When the OnChainAllocation feature flag is enabled in GlobalState, the activator allocates
+// tunnel_id and tunnel_net from the ResourceExtension bitmaps on-chain, rather than from local allocators.
 func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	t.Parallel()
 

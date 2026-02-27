@@ -146,3 +146,18 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 
 	return nil
 }
+
+// SetOnchainAllocationFeatureFlag enables the OnChainAllocation feature flag in GlobalState.
+func (dn *Devnet) SetOnchainAllocationFeatureFlag(ctx context.Context) error {
+	dn.log.Debug("==> Enabling onchain-allocation feature flag")
+
+	_, err := dn.Manager.Exec(ctx, []string{
+		"doublezero", "global-config", "feature-flags", "set", "--enable", "onchain-allocation",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to enable onchain-allocation feature flag: %w", err)
+	}
+
+	dn.log.Debug("--> Onchain-allocation feature flag enabled")
+	return nil
+}

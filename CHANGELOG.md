@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 - Activator
     - Adds a stateless mode for when onchain allocation is enabled. This prevents activator/onchain from becoming out-of-sync.
+    - `--onchain-allocation` cli flag replaced with feature flag from GlobalState onchain
 - SDK
   - Add retry with exponential backoff (3 retries, 500ms–5s) to all read-only RPC calls in `DZClient`, improving resilience to transient RPC timeouts
 - CLI

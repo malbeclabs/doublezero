@@ -445,6 +445,13 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 		}
 	}
 
+	// Set the onchain allocation feature flag if enabled.
+	if d.Spec.Activator.OnchainAllocation != nil && *d.Spec.Activator.OnchainAllocation {
+		if err := d.SetOnchainAllocationFeatureFlag(ctx); err != nil {
+			return fmt.Errorf("failed to set onchain allocation feature flag: %w", err)
+		}
+	}
+
 	// Start the controller if it's not already running.
 	if _, err := d.Controller.StartIfNotRunning(ctx); err != nil {
 		return fmt.Errorf("failed to start controller: %w", err)

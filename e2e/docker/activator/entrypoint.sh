@@ -28,13 +28,7 @@ doublezero config set --url $DZ_LEDGER_URL
 doublezero config set --ws $DZ_LEDGER_WS
 doublezero config set --program-id $DZ_SERVICEABILITY_PROGRAM_ID
 
-# Build activator command with optional flags.
-# On-chain allocation is enabled by default. Set DZ_ONCHAIN_ALLOCATION=false to disable.
-ACTIVATOR_CMD="doublezero-activator --program-id ${DZ_SERVICEABILITY_PROGRAM_ID} --rpc ${DZ_LEDGER_URL} --ws ${DZ_LEDGER_WS} --keypair /root/.config/doublezero/id.json"
-
-if [ "${DZ_ONCHAIN_ALLOCATION:-true}" != "false" ]; then
-  ACTIVATOR_CMD="${ACTIVATOR_CMD} --onchain-allocation"
-fi
-
 # Start the activator.
-exec ${ACTIVATOR_CMD}
+# The onchain allocation mode is determined by the OnChainAllocation feature flag
+# in the GlobalState account on the smart contract.
+exec doublezero-activator --program-id ${DZ_SERVICEABILITY_PROGRAM_ID} --rpc ${DZ_LEDGER_URL} --ws ${DZ_LEDGER_WS} --keypair /root/.config/doublezero/id.json

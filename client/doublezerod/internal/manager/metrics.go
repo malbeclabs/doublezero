@@ -41,6 +41,14 @@ var (
 		[]string{labelServiceType, labelStatus},
 	)
 
+	metricUpdatesTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "doublezero_reconciler_updates_total",
+			Help: "Total number of incremental group update attempts",
+		},
+		[]string{labelServiceType, labelStatus},
+	)
+
 	metricMatchedUsers = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "doublezero_reconciler_matched_users",

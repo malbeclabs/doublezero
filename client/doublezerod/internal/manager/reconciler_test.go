@@ -1498,6 +1498,153 @@ func TestStartup_DaemonRestart_WasDisabled(t *testing.T) {
 	}
 }
 
+// --- incremental group update tests ---
+
+func TestReconcile_IncrementalUpdateOnGroupChange(t *testing.T) {
+	devicePK := [32]byte{1}
+	mcastGroupPK1 := [32]byte{2}
+	mcastGroupPK2 := [32]byte{3}
+	clientIP := net.IPv4(1, 2, 3, 4).To4()
+
+	// Start with one publisher group.
+	user := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
+	user.Publishers = [][32]uint8{mcastGroupPK1}
+
+	fetcher := &mockFetcher{
+		data: &serviceability.ProgramData{
+			Config:  testConfig(),
+			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
+			Users:   []serviceability.User{user},
+			MulticastGroups: []serviceability.MulticastGroup{
+				{PubKey: mcastGroupPK1, MulticastIp: [4]uint8{239, 0, 0, 1}},
+				{PubKey: mcastGroupPK2, MulticastIp: [4]uint8{239, 0, 0, 2}},
+			},
+		},
+	}
+
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
+
+	if n.MulticastService == nil {
+		t.Fatal("expected multicast service to be provisioned")
+	}
+	origService := n.MulticastService
+
+	// Add a second publisher group — only groups changed, infra is the same.
+	user.Publishers = [][32]uint8{mcastGroupPK1, mcastGroupPK2}
+	fetcher.mu.Lock()
+	fetcher.data.Users = []serviceability.User{user}
+	fetcher.mu.Unlock()
+
+	n.reconcile(context.Background())
+
+	// Service pointer should be preserved (not re-created).
+	if n.MulticastService != origService {
+		t.Fatal("expected service pointer to be preserved during incremental update")
+	}
+
+	// ProvisionRequest should reflect the updated groups.
+	pr := n.MulticastService.ProvisionRequest()
+	if len(pr.MulticastPubGroups) != 2 {
+		t.Fatalf("expected 2 pub groups after incremental update, got %d", len(pr.MulticastPubGroups))
+	}
+}
+
+func TestReconcile_FullReprovisionOnInfraChange(t *testing.T) {
+	devicePK := [32]byte{1}
+	mcastGroupPK := [32]byte{2}
+	clientIP := net.IPv4(1, 2, 3, 4).To4()
+
+	user := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
+	user.Publishers = [][32]uint8{mcastGroupPK}
+
+	fetcher := &mockFetcher{
+		data: &serviceability.ProgramData{
+			Config:  testConfig(),
+			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
+			Users:   []serviceability.User{user},
+			MulticastGroups: []serviceability.MulticastGroup{
+				{PubKey: mcastGroupPK, MulticastIp: [4]uint8{239, 0, 0, 1}},
+			},
+		},
+	}
+
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
+
+	if n.MulticastService == nil {
+		t.Fatal("expected multicast service to be provisioned")
+	}
+	origService := n.MulticastService
+
+	// Change tunnel endpoint (infra change) — should trigger full reprovision.
+	user.TunnelEndpoint = [4]uint8{10, 0, 0, 99}
+	fetcher.mu.Lock()
+	fetcher.data.Users = []serviceability.User{user}
+	fetcher.mu.Unlock()
+
+	n.reconcile(context.Background())
+
+	if n.MulticastService == nil {
+		t.Fatal("expected multicast service to still be provisioned after reprovision")
+	}
+	if n.MulticastService == origService {
+		t.Fatal("expected service to be re-created (full reprovision) when infra changed")
+	}
+}
+
+func TestReconcile_IncrementalUpdateFallbackToReprovision(t *testing.T) {
+	devicePK := [32]byte{1}
+	mcastGroupPK1 := [32]byte{2}
+	mcastGroupPK2 := [32]byte{3}
+	clientIP := net.IPv4(1, 2, 3, 4).To4()
+
+	// Start as subscriber only.
+	user := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
+	user.Subscribers = [][32]uint8{mcastGroupPK1}
+
+	fetcher := &mockFetcher{
+		data: &serviceability.ProgramData{
+			Config:  testConfig(),
+			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
+			Users:   []serviceability.User{user},
+			MulticastGroups: []serviceability.MulticastGroup{
+				{PubKey: mcastGroupPK1, MulticastIp: [4]uint8{239, 0, 0, 1}},
+				{PubKey: mcastGroupPK2, MulticastIp: [4]uint8{239, 0, 0, 2}},
+			},
+		},
+	}
+
+	n := newTestNLM(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
+
+	if n.MulticastService == nil {
+		t.Fatal("expected multicast service to be provisioned")
+	}
+	origService := n.MulticastService
+
+	// Gain publisher role (subscriber → subscriber+publisher). This is a role
+	// transition that UpdateGroups will reject, forcing a full reprovision.
+	user.Subscribers = [][32]uint8{mcastGroupPK1}
+	user.Publishers = [][32]uint8{mcastGroupPK2}
+	fetcher.mu.Lock()
+	fetcher.data.Users = []serviceability.User{user}
+	fetcher.mu.Unlock()
+
+	n.reconcile(context.Background())
+
+	if n.MulticastService == nil {
+		t.Fatal("expected multicast service to still be provisioned after fallback reprovision")
+	}
+	if n.MulticastService == origService {
+		t.Fatal("expected service to be re-created (fallback to full reprovision)")
+	}
+	pr := n.MulticastService.ProvisionRequest()
+	if len(pr.MulticastPubGroups) != 1 {
+		t.Fatalf("expected 1 pub group after reprovision, got %d", len(pr.MulticastPubGroups))
+	}
+}
+
 // --- helpers to pre-provision services ---
 
 func provisionUnicast(t *testing.T, n *NetlinkManager) {

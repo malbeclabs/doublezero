@@ -110,6 +110,10 @@ func (m *MockPIMServer) Start(conn pim.RawConner, iface string, tunnelAddr net.I
 	return nil
 }
 
+func (m *MockPIMServer) UpdateGroups(groups []net.IP) error {
+	return nil
+}
+
 func (m *MockPIMServer) Close() error {
 	return nil
 }
@@ -129,6 +133,13 @@ func (m *MockHeartbeatSender) Start(iface string, srcIP net.IP, groups []net.IP,
 	m.srcIP = srcIP
 	m.groups = groups
 	m.ttl = ttl
+	return nil
+}
+
+func (m *MockHeartbeatSender) UpdateGroups(groups []net.IP) error {
+	m.closed = true
+	m.started = true
+	m.groups = groups
 	return nil
 }
 

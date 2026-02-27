@@ -39,6 +39,9 @@ type PacketConner interface {
 type HeartbeatSender struct {
 	done chan struct{}
 	wg   *sync.WaitGroup
+	mu   sync.Mutex
+	dsts []*net.UDPAddr
+	conn PacketConner
 }
 
 func NewHeartbeatSender() *HeartbeatSender {
@@ -62,6 +65,24 @@ func (h *HeartbeatSender) Start(iface string, srcIP net.IP, groups []net.IP, ttl
 	return h.startWithConn(p, intf, groups, ttl, interval)
 }
 
+// UpdateGroups applies a new set of multicast groups in-place without
+// restarting the goroutine or connection. It sends an immediate heartbeat
+// to the new destinations so callers don't have to wait for the next tick.
+func (h *HeartbeatSender) UpdateGroups(groups []net.IP) error {
+	dsts := make([]*net.UDPAddr, len(groups))
+	for i, group := range groups {
+		dsts[i] = &net.UDPAddr{IP: group, Port: HeartbeatPort}
+	}
+
+	h.mu.Lock()
+	h.dsts = dsts
+	conn := h.conn
+	h.mu.Unlock()
+
+	sendHeartbeats(conn, dsts)
+	return nil
+}
+
 // startWithConn is the internal start method that accepts a pre-built connection for testing.
 func (h *HeartbeatSender) startWithConn(p PacketConner, intf *net.Interface, groups []net.IP, ttl int, interval time.Duration) error {
 	if err := p.SetMulticastTTL(ttl); err != nil {
@@ -78,6 +99,11 @@ func (h *HeartbeatSender) startWithConn(p PacketConner, intf *net.Interface, gro
 		dsts[i] = &net.UDPAddr{IP: group, Port: HeartbeatPort}
 	}
 
+	h.mu.Lock()
+	h.dsts = dsts
+	h.conn = p
+	h.mu.Unlock()
+
 	h.wg = &sync.WaitGroup{}
 	h.wg.Add(1)
 	go func() {
@@ -85,14 +111,20 @@ func (h *HeartbeatSender) startWithConn(p PacketConner, intf *net.Interface, gro
 		defer h.wg.Done()
 
 		// Send immediately before starting ticker so we don't delay by the interval.
-		sendHeartbeats(p, dsts)
+		h.mu.Lock()
+		currentDsts := h.dsts
+		h.mu.Unlock()
+		sendHeartbeats(p, currentDsts)
 
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				sendHeartbeats(p, dsts)
+				h.mu.Lock()
+				currentDsts := h.dsts
+				h.mu.Unlock()
+				sendHeartbeats(p, currentDsts)
 			case <-h.done:
 				return
 			}

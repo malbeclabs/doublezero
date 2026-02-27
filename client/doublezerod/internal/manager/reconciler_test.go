@@ -69,6 +69,7 @@ func (m *mockBgpServer) GetPeerStatus(net.IP) bgp.Session          { return bgp.
 type mockPIMServer struct{}
 
 func (m *mockPIMServer) Start(pim.RawConner, string, net.IP, []net.IP) error { return nil }
+func (m *mockPIMServer) UpdateGroups([]net.IP) error                         { return nil }
 func (m *mockPIMServer) Close() error                                        { return nil }
 
 type mockHeartbeatSender struct{}
@@ -76,7 +77,8 @@ type mockHeartbeatSender struct{}
 func (m *mockHeartbeatSender) Start(string, net.IP, []net.IP, int, time.Duration) error {
 	return nil
 }
-func (m *mockHeartbeatSender) Close() error { return nil }
+func (m *mockHeartbeatSender) UpdateGroups([]net.IP) error { return nil }
+func (m *mockHeartbeatSender) Close() error                { return nil }
 
 // --- test helpers ---
 

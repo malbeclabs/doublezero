@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.9.0](https://github.com/malbeclabs/doublezero/compare/client/v0.8.11...client/v0.9.0) - 2026-02-27
+
+### Breaking
+
 - CLI: `--bandwidth` is now a required argument for `doublezero device interface create` and `doublezero device interface update`; callers that previously omitted it (relying on the default of `0`) must now explicitly pass a value with a unit (e.g. `--bandwidth 10Gbps`)
 
 ### Changes

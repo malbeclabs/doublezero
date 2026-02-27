@@ -98,8 +98,8 @@ A geoProbe assigned to a specific DZD for periodic latency measurement, defined 
 Outbound Probing Flow
 ```
   ┌──────────┐                  ┌───────────┐                  ┌───────────┐
-  │          │<─────Reply───────│           │<─────Reply───────│           │
-  │   DZD    │──────TWAMP──────>│   Probe   │──────Probe──────>│  Target   │
+  │          │──────TWAMP──────>│           │──────Probe──────>│           │
+  │   DZD    │<─────Reply───────│   Probe   │<─────Reply───────│  Target   │
   │          │──Signed Offset──>│           │──Signed Offset──>│           │
   └──────────┘                  └───────────┘  w/ references   └───────────┘
       ^ │                          ^  │                             │
@@ -117,8 +117,8 @@ IP    │ │ Offset        Target IPs │  │ Measured             Offset │
 Inbound Probing Flow
 ```
   ┌──────────┐                  ┌───────────┐                  ┌───────────┐
-  │          │<─────Reply───────│           │<──Signed Probe───│           │
-  │   DZD    │──────TWAMP──────>│   Probe   │───Signed Reply──>│  Target   │
+  │          │──────TWAMP──────>│           │<──Signed Probe───│           │
+  │   DZD    │<─────Reply───────│   Probe   │───Signed Reply──>│  Target   │
   │          │──Signed Offset──>│           │                  │           │
   └──────────┘                  └───────────┘                  └───────────┘
       ^ │ Measured                 ^  │                             │
@@ -196,6 +196,7 @@ pub struct GeoProbe {
     pub location_offset_port: u16,             // UDP listen port (default 8923)
     pub metrics_publisher_pk: Pubkey,          // Signing key for telemetry
     pub reference_count: u32,                  // GeolocationTargets referencing this probe
+    // Variable-length fields must be at the end for Borsh deserialization
     pub code: String,                          // e.g., "ams-probe-01" (max 32 bytes)
     pub parent_devices: Vec<Pubkey>,           // DZDs that measure this probe
 }

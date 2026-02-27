@@ -107,7 +107,7 @@ impl UpdateDeviceInterfaceCliCommand {
                 for iface in &dev.interfaces {
                     let iface_v = iface.into_current_version();
                     // Skip the interface being updated
-                    if *pk == device_pk && iface_v.name == self.name {
+                    if *pk == device_pk && iface_v.name.eq_ignore_ascii_case(&self.name) {
                         continue;
                     }
                     if iface_v.ip_net == *ip_net {

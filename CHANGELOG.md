@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Telemetry
+  - Fix global monitor crash when IBRL and multicast users share the same client IP but are on different devices, by preferring non-multicast users in client IP lookups to match status device selection
+
 ## [v0.9.0](https://github.com/malbeclabs/doublezero/compare/client/v0.8.11...client/v0.9.0) - 2026-02-27
 
 ### Breaking

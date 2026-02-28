@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Smartcontract
+  - Allow sentinel authority to add/remove multicast publisher and subscriber allowlist entries
 - Telemetry
   - Fix global monitor crash when IBRL and multicast users share the same client IP but are on different devices, by preferring non-multicast users in client IP lookups to match status device selection
 

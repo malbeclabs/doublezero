@@ -78,6 +78,7 @@ pub fn process_remove_multicast_sub_allowlist(
 
     // Check whether mgroup is authorized
     let is_authorized = (mgroup.owner == *payer_account.key)
+        || globalstate.sentinel_authority_pk == *payer_account.key
         || globalstate.foundation_allowlist.contains(payer_account.key);
     if !is_authorized {
         return Err(DoubleZeroError::NotAllowed.into());

@@ -211,6 +211,7 @@ func (c *Client) Start(ctx context.Context) error {
 	if c.Spec.LatencyProbeTunnelEndpoints {
 		extraArgs = append(extraArgs, "-latency-probe-tunnel-endpoints")
 	}
+	extraArgs = append(extraArgs, "-client-ip", clientCYOAIP)
 
 	// Determine QA agent port if enabled.
 	qaAgentPort := c.Spec.QAAgentPort

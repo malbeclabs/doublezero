@@ -107,10 +107,9 @@ func TestNetlinkManager_ProvisionRequestValidation(t *testing.T) {
 func TestHttpStatus(t *testing.T) {
 	m := &MockNetlink{}
 	b := &MockBgpServer{}
-	db := &MockDb{state: nil}
 	pim := &MockPIMServer{}
 	heartbeat := &MockHeartbeatSender{}
-	manager := manager.NewNetlinkManager(m, b, db, pim, heartbeat)
+	mgr := manager.NewNetlinkManager(m, b, pim, heartbeat)
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {
@@ -128,8 +127,8 @@ func TestHttpStatus(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /provision", manager.ServeProvision)
-	mux.HandleFunc("GET /status", manager.ServeStatus)
+	mux.HandleFunc("POST /provision", mgr.ServeProvision)
+	mux.HandleFunc("GET /status", mgr.ServeStatus)
 
 	opts := []api.Option{
 		api.WithBaseContext(ctx),
@@ -172,14 +171,6 @@ func TestHttpStatus(t *testing.T) {
 	})
 
 	t.Run("provisioned_tunnel_status", func(t *testing.T) {
-		db.state = []*api.ProvisionRequest{
-			{
-				TunnelSrc:    net.IP{1, 1, 1, 1},
-				TunnelDst:    net.IP{2, 2, 2, 2},
-				DoubleZeroIP: net.IP{3, 3, 3, 3},
-				UserType:     api.UserTypeIBRL,
-			},
-		}
 		provisionBody := `{
 					"tunnel_src": "1.1.1.1",
 					"tunnel_dst": "2.2.2.2",
@@ -220,10 +211,9 @@ func TestHttpStatus(t *testing.T) {
 func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 	m := &MockNetlink{}
 	b := &MockBgpServer{}
-	db := &MockDb{state: []*api.ProvisionRequest{}}
 	pim := &MockPIMServer{}
 	heartbeat := &MockHeartbeatSender{}
-	manager := manager.NewNetlinkManager(m, b, db, pim, heartbeat)
+	mgr := manager.NewNetlinkManager(m, b, pim, heartbeat)
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {
@@ -241,18 +231,18 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /provision", manager.ServeProvision)
-	mux.HandleFunc("POST /remove", manager.ServeRemove)
-	mux.HandleFunc("GET /status", manager.ServeStatus)
+	mux.HandleFunc("POST /provision", mgr.ServeProvision)
+	mux.HandleFunc("POST /remove", mgr.ServeRemove)
+	mux.HandleFunc("GET /status", mgr.ServeStatus)
 
 	opts := []api.Option{
 		api.WithBaseContext(ctx),
 		api.WithHandler(mux),
 		api.WithSockFile(f.Name()),
 	}
-	api := api.NewApiServer(opts...)
+	apiSrv := api.NewApiServer(opts...)
 	go func() {
-		if err := api.Serve(lis); err != nil {
+		if err := apiSrv.Serve(lis); err != nil {
 			t.Errorf("api error: %v", err)
 		}
 	}()
@@ -372,15 +362,15 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 			t.Errorf("CreateIPRules mismatch (-want +got): %s\n", diff)
 		}
 		// Make sure /remove actually removes the rules
-		if test.Endpoint == "/remove" && len(manager.Rules) > 0 {
-			t.Errorf("Call to remove did not remove rules from netlink manager: %v", manager.Rules)
+		if test.Endpoint == "/remove" && len(mgr.Rules) > 0 {
+			t.Errorf("Call to remove did not remove rules from netlink manager: %v", mgr.Rules)
 		}
 		if test.Endpoint == "/remove" && !slices.Contains(m.callLog, "RuleDel") {
 			t.Errorf("Call to remove did not call Netlink.RuleDel: %v", m.callLog)
 		}
 		// Make sure /remove actually removes the routes
-		if test.Endpoint == "/remove" && len(manager.Routes) > 0 {
-			t.Errorf("Call to remove did not remove routes from netlink manager: %v", manager.Routes)
+		if test.Endpoint == "/remove" && len(mgr.Routes) > 0 {
+			t.Errorf("Call to remove did not remove routes from netlink manager: %v", mgr.Routes)
 		}
 		if test.Endpoint == "/remove" && !slices.Contains(m.callLog, "RouteDelete") {
 			t.Errorf("Call to remove did not call Netlink.RouteDelete: %v", m.callLog)
@@ -397,9 +387,69 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 	}
 }
 
+func TestNetlinkManager_GetProvisionedServices(t *testing.T) {
+	t.Run("no_services", func(t *testing.T) {
+		mgr := manager.NewNetlinkManager(&MockNetlink{}, &MockBgpServer{}, &MockPIMServer{}, &MockHeartbeatSender{})
+		reqs := mgr.GetProvisionedServices()
+		if len(reqs) != 0 {
+			t.Fatalf("expected 0 provisioned services, got %d", len(reqs))
+		}
+	})
+
+	t.Run("unicast_only", func(t *testing.T) {
+		mgr := manager.NewNetlinkManager(&MockNetlink{}, &MockBgpServer{}, &MockPIMServer{}, &MockHeartbeatSender{})
+		pr := api.ProvisionRequest{
+			UserType:           api.UserTypeIBRL,
+			TunnelSrc:          net.IPv4(1, 1, 1, 1),
+			TunnelDst:          net.IPv4(2, 2, 2, 2),
+			TunnelNet:          &net.IPNet{IP: net.IPv4(169, 254, 0, 0), Mask: []byte{255, 255, 255, 254}},
+			DoubleZeroIP:       net.IPv4(10, 0, 0, 1),
+			DoubleZeroPrefixes: []*net.IPNet{{IP: net.IPv4(10, 0, 0, 0), Mask: []byte{255, 255, 255, 0}}},
+		}
+		if err := mgr.Provision(pr); err != nil {
+			t.Fatalf("provision error: %v", err)
+		}
+
+		reqs := mgr.GetProvisionedServices()
+		if len(reqs) != 1 {
+			t.Fatalf("expected 1 provisioned service, got %d", len(reqs))
+		}
+		if reqs[0].UserType != api.UserTypeIBRL {
+			t.Fatalf("expected UserTypeIBRL, got %v", reqs[0].UserType)
+		}
+	})
+
+	t.Run("after_remove", func(t *testing.T) {
+		mgr := manager.NewNetlinkManager(&MockNetlink{}, &MockBgpServer{}, &MockPIMServer{}, &MockHeartbeatSender{})
+		pr := api.ProvisionRequest{
+			UserType:           api.UserTypeIBRL,
+			TunnelSrc:          net.IPv4(1, 1, 1, 1),
+			TunnelDst:          net.IPv4(2, 2, 2, 2),
+			TunnelNet:          &net.IPNet{IP: net.IPv4(169, 254, 0, 0), Mask: []byte{255, 255, 255, 254}},
+			DoubleZeroIP:       net.IPv4(10, 0, 0, 1),
+			DoubleZeroPrefixes: []*net.IPNet{{IP: net.IPv4(10, 0, 0, 0), Mask: []byte{255, 255, 255, 0}}},
+		}
+		if err := mgr.Provision(pr); err != nil {
+			t.Fatalf("provision error: %v", err)
+		}
+		if err := mgr.Remove(api.UserTypeIBRL); err != nil {
+			t.Fatalf("remove error: %v", err)
+		}
+
+		reqs := mgr.GetProvisionedServices()
+		if len(reqs) != 0 {
+			t.Fatalf("expected 0 provisioned services after remove, got %d", len(reqs))
+		}
+	})
+}
+
 type MockPIMServer struct{}
 
 func (m *MockPIMServer) Start(conn pim.RawConner, iface string, tunnelAddr net.IP, group []net.IP) error {
+	return nil
+}
+
+func (m *MockPIMServer) UpdateGroups(groups []net.IP) error {
 	return nil
 }
 
@@ -410,6 +460,10 @@ func (m *MockPIMServer) Close() error {
 type MockHeartbeatSender struct{}
 
 func (m *MockHeartbeatSender) Start(iface string, srcIP net.IP, groups []net.IP, ttl int, interval time.Duration) error {
+	return nil
+}
+
+func (m *MockHeartbeatSender) UpdateGroups(groups []net.IP) error {
 	return nil
 }
 
@@ -494,14 +548,3 @@ func (m *MockNetlink) RuleDel(n *routing.IPRule) error {
 func (m *MockNetlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return m.routes, nil
 }
-
-type MockDb struct {
-	state []*api.ProvisionRequest
-}
-
-func (m *MockDb) GetState(usertypes ...api.UserType) []*api.ProvisionRequest {
-	return m.state
-}
-
-func (m *MockDb) DeleteState(u api.UserType) error        { return nil }
-func (m *MockDb) SaveState(p *api.ProvisionRequest) error { return nil }

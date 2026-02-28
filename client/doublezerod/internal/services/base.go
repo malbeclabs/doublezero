@@ -17,18 +17,14 @@ import (
 
 type PIMWriter interface {
 	Start(conn pim.RawConner, iface string, tunnelAddr net.IP, group []net.IP) error
+	UpdateGroups(groups []net.IP) error
 	Close() error
 }
 
 type HeartbeatWriter interface {
 	Start(iface string, srcIP net.IP, groups []net.IP, ttl int, interval time.Duration) error
+	UpdateGroups(groups []net.IP) error
 	Close() error
-}
-
-type DBReaderWriter interface {
-	GetState(userTypes ...api.UserType) []*api.ProvisionRequest
-	DeleteState(u api.UserType) error
-	SaveState(p *api.ProvisionRequest) error
 }
 
 type BGPReaderWriter interface {

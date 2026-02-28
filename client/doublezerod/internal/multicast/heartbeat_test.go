@@ -264,6 +264,64 @@ func TestHeartbeatSender_DoubleClose(t *testing.T) {
 	sender.Close()
 }
 
+func TestHeartbeatSender_UpdateGroups(t *testing.T) {
+	conn := newMockPacketConn()
+	sender := NewHeartbeatSender()
+
+	// Start with one group.
+	intf := &net.Interface{Index: 1, Name: "lo0"}
+	err := sender.startWithConn(conn, intf, []net.IP{net.IPv4(239, 0, 0, 1)}, 32, 10*time.Second)
+	if err != nil {
+		t.Fatalf("failed to start: %v", err)
+	}
+	// Drain the immediate send.
+	<-conn.writeCh
+
+	// Update to two groups on the same running sender/connection.
+	if err := sender.UpdateGroups([]net.IP{net.IPv4(239, 0, 0, 1), net.IPv4(239, 0, 0, 2)}); err != nil {
+		t.Fatalf("UpdateGroups failed: %v", err)
+	}
+
+	// UpdateGroups sends an immediate heartbeat to all new destinations.
+	for i := range 2 {
+		select {
+		case <-conn.writeCh:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timed out waiting for heartbeat %d after update", i)
+		}
+	}
+
+	writes := conn.getWrites()
+	// At least 3 writes: 1 initial + 2 from UpdateGroups immediate send.
+	if len(writes) < 3 {
+		t.Fatalf("expected at least 3 writes, got %d", len(writes))
+	}
+
+	// Verify the last 2 writes went to both groups (from UpdateGroups immediate send).
+	seen := map[string]bool{}
+	for _, w := range writes[len(writes)-2:] {
+		udpAddr := w.dst.(*net.UDPAddr)
+		seen[udpAddr.IP.String()] = true
+	}
+	if !seen["239.0.0.1"] {
+		t.Error("missing heartbeat to 239.0.0.1 after update")
+	}
+	if !seen["239.0.0.2"] {
+		t.Error("missing heartbeat to 239.0.0.2 after update")
+	}
+
+	sender.Close()
+
+	// Verify the connection was NOT closed during UpdateGroups (same conn reused).
+	// It should only be closed after sender.Close().
+	conn.mu.Lock()
+	closed := conn.closed
+	conn.mu.Unlock()
+	if !closed {
+		t.Error("connection should be closed after sender.Close()")
+	}
+}
+
 func TestHeartbeatSender_CloseStopsSending(t *testing.T) {
 	conn := newMockPacketConn()
 	sender := NewHeartbeatSender()

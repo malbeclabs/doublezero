@@ -1,2 +1,0 @@
- Tunnel Status | Last Session Update | Tunnel Name | Tunnel Src | Tunnel Dst | Doublezero IP | User Type | Tenant | Current Device | Lowest Latency Device | Metro | Network
- disconnected  | no session data     |             |            |            |               |           |        | N/A            | ny5-dz01              | N/A   | local

@@ -3,7 +3,6 @@ package services
 import (
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"syscall"
@@ -16,19 +15,18 @@ import (
 type IBRLService struct {
 	bgp            BGPReaderWriter
 	nl             routing.Netlinker
-	db             DBReaderWriter
 	Tunnel         *routing.Tunnel
 	DoubleZeroAddr net.IP
+	provisionReq   *api.ProvisionRequest
 }
 
 func (s *IBRLService) UserType() api.UserType   { return api.UserTypeIBRL }
 func (s *IBRLService) ServiceType() ServiceType { return ServiceTypeUnicast }
 
-func NewIBRLService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter) *IBRLService {
+func NewIBRLService(bgp BGPReaderWriter, nl routing.Netlinker) *IBRLService {
 	return &IBRLService{
 		bgp: bgp,
 		nl:  nl,
-		db:  db,
 	}
 }
 
@@ -55,6 +53,7 @@ func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
 
 	s.Tunnel = tun
 	s.DoubleZeroAddr = p.DoubleZeroIP
+	s.provisionReq = p
 
 	peer := &bgp.PeerConfig{
 		RemoteAddress: s.Tunnel.RemoteOverlay,
@@ -110,12 +109,6 @@ func (s *IBRLService) Teardown() error {
 }
 
 func (s *IBRLService) Status() (*api.StatusResponse, error) {
-	state := s.db.GetState(s.UserType())
-	if state == nil {
-		log.Printf("netlink: no state found for %v", s.UserType())
-		return nil, nil
-	}
-
 	if s.Tunnel == nil {
 		return nil, fmt.Errorf("netlink: saved state is not programmed into client")
 	}
@@ -132,16 +125,19 @@ func (s *IBRLService) Status() (*api.StatusResponse, error) {
 	}, nil
 }
 
+func (s *IBRLService) ProvisionRequest() *api.ProvisionRequest {
+	return s.provisionReq
+}
+
 type IBRLServiceWithAllocatedAddress struct {
 	IBRLService
 }
 
-func NewIBRLServiceWithAllocatedAddress(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter) *IBRLServiceWithAllocatedAddress {
+func NewIBRLServiceWithAllocatedAddress(bgp BGPReaderWriter, nl routing.Netlinker) *IBRLServiceWithAllocatedAddress {
 	return &IBRLServiceWithAllocatedAddress{
 		IBRLService{
 			bgp: bgp,
 			nl:  nl,
-			db:  db,
 		},
 	}
 }
@@ -152,12 +148,6 @@ func (s *IBRLServiceWithAllocatedAddress) UserType() api.UserType {
 func (s *IBRLServiceWithAllocatedAddress) ServiceType() ServiceType { return ServiceTypeUnicast }
 
 func (s *IBRLServiceWithAllocatedAddress) Status() (*api.StatusResponse, error) {
-	state := s.db.GetState(s.UserType())
-	if state == nil {
-		log.Printf("netlink: no state found for %v", s.UserType())
-		return nil, nil
-	}
-
 	if s.Tunnel == nil {
 		return nil, fmt.Errorf("netlink: saved state is not programmed into client")
 	}

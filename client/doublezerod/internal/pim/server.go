@@ -30,21 +30,27 @@ type RawConner interface {
 }
 
 type PIMServer struct {
-	iface  string
-	groups []net.IP
-	done   chan struct{}
-	conn   RawConner
-	wg     *sync.WaitGroup
+	iface      string
+	groups     []net.IP
+	done       chan struct{}
+	conn       RawConner
+	wg         *sync.WaitGroup
+	tunnelAddr net.IP
+	updateCh   chan []net.IP
 }
 
 func NewPIMServer() *PIMServer {
-	return &PIMServer{done: make(chan struct{})}
+	return &PIMServer{
+		done:     make(chan struct{}),
+		updateCh: make(chan []net.IP),
+	}
 }
 
 func (s *PIMServer) Start(conn RawConner, iface string, tunnelAddr net.IP, groups []net.IP) error {
 	s.iface = iface
 	s.groups = groups
 	s.conn = conn
+	s.tunnelAddr = tunnelAddr
 
 	intf, err := net.InterfaceByName(s.iface)
 	if err != nil {
@@ -58,59 +64,94 @@ func (s *PIMServer) Start(conn RawConner, iface string, tunnelAddr net.IP, group
 	s.wg.Add(1)
 	go func() {
 		defer s.conn.Close()
+		defer s.wg.Done()
+
 		// send before we start ticker so we don't delay provisioning time by ticker interval
-		helloMsgBuf, err := constructHelloMessage()
-		if err != nil {
-			slog.Error("failed to serialize PIM hello msg", "error", err)
-		}
-		err = sendMsg(helloMsgBuf, intf, s.conn)
-		if err != nil {
-			slog.Error("failed to send PIM hello msg", "error", err)
-		}
-		joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, RpAddress, nil, joinHoldtime)
-		if err != nil {
-			slog.Error("failed to serialize PIM join msg", "error", err)
-		}
-		err = sendMsg(joinPruneMsgBuf, intf, s.conn)
-		if err != nil {
-			slog.Error("failed to send PIM join msg", "error", err)
-		}
+		sendHelloAndJoin(intf, s.conn, tunnelAddr, s.groups)
 
 		ticker := time.NewTicker(time.Second * 30)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				helloMsgBuf, err := constructHelloMessage()
-				if err != nil {
-					slog.Error("failed to serialize PIM hello msg", "error", err)
+				sendHelloAndJoin(intf, s.conn, tunnelAddr, s.groups)
+			case newGroups := <-s.updateCh:
+				added, removed := ipDiff(s.groups, newGroups)
+				if len(removed) > 0 {
+					buf, err := constructJoinPruneMessage(tunnelAddr, removed, nil, RpAddress, pruneHoldtime)
+					if err != nil {
+						slog.Error("failed to serialize PIM prune msg for removed groups", "error", err)
+					} else if err := sendMsg(buf, intf, s.conn); err != nil {
+						slog.Error("failed to send PIM prune msg for removed groups", "error", err)
+					}
 				}
-				err = sendMsg(helloMsgBuf, intf, s.conn)
-				if err != nil {
-					slog.Error("failed to send PIM hello msg", "error", err)
+				if len(added) > 0 {
+					buf, err := constructJoinPruneMessage(tunnelAddr, added, RpAddress, nil, joinHoldtime)
+					if err != nil {
+						slog.Error("failed to serialize PIM join msg for added groups", "error", err)
+					} else if err := sendMsg(buf, intf, s.conn); err != nil {
+						slog.Error("failed to send PIM join msg for added groups", "error", err)
+					}
 				}
-				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, RpAddress, nil, joinHoldtime)
-				if err != nil {
-					slog.Error("failed to serialize PIM join msg", "error", err)
-				}
-				err = sendMsg(joinPruneMsgBuf, intf, s.conn)
-				if err != nil {
-					slog.Error("failed to send PIM join msg", "error", err)
-				}
+				s.groups = newGroups
 			case <-s.done:
-				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, nil, RpAddress, pruneHoldtime)
+				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, s.groups, nil, RpAddress, pruneHoldtime)
 				if err != nil {
 					slog.Error("failed to serialize PIM prune msg", "error", err)
-				}
-				err = sendMsg(joinPruneMsgBuf, intf, s.conn)
-				if err != nil {
+				} else if err := sendMsg(joinPruneMsgBuf, intf, s.conn); err != nil {
 					slog.Error("failed to send PIM prune msg", "error", err)
 				}
-				s.wg.Done()
 				return
 			}
 		}
 	}()
 	return nil
+}
+
+// UpdateGroups applies a new set of multicast groups in-place without
+// restarting the goroutine or connection. The goroutine computes the diff
+// and sends targeted join/prune messages for added/removed groups.
+func (s *PIMServer) UpdateGroups(groups []net.IP) error {
+	s.updateCh <- groups
+	return nil
+}
+
+func sendHelloAndJoin(intf *net.Interface, conn RawConner, tunnelAddr net.IP, groups []net.IP) {
+	helloMsgBuf, err := constructHelloMessage()
+	if err != nil {
+		slog.Error("failed to serialize PIM hello msg", "error", err)
+	} else if err := sendMsg(helloMsgBuf, intf, conn); err != nil {
+		slog.Error("failed to send PIM hello msg", "error", err)
+	}
+	joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, RpAddress, nil, joinHoldtime)
+	if err != nil {
+		slog.Error("failed to serialize PIM join msg", "error", err)
+	} else if err := sendMsg(joinPruneMsgBuf, intf, conn); err != nil {
+		slog.Error("failed to send PIM join msg", "error", err)
+	}
+}
+
+// ipDiff returns IPs that were added and removed when transitioning from old to new.
+func ipDiff(old, new []net.IP) (added, removed []net.IP) {
+	oldSet := make(map[string]bool, len(old))
+	for _, ip := range old {
+		oldSet[ip.String()] = true
+	}
+	newSet := make(map[string]bool, len(new))
+	for _, ip := range new {
+		newSet[ip.String()] = true
+	}
+	for _, ip := range new {
+		if !oldSet[ip.String()] {
+			added = append(added, ip)
+		}
+	}
+	for _, ip := range old {
+		if !newSet[ip.String()] {
+			removed = append(removed, ip)
+		}
+	}
+	return
 }
 
 func (s *PIMServer) Close() error {

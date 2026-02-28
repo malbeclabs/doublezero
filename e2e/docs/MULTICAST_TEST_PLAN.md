@@ -191,7 +191,7 @@ docker exec dz-local-device-dz1 Cli -p 15 -c "ping 172.16.0.3 repeat 2"
 
 ### 4.1 Connect Subscriber (Client 1 to dz1)
 ```bash
-docker exec dz-local-client-$CLIENT1 doublezero connect multicast subscriber mcast-a mcast-b --client-ip 9.169.90.100 --device dz1 --verbose
+docker exec dz-local-client-$CLIENT1 doublezero connect multicast subscriber mcast-a mcast-b --device dz1 --verbose
 ```
 
 **Verify:** Command completes without error
@@ -200,7 +200,7 @@ docker exec dz-local-client-$CLIENT1 doublezero connect multicast subscriber mca
 
 Connect the publisher to both multicast groups at once:
 ```bash
-docker exec dz-local-client-$CLIENT2 doublezero connect multicast publisher mcast-a mcast-b --client-ip 9.169.90.110 --device dz2 --verbose
+docker exec dz-local-client-$CLIENT2 doublezero connect multicast publisher mcast-a mcast-b --device dz2 --verbose
 ```
 
 **Verify:** Command completes without error
@@ -509,8 +509,8 @@ echo "--- MSDP ---"
 docker exec dz-local-device-dz1 Cli -c "show ip msdp peer"
 
 echo "=== Phase 4: Connect Clients ==="
-docker exec dz-local-client-$CLIENT1 doublezero connect multicast subscriber mcast-a mcast-b --client-ip 9.169.90.100 --device dz1 --verbose
-docker exec dz-local-client-$CLIENT2 doublezero connect multicast publisher mcast-a mcast-b --client-ip 9.169.90.110 --device dz2 --verbose
+docker exec dz-local-client-$CLIENT1 doublezero connect multicast subscriber mcast-a mcast-b --device dz1 --verbose
+docker exec dz-local-client-$CLIENT2 doublezero connect multicast publisher mcast-a mcast-b --device dz2 --verbose
 
 echo "=== Waiting for tunnels ==="
 sleep 30

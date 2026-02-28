@@ -113,14 +113,12 @@ docker exec -it dz-local-manager doublezero access-pass set \
   --user-payer 6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5
 
 # Connect to DoubleZero from the clients
-# NOTE:
-#  - These are example pubkeys in the container names, yours will be different
-#  - The `--client-ip` refers to the containers own IP
+# NOTE: These are example pubkeys in the container names, yours will be different
 docker exec -it dz-local-client-FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S \
-  doublezero connect ibrl --client-ip 10.169.90.100 --device dz1
+  doublezero connect ibrl --device dz1
 
 docker exec -it dz-local-client-6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5 \
-  doublezero connect ibrl --client-ip 10.169.90.110 --device dz2
+  doublezero connect ibrl --device dz2
 
 # List running containers
 docker ps

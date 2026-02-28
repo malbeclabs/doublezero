@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"slices"
+	"strings"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 )
@@ -85,6 +86,167 @@ type ProvisionRequest struct {
 	MulticastPubGroups []net.IP     `json:"mcast_pub_groups"`
 	BgpLocalAsn        uint32       `json:"bgp_local_asn"`
 	BgpRemoteAsn       uint32       `json:"bgp_remote_asn"`
+}
+
+// Equal reports whether two ProvisionRequests describe the same desired state.
+func (p *ProvisionRequest) Equal(other *ProvisionRequest) bool {
+	if p == nil || other == nil {
+		return p == other
+	}
+	if p.UserType != other.UserType {
+		return false
+	}
+	if !p.TunnelSrc.Equal(other.TunnelSrc) || !p.TunnelDst.Equal(other.TunnelDst) {
+		return false
+	}
+	if !ipNetsEqual(p.TunnelNet, other.TunnelNet) {
+		return false
+	}
+	if !p.DoubleZeroIP.Equal(other.DoubleZeroIP) {
+		return false
+	}
+	if p.BgpLocalAsn != other.BgpLocalAsn || p.BgpRemoteAsn != other.BgpRemoteAsn {
+		return false
+	}
+	if !ipSlicesEqual(p.MulticastPubGroups, other.MulticastPubGroups) {
+		return false
+	}
+	if !ipSlicesEqual(p.MulticastSubGroups, other.MulticastSubGroups) {
+		return false
+	}
+	return ipNetSlicesEqual(p.DoubleZeroPrefixes, other.DoubleZeroPrefixes)
+}
+
+// Diff returns a human-readable summary of fields that differ between two
+// ProvisionRequests. Returns an empty string if they are equal.
+func (p *ProvisionRequest) Diff(other *ProvisionRequest) string {
+	if p == nil && other == nil {
+		return ""
+	}
+	if p == nil {
+		return "current is nil"
+	}
+	if other == nil {
+		return "new is nil"
+	}
+
+	var diffs []string
+	if p.UserType != other.UserType {
+		diffs = append(diffs, fmt.Sprintf("UserType: %s -> %s", p.UserType, other.UserType))
+	}
+	if !p.TunnelSrc.Equal(other.TunnelSrc) {
+		diffs = append(diffs, fmt.Sprintf("TunnelSrc: %s -> %s", p.TunnelSrc, other.TunnelSrc))
+	}
+	if !p.TunnelDst.Equal(other.TunnelDst) {
+		diffs = append(diffs, fmt.Sprintf("TunnelDst: %s -> %s", p.TunnelDst, other.TunnelDst))
+	}
+	if !ipNetsEqual(p.TunnelNet, other.TunnelNet) {
+		diffs = append(diffs, fmt.Sprintf("TunnelNet: %s -> %s", p.TunnelNet, other.TunnelNet))
+	}
+	if !p.DoubleZeroIP.Equal(other.DoubleZeroIP) {
+		diffs = append(diffs, fmt.Sprintf("DoubleZeroIP: %s -> %s", p.DoubleZeroIP, other.DoubleZeroIP))
+	}
+	if p.BgpLocalAsn != other.BgpLocalAsn {
+		diffs = append(diffs, fmt.Sprintf("BgpLocalAsn: %d -> %d", p.BgpLocalAsn, other.BgpLocalAsn))
+	}
+	if p.BgpRemoteAsn != other.BgpRemoteAsn {
+		diffs = append(diffs, fmt.Sprintf("BgpRemoteAsn: %d -> %d", p.BgpRemoteAsn, other.BgpRemoteAsn))
+	}
+	if !ipSlicesEqual(p.MulticastPubGroups, other.MulticastPubGroups) {
+		diffs = append(diffs, fmt.Sprintf("MulticastPubGroups: %v -> %v", p.MulticastPubGroups, other.MulticastPubGroups))
+	}
+	if !ipSlicesEqual(p.MulticastSubGroups, other.MulticastSubGroups) {
+		diffs = append(diffs, fmt.Sprintf("MulticastSubGroups: %v -> %v", p.MulticastSubGroups, other.MulticastSubGroups))
+	}
+	if !ipNetSlicesEqual(p.DoubleZeroPrefixes, other.DoubleZeroPrefixes) {
+		diffs = append(diffs, fmt.Sprintf("DoubleZeroPrefixes: count %d -> %d", len(p.DoubleZeroPrefixes), len(other.DoubleZeroPrefixes)))
+	}
+
+	if len(diffs) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("[%s]", strings.Join(diffs, ", "))
+}
+
+// InfraEqual reports whether the infrastructure fields (everything except
+// multicast group lists) of two ProvisionRequests are identical. When this
+// returns true and Equal returns false, only the multicast groups have changed
+// and an incremental update can be applied without tearing down the tunnel.
+func (p *ProvisionRequest) InfraEqual(other *ProvisionRequest) bool {
+	if p == nil || other == nil {
+		return p == other
+	}
+	if p.UserType != other.UserType {
+		return false
+	}
+	if !p.TunnelSrc.Equal(other.TunnelSrc) || !p.TunnelDst.Equal(other.TunnelDst) {
+		return false
+	}
+	if !ipNetsEqual(p.TunnelNet, other.TunnelNet) {
+		return false
+	}
+	if !p.DoubleZeroIP.Equal(other.DoubleZeroIP) {
+		return false
+	}
+	if p.BgpLocalAsn != other.BgpLocalAsn || p.BgpRemoteAsn != other.BgpRemoteAsn {
+		return false
+	}
+	return ipNetSlicesEqual(p.DoubleZeroPrefixes, other.DoubleZeroPrefixes)
+}
+
+// IPSetDiff computes the added and removed IPs between two slices, treating
+// them as sets keyed by their string representation.
+func IPSetDiff(oldIPs, newIPs []net.IP) (added, removed []net.IP) {
+	oldSet := make(map[string]net.IP, len(oldIPs))
+	for _, ip := range oldIPs {
+		oldSet[ip.String()] = ip
+	}
+	newSet := make(map[string]net.IP, len(newIPs))
+	for _, ip := range newIPs {
+		newSet[ip.String()] = ip
+	}
+	for k, ip := range newSet {
+		if _, ok := oldSet[k]; !ok {
+			added = append(added, ip)
+		}
+	}
+	for k, ip := range oldSet {
+		if _, ok := newSet[k]; !ok {
+			removed = append(removed, ip)
+		}
+	}
+	return added, removed
+}
+
+func ipNetsEqual(a, b *net.IPNet) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.IP.Equal(b.IP) && fmt.Sprint(a.Mask) == fmt.Sprint(b.Mask)
+}
+
+func ipSlicesEqual(a, b []net.IP) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !a[i].Equal(b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func ipNetSlicesEqual(a, b []*net.IPNet) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !ipNetsEqual(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func (p *ProvisionRequest) Validate() error {

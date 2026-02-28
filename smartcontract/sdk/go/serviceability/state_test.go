@@ -46,6 +46,7 @@ func TestCustomJSONMarshal(t *testing.T) {
 				SideAIfaceName:    "Switch1/1/1",
 				SideZIfaceName:    "Switch1/1/1",
 				DelayOverrideNs:   10,
+				LinkHealth:        serviceability.LinkHealthPending,
 				PubKey:            dummyPubKey,
 			},
 			expected: `{
@@ -96,6 +97,7 @@ func TestCustomJSONMarshal(t *testing.T) {
 				SideAIfaceName:    "Edge1/0/0",
 				SideZIfaceName:    "Edge2/0/0",
 				DelayOverrideNs:   0,
+				LinkHealth:        serviceability.LinkHealthPending,
 				PubKey:            dummyPubKey,
 			},
 			expected: `{
@@ -137,7 +139,7 @@ func TestCustomJSONMarshal(t *testing.T) {
 				"SideAPubKey": "11111111111111111111111111111111",
 				"SideZPubKey": "11111111111111111111111111111111",
 				"LinkDesiredStatus":"pending",
-				"LinkHealth":"pending",
+				"LinkHealth":"unknown",
 				"LinkType": "",
 				"Bandwidth": 0,
 				"Mtu": 0,

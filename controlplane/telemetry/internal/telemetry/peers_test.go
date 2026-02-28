@@ -362,7 +362,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		requireUnorderedEqual(t, expected, peerDiscovery.GetPeers())
 	})
 
-	t.Run("skips suspended and rejected links", func(t *testing.T) {
+	t.Run("skips deleting and rejected links", func(t *testing.T) {
 		t.Parallel()
 
 		log := log.With("test", t.Name())
@@ -378,8 +378,8 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 					},
 					Links: []serviceability.Link{
 						{
-							PubKey:      stringToPubkey("suspended_link"),
-							Status:      serviceability.LinkStatusSuspended,
+							PubKey:      stringToPubkey("deleting_link"),
+							Status:      serviceability.LinkStatusDeleting,
 							SideAPubKey: localDevicePK,
 							SideZPubKey: stringToPubkey("device2"),
 							TunnelNet:   [5]uint8{10, 1, 5, 0, 31},

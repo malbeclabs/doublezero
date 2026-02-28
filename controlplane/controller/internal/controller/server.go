@@ -2,7 +2,9 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -683,77 +685,12 @@ func (c *Controller) deduplicateTunnels(device *Device) []*Tunnel {
 	return unique
 }
 
-// GetConfig renders the latest device configuration based on cached device data
-func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.ConfigResponse, error) {
-	reqStart := time.Now()
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	device, ok := c.cache.Devices[req.GetPubkey()]
-	if !ok {
-		getConfigPubkeyErrors.WithLabelValues(req.GetPubkey()).Inc()
-		err := status.Errorf(codes.NotFound, "pubkey %s not found", req.Pubkey)
-		return nil, err
-	}
-	if len(device.DevicePathologies) > 0 {
-		err := status.Errorf(codes.FailedPrecondition, "cannot render config for device %s: %v", req.Pubkey, device.DevicePathologies)
-		return nil, err
-	}
-
+// generateConfig renders the device configuration. It must be called with c.mu held
+// because it reads from c.cache, which is updated by a background goroutine.
+func (c *Controller) generateConfig(pubkey string, device *Device, unknownPeers []net.IP) (string, error) {
 	// Create shallow copy of device with deduplicated tunnels
 	deviceForRender := *device
 	deviceForRender.Tunnels = c.deduplicateTunnels(device)
-
-	agentVersion := req.GetAgentVersion()
-	agentCommit := req.GetAgentCommit()
-	agentDate := req.GetAgentDate()
-
-	// Record metrics with device labels
-	getConfigOps.WithLabelValues(
-		req.GetPubkey(),
-		device.Code,
-		device.ContributorCode,
-		device.ExchangeCode,
-		device.LocationCode,
-		device.Status.String(),
-		agentVersion,
-		agentCommit,
-		agentDate,
-	).Inc()
-
-	// compare peers from device to on-chain
-	peerFound := func(peer net.IP) bool {
-		for _, tun := range deviceForRender.Tunnels {
-			if tun.OverlayDstIP.Equal(peer) {
-				return true
-			}
-		}
-		for _, bgpPeer := range c.cache.Vpnv4BgpPeers { // TODO: write a test that proves we don't remove ipv4/vpnv4 BGP peers
-			if bgpPeer.PeerIP.Equal(peer) {
-				return true
-			}
-		}
-		for _, bgpPeer := range c.cache.Ipv4BgpPeers {
-			if bgpPeer.PeerIP.Equal(peer) {
-				return true
-			}
-		}
-		return false
-	}
-
-	unknownPeers := []net.IP{}
-	for _, peer := range req.GetBgpPeers() {
-		ip := net.ParseIP(peer)
-		if ip == nil {
-			continue
-		}
-		if peerFound(ip) {
-			continue
-		}
-		// Only remove peers with addresses that DZ has assigned. This will avoid removal of contributor-configured peers like DIA.
-		if isIPInBlock(ip, c.cache.Config.UserTunnelBlock) || isIPInBlock(ip, c.cache.Config.TunnelTunnelBlock) {
-			unknownPeers = append(unknownPeers, ip)
-		}
-	}
 
 	multicastGroupBlock := formatCIDR(&c.cache.Config.MulticastGroupBlock)
 
@@ -769,21 +706,17 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 
 	var localASN uint32
 	if c.deviceLocalASN != 0 {
-		// Use the explicitly provided ASN
 		localASN = c.deviceLocalASN
 	} else if c.environment != "" {
-		// Get ASN from environment
 		networkConfig, err := config.NetworkConfigForEnv(c.environment)
 		if err != nil {
-			getConfigRenderErrors.WithLabelValues(req.GetPubkey()).Inc()
-			err := status.Errorf(codes.Internal, "failed to get network config for environment %s: %v", c.environment, err)
-			return nil, err
+			getConfigRenderErrors.WithLabelValues(pubkey).Inc()
+			return "", status.Errorf(codes.Internal, "failed to get network config for environment %s: %v", c.environment, err)
 		}
 		localASN = networkConfig.DeviceLocalASN
 	} else {
-		getConfigRenderErrors.WithLabelValues(req.GetPubkey()).Inc()
-		err := status.Errorf(codes.Internal, "device local ASN not configured")
-		return nil, err
+		getConfigRenderErrors.WithLabelValues(pubkey).Inc()
+		return "", status.Errorf(codes.Internal, "device local ASN not configured")
 	}
 
 	data := templateData{
@@ -799,13 +732,94 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		Strings:                  StringsHelper{},
 	}
 
-	config, err := renderConfig(data)
+	configStr, err := renderConfig(data)
 	if err != nil {
-		getConfigRenderErrors.WithLabelValues(req.GetPubkey()).Inc()
-		err := status.Errorf(codes.Aborted, "config rendering for pubkey %s failed: %v", req.Pubkey, err)
+		getConfigRenderErrors.WithLabelValues(pubkey).Inc()
+		return "", status.Errorf(codes.Aborted, "config rendering for pubkey %s failed: %v", pubkey, err)
+	}
+
+	return configStr, nil
+}
+
+// processConfigRequest validates the request and generates the config.
+// It must be called with c.mu held.
+// Returns the config string and the device (for metric labeling by the caller).
+func (c *Controller) processConfigRequest(req *pb.ConfigRequest) (string, *Device, error) {
+	pubkey := req.GetPubkey()
+	device, ok := c.cache.Devices[pubkey]
+	if !ok {
+		getConfigPubkeyErrors.WithLabelValues(pubkey).Inc()
+		return "", nil, status.Errorf(codes.NotFound, "pubkey %s not found", pubkey)
+	}
+	if len(device.DevicePathologies) > 0 {
+		return "", nil, status.Errorf(codes.FailedPrecondition, "cannot render config for device %s: %v", pubkey, device.DevicePathologies)
+	}
+
+	// Find unknown BGP peers that need to be removed
+	peerFound := func(peer net.IP) bool {
+		for _, tun := range device.Tunnels {
+			if tun.OverlayDstIP.Equal(peer) {
+				return true
+			}
+		}
+		for _, bgpPeer := range c.cache.Vpnv4BgpPeers {
+			if bgpPeer.PeerIP.Equal(peer) {
+				return true
+			}
+		}
+		for _, bgpPeer := range c.cache.Ipv4BgpPeers {
+			if bgpPeer.PeerIP.Equal(peer) {
+				return true
+			}
+		}
+		return false
+	}
+
+	var unknownPeers []net.IP
+	for _, peer := range req.GetBgpPeers() {
+		ip := net.ParseIP(peer)
+		if ip == nil {
+			continue
+		}
+		if peerFound(ip) {
+			continue
+		}
+		if isIPInBlock(ip, c.cache.Config.UserTunnelBlock) || isIPInBlock(ip, c.cache.Config.TunnelTunnelBlock) {
+			unknownPeers = append(unknownPeers, ip)
+		}
+	}
+
+	configStr, err := c.generateConfig(pubkey, device, unknownPeers)
+	if err != nil {
+		return "", nil, err
+	}
+	return configStr, device, nil
+}
+
+// GetConfig renders the latest device configuration based on cached device data
+func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.ConfigResponse, error) {
+	reqStart := time.Now()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	configStr, device, err := c.processConfigRequest(req)
+	if err != nil {
 		return nil, err
 	}
-	resp := &pb.ConfigResponse{Config: config}
+
+	getConfigOps.WithLabelValues(
+		req.GetPubkey(),
+		device.Code,
+		device.ContributorCode,
+		device.ExchangeCode,
+		device.LocationCode,
+		device.Status.String(),
+		req.GetAgentVersion(),
+		req.GetAgentCommit(),
+		req.GetAgentDate(),
+	).Inc()
+
+	resp := &pb.ConfigResponse{Config: configStr}
 	getConfigMsgSize.Observe(float64(proto.Size(resp)))
 	getConfigDuration.Observe(float64(time.Since(reqStart).Seconds()))
 	if c.clickhouse != nil {
@@ -815,6 +829,34 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		})
 	}
 	return resp, nil
+}
+
+// GetConfigHash returns only the hash of the configuration for change detection
+func (c *Controller) GetConfigHash(ctx context.Context, req *pb.ConfigRequest) (*pb.ConfigHashResponse, error) {
+	reqStart := time.Now()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	configStr, device, err := c.processConfigRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	getConfigHashOps.WithLabelValues(
+		req.GetPubkey(),
+		device.Code,
+		device.ContributorCode,
+		device.ExchangeCode,
+		device.LocationCode,
+		device.Status.String(),
+		req.GetAgentVersion(),
+		req.GetAgentCommit(),
+		req.GetAgentDate(),
+	).Inc()
+
+	hash := sha256.Sum256([]byte(configStr))
+	getConfigDuration.Observe(float64(time.Since(reqStart).Seconds()))
+	return &pb.ConfigHashResponse{Hash: hex.EncodeToString(hash[:])}, nil
 }
 
 // formatCIDR formats a 5-byte network block into CIDR notation

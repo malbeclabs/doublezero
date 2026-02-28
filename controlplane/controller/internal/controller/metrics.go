@@ -43,6 +43,13 @@ var (
 		[]string{"pubkey", "device_code", "contributor_code", "exchange_code", "location_code", "device_status", "agent_version", "agent_commit", "agent_date"},
 	)
 
+	getConfigHashOps = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "controller_grpc_getconfighash_requests_total",
+		Help: "The total number of getconfighash requests",
+	},
+		[]string{"pubkey", "device_code", "contributor_code", "exchange_code", "location_code", "device_status", "agent_version", "agent_commit", "agent_date"},
+	)
+
 	getConfigMsgSize = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "controller_grpc_getconfig_msg_size_bytes",
 		Help:    "The size of GetConfig response messages in bytes",
@@ -101,6 +108,7 @@ func init() {
 	prometheus.MustRegister(getConfigRenderErrors)
 	prometheus.MustRegister(duplicateTunnelPairs)
 	prometheus.MustRegister(getConfigOps)
+	prometheus.MustRegister(getConfigHashOps)
 	prometheus.MustRegister(getConfigMsgSize)
 	prometheus.MustRegister(getConfigDuration)
 

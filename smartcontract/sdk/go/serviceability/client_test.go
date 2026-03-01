@@ -77,15 +77,7 @@ var multicastgroupPayload = `
 f14abe7ea3118ae23000000000000000000000000000000ff00
 000000000000000000000000000000000000000000000000000
 00000000000d000000000ca9a3b0000000001040000006a6974
-6f01000000baae1ce3bce5130ae5f46b6d47884ab60b6d22f55
-b0c0cfacf14abe7ea3118ae01000000baae1ce3bce5130ae5f4
-6b6d47884ab60b6d22f55b0c0cfacf14abe7ea3118ae0200000
-059d127e5abbd5ce88c1de4abe70b132b4c79d4a1ffe781952a
-8bdf13801d2cb63a316a4505a39d6026a55bf2894e30bad33bc
-1631ce1bd925f02ab4c7994e9d40200000041c6964053cf55d2
-925472dbe01afbc327f5abfdb917ec234ecabc09e5290b2b3a3
-16a4505a39d6026a55bf2894e30bad33bc1631ce1bd925f02ab
-4c7994e9d4b745f92183e1b409bb7006560f858cf3
+6f050000000a000000
 `
 
 var tenantPayload = `
@@ -422,16 +414,18 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				Tenants:      []Tenant{},
 				MulticastGroups: []MulticastGroup{
 					{
-						AccountType:  MulticastGroupType,
-						Index:        Uint128{High: 35, Low: 0},
-						Bump_seed:    255,
-						Owner:        getOwner(multicastgroupPayload),
-						TenantPubKey: [32]byte{},
-						MulticastIp:  [4]byte{0xd0, 0x00, 0x00, 0x00},
-						MaxBandwidth: 1000000000,
-						Status:       MulticastGroupStatusActivated,
-						Code:         "jito",
-						PubKey:       pubkeys[6],
+						AccountType:     MulticastGroupType,
+						Index:           Uint128{High: 35, Low: 0},
+						Bump_seed:       255,
+						Owner:           getOwner(multicastgroupPayload),
+						TenantPubKey:    [32]byte{},
+						MulticastIp:     [4]byte{0xd0, 0x00, 0x00, 0x00},
+						MaxBandwidth:    1000000000,
+						Status:          MulticastGroupStatusActivated,
+						Code:            "jito",
+						PublisherCount:  5,
+						SubscriberCount: 10,
+						PubKey:          pubkeys[6],
 					},
 				},
 				ProgramConfig:      ProgramConfig{},

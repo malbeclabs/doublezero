@@ -93,6 +93,7 @@ describe("GlobalState fixture", () => {
       ActivatorAuthorityPk: gs.activatorAuthorityPk,
       SentinelAuthorityPk: gs.sentinelAuthorityPk,
       HealthOraclePk: gs.healthOraclePk,
+      ReservationAuthorityPk: gs.reservationAuthorityPk,
     });
   });
 });
@@ -166,6 +167,7 @@ describe("Device fixture", () => {
       MulticastUsersCount: dev.multicastUsersCount,
       MaxUnicastUsers: dev.maxUnicastUsers,
       MaxMulticastUsers: dev.maxMulticastUsers,
+      ReservedSeats: dev.reservedSeats,
       MetricsPublisherPk: dev.metricsPublisherPubKey,
       ContributorPk: dev.contributorPubKey,
     });

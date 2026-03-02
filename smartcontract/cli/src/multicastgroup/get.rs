@@ -238,6 +238,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let cloned_device = device.clone();

@@ -150,6 +150,7 @@ async fn test_delete_cyoa_interface_with_invalid_sibling() {
         multicast_users_count: 0,
         max_unicast_users: 0,
         max_multicast_users: 0,
+        reserved_seats: 0,
     };
     let dev_data = borsh::to_vec(&device).unwrap();
     program_test.add_account(
@@ -377,6 +378,7 @@ async fn test_update_cyoa_interface_with_invalid_sibling() {
         multicast_users_count: 0,
         max_unicast_users: 0,
         max_multicast_users: 0,
+        reserved_seats: 0,
     };
     let dev_data = borsh::to_vec(&device).unwrap();
     program_test.add_account(

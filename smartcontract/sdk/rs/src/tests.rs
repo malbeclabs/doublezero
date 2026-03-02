@@ -39,6 +39,7 @@ pub mod utils {
             health_oracle_pk: Pubkey::new_unique(),
             qa_allowlist: vec![],
             feature_flags: 0,
+            reservation_authority_pk: Pubkey::default(),
         };
         client
             .expect_get()

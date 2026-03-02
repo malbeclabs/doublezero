@@ -279,6 +279,7 @@ pub struct Device {
     pub multicast_users_count: u16, // 2
     pub max_unicast_users: u16,    // 2
     pub max_multicast_users: u16,  // 2
+    pub reserved_seats: u16,       // 2
 }
 
 impl Default for Device {
@@ -308,6 +309,7 @@ impl Default for Device {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         }
     }
 }
@@ -327,11 +329,11 @@ impl Device {
          * Device eligibility for provisioning requires:
          * - Device must be activated
          * - Device type must be Edge or Hybrid
-         * - Device must have available user slots
+         * - Device must have available user slots (accounting for reserved seats)
          */
         self.status == DeviceStatus::Activated
             && (self.device_type == DeviceType::Edge || self.device_type == DeviceType::Hybrid)
-            && (self.max_users > 0 && self.users_count < self.max_users)
+            && (self.max_users > 0 && self.users_count + self.reserved_seats < self.max_users)
     }
 
     /// Checks if the device has capacity for a specific user type.
@@ -444,11 +446,11 @@ impl fmt::Display for Device {
             "account_type: {}, owner: {}, index: {}, contributor_pk: {}, location_pk: {}, exchange_pk: {}, device_type: {}, \
             public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}, mgmt_vrf: {}, interfaces: {:?}, \
             reference_count: {}, users_count: {}, max_users: {}, device_health: {}, desired_status: {}, \
-            unicast_users_count: {}, multicast_users_count: {}, max_unicast_users: {}, max_multicast_users: {}",
+            unicast_users_count: {}, multicast_users_count: {}, max_unicast_users: {}, max_multicast_users: {}, reserved_seats: {}",
             self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type,
             &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.mgmt_vrf, self.interfaces,
             self.reference_count, self.users_count, self.max_users, self.device_health, self.desired_status,
-            self.unicast_users_count, self.multicast_users_count, self.max_unicast_users, self.max_multicast_users
+            self.unicast_users_count, self.multicast_users_count, self.max_unicast_users, self.max_multicast_users, self.reserved_seats
         )
     }
 }
@@ -482,6 +484,7 @@ impl TryFrom<&[u8]> for Device {
             multicast_users_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             max_unicast_users: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             max_multicast_users: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            reserved_seats: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Device {
@@ -542,11 +545,12 @@ impl Validate for Device {
             msg!("Invalid device prefixes: {:?}", self.dz_prefixes);
             return Err(DoubleZeroError::InvalidDzPrefix);
         }
-        // users_count must be less than max_users when max_users > 0
-        if self.users_count > self.max_users {
+        // users_count + reserved_seats must be <= max_users when max_users > 0
+        if self.users_count + self.reserved_seats > self.max_users {
             msg!(
-                "Max users exceeded or invalid: users_count = {}, max_users = {}",
+                "Max users exceeded or invalid: users_count = {}, reserved_seats = {}, max_users = {}",
                 self.users_count,
+                self.reserved_seats,
                 self.max_users
             );
             return Err(DoubleZeroError::MaxUsersExceeded);
@@ -697,6 +701,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
@@ -729,6 +734,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::CodeTooLong);
@@ -761,6 +767,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidLocation);
@@ -793,6 +800,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -826,6 +834,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
@@ -858,6 +867,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDzPrefix);
@@ -890,6 +900,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         // max_users == 0 means "locked", so validation should still succeed
         val.validate().unwrap();
@@ -922,6 +933,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let err = val.validate();
@@ -955,6 +967,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -1005,6 +1018,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -1073,6 +1087,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -1140,6 +1155,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,   // defaults to 0 for old accounts
             max_multicast_users: 0, // defaults to 0 for old accounts
+            reserved_seats: 0,
         };
 
         let oldsize = size_of_pre_dzd_metadata_device(val.code.len(), val.dz_prefixes.len());
@@ -1187,6 +1203,7 @@ mod test_device_validate {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
         assert!(device.validate().is_ok());
     }
@@ -1222,6 +1239,7 @@ mod test_device_validate_errors {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         }
     }
 

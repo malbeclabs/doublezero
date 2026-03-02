@@ -62,6 +62,12 @@ var (
 		Buckets: []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5},
 	})
 
+	getConfigHashDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "controller_grpc_getconfighash_duration_seconds",
+		Help:    "The duration of GetConfigHash requests in seconds",
+		Buckets: []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5},
+	})
+
 	// cache update metrics
 	cacheUpdateErrors = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "controller_cache_update_errors_total",
@@ -111,6 +117,7 @@ func init() {
 	prometheus.MustRegister(getConfigHashOps)
 	prometheus.MustRegister(getConfigMsgSize)
 	prometheus.MustRegister(getConfigDuration)
+	prometheus.MustRegister(getConfigHashDuration)
 
 	// cache update metrics
 	prometheus.MustRegister(cacheUpdateErrors)

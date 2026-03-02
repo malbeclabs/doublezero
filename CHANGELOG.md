@@ -26,6 +26,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Tools
+  - Add signed TWAMP sender and reflector with Ed25519 authentication and per-pubkey rate-limited signature verification
 - Activator
     - Adds a stateless mode for when onchain allocation is enabled. This prevents activator/onchain from becoming out-of-sync.
     - `--onchain-allocation` cli flag replaced with feature flag from GlobalState onchain

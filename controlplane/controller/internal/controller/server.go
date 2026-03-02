@@ -690,11 +690,8 @@ func (c *Controller) deduplicateTunnels(device *Device) []*Tunnel {
 
 // generateConfig renders the device configuration. It must be called with c.mu held
 // because it reads from c.cache, which is updated by a background goroutine.
+// The provided device should already have deduplicated tunnels (via deduplicateTunnels).
 func (c *Controller) generateConfig(pubkey string, device *Device, unknownPeers []net.IP) (string, error) {
-	// Create shallow copy of device with deduplicated tunnels
-	deviceForRender := *device
-	deviceForRender.Tunnels = c.deduplicateTunnels(device)
-
 	multicastGroupBlock := formatCIDR(&c.cache.Config.MulticastGroupBlock)
 
 	// This check avoids the situation where the template produces the following useless output, which happens in any test case with a single DZD.
@@ -703,7 +700,7 @@ func (c *Controller) generateConfig(pubkey string, device *Device, unknownPeers 
 	// router msdp
 	// ```
 	ipv4Peers := c.cache.Ipv4BgpPeers
-	if len(ipv4Peers) == 1 && ipv4Peers[0].PeerIP.Equal(deviceForRender.Ipv4LoopbackIP) {
+	if len(ipv4Peers) == 1 && ipv4Peers[0].PeerIP.Equal(device.Ipv4LoopbackIP) {
 		ipv4Peers = nil
 	}
 
@@ -724,7 +721,7 @@ func (c *Controller) generateConfig(pubkey string, device *Device, unknownPeers 
 
 	data := templateData{
 		MulticastGroupBlock:      multicastGroupBlock,
-		Device:                   &deviceForRender,
+		Device:                   device,
 		Vpnv4BgpPeers:            c.cache.Vpnv4BgpPeers,
 		Ipv4BgpPeers:             ipv4Peers,
 		UnknownBgpPeers:          unknownPeers,
@@ -758,9 +755,13 @@ func (c *Controller) processConfigRequest(req *pb.ConfigRequest) (string, *Devic
 		return "", nil, status.Errorf(codes.FailedPrecondition, "cannot render config for device %s: %v", pubkey, device.DevicePathologies)
 	}
 
+	// Create shallow copy of device with deduplicated tunnels
+	deviceForRender := *device
+	deviceForRender.Tunnels = c.deduplicateTunnels(device)
+
 	// Find unknown BGP peers that need to be removed
 	peerFound := func(peer net.IP) bool {
-		for _, tun := range device.Tunnels {
+		for _, tun := range deviceForRender.Tunnels {
 			if tun.OverlayDstIP.Equal(peer) {
 				return true
 			}
@@ -792,7 +793,7 @@ func (c *Controller) processConfigRequest(req *pb.ConfigRequest) (string, *Devic
 		}
 	}
 
-	configStr, err := c.generateConfig(pubkey, device, unknownPeers)
+	configStr, err := c.generateConfig(pubkey, &deviceForRender, unknownPeers)
 	if err != nil {
 		return "", nil, err
 	}
@@ -858,7 +859,7 @@ func (c *Controller) GetConfigHash(ctx context.Context, req *pb.ConfigRequest) (
 	).Inc()
 
 	hash := sha256.Sum256([]byte(configStr))
-	getConfigDuration.Observe(float64(time.Since(reqStart).Seconds()))
+	getConfigHashDuration.Observe(float64(time.Since(reqStart).Seconds()))
 	return &pb.ConfigHashResponse{Hash: hex.EncodeToString(hash[:])}, nil
 }
 

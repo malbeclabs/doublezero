@@ -33,6 +33,8 @@ All notable changes to this project will be documented in this file.
   - Add onchain parent DZD discovery to geoprobe-agent: periodically queries the Geolocation program for this probe's parent devices and resolves their metrics publisher keys from Serviceability, replacing the need for static `--parent-dzd` CLI flags. Static parents from CLI are merged with onchain parents, with onchain taking precedence for duplicate keys.
   - Optimize inbound probe-measured RTT accuracy: pre-sign both TWAMP probes before network I/O so probe 1 fires immediately after reply 0 with no signing delay, measure Tx-to-Rx interval (reply 0 Tx → probe 1 Rx) instead of Rx-to-Rx to exclude processing overhead on both sides, use kernel `SO_TIMESTAMPNS` receive timestamps on the reflector, and add a 15ms busy-poll window on the sender to avoid scheduler wakeup latency
   - Optimize outbound probe RTT accuracy: send a staggered warmup probe on a separate socket 2ms before the measurement probe to wake the reflector's thread, then take the min RTT of both
+- Device agents
+  - Reduce config agent network and CPU usage by checking config checksums every 5 seconds, and reducing full config check frequency to 1m
 
 ## [v0.11.0](https://github.com/malbeclabs/doublezero/compare/client/v0.10.0...client/v0.11.0) - 2026-03-12
 
@@ -409,8 +411,6 @@ All notable changes to this project will be documented in this file.
   - feat(smartcontract): add use_onchain_deallocation flag to MulticastGroup ([#2748](https://github.com/malbeclabs/doublezero/pull/2748))
 - CLI
   - Remove restriction for a single tunnel per user; now a user can have a unicast and multicast tunnel concurrently (but can only be a publisher _or_ a subscriber) ([2728](https://github.com/malbeclabs/doublezero/pull/2728))
-- Device agents
-  - Reduce config agent network and CPU usage by checking config checksums every 5 seconds, and reducing full config check frquency to 1m
 
 ## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
 

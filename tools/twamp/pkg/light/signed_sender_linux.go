@@ -27,6 +27,7 @@ type LinuxSignedSender struct {
 	mu           sync.Mutex
 }
 
+// NewLinuxSignedSender creates a signed TWAMP sender. Only local.Port is used; any IP is ignored.
 func NewLinuxSignedSender(ctx context.Context, iface string, local *net.UDPAddr, remote *net.UDPAddr, privateKey ed25519.PrivateKey, remotePubkey [32]byte) (*LinuxSignedSender, error) {
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_NONBLOCK, unix.IPPROTO_UDP)
 	if err != nil {
@@ -41,13 +42,7 @@ func NewLinuxSignedSender(ctx context.Context, iface string, local *net.UDPAddr,
 	}
 
 	if local != nil {
-		ip4 := local.IP.To4()
-		if ip4 == nil {
-			unix.Close(fd)
-			return nil, fmt.Errorf("local address must be IPv4")
-		}
 		sa := &unix.SockaddrInet4{Port: local.Port}
-		copy(sa.Addr[:], ip4)
 		if err := unix.Bind(fd, sa); err != nil {
 			unix.Close(fd)
 			return nil, fmt.Errorf("bind: %w", err)
@@ -152,6 +147,7 @@ func (s *LinuxSignedSender) Probe(ctx context.Context) (time.Duration, *SignedRe
 		}
 		fallbackRecvTime := time.Now()
 
+		// Validate Packet size & format
 		if n != SignedReplyPacketSize {
 			continue
 		}
@@ -161,6 +157,7 @@ func (s *LinuxSignedSender) Probe(ctx context.Context) (time.Duration, *SignedRe
 			continue
 		}
 
+		// Throw away bad seq/timestamp/signatures
 		if reply.Probe.Seq != probe.Seq || reply.Probe.Sec != probe.Sec || reply.Probe.Frac != probe.Frac {
 			continue
 		}
@@ -173,12 +170,12 @@ func (s *LinuxSignedSender) Probe(ctx context.Context) (time.Duration, *SignedRe
 		if !VerifyReply(reply) {
 			continue
 		}
-
+		// Parse control message for timestamp.
 		cmsgs, err := syscall.ParseSocketControlMessage(s.oob[:oobn])
 		if err != nil {
 			return 0, nil, fmt.Errorf("parse cmsg: %w", err)
 		}
-
+		// Parse timestamp from control message.
 		for _, cmsg := range cmsgs {
 			if cmsg.Header.Level == syscall.SOL_SOCKET && cmsg.Header.Type == syscall.SO_TIMESTAMPNS {
 				if len(cmsg.Data) < int(unsafe.Sizeof(syscall.Timespec{})) {
@@ -199,17 +196,4 @@ func (s *LinuxSignedSender) Close() error {
 	unix.Close(s.fd)
 	unix.Close(s.epfd)
 	return nil
-}
-
-func (s *LinuxSignedSender) LocalAddr() *net.UDPAddr {
-	sa, err := unix.Getsockname(s.fd)
-	if err != nil {
-		return nil
-	}
-	switch addr := sa.(type) {
-	case *unix.SockaddrInet4:
-		return &net.UDPAddr{IP: net.IP(addr.Addr[:]), Port: addr.Port}
-	default:
-		return nil
-	}
 }

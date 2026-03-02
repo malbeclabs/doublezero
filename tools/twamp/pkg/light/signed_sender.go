@@ -14,6 +14,7 @@ type SignedSender interface {
 	LocalAddr() *net.UDPAddr
 }
 
+// NewSignedSender creates a signed TWAMP sender. Only localAddr.Port is used; any IP is ignored.
 func NewSignedSender(ctx context.Context, iface string, localAddr, remoteAddr *net.UDPAddr, privateKey ed25519.PrivateKey, remotePubkey [32]byte) (SignedSender, error) {
 	return NewLinuxSignedSender(ctx, iface, localAddr, remoteAddr, privateKey, remotePubkey)
 }

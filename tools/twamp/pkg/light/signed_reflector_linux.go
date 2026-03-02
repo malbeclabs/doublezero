@@ -25,6 +25,7 @@ type LinuxSignedReflector struct {
 	closed         chan struct{}
 }
 
+// NewLinuxSignedReflector creates a signed TWAMP reflector. Only the port in addr is used; any IP is ignored.
 func NewLinuxSignedReflector(addr string, timeout time.Duration, privateKey ed25519.PrivateKey, authorizedKeys [][32]byte) (*LinuxSignedReflector, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
@@ -37,7 +38,6 @@ func NewLinuxSignedReflector(addr string, timeout time.Duration, privateKey ed25
 	}
 
 	sockaddr := &unix.SockaddrInet4{Port: udpAddr.Port}
-	copy(sockaddr.Addr[:], udpAddr.IP.To4())
 	if err := unix.Bind(fd, sockaddr); err != nil {
 		unix.Close(fd)
 		return nil, fmt.Errorf("bind: %w", err)
@@ -131,6 +131,7 @@ func (r *LinuxSignedReflector) Run(ctx context.Context) error {
 		}
 
 		for {
+			// Receive packet.
 			n, from, err := unix.Recvfrom(r.fd, buf, 0)
 			if err != nil {
 				if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
@@ -139,6 +140,7 @@ func (r *LinuxSignedReflector) Run(ctx context.Context) error {
 				return fmt.Errorf("recvfrom: %w", err)
 			}
 
+			// Validate packet size, format, and allowed pubkey
 			if n != SignedProbePacketSize {
 				continue
 			}
@@ -167,6 +169,7 @@ func (r *LinuxSignedReflector) Run(ctx context.Context) error {
 				continue
 			}
 
+			// Send Response
 			reply := NewSignedReplyPacket(probe, r.privateKey)
 			var replyBuf [SignedReplyPacketSize]byte
 			_ = reply.Marshal(replyBuf[:])
@@ -183,24 +186,6 @@ func (r *LinuxSignedReflector) Close() error {
 	default:
 		close(r.shutdown)
 		<-r.closed
-		return nil
-	}
-}
-
-func (r *LinuxSignedReflector) LocalAddr() *net.UDPAddr {
-	sa, err := unix.Getsockname(r.fd)
-	if err != nil {
-		return nil
-	}
-
-	switch addr := sa.(type) {
-	case *unix.SockaddrInet4:
-		ip := net.IP(addr.Addr[:])
-		return &net.UDPAddr{IP: ip, Port: addr.Port}
-	case *unix.SockaddrInet6:
-		ip := net.IP(addr.Addr[:])
-		return &net.UDPAddr{IP: ip, Port: addr.Port, Zone: zoneFromIndex(addr.ZoneId)}
-	default:
 		return nil
 	}
 }

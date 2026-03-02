@@ -21,6 +21,7 @@ type SignedReflector interface {
 	SetAuthorizedKeys(keys [][32]byte)
 }
 
+// NewSignedReflector creates a signed TWAMP reflector. Only the port in addr is used; any IP is ignored.
 func NewSignedReflector(addr string, timeout time.Duration, privateKey ed25519.PrivateKey, authorizedKeys [][32]byte) (SignedReflector, error) {
 	return NewLinuxSignedReflector(addr, timeout, privateKey, authorizedKeys)
 }

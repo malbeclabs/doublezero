@@ -27,8 +27,8 @@ type SignedProbePacket struct {
 // SignedReplyPacket is sent from Probe to Target in the inbound probing flow.
 type SignedReplyPacket struct {
 	Probe           SignedProbePacket // Bytes 0-107: Complete original signed probe (echoed)
-	ReflectorPubkey [32]byte         // Bytes 108-139: Probe's Ed25519 public key
-	Signature       [64]byte         // Bytes 140-203: Ed25519 signature over bytes 0-139
+	ReflectorPubkey [32]byte          // Bytes 108-139: Probe's Ed25519 public key
+	Signature       [64]byte          // Bytes 140-203: Ed25519 signature over bytes 0-139
 }
 
 func NewSignedProbePacket(seq uint32, privateKey ed25519.PrivateKey) *SignedProbePacket {

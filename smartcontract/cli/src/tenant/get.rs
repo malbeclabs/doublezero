@@ -17,25 +17,17 @@ pub struct GetTenantCliCommand {
 
 #[derive(Tabled, Serialize)]
 struct ConfigDisplay {
-    #[tabled(rename = "account")]
     pub account: String,
-    #[tabled(rename = "code")]
     pub code: String,
-    #[tabled(rename = "vrf_id")]
     pub vrf_id: u16,
-    #[tabled(rename = "metro_routing")]
     pub metro_routing: bool,
-    #[tabled(rename = "route_liveness")]
     pub route_liveness: bool,
-    #[tabled(rename = "reference_count")]
     pub reference_count: u32,
-    #[tabled(rename = "owner")]
     pub owner: String,
 }
 
 #[derive(Tabled, Serialize)]
 struct AdminDisplay {
-    #[tabled(rename = "administrator")]
     pub administrator: String,
 }
 

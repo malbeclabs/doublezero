@@ -1,8 +1,7 @@
-package twamplight
+package signed
 
 import (
 	"context"
-	"crypto/ed25519"
 	"fmt"
 	"net"
 	"runtime"
@@ -13,20 +12,22 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type LinuxSignedReflector struct {
+const defaultReadTimeout = 1 * time.Second
+
+type LinuxReflector struct {
 	fd             int
 	epfd           int
 	port           uint16
 	timeout        time.Duration
-	privateKey     ed25519.PrivateKey
+	signer         Signer
 	authorizedKeys sync.Map // map[[32]byte]struct{}
 	lastVerify     sync.Map // map[[32]byte]time.Time
 	shutdown       chan struct{}
 	closed         chan struct{}
 }
 
-// NewLinuxSignedReflector creates a signed TWAMP reflector. Only the port in addr is used; any IP is ignored.
-func NewLinuxSignedReflector(addr string, timeout time.Duration, privateKey ed25519.PrivateKey, authorizedKeys [][32]byte) (*LinuxSignedReflector, error) {
+// NewLinuxReflector creates a signed TWAMP reflector. Only the port in addr is used; any IP is ignored.
+func NewLinuxReflector(addr string, timeout time.Duration, signer Signer, authorizedKeys [][32]byte) (*LinuxReflector, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("resolve addr: %w", err)
@@ -66,14 +67,14 @@ func NewLinuxSignedReflector(addr string, timeout time.Duration, privateKey ed25
 		return nil, fmt.Errorf("epoll_ctl: %w", err)
 	}
 
-	r := &LinuxSignedReflector{
-		fd:         fd,
-		epfd:       epfd,
-		port:       boundPort,
-		timeout:    timeout,
-		privateKey: privateKey,
-		shutdown:   make(chan struct{}),
-		closed:     make(chan struct{}),
+	r := &LinuxReflector{
+		fd:       fd,
+		epfd:     epfd,
+		port:     boundPort,
+		timeout:  timeout,
+		signer:   signer,
+		shutdown: make(chan struct{}),
+		closed:   make(chan struct{}),
 	}
 
 	for _, key := range authorizedKeys {
@@ -83,7 +84,7 @@ func NewLinuxSignedReflector(addr string, timeout time.Duration, privateKey ed25
 	return r, nil
 }
 
-func (r *LinuxSignedReflector) SetAuthorizedKeys(keys [][32]byte) {
+func (r *LinuxReflector) SetAuthorizedKeys(keys [][32]byte) {
 	newKeys := make(map[[32]byte]struct{}, len(keys))
 	for _, key := range keys {
 		newKeys[key] = struct{}{}
@@ -102,11 +103,11 @@ func (r *LinuxSignedReflector) SetAuthorizedKeys(keys [][32]byte) {
 	}
 }
 
-func (r *LinuxSignedReflector) Port() uint16 {
+func (r *LinuxReflector) Port() uint16 {
 	return r.port
 }
 
-func (r *LinuxSignedReflector) Run(ctx context.Context) error {
+func (r *LinuxReflector) Run(ctx context.Context) error {
 	runtime.LockOSThread()
 	defer close(r.closed)
 	defer unix.Close(r.fd)
@@ -142,7 +143,6 @@ func (r *LinuxSignedReflector) Run(ctx context.Context) error {
 		}
 
 		for {
-			// Receive packet.
 			n, from, err := unix.Recvfrom(r.fd, buf, 0)
 			if err != nil {
 				if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
@@ -151,12 +151,11 @@ func (r *LinuxSignedReflector) Run(ctx context.Context) error {
 				return fmt.Errorf("recvfrom: %w", err)
 			}
 
-			// Validate packet size, format, and allowed pubkey
-			if n != SignedProbePacketSize {
+			if n != ProbePacketSize {
 				continue
 			}
 
-			probe, err := UnmarshalSignedProbePacket(buf[:n])
+			probe, err := UnmarshalProbePacket(buf[:n])
 			if err != nil {
 				continue
 			}
@@ -165,9 +164,8 @@ func (r *LinuxSignedReflector) Run(ctx context.Context) error {
 				continue
 			}
 
-			// Rate-limit signature verifications per pubkey.
 			now := time.Now()
-			if interval := SignedReflectorVerifyInterval; interval > 0 {
+			if interval := VerifyInterval; interval > 0 {
 				if last, ok := r.lastVerify.Load(probe.SenderPubkey); ok {
 					if now.Sub(last.(time.Time)) < interval {
 						continue
@@ -176,13 +174,12 @@ func (r *LinuxSignedReflector) Run(ctx context.Context) error {
 			}
 			r.lastVerify.Store(probe.SenderPubkey, now)
 
-			if !VerifyProbe(probe) {
+			if !probe.Verify() {
 				continue
 			}
 
-			// Send Response
-			reply := NewSignedReplyPacket(probe, r.privateKey)
-			var replyBuf [SignedReplyPacketSize]byte
+			reply := NewReplyPacket(probe, r.signer)
+			var replyBuf [ReplyPacketSize]byte
 			_ = reply.Marshal(replyBuf[:])
 
 			_ = unix.Sendto(r.fd, replyBuf[:], 0, from)
@@ -190,7 +187,7 @@ func (r *LinuxSignedReflector) Run(ctx context.Context) error {
 	}
 }
 
-func (r *LinuxSignedReflector) Close() error {
+func (r *LinuxReflector) Close() error {
 	select {
 	case <-r.closed:
 		return nil

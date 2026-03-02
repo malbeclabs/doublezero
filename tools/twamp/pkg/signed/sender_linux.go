@@ -1,8 +1,7 @@
-package twamplight
+package signed
 
 import (
 	"context"
-	"crypto/ed25519"
 	"fmt"
 	"net"
 	"runtime"
@@ -14,12 +13,14 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type LinuxSignedSender struct {
+const defaultProbeTimeout = 1 * time.Second
+
+type LinuxSender struct {
 	fd           int
 	epfd         int
 	seq          uint32
 	remote       *unix.SockaddrInet4
-	privateKey   ed25519.PrivateKey
+	signer       Signer
 	remotePubkey [32]byte
 	cancel       context.CancelFunc
 	buf          []byte
@@ -27,8 +28,8 @@ type LinuxSignedSender struct {
 	mu           sync.Mutex
 }
 
-// NewLinuxSignedSender creates a signed TWAMP sender. Only local.Port is used; any IP is ignored.
-func NewLinuxSignedSender(ctx context.Context, iface string, local *net.UDPAddr, remote *net.UDPAddr, privateKey ed25519.PrivateKey, remotePubkey [32]byte) (*LinuxSignedSender, error) {
+// NewLinuxSender creates a signed TWAMP sender. Only local.Port is used; any IP is ignored.
+func NewLinuxSender(ctx context.Context, iface string, local *net.UDPAddr, remote *net.UDPAddr, signer Signer, remotePubkey [32]byte) (*LinuxSender, error) {
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_NONBLOCK, unix.IPPROTO_UDP)
 	if err != nil {
 		return nil, fmt.Errorf("socket: %w", err)
@@ -78,11 +79,11 @@ func NewLinuxSignedSender(ctx context.Context, iface string, local *net.UDPAddr,
 	copy(raddr.Addr[:], ip4)
 
 	_, cancel := context.WithCancel(ctx)
-	s := &LinuxSignedSender{
+	s := &LinuxSender{
 		fd:           fd,
 		epfd:         epfd,
 		remote:       raddr,
-		privateKey:   privateKey,
+		signer:       signer,
 		remotePubkey: remotePubkey,
 		cancel:       cancel,
 		buf:          make([]byte, 1500),
@@ -92,7 +93,7 @@ func NewLinuxSignedSender(ctx context.Context, iface string, local *net.UDPAddr,
 	return s, nil
 }
 
-func (s *LinuxSignedSender) Probe(ctx context.Context) (time.Duration, *SignedReplyPacket, error) {
+func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, *ReplyPacket, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -101,13 +102,13 @@ func (s *LinuxSignedSender) Probe(ctx context.Context) (time.Duration, *SignedRe
 
 	s.seq++
 
-	probe := NewSignedProbePacket(s.seq, s.privateKey)
+	probe := NewProbePacket(s.seq, s.signer)
 	if err := probe.Marshal(s.buf); err != nil {
 		return 0, nil, fmt.Errorf("marshal packet: %w", err)
 	}
 
 	sendTime := time.Now()
-	if err := unix.Sendto(s.fd, s.buf[:SignedProbePacketSize], 0, s.remote); err != nil {
+	if err := unix.Sendto(s.fd, s.buf[:ProbePacketSize], 0, s.remote); err != nil {
 		return 0, nil, fmt.Errorf("sendto: %w", err)
 	}
 
@@ -147,35 +148,32 @@ func (s *LinuxSignedSender) Probe(ctx context.Context) (time.Duration, *SignedRe
 		}
 		fallbackRecvTime := time.Now()
 
-		// Validate Packet size & format
-		if n != SignedReplyPacketSize {
+		if n != ReplyPacketSize {
 			continue
 		}
 
-		reply, err := UnmarshalSignedReplyPacket(s.buf[:n])
+		reply, err := UnmarshalReplyPacket(s.buf[:n])
 		if err != nil {
 			continue
 		}
 
-		// Throw away bad seq/timestamp/signatures
 		if reply.Probe.Seq != probe.Seq || reply.Probe.Sec != probe.Sec || reply.Probe.Frac != probe.Frac {
 			continue
 		}
-		if !VerifyProbe(&reply.Probe) {
+		if !reply.Probe.Verify() {
 			continue
 		}
 		if reply.ReflectorPubkey != s.remotePubkey {
 			continue
 		}
-		if !VerifyReply(reply) {
+		if !reply.Verify() {
 			continue
 		}
-		// Parse control message for timestamp.
+
 		cmsgs, err := syscall.ParseSocketControlMessage(s.oob[:oobn])
 		if err != nil {
 			return 0, nil, fmt.Errorf("parse cmsg: %w", err)
 		}
-		// Parse timestamp from control message.
 		for _, cmsg := range cmsgs {
 			if cmsg.Header.Level == syscall.SOL_SOCKET && cmsg.Header.Type == syscall.SO_TIMESTAMPNS {
 				if len(cmsg.Data) < int(unsafe.Sizeof(syscall.Timespec{})) {
@@ -191,9 +189,17 @@ func (s *LinuxSignedSender) Probe(ctx context.Context) (time.Duration, *SignedRe
 	}
 }
 
-func (s *LinuxSignedSender) Close() error {
+func (s *LinuxSender) Close() error {
 	s.cancel()
 	unix.Close(s.fd)
 	unix.Close(s.epfd)
 	return nil
+}
+
+func decideRTT(sendTime, kernelRecvTime, fallbackRecvTime time.Time) time.Duration {
+	rtt := kernelRecvTime.Sub(sendTime)
+	if rtt < -100*time.Microsecond {
+		rtt = fallbackRecvTime.Sub(sendTime)
+	}
+	return max(rtt, 0)
 }

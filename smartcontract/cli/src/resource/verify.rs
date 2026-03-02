@@ -2,7 +2,8 @@ use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::commands::resource::{
-    allocate::AllocateResourceCommand, deallocate::DeallocateResourceCommand,
+    allocate::AllocateResourceCommand, create::CreateResourceCommand,
+    deallocate::DeallocateResourceCommand,
 };
 use doublezero_serviceability::{
     pda::get_resource_extension_pda,
@@ -153,6 +154,12 @@ impl VerifyResourceCliCommand {
                         writeln!(out, "  {}", resource_type)?;
                     }
                 }
+                if !self.fix {
+                    writeln!(
+                        out,
+                        "  Hint: use --fix to create missing resource extensions."
+                    )?;
+                }
                 writeln!(out)?;
             }
 
@@ -239,107 +246,222 @@ impl VerifyResourceCliCommand {
             }
 
             // Handle --fix flag
-            if self.fix && !extensions_not_found.is_empty() {
-                writeln!(
-                    out,
-                    "Cannot fix: some resource extensions are missing. Create them first."
-                )?;
-            } else if self.fix && !duplicate_usages.is_empty() {
-                writeln!(
-                    out,
-                    "Cannot fix: duplicate usages must be resolved manually."
-                )?;
-            } else if self.fix && (!allocated_not_used.is_empty() || !used_not_allocated.is_empty())
-            {
-                writeln!(out, "Proposed fixes:")?;
-                writeln!(out, "--------------")?;
-
-                for d in &allocated_not_used {
-                    if let ResourceDiscrepancy::AllocatedButNotUsed {
-                        resource_type,
-                        value,
-                    } = d
-                    {
-                        writeln!(out, "  DEALLOCATE {} = {}", resource_type, value)?;
+            if self.fix {
+                // Step 1: Create missing resource extensions
+                if !extensions_not_found.is_empty() {
+                    writeln!(out, "Creating missing resource extensions...")?;
+                    for d in &extensions_not_found {
+                        if let ResourceDiscrepancy::ExtensionNotFound { resource_type } = d {
+                            write!(out, "  CREATE {} ...", resource_type)?;
+                            let cmd = CreateResourceCommand {
+                                resource_type: *resource_type,
+                            };
+                            match client.create_resource(cmd) {
+                                Ok(sig) => {
+                                    writeln!(out, " OK (signature: {})", sig)?;
+                                }
+                                Err(e) => {
+                                    writeln!(out, " FAILED: {}", e)?;
+                                }
+                            }
+                        }
                     }
-                }
-
-                for d in &used_not_allocated {
-                    if let ResourceDiscrepancy::UsedButNotAllocated {
-                        resource_type,
-                        value,
-                        ..
-                    } = d
-                    {
-                        writeln!(out, "  ALLOCATE {} = {}", resource_type, value)?;
-                    }
-                }
-
-                writeln!(out)?;
-                write!(out, "Should this be fixed? [y/N]: ")?;
-                out.flush()?;
-
-                let stdin = std::io::stdin();
-                let mut input = String::new();
-                stdin.lock().read_line(&mut input)?;
-
-                if input.trim().eq_ignore_ascii_case("y")
-                    || input.trim().eq_ignore_ascii_case("yes")
-                {
                     writeln!(out)?;
-                    writeln!(out, "Applying fixes...")?;
+                }
 
-                    // Deallocate orphaned allocations
-                    for d in &allocated_not_used {
+                // Re-verify to pick up newly created extensions (or use
+                // original result if no extensions were missing). We clone
+                // discrepancies into owned vectors so lifetimes are clean.
+                let fix_discrepancies = if !extensions_not_found.is_empty() {
+                    writeln!(out, "Re-verifying resources after extension creation...")?;
+                    let fresh = verify_resources(client)?;
+                    writeln!(out)?;
+                    fresh.discrepancies
+                } else {
+                    result.discrepancies.clone()
+                };
+
+                let mut fix_allocated_not_used: Vec<&ResourceDiscrepancy> = Vec::new();
+                let mut fix_used_not_allocated: Vec<&ResourceDiscrepancy> = Vec::new();
+                let mut fix_duplicate_usages: Vec<&ResourceDiscrepancy> = Vec::new();
+
+                for d in &fix_discrepancies {
+                    match d {
+                        ResourceDiscrepancy::AllocatedButNotUsed { .. } => {
+                            fix_allocated_not_used.push(d);
+                        }
+                        ResourceDiscrepancy::UsedButNotAllocated { .. } => {
+                            fix_used_not_allocated.push(d);
+                        }
+                        ResourceDiscrepancy::DuplicateUsage { .. } => {
+                            fix_duplicate_usages.push(d);
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Step 2: Warn about duplicate usages but don't block
+                // Collect duplicate (resource_type, value) pairs to exclude from fixes
+                let mut duplicate_values: Vec<(ResourceType, IdOrIp)> = Vec::new();
+                if !fix_duplicate_usages.is_empty() {
+                    writeln!(
+                        out,
+                        "Warning: skipping duplicate usages (must be resolved manually):"
+                    )?;
+                    for d in &fix_duplicate_usages {
+                        if let ResourceDiscrepancy::DuplicateUsage {
+                            resource_type,
+                            value,
+                            first_account_pubkey,
+                            first_account_type,
+                            second_account_pubkey,
+                            second_account_type,
+                        } = d
+                        {
+                            writeln!(
+                                out,
+                                "  {} = {} (used by {} {} AND {} {})",
+                                resource_type,
+                                value,
+                                first_account_type,
+                                first_account_pubkey,
+                                second_account_type,
+                                second_account_pubkey
+                            )?;
+                            duplicate_values.push((*resource_type, value.clone()));
+                        }
+                    }
+                    writeln!(out)?;
+                }
+
+                // Step 3: Fix allocate/deallocate discrepancies (excluding duplicates)
+                let fixable_allocated_not_used: Vec<_> = fix_allocated_not_used
+                    .iter()
+                    .filter(|d| {
                         if let ResourceDiscrepancy::AllocatedButNotUsed {
                             resource_type,
                             value,
                         } = d
                         {
-                            writeln!(out, "  Deallocating {} = {} ...", resource_type, value)?;
-                            let cmd = DeallocateResourceCommand {
-                                resource_type: *resource_type,
-                                value: value.clone(),
-                            };
-                            match client.deallocate_resource(cmd) {
-                                Ok(sig) => {
-                                    writeln!(out, "    OK (signature: {})", sig)?;
-                                }
-                                Err(e) => {
-                                    writeln!(out, "    FAILED: {}", e)?;
-                                }
-                            }
+                            !duplicate_values
+                                .iter()
+                                .any(|(rt, v)| rt == resource_type && v == value)
+                        } else {
+                            true
                         }
-                    }
+                    })
+                    .collect();
 
-                    // Allocate missing allocations
-                    for d in &used_not_allocated {
+                let fixable_used_not_allocated: Vec<_> = fix_used_not_allocated
+                    .iter()
+                    .filter(|d| {
                         if let ResourceDiscrepancy::UsedButNotAllocated {
                             resource_type,
                             value,
                             ..
                         } = d
                         {
-                            writeln!(out, "  Allocating {} = {} ...", resource_type, value)?;
-                            let cmd = AllocateResourceCommand {
-                                resource_type: *resource_type,
-                                requested: Some(value.clone()),
-                            };
-                            match client.allocate_resource(cmd) {
-                                Ok(sig) => {
-                                    writeln!(out, "    OK (signature: {})", sig)?;
-                                }
-                                Err(e) => {
-                                    writeln!(out, "    FAILED: {}", e)?;
-                                }
-                            }
+                            !duplicate_values
+                                .iter()
+                                .any(|(rt, v)| rt == resource_type && v == value)
+                        } else {
+                            true
+                        }
+                    })
+                    .collect();
+
+                if !fixable_allocated_not_used.is_empty() || !fixable_used_not_allocated.is_empty()
+                {
+                    writeln!(out, "Proposed fixes:")?;
+                    writeln!(out, "--------------")?;
+
+                    for d in &fixable_allocated_not_used {
+                        if let ResourceDiscrepancy::AllocatedButNotUsed {
+                            resource_type,
+                            value,
+                        } = d
+                        {
+                            writeln!(out, "  DEALLOCATE {} = {}", resource_type, value)?;
+                        }
+                    }
+
+                    for d in &fixable_used_not_allocated {
+                        if let ResourceDiscrepancy::UsedButNotAllocated {
+                            resource_type,
+                            value,
+                            ..
+                        } = d
+                        {
+                            writeln!(out, "  ALLOCATE {} = {}", resource_type, value)?;
                         }
                     }
 
                     writeln!(out)?;
-                    writeln!(out, "Done.")?;
-                } else {
-                    writeln!(out, "Aborted.")?;
+                    write!(out, "Should this be fixed? [y/N]: ")?;
+                    out.flush()?;
+
+                    let stdin = std::io::stdin();
+                    let mut input = String::new();
+                    stdin.lock().read_line(&mut input)?;
+
+                    if input.trim().eq_ignore_ascii_case("y")
+                        || input.trim().eq_ignore_ascii_case("yes")
+                    {
+                        writeln!(out)?;
+                        writeln!(out, "Applying fixes...")?;
+
+                        // Deallocate orphaned allocations
+                        for d in &fixable_allocated_not_used {
+                            if let ResourceDiscrepancy::AllocatedButNotUsed {
+                                resource_type,
+                                value,
+                            } = d
+                            {
+                                writeln!(out, "  Deallocating {} = {} ...", resource_type, value)?;
+                                let cmd = DeallocateResourceCommand {
+                                    resource_type: *resource_type,
+                                    value: value.clone(),
+                                };
+                                match client.deallocate_resource(cmd) {
+                                    Ok(sig) => {
+                                        writeln!(out, "    OK (signature: {})", sig)?;
+                                    }
+                                    Err(e) => {
+                                        writeln!(out, "    FAILED: {}", e)?;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Allocate missing allocations
+                        for d in &fixable_used_not_allocated {
+                            if let ResourceDiscrepancy::UsedButNotAllocated {
+                                resource_type,
+                                value,
+                                ..
+                            } = d
+                            {
+                                writeln!(out, "  Allocating {} = {} ...", resource_type, value)?;
+                                let cmd = AllocateResourceCommand {
+                                    resource_type: *resource_type,
+                                    requested: Some(value.clone()),
+                                };
+                                match client.allocate_resource(cmd) {
+                                    Ok(sig) => {
+                                        writeln!(out, "    OK (signature: {})", sig)?;
+                                    }
+                                    Err(e) => {
+                                        writeln!(out, "    FAILED: {}", e)?;
+                                    }
+                                }
+                            }
+                        }
+
+                        writeln!(out)?;
+                        writeln!(out, "Done.")?;
+                    } else {
+                        writeln!(out, "Aborted.")?;
+                    }
                 }
             }
         }

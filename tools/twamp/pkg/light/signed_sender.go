@@ -11,7 +11,6 @@ import (
 type SignedSender interface {
 	Probe(ctx context.Context) (time.Duration, *SignedReplyPacket, error)
 	Close() error
-	LocalAddr() *net.UDPAddr
 }
 
 // NewSignedSender creates a signed TWAMP sender. Only localAddr.Port is used; any IP is ignored.

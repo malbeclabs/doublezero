@@ -43,6 +43,13 @@ func NewLinuxSignedReflector(addr string, timeout time.Duration, privateKey ed25
 		return nil, fmt.Errorf("bind: %w", err)
 	}
 
+	sa, err := unix.Getsockname(fd)
+	if err != nil {
+		unix.Close(fd)
+		return nil, fmt.Errorf("getsockname: %w", err)
+	}
+	boundPort := uint16(sa.(*unix.SockaddrInet4).Port)
+
 	epfd, err := unix.EpollCreate1(0)
 	if err != nil {
 		unix.Close(fd)
@@ -62,7 +69,7 @@ func NewLinuxSignedReflector(addr string, timeout time.Duration, privateKey ed25
 	r := &LinuxSignedReflector{
 		fd:         fd,
 		epfd:       epfd,
-		port:       uint16(udpAddr.Port),
+		port:       boundPort,
 		timeout:    timeout,
 		privateKey: privateKey,
 		shutdown:   make(chan struct{}),
@@ -93,6 +100,10 @@ func (r *LinuxSignedReflector) SetAuthorizedKeys(keys [][32]byte) {
 	for _, key := range keys {
 		r.authorizedKeys.Store(key, struct{}{})
 	}
+}
+
+func (r *LinuxSignedReflector) Port() uint16 {
+	return r.port
 }
 
 func (r *LinuxSignedReflector) Run(ctx context.Context) error {

@@ -51,7 +51,7 @@ func TestSignedSender_Linux(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		sender, err := twamplight.NewLinuxSignedSender(t.Context(), "", nil, reflector.LocalAddr(), senderPriv, reflectorPubKey)
+		sender, err := twamplight.NewLinuxSignedSender(t.Context(), "", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())}, senderPriv, reflectorPubKey)
 		require.NoError(t, err)
 		defer sender.Close()
 
@@ -111,7 +111,7 @@ func TestSignedSender_Linux(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		sender, err := twamplight.NewLinuxSignedSender(t.Context(), "", nil, reflector.LocalAddr(), senderPriv, reflectorPubKey)
+		sender, err := twamplight.NewLinuxSignedSender(t.Context(), "", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())}, senderPriv, reflectorPubKey)
 		require.NoError(t, err)
 		defer sender.Close()
 
@@ -150,7 +150,7 @@ func TestSignedSender_Linux(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		sender, err := twamplight.NewLinuxSignedSender(t.Context(), "", nil, reflector.LocalAddr(), senderPriv, reflectorPubKey)
+		sender, err := twamplight.NewLinuxSignedSender(t.Context(), "", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())}, senderPriv, reflectorPubKey)
 		require.NoError(t, err)
 		defer sender.Close()
 

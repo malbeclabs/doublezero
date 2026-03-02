@@ -3,7 +3,6 @@ package twamplight
 import (
 	"context"
 	"crypto/ed25519"
-	"net"
 	"time"
 )
 
@@ -17,7 +16,7 @@ var SignedReflectorVerifyInterval = 55 * time.Second
 type SignedReflector interface {
 	Run(ctx context.Context) error
 	Close() error
-	LocalAddr() *net.UDPAddr
+	Port() uint16
 	SetAuthorizedKeys(keys [][32]byte)
 }
 

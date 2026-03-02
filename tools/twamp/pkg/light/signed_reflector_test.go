@@ -47,7 +47,7 @@ func TestSignedReflector_Linux(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr())
+		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
 		require.NoError(t, err)
 		defer conn.Close()
 
@@ -102,7 +102,7 @@ func TestSignedReflector_Linux(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr())
+		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
 		require.NoError(t, err)
 		defer conn.Close()
 
@@ -143,7 +143,7 @@ func TestSignedReflector_Linux(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr())
+		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
 		require.NoError(t, err)
 		defer conn.Close()
 
@@ -180,7 +180,7 @@ func TestSignedReflector_Linux(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr())
+		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
 		require.NoError(t, err)
 		defer conn.Close()
 
@@ -236,7 +236,7 @@ func TestSignedReflector_Linux(t *testing.T) {
 			go func(idx int) {
 				defer wg.Done()
 
-				conn, err := net.DialUDP("udp", nil, reflector.LocalAddr())
+				conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
 				if err != nil {
 					t.Errorf("client %d: dial failed: %v", idx, err)
 					return
@@ -334,7 +334,7 @@ func TestSignedReflector_Linux(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr())
+		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
 		require.NoError(t, err)
 		defer conn.Close()
 
@@ -394,7 +394,7 @@ func TestSignedReflector_Linux(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr())
+		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
 		require.NoError(t, err)
 		defer conn.Close()
 

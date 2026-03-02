@@ -229,8 +229,13 @@ func ipSlicesEqual(a, b []net.IP) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	for i := range a {
-		if !a[i].Equal(b[i]) {
+	// Set-based comparison so order differences don't trigger reprovisioning.
+	set := make(map[string]struct{}, len(a))
+	for _, ip := range a {
+		set[ip.String()] = struct{}{}
+	}
+	for _, ip := range b {
+		if _, ok := set[ip.String()]; !ok {
 			return false
 		}
 	}
@@ -241,8 +246,13 @@ func ipNetSlicesEqual(a, b []*net.IPNet) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	for i := range a {
-		if !ipNetsEqual(a[i], b[i]) {
+	// Set-based comparison so order differences don't trigger reprovisioning.
+	set := make(map[string]struct{}, len(a))
+	for _, n := range a {
+		set[n.String()] = struct{}{}
+	}
+	for _, n := range b {
+		if _, ok := set[n.String()]; !ok {
 			return false
 		}
 	}

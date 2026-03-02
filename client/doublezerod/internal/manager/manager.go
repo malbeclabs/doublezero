@@ -302,6 +302,10 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 func (n *NetlinkManager) HasUnicastService() bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	return n.hasUnicastServiceLocked()
+}
+
+func (n *NetlinkManager) hasUnicastServiceLocked() bool {
 	return n.UnicastService != nil
 }
 
@@ -309,6 +313,10 @@ func (n *NetlinkManager) HasUnicastService() bool {
 func (n *NetlinkManager) HasMulticastService() bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	return n.hasMulticastServiceLocked()
+}
+
+func (n *NetlinkManager) hasMulticastServiceLocked() bool {
 	return n.MulticastService != nil
 }
 
@@ -344,7 +352,7 @@ func (n *NetlinkManager) Status() ([]*api.StatusResponse, error) {
 	defer n.mu.Unlock()
 
 	resp := []*api.StatusResponse{}
-	if n.UnicastService != nil {
+	if n.hasUnicastServiceLocked() {
 		status, err := n.UnicastService.Status()
 		if err != nil {
 			return nil, fmt.Errorf("error getting unicast service status: %v", err)
@@ -352,7 +360,7 @@ func (n *NetlinkManager) Status() ([]*api.StatusResponse, error) {
 		// TODO: remove this during multicast work
 		resp = append(resp, status)
 	}
-	if n.MulticastService != nil {
+	if n.hasMulticastServiceLocked() {
 		status, err := n.MulticastService.Status()
 		if err != nil {
 			return nil, fmt.Errorf("error getting multicast service status: %v", err)
@@ -368,12 +376,12 @@ func (n *NetlinkManager) GetProvisionedServices() []*api.ProvisionRequest {
 	defer n.mu.Unlock()
 
 	var reqs []*api.ProvisionRequest
-	if n.UnicastService != nil {
+	if n.hasUnicastServiceLocked() {
 		if pr := n.UnicastService.ProvisionRequest(); pr != nil {
 			reqs = append(reqs, pr)
 		}
 	}
-	if n.MulticastService != nil {
+	if n.hasMulticastServiceLocked() {
 		if pr := n.MulticastService.ProvisionRequest(); pr != nil {
 			reqs = append(reqs, pr)
 		}

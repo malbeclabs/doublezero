@@ -347,15 +347,18 @@ func computeLowestLatencyDevice(
 		return candidates[bestIdx].device.Code
 	}
 
-	// Current device found — check if any other device is significantly better.
+	// Current device found — switch only if another device has the lowest
+	// latency overall AND beats the current device by more than the tolerance.
+	var lowestIdx int
+	var lowestAvg int64 = math.MaxInt64
 	for i, c := range candidates {
-		if c.device.PubKey == currentDevice.PubKey {
-			continue
+		if c.result.Avg < lowestAvg {
+			lowestAvg = c.result.Avg
+			lowestIdx = i
 		}
-		if bestAvg-c.result.Avg > latencyToleranceNS {
-			bestIdx = i
-			break
-		}
+	}
+	if bestAvg-lowestAvg > latencyToleranceNS {
+		bestIdx = lowestIdx
 	}
 
 	return candidates[bestIdx].device.Code

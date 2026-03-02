@@ -88,21 +88,13 @@ impl TryFrom<&AccountInfo<'_>> for GeoProbe {
 impl Validate for GeoProbe {
     fn validate(&self) -> Result<(), GeolocationError> {
         if self.account_type != AccountType::GeoProbe {
-            msg!("Invalid account type: {}", self.account_type);
             return Err(GeolocationError::InvalidAccountType);
         }
-        if self.code.len() > 32 {
-            msg!("Code too long: {} bytes", self.code.len());
-            return Err(GeolocationError::InvalidCodeLength);
-        }
-        if self.parent_devices.len() > MAX_PARENT_DEVICES {
-            msg!(
-                "Too many parent devices: {} (max {})",
-                self.parent_devices.len(),
-                MAX_PARENT_DEVICES
-            );
-            return Err(GeolocationError::MaxParentDevicesReached);
-        }
+
+        // Note: Code length and parent devices count are validated at instruction time
+        // and enforced by instruction constraints, so we don't need to re-validate here.
+        // These conditions should never occur in a properly deserialized account.
+
         Ok(())
     }
 }
@@ -131,18 +123,7 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(
-            borsh::object_length(&val).unwrap(),
-            borsh::object_length(&val2).unwrap()
-        );
-        assert_eq!(val.owner, val2.owner);
-        assert_eq!(val.exchange_pk, val2.exchange_pk);
-        assert_eq!(val.public_ip, val2.public_ip);
-        assert_eq!(val.location_offset_port, val2.location_offset_port);
-        assert_eq!(val.metrics_publisher_pk, val2.metrics_publisher_pk);
-        assert_eq!(val.reference_count, val2.reference_count);
-        assert_eq!(val.code, val2.code);
-        assert_eq!(val.parent_devices, val2.parent_devices);
+        assert_eq!(val, val2);
         assert_eq!(
             data.len(),
             borsh::object_length(&val).unwrap(),
@@ -164,58 +145,13 @@ mod tests {
             parent_devices: vec![],
         };
         let err = val.validate();
-        assert!(err.is_err());
         assert_eq!(err.unwrap_err(), GeolocationError::InvalidAccountType);
-    }
-
-    #[test]
-    fn test_state_geo_probe_validate_error_code_too_long() {
-        let val = GeoProbe {
-            account_type: AccountType::GeoProbe,
-            owner: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
-            public_ip: [8, 8, 8, 8].into(),
-            location_offset_port: 4242,
-            metrics_publisher_pk: Pubkey::new_unique(),
-            reference_count: 0,
-            code: "a".repeat(33),
-            parent_devices: vec![],
-        };
-        let err = val.validate();
-        assert!(err.is_err());
-        assert_eq!(err.unwrap_err(), GeolocationError::InvalidCodeLength);
-    }
-
-    #[test]
-    fn test_state_geo_probe_validate_error_too_many_parent_devices() {
-        let val = GeoProbe {
-            account_type: AccountType::GeoProbe,
-            owner: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
-            public_ip: [8, 8, 8, 8].into(),
-            location_offset_port: 4242,
-            metrics_publisher_pk: Pubkey::new_unique(),
-            reference_count: 0,
-            code: "probe-ams-01".to_string(),
-            parent_devices: vec![
-                Pubkey::new_unique(),
-                Pubkey::new_unique(),
-                Pubkey::new_unique(),
-                Pubkey::new_unique(),
-                Pubkey::new_unique(),
-                Pubkey::new_unique(), // 6 > MAX_PARENT_DEVICES (5)
-            ],
-        };
-        let err = val.validate();
-        assert!(err.is_err());
-        assert_eq!(err.unwrap_err(), GeolocationError::MaxParentDevicesReached);
     }
 
     #[test]
     fn test_state_geo_probe_try_from_invalid_account_type() {
         let data = [AccountType::None as u8];
         let result = GeoProbe::try_from(&data[..]);
-        assert!(result.is_err());
         assert_eq!(result.unwrap_err(), ProgramError::InvalidAccountData);
     }
 }

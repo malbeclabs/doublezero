@@ -61,19 +61,23 @@ async fn test_create_geo_probe_success() {
     );
     banks_client.process_transaction(tx).await.unwrap();
 
-    // Verify the account was created
+    // Verify the account was created with expected values
     let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
     let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
 
-    assert_eq!(probe.account_type, AccountType::GeoProbe);
-    assert_eq!(probe.owner, payer.pubkey());
-    assert_eq!(probe.exchange_pk, exchange_pubkey);
-    assert_eq!(probe.public_ip, Ipv4Addr::new(8, 8, 8, 8));
-    assert_eq!(probe.location_offset_port, 4242);
-    assert_eq!(probe.metrics_publisher_pk, args.metrics_publisher_pk);
-    assert_eq!(probe.reference_count, 0);
-    assert_eq!(probe.code, code);
-    assert_eq!(probe.parent_devices.len(), 0);
+    let expected_probe = GeoProbe {
+        account_type: AccountType::GeoProbe,
+        owner: payer.pubkey(),
+        exchange_pk: exchange_pubkey,
+        public_ip: Ipv4Addr::new(8, 8, 8, 8),
+        location_offset_port: 4242,
+        metrics_publisher_pk: args.metrics_publisher_pk,
+        reference_count: 0,
+        code: code.to_string(),
+        parent_devices: vec![],
+    };
+
+    assert_eq!(probe, expected_probe);
 }
 
 #[tokio::test]
@@ -119,8 +123,6 @@ async fn test_create_geo_probe_invalid_code_length() {
     );
 
     let result = banks_client.process_transaction(tx).await;
-    assert!(result.is_err());
-
     let err = result.unwrap_err().unwrap();
     match err {
         TransactionError::InstructionError(0, InstructionError::Custom(code)) => {
@@ -169,8 +171,16 @@ async fn test_create_geo_probe_exchange_not_activated() {
     );
 
     let result = banks_client.process_transaction(tx).await;
-    assert!(result.is_err());
-    // Exchange not activated should return InvalidAccountData
+    let err = result.unwrap_err().unwrap();
+    match err {
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData) => {
+            // Expected - exchange is not activated
+        }
+        _ => panic!(
+            "Expected InvalidAccountData error for non-activated exchange, got: {:?}",
+            err
+        ),
+    }
 }
 
 #[tokio::test]
@@ -245,12 +255,19 @@ async fn test_update_geo_probe_success() {
     let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
     let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
 
-    assert_eq!(probe.public_ip, Ipv4Addr::new(1, 1, 1, 1));
-    assert_eq!(probe.location_offset_port, 5353);
-    assert_eq!(probe.metrics_publisher_pk, new_metrics_publisher);
-    // Verify immutable fields didn't change
-    assert_eq!(probe.code, code);
-    assert_eq!(probe.exchange_pk, exchange_pubkey);
+    let expected_probe = GeoProbe {
+        account_type: AccountType::GeoProbe,
+        owner: payer.pubkey(),
+        exchange_pk: exchange_pubkey,
+        public_ip: Ipv4Addr::new(1, 1, 1, 1),        // Updated
+        location_offset_port: 5353,                  // Updated
+        metrics_publisher_pk: new_metrics_publisher, // Updated
+        reference_count: 0,                          // Unchanged
+        code: code.to_string(),                      // Immutable
+        parent_devices: vec![],                      // Unchanged
+    };
+
+    assert_eq!(probe, expected_probe);
 }
 
 #[tokio::test]

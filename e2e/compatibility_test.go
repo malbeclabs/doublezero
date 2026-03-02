@@ -64,7 +64,7 @@ var knownIncompatibilities = map[string]knownIncompat{
 
 	// All multicast operations that depend on multicast_group_create. When the group
 	// can't be created (< 0.8.1), these all fail with "MulticastGroup not found".
-	"write/multicast_group_wait_activated":       {minVersion: "0.8.1"},
+	"write/multicast_group_wait_activated": {minVersion: "0.8.1"},
 	// multicast_group_update: In addition to the dependency above, v0.8.1-v0.8.8 parsed
 	// --max-bandwidth as a plain integer. v0.8.9 added validate_parse_bandwidth (a855ca7a)
 	// which accepts unit strings like "200Mbps".

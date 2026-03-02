@@ -6,6 +6,21 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+- CLI
+  - `doublezero resource verify` command will now suggest creating resources or create them with --fix
+- SDK
+  - Fix multicast group deserialization in `smartcontract/sdk/go` to correctly read publisher and subscriber counts and align status enum with onchain definition
+- Smartcontract
+  - Allow sentinel authority to add/remove multicast publisher and subscriber allowlist entries
+- Telemetry
+  - Fix global monitor crash when IBRL and multicast users share the same client IP but are on different devices, by preferring non-multicast users in client IP lookups to match status device selection
+
+## [v0.9.0](https://github.com/malbeclabs/doublezero/compare/client/v0.8.11...client/v0.9.0) - 2026-02-27
+
+### Breaking
+
 - CLI: `--bandwidth` is now a required argument for `doublezero device interface create` and `doublezero device interface update`; callers that previously omitted it (relying on the default of `0`) must now explicitly pass a value with a unit (e.g. `--bandwidth 10Gbps`)
 
 ### Changes
@@ -22,6 +37,7 @@ All notable changes to this project will be documented in this file.
   - Fix multicast subscriber tunnel source resolution for NAT environments — resolve local interface IP instead of using public IP
   - Added multicast filters to access-pass list, enabling filtering by publisher/subscriber role and identifying access passes not authorized for a specific multicast group.
   - Device interface `--bandwidth` and `--cir` flags now accept Kbps, Mbps, or Gbps units; `interface list` displays those values as human-readable strings
+  - Add duplicate IP check to prevent a user from assigning the same IP more than once
 - Client
   - Fix BGP `OnClose` deleting routes from all peers instead of only the closing peer, preventing multicast teardown from nuking unicast routes
   - Skip route deletion on `OnClose` for `NoInstall` peers (multicast) since they never install kernel routes
@@ -41,6 +57,8 @@ All notable changes to this project will be documented in this file.
   - Upgrade Solana SDK workspace dependencies from 2.2.7 to 2.3.x (`solana-sdk`, `solana-client`, `solana-program-test`, and others)
 - Internet telemetry
   - Reduce RIPE Atlas sampling interval from 6 minutes to 10 minutes to work around service limit of 100_000 samples per day
+- E2E
+  - e2e: add multi-tenant access control negative tests ([#3081](https://github.com/malbeclabs/doublezero/pull/3081))
 
 ## [v0.8.11](https://github.com/malbeclabs/doublezero/compare/client/v0.8.10...client/v0.8.11) - 2026-02-27
 

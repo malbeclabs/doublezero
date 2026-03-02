@@ -226,7 +226,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		output, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "create",
 			testDeviceCode, testInterfaceName,
-			"--ip-net", "45.33.100.50/31",
+			"--ip-net", "198.51.100.1/31",
 			"--bandwidth", "10G",
 		})
 

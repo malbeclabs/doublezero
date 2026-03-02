@@ -881,7 +881,8 @@ const (
 	MulticastGroupStatusPending MulticastGroupStatus = iota
 	MulticastGroupStatusActivated
 	MulticastGroupStatusSuspended
-	MulticastGroupStatusDeleted
+	MulticastGroupStatusDeleting
+	MulticastGroupStatusRejected
 )
 
 type MulticastGroup struct {

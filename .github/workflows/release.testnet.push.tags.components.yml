@@ -24,19 +24,9 @@ jobs:
           - device-telemetry-agent
           - funder
           - monitor
+          - client
     with:
       version: ${{ github.event.inputs.version }}
       component: ${{ matrix.component }}
-    secrets:
-      DOUBLEZERO_PAT: ${{ secrets.DOUBLEZERO_PAT }}
-  client-tag:
-    name: Tag client with version ${{ github.event.inputs.version }}
-    needs: component-tags
-    uses: ./.github/workflows/release.testnet.push.tags.yml
-    permissions:
-      contents: write
-    with:
-      version: ${{ github.event.inputs.version }}
-      component: client
     secrets:
       DOUBLEZERO_PAT: ${{ secrets.DOUBLEZERO_PAT }}

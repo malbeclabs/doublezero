@@ -1,4 +1,3 @@
-use crate::error::Validate;
 use borsh::BorshSerialize;
 use doublezero_program_common::{
     create_account::try_create_account, resize_account::resize_account_if_needed,
@@ -21,10 +20,8 @@ pub fn try_acc_create<'a, T>(
     new_account_signer_seeds: &[&[u8]],
 ) -> ProgramResult
 where
-    T: BorshSerialize + Validate + std::fmt::Debug,
+    T: BorshSerialize + std::fmt::Debug,
 {
-    value.validate()?;
-
     let account_space = borsh::object_length(value)?;
 
     #[cfg(test)]
@@ -66,10 +63,8 @@ pub fn try_acc_write<T>(
     accounts: &[AccountInfo],
 ) -> ProgramResult
 where
-    T: Validate + borsh::BorshSerialize,
+    T: borsh::BorshSerialize,
 {
-    value.validate()?;
-
     resize_account_if_needed(account, payer, accounts, borsh::object_length(value)?)?;
 
     let mut data = &mut account.data.borrow_mut()[..];

@@ -1,7 +1,4 @@
-use crate::{
-    error::{GeolocationError, Validate},
-    state::accounttype::AccountType,
-};
+use crate::state::accounttype::AccountType;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, net::Ipv4Addr};
@@ -85,20 +82,6 @@ impl TryFrom<&AccountInfo<'_>> for GeoProbe {
     }
 }
 
-impl Validate for GeoProbe {
-    fn validate(&self) -> Result<(), GeolocationError> {
-        if self.account_type != AccountType::GeoProbe {
-            return Err(GeolocationError::InvalidAccountType);
-        }
-
-        // Note: Code length and parent devices count are validated at instruction time
-        // and enforced by instruction constraints, so we don't need to re-validate here.
-        // These conditions should never occur in a properly deserialized account.
-
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,32 +103,12 @@ mod tests {
         let data = borsh::to_vec(&val).unwrap();
         let val2 = GeoProbe::try_from(&data[..]).unwrap();
 
-        val.validate().unwrap();
-        val2.validate().unwrap();
-
         assert_eq!(val, val2);
         assert_eq!(
             data.len(),
             borsh::object_length(&val).unwrap(),
             "Invalid Size"
         );
-    }
-
-    #[test]
-    fn test_state_geo_probe_validate_error_invalid_account_type() {
-        let val = GeoProbe {
-            account_type: AccountType::ProgramConfig,
-            owner: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
-            public_ip: [8, 8, 8, 8].into(),
-            location_offset_port: 4242,
-            metrics_publisher_pk: Pubkey::new_unique(),
-            reference_count: 0,
-            code: "probe-ams-01".to_string(),
-            parent_devices: vec![],
-        };
-        let err = val.validate();
-        assert_eq!(err.unwrap_err(), GeolocationError::InvalidAccountType);
     }
 
     #[test]

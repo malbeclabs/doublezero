@@ -32,10 +32,6 @@ impl From<GeolocationError> for ProgramError {
     }
 }
 
-pub trait Validate {
-    fn validate(&self) -> Result<(), GeolocationError>;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

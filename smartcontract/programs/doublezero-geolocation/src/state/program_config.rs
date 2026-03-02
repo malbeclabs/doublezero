@@ -1,7 +1,4 @@
-use crate::{
-    error::{GeolocationError, Validate},
-    state::accounttype::AccountType,
-};
+use crate::state::accounttype::AccountType;
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
@@ -43,16 +40,6 @@ impl TryFrom<&AccountInfo<'_>> for GeolocationProgramConfig {
     }
 }
 
-impl Validate for GeolocationProgramConfig {
-    fn validate(&self) -> Result<(), GeolocationError> {
-        if self.account_type != AccountType::ProgramConfig {
-            msg!("Invalid account type: {}", self.account_type);
-            return Err(GeolocationError::InvalidAccountType);
-        }
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,9 +65,6 @@ mod tests {
         let data = borsh::to_vec(&val).unwrap();
         let val2 = GeolocationProgramConfig::try_from(&data[..]).unwrap();
 
-        val.validate().unwrap();
-        val2.validate().unwrap();
-
         assert_eq!(
             borsh::object_length(&val).unwrap(),
             borsh::object_length(&val2).unwrap()
@@ -95,26 +79,11 @@ mod tests {
     }
 
     #[test]
-    fn test_state_programconfig_validate_error_invalid_account_type() {
-        let val = GeolocationProgramConfig {
-            account_type: AccountType::None,
-            bump_seed: 1,
-            version: 3,
-            min_compatible_version: 1,
-        };
-        assert_eq!(
-            val.validate().unwrap_err(),
-            GeolocationError::InvalidAccountType
-        );
-    }
-
-    #[test]
     fn test_state_programconfig_try_from_invalid_account_type() {
         let data = [AccountType::None as u8];
-        let val = GeolocationProgramConfig::try_from(&data[..]).unwrap();
-        assert_eq!(
-            val.validate().unwrap_err(),
-            GeolocationError::InvalidAccountType
-        );
+        let result = GeolocationProgramConfig::try_from(&data[..]);
+        // This will successfully deserialize but with wrong account type
+        let config = result.unwrap();
+        assert_eq!(config.account_type, AccountType::None);
     }
 }

@@ -45,3 +45,6 @@
 ### Program Upgrades
 
 1. **Use standard interfaces**: Use `solana-loader-v3-interface` to parse `UpgradeableLoaderState` rather than implementing your own parser. The interface crate provides well-tested, maintained implementations.
+
+### Pull Requests
+- Make sure `make rust-lint` and `make rust-test` both pass before posting pull requests

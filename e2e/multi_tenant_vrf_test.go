@@ -3,11 +3,11 @@
 package e2e_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -597,15 +597,19 @@ func TestE2E_TenantDeletionLifecycle(t *testing.T) {
 // `doublezero tenant get --code <code>`.
 func getTenantVrfID(t *testing.T, dn *devnet.Devnet, tenantCode string) uint16 {
 	t.Helper()
-	output, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "tenant", "get", "--code", tenantCode})
+	output, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "tenant", "get", "--code", tenantCode, "--json"})
 	require.NoError(t, err)
-	for _, line := range strings.Split(string(output), "\n") {
-		if strings.HasPrefix(line, "vrf_id: ") {
-			val, err := strconv.ParseUint(strings.TrimPrefix(line, "vrf_id: "), 10, 16)
-			require.NoError(t, err)
-			return uint16(val)
-		}
+	type config struct {
+		VrfID uint16 `json:"vrf_id"`
 	}
-	t.Fatalf("vrf_id not found in tenant get output for %s: %s", tenantCode, string(output))
-	return 0
+	type response struct {
+		Config config `json:"config"`
+	}
+	var resp response
+	err = json.Unmarshal(output, &resp)
+	require.NoError(t, err, "failed to parse JSON output: %s", string(output))
+	if resp.Config.VrfID == 0 {
+		t.Fatalf("vrf_id not found in tenant get output for %s: %s", tenantCode, string(output))
+	}
+	return resp.Config.VrfID
 }

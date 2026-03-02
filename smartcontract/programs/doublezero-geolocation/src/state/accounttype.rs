@@ -9,12 +9,14 @@ pub enum AccountType {
     #[default]
     None = 0,
     ProgramConfig = 1,
+    GeoProbe = 2,
 }
 
 impl From<u8> for AccountType {
     fn from(value: u8) -> Self {
         match value {
             1 => AccountType::ProgramConfig,
+            2 => AccountType::GeoProbe,
             _ => AccountType::None,
         }
     }
@@ -25,6 +27,7 @@ impl fmt::Display for AccountType {
         match self {
             AccountType::None => write!(f, "none"),
             AccountType::ProgramConfig => write!(f, "programconfig"),
+            AccountType::GeoProbe => write!(f, "geoprobe"),
         }
     }
 }

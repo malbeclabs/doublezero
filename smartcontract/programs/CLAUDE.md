@@ -2,7 +2,7 @@
 
 ### Security
 
-1. **PDA ownership verification**: Always verify the owner of PDA accounts (both internal PDAs and those from other programs like serviceability) to prevent being tricked into reading an account owned by another program. For serviceability accounts, verify the owner is the serviceability program ID. For your own PDAs, verify the owner is `program_id`.
+1. **PDA ownership verification**: Always verify the owner of PDA accounts (both internal PDAs and those from other programs like serviceability) to prevent being tricked into reading an account owned by another program. For serviceability accounts, verify the owner is the serviceability program ID. For your own PDAs, verify the owner is `program_id`. Exception: for singleton PDAs (e.g., ProgramConfig, GlobalState) the account type discriminator check via `try_from` is sufficient — the ownership check is harmless but redundant since there is only one valid account.
 
 2. **System program validation**: Checks for the system program are unnecessary because the system interface builds instructions using the system program as the program ID. If the wrong program is provided, you'll get a revert automatically.
 
@@ -28,6 +28,23 @@
 
 2. **Use BorshDeserializeIncremental**: For instruction arguments that may gain new optional fields over time, use `BorshDeserializeIncremental` or derive `BorshDeserialize`.
 
+### Testing
+
+1. **Assert specific errors**: Tests should assert specific error types (e.g., `ProgramError::Custom(17)`), not just `.is_err()`. This catches regressions where the instruction fails for the wrong reason. Avoid unnecessary `assert!(result.is_err())` when the next line will call `result.unwrap_err()` - just directly assert on the error with `assert_eq!(result.unwrap_err(), expected_error)`.
+
+2. **Don't test framework functionality**: Avoid writing tests that only exercise SDK/framework behavior (e.g., testing that `Pubkey::find_program_address` is deterministic or produces different outputs for different inputs). Focus tests on your program's logic.
+
+3. **Use full struct equality when possible**: If a struct derives `PartialEq`, use `assert_eq!(actual_struct, expected_struct)` rather than asserting individual fields. This ensures new fields added in the future are also tested.
+
+4. **Integration tests for all processors**: Every processor function (instruction handler) should have corresponding integration tests in the `tests/` directory. These tests should cover:
+   - Success cases with valid inputs
+   - All error cases (invalid inputs, unauthorized signers, wrong account states)
+   - Edge cases (boundary values, empty collections, maximum sizes)
+   - State transitions (account creation, updates, deletion)
+
 ### Program Upgrades
 
 1. **Use standard interfaces**: Use `solana-loader-v3-interface` to parse `UpgradeableLoaderState` rather than implementing your own parser. The interface crate provides well-tested, maintained implementations.
+
+### Pull Requests
+- Make sure `make rust-lint` and `make rust-test` both pass before posting pull requests

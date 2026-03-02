@@ -1,7 +1,13 @@
 use crate::{
     instructions::GeolocationInstruction,
-    processors::program_config::{
-        init::process_init_program_config, update::process_update_program_config,
+    processors::{
+        geo_probe::{
+            create::process_create_geo_probe, delete::process_delete_geo_probe,
+            update::process_update_geo_probe,
+        },
+        program_config::{
+            init::process_init_program_config, update::process_update_program_config,
+        },
     },
 };
 
@@ -30,6 +36,13 @@ pub fn process_instruction(
         GeolocationInstruction::UpdateProgramConfig(args) => {
             process_update_program_config(program_id, accounts, &args)?
         }
+        GeolocationInstruction::CreateGeoProbe(args) => {
+            process_create_geo_probe(program_id, accounts, &args)?
+        }
+        GeolocationInstruction::UpdateGeoProbe(args) => {
+            process_update_geo_probe(program_id, accounts, &args)?
+        }
+        GeolocationInstruction::DeleteGeoProbe => process_delete_geo_probe(program_id, accounts)?,
     };
 
     Ok(())

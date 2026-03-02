@@ -355,6 +355,7 @@ mod tests {
                 multicast_users_count: 0,
                 max_unicast_users: 0,
                 max_multicast_users: 0,
+                reserved_seats: 0,
             };
 
             let mut expected_interfaces = [
@@ -618,6 +619,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 0,
             max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let mut ip_block_allocator = IPBlockAllocator::new("1.1.1.0/24".parse().unwrap());
@@ -738,6 +740,7 @@ mod tests {
                 multicast_users_count: 0,
                 max_unicast_users: 0,
                 max_multicast_users: 0,
+                reserved_seats: 0,
             };
 
             let device_clone = device.clone();
@@ -817,6 +820,7 @@ mod tests {
                 multicast_users_count: 0,
                 max_unicast_users: 0,
                 max_multicast_users: 0,
+                reserved_seats: 0,
             };
 
             // Insert device first so it can be removed

@@ -233,7 +233,7 @@ pub fn process_create_user(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    if device.users_count >= device.max_users && !is_qa {
+    if device.users_count + device.reserved_seats >= device.max_users && !is_qa {
         msg!("{:?}", device);
         return Err(DoubleZeroError::MaxUsersExceeded.into());
     }

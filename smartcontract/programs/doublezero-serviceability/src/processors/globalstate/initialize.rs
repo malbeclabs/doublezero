@@ -106,6 +106,7 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         health_oracle_pk: *payer_account.key,
         qa_allowlist: vec![*payer_account.key],
         feature_flags: 0,
+        reservation_authority_pk: Pubkey::default(),
     };
 
     try_acc_create(

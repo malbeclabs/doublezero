@@ -7,8 +7,9 @@ use crate::{
         SEED_ACCESS_PASS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE, SEED_DEVICE_TUNNEL_BLOCK,
         SEED_DZ_PREFIX_BLOCK, SEED_EXCHANGE, SEED_GLOBALSTATE, SEED_LINK, SEED_LINK_IDS,
         SEED_LOCATION, SEED_MULTICASTGROUP_BLOCK, SEED_MULTICAST_GROUP,
-        SEED_MULTICAST_PUBLISHER_BLOCK, SEED_PREFIX, SEED_PROGRAM_CONFIG, SEED_SEGMENT_ROUTING_IDS,
-        SEED_TENANT, SEED_TUNNEL_IDS, SEED_USER, SEED_USER_TUNNEL_BLOCK, SEED_VRF_IDS,
+        SEED_MULTICAST_PUBLISHER_BLOCK, SEED_PREFIX, SEED_PROGRAM_CONFIG, SEED_RESERVATION,
+        SEED_SEGMENT_ROUTING_IDS, SEED_TENANT, SEED_TUNNEL_IDS, SEED_USER, SEED_USER_TUNNEL_BLOCK,
+        SEED_VRF_IDS,
     },
     state::user::UserType,
 };
@@ -77,6 +78,22 @@ pub fn get_contributor_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {
 
 pub fn get_tenant_pda(program_id: &Pubkey, code: &str) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[SEED_PREFIX, SEED_TENANT, code.as_bytes()], program_id)
+}
+
+pub fn get_reservation_pda(
+    program_id: &Pubkey,
+    device_pk: &Pubkey,
+    client_ip: &Ipv4Addr,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            SEED_PREFIX,
+            SEED_RESERVATION,
+            device_pk.as_ref(),
+            &client_ip.octets(),
+        ],
+        program_id,
+    )
 }
 
 pub fn get_accesspass_pda(

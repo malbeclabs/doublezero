@@ -16,6 +16,7 @@ func DeserializeGlobalState(reader *ByteReader, gs *GlobalState) {
 	gs.HealthOraclePK = reader.ReadPubkey()
 	gs.QAAllowlist = reader.ReadPubkeySlice()
 	gs.FeatureFlags = reader.ReadU128()
+	gs.ReservationAuthorityPK = reader.ReadPubkey()
 }
 
 func DeserializeGlobalConfig(reader *ByteReader, cfg *GlobalConfig) {
@@ -142,6 +143,7 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.MulticastUsersCount = reader.ReadU16()
 	dev.MaxUnicastUsers = reader.ReadU16()
 	dev.MaxMulticastUsers = reader.ReadU16()
+	dev.ReservedSeats = reader.ReadU16()
 }
 
 func DeserializeLink(reader *ByteReader, link *Link) {

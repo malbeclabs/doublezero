@@ -161,6 +161,7 @@ mod tests {
             multicast_users_count: 0,
             max_unicast_users: 1000,
             max_multicast_users: 1000,
+            reserved_seats: 0,
         };
 
         let mgroup_pubkey = Pubkey::new_unique();

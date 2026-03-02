@@ -29,9 +29,9 @@ import (
 const (
 	defaultStateDir                     = "/var/lib/doublezero-internet-latency-collector/state"
 	defaultAtlasProbesPerLocation       = 1
-	defaultRipeAtlasSamplingInterval    = 6 * time.Minute
+	defaultRipeAtlasSamplingInterval    = 10 * time.Minute
 	defaultRipeAtlasMeasurementInterval = 1 * time.Hour
-	defaultRipeAtlasExportInterval      = 6 * time.Minute
+	defaultRipeAtlasExportInterval      = 10 * time.Minute
 	defaultWheresitupSamplingInterval   = 6 * time.Minute
 	defaultLedgerSubmissionInterval     = 1 * time.Minute
 	defaultWheresitupStateFile          = "wheresitup_jobs_to_process.json"
@@ -94,7 +94,7 @@ var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run ongoing data collection operations (service mode)",
 	Long: `Run continuous collector that creates WhereItUp jobs every interval,
-RIPE Atlas measurements hourly, and exports RIPE Atlas results every 2 minutes.`,
+RIPE Atlas measurements hourly, and exports RIPE Atlas results periodically.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log := collector.NewLogger(collector.LogLevel(logLevel))
 

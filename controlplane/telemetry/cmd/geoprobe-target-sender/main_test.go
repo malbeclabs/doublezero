@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"encoding/json"
 	"testing"
 	"time"
@@ -178,7 +179,7 @@ func TestProbeOutput_SuccessJSON_OmitsError(t *testing.T) {
 func TestNewEd25519Signer_Integration(t *testing.T) {
 	// Verify that a Solana wallet's private key works with the signed package's signer.
 	wallet := solana.NewWallet()
-	signer := signed.NewEd25519Signer(wallet.PrivateKey)
+	signer := signed.NewEd25519Signer(ed25519.PrivateKey(wallet.PrivateKey))
 
 	pub := signer.Public()
 	if len(pub) != 32 {

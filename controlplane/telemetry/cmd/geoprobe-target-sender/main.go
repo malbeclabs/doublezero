@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -73,7 +74,7 @@ func main() {
 		log.Error("failed to load keypair", "error", err)
 		os.Exit(1)
 	}
-	signer := signed.NewEd25519Signer(keypair)
+	signer := signed.NewEd25519Signer(ed25519.PrivateKey(keypair))
 
 	// Parse probe public key.
 	remotePubkey, err := parsePubkey(*probePK)

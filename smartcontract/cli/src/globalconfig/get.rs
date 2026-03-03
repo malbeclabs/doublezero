@@ -3,7 +3,7 @@ use clap::Args;
 use doublezero_sdk::commands::globalconfig::get::GetGlobalConfigCommand;
 use serde::Serialize;
 use std::io::Write;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct GetGlobalConfigCliCommand {
@@ -41,10 +41,12 @@ impl GetGlobalConfigCliCommand {
             let json = serde_json::to_string_pretty(&config_display)?;
             writeln!(out, "{json}")?;
         } else {
-            let table = Table::new([config_display])
-                .with(Style::psql().remove_horizontals())
-                .to_string();
-            writeln!(out, "{table}")?;
+            let headers = ConfigDisplay::headers();
+            let fields = config_display.fields();
+            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
+            for (header, value) in headers.iter().zip(fields.iter()) {
+                writeln!(out, " {header:<max_len$} | {value}")?;
+            }
         }
 
         Ok(())
@@ -90,25 +92,34 @@ mod tests {
         let res = GetGlobalConfigCliCommand { json: false }.execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert!(output_str.contains("1234"), "should contain local asn");
-        assert!(output_str.contains("5678"), "should contain remote asn");
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
         assert!(
-            output_str.contains("10.1.0.0/24"),
-            "should contain device tunnel block"
+            has_row("local_asn", "1234"),
+            "local_asn row should contain value"
+        );
+        assert!(
+            has_row("remote_asn", "5678"),
+            "remote_asn row should contain value"
+        );
+        assert!(
+            has_row("device_tunnel_block", "10.1.0.0/24"),
+            "device_tunnel_block row should contain value"
         );
 
         // JSON output
         let mut output = Vec::new();
         let res = GetGlobalConfigCliCommand { json: true }.execute(&client, &mut output);
         assert!(res.is_ok());
-        let output_str = String::from_utf8(output).unwrap();
-        assert!(
-            output_str.contains("\"local_asn\""),
-            "should contain local_asn key"
-        );
-        assert!(
-            output_str.contains("1234"),
-            "should contain local asn value"
-        );
+        let json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();
+        assert_eq!(json["local_asn"].as_u64().unwrap(), 1234);
+        assert_eq!(json["remote_asn"].as_u64().unwrap(), 5678);
+        assert_eq!(json["device_tunnel_block"].as_str().unwrap(), "10.1.0.0/24");
+        assert_eq!(json["user_tunnel_block"].as_str().unwrap(), "10.5.0.0/24");
+        assert_eq!(json["next_bgp_community"].as_u64().unwrap(), 10000);
     }
 }

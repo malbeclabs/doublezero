@@ -36,6 +36,7 @@ impl From<GetResourceCliCommand> for GetResourceCommand {
 
 #[derive(Tabled, Serialize)]
 pub struct ResourceDisplay {
+    #[tabled(rename = "Allocated Resources")]
     pub resource: String,
 }
 
@@ -115,11 +116,11 @@ mod tests {
         assert!(result.is_ok());
         let output_str = String::from_utf8(output.into_inner()).unwrap();
         assert!(
-            output_str.contains("resource"),
+            output_str.contains("Allocated Resources"),
             "should contain table header"
         );
         assert!(
-            output_str.contains("0"),
+            output_str.contains("| 0"),
             "should contain allocated resource"
         );
     }
@@ -148,10 +149,11 @@ mod tests {
         let mut output = Cursor::new(Vec::new());
         let result = cli_cmd.execute(&mock_client, &mut output);
         assert!(result.is_ok());
-        let output_str = String::from_utf8(output.into_inner()).unwrap();
-        assert!(
-            output_str.contains("\"resource\""),
-            "should contain resource key"
-        );
+        let json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8(output.into_inner()).unwrap()).unwrap();
+        assert!(json.is_array(), "output should be a JSON array");
+        let arr = json.as_array().unwrap();
+        assert!(!arr.is_empty(), "array should not be empty");
+        assert_eq!(arr[0]["resource"].as_str().unwrap(), "0");
     }
 }

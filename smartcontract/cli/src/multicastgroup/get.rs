@@ -168,8 +168,12 @@ impl GetMulticastGroupCliCommand {
             let json = serde_json::to_string_pretty(&output_data)?;
             writeln!(out, "{json}")?;
         } else {
-            let info_table = tabled::Table::new([info]);
-            writeln!(out, "{info_table}")?;
+            let headers = MulticastGroupDisplay::headers();
+            let fields = info.fields();
+            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
+            for (header, value) in headers.iter().zip(fields.iter()) {
+                writeln!(out, " {header:<max_len$} | {value}")?;
+            }
 
             let allowlist_table = Table::new(allowlist)
                 .with(Style::psql().remove_horizontals())
@@ -394,12 +398,20 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
         assert!(
-            output_str.contains("account"),
-            "should contain table header"
+            has_row("account", &mgroup_pubkey.to_string()),
+            "account row should contain pubkey"
         );
-        assert!(output_str.contains("test"), "should contain code");
-        assert!(output_str.contains("activated"), "should contain status");
+        assert!(has_row("code", "test"), "code row should contain value");
+        assert!(
+            has_row("status", "activated"),
+            "status row should contain value"
+        );
         assert!(
             output_str.contains("allowlist"),
             "should contain allowlist section"
@@ -414,16 +426,15 @@ mod tests {
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
-        let output_str = String::from_utf8(output).unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();
+        assert_eq!(json["account"].as_str().unwrap(), mgroup_pubkey.to_string());
+        assert_eq!(json["code"].as_str().unwrap(), "test");
+        assert_eq!(json["status"].as_str().unwrap(), "activated");
         assert!(
-            output_str.contains("\"account\""),
-            "should contain account key"
+            json["allowlist"].is_array(),
+            "allowlist should be a JSON array"
         );
-        assert!(output_str.contains("\"code\""), "should contain code key");
-        assert!(
-            output_str.contains("\"allowlist\""),
-            "should contain allowlist key"
-        );
-        assert!(output_str.contains("\"users\""), "should contain users key");
+        assert!(json["users"].is_array(), "users should be a JSON array");
     }
 }

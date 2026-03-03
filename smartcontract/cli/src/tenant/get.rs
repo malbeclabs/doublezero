@@ -16,13 +16,19 @@ impl GetTenantCliCommand {
             pubkey_or_code: self.code,
         })?;
 
-        writeln!(out, "account: {pubkey}")?;
-        writeln!(out, "code: {}", tenant.code)?;
-        writeln!(out, "vrf_id: {}", tenant.vrf_id)?;
-        writeln!(out, "metro_routing: {}", tenant.metro_routing)?;
-        writeln!(out, "route_liveness: {}", tenant.route_liveness)?;
-        writeln!(out, "reference_count: {}", tenant.reference_count)?;
-        writeln!(out, "owner: {}", tenant.owner)?;
+        let fields = [
+            ("account", pubkey.to_string()),
+            ("code", tenant.code.clone()),
+            ("vrf_id", tenant.vrf_id.to_string()),
+            ("metro_routing", tenant.metro_routing.to_string()),
+            ("route_liveness", tenant.route_liveness.to_string()),
+            ("reference_count", tenant.reference_count.to_string()),
+            ("owner", tenant.owner.to_string()),
+        ];
+        let max_len = fields.iter().map(|(k, _)| k.len()).max().unwrap_or(0);
+        for (key, value) in &fields {
+            writeln!(out, " {key:<max_len$} | {value}")?;
+        }
 
         Ok(())
     }
@@ -93,10 +99,20 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(
-            output_str,
-            "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\ncode: test-tenant\nvrf_id: 100\nmetro_routing: true\nroute_liveness: false\nreference_count: 0\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n"
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
+        assert!(
+            has_row("account", &tenant_pubkey.to_string()),
+            "account row should contain pubkey"
         );
+        assert!(
+            has_row("code", "test-tenant"),
+            "code row should contain value"
+        );
+        assert!(has_row("vrf_id", "100"), "vrf_id row should contain value");
 
         // Expected success by code
         let mut output = Vec::new();

@@ -44,8 +44,12 @@ impl GetContributorCliCommand {
             let json = serde_json::to_string_pretty(&display)?;
             writeln!(out, "{json}")?;
         } else {
-            let table = tabled::Table::new([display]);
-            writeln!(out, "{table}")?;
+            let headers = ContributorDisplay::headers();
+            let fields = display.fields();
+            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
+            for (header, value) in headers.iter().zip(fields.iter()) {
+                writeln!(out, " {header:<max_len$} | {value}")?;
+            }
         }
 
         Ok(())
@@ -120,16 +124,20 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
         assert!(
-            output_str.contains("account"),
-            "should contain table header"
+            has_row("account", &contributor1_pubkey.to_string()),
+            "account row should contain pubkey"
         );
+        assert!(has_row("code", "test"), "code row should contain value");
         assert!(
-            output_str.contains("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB"),
-            "should contain pubkey"
+            has_row("status", "activated"),
+            "status row should contain value"
         );
-        assert!(output_str.contains("test"), "should contain code");
-        assert!(output_str.contains("activated"), "should contain status");
 
         // Expected success by code (JSON)
         let mut output = Vec::new();
@@ -139,12 +147,14 @@ mod tests {
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
-        let output_str = String::from_utf8(output).unwrap();
-        assert!(
-            output_str.contains("\"account\""),
-            "should contain account key"
+        let json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();
+        assert_eq!(
+            json["account"].as_str().unwrap(),
+            contributor1_pubkey.to_string()
         );
-        assert!(output_str.contains("\"code\""), "should contain code key");
-        assert!(output_str.contains("\"test\""), "should contain code value");
+        assert_eq!(json["code"].as_str().unwrap(), "test");
+        assert_eq!(json["status"].as_str().unwrap(), "activated");
+        assert_eq!(json["reference_count"].as_u64().unwrap(), 0);
     }
 }

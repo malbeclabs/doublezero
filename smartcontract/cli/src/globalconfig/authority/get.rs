@@ -5,7 +5,7 @@ use doublezero_sdk::GetGlobalStateCommand;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct GetAuthorityCliCommand {
@@ -35,10 +35,12 @@ impl GetAuthorityCliCommand {
             let json = serde_json::to_string_pretty(&config_display)?;
             writeln!(out, "{json}")?;
         } else {
-            let table = Table::new([config_display])
-                .with(Style::psql().remove_horizontals())
-                .to_string();
-            writeln!(out, "{table}")?;
+            let headers = AuthorityDisplay::headers();
+            let fields = config_display.fields();
+            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
+            for (header, value) in headers.iter().zip(fields.iter()) {
+                writeln!(out, " {header:<max_len$} | {value}")?;
+            }
         }
 
         Ok(())
@@ -88,27 +90,33 @@ mod tests {
         let res = GetAuthorityCliCommand { json: false }.execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
         assert!(
-            output_str.contains(&activator_authority.to_string()),
-            "should contain activator authority"
+            has_row("activator_authority", &activator_authority.to_string()),
+            "activator_authority row should contain value"
         );
         assert!(
-            output_str.contains(&sentinel_authority.to_string()),
-            "should contain sentinel authority"
+            has_row("access_authority", &sentinel_authority.to_string()),
+            "access_authority row should contain value"
         );
 
         // JSON output
         let mut output = Vec::new();
         let res = GetAuthorityCliCommand { json: true }.execute(&client, &mut output);
         assert!(res.is_ok());
-        let output_str = String::from_utf8(output).unwrap();
-        assert!(
-            output_str.contains("\"activator_authority\""),
-            "should contain activator_authority key"
+        let json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();
+        assert_eq!(
+            json["activator_authority"].as_str().unwrap(),
+            activator_authority.to_string()
         );
-        assert!(
-            output_str.contains("\"access_authority\""),
-            "should contain access_authority key"
+        assert_eq!(
+            json["access_authority"].as_str().unwrap(),
+            sentinel_authority.to_string()
         );
     }
 }

@@ -3,7 +3,7 @@ use ::serde::Serialize;
 use clap::Args;
 use doublezero_sdk::GetGlobalStateCommand;
 use std::io::Write;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct GetAirdropCliCommand {
@@ -31,10 +31,12 @@ impl GetAirdropCliCommand {
             let json = serde_json::to_string_pretty(&config_display)?;
             writeln!(out, "{json}")?;
         } else {
-            let table = Table::new([config_display])
-                .with(Style::psql().remove_horizontals())
-                .to_string();
-            writeln!(out, "{table}")?;
+            let headers = AirdropDisplay::headers();
+            let fields = config_display.fields();
+            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
+            for (header, value) in headers.iter().zip(fields.iter()) {
+                writeln!(out, " {header:<max_len$} | {value}")?;
+            }
         }
 
         Ok(())
@@ -82,24 +84,30 @@ mod tests {
         let res = GetAirdropCliCommand { json: false }.execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
         assert!(
-            output_str.contains("1000000000"),
-            "should contain contributor airdrop"
+            has_row("contributor_airdrop_lamports", "1000000000"),
+            "contributor_airdrop_lamports row should contain value"
         );
-        assert!(output_str.contains("40000"), "should contain user airdrop");
+        assert!(
+            has_row("user_airdrop_lamports", "40000"),
+            "user_airdrop_lamports row should contain value"
+        );
 
         // JSON output
         let mut output = Vec::new();
         let res = GetAirdropCliCommand { json: true }.execute(&client, &mut output);
         assert!(res.is_ok());
-        let output_str = String::from_utf8(output).unwrap();
-        assert!(
-            output_str.contains("\"contributor_airdrop_lamports\""),
-            "should contain contributor key"
+        let json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();
+        assert_eq!(
+            json["contributor_airdrop_lamports"].as_u64().unwrap(),
+            1_000_000_000
         );
-        assert!(
-            output_str.contains("\"user_airdrop_lamports\""),
-            "should contain user key"
-        );
+        assert_eq!(json["user_airdrop_lamports"].as_u64().unwrap(), 40_000);
     }
 }

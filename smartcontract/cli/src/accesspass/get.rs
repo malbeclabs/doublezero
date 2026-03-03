@@ -109,8 +109,12 @@ impl GetAccessPassCliCommand {
             let json = serde_json::to_string_pretty(&display)?;
             writeln!(out, "{json}")?;
         } else {
-            let table = tabled::Table::new([display]);
-            writeln!(out, "{table}")?;
+            let headers = AccessPassDisplay::headers();
+            let fields = display.fields();
+            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
+            for (header, value) in headers.iter().zip(fields.iter()) {
+                writeln!(out, " {header:<max_len$} | {value}")?;
+            }
         }
 
         Ok(())
@@ -225,16 +229,51 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert!(output_str.contains(&format!("{accesspass_pubkey}")));
-        assert!(output_str.contains("prepaid"));
-        assert!(output_str.contains("10.0.0.1"));
-        assert!(output_str.contains(&format!("{user_payer}")));
-        assert!(output_str.contains("my-tenant"));
-        assert!(output_str.contains("mcast-test"));
-        assert!(output_str.contains("200"));
-        assert!(output_str.contains("190"));
-        assert!(output_str.contains("3"));
-        assert!(output_str.contains("connected"));
-        assert!(output_str.contains(&format!("{}", accesspass.owner)));
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
+        assert!(
+            has_row("account", &accesspass_pubkey.to_string()),
+            "account row should contain pubkey"
+        );
+        assert!(has_row("type", "prepaid"), "type row should contain value");
+        assert!(
+            has_row("client_ip", "10.0.0.1"),
+            "client_ip row should contain value"
+        );
+        assert!(
+            has_row("user_payer", &user_payer.to_string()),
+            "user_payer row should contain value"
+        );
+        assert!(
+            has_row("tenant", "my-tenant"),
+            "tenant row should contain value"
+        );
+        assert!(
+            has_row("multicast_pub", "mcast-test"),
+            "multicast_pub row should contain value"
+        );
+        assert!(
+            has_row("last_access_epoch", "200"),
+            "last_access_epoch row should contain value"
+        );
+        assert!(
+            has_row("remaining_epoch", "190"),
+            "remaining_epoch row should contain value"
+        );
+        assert!(
+            has_row("connections", "3"),
+            "connections row should contain value"
+        );
+        assert!(
+            has_row("status", "connected"),
+            "status row should contain value"
+        );
+        assert!(
+            has_row("owner", &accesspass.owner.to_string()),
+            "owner row should contain value"
+        );
     }
 }

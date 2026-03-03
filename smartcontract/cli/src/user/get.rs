@@ -1,5 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey};
 use clap::Args;
+use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
     accesspass::get::GetAccessPassCommand, device::list::ListDeviceCommand,
     multicastgroup::list::ListMulticastGroupCommand, tenant::list::ListTenantCommand,
@@ -25,6 +26,8 @@ struct UserDisplay {
     pub account: String,
     pub user_type: String,
     pub tenant: String,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub device_pk: Pubkey,
     pub device: String,
     pub cyoa_type: String,
     pub client_ip: String,
@@ -63,6 +66,7 @@ impl GetUserCliCommand {
             account: pubkey.to_string(),
             user_type: user.user_type.to_string(),
             tenant: tenant_str,
+            device_pk: user.device_pk,
             device: devices
                 .get(&user.device_pk)
                 .map_or(user.device_pk.to_string(), |d| d.code.clone()),
@@ -99,8 +103,12 @@ impl GetUserCliCommand {
             let json = serde_json::to_string_pretty(&display)?;
             writeln!(out, "{json}")?;
         } else {
-            let table = tabled::Table::new([display]);
-            writeln!(out, "{table}")?;
+            let headers = UserDisplay::headers();
+            let fields = display.fields();
+            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
+            for (header, value) in headers.iter().zip(fields.iter()) {
+                writeln!(out, " {header:<max_len$} | {value}")?;
+            }
         }
 
         Ok(())
@@ -295,21 +303,34 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
         assert!(
-            output_str.contains("account"),
-            "should contain table header"
+            has_row("account", &pda_pubkey.to_string()),
+            "account row should contain pubkey"
         );
         assert!(
-            output_str.contains("CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1"),
-            "should contain pubkey"
+            has_row("user_type", "IBRL"),
+            "user_type row should contain value"
         );
-        assert!(output_str.contains("IBRL"), "should contain user type");
-        assert!(output_str.contains("test-tenant"), "should contain tenant");
-        assert!(output_str.contains("test-device"), "should contain device");
-        assert!(output_str.contains("activated"), "should contain status");
         assert!(
-            output_str.contains("test"),
-            "should contain subscriber group"
+            has_row("tenant", "test-tenant"),
+            "tenant row should contain value"
+        );
+        assert!(
+            has_row("device", "test-device"),
+            "device row should contain value"
+        );
+        assert!(
+            has_row("status", "activated"),
+            "status row should contain value"
+        );
+        assert!(
+            has_row("subscribers", "test"),
+            "subscribers row should contain group name"
         );
     }
 }

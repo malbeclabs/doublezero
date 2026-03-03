@@ -69,8 +69,12 @@ impl GetDeviceInterfaceCliCommand {
             let json = serde_json::to_string_pretty(&display)?;
             writeln!(out, "{json}")?;
         } else {
-            let table = tabled::Table::new([display]);
-            writeln!(out, "{table}")?;
+            let headers = InterfaceDisplay::headers();
+            let fields = display.fields();
+            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
+            for (header, value) in headers.iter().zip(fields.iter()) {
+                writeln!(out, " {header:<max_len$} | {value}")?;
+            }
         }
 
         Ok(())
@@ -177,12 +181,22 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert!(output_str.contains("name"), "should contain table header");
-        assert!(output_str.contains("eth0"), "should contain interface name");
-        assert!(output_str.contains("activated"), "should contain status");
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
         assert!(
-            output_str.contains("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB"),
-            "should contain device pk"
+            has_row("name", "eth0"),
+            "name row should contain interface name"
+        );
+        assert!(
+            has_row("status", "activated"),
+            "status row should contain value"
+        );
+        assert!(
+            has_row("device_pk", &device1_pubkey.to_string()),
+            "device_pk row should contain pubkey"
         );
     }
 }

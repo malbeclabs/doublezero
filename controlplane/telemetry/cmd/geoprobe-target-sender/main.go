@@ -22,7 +22,7 @@ import (
 
 const (
 	defaultProbePort = 862
-	defaultInterval  = 1 * time.Second
+	defaultInterval  = 60 * time.Second
 	defaultTimeout   = 2 * time.Second
 )
 

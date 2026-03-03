@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - `doublezero resource verify` command will now suggest creating resources or create them with --fix
+  - Print an explicit message when the tenant is resolved implicitly from the configuration file (`Using tenant '...' from configuration file.`) or from the Access Pass allowlist (`Using tenant '...' from Access Pass.`)
 - SDK
   - Fix multicast group deserialization in `smartcontract/sdk/go` to correctly read publisher and subscriber counts and align status enum with onchain definition
 - Smartcontract

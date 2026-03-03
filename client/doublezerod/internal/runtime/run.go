@@ -10,15 +10,19 @@ import (
 	"os"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/multicast"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/onchain"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/config"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"golang.org/x/sys/unix"
 )
 
@@ -26,7 +30,7 @@ const (
 	updateInstalledRoutesGaugeInterval = 10 * time.Second
 )
 
-func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig) error {
+func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig, clientIP string, reconcilerPollInterval int, stateDir string) error {
 	nlr := routing.Netlink{}
 	var crw bgp.RouteReaderWriter
 	var cr *routing.ConfiguredRoutes
@@ -63,14 +67,60 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		return fmt.Errorf("error creating bgp server: %v", err)
 	}
 
-	db, err := manager.NewDb()
-	if err != nil {
-		return fmt.Errorf("error initializing db: %v", err)
-	}
-
 	pim := pim.NewPIMServer()
 	heartbeat := multicast.NewHeartbeatSender()
-	nlm := manager.NewNetlinkManager(nlr, bgp, db, pim, heartbeat)
+
+	// Create a shared caching fetcher for both reconciler and latency manager
+	// to avoid duplicate RPC calls to GetProgramAccounts.
+	pid, err := solana.PublicKeyFromBase58(networkConfig.ServiceabilityProgramID.String())
+	if err != nil {
+		return fmt.Errorf("error parsing program ID: %v", err)
+	}
+	svcClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), pid)
+	cachingFetcher := onchain.NewCachingFetcher(svcClient, onchain.DefaultCacheTTL)
+
+	ip, method, err := DiscoverClientIP(clientIP)
+	if err != nil {
+		return fmt.Errorf("client IP discovery failed: %w", err)
+	}
+	slog.Info("reconciler: discovered client IP", "ip", ip.String(), "method", method)
+
+	reconcilerEnabled, err := manager.LoadOrMigrateState(stateDir)
+	if err != nil {
+		return fmt.Errorf("error loading reconciler state: %w", err)
+	}
+	slog.Info("reconciler: loaded state", "enabled", reconcilerEnabled)
+
+	if reconcilerPollInterval < 1 {
+		return fmt.Errorf("reconciler poll interval must be >= 1 second, got %d", reconcilerPollInterval)
+	}
+	pollInterval := time.Duration(reconcilerPollInterval) * time.Second
+
+	// Create latency manager before the netlink manager so it can be passed
+	// as a LatencyProvider for status enrichment.
+	var latencyManager *latency.LatencyManager
+	if enableLatencyProbing {
+		latencyManager = latency.NewLatencyManager(
+			latency.WithFetcher(cachingFetcher),
+			latency.WithProbeInterval(time.Duration(probeInterval)*time.Second),
+			latency.WithCacheUpdateInterval(time.Duration(cacheUpdateInterval)*time.Second),
+			latency.WithMetricsEnabled(enableLatencyMetrics),
+			latency.WithProbeTunnelEndpoints(latencyProbeTunnelEndpoints),
+		)
+	}
+
+	nlmOpts := []manager.Option{
+		manager.WithClientIP(ip),
+		manager.WithFetcher(cachingFetcher),
+		manager.WithPollInterval(pollInterval),
+		manager.WithEnabled(reconcilerEnabled),
+		manager.WithStateDir(stateDir),
+		manager.WithNetwork(networkConfig.Moniker),
+	}
+	if latencyManager != nil {
+		nlmOpts = append(nlmOpts, manager.WithLatencyProvider(latencyManager))
+	}
+	nlm := manager.NewNetlinkManager(nlr, bgp, pim, heartbeat, nlmOpts...)
 
 	errCh := make(chan error)
 
@@ -81,22 +131,22 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		errCh <- err
 	}()
 
+	go func() {
+		err := nlm.StartReconciler(ctx)
+		errCh <- err
+	}()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /provision", nlm.ServeProvision)
 	mux.HandleFunc("POST /remove", nlm.ServeRemove)
 	mux.HandleFunc("GET /status", nlm.ServeStatus)
-	mux.HandleFunc("GET /routes", api.ServeRoutesHandler(nlr, lm, db, networkConfig))
+	mux.HandleFunc("POST /enable", nlm.ServeEnable)
+	mux.HandleFunc("POST /disable", nlm.ServeDisable)
+	mux.HandleFunc("GET /v2/status", nlm.ServeV2Status)
+	mux.HandleFunc("GET /routes", api.ServeRoutesHandler(nlr, lm, nlm, networkConfig))
 	mux.HandleFunc("POST /resolve-route", api.ServeResolveRouteHandler(nlr, networkConfig))
 
-	if enableLatencyProbing {
-		latencyManager := latency.NewLatencyManager(
-			latency.WithProgramID(networkConfig.ServiceabilityProgramID.String()),
-			latency.WithRpcEndpoint(networkConfig.LedgerPublicRPCURL),
-			latency.WithProbeInterval(time.Duration(probeInterval)*time.Second),
-			latency.WithCacheUpdateInterval(time.Duration(cacheUpdateInterval)*time.Second),
-			latency.WithMetricsEnabled(enableLatencyMetrics),
-			latency.WithProbeTunnelEndpoints(latencyProbeTunnelEndpoints),
-		)
+	if latencyManager != nil {
 		go func() {
 			err := latencyManager.Start(ctx)
 			errCh <- err

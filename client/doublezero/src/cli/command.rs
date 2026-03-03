@@ -7,7 +7,8 @@ use crate::{
         resource::ResourceCliCommand, tenant::TenantCliCommand, user::UserCliCommand,
     },
     command::{
-        connect::ProvisioningCliCommand, disconnect::DecommissioningCliCommand,
+        connect::ProvisioningCliCommand, disable::DisableCliCommand,
+        disconnect::DecommissioningCliCommand, enable::EnableCliCommand,
         latency::LatencyCliCommand, routes::RoutesCliCommand, status::StatusCliCommand,
     },
 };
@@ -28,6 +29,12 @@ pub enum Command {
     /// Connect your server to a doublezero device
     #[command()]
     Connect(ProvisioningCliCommand),
+    /// Enable the reconciler (start managing tunnels)
+    #[command()]
+    Enable(EnableCliCommand),
+    /// Disable the reconciler (tear down tunnels and stop managing them)
+    #[command()]
+    Disable(DisableCliCommand),
     /// Get the status of your service
     #[command()]
     Status(StatusCliCommand),

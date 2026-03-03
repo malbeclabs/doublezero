@@ -596,8 +596,8 @@ func checkMulticastPostDisconnect(t *testing.T, log *slog.Logger, mode string, d
 		}{
 			{
 				name:        "doublezero_status",
-				fixturePath: "fixtures/multicast/doublezero_status_disconnected.txt",
-				data:        map[string]any{},
+				fixturePath: "fixtures/multicast/doublezero_status_disconnected.tmpl",
+				data:        map[string]any{"Reconciler": "true"},
 				cmd:         []string{"doublezero", "status"},
 			},
 		}

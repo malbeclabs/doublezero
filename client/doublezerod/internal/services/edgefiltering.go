@@ -14,21 +14,20 @@ import (
 type EdgeFilteringService struct {
 	bgp            BGPReaderWriter
 	nl             routing.Netlinker
-	db             DBReaderWriter
 	Tunnel         *routing.Tunnel
 	DoubleZeroAddr net.IP
 	Routes         []*routing.Route
 	Rules          []*routing.IPRule
+	provisionReq   *api.ProvisionRequest
 }
 
 func (s *EdgeFilteringService) UserType() api.UserType   { return api.UserTypeEdgeFiltering }
 func (s *EdgeFilteringService) ServiceType() ServiceType { return ServiceTypeUnicast }
 
-func NewEdgeFilteringService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter) *EdgeFilteringService {
+func NewEdgeFilteringService(bgp BGPReaderWriter, nl routing.Netlinker) *EdgeFilteringService {
 	return &EdgeFilteringService{
 		bgp: bgp,
 		nl:  nl,
-		db:  db,
 	}
 }
 
@@ -45,6 +44,7 @@ func (s *EdgeFilteringService) Setup(p *api.ProvisionRequest) error {
 	}
 	s.Tunnel = tun
 	s.DoubleZeroAddr = p.DoubleZeroIP
+	s.provisionReq = p
 
 	// Apply IP Rules
 	slog.Info("rules: creating ip rules")
@@ -114,11 +114,6 @@ func (s *EdgeFilteringService) Teardown() error {
 }
 
 func (s *EdgeFilteringService) Status() (*api.StatusResponse, error) {
-	state := s.db.GetState()
-	if state == nil {
-		return nil, nil
-	}
-
 	if s.Tunnel == nil {
 		return nil, fmt.Errorf("netlink: saved state is not programmed into client")
 	}
@@ -132,6 +127,10 @@ func (s *EdgeFilteringService) Status() (*api.StatusResponse, error) {
 		DoubleZeroStatus: peerStatus,
 		UserType:         s.UserType(),
 	}, nil
+}
+
+func (s *EdgeFilteringService) ProvisionRequest() *api.ProvisionRequest {
+	return s.provisionReq
 }
 
 func (s *EdgeFilteringService) createIPRules(prefixes []*net.IPNet) error {

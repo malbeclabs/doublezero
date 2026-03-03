@@ -52,12 +52,17 @@ impl GetUserCliCommand {
         let tenants = client.list_tenant(ListTenantCommand {})?;
         let devices = client.list_device(ListDeviceCommand {})?;
 
+        let tenant_str = if user.tenant_pk == Pubkey::default() {
+            String::new()
+        } else {
+            tenants
+                .get(&user.tenant_pk)
+                .map_or(user.tenant_pk.to_string(), |t| t.code.clone())
+        };
         let display = UserDisplay {
             account: pubkey.to_string(),
             user_type: user.user_type.to_string(),
-            tenant: tenants
-                .get(&user.tenant_pk)
-                .map_or(user.tenant_pk.to_string(), |t| t.code.clone()),
+            tenant: tenant_str,
             device: devices
                 .get(&user.device_pk)
                 .map_or(user.device_pk.to_string(), |d| d.code.clone()),

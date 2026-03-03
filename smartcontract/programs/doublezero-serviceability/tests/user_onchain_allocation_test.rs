@@ -2174,6 +2174,7 @@ async fn setup_user_infra_without_user(
 
 /// Helper: enable feature flag + atomic create+allocate+activate for any UserType.
 /// Returns the deserialized User after creation.
+#[allow(clippy::too_many_arguments)]
 async fn atomic_create_user_with_resources(
     banks_client: &mut BanksClient,
     payer: &solana_sdk::signature::Keypair,

@@ -4,8 +4,10 @@ use doublezero_sdk::commands::{
     accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
     tenant::list::ListTenantCommand,
 };
+use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct GetAccessPassCliCommand {
@@ -15,6 +17,28 @@ pub struct GetAccessPassCliCommand {
     /// User payer public key
     #[arg(long)]
     pub user_payer: Pubkey,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Tabled, Serialize)]
+struct AccessPassDisplay {
+    pub account: String,
+    #[tabled(rename = "type")]
+    #[serde(rename = "type")]
+    pub accesspass_type: String,
+    pub client_ip: String,
+    pub user_payer: String,
+    pub tenant: String,
+    pub multicast_pub: String,
+    pub multicast_sub: String,
+    pub last_access_epoch: String,
+    pub remaining_epoch: String,
+    pub flags: String,
+    pub connections: u16,
+    pub status: String,
+    pub owner: String,
 }
 
 impl GetAccessPassCliCommand {
@@ -65,19 +89,29 @@ impl GetAccessPassCliCommand {
             accesspass.last_access_epoch.to_string()
         };
 
-        writeln!(out, "account: {pubkey}")?;
-        writeln!(out, "type: {}", accesspass.accesspass_type)?;
-        writeln!(out, "client_ip: {}", accesspass.client_ip)?;
-        writeln!(out, "user_payer: {}", accesspass.user_payer)?;
-        writeln!(out, "tenant: {}", tenant_display.join(", "))?;
-        writeln!(out, "multicast_pub: {}", pub_display.join(", "))?;
-        writeln!(out, "multicast_sub: {}", sub_display.join(", "))?;
-        writeln!(out, "last_access_epoch: {last_access_epoch}")?;
-        writeln!(out, "remaining_epoch: {remaining_epoch}")?;
-        writeln!(out, "flags: {}", accesspass.flags_string())?;
-        writeln!(out, "connections: {}", accesspass.connection_count)?;
-        writeln!(out, "status: {}", accesspass.status)?;
-        writeln!(out, "owner: {}", accesspass.owner)?;
+        let display = AccessPassDisplay {
+            account: pubkey.to_string(),
+            accesspass_type: accesspass.accesspass_type.to_string(),
+            client_ip: accesspass.client_ip.to_string(),
+            user_payer: accesspass.user_payer.to_string(),
+            tenant: tenant_display.join(", "),
+            multicast_pub: pub_display.join(", "),
+            multicast_sub: sub_display.join(", "),
+            last_access_epoch,
+            remaining_epoch,
+            flags: accesspass.flags_string(),
+            connections: accesspass.connection_count,
+            status: accesspass.status.to_string(),
+            owner: accesspass.owner.to_string(),
+        };
+
+        if self.json {
+            let json = serde_json::to_string_pretty(&display)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let table = tabled::Table::new([display]);
+            writeln!(out, "{table}")?;
+        }
 
         Ok(())
     }
@@ -186,20 +220,21 @@ mod tests {
         let res = GetAccessPassCliCommand {
             client_ip,
             user_payer,
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert!(output_str.contains(&format!("account: {accesspass_pubkey}")));
-        assert!(output_str.contains("type: prepaid"));
-        assert!(output_str.contains("client_ip: 10.0.0.1"));
-        assert!(output_str.contains(&format!("user_payer: {user_payer}")));
-        assert!(output_str.contains("tenant: my-tenant"));
-        assert!(output_str.contains("multicast_pub: mcast-test"));
-        assert!(output_str.contains("last_access_epoch: 200"));
-        assert!(output_str.contains("remaining_epoch: 190"));
-        assert!(output_str.contains("connections: 3"));
-        assert!(output_str.contains("status: connected"));
-        assert!(output_str.contains(&format!("owner: {}", accesspass.owner)));
+        assert!(output_str.contains(&format!("{accesspass_pubkey}")));
+        assert!(output_str.contains("prepaid"));
+        assert!(output_str.contains("10.0.0.1"));
+        assert!(output_str.contains(&format!("{user_payer}")));
+        assert!(output_str.contains("my-tenant"));
+        assert!(output_str.contains("mcast-test"));
+        assert!(output_str.contains("200"));
+        assert!(output_str.contains("190"));
+        assert!(output_str.contains("3"));
+        assert!(output_str.contains("connected"));
+        assert!(output_str.contains(&format!("{}", accesspass.owner)));
     }
 }

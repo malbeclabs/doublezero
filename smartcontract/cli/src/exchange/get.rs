@@ -3,14 +3,34 @@ use clap::Args;
 use doublezero_sdk::commands::{
     device::list::ListDeviceCommand, exchange::get::GetExchangeCommand,
 };
+use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct GetExchangeCliCommand {
     /// Exchange Pubkey or code to get details for
     #[arg(long, value_parser = validate_code)]
     pub code: String,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Tabled, Serialize)]
+struct ExchangeDisplay {
+    pub account: String,
+    pub code: String,
+    pub name: String,
+    pub device1: String,
+    pub device2: String,
+    pub lat: f64,
+    pub lng: f64,
+    pub bgp_community: u16,
+    pub reference_count: u32,
+    pub status: String,
+    pub owner: String,
 }
 
 impl GetExchangeCliCommand {
@@ -36,20 +56,27 @@ impl GetExchangeCliCommand {
                 .map_or_else(|| exchange.device2_pk.to_string(), |d| d.code.clone())
         };
 
-        writeln!(out,
-            "account: {},\r\ncode: {}\r\nname: {}\r\ndevice1: {}\r\ndevice2: {}\r\nlat: {}\r\nlng: {}\r\nbgp_community: {}\r\nreference_count: {}\r\nstatus: {}\r\nowner: {}",
-            pubkey,
-            exchange.code,
-            exchange.name,
+        let display = ExchangeDisplay {
+            account: pubkey.to_string(),
+            code: exchange.code,
+            name: exchange.name,
             device1,
             device2,
-            exchange.lat,
-            exchange.lng,
-            exchange.bgp_community,
-            exchange.reference_count,
-            exchange.status,
-            exchange.owner
-        )?;
+            lat: exchange.lat,
+            lng: exchange.lng,
+            bgp_community: exchange.bgp_community,
+            reference_count: exchange.reference_count,
+            status: exchange.status.to_string(),
+            owner: exchange.owner.to_string(),
+        };
+
+        if self.json {
+            let json = serde_json::to_string_pretty(&display)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let table = tabled::Table::new([display]);
+            writeln!(out, "{table}")?;
+        }
 
         Ok(())
     }
@@ -161,28 +188,48 @@ mod tests {
         let mut output = Vec::new();
         let res = GetExchangeCliCommand {
             code: Pubkey::new_unique().to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
 
-        // Expected success
+        // Expected success by pubkey (table)
         let mut output = Vec::new();
         let res = GetExchangeCliCommand {
             code: exchange1_pubkey.to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Exchange\r\ndevice1: TestDevice\r\ndevice2: (none)\r\nlat: 12.34\r\nlng: 56.78\r\nbgp_community: 1\r\nreference_count: 0\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert!(
+            output_str.contains("account"),
+            "should contain table header"
+        );
+        assert!(
+            output_str.contains("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB"),
+            "should contain pubkey"
+        );
+        assert!(
+            output_str.contains("TestDevice"),
+            "should contain device code"
+        );
+        assert!(output_str.contains("activated"), "should contain status");
 
-        // Expected success
+        // Expected success by code (JSON)
         let mut output = Vec::new();
         let res = GetExchangeCliCommand {
             code: "test".to_string(),
+            json: true,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Exchange\r\ndevice1: TestDevice\r\ndevice2: (none)\r\nlat: 12.34\r\nlng: 56.78\r\nbgp_community: 1\r\nreference_count: 0\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert!(
+            output_str.contains("\"account\""),
+            "should contain account key"
+        );
+        assert!(output_str.contains("\"code\""), "should contain code key");
+        assert!(output_str.contains("\"test\""), "should contain code value");
     }
 }

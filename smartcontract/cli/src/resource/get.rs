@@ -2,6 +2,7 @@ use super::ResourceType;
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::resource::get::GetResourceCommand;
+use serde::Serialize;
 use std::io::Write;
 use tabled::{Table, Tabled};
 
@@ -16,6 +17,9 @@ pub struct GetResourceCliCommand {
     // Index (only for DzPrefixBlock)
     #[arg(long)]
     pub index: Option<usize>,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 impl From<GetResourceCliCommand> for GetResourceCommand {
@@ -30,25 +34,31 @@ impl From<GetResourceCliCommand> for GetResourceCommand {
     }
 }
 
-#[derive(Tabled)]
+#[derive(Tabled, Serialize)]
 pub struct ResourceDisplay {
-    #[tabled(rename = "Allocated Resources")]
     pub resource: String,
 }
 
 impl GetResourceCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+        let json = self.json;
         let (_, resource_extension) = client.get_resource(self.into())?;
 
-        let resource_displays = resource_extension
+        let resource_displays: Vec<ResourceDisplay> = resource_extension
             .iter_allocated()
             .into_iter()
             .map(|res| ResourceDisplay {
                 resource: res.to_string(),
             })
             .collect::<Vec<_>>();
-        let table = Table::new(resource_displays).to_string();
-        writeln!(out, "{table}")?;
+
+        if json {
+            let json_out = serde_json::to_string_pretty(&resource_displays)?;
+            writeln!(out, "{json_out}")?;
+        } else {
+            let table = Table::new(resource_displays).to_string();
+            writeln!(out, "{table}")?;
+        }
 
         Ok(())
     }
@@ -73,6 +83,7 @@ mod tests {
             resource_type: ResourceType::DzPrefixBlock,
             associated_pubkey: Some(pk.to_string()),
             index: Some(1),
+            json: false,
         };
         let cmd: GetResourceCommand = cli_cmd.into();
         assert_eq!(cmd.resource_type, SdkResourceType::DzPrefixBlock(pk, 1));
@@ -84,6 +95,7 @@ mod tests {
             resource_type: ResourceType::LinkIds,
             associated_pubkey: None,
             index: None,
+            json: false,
         };
         let mut mock_client = MockCliCommand::new();
         let resource_ext = ResourceExtensionOwned {
@@ -102,29 +114,44 @@ mod tests {
         let result = cli_cmd.execute(&mock_client, &mut output);
         assert!(result.is_ok());
         let output_str = String::from_utf8(output.into_inner()).unwrap();
-        assert_eq!(
-            output_str,
-            "\
-+---------------------+
-| Allocated Resources |
-+---------------------+
-| 0                   |
-+---------------------+
-| 1                   |
-+---------------------+
-| 2                   |
-+---------------------+
-| 3                   |
-+---------------------+
-| 4                   |
-+---------------------+
-| 5                   |
-+---------------------+
-| 6                   |
-+---------------------+
-| 7                   |
-+---------------------+
-"
+        assert!(
+            output_str.contains("resource"),
+            "should contain table header"
+        );
+        assert!(
+            output_str.contains("0"),
+            "should contain allocated resource"
+        );
+    }
+
+    #[test]
+    fn test_execute_prints_json() {
+        let cli_cmd = GetResourceCliCommand {
+            resource_type: ResourceType::LinkIds,
+            associated_pubkey: None,
+            index: None,
+            json: true,
+        };
+        let mut mock_client = MockCliCommand::new();
+        let resource_ext = ResourceExtensionOwned {
+            account_type: AccountType::ResourceExtension,
+            owner: Pubkey::default(),
+            bump_seed: 0,
+            associated_with: Pubkey::default(),
+            allocator: Allocator::Id(IdAllocator::new((0, 16)).unwrap()),
+            storage: vec![0xff; 1],
+        };
+        mock_client
+            .expect_get_resource()
+            .withf(|cmd: &GetResourceCommand| cmd.resource_type == SdkResourceType::LinkIds)
+            .returning(move |_| Ok((Pubkey::default(), resource_ext.clone())));
+        let mut output = Cursor::new(Vec::new());
+        let result = cli_cmd.execute(&mock_client, &mut output);
+        assert!(result.is_ok());
+        let output_str = String::from_utf8(output.into_inner()).unwrap();
+        assert!(
+            output_str.contains("\"resource\""),
+            "should contain resource key"
         );
     }
 }

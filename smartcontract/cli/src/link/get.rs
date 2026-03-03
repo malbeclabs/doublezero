@@ -1,13 +1,40 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
 use doublezero_sdk::commands::link::get::GetLinkCommand;
+use serde::Serialize;
 use std::io::Write;
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct GetLinkCliCommand {
     /// The pubkey or code of the link to retrieve
     #[arg(long, value_parser = validate_code)]
     pub code: String,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Tabled, Serialize)]
+struct LinkDisplay {
+    pub account: String,
+    pub code: String,
+    pub contributor: String,
+    pub side_a: String,
+    pub side_a_iface_name: String,
+    pub side_z: String,
+    pub side_z_iface_name: String,
+    pub tunnel_type: String,
+    pub bandwidth: u64,
+    pub mtu: u32,
+    pub delay: String,
+    pub jitter: String,
+    pub delay_override: String,
+    pub tunnel_net: String,
+    pub desired_status: String,
+    pub status: String,
+    pub health: String,
+    pub owner: String,
 }
 
 impl GetLinkCliCommand {
@@ -16,45 +43,34 @@ impl GetLinkCliCommand {
             pubkey_or_code: self.code,
         })?;
 
-        writeln!(
-            out,
-            "account: {}\r\n\
-        code: {}\r\n\
-        contributor: {}\r\n\
-        side_a: {}\r\n\
-        side_a_iface_name: {}\r\n\
-        side_z: {}\r\n\
-        side_z_iface_name: {}\r\n\
-        tunnel_type: {}\r\n\
-        bandwidth: {}\r\n\
-        mtu: {}\r\n\
-        delay: {}ms\r\n\
-        jitter: {}ms\r\n\
-        delay_override: {}ms\r\n\
-        tunnel_net: {}\r\n\
-        desired_status: {}\r\n\
-        status: {}\r\n\
-        health: {}\r\n\
-        owner: {}",
-            pubkey,
-            link.code,
-            link.contributor_pk,
-            link.side_a_pk,
-            link.side_a_iface_name,
-            link.side_z_pk,
-            link.side_z_iface_name,
-            link.link_type,
-            link.bandwidth,
-            link.mtu,
-            link.delay_ns as f32 / 1000000.0,
-            link.jitter_ns as f32 / 1000000.0,
-            link.delay_override_ns as f32 / 1000000.0,
-            link.tunnel_net,
-            link.desired_status,
-            link.status,
-            link.link_health,
-            link.owner
-        )?;
+        let display = LinkDisplay {
+            account: pubkey.to_string(),
+            code: link.code,
+            contributor: link.contributor_pk.to_string(),
+            side_a: link.side_a_pk.to_string(),
+            side_a_iface_name: link.side_a_iface_name,
+            side_z: link.side_z_pk.to_string(),
+            side_z_iface_name: link.side_z_iface_name,
+            tunnel_type: link.link_type.to_string(),
+            bandwidth: link.bandwidth,
+            mtu: link.mtu,
+            delay: format!("{}ms", link.delay_ns as f32 / 1_000_000.0),
+            jitter: format!("{}ms", link.jitter_ns as f32 / 1_000_000.0),
+            delay_override: format!("{}ms", link.delay_override_ns as f32 / 1_000_000.0),
+            tunnel_net: link.tunnel_net.to_string(),
+            desired_status: link.desired_status.to_string(),
+            status: link.status.to_string(),
+            health: link.link_health.to_string(),
+            owner: link.owner.to_string(),
+        };
+
+        if self.json {
+            let json = serde_json::to_string_pretty(&display)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let table = tabled::Table::new([display]);
+            writeln!(out, "{table}")?;
+        }
 
         Ok(())
     }
@@ -122,33 +138,47 @@ mod tests {
         client
             .expect_get_link()
             .returning(move |_| Err(eyre::eyre!("not found")));
-        /*****************************************************************************************************/
+
         // Expected failure
         let mut output = Vec::new();
         let res = GetLinkCliCommand {
             code: Pubkey::new_unique().to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_err(), "I shouldn't find anything.");
 
-        // Expected success
+        // Expected success by pubkey (table)
         let mut output = Vec::new();
         let res = GetLinkCliCommand {
             code: pda_pubkey.to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\r\ncode: test\r\ncontributor: HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_a_iface_name: eth0\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\nside_z_iface_name: eth1\r\ntunnel_type: WAN\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ndelay_override: 0ms\r\ntunnel_net: 10.0.0.1/16\r\ndesired_status: activated\r\nstatus: activated\r\nhealth: ready-for-service\r\nowner: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\n");
+        assert!(
+            output_str.contains("account"),
+            "should contain table header"
+        );
+        assert!(output_str.contains("test"), "should contain code");
+        assert!(output_str.contains("WAN"), "should contain tunnel type");
+        assert!(output_str.contains("activated"), "should contain status");
 
-        // Expected success
+        // Expected success by code (JSON)
         let mut output = Vec::new();
         let res = GetLinkCliCommand {
             code: "test".to_string(),
+            json: true,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\r\ncode: test\r\ncontributor: HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_a_iface_name: eth0\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\nside_z_iface_name: eth1\r\ntunnel_type: WAN\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ndelay_override: 0ms\r\ntunnel_net: 10.0.0.1/16\r\ndesired_status: activated\r\nstatus: activated\r\nhealth: ready-for-service\r\nowner: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\n");
+        assert!(
+            output_str.contains("\"account\""),
+            "should contain account key"
+        );
+        assert!(output_str.contains("\"code\""), "should contain code key");
+        assert!(output_str.contains("\"test\""), "should contain code value");
     }
 }

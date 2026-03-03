@@ -1,13 +1,28 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
 use doublezero_sdk::commands::contributor::get::GetContributorCommand;
+use serde::Serialize;
 use std::io::Write;
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct GetContributorCliCommand {
     /// Contributor Pubkey or code to get details for
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub code: String,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Tabled, Serialize)]
+struct ContributorDisplay {
+    pub account: String,
+    pub code: String,
+    pub reference_count: u32,
+    pub status: String,
+    pub owner: String,
+    pub ops_manager_key: String,
 }
 
 impl GetContributorCliCommand {
@@ -16,16 +31,22 @@ impl GetContributorCliCommand {
             pubkey_or_code: self.code,
         })?;
 
-        writeln!(
-            out,
-            "account: {},\r\ncode: {}\r\nreference_count: {}\r\nstatus: {}\r\nowner: {}\r\nops_manager_key: {}",
-            pubkey,
-            contributor.code,
-            contributor.reference_count,
-            contributor.status,
-            contributor.owner,
-            contributor.ops_manager_pk
-        )?;
+        let display = ContributorDisplay {
+            account: pubkey.to_string(),
+            code: contributor.code,
+            reference_count: contributor.reference_count,
+            status: contributor.status.to_string(),
+            owner: contributor.owner.to_string(),
+            ops_manager_key: contributor.ops_manager_pk.to_string(),
+        };
+
+        if self.json {
+            let json = serde_json::to_string_pretty(&display)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let table = tabled::Table::new([display]);
+            writeln!(out, "{table}")?;
+        }
 
         Ok(())
     }
@@ -81,33 +102,49 @@ mod tests {
             .expect_list_contributor()
             .returning(move |_| Ok(HashMap::from([(contributor1_pubkey, contributor1.clone())])));
 
-        /*****************************************************************************************************/
         // Expected failure
         let mut output = Vec::new();
         let res = GetContributorCliCommand {
             code: Pubkey::new_unique().to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_err(), "I shouldn't find anything.");
 
-        // Expected success
+        // Expected success by pubkey (table)
         let mut output = Vec::new();
         let res = GetContributorCliCommand {
             code: contributor1_pubkey.to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nreference_count: 0\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\r\nops_manager_key: 11111111111111111111111111111111\n");
+        assert!(
+            output_str.contains("account"),
+            "should contain table header"
+        );
+        assert!(
+            output_str.contains("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB"),
+            "should contain pubkey"
+        );
+        assert!(output_str.contains("test"), "should contain code");
+        assert!(output_str.contains("activated"), "should contain status");
 
-        // Expected success
+        // Expected success by code (JSON)
         let mut output = Vec::new();
         let res = GetContributorCliCommand {
             code: "test".to_string(),
+            json: true,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nreference_count: 0\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\r\nops_manager_key: 11111111111111111111111111111111\n");
+        assert!(
+            output_str.contains("\"account\""),
+            "should contain account key"
+        );
+        assert!(output_str.contains("\"code\""), "should contain code key");
+        assert!(output_str.contains("\"test\""), "should contain code value");
     }
 }

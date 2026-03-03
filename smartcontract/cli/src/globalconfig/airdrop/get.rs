@@ -6,7 +6,11 @@ use std::io::Write;
 use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
-pub struct GetAirdropCliCommand;
+pub struct GetAirdropCliCommand {
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
 
 #[derive(Tabled, Serialize)]
 pub struct AirdropDisplay {
@@ -22,11 +26,16 @@ impl GetAirdropCliCommand {
             contributor_airdrop_lamports: gstate.contributor_airdrop_lamports,
             user_airdrop_lamports: gstate.user_airdrop_lamports,
         };
-        let config_displays = vec![config_display];
-        let table = Table::new(config_displays)
-            .with(Style::psql().remove_horizontals())
-            .to_string();
-        writeln!(out, "{table}")?;
+
+        if self.json {
+            let json = serde_json::to_string_pretty(&config_display)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let table = Table::new([config_display])
+                .with(Style::psql().remove_horizontals())
+                .to_string();
+            writeln!(out, "{table}")?;
+        }
 
         Ok(())
     }
@@ -68,14 +77,29 @@ mod tests {
             .with(predicate::eq(GetGlobalStateCommand))
             .returning(move |_| Ok((gstate_pubkey, globalstate.clone())));
 
-        /*****************************************************************************************************/
+        // Table output
         let mut output = Vec::new();
-        let res = GetAirdropCliCommand.execute(&client, &mut output);
+        let res = GetAirdropCliCommand { json: false }.execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(
-            output_str,
-            " contributor_airdrop_lamports | user_airdrop_lamports \n 1000000000                   | 40000                 \n"
+        assert!(
+            output_str.contains("1000000000"),
+            "should contain contributor airdrop"
+        );
+        assert!(output_str.contains("40000"), "should contain user airdrop");
+
+        // JSON output
+        let mut output = Vec::new();
+        let res = GetAirdropCliCommand { json: true }.execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(
+            output_str.contains("\"contributor_airdrop_lamports\""),
+            "should contain contributor key"
+        );
+        assert!(
+            output_str.contains("\"user_airdrop_lamports\""),
+            "should contain user key"
         );
     }
 }

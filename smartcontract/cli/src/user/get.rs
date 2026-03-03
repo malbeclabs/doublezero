@@ -5,14 +5,36 @@ use doublezero_sdk::commands::{
     multicastgroup::list::ListMulticastGroupCommand, tenant::list::ListTenantCommand,
     user::get::GetUserCommand,
 };
+use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct GetUserCliCommand {
     /// User Pubkey to retrieve
     #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Tabled, Serialize)]
+struct UserDisplay {
+    pub account: String,
+    pub user_type: String,
+    pub tenant: String,
+    pub device: String,
+    pub cyoa_type: String,
+    pub client_ip: String,
+    pub tunnel_net: String,
+    pub dz_ip: String,
+    pub accesspass: String,
+    pub publishers: String,
+    pub subscribers: String,
+    pub status: String,
+    pub owner: String,
 }
 
 impl GetUserCliCommand {
@@ -30,51 +52,51 @@ impl GetUserCliCommand {
         let tenants = client.list_tenant(ListTenantCommand {})?;
         let devices = client.list_device(ListDeviceCommand {})?;
 
-        writeln!(
-            out,
-            "account: {}\r\n\
-        user_type: {}\r\n\
-        tenant: {}\r\n\
-        device: {}\r\n\
-        cyoa_type: {}\r\n\
-        client_ip: {}\r\n\
-        tunnel_net: {}\r\n\
-        dz_ip: {}\r\n\
-        accesspass: {}\r\n\
-        publishers: {}\r\n\
-        subscribers: {}\r\n\
-        status: {}\r\n\
-        owner: {}",
-            pubkey,
-            user.user_type,
-            tenants
+        let display = UserDisplay {
+            account: pubkey.to_string(),
+            user_type: user.user_type.to_string(),
+            tenant: tenants
                 .get(&user.tenant_pk)
                 .map_or(user.tenant_pk.to_string(), |t| t.code.clone()),
-            devices
+            device: devices
                 .get(&user.device_pk)
                 .map_or(user.device_pk.to_string(), |d| d.code.clone()),
-            user.cyoa_type,
-            &user.client_ip,
-            &user.tunnel_net,
-            &user.dz_ip,
-            accesspass,
-            user.publishers
+            cyoa_type: user.cyoa_type.to_string(),
+            client_ip: user.client_ip.to_string(),
+            tunnel_net: user.tunnel_net.to_string(),
+            dz_ip: user.dz_ip.to_string(),
+            accesspass: accesspass.to_string(),
+            publishers: user
+                .publishers
                 .iter()
-                .map(|pk| multicast_groups
-                    .get(pk)
-                    .map_or(pk.to_string(), |mg| mg.code.clone()))
+                .map(|pk| {
+                    multicast_groups
+                        .get(pk)
+                        .map_or(pk.to_string(), |mg| mg.code.clone())
+                })
                 .collect::<Vec<_>>()
                 .join(", "),
-            user.subscribers
+            subscribers: user
+                .subscribers
                 .iter()
-                .map(|pk| multicast_groups
-                    .get(pk)
-                    .map_or(pk.to_string(), |mg| mg.code.clone()))
+                .map(|pk| {
+                    multicast_groups
+                        .get(pk)
+                        .map_or(pk.to_string(), |mg| mg.code.clone())
+                })
                 .collect::<Vec<_>>()
                 .join(", "),
-            user.status,
-            user.owner
-        )?;
+            status: user.status.to_string(),
+            owner: user.owner.to_string(),
+        };
+
+        if self.json {
+            let json = serde_json::to_string_pretty(&display)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let table = tabled::Table::new([display]);
+            writeln!(out, "{table}")?;
+        }
 
         Ok(())
     }
@@ -259,15 +281,30 @@ mod tests {
             .with(predicate::eq(DeleteUserCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok(signature));
 
-        /*****************************************************************************************************/
-        // Expected success
+        // Expected success (table)
         let mut output = Vec::new();
         let res = GetUserCliCommand {
             pubkey: pda_pubkey.to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
-        assert!(res.is_ok(), "I should find a item by code");
+        assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\r\nuser_type: IBRL\r\ntenant: test-tenant\r\ndevice: test-device\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\naccesspass: Prepaid: (expires epoch 10)\r\npublishers: \r\nsubscribers: test\r\nstatus: activated\r\nowner: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\n");
+        assert!(
+            output_str.contains("account"),
+            "should contain table header"
+        );
+        assert!(
+            output_str.contains("CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1"),
+            "should contain pubkey"
+        );
+        assert!(output_str.contains("IBRL"), "should contain user type");
+        assert!(output_str.contains("test-tenant"), "should contain tenant");
+        assert!(output_str.contains("test-device"), "should contain device");
+        assert!(output_str.contains("activated"), "should contain status");
+        assert!(
+            output_str.contains("test"),
+            "should contain subscriber group"
+        );
     }
 }

@@ -1,13 +1,44 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
+use serde::Serialize;
 use std::io::Write;
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct GetDeviceCliCommand {
     /// Device Pubkey or code to retrieve
     #[arg(long, value_parser = validate_code)]
     pub code: String,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Tabled, Serialize)]
+struct DeviceDisplay {
+    pub account: String,
+    pub code: String,
+    pub contributor: String,
+    pub location: String,
+    pub exchange: String,
+    pub device_type: String,
+    pub public_ip: String,
+    pub dz_prefixes: String,
+    pub metrics_publisher: String,
+    pub mgmt_vrf: String,
+    pub interfaces: String,
+    pub max_users: u16,
+    pub users_count: u16,
+    pub reference_count: u32,
+    pub max_unicast_users: u16,
+    pub unicast_users_count: u16,
+    pub max_multicast_users: u16,
+    pub multicast_users_count: u16,
+    pub desired_status: String,
+    pub status: String,
+    pub health: String,
+    pub owner: String,
 }
 
 impl GetDeviceCliCommand {
@@ -16,53 +47,38 @@ impl GetDeviceCliCommand {
             pubkey_or_code: self.code,
         })?;
 
-        writeln!(
-            out,
-            "account: {}\r\n\
-code: {}\r\n\
-contributor: {}\r\n\
-location: {}\r\n\
-exchange: {}\r\n\
-device_type: {}\r\n\
-public_ip: {}\r\n\
-dz_prefixes: {}\r\n\
-metrics_publisher: {}\r\n\
-mgmt_vrf: {}\r\n\
-interfaces: {:?}\r\n\
-max_users: {}\r\n\
-users_count: {}\r\n\
-reference_count: {}\r\n\
-max_unicast_users: {}\r\n\
-unicast_users_count: {}\r\n\
-max_multicast_users: {}\r\n\
-multicast_users_count: {}\r\n\
-desired_status: {}\r\n\
-status: {}\r\n\
-health: {}\r\n\
-owner: {}",
-            pubkey,
-            device.code,
-            device.contributor_pk,
-            device.location_pk,
-            device.exchange_pk,
-            device.device_type,
-            &device.public_ip,
-            &device.dz_prefixes,
-            device.metrics_publisher_pk,
-            device.mgmt_vrf,
-            device.interfaces,
-            device.max_users,
-            device.users_count,
-            device.reference_count,
-            device.max_unicast_users,
-            device.unicast_users_count,
-            device.max_multicast_users,
-            device.multicast_users_count,
-            device.desired_status,
-            device.status,
-            device.device_health,
-            device.owner
-        )?;
+        let display = DeviceDisplay {
+            account: pubkey.to_string(),
+            code: device.code,
+            contributor: device.contributor_pk.to_string(),
+            location: device.location_pk.to_string(),
+            exchange: device.exchange_pk.to_string(),
+            device_type: device.device_type.to_string(),
+            public_ip: device.public_ip.to_string(),
+            dz_prefixes: device.dz_prefixes.to_string(),
+            metrics_publisher: device.metrics_publisher_pk.to_string(),
+            mgmt_vrf: device.mgmt_vrf,
+            interfaces: format!("{:?}", device.interfaces),
+            max_users: device.max_users,
+            users_count: device.users_count,
+            reference_count: device.reference_count,
+            max_unicast_users: device.max_unicast_users,
+            unicast_users_count: device.unicast_users_count,
+            max_multicast_users: device.max_multicast_users,
+            multicast_users_count: device.multicast_users_count,
+            desired_status: device.desired_status.to_string(),
+            status: device.status.to_string(),
+            health: device.device_health.to_string(),
+            owner: device.owner.to_string(),
+        };
+
+        if self.json {
+            let json = serde_json::to_string_pretty(&display)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let table = tabled::Table::new([display]);
+            writeln!(out, "{table}")?;
+        }
 
         Ok(())
     }
@@ -127,23 +143,34 @@ mod tests {
         client
             .expect_get_device()
             .returning(move |_| Err(eyre::eyre!("not found")));
-        /*****************************************************************************************************/
+
         // Expected failure
         let mut output = Vec::new();
         let res = GetDeviceCliCommand {
             code: Pubkey::new_unique().to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_err(), "I shouldn't find anything.");
 
-        // Expected success
+        // Expected success (table)
         let mut output = Vec::new();
         let res = GetDeviceCliCommand {
             code: device1_pubkey.to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\r\ncode: test\r\ncontributor: HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\r\nlocation: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\r\nexchange: GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc\r\ndevice_type: hybrid\r\npublic_ip: 1.2.3.4\r\ndz_prefixes: 1.2.3.4/32\r\nmetrics_publisher: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\r\nmgmt_vrf: default\r\ninterfaces: []\r\nmax_users: 255\r\nusers_count: 0\r\nreference_count: 0\r\nmax_unicast_users: 0\r\nunicast_users_count: 0\r\nmax_multicast_users: 0\r\nmulticast_users_count: 0\r\ndesired_status: activated\r\nstatus: activated\r\nhealth: ready-for-users\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert!(
+            output_str.contains("account"),
+            "should contain table header"
+        );
+        assert!(
+            output_str.contains("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB"),
+            "should contain pubkey"
+        );
+        assert!(output_str.contains("test"), "should contain code");
+        assert!(output_str.contains("activated"), "should contain status");
     }
 }

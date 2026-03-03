@@ -1,13 +1,32 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
 use doublezero_sdk::commands::location::get::GetLocationCommand;
+use serde::Serialize;
 use std::io::Write;
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct GetLocationCliCommand {
     /// Location Pubkey or code to get details for
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub code: String,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Tabled, Serialize)]
+struct LocationDisplay {
+    pub account: String,
+    pub code: String,
+    pub name: String,
+    pub country: String,
+    pub lat: f64,
+    pub lng: f64,
+    pub loc_id: u32,
+    pub reference_count: u32,
+    pub status: String,
+    pub owner: String,
 }
 
 impl GetLocationCliCommand {
@@ -16,19 +35,26 @@ impl GetLocationCliCommand {
             pubkey_or_code: self.code,
         })?;
 
-        writeln!(out,
-                "account: {},\r\ncode: {}\r\nname: {}\r\ncountry: {}\r\nlat: {}\r\nlng: {}\r\nloc_id: {}\r\nreference_count: {}\r\nstatus: {}\r\nowner: {}",
-                pubkey,
-                location.code,
-                location.name,
-                location.country,
-                location.lat,
-                location.lng,
-                location.loc_id,
-                location.reference_count,
-                location.status,
-                location.owner
-            )?;
+        let display = LocationDisplay {
+            account: pubkey.to_string(),
+            code: location.code,
+            name: location.name,
+            country: location.country,
+            lat: location.lat,
+            lng: location.lng,
+            loc_id: location.loc_id,
+            reference_count: location.reference_count,
+            status: location.status.to_string(),
+            owner: location.owner.to_string(),
+        };
+
+        if self.json {
+            let json = serde_json::to_string_pretty(&display)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let table = tabled::Table::new([display]);
+            writeln!(out, "{table}")?;
+        }
 
         Ok(())
     }
@@ -87,33 +113,49 @@ mod tests {
             Ok(list)
         });
 
-        /*****************************************************************************************************/
         // Expected failure
         let mut output = Vec::new();
         let res = GetLocationCliCommand {
             code: Pubkey::new_unique().to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_err(), "I shouldn't find anything.");
 
-        // Expected success
+        // Expected success by pubkey (table)
         let mut output = Vec::new();
         let res = GetLocationCliCommand {
             code: location1_pubkey.to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Location\r\ncountry: Test Country\r\nlat: 12.34\r\nlng: 56.78\r\nloc_id: 1\r\nreference_count: 0\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert!(
+            output_str.contains("account"),
+            "should contain table header"
+        );
+        assert!(
+            output_str.contains("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB"),
+            "should contain pubkey"
+        );
+        assert!(output_str.contains("test"), "should contain code");
+        assert!(output_str.contains("activated"), "should contain status");
 
-        // Expected success
+        // Expected success by code (JSON)
         let mut output = Vec::new();
         let res = GetLocationCliCommand {
             code: "test".to_string(),
+            json: true,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Location\r\ncountry: Test Country\r\nlat: 12.34\r\nlng: 56.78\r\nloc_id: 1\r\nreference_count: 0\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert!(
+            output_str.contains("\"account\""),
+            "should contain account key"
+        );
+        assert!(output_str.contains("\"code\""), "should contain code key");
+        assert!(output_str.contains("\"test\""), "should contain code value");
     }
 }

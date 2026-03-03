@@ -23,6 +23,11 @@ pub fn default_program_id() -> Pubkey {
         .serviceability_program_id
 }
 
+/// Returns the default geolocation program ID based on the compiled-in environment.
+pub fn default_geolocation_program_id() -> Pubkey {
+    DEFAULT_ENVIRONMENT.config().unwrap().geolocation_program_id
+}
+
 /// The default path to the CLI configuration file.
 ///
 /// > `~/.config/doublezero/cli/config.yml`
@@ -51,6 +56,8 @@ pub struct ClientConfig {
     pub tenant: Option<String>,
     #[serde(default)]
     pub address_labels: HashMap<String, String>,
+    #[serde(default)]
+    pub geo_program_id: Option<String>,
 }
 
 fn default_keypair_path() -> PathBuf {
@@ -68,6 +75,7 @@ impl Default for ClientConfig {
             program_id: None,
             tenant: None,
             address_labels: HashMap::new(),
+            geo_program_id: None,
         }
     }
 }
@@ -132,6 +140,20 @@ pub fn convert_program_moniker(pubkey: String) -> String {
         "devnet" => crate::devnet::program_id::id().to_string(),
         "testnet" => crate::testnet::program_id::id().to_string(),
         _ => pubkey,
+    }
+}
+
+pub fn convert_geo_program_moniker(pubkey: String) -> String {
+    let env = match pubkey.as_str() {
+        "mainnet-beta" => Some(Environment::MainnetBeta),
+        "testnet" => Some(Environment::Testnet),
+        "devnet" => Some(Environment::Devnet),
+        "local" => Some(Environment::Local),
+        _ => None,
+    };
+    match env {
+        Some(e) => e.config().unwrap().geolocation_program_id.to_string(),
+        None => pubkey,
     }
 }
 
@@ -223,6 +245,7 @@ mod tests {
             program_id: None,
             tenant: None,
             address_labels: Default::default(),
+            geo_program_id: None,
         };
 
         write_doublezero_config(&cfg).unwrap();
@@ -253,6 +276,7 @@ mod tests {
             program_id: None,
             tenant: None,
             address_labels: Default::default(),
+            geo_program_id: None,
         };
 
         write_doublezero_config(&cfg).unwrap();
@@ -279,6 +303,7 @@ mod tests {
             program_id: None,
             tenant: None,
             address_labels: Default::default(),
+            geo_program_id: None,
         };
 
         write_doublezero_config(&cfg).unwrap();

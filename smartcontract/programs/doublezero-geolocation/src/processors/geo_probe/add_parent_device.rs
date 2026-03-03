@@ -1,6 +1,8 @@
 use crate::{
-    error::GeolocationError, processors::check_foundation_allowlist, serializer::try_acc_write,
-    state::geo_probe::GeoProbe,
+    error::GeolocationError,
+    processors::check_foundation_allowlist,
+    serializer::try_acc_write,
+    state::geo_probe::{GeoProbe, MAX_PARENT_DEVICES},
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -70,7 +72,14 @@ pub fn process_add_parent_device(program_id: &Pubkey, accounts: &[AccountInfo]) 
         return Err(GeolocationError::ParentDeviceAlreadyExists.into());
     }
 
-    // MAX_PARENT_DEVICES is enforced by probe.validate() inside try_acc_write
+    if probe.parent_devices.len() >= MAX_PARENT_DEVICES {
+        msg!(
+            "Cannot add parent device: already at maximum of {}",
+            MAX_PARENT_DEVICES
+        );
+        return Err(GeolocationError::MaxParentDevicesReached.into());
+    }
+
     probe.parent_devices.push(*device_account.key);
 
     try_acc_write(&probe, probe_account, payer_account, accounts)?;

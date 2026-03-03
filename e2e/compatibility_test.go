@@ -57,21 +57,22 @@ type knownIncompat struct {
 }
 
 var knownIncompatibilities = map[string]knownIncompat{
-	// multicast_group_create: v0.9.0 changed PDA derivation from account_index to code.
+	// multicast_group_create: v0.9.1 changed PDA derivation from account_index to code.
 	// Older CLIs compute the wrong PDA, causing an assertion failure in the onchain program.
-	"write/multicast_group_create": {minVersion: "0.9.0"},
+	// testnet v0.9.0 was released before this change, so it's incompatible there too.
+	"write/multicast_group_create": {minVersion: "0.9.0", envOverride: map[string]string{"testnet": "0.9.1"}},
 
 	// All multicast operations that depend on multicast_group_create. When the group
-	// can't be created (< 0.9.0), these all fail with "MulticastGroup not found".
-	"write/multicast_group_wait_activated":       {minVersion: "0.9.0"},
-	"write/multicast_group_update":               {minVersion: "0.9.0"},
-	"write/multicast_group_pub_allowlist_add":    {minVersion: "0.9.0"},
-	"write/multicast_group_pub_allowlist_remove": {minVersion: "0.9.0"},
-	"write/multicast_group_sub_allowlist_add":    {minVersion: "0.9.0"},
-	"write/user_subscribe":                       {minVersion: "0.9.0"},
-	"write/multicast_group_sub_allowlist_remove": {minVersion: "0.9.0"},
-	"write/multicast_group_get":                  {minVersion: "0.9.0"},
-	"write/multicast_group_delete":               {minVersion: "0.9.0"},
+	// can't be created, these all fail with "MulticastGroup not found".
+	"write/multicast_group_wait_activated":       {minVersion: "0.9.0", envOverride: map[string]string{"testnet": "0.9.1"}},
+	"write/multicast_group_update":               {minVersion: "0.9.0", envOverride: map[string]string{"testnet": "0.9.1"}},
+	"write/multicast_group_pub_allowlist_add":    {minVersion: "0.9.0", envOverride: map[string]string{"testnet": "0.9.1"}},
+	"write/multicast_group_pub_allowlist_remove": {minVersion: "0.9.0", envOverride: map[string]string{"testnet": "0.9.1"}},
+	"write/multicast_group_sub_allowlist_add":    {minVersion: "0.9.0", envOverride: map[string]string{"testnet": "0.9.1"}},
+	"write/user_subscribe":                       {minVersion: "0.9.0", envOverride: map[string]string{"testnet": "0.9.1"}},
+	"write/multicast_group_sub_allowlist_remove": {minVersion: "0.9.0", envOverride: map[string]string{"testnet": "0.9.1"}},
+	"write/multicast_group_get":                  {minVersion: "0.9.0", envOverride: map[string]string{"testnet": "0.9.1"}},
+	"write/multicast_group_delete":               {minVersion: "0.9.0", envOverride: map[string]string{"testnet": "0.9.1"}},
 
 	// set-health commands: The CLI subcommand was added in commit eb7ea308 (Jan 16).
 	// mainnet-beta v0.8.2 was built Jan 13 (before set-health) → doesn't have it.

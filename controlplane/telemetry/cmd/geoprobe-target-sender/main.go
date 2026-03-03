@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	defaultProbePort = 862
+	defaultProbePort = 8924
 	defaultInterval  = 60 * time.Second
 	defaultTimeout   = 2 * time.Second
 )
@@ -29,8 +29,8 @@ const (
 var (
 	probeIP     = flag.String("probe-ip", "", "IP address of the GeoProbe to probe (required)")
 	probePort   = flag.Uint("probe-port", defaultProbePort, "TWAMP port on the probe")
-	probePK     = flag.String("probe-pk", "", "Base58 Ed25519 public key of the GeoProbe (required)")
-	keypairPath = flag.String("keypair", "", "Path to the target's Ed25519 keypair file (required)")
+	probePK     = flag.String("probe-pk", "", "Base58 Ed25519 public key of the GeoProbe's Signing Authority (required)")
+	keypairPath = flag.String("keypair", "", "Path to this target's Ed25519 keypair file for signing outbound message (required)")
 	interval    = flag.Duration("interval", defaultInterval, "Interval between probes")
 	count       = flag.Uint("count", 0, "Number of probes to send (0 = infinite)")
 	timeout     = flag.Duration("timeout", defaultTimeout, "Per-probe timeout")

@@ -2,7 +2,7 @@ use crate::{
     error::DoubleZeroError,
     pda::get_multicastgroup_pda,
     seeds::{SEED_MULTICAST_GROUP, SEED_PREFIX},
-    serializer::{try_acc_create, try_acc_write},
+    serializer::try_acc_create,
     state::{accounttype::AccountType, globalstate::GlobalState, multicastgroup::*},
 };
 use borsh::BorshSerialize;
@@ -72,12 +72,10 @@ pub fn process_create_multicastgroup(
     assert!(mgroup_account.is_writable, "PDA Account is not writable");
 
     // Parse the global state account & check if the payer is in the allowlist
-    let mut globalstate = GlobalState::try_from(globalstate_account)?;
-    globalstate.account_index += 1;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
 
     // Get the PDA pubkey and bump seed for the account multicastgroup & check if it matches the account
-    let (expected_pda_account, bump_seed) =
-        get_multicastgroup_pda(program_id, globalstate.account_index);
+    let (expected_pda_account, bump_seed) = get_multicastgroup_pda(program_id, &code);
     assert_eq!(
         mgroup_account.key, &expected_pda_account,
         "Invalid MulticastGroup Pubkey"
@@ -94,7 +92,7 @@ pub fn process_create_multicastgroup(
     let multicastgroup = MulticastGroup {
         account_type: AccountType::MulticastGroup,
         owner: value.owner,
-        index: globalstate.account_index,
+        index: 0,
         bump_seed,
         tenant_pk: Pubkey::default(),
         code,
@@ -114,11 +112,10 @@ pub fn process_create_multicastgroup(
         &[
             SEED_PREFIX,
             SEED_MULTICAST_GROUP,
-            &globalstate.account_index.to_le_bytes(),
+            multicastgroup.code.as_bytes(),
             &[bump_seed],
         ],
     )?;
-    try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
 
     Ok(())
 }

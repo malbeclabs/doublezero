@@ -67,7 +67,7 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-        let (mgroup_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let (mgroup_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), "test");
 
         client
             .expect_execute_transaction()
@@ -99,7 +99,7 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-        let (mgroup_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let (mgroup_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), "test");
         let (resource_ext_pubkey, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::MulticastGroupBlock);
 

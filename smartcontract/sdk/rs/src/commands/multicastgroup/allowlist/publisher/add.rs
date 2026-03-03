@@ -46,10 +46,11 @@ impl AddMulticastGroupPubAllowlistCommand {
 mod tests {
     use crate::{
         commands::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistCommand,
-        tests::utils::create_test_client,
+        tests::utils::create_test_client, DoubleZeroClient,
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
+        pda::get_multicastgroup_pda,
         processors::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
         state::{
             accountdata::AccountData,
@@ -64,10 +65,10 @@ mod tests {
     fn test_commands_multicastgroup_allowlist_publisher_add() {
         let mut client = create_test_client();
 
-        let pubkey = Pubkey::new_unique();
+        let (code_pda, _) = get_multicastgroup_pda(&client.get_program_id(), "test_code");
         let mgroup = MulticastGroup {
             account_type: AccountType::MulticastGroup,
-            index: 1,
+            index: 0,
             bump_seed: 1,
             owner: Pubkey::new_unique(),
             tenant_pk: Pubkey::new_unique(),
@@ -82,24 +83,15 @@ mod tests {
         let cloned_mgroup = mgroup.clone();
         client
             .expect_get()
-            .with(predicate::eq(pubkey))
+            .with(predicate::eq(code_pda))
             .returning(move |_| Ok(AccountData::MulticastGroup(cloned_mgroup.clone())));
-        let cloned_mgroup = mgroup.clone();
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::MulticastGroup))
-            .returning(move |_| {
-                let mut map = std::collections::HashMap::new();
-                map.insert(pubkey, AccountData::MulticastGroup(cloned_mgroup.clone()));
-                Ok(map)
-            });
         client
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::AddMulticastGroupPubAllowlist(
                     AddMulticastGroupPubAllowlistArgs {
                         client_ip: [192, 168, 1, 1].into(),
-                        user_payer: pubkey,
+                        user_payer: code_pda,
                     },
                 )),
                 predicate::always(),
@@ -109,7 +101,7 @@ mod tests {
         let res = AddMulticastGroupPubAllowlistCommand {
             pubkey_or_code: "test_code".to_string(),
             client_ip: [192, 168, 1, 1].into(),
-            user_payer: pubkey,
+            user_payer: code_pda,
         }
         .execute(&client);
 

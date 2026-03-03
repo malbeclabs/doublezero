@@ -54,14 +54,7 @@ async fn test_multicast_subscriber_allowlist() {
     /*****************************************************************************************************************************************************/
     println!("🟢 2. Create MulticastGroup...");
 
-    let globalstate = get_account_data(&mut banks_client, globalstate_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_global_state()
-        .unwrap();
-
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, "test");
 
     execute_transaction(
         &mut banks_client,
@@ -93,8 +86,6 @@ async fn test_multicast_subscriber_allowlist() {
     println!("✅");
     /*****************************************************************************************************************************************************/
     println!("🟢 3. Activate MulticastGroup...");
-
-    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
 
     execute_transaction(
         &mut banks_client,
@@ -264,14 +255,7 @@ async fn test_multicast_subscriber_allowlist_sentinel_authority() {
     .await;
 
     // 3. Create and activate a multicast group (owned by payer, NOT sentinel)
-    let globalstate = get_account_data(&mut banks_client, globalstate_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_global_state()
-        .unwrap();
-
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, "sentinel-test");
 
     execute_transaction(
         &mut banks_client,

@@ -19,12 +19,11 @@ impl CreateMulticastGroupCommand {
         let code =
             validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
+        let (globalstate_pubkey, _) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) =
-            get_multicastgroup_pda(&client.get_program_id(), globalstate.account_index + 1);
+        let (pda_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), &code);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
@@ -60,7 +59,7 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), "test_group");
 
         client
             .expect_execute_transaction()

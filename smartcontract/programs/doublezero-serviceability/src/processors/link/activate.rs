@@ -1,6 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
+    processors::resource::{allocate_id, allocate_ip},
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
@@ -8,7 +9,6 @@ use crate::{
         globalstate::GlobalState,
         interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus},
         link::*,
-        resource_extension::ResourceExtensionBorrowed,
     },
 };
 use borsh::BorshSerialize;
@@ -193,22 +193,12 @@ pub fn process_activate_link(
 
         // Allocate tunnel_net from global DeviceTunnelBlock (skip if already allocated)
         if link.tunnel_net == NetworkV4::default() {
-            let mut buffer = device_tunnel_block_ext.data.borrow_mut();
-            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-            link.tunnel_net = resource
-                .allocate(2)?
-                .as_ip()
-                .ok_or(DoubleZeroError::InvalidArgument)?;
+            link.tunnel_net = allocate_ip(device_tunnel_block_ext, 2)?;
         }
 
         // Allocate tunnel_id from global LinkIds (skip if already allocated)
         if link.tunnel_id == 0 {
-            let mut buffer = link_ids_ext.data.borrow_mut();
-            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-            link.tunnel_id = resource
-                .allocate(1)?
-                .as_id()
-                .ok_or(DoubleZeroError::InvalidArgument)?;
+            link.tunnel_id = allocate_id(link_ids_ext)?;
         }
     } else {
         // Legacy behavior: use provided args

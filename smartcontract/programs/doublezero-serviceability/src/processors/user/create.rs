@@ -27,6 +27,9 @@ use solana_program::{
 };
 use std::net::Ipv4Addr;
 
+use super::resource_onchain_helpers;
+use crate::processors::validation::validate_program_account;
+
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct UserCreateArgs {
     pub user_type: UserType,
@@ -35,14 +38,22 @@ pub struct UserCreateArgs {
     pub client_ip: std::net::Ipv4Addr,
     #[incremental(default = Ipv4Addr::UNSPECIFIED)]
     pub tunnel_endpoint: std::net::Ipv4Addr,
+    /// Number of DzPrefixBlock accounts passed for on-chain allocation.
+    /// When 0, legacy behavior is used (Pending status). When > 0, atomic create+allocate+activate.
+    #[incremental(default = 0)]
+    pub dz_prefix_count: u8,
 }
 
 impl fmt::Debug for UserCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}",
-            self.user_type, self.cyoa_type, &self.client_ip, &self.tunnel_endpoint,
+            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}",
+            self.user_type,
+            self.cyoa_type,
+            &self.client_ip,
+            &self.tunnel_endpoint,
+            self.dz_prefix_count,
         )
     }
 }
@@ -65,8 +76,43 @@ pub fn process_create_user(
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Parse optional tenant account (after globalstate_account)
-    let tenant_account = if accounts.len() >= 7 {
+    // Optional: ResourceExtension accounts for on-chain allocation (between globalstate and optional_tenant)
+    // Account layout WITH ResourceExtension (dz_prefix_count > 0):
+    //   [user, device, accesspass, globalstate, user_tunnel_block, multicast_publisher_block, device_tunnel_ids, dz_prefix_0..N, optional_tenant, payer, system]
+    // Account layout WITHOUT (legacy, dz_prefix_count == 0):
+    //   [user, device, accesspass, globalstate, optional_tenant, payer, system]
+    let resource_extension_accounts = if value.dz_prefix_count > 0 {
+        let user_tunnel_block_ext = next_account_info(accounts_iter)?; // UserTunnelBlock
+        let multicast_publisher_block_ext = next_account_info(accounts_iter)?; // MulticastPublisherBlock
+        let device_tunnel_ids_ext = next_account_info(accounts_iter)?; // TunnelIds
+
+        let mut dz_prefix_accounts = Vec::with_capacity(value.dz_prefix_count as usize);
+        for _ in 0..value.dz_prefix_count {
+            dz_prefix_accounts.push(next_account_info(accounts_iter)?);
+        }
+
+        Some((
+            user_tunnel_block_ext,
+            multicast_publisher_block_ext,
+            device_tunnel_ids_ext,
+            dz_prefix_accounts,
+        ))
+    } else {
+        None
+    };
+
+    // Parse optional tenant account
+    // With resource extensions, the total fixed accounts shift:
+    //   Legacy without tenant: 6 accounts [user, device, accesspass, globalstate, payer, system]
+    //   Legacy with tenant: 7 accounts [user, device, accesspass, globalstate, tenant, payer, system]
+    //   Atomic without tenant: 6 + 3 + dz_prefix_count accounts
+    //   Atomic with tenant: 7 + 3 + dz_prefix_count accounts
+    let resource_ext_accounts = if value.dz_prefix_count > 0 {
+        3 + value.dz_prefix_count as usize
+    } else {
+        0
+    };
+    let tenant_account = if accounts.len() >= 7 + resource_ext_accounts {
         Some(next_account_info(accounts_iter)?)
     } else {
         None
@@ -87,14 +133,13 @@ pub fn process_create_user(
             return Err(DoubleZeroError::InvalidTenantPubkey.into());
         }
 
-        // Must be owned by program
-        assert_eq!(
-            tenant_account.owner, program_id,
-            "Invalid Tenant Account Owner"
+        validate_program_account!(
+            tenant_account,
+            program_id,
+            writable = true,
+            pda = None::<&Pubkey>,
+            "Tenant"
         );
-
-        // Must be writable
-        assert!(tenant_account.is_writable, "Tenant Account is not writable");
 
         // Verify account type is Tenant
         if tenant_account.data.borrow()[0] != AccountType::Tenant as u8 {
@@ -108,9 +153,12 @@ pub fn process_create_user(
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
-    assert_eq!(
-        accesspass_account.owner, program_id,
-        "Invalid AccessPass Account Owner"
+    validate_program_account!(
+        accesspass_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "AccessPass"
     );
 
     let mut globalstate = GlobalState::try_from(globalstate_account)?;
@@ -300,7 +348,7 @@ pub fn process_create_user(
         Pubkey::default()
     };
 
-    let user: User = User {
+    let mut user: User = User {
         account_type: AccountType::User,
         owner: *payer_account.key,
         bump_seed: if pda_ver == PDAVersion::V1 {
@@ -327,6 +375,28 @@ pub fn process_create_user(
         validator_pubkey,
         tunnel_endpoint: value.tunnel_endpoint,
     };
+
+    // Atomic create+allocate+activate if on-chain allocation is requested
+    if let Some((
+        user_tunnel_block_ext,
+        multicast_publisher_block_ext,
+        device_tunnel_ids_ext,
+        dz_prefix_accounts,
+    )) = resource_extension_accounts
+    {
+        let globalstate_ref = GlobalState::try_from(globalstate_account)?;
+        resource_onchain_helpers::validate_and_allocate_user_resources(
+            program_id,
+            &mut user,
+            user_tunnel_block_ext,
+            multicast_publisher_block_ext,
+            device_tunnel_ids_ext,
+            &dz_prefix_accounts,
+            &globalstate_ref,
+        )?;
+
+        user.try_activate(&mut accesspass)?;
+    }
 
     if pda_ver == PDAVersion::V1 {
         try_acc_create(

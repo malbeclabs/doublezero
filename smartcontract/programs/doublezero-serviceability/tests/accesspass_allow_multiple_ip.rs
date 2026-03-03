@@ -342,6 +342,7 @@ async fn test_accesspass_allow_multiple_ip() {
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

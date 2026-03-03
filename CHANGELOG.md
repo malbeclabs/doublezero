@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - `doublezero resource verify` command will now suggest creating resources or create them with --fix
+  - All `get` commands now display output as a formatted table and support a `--json` flag for machine-readable output
 - SDK
   - Fix multicast group deserialization in `smartcontract/sdk/go` to correctly read publisher and subscriber counts and align status enum with onchain definition
 - Smartcontract

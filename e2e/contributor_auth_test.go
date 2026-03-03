@@ -3,6 +3,7 @@
 package e2e_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -109,19 +110,15 @@ func TestE2E_ContributorAuth(t *testing.T) {
 		// Extract the pubkey from contributor get output.
 		getOutput, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "contributor", "get",
-			"--code", "test-co02",
+			"--code", "test-co02", "--json",
 		})
 		require.NoError(t, err, "failed to get contributor test-co02 for pubkey lookup")
-		// Output format: "account: <pubkey>,\r\ncode: ..."
-		var co02Pubkey string
-		for _, line := range strings.Split(string(getOutput), "\n") {
-			line = strings.TrimSpace(strings.ReplaceAll(line, "\r", ""))
-			if strings.HasPrefix(line, "account:") {
-				co02Pubkey = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "account:"), ","))
-				break
-			}
+		var co02Result struct {
+			Account string `json:"account"`
 		}
-		require.NotEmpty(t, co02Pubkey, "could not extract pubkey from contributor get output: %s", string(getOutput))
+		require.NoError(t, json.Unmarshal(getOutput, &co02Result), "could not parse contributor get output: %s", string(getOutput))
+		co02Pubkey := co02Result.Account
+		require.NotEmpty(t, co02Pubkey, "empty account in contributor get output: %s", string(getOutput))
 
 		_, err = dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "contributor", "update",
@@ -335,18 +332,15 @@ func TestE2E_ContributorAuth(t *testing.T) {
 		// Extract the actual pubkey for test-co04 (--pubkey requires base58 pubkey, not code)
 		co04GetOutput, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "contributor", "get",
-			"--code", "test-co04",
+			"--code", "test-co04", "--json",
 		})
 		require.NoError(t, err, "failed to get contributor test-co04 for pubkey lookup")
-		var co04Pubkey string
-		for _, line := range strings.Split(string(co04GetOutput), "\n") {
-			line = strings.TrimSpace(strings.ReplaceAll(line, "\r", ""))
-			if strings.HasPrefix(line, "account:") {
-				co04Pubkey = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "account:"), ","))
-				break
-			}
+		var co04Result struct {
+			Account string `json:"account"`
 		}
-		require.NotEmpty(t, co04Pubkey, "could not extract pubkey from contributor get output: %s", string(co04GetOutput))
+		require.NoError(t, json.Unmarshal(co04GetOutput, &co04Result), "could not parse contributor get output: %s", string(co04GetOutput))
+		co04Pubkey := co04Result.Account
+		require.NotEmpty(t, co04Pubkey, "empty account in contributor get output: %s", string(co04GetOutput))
 
 		// Update ops_manager using the contributor owner's keypair
 		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf(`

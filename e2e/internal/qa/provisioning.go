@@ -343,17 +343,20 @@ func (p *ProvisioningTest) CreateDevice(ctx context.Context, cfg *DeviceSpec) (s
 // getDevicePubkeyCLI retrieves the device pubkey via the CLI rather than the Go SDK,
 // because the Go SDK may return stale data after a delete+recreate cycle.
 func (p *ProvisioningTest) getDevicePubkeyCLI(ctx context.Context, code string) (string, error) {
-	output, err := p.runCLI(ctx, "device", "get", "--code", code)
+	output, err := p.runCLI(ctx, "device", "get", "--code", code, "--json")
 	if err != nil {
 		return "", err
 	}
-	for _, line := range strings.Split(string(output), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "account:") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "account:")), nil
-		}
+	var result struct {
+		Account string `json:"account"`
 	}
-	return "", fmt.Errorf("could not parse account pubkey from device get output: %s", string(output))
+	if err := json.Unmarshal(output, &result); err != nil {
+		return "", fmt.Errorf("could not parse device get output: %w", err)
+	}
+	if result.Account == "" {
+		return "", fmt.Errorf("empty account in device get output: %s", string(output))
+	}
+	return result.Account, nil
 }
 
 func (p *ProvisioningTest) UpdateDevice(ctx context.Context, pubkey string, maxUsers int, desiredStatus string) error {

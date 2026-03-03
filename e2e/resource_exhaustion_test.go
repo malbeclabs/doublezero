@@ -311,7 +311,7 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 
 		// Create a new user now that a slot is available.
 		log.Debug("==> Creating new user after freeing a slot")
-		recoveryClient = createUserOnchain(t, 103)
+		recoveryClient = createUserOnchain(t, 104)
 
 		activated := waitForUserActivated(t, recoveryClient.CYOANetworkIP)
 		recoveredDzIP := net.IP(activated.DzIp[:]).String()

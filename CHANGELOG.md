@@ -17,6 +17,8 @@ All notable changes to this project will be documented in this file.
   - Allow sentinel authority to add/remove multicast publisher and subscriber allowlist entries
 - Telemetry
   - Fix global monitor crash when IBRL and multicast users share the same client IP but are on different devices, by preferring non-multicast users in client IP lookups to match status device selection
+- E2E tests
+  - Publish `TestQA_AllDevices_UnicastConnectivity` results to ClickHouse (`qa_alldevices_results` and `qa_alldevices_metadata` tables) in addition to InfluxDB; configured via `CLICKHOUSE_ADDR` env var, skipped gracefully when not set
 
 ## [v0.9.0](https://github.com/malbeclabs/doublezero/compare/client/v0.8.11...client/v0.9.0) - 2026-02-27
 

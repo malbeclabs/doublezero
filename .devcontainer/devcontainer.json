@@ -18,8 +18,8 @@
             "version": "1.90.0"
         },
     },
-    "postCreateCommand": "sudo chown vscode:vscode /workspaces/doublezero/target && rustup component add --toolchain nightly rustfmt",
-    "postStartCommand": "sudo chmod 666 /var/run/docker.sock && sudo chown -R vscode:vscode /home/vscode/.docker",
+    "postCreateCommand": "sudo chown -R vscode:vscode /workspaces/doublezero/target && rustup component add --toolchain nightly rustfmt",
+    "postStartCommand": "sudo chmod 666 /var/run/docker.sock && sudo chown -R vscode:vscode /home/vscode/.docker && sudo chown -R vscode:vscode /workspaces/doublezero/target",
     "customizations": {
         "vscode": {
             "extensions": [

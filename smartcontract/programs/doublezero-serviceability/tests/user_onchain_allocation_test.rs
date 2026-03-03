@@ -2172,6 +2172,65 @@ async fn setup_user_infra_without_user(
     )
 }
 
+/// Helper: enable feature flag + atomic create+allocate+activate for any UserType.
+/// Returns the deserialized User after creation.
+async fn atomic_create_user_with_resources(
+    banks_client: &mut BanksClient,
+    payer: &solana_sdk::signature::Keypair,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    device_pubkey: Pubkey,
+    user_pubkey: Pubkey,
+    accesspass_pubkey: Pubkey,
+    resource_pubkeys: (Pubkey, Pubkey, Pubkey, Pubkey),
+    user_type: UserType,
+    client_ip: [u8; 4],
+) {
+    let (user_tunnel_block, multicast_publisher_block, tunnel_ids, dz_prefix_block) =
+        resource_pubkeys;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Enable feature flag
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        payer,
+    )
+    .await;
+
+    // Atomic create+allocate+activate
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: client_ip.into(),
+            user_type,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        payer,
+    )
+    .await;
+}
+
 /// Test atomic create+allocate+activate for IBRL user
 #[tokio::test]
 async fn test_create_user_atomic_with_onchain_allocation() {
@@ -2186,47 +2245,20 @@ async fn test_create_user_atomic_with_onchain_allocation() {
         device_pubkey,
         user_pubkey,
         accesspass_pubkey,
-        (user_tunnel_block, _multicast_publisher_block, tunnel_ids, dz_prefix_block),
+        resource_pubkeys,
     ) = setup_user_infra_without_user(UserType::IBRL, client_ip).await;
 
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // Enable feature flag
-    execute_transaction(
+    atomic_create_user_with_resources(
         &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
-        }),
-        vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
-    )
-    .await;
-
-    // Atomic create+allocate+activate
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateUser(UserCreateArgs {
-            client_ip: client_ip.into(),
-            user_type: UserType::IBRL,
-            cyoa_type: UserCYOA::GREOverDIA,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 1,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(_multicast_publisher_block, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        resource_pubkeys,
+        UserType::IBRL,
+        client_ip,
     )
     .await;
 
@@ -2251,6 +2283,84 @@ async fn test_create_user_atomic_with_onchain_allocation() {
         user.tunnel_id, user.tunnel_net, user.dz_ip
     );
     println!("[PASS] test_create_user_atomic_with_onchain_allocation");
+}
+
+/// Test atomic create+allocate+activate for IBRLWithAllocatedIP user
+#[tokio::test]
+async fn test_create_user_atomic_ibrl_with_allocated_ip() {
+    println!("[TEST] test_create_user_atomic_ibrl_with_allocated_ip");
+
+    let client_ip = [100, 0, 0, 11];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        resource_pubkeys,
+    ) = setup_user_infra_without_user(UserType::IBRLWithAllocatedIP, client_ip).await;
+
+    let (_, _, _, dz_prefix_block) = resource_pubkeys;
+
+    atomic_create_user_with_resources(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        resource_pubkeys,
+        UserType::IBRLWithAllocatedIP,
+        client_ip,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Activated);
+    assert_ne!(user.tunnel_id, 0, "tunnel_id should be allocated");
+    assert_ne!(
+        user.tunnel_net,
+        doublezero_program_common::types::NetworkV4::default(),
+        "tunnel_net should be allocated"
+    );
+    // IBRLWithAllocatedIP gets dz_ip from DzPrefixBlock, NOT client_ip
+    assert_ne!(
+        user.dz_ip,
+        Ipv4Addr::from(client_ip),
+        "dz_ip should be allocated, not client_ip"
+    );
+    let dz_ip_octets = user.dz_ip.octets();
+    assert_eq!(
+        dz_ip_octets[0], 110,
+        "dz_ip should be from DzPrefixBlock (110.1.0.0/24)"
+    );
+    assert_eq!(
+        dz_ip_octets[1], 1,
+        "dz_ip should be from DzPrefixBlock (110.1.0.0/24)"
+    );
+
+    // DzPrefixBlock should have reserved first IP + user allocation
+    let dz_prefix_resource = get_resource_extension_data(&mut banks_client, dz_prefix_block)
+        .await
+        .expect("DzPrefixBlock should exist");
+    assert_eq!(
+        dz_prefix_resource.iter_allocated().len(),
+        2,
+        "DzPrefixBlock should have reserved first IP + user allocation"
+    );
+
+    println!(
+        "User activated: tunnel_id={}, tunnel_net={}, dz_ip={}",
+        user.tunnel_id, user.tunnel_net, user.dz_ip
+    );
+    println!("[PASS] test_create_user_atomic_ibrl_with_allocated_ip");
 }
 
 /// Test backward compatibility: dz_prefix_count=0 uses legacy path (Pending status)

@@ -130,7 +130,7 @@ rev="94ff2dc394c02c748f76970c0260a7498dcb47fe"
 [workspace.dependencies.network-shapley]
 features = ["serde", "borsh"]
 git = "https://github.com/doublezerofoundation/network-shapley-rs"
-tag = "v0.3.0"
+tag = "v0.4.0"
 
 ### Local dependencies
 

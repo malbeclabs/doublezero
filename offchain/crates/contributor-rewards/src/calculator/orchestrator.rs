@@ -106,6 +106,9 @@ impl Orchestrator {
             let merkle_root = shapley_storage.compute_merkle_root()?;
             info!("merkle_root: {:#?}", merkle_root);
 
+            // Print rewards summary table
+            ledger_operations::print_rewards_summary(&shapley_storage, &merkle_root);
+
             // Record payload sizes to monitor ledger write growth
             let reward_input_bytes = borsh::to_vec(&input_config)?;
             let shapley_storage_bytes = borsh::to_vec(&shapley_storage)?;

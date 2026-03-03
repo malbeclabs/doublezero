@@ -620,6 +620,67 @@ pub struct AllRewardsOutput {
     pub rewards: Vec<RewardEntry>,
 }
 
+/// Print a rewards summary table (epoch, merkle root, contributors, unit shares)
+pub fn print_rewards_summary(
+    shapley_storage: &ShapleyOutputStorage,
+    merkle_root: &solana_sdk::hash::Hash,
+) {
+    #[derive(Tabled)]
+    struct SummaryRow {
+        #[tabled(rename = "Field")]
+        field: String,
+        #[tabled(rename = "Value")]
+        value: String,
+    }
+
+    let summary_data = vec![
+        SummaryRow {
+            field: "Epoch".to_string(),
+            value: shapley_storage.epoch.to_string(),
+        },
+        SummaryRow {
+            field: "Merkle Root".to_string(),
+            value: format!("{merkle_root:?}"),
+        },
+        SummaryRow {
+            field: "Total Contributors".to_string(),
+            value: shapley_storage.rewards.len().to_string(),
+        },
+        SummaryRow {
+            field: "Total Units".to_string(),
+            value: shapley_storage.total_unit_shares.to_string(),
+        },
+    ];
+
+    println!(
+        "{}",
+        Table::new(summary_data).with(Style::psql().remove_horizontals())
+    );
+
+    #[derive(Tabled)]
+    struct RewardRow {
+        #[tabled(rename = "Contributor")]
+        contributor: String,
+        #[tabled(rename = "Unit Share")]
+        unit_share: u32,
+    }
+
+    let reward_rows: Vec<RewardRow> = shapley_storage
+        .rewards
+        .iter()
+        .map(|r| RewardRow {
+            contributor: r.contributor_key.to_string(),
+            unit_share: r.unit_share,
+        })
+        .collect();
+
+    println!();
+    println!(
+        "{}",
+        Table::new(reward_rows).with(Style::psql().remove_horizontals())
+    );
+}
+
 /// Read all contributor rewards for an epoch
 pub async fn read_all_rewards(
     settings: &Settings,
@@ -662,62 +723,7 @@ pub async fn read_all_rewards(
         };
         println!("{}", serde_json::to_string(&output)?);
     } else {
-        // Print summary table
-        #[derive(Tabled)]
-        struct SummaryRow {
-            #[tabled(rename = "Field")]
-            field: String,
-            #[tabled(rename = "Value")]
-            value: String,
-        }
-
-        let summary_data = vec![
-            SummaryRow {
-                field: "Epoch".to_string(),
-                value: epoch.to_string(),
-            },
-            SummaryRow {
-                field: "Merkle Root".to_string(),
-                value: format!("{merkle_root:?}"),
-            },
-            SummaryRow {
-                field: "Total Contributors".to_string(),
-                value: shapley_storage.rewards.len().to_string(),
-            },
-            SummaryRow {
-                field: "Total Units".to_string(),
-                value: shapley_storage.total_unit_shares.to_string(),
-            },
-        ];
-
-        println!(
-            "{}",
-            Table::new(summary_data).with(Style::psql().remove_horizontals())
-        );
-
-        // Print rewards table
-        #[derive(Tabled)]
-        struct RewardRow {
-            #[tabled(rename = "Contributor")]
-            contributor: String,
-            #[tabled(rename = "Unit Share")]
-            unit_share: u32,
-        }
-
-        let reward_rows: Vec<RewardRow> = shapley_storage
-            .rewards
-            .iter()
-            .map(|r| RewardRow {
-                contributor: r.contributor_key.to_string(),
-                unit_share: r.unit_share,
-            })
-            .collect();
-
-        println!();
-        println!(
-            "{}",
-            Table::new(reward_rows).with(Style::psql().remove_horizontals())
-        );
+        print_rewards_summary(&shapley_storage, &merkle_root);
     }
 
     Ok(())

@@ -39,8 +39,9 @@ RUN curl https://gotest-release.s3.amazonaws.com/gotest_linux > gotest && \
 ARG SOLANA_VERSION=v2.3.1
 RUN curl -sSfL "https://release.anza.xyz/${SOLANA_VERSION}/install" | bash && \
     mv /root/.local/share/solana/install/active_release /usr/local/solana && \
-    ln -sf /usr/local/solana/bin/* /usr/local/bin/ && \
     rm -rf /root/.local/share/solana
+
+ENV PATH="/usr/local/solana/bin:${PATH}"
 
 # Allow pkg-config to return results for x86_64 when cross-compiling from arm64
 ENV PKG_CONFIG_ALLOW_CROSS=1

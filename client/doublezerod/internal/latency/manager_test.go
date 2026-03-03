@@ -60,7 +60,7 @@ func TestLatencyManager(t *testing.T) {
 	}
 
 	sentContractData := make(chan struct{}, 1)
-	mockSmartContractFunc := func(context.Context, string, string) (*latency.ContractData, error) {
+	mockSmartContractFunc := func(context.Context) (*latency.ContractData, error) {
 		sentContractData <- struct{}{}
 		return &latency.ContractData{
 			Devices: []serviceability.Device{
@@ -87,11 +87,9 @@ func TestLatencyManager(t *testing.T) {
 			Reachable:     true,
 		}
 	}
-	programId := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
 	manager := latency.NewLatencyManager(
 		latency.WithSmartContractFunc(mockSmartContractFunc),
 		latency.WithProberFunc(mockProberFunc),
-		latency.WithProgramID(programId),
 		latency.WithProbeInterval(30*time.Second),
 		latency.WithCacheUpdateInterval(30*time.Second),
 	)
@@ -231,7 +229,7 @@ func TestLatencyUdpPing(t *testing.T) {
 		},
 	}
 
-	mockSmartContractFunc := func(context.Context, string, string) (*latency.ContractData, error) {
+	mockSmartContractFunc := func(context.Context) (*latency.ContractData, error) {
 		return &latency.ContractData{Devices: devices}, nil
 	}
 
@@ -243,11 +241,9 @@ func TestLatencyUdpPing(t *testing.T) {
 		return result
 	}
 
-	programId := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
 	manager := latency.NewLatencyManager(
 		latency.WithSmartContractFunc(mockSmartContractFunc),
 		latency.WithProberFunc(mockProber),
-		latency.WithProgramID(programId),
 		latency.WithProbeInterval(30*time.Second),
 		latency.WithCacheUpdateInterval(30*time.Second),
 	)
@@ -693,7 +689,7 @@ func BenchmarkLatencyManagerMemoryStability(b *testing.B) {
 	var probeCount int64
 	var mu sync.Mutex
 
-	mockSmartContractFunc := func(context.Context, string, string) (*latency.ContractData, error) {
+	mockSmartContractFunc := func(context.Context) (*latency.ContractData, error) {
 		return &latency.ContractData{Devices: devices}, nil
 	}
 
@@ -721,7 +717,6 @@ func BenchmarkLatencyManagerMemoryStability(b *testing.B) {
 	manager := latency.NewLatencyManager(
 		latency.WithSmartContractFunc(mockSmartContractFunc),
 		latency.WithProberFunc(mockProberFunc),
-		latency.WithProgramID("test-memory-stability"),
 		latency.WithProbeInterval(probeInterval),
 		latency.WithCacheUpdateInterval(cacheUpdateInterval),
 		latency.WithMetricsEnabled(false),      // Disable metrics to isolate manager memory behavior
@@ -861,7 +856,7 @@ func TestLatencyManagerWithMultipleInterfaces(t *testing.T) {
 	var mu sync.Mutex
 
 	smartContractChan := make(chan struct{}, 1)
-	mockSmartContractFunc := func(context.Context, string, string) (*latency.ContractData, error) {
+	mockSmartContractFunc := func(context.Context) (*latency.ContractData, error) {
 		smartContractChan <- struct{}{}
 		return &latency.ContractData{Devices: []serviceability.Device{device}}, nil
 	}
@@ -887,7 +882,6 @@ func TestLatencyManagerWithMultipleInterfaces(t *testing.T) {
 	manager := latency.NewLatencyManager(
 		latency.WithSmartContractFunc(mockSmartContractFunc),
 		latency.WithProberFunc(mockProberFunc),
-		latency.WithProgramID("test-program"),
 		latency.WithProbeInterval(30*time.Second),
 		latency.WithCacheUpdateInterval(30*time.Second),
 		latency.WithProbeTunnelEndpoints(true), // Enable tunnel endpoint probing
@@ -1143,7 +1137,7 @@ func TestLatencyResult_MarshalJSON(t *testing.T) {
 
 func TestLatencyManagerWithEmptyDeviceList(t *testing.T) {
 	// Test manager behavior when there are no devices
-	mockSmartContractFunc := func(context.Context, string, string) (*latency.ContractData, error) {
+	mockSmartContractFunc := func(context.Context) (*latency.ContractData, error) {
 		return &latency.ContractData{Devices: []serviceability.Device{}}, nil
 	}
 
@@ -1159,7 +1153,6 @@ func TestLatencyManagerWithEmptyDeviceList(t *testing.T) {
 	manager := latency.NewLatencyManager(
 		latency.WithSmartContractFunc(mockSmartContractFunc),
 		latency.WithProberFunc(mockProberFunc),
-		latency.WithProgramID("test-empty"),
 		latency.WithProbeInterval(100*time.Millisecond),
 		latency.WithCacheUpdateInterval(100*time.Millisecond),
 	)
@@ -1210,7 +1203,7 @@ func TestLatencyManagerWithTunnelEndpointsDisabled(t *testing.T) {
 	var mu sync.Mutex
 
 	smartContractChan := make(chan struct{}, 1)
-	mockSmartContractFunc := func(context.Context, string, string) (*latency.ContractData, error) {
+	mockSmartContractFunc := func(context.Context) (*latency.ContractData, error) {
 		smartContractChan <- struct{}{}
 		return &latency.ContractData{Devices: []serviceability.Device{device}}, nil
 	}
@@ -1236,7 +1229,6 @@ func TestLatencyManagerWithTunnelEndpointsDisabled(t *testing.T) {
 	manager := latency.NewLatencyManager(
 		latency.WithSmartContractFunc(mockSmartContractFunc),
 		latency.WithProberFunc(mockProberFunc),
-		latency.WithProgramID("test-flag-disabled"),
 		latency.WithProbeInterval(30*time.Second),
 		latency.WithCacheUpdateInterval(30*time.Second),
 		latency.WithProbeTunnelEndpoints(false), // Flag disabled - only probe PublicIp
@@ -1318,7 +1310,7 @@ func TestLatencyManagerWithMetrics(t *testing.T) {
 	}
 
 	smartContractChan := make(chan struct{}, 1)
-	mockSmartContractFunc := func(context.Context, string, string) (*latency.ContractData, error) {
+	mockSmartContractFunc := func(context.Context) (*latency.ContractData, error) {
 		smartContractChan <- struct{}{}
 		return &latency.ContractData{Devices: []serviceability.Device{device}}, nil
 	}
@@ -1341,7 +1333,6 @@ func TestLatencyManagerWithMetrics(t *testing.T) {
 	manager := latency.NewLatencyManager(
 		latency.WithSmartContractFunc(mockSmartContractFunc),
 		latency.WithProberFunc(mockProberFunc),
-		latency.WithProgramID("test-metrics"),
 		latency.WithProbeInterval(30*time.Second),
 		latency.WithCacheUpdateInterval(30*time.Second),
 		latency.WithMetricsEnabled(true),       // Enable metrics

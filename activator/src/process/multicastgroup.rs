@@ -225,7 +225,7 @@ mod tests {
         metrics::with_local_recorder(&recorder, || {
             let mut client = create_test_client();
 
-            let (_, bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
+            let (_, bump_seed) = get_multicastgroup_pda(&client.get_program_id(), "test");
             client
                 .expect_execute_transaction()
                 .with(
@@ -308,7 +308,7 @@ mod tests {
         metrics::with_local_recorder(&recorder, || {
             let mut client = create_test_client();
 
-            let (_, bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
+            let (_, bump_seed) = get_multicastgroup_pda(&client.get_program_id(), "test");
 
             // Stateless mode: multicast_ip=UNSPECIFIED (onchain will allocate)
             client
@@ -376,7 +376,7 @@ mod tests {
         metrics::with_local_recorder(&recorder, || {
             let mut client = create_test_client();
 
-            let (_, bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
+            let (_, bump_seed) = get_multicastgroup_pda(&client.get_program_id(), "test");
 
             let mut multicastgroups = HashMap::new();
             let pubkey = Pubkey::new_unique();

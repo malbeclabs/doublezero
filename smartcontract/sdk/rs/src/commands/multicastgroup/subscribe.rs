@@ -109,7 +109,7 @@ mod tests {
     fn test_commands_multicastgroup_subscribe_command() {
         let mut client = create_test_client();
 
-        let (mgroup_pubkey, _bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let (mgroup_pubkey, _bump_seed) = get_multicastgroup_pda(&client.get_program_id(), "test");
         let mgroup = MulticastGroup {
             account_type: AccountType::MulticastGroup,
             owner: client.get_payer(),

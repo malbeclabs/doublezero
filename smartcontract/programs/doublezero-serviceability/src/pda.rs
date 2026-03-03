@@ -62,9 +62,9 @@ pub fn get_user_pda(program_id: &Pubkey, ip: &Ipv4Addr, user_type: UserType) -> 
     )
 }
 
-pub fn get_multicastgroup_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {
+pub fn get_multicastgroup_pda(program_id: &Pubkey, code: &str) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &[SEED_PREFIX, SEED_MULTICAST_GROUP, &index.to_le_bytes()],
+        &[SEED_PREFIX, SEED_MULTICAST_GROUP, code.as_bytes()],
         program_id,
     )
 }

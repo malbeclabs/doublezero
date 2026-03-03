@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - Smartcontract
   - Serviceability: add `Reservation` account and `ReserveConnection`/`CloseReservation` instructions for pre-reserving connection seats on devices, with `reserved_seats` factored into capacity checks on both reservation and user creation
   - Allow sentinel authority to add/remove multicast publisher and subscriber allowlist entries
+  - Multicast group PDA derivation now uses `code` instead of `account_index`, preventing duplicate codes at the PDA level; code-based lookups fall back to `getProgramAccounts` scan for legacy index-based accounts
 - Telemetry
   - Fix global monitor crash when IBRL and multicast users share the same client IP but are on different devices, by preferring non-multicast users in client IP lookups to match status device selection
 - Client

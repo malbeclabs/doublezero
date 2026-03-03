@@ -143,7 +143,7 @@ mod tests {
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
         let user_pubkey = Pubkey::new_unique();
-        let (mgroup_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let (mgroup_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), "test");
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
         // User with one subscriber - triggers the retry logic
@@ -347,7 +347,7 @@ mod tests {
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
         let user_pubkey = Pubkey::new_unique();
-        let (mgroup_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let (mgroup_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), "test");
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
         // User is both publisher and subscriber of the same group

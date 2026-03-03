@@ -251,8 +251,7 @@ async fn setup_fixture() -> TestFixture {
     .await;
 
     // 7. Create two multicast groups and activate them
-    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (mgroup1_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
+    let (mgroup1_pubkey, _) = get_multicastgroup_pda(&program_id, "group1");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -285,8 +284,7 @@ async fn setup_fixture() -> TestFixture {
     )
     .await;
 
-    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (mgroup2_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
+    let (mgroup2_pubkey, _) = get_multicastgroup_pda(&program_id, "group2");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,

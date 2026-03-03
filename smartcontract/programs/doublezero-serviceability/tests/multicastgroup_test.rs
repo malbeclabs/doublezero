@@ -45,11 +45,8 @@ async fn test_multicastgroup() {
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
     println!("1. Testing MulticastGroup initialization...");
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    assert_eq!(globalstate_account.account_index, 0);
 
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, "la");
 
     execute_transaction(
         &mut banks_client,
@@ -270,9 +267,7 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
     )
     .await;
 
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, "la");
 
     execute_transaction(
         &mut banks_client,
@@ -388,9 +383,7 @@ async fn test_multicastgroup_deactivate_fails_when_not_deleting() {
     )
     .await;
 
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, "la");
 
     execute_transaction(
         &mut banks_client,
@@ -462,10 +455,10 @@ async fn test_multicastgroup_deactivate_fails_when_not_deleting() {
 }
 
 #[tokio::test]
-async fn test_multicastgroup_create_with_wrong_index_fails() {
+async fn test_multicastgroup_create_with_wrong_pda_fails() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
-    println!("🟢  Start test_multicastgroup_create_with_wrong_index_fails");
+    println!("🟢  Start test_multicastgroup_create_with_wrong_pda_fails");
 
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
@@ -484,18 +477,12 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
     )
     .await;
 
-    println!("2. Testing MulticastGroup creation with wrong index...");
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    assert_eq!(globalstate_account.account_index, 0);
+    println!("2. Testing MulticastGroup creation with mismatched PDA...");
 
-    // Client passes wrong index (999 instead of 1)
-    let wrong_index = 999;
-    let correct_index = globalstate_account.account_index + 1;
+    // Derive PDA for a different code than what the instruction contains
+    let (wrong_multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, "wrong_code");
 
-    // Derive PDA with the WRONG index (what a malicious/buggy client might do)
-    let (wrong_multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, wrong_index);
-
-    // Try to create with wrong index - should fail
+    // Try to create with mismatched PDA - should fail
     let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -515,13 +502,13 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
 
     assert!(
         result.is_err(),
-        "Transaction should have failed with wrong index"
+        "Transaction should have failed with mismatched PDA"
     );
-    println!("✅ Correctly rejected wrong index");
+    println!("✅ Correctly rejected mismatched PDA");
 
-    // Verify the correct index still works
-    println!("3. Testing MulticastGroup creation with correct index...");
-    let (correct_multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, correct_index);
+    // Verify the correct PDA still works
+    println!("3. Testing MulticastGroup creation with correct PDA...");
+    let (correct_multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, "test");
 
     execute_transaction(
         &mut banks_client,
@@ -545,11 +532,10 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
         .expect("Unable to get Account")
         .get_multicastgroup()
         .unwrap();
-    assert_eq!(multicastgroup.index, correct_index);
     assert_eq!(multicastgroup.code, "test".to_string());
-    println!("✅ Correct index accepted and stored properly");
+    println!("✅ Correct PDA accepted and stored properly");
 
-    println!("🟢  End test_multicastgroup_create_with_wrong_index_fails");
+    println!("🟢  End test_multicastgroup_create_with_wrong_pda_fails");
 }
 
 #[tokio::test]
@@ -576,9 +562,7 @@ async fn test_multicastgroup_reactivate_invalid_status_fails() {
     .await;
 
     println!("2. Create MulticastGroup (status Pending)...");
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, "reactivate-test");
 
     execute_transaction(
         &mut banks_client,
@@ -649,9 +633,7 @@ async fn test_suspend_multicastgroup_from_pending_fails() {
     .await;
 
     // Create a multicast group (starts in Pending status)
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, "test");
 
     execute_transaction(
         &mut banks_client,
@@ -726,9 +708,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
     .await;
 
     println!("2. Create MulticastGroup...");
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, "delete-test");
 
     execute_transaction(
         &mut banks_client,
@@ -899,4 +879,82 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
     println!("✅ Delete succeeded with zero counts");
 
     println!("🟢  End test_delete_multicastgroup_fails_with_active_publishers_or_subscribers");
+}
+
+#[tokio::test]
+async fn test_multicastgroup_create_duplicate_code_fails() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    println!("🟢  Start test_multicastgroup_create_duplicate_code_fails");
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    println!("1. Global Initialization...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    println!("2. Create first MulticastGroup with code 'unique-mg'...");
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, "unique-mg");
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "unique-mg".to_string(),
+            max_bandwidth: 1000,
+            owner: Pubkey::new_unique(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let multicastgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(multicastgroup.code, "unique-mg");
+    println!("✅ First MulticastGroup created successfully");
+
+    println!("3. Try to create second MulticastGroup with same code (should fail)...");
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "unique-mg".to_string(),
+            max_bandwidth: 2000,
+            owner: Pubkey::new_unique(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "Creating a duplicate MulticastGroup with the same code should fail"
+    );
+    println!("✅ Duplicate MulticastGroup correctly rejected");
+
+    println!("🟢  End test_multicastgroup_create_duplicate_code_fails");
 }

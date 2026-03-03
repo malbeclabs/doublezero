@@ -1088,9 +1088,7 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
     // =========================================================================
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
-    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, "test-mgroup");
 
     // Create multicast group (4 accounts: mgroup, globalstate, payer, system_program)
     execute_transaction(
@@ -1403,9 +1401,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
     // =========================================================================
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
-    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, "test-mgroup");
 
     execute_transaction(
         &mut banks_client,

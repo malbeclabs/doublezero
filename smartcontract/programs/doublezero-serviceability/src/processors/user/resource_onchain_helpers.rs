@@ -5,14 +5,17 @@ use crate::{
         resource::{allocate_id, allocate_ip, allocate_ip_from_first_available},
         validation::validate_program_account,
     },
-    resource::ResourceType,
+    resource::{IdOrIp, ResourceType},
     state::{
         feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
+        resource_extension::ResourceExtensionBorrowed,
         user::{User, UserType},
     },
 };
 use doublezero_program_common::types::NetworkV4;
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, pubkey::Pubkey};
 use std::net::Ipv4Addr;
 
@@ -115,6 +118,138 @@ pub fn validate_and_allocate_user_resources<'a>(
     } else if !need_dz_ip && user.dz_ip == Ipv4Addr::UNSPECIFIED {
         // First activation for user that doesn't need dz_ip: use client_ip
         user.dz_ip = user.client_ip;
+    }
+
+    Ok(())
+}
+
+/// Validate and deallocate user resources back to ResourceExtension accounts.
+/// Deallocates tunnel_net, tunnel_id, and conditionally dz_ip.
+/// Deallocation is idempotent.
+pub fn validate_and_deallocate_user_resources<'a>(
+    program_id: &Pubkey,
+    user: &User,
+    global_resource_ext: &AccountInfo<'a>,
+    multicast_publisher_block_ext: Option<&AccountInfo<'a>>,
+    device_tunnel_ids_ext: &AccountInfo<'a>,
+    dz_prefix_accounts: &[&AccountInfo<'a>],
+    globalstate: &GlobalState,
+) -> ProgramResult {
+    // Check feature flag
+    if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
+        return Err(DoubleZeroError::FeatureNotEnabled.into());
+    }
+
+    // Validate global_resource_ext (UserTunnelBlock)
+    let (expected_user_tunnel_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::UserTunnelBlock);
+    validate_program_account!(
+        global_resource_ext,
+        program_id,
+        writable = true,
+        pda = Some(&expected_user_tunnel_pda),
+        "UserTunnelBlock"
+    );
+
+    // Validate multicast_publisher_block_ext if provided
+    if let Some(multicast_publisher_ext) = multicast_publisher_block_ext {
+        let (expected_multicast_publisher_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
+        validate_program_account!(
+            multicast_publisher_ext,
+            program_id,
+            writable = true,
+            pda = Some(&expected_multicast_publisher_pda),
+            "MulticastPublisherBlock"
+        );
+    }
+
+    // Validate device_tunnel_ids_ext (TunnelIds)
+    let (expected_tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::TunnelIds(user.device_pk, 0));
+    validate_program_account!(
+        device_tunnel_ids_ext,
+        program_id,
+        writable = true,
+        pda = Some(&expected_tunnel_ids_pda),
+        "TunnelIds"
+    );
+
+    // Validate all DzPrefixBlock accounts
+    for (idx, dz_prefix_account) in dz_prefix_accounts.iter().enumerate() {
+        let (expected_dz_prefix_pda, _, _) = get_resource_extension_pda(
+            program_id,
+            ResourceType::DzPrefixBlock(user.device_pk, idx),
+        );
+        validate_program_account!(
+            dz_prefix_account,
+            program_id,
+            writable = true,
+            pda = Some(&expected_dz_prefix_pda),
+            &format!("DzPrefixBlock[{idx}]")
+        );
+    }
+
+    // Deallocate tunnel_net from global UserTunnelBlock
+    {
+        let mut buffer = global_resource_ext.data.borrow_mut();
+        let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+        let _deallocated = resource.deallocate(&IdOrIp::Ip(user.tunnel_net));
+        #[cfg(test)]
+        msg!(
+            "Deallocated tunnel_net {}: {}",
+            user.tunnel_net,
+            _deallocated
+        );
+    }
+
+    // Deallocate tunnel_id from device TunnelIds
+    {
+        let mut buffer = device_tunnel_ids_ext.data.borrow_mut();
+        let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+        let _deallocated = resource.deallocate(&IdOrIp::Id(user.tunnel_id));
+        #[cfg(test)]
+        msg!("Deallocated tunnel_id {}: {}", user.tunnel_id, _deallocated);
+    }
+
+    // Deallocate dz_ip (try MulticastPublisherBlock first, then DzPrefixBlock)
+    // Only deallocate if dz_ip is allocated (not client_ip and not UNSPECIFIED)
+    if user.dz_ip != user.client_ip && user.dz_ip != Ipv4Addr::UNSPECIFIED {
+        if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
+            let mut deallocated = false;
+
+            // Try MulticastPublisherBlock first (for publishers)
+            if let Some(multicast_publisher_ext) = multicast_publisher_block_ext {
+                let mut buffer = multicast_publisher_ext.data.borrow_mut();
+                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+                deallocated = resource.deallocate(&IdOrIp::Ip(dz_ip_net));
+                #[cfg(test)]
+                msg!(
+                    "Deallocated dz_ip {} from MulticastPublisherBlock: {}",
+                    dz_ip_net,
+                    deallocated
+                );
+            }
+
+            // Fall back to DzPrefixBlock if not in MulticastPublisherBlock
+            if !deallocated {
+                for dz_prefix_account in dz_prefix_accounts.iter() {
+                    let mut buffer = dz_prefix_account.data.borrow_mut();
+                    let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+                    deallocated = resource.deallocate(&IdOrIp::Ip(dz_ip_net));
+                    #[cfg(test)]
+                    msg!(
+                        "Deallocated dz_ip {} from DzPrefixBlock {:?}: {}",
+                        dz_ip_net,
+                        dz_prefix_account.key,
+                        deallocated
+                    );
+                    if deallocated {
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     Ok(())

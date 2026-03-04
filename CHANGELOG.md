@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.10.0](https://github.com/malbeclabs/doublezero/compare/client/v0.9.0...client/v0.10.0) - 2026-03-04
+
+### Breaking
+
+### Changes
+
 - CLI
   - `doublezero resource verify` command will now suggest creating resources or create them with --fix
   - All `get` commands now display output as a formatted table and support a `--json` flag for machine-readable output

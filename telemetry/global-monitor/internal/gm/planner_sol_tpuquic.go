@@ -254,7 +254,7 @@ func (p *SolanaValidatorTPUQUICPlanner) recordResult(source *Source, val *sol.Va
 		tags["target_geoip_region"] = val.GeoIP.Region
 		tags["target_geoip_city"] = val.GeoIP.City
 		tags["target_geoip_city_id"] = strconv.Itoa(val.GeoIP.CityID)
-		tags["target_geoip_metro"] = val.GeoIP.Metro
+		tags["target_geoip_metro"] = val.GeoIP.MetroName
 		tags["target_geoip_asn"] = strconv.Itoa(int(val.GeoIP.ASN))
 		tags["target_geoip_asn_org"] = val.GeoIP.ASNOrg
 		fields["target_geoip_latitude"] = val.GeoIP.Latitude

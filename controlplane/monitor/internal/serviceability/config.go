@@ -13,6 +13,7 @@ import (
 
 type ServiceabilityClient interface {
 	GetProgramData(context.Context) (*serviceability.ProgramData, error)
+	GetMulticastPublisherBlockResourceExtension(context.Context) (*serviceability.ResourceExtension, error)
 }
 
 type LedgerRPCClient interface {
@@ -34,6 +35,7 @@ type Config struct {
 	Env             string
 	LedgerRPCClient LedgerRPCClient
 	SolanaRPCClient LedgerRPCClient
+	AllowOwnUsers   bool
 }
 
 func (c *Config) Validate() error {

@@ -11,7 +11,10 @@ use crate::{
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::create_account::try_create_account;
-use doublezero_serviceability::state::{device::Device, link::Link};
+use doublezero_serviceability::state::{
+    device::Device,
+    link::{Link, LinkStatus},
+};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -114,8 +117,12 @@ pub fn process_initialize_device_latency_samples(
 
     // Deserialize and validate link status.
     let link = Link::try_from(link_account)?;
-    if !link.allow_latency() {
-        msg!("Link is not activated");
+    if link.status != LinkStatus::Activated
+        && link.status != LinkStatus::Provisioning
+        && link.status != LinkStatus::SoftDrained
+        && link.status != LinkStatus::HardDrained
+    {
+        msg!("Link status does not allow telemetry");
         return Err(TelemetryError::LinkNotActivated.into());
     }
 

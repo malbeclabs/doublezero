@@ -13,8 +13,8 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/epoch"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	"github.com/malbeclabs/doublezero/tools/solana/pkg/epoch"
 )
 
 const (

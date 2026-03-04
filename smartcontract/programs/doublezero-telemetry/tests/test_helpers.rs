@@ -5,6 +5,7 @@ use doublezero_serviceability::{
     pda::{
         get_contributor_pda, get_device_pda, get_exchange_pda, get_globalconfig_pda,
         get_globalstate_pda, get_link_pda, get_location_pda, get_program_config_pda,
+        get_resource_extension_pda,
     },
     processors::{
         contributor::create::ContributorCreateArgs,
@@ -23,6 +24,7 @@ use doublezero_serviceability::{
         },
         location::{create::LocationCreateArgs, suspend::LocationSuspendArgs},
     },
+    resource::ResourceType,
     state::{
         device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceType},
         exchange::Exchange,
@@ -56,9 +58,9 @@ use solana_sdk::{
     message::{v0::Message, VersionedMessage},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    system_program,
     transaction::{Transaction, TransactionError, VersionedTransaction},
 };
+
 use std::sync::{Arc, Mutex};
 
 #[ctor::ctor]
@@ -244,7 +246,7 @@ impl LedgerHelper {
             )
         };
         let transfer_instruction =
-            solana_sdk::system_instruction::transfer(&payer.pubkey(), recipient, lamports);
+            solana_system_interface::instruction::transfer(&payer.pubkey(), recipient, lamports);
         let mut transaction =
             Transaction::new_with_payer(&[transfer_instruction], Some(&payer.pubkey()));
         transaction.sign(&[&payer], recent_blockhash);
@@ -259,7 +261,7 @@ impl LedgerHelper {
         space: u64,
         owner: &Pubkey,
     ) -> Result<(), BanksClientError> {
-        let ix = solana_sdk::system_instruction::create_account(
+        let ix = solana_system_interface::instruction::create_account(
             &funder.pubkey(),
             new_account,
             lamports,
@@ -486,7 +488,7 @@ impl TelemetryProgramHelper {
             vec![
                 AccountMeta::new(latency_samples_pda, false),
                 AccountMeta::new(agent.pubkey(), true),
-                AccountMeta::new_readonly(system_program::id(), false),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             ],
         )
         .await
@@ -517,7 +519,7 @@ impl TelemetryProgramHelper {
                 AccountMeta::new_readonly(origin_device_pk, false),
                 AccountMeta::new_readonly(target_device_pk, false),
                 AccountMeta::new_readonly(link_pk, false),
-                AccountMeta::new_readonly(solana_program::system_program::id(), false),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             ],
         )
         .await?;
@@ -544,7 +546,7 @@ impl TelemetryProgramHelper {
         let accounts = vec![
             AccountMeta::new(latency_samples_pda, false),
             AccountMeta::new_readonly(agent.pubkey(), true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ];
 
         let instruction = solana_sdk::instruction::Instruction {
@@ -630,7 +632,7 @@ impl TelemetryProgramHelper {
                 AccountMeta::new(agent.pubkey(), true),
                 AccountMeta::new(origin_location_pk, false),
                 AccountMeta::new(target_location_pk, false),
-                AccountMeta::new(solana_program::system_program::id(), false),
+                AccountMeta::new(solana_system_interface::program::ID, false),
             ],
         )
         .await?;
@@ -654,7 +656,7 @@ impl TelemetryProgramHelper {
             vec![
                 AccountMeta::new(latency_samples_pda, false),
                 AccountMeta::new(agent.pubkey(), true),
-                AccountMeta::new(solana_program::system_program::id(), false),
+                AccountMeta::new(solana_system_interface::program::ID, false),
             ],
         )
         .await
@@ -679,7 +681,7 @@ impl TelemetryProgramHelper {
         let accounts = vec![
             AccountMeta::new(latency_samples_pda, false),
             AccountMeta::new(agent.pubkey(), true),
-            AccountMeta::new(solana_program::system_program::id(), false),
+            AccountMeta::new(solana_system_interface::program::ID, false),
         ];
 
         let instruction = Instruction {
@@ -769,6 +771,19 @@ impl ServiceabilityProgramHelper {
             .await?;
 
             let (global_config_pubkey, _) = get_globalconfig_pda(&program_id);
+            let (device_tunnel_block_pda, _, _) =
+                get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+            let (user_tunnel_block_pda, _, _) =
+                get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+            let (multicastgroup_block_pda, _, _) =
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+            let (link_ids_pda, _, _) =
+                get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+            let (segment_routing_ids_pda, _, _) =
+                get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+            let (multicast_publisher_block_pda, _, _) =
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+            let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
             execute_serviceability_instruction(
                 &mut banks_client,
                 &payer,
@@ -779,12 +794,20 @@ impl ServiceabilityProgramHelper {
                     remote_asn: 65001,
                     device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
                     user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
-                    multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
+                    multicastgroup_block: "224.0.0.0/24".parse().unwrap(),
+                    multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
                     next_bgp_community: None,
                 }),
                 vec![
                     AccountMeta::new(global_config_pubkey, false),
                     AccountMeta::new(global_state_pubkey, false),
+                    AccountMeta::new(device_tunnel_block_pda, false),
+                    AccountMeta::new(user_tunnel_block_pda, false),
+                    AccountMeta::new(multicastgroup_block_pda, false),
+                    AccountMeta::new(link_ids_pda, false),
+                    AccountMeta::new(segment_routing_ids_pda, false),
+                    AccountMeta::new(multicast_publisher_block_pda, false),
+                    AccountMeta::new(vrf_ids_pda, false),
                 ],
             )
             .await?;
@@ -930,13 +953,35 @@ impl ServiceabilityProgramHelper {
         &mut self,
         device_pk: Pubkey,
         contributor_pk: Pubkey,
+        resource_count: usize,
     ) -> Result<(), BanksClientError> {
+        let (globalconfig_pda, _) = get_globalconfig_pda(&self.program_id);
+        let mut resources = vec![];
+        resources.push(AccountMeta::new(
+            get_resource_extension_pda(&self.program_id, ResourceType::TunnelIds(device_pk, 0)).0,
+            false,
+        ));
+        for i in 1..resource_count {
+            resources.push(AccountMeta::new(
+                get_resource_extension_pda(
+                    &self.program_id,
+                    ResourceType::DzPrefixBlock(device_pk, i - 1),
+                )
+                .0,
+                false,
+            ));
+        }
         self.execute_transaction(
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
-            vec![
-                AccountMeta::new(device_pk, false),
-                AccountMeta::new(self.global_state_pubkey, false),
-            ],
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count }),
+            [
+                vec![
+                    AccountMeta::new(device_pk, false),
+                    AccountMeta::new(self.global_state_pubkey, false),
+                    AccountMeta::new(globalconfig_pda, false),
+                ],
+                resources,
+            ]
+            .concat(),
         )
         .await?;
 
@@ -1077,10 +1122,12 @@ impl ServiceabilityProgramHelper {
         location_pk: Pubkey,
         exchange_pk: Pubkey,
     ) -> Result<Pubkey, BanksClientError> {
+        let resource_count = 1 + device.dz_prefixes.len();
         let device_pk = self
             .create_device(device, contributor_pk, location_pk, exchange_pk)
             .await?;
-        self.activate_device(device_pk, contributor_pk).await?;
+        self.activate_device(device_pk, contributor_pk, resource_count)
+            .await?;
         Ok(device_pk)
     }
 
@@ -1132,6 +1179,7 @@ impl ServiceabilityProgramHelper {
             DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                 tunnel_id,
                 tunnel_net,
+                use_onchain_allocation: false,
             }),
             vec![
                 AccountMeta::new(link_pk, false),
@@ -1184,6 +1232,25 @@ impl ServiceabilityProgramHelper {
         self.execute_transaction(
             DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
                 desired_status: Some(LinkDesiredStatus::SoftDrained),
+                ..Default::default()
+            }),
+            vec![
+                AccountMeta::new(pubkey, false),
+                AccountMeta::new(contributor_pk, false),
+                AccountMeta::new(self.global_state_pubkey, false),
+            ],
+        )
+        .await
+    }
+
+    pub async fn hard_drain_link(
+        &mut self,
+        contributor_pk: Pubkey,
+        pubkey: Pubkey,
+    ) -> Result<(), BanksClientError> {
+        self.execute_transaction(
+            DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+                desired_status: Some(LinkDesiredStatus::HardDrained),
                 ..Default::default()
             }),
             vec![
@@ -1255,7 +1322,7 @@ pub async fn fund_account(
     recent_blockhash: solana_sdk::hash::Hash,
 ) -> Result<(), BanksClientError> {
     let transfer_instruction =
-        solana_sdk::system_instruction::transfer(&payer.pubkey(), recipient, lamports);
+        solana_system_interface::instruction::transfer(&payer.pubkey(), recipient, lamports);
     let mut transaction =
         Transaction::new_with_payer(&[transfer_instruction], Some(&payer.pubkey()));
     transaction.sign(&[payer], recent_blockhash);
@@ -1310,7 +1377,10 @@ pub async fn execute_serviceability_instruction(
 ) -> Result<(), BanksClientError> {
     // Automatically append payer and system_program
     accounts.push(AccountMeta::new(payer.pubkey(), true));
-    accounts.push(AccountMeta::new_readonly(system_program::id(), false));
+    accounts.push(AccountMeta::new_readonly(
+        solana_system_interface::program::ID,
+        false,
+    ));
 
     let instruction_data = borsh::to_vec(&instruction).unwrap();
 

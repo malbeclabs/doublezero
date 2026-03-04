@@ -98,7 +98,7 @@ pub fn process_update_link(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
@@ -177,12 +177,7 @@ pub fn process_update_link(
     }
 
     if let Some(status) = value.status {
-        // Only foundation allowlist can update the status directly
-        if globalstate.foundation_allowlist.contains(payer_account.key) {
-            link.status = status;
-        } else {
-            return Err(DoubleZeroError::NotAllowed.into());
-        }
+        link.status = status;
     }
 
     link.check_status_transition();

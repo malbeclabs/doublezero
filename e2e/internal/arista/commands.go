@@ -27,6 +27,9 @@ type BGPNeighborSummary struct {
 }
 
 func ShowIPBGPSummaryCmd(vrf string) string {
+	if vrf == "" {
+		return "show ip bgp summary"
+	}
 	return "show ip bgp summary vrf " + vrf
 }
 
@@ -87,32 +90,50 @@ func ShowIPMrouteCmd() string {
 	return "show ip mroute sparse-mode"
 }
 
-// show ip pim neighbor
+// show ip pim neighbor | json
 //
 // {
-//   "neighbors": {
-//     "169.254.0.1": {
-//       "address": "169.254.0.1",
-//       "intf": "Tunnel500",
-//       "creationTime": 1748812548.569936,
-//       "lastRefreshTime": 1748812548.5713866,
-//       "holdTime": 105,
-//       "mode": {
-//         "mode": "Sparse",
-//         "borderRouter": false
-//       },
-//       "bfdState": "disabled",
-//       "transport": "datagram",
-//       "detail": false,
-//       "secondaryAddress": [],
-//       "maintenanceReceived": null,
-//       "maintenanceSent": null
+//   "vrfs": {
+//     "default": {
+//       "interfaces": {
+//         "Tunnel501": {
+//           "neighbors": {
+//             "169.254.0.3": {
+//               "address": "169.254.0.3",
+//               "intf": "Tunnel501",
+//               "creationTime": 1748812548.569936,
+//               "lastRefreshTime": 1748812548.5713866,
+//               "holdTime": 105,
+//               "mode": {
+//                 "mode": "Sparse",
+//                 "borderRouter": false
+//               },
+//               "bfdState": "disabled",
+//               "transport": "datagram",
+//               "detail": false,
+//               "secondaryAddress": [],
+//               "maintenanceReceived": null,
+//               "maintenanceSent": null
+//             }
+//           }
+//         }
+//       }
 //     }
 //   }
 // }
 
-// ShowPIMNeighbors represents the top-level structure containing a map of PIM neighbor details.
+// ShowPIMNeighbors represents the top-level structure containing PIM neighbor details organized by VRF and interface.
 type ShowPIMNeighbors struct {
+	VRFs map[string]PIMNeighborVRF `json:"vrfs"`
+}
+
+// PIMNeighborVRF holds the interfaces within a VRF that have PIM neighbors.
+type PIMNeighborVRF struct {
+	Interfaces map[string]PIMNeighborInterface `json:"interfaces"`
+}
+
+// PIMNeighborInterface holds the PIM neighbors on a specific interface.
+type PIMNeighborInterface struct {
 	Neighbors map[string]PIMNeighborDetail `json:"neighbors"`
 }
 
@@ -139,4 +160,31 @@ type PIMNeighborMode struct {
 
 func ShowPIMNeighborsCmd() string {
 	return "show ip pim neighbor"
+}
+
+// show interfaces <name>
+//
+// {
+//   "interfaces": {
+//     "Tunnel500": {
+//       "name": "Tunnel500",
+//       "lineProtocolStatus": "up",
+//       "interfaceStatus": "connected",
+//       ...
+//     }
+//   }
+// }
+
+type ShowInterfaces struct {
+	Interfaces map[string]InterfaceDetail `json:"interfaces"`
+}
+
+type InterfaceDetail struct {
+	Name               string `json:"name"`
+	LineProtocolStatus string `json:"lineProtocolStatus"`
+	InterfaceStatus    string `json:"interfaceStatus"`
+}
+
+func ShowInterfacesCmd(name string) string {
+	return "show interfaces " + name
 }

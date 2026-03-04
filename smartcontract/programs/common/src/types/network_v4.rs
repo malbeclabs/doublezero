@@ -3,12 +3,19 @@ use ipnetwork::{IpNetworkError, Ipv4Network};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{
     fmt::{Display, Formatter},
+    hash::{Hash, Hasher},
     net::Ipv4Addr,
     str::FromStr,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NetworkV4(Ipv4Network);
+
+impl Hash for NetworkV4 {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
 
 impl NetworkV4 {
     pub fn new(ip: Ipv4Addr, prefix: u8) -> Result<Self, IpNetworkError> {

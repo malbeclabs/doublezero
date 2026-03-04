@@ -3,7 +3,6 @@ use solana_program::{
     entrypoint::ProgramResult,
     msg,
     program::invoke,
-    system_instruction,
     sysvar::{rent::Rent, Sysvar},
 };
 
@@ -34,7 +33,11 @@ pub fn resize_account_if_needed(
                 let payment: u64 = required_lamports - current_lamports;
 
                 invoke(
-                    &system_instruction::transfer(payer.key, account.key, payment),
+                    &solana_system_interface::instruction::transfer(
+                        payer.key,
+                        account.key,
+                        payment,
+                    ),
                     accounts,
                 )
                 .expect("Unable to pay rent");

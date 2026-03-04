@@ -19,6 +19,7 @@ type LedgerRPCClient interface {
 
 type ServiceabilityClient interface {
 	GetProgramData(context.Context) (*serviceability.ProgramData, error)
+	GetMulticastPublisherBlockResourceExtension(context.Context) (*serviceability.ResourceExtension, error)
 }
 
 type TelemetryProgramClient interface {
@@ -32,6 +33,10 @@ type InfluxWriter interface {
 	Flush()
 }
 
+type SolBalanceRPCClient interface {
+	GetBalance(ctx context.Context, pubkey solana.PublicKey, commitment solanarpc.CommitmentType) (*solanarpc.GetBalanceResult, error)
+}
+
 type Config struct {
 	Logger                     *slog.Logger
 	LedgerRPCClient            LedgerRPCClient
@@ -41,10 +46,15 @@ type Config struct {
 	InternetLatencyCollectorPK solana.PublicKey
 	Interval                   time.Duration
 	SlackWebhookURL            string
+	AllowOwnUsers              bool
 	TwoZOracleClient           twozoracle.TwoZOracleClient
 	TwoZOracleInterval         time.Duration
 	InfluxWriter               InfluxWriter
 	Env                        string
+	SolBalanceRPCClient        SolBalanceRPCClient
+	SolBalanceAccounts         map[string]solana.PublicKey
+	SolBalanceThreshold        float64
+	SolBalanceInterval         time.Duration
 }
 
 func (c *Config) Validate() error {

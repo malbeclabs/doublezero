@@ -118,6 +118,399 @@ func TestSDK_Telemetry_Client_GetDeviceLatencySamples_UnexpectedError(t *testing
 	require.Contains(t, err.Error(), "rpc explosion")
 }
 
+func TestSDK_Telemetry_Client_GetDeviceLatencySamplesTail_HappyPath(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	expected := &telemetry.DeviceLatencySamples{
+		DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+			AccountType:                  telemetry.AccountTypeDeviceLatencySamples,
+			Epoch:                        42,
+			OriginDeviceAgentPK:          solana.NewWallet().PublicKey(),
+			OriginDevicePK:               solana.NewWallet().PublicKey(),
+			TargetDevicePK:               solana.NewWallet().PublicKey(),
+			OriginDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			TargetDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			LinkPK:                       solana.NewWallet().PublicKey(),
+			SamplingIntervalMicroseconds: 100_000,
+			StartTimestampMicroseconds:   1_600_000_000,
+			NextSampleIndex:              5,
+		},
+		Samples: []uint32{10, 20, 30, 40, 50},
+	}
+
+	mockRPC := &mockRPCClient{
+		GetAccountInfoFunc: func(_ context.Context, _ solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			buf := new(bytes.Buffer)
+			if err := expected.Serialize(buf); err != nil {
+				return nil, fmt.Errorf("mock serialize: %w", err)
+			}
+			return &solanarpc.GetAccountInfoResult{
+				Value: &solanarpc.Account{
+					Data: solanarpc.DataBytesOrJSONFromBytes(buf.Bytes()),
+				},
+			}, nil
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	// Test with existingMaxIdx = -1 (should return all samples)
+	header, startIdx, samples, err := client.GetDeviceLatencySamplesTail(
+		context.Background(),
+		expected.OriginDevicePK,
+		expected.TargetDevicePK,
+		expected.LinkPK,
+		expected.Epoch,
+		-1,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, header)
+	require.Equal(t, expected.DeviceLatencySamplesHeader, *header)
+	require.Equal(t, 0, startIdx)
+	require.Len(t, samples, 5)
+	require.Equal(t, []uint32{10, 20, 30, 40, 50}, samples)
+}
+
+func TestSDK_Telemetry_Client_GetDeviceLatencySamplesTail_WithExistingMaxIdx(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	expected := &telemetry.DeviceLatencySamples{
+		DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+			AccountType:                  telemetry.AccountTypeDeviceLatencySamples,
+			Epoch:                        42,
+			OriginDeviceAgentPK:          solana.NewWallet().PublicKey(),
+			OriginDevicePK:               solana.NewWallet().PublicKey(),
+			TargetDevicePK:               solana.NewWallet().PublicKey(),
+			OriginDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			TargetDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			LinkPK:                       solana.NewWallet().PublicKey(),
+			SamplingIntervalMicroseconds: 100_000,
+			StartTimestampMicroseconds:   1_600_000_000,
+			NextSampleIndex:              5,
+		},
+		Samples: []uint32{10, 20, 30, 40, 50},
+	}
+
+	mockRPC := &mockRPCClient{
+		GetAccountInfoFunc: func(_ context.Context, _ solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			buf := new(bytes.Buffer)
+			if err := expected.Serialize(buf); err != nil {
+				return nil, fmt.Errorf("mock serialize: %w", err)
+			}
+			return &solanarpc.GetAccountInfoResult{
+				Value: &solanarpc.Account{
+					Data: solanarpc.DataBytesOrJSONFromBytes(buf.Bytes()),
+				},
+			}, nil
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	// Test with existingMaxIdx = 1 (should return samples from index 2 onwards)
+	header, startIdx, samples, err := client.GetDeviceLatencySamplesTail(
+		context.Background(),
+		expected.OriginDevicePK,
+		expected.TargetDevicePK,
+		expected.LinkPK,
+		expected.Epoch,
+		1,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, header)
+	require.Equal(t, expected.DeviceLatencySamplesHeader, *header)
+	require.Equal(t, 2, startIdx)
+	require.Len(t, samples, 3)
+	require.Equal(t, []uint32{30, 40, 50}, samples)
+}
+
+func TestSDK_Telemetry_Client_GetDeviceLatencySamplesTail_ExistingMaxIdxAtEnd(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	expected := &telemetry.DeviceLatencySamples{
+		DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+			AccountType:                  telemetry.AccountTypeDeviceLatencySamples,
+			Epoch:                        42,
+			OriginDeviceAgentPK:          solana.NewWallet().PublicKey(),
+			OriginDevicePK:               solana.NewWallet().PublicKey(),
+			TargetDevicePK:               solana.NewWallet().PublicKey(),
+			OriginDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			TargetDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			LinkPK:                       solana.NewWallet().PublicKey(),
+			SamplingIntervalMicroseconds: 100_000,
+			StartTimestampMicroseconds:   1_600_000_000,
+			NextSampleIndex:              5,
+		},
+		Samples: []uint32{10, 20, 30, 40, 50},
+	}
+
+	mockRPC := &mockRPCClient{
+		GetAccountInfoFunc: func(_ context.Context, _ solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			buf := new(bytes.Buffer)
+			if err := expected.Serialize(buf); err != nil {
+				return nil, fmt.Errorf("mock serialize: %w", err)
+			}
+			return &solanarpc.GetAccountInfoResult{
+				Value: &solanarpc.Account{
+					Data: solanarpc.DataBytesOrJSONFromBytes(buf.Bytes()),
+				},
+			}, nil
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	// Test with existingMaxIdx = 4 (at the end, should return empty tail)
+	header, startIdx, samples, err := client.GetDeviceLatencySamplesTail(
+		context.Background(),
+		expected.OriginDevicePK,
+		expected.TargetDevicePK,
+		expected.LinkPK,
+		expected.Epoch,
+		4,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, header)
+	require.Equal(t, expected.DeviceLatencySamplesHeader, *header)
+	require.Equal(t, 5, startIdx)
+	require.Nil(t, samples)
+}
+
+func TestSDK_Telemetry_Client_GetDeviceLatencySamplesTail_ExistingMaxIdxBeyondEnd(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	expected := &telemetry.DeviceLatencySamples{
+		DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+			AccountType:                  telemetry.AccountTypeDeviceLatencySamples,
+			Epoch:                        42,
+			OriginDeviceAgentPK:          solana.NewWallet().PublicKey(),
+			OriginDevicePK:               solana.NewWallet().PublicKey(),
+			TargetDevicePK:               solana.NewWallet().PublicKey(),
+			OriginDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			TargetDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			LinkPK:                       solana.NewWallet().PublicKey(),
+			SamplingIntervalMicroseconds: 100_000,
+			StartTimestampMicroseconds:   1_600_000_000,
+			NextSampleIndex:              5,
+		},
+		Samples: []uint32{10, 20, 30, 40, 50},
+	}
+
+	mockRPC := &mockRPCClient{
+		GetAccountInfoFunc: func(_ context.Context, _ solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			buf := new(bytes.Buffer)
+			if err := expected.Serialize(buf); err != nil {
+				return nil, fmt.Errorf("mock serialize: %w", err)
+			}
+			return &solanarpc.GetAccountInfoResult{
+				Value: &solanarpc.Account{
+					Data: solanarpc.DataBytesOrJSONFromBytes(buf.Bytes()),
+				},
+			}, nil
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	// Test with existingMaxIdx = 10 (beyond end, should return empty tail)
+	header, startIdx, samples, err := client.GetDeviceLatencySamplesTail(
+		context.Background(),
+		expected.OriginDevicePK,
+		expected.TargetDevicePK,
+		expected.LinkPK,
+		expected.Epoch,
+		10,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, header)
+	require.Equal(t, expected.DeviceLatencySamplesHeader, *header)
+	require.Equal(t, 5, startIdx)
+	require.Nil(t, samples)
+}
+
+func TestSDK_Telemetry_Client_GetDeviceLatencySamplesTail_EmptySamples(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	expected := &telemetry.DeviceLatencySamples{
+		DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+			AccountType:                  telemetry.AccountTypeDeviceLatencySamples,
+			Epoch:                        42,
+			OriginDeviceAgentPK:          solana.NewWallet().PublicKey(),
+			OriginDevicePK:               solana.NewWallet().PublicKey(),
+			TargetDevicePK:               solana.NewWallet().PublicKey(),
+			OriginDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			TargetDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			LinkPK:                       solana.NewWallet().PublicKey(),
+			SamplingIntervalMicroseconds: 100_000,
+			StartTimestampMicroseconds:   1_600_000_000,
+			NextSampleIndex:              0,
+		},
+		Samples: []uint32{},
+	}
+
+	mockRPC := &mockRPCClient{
+		GetAccountInfoFunc: func(_ context.Context, _ solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			buf := new(bytes.Buffer)
+			if err := expected.Serialize(buf); err != nil {
+				return nil, fmt.Errorf("mock serialize: %w", err)
+			}
+			return &solanarpc.GetAccountInfoResult{
+				Value: &solanarpc.Account{
+					Data: solanarpc.DataBytesOrJSONFromBytes(buf.Bytes()),
+				},
+			}, nil
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	// Test with empty samples (NextSampleIndex = 0)
+	header, startIdx, samples, err := client.GetDeviceLatencySamplesTail(
+		context.Background(),
+		expected.OriginDevicePK,
+		expected.TargetDevicePK,
+		expected.LinkPK,
+		expected.Epoch,
+		-1,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, header)
+	require.Equal(t, expected.DeviceLatencySamplesHeader, *header)
+	require.Equal(t, 0, startIdx)
+	require.Nil(t, samples)
+}
+
+func TestSDK_Telemetry_Client_GetDeviceLatencySamplesTail_AccountNotFound(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	mockRPC := &mockRPCClient{
+		GetAccountInfoFunc: func(_ context.Context, _ solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			return nil, solanarpc.ErrNotFound
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	_, _, _, err := client.GetDeviceLatencySamplesTail(
+		context.Background(),
+		solana.NewWallet().PublicKey(),
+		solana.NewWallet().PublicKey(),
+		solana.NewWallet().PublicKey(),
+		42,
+		-1,
+	)
+
+	require.ErrorIs(t, err, telemetry.ErrAccountNotFound)
+}
+
+func TestSDK_Telemetry_Client_GetDeviceLatencySamplesTail_UnexpectedError(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	mockRPC := &mockRPCClient{
+		GetAccountInfoFunc: func(_ context.Context, _ solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			return nil, fmt.Errorf("rpc explosion")
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	_, _, _, err := client.GetDeviceLatencySamplesTail(
+		context.Background(),
+		solana.NewWallet().PublicKey(),
+		solana.NewWallet().PublicKey(),
+		solana.NewWallet().PublicKey(),
+		42,
+		-1,
+	)
+
+	require.ErrorContains(t, err, "failed to get account data")
+	require.Contains(t, err.Error(), "rpc explosion")
+}
+
+func TestSDK_Telemetry_Client_GetDeviceLatencySamplesTail_V0AccountType(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	expected := &telemetry.DeviceLatencySamplesV0{
+		DeviceLatencySamplesHeaderV0: telemetry.DeviceLatencySamplesHeaderV0{
+			AccountType:                  telemetry.AccountTypeDeviceLatencySamplesV0,
+			BumpSeed:                     255,
+			Epoch:                        42,
+			OriginDeviceAgentPK:          solana.NewWallet().PublicKey(),
+			OriginDevicePK:               solana.NewWallet().PublicKey(),
+			TargetDevicePK:               solana.NewWallet().PublicKey(),
+			OriginDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			TargetDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			LinkPK:                       solana.NewWallet().PublicKey(),
+			SamplingIntervalMicroseconds: 100_000,
+			StartTimestampMicroseconds:   1_600_000_000,
+			NextSampleIndex:              5,
+		},
+		Samples: []uint32{10, 20, 30, 40, 50},
+	}
+
+	mockRPC := &mockRPCClient{
+		GetAccountInfoFunc: func(_ context.Context, _ solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			buf := new(bytes.Buffer)
+			if err := expected.Serialize(buf); err != nil {
+				return nil, fmt.Errorf("mock serialize: %w", err)
+			}
+			return &solanarpc.GetAccountInfoResult{
+				Value: &solanarpc.Account{
+					Data: solanarpc.DataBytesOrJSONFromBytes(buf.Bytes()),
+				},
+			}, nil
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	// Test V0 account with existingMaxIdx = 1
+	header, startIdx, samples, err := client.GetDeviceLatencySamplesTail(
+		context.Background(),
+		expected.OriginDevicePK,
+		expected.TargetDevicePK,
+		expected.LinkPK,
+		expected.Epoch,
+		1,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, header)
+	require.Equal(t, uint64(42), header.Epoch)
+	require.Equal(t, 2, startIdx)
+	require.Len(t, samples, 3)
+	require.Equal(t, []uint32{30, 40, 50}, samples)
+}
+
 func TestSDK_Telemetry_Client_InitializeDeviceLatencySamples_HappyPath(t *testing.T) {
 	t.Parallel()
 

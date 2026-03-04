@@ -52,7 +52,7 @@ pub fn process_delete_location(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     assert!(location_account.is_writable, "PDA Account is not writable");
@@ -69,9 +69,7 @@ pub fn process_delete_location(
         AccountType::Location,
         "Invalid Account Type"
     );
-    if location.status != LocationStatus::Activated {
-        return Err(DoubleZeroError::InvalidStatus.into());
-    }
+
     if location.reference_count > 0 {
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }

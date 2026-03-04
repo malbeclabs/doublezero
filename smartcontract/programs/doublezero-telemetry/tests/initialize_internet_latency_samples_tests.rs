@@ -301,7 +301,7 @@ async fn test_initialize_internet_latency_samples_fail_agent_not_signer() {
         AccountMeta::new(oracle_agent.pubkey(), false), // Not signer
         AccountMeta::new(origin_exchange_pk, false),
         AccountMeta::new(target_exchange_pk, false),
-        AccountMeta::new(solana_program::system_program::id(), false),
+        AccountMeta::new(solana_system_interface::program::ID, false),
     ];
 
     let (banks_client, payer, recent_blockhash) = {
@@ -500,7 +500,7 @@ async fn test_initialize_internet_latency_samples_fail_provider_name_too_long() 
                 AccountMeta::new(oracle.pubkey(), true),
                 AccountMeta::new(origin_exchange_pk, false),
                 AccountMeta::new(target_exchange_pk, false),
-                AccountMeta::new(solana_program::system_program::id(), false),
+                AccountMeta::new(solana_system_interface::program::ID, false),
             ],
         )
         .await;

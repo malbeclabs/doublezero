@@ -49,7 +49,7 @@ func MetricsConfigFromEnv() *MetricsConfig {
 
 func PublishMetrics(ctx context.Context, log *slog.Logger, cfg *MetricsConfig, env string, results []DeviceTestResult, duration time.Duration) error {
 	if cfg == nil {
-		log.Info("Metrics publishing skipped: no InfluxDB configuration")
+		log.Debug("Metrics publishing skipped: no InfluxDB configuration")
 		return nil
 	}
 
@@ -108,7 +108,7 @@ func PublishMetrics(ctx context.Context, log *slog.Logger, cfg *MetricsConfig, e
 		return fmt.Errorf("failed to write points: %w", err)
 	}
 
-	log.Info("Published metrics to InfluxDB",
+	log.Debug("Published metrics to InfluxDB",
 		"devices", len(results),
 		"success", successCount,
 		"failed", failureCount,

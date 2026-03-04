@@ -72,14 +72,14 @@ pub fn process_setdevice_exchange(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
     assert!(exchange_account.is_writable, "PDA Account is not writable");
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
 
@@ -125,7 +125,7 @@ pub fn process_setdevice_exchange(
         } else {
             return Err(DoubleZeroError::InvalidIndex.into());
         }
-        device.reference_count -= 1;
+        device.reference_count = device.reference_count.saturating_sub(1);
     }
 
     try_acc_write(&device, device_account, payer_account, accounts)?;

@@ -52,14 +52,14 @@ pub fn process_suspend_exchange(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
     assert!(exchange_account.is_writable, "PDA Account is not writable");
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
 
@@ -71,6 +71,12 @@ pub fn process_suspend_exchange(
     //  - Only accounts in the foundation_allowlist may suspend the exchange.
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
+    }
+
+    if exchange.status != ExchangeStatus::Activated {
+        #[cfg(test)]
+        msg!("{:?}", exchange);
+        return Err(DoubleZeroError::InvalidStatus.into());
     }
 
     exchange.status = ExchangeStatus::Suspended;

@@ -43,8 +43,19 @@ impl fmt::Debug for DeviceInterfaceCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "name: {}, loopback_type: {}, vlan_id: {}, user_tunnel_endpoint: {}",
-            self.name, self.loopback_type, self.vlan_id, self.user_tunnel_endpoint
+            "name: {}, loopback_type: {}, vlan_id: {}, ip_net: {:?}, user_tunnel_endpoint: {}, \
+interface_cyoa: {:?}, interface_dia: {:?}, bandwidth: {}, cir: {}, mtu: {}, routing_mode: {:?}",
+            self.name,
+            self.loopback_type,
+            self.vlan_id,
+            self.ip_net,
+            self.user_tunnel_endpoint,
+            self.interface_cyoa,
+            self.interface_dia,
+            self.bandwidth,
+            self.cir,
+            self.mtu,
+            self.routing_mode,
         )
     }
 }
@@ -95,6 +106,25 @@ pub fn process_create_device_interface(
     let mut interface_type = InterfaceType::Physical;
     if name.starts_with("Loopback") {
         interface_type = InterfaceType::Loopback;
+    }
+
+    // CYOA can only be set on physical interfaces
+    if value.interface_cyoa != InterfaceCYOA::None && interface_type != InterfaceType::Physical {
+        return Err(DoubleZeroError::CyoaRequiresPhysical.into());
+    }
+
+    // ip_net can only be set on CYOA, DIA, or user-tunnel-endpoint interfaces
+    if value.ip_net.is_some()
+        && value.interface_cyoa == InterfaceCYOA::None
+        && value.interface_dia == InterfaceDIA::None
+        && !value.user_tunnel_endpoint
+    {
+        return Err(DoubleZeroError::InvalidInterfaceIp.into());
+    }
+
+    // CYOA interfaces must have an ip_net
+    if value.interface_cyoa != InterfaceCYOA::None && value.ip_net.is_none() {
+        return Err(DoubleZeroError::InvalidInterfaceIp.into());
     }
 
     let mut device: Device = Device::try_from(device_account)?;

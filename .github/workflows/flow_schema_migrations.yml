@@ -3,11 +3,11 @@ on:
   push:
     paths:
       - "telemetry/flow-enricher/clickhouse/**"
-    branches: [ main ]
+    branches: [ main, 'hotfix/**' ]
   pull_request:
     paths:
       - "telemetry/flow-enricher/clickhouse/**"
-    branches: [ main ]
+    branches: [ main, 'hotfix/**' ]
 
 jobs:
   validate:

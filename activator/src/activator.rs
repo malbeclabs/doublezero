@@ -1,10 +1,11 @@
-use crate::{accesspass_monitor, processor::Processor};
+use crate::processor::{Processor, ProcessorStateless};
 use doublezero_cli::{checkversion::check_version, doublezerocommand::CliCommandImpl};
 use doublezero_sdk::{
     doublezeroclient::{AsyncDoubleZeroClient, DoubleZeroClient},
     rpckeyedaccount_decode::rpckeyedaccount_decode,
-    AccountData, AsyncDZClient, DZClient, ProgramVersion,
+    AccountData, AsyncDZClient, DZClient, GetGlobalStateCommand, ProgramVersion,
 };
+use doublezero_serviceability::state::feature_flags::{is_feature_enabled, FeatureFlag};
 use futures::stream::StreamExt;
 use log::{error, info};
 use solana_sdk::pubkey::Pubkey;
@@ -20,7 +21,6 @@ pub async fn run_activator(
     websocket_url: Option<String>,
     program_id: Option<String>,
     keypair: Option<PathBuf>,
-    use_onchain_allocation: bool,
 ) -> eyre::Result<()> {
     let client = create_client(rpc_url, websocket_url, program_id, keypair)?;
 
@@ -31,6 +31,8 @@ pub async fn run_activator(
         move || AsyncDZClient::new(rpc_url_clone.clone(), ws_url_clone.clone(), program_id);
 
     version_check(client.as_ref())?;
+
+    let use_onchain_allocation = read_onchain_allocation_flag(client.as_ref())?;
 
     run_activator_with_client(client, async_client_factory, use_onchain_allocation).await
 }
@@ -46,11 +48,28 @@ where
     R: Future<Output = eyre::Result<A>> + Send + 'static,
     A: AsyncDoubleZeroClient + Send + Sync + 'static,
 {
+    if use_onchain_allocation {
+        run_activator_stateless(client, async_client_factory).await
+    } else {
+        run_activator_stateful(client, async_client_factory).await
+    }
+}
+
+async fn run_activator_stateful<C, F, R, A>(
+    client: Arc<C>,
+    async_client_factory: F,
+) -> eyre::Result<()>
+where
+    C: DoubleZeroClient + Send + Sync + 'static,
+    F: Fn() -> R + Send + Sync + 'static,
+    R: Future<Output = eyre::Result<A>> + Send + 'static,
+    A: AsyncDoubleZeroClient + Send + Sync + 'static,
+{
     loop {
-        info!("Activator handler loop started");
+        info!("Activator handler loop started (stateful mode)");
 
         let (tx, rx) = mpsc::channel(128);
-        let mut processor = Processor::new(rx, client.clone(), use_onchain_allocation)?;
+        let mut processor = Processor::new(rx, client.clone())?;
 
         let shutdown = Arc::new(AtomicBool::new(false));
 
@@ -62,13 +81,6 @@ where
             }
             _ = websocket_task(&async_client_factory, tx.clone(), shutdown.clone()) => {
                 info!("Websocket task finished, stopping activator...");
-            }
-            accesspass_monitor_res = accesspass_monitor::access_pass_monitor_task(client.clone(), shutdown.clone()) => {
-                if let Err(err) = accesspass_monitor_res {
-                    error!("AccessPass monitor task exited unexpectedly with reason: {err:?}");
-                } else {
-                    info!("AccessPass monitor task finished, stopping activator...");
-                }
             }
             snapshot_poll_res = get_snapshot_poll(client.clone(), tx.clone(), shutdown.clone()) => {
                 if let Err(err) = snapshot_poll_res {
@@ -88,6 +100,63 @@ where
 
     info!("Activator handler finished");
     Ok(())
+}
+
+async fn run_activator_stateless<C, F, R, A>(
+    client: Arc<C>,
+    async_client_factory: F,
+) -> eyre::Result<()>
+where
+    C: DoubleZeroClient + Send + Sync + 'static,
+    F: Fn() -> R + Send + Sync + 'static,
+    R: Future<Output = eyre::Result<A>> + Send + 'static,
+    A: AsyncDoubleZeroClient + Send + Sync + 'static,
+{
+    loop {
+        info!("Activator handler loop started stateless mode (onchain allocation)");
+
+        let (tx, rx) = mpsc::channel(128);
+        let mut processor = ProcessorStateless::new(rx, client.clone())?;
+
+        let shutdown = Arc::new(AtomicBool::new(false));
+
+        tokio::select! {
+            biased;
+            _ = crate::listen_for_shutdown()? => {
+                info!("Shutdown signal received, stopping activator...");
+                break;
+            }
+            _ = websocket_task(&async_client_factory, tx.clone(), shutdown.clone()) => {
+                info!("Websocket task finished, stopping activator...");
+            }
+            snapshot_poll_res = get_snapshot_poll(client.clone(), tx.clone(), shutdown.clone()) => {
+                if let Err(err) = snapshot_poll_res {
+                    error!("Snapshot poll exited unexpectedly with reason: {err:?}");
+                }
+                else {
+                    info!("Snapshot poll task finished, stopping activator...");
+                }
+            }
+            _ = processor.run(shutdown.clone()) => {
+                info!("Processor task finished, stopping activator...");
+            }
+        }
+
+        shutdown.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    info!("Activator handler finished");
+    Ok(())
+}
+
+fn read_onchain_allocation_flag(client: &dyn DoubleZeroClient) -> eyre::Result<bool> {
+    let (_, global_state) = GetGlobalStateCommand.execute(client)?;
+    let enabled = is_feature_enabled(global_state.feature_flags, FeatureFlag::OnChainAllocation);
+    info!(
+        "Onchain allocation feature flag: {} (feature_flags={})",
+        enabled, global_state.feature_flags
+    );
+    Ok(enabled)
 }
 
 fn create_client(
@@ -400,6 +469,7 @@ mod tests {
             device_tunnel_block: "1.0.0.0/24".parse().unwrap(),
             user_tunnel_block: "1.0.1.0/24".parse().unwrap(),
             multicastgroup_block: "239.239.239.0/24".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
             next_bgp_community: 65535,
         };
         mock_client

@@ -201,13 +201,15 @@ pub struct User {
         )
     )]
     pub validator_pubkey: Pubkey, // 32
+    /// Tunnel endpoint IP (device-side GRE endpoint). 0.0.0.0 means use device.public_ip for backwards compatibility.
+    pub tunnel_endpoint: Ipv4Addr, // 4
 }
 
 impl fmt::Display for User {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, user_type: {}, device_pk: {}, cyoa_type: {}, client_ip: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}, status: {}",
+            "account_type: {}, owner: {}, index: {}, user_type: {}, device_pk: {}, cyoa_type: {}, client_ip: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}, status: {}, tunnel_endpoint: {}",
             self.account_type,
             self.owner,
             self.index,
@@ -218,7 +220,8 @@ impl fmt::Display for User {
             &self.dz_ip,
             self.tunnel_id,
             &self.tunnel_net,
-            self.status
+            self.status,
+            &self.tunnel_endpoint
         )
     }
 }
@@ -244,6 +247,9 @@ impl TryFrom<&[u8]> for User {
             publishers: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             subscribers: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             validator_pubkey: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            // Tunnel endpoint - defaults to 0.0.0.0 for backwards compatibility (use device.public_ip)
+            tunnel_endpoint: BorshDeserialize::deserialize(&mut data)
+                .unwrap_or([0, 0, 0, 0].into()),
         };
 
         if out.account_type != AccountType::User {
@@ -269,6 +275,11 @@ impl TryFrom<&AccountInfo<'_>> for User {
 
 impl Validate for User {
     fn validate(&self) -> Result<(), DoubleZeroError> {
+        // If the user is in the process of being deleted, we can skip validation to allow it to be cleaned up without issues. This is necessary to prevent a scenario where a user gets stuck in the deleting state because some aspect of their data becomes invalid (e.g. due to changes in validation rules over time).
+        if self.status == UserStatus::Deleting {
+            return Ok(());
+        }
+
         // Account type must be User
         if self.account_type != AccountType::User {
             msg!("account_type: {}", self.account_type);
@@ -299,18 +310,61 @@ impl Validate for User {
             msg!("tunnel_id: {}", self.tunnel_id);
             return Err(DoubleZeroError::InvalidTunnelId);
         }
+        // tunnel_endpoint must be global unicast if set (non-zero)
+        // Validation against device interfaces is done at the instruction level
+        if self.tunnel_endpoint != Ipv4Addr::UNSPECIFIED && !is_global(self.tunnel_endpoint) {
+            msg!("tunnel_endpoint: {}", self.tunnel_endpoint);
+            return Err(DoubleZeroError::InvalidTunnelEndpoint);
+        }
 
         Ok(())
     }
 }
 
 impl User {
+    // ============================================================
+    // Capability helper methods
+    // These derive user capabilities from actual state rather than
+    // relying on UserType categorization. This enables users to have
+    // multiple tunnel types concurrently (unicast + multicast).
+    // ============================================================
+
+    pub fn has_unicast_tunnel(&self) -> bool {
+        self.tunnel_id != 0
+    }
+
+    pub fn has_tunnel_endpoint(&self) -> bool {
+        self.tunnel_endpoint != Ipv4Addr::UNSPECIFIED
+    }
+
+    pub fn is_publisher(&self) -> bool {
+        !self.publishers.is_empty()
+    }
+
+    pub fn is_subscriber(&self) -> bool {
+        !self.subscribers.is_empty()
+    }
+
+    pub fn is_multicast_participant(&self) -> bool {
+        self.is_publisher() || self.is_subscriber()
+    }
+
+    pub fn needs_allocated_dz_ip(&self) -> bool {
+        match self.user_type {
+            UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
+            UserType::IBRL => false,
+            UserType::Multicast => self.is_publisher(),
+        }
+    }
+
+    pub fn needs_multicast(&self) -> bool {
+        self.is_subscriber()
+    }
+
     pub fn get_multicast_groups(&self) -> Vec<Pubkey> {
         let mut groups: Vec<Pubkey> = vec![];
 
-        // Add publishers first
         groups.extend(self.publishers.iter().cloned());
-
         // Add subscribers that aren't already in the list
         for sub in &self.subscribers {
             if !groups.contains(sub) {
@@ -324,9 +378,9 @@ impl User {
     pub fn try_activate(&mut self, accesspass: &mut AccessPass) -> ProgramResult {
         accesspass.update_status()?;
 
-        self.validator_pubkey = match accesspass.accesspass_type {
-            AccessPassType::SolanaValidator(pk) => pk,
-            AccessPassType::Prepaid => Pubkey::default(),
+        self.validator_pubkey = match &accesspass.accesspass_type {
+            AccessPassType::SolanaValidator(pk) => *pk,
+            _ => Pubkey::default(),
         };
 
         self.status = if accesspass.status == AccessPassStatus::Expired {
@@ -399,6 +453,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -445,6 +500,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let err = val.validate();
@@ -471,6 +527,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -496,6 +553,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -521,6 +579,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -546,6 +605,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -571,9 +631,261 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelId);
+    }
+
+    #[test]
+    fn test_state_user_validate_error_invalid_tunnel_endpoint() {
+        // Test with private IP (should fail validation)
+        let val = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::GREOverDIA,
+            dz_ip: [3, 2, 4, 2].into(),
+            client_ip: [1, 2, 3, 4].into(),
+            tunnel_id: 500,
+            tunnel_net: "169.254.0.0/31".parse().unwrap(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 1), // Private IP - invalid
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelEndpoint);
+
+        // Test with loopback IP (should fail validation)
+        let val_loopback = User {
+            tunnel_endpoint: Ipv4Addr::new(127, 0, 0, 1), // Loopback - invalid
+            ..val.clone()
+        };
+        let err = val_loopback.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelEndpoint);
+
+        // Test with link-local IP (should fail validation)
+        let val_link_local = User {
+            tunnel_endpoint: Ipv4Addr::new(169, 254, 1, 1), // Link-local - invalid
+            ..val.clone()
+        };
+        let err = val_link_local.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelEndpoint);
+
+        // Test with UNSPECIFIED (0.0.0.0) - should pass (backwards compat)
+        let val_unspecified = User {
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            ..val.clone()
+        };
+        assert!(val_unspecified.validate().is_ok());
+
+        // Test with global IP - should pass
+        let val_global = User {
+            tunnel_endpoint: Ipv4Addr::new(8, 8, 8, 8), // Global IP - valid
+            ..val
+        };
+        assert!(val_global.validate().is_ok());
+    }
+
+    // ============================================================
+    // Capability helper method tests
+    // ============================================================
+
+    /// Creates a test user with default values for capability helper tests
+    fn create_test_user() -> User {
+        User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: [192, 168, 1, 1].into(),
+            dz_ip: [192, 168, 1, 1].into(),
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: UserStatus::Pending,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }
+    }
+
+    #[test]
+    fn test_has_unicast_tunnel() {
+        let mut user = create_test_user();
+        user.tunnel_id = 0;
+        assert!(!user.has_unicast_tunnel());
+
+        user.tunnel_id = 100;
+        assert!(user.has_unicast_tunnel());
+    }
+
+    #[test]
+    fn test_has_tunnel_endpoint() {
+        let mut user = create_test_user();
+        user.tunnel_endpoint = Ipv4Addr::UNSPECIFIED;
+        assert!(!user.has_tunnel_endpoint());
+
+        user.tunnel_endpoint = Ipv4Addr::new(10, 0, 0, 1);
+        assert!(user.has_tunnel_endpoint());
+    }
+
+    #[test]
+    fn test_is_publisher() {
+        let mut user = create_test_user();
+        user.publishers = vec![];
+        assert!(!user.is_publisher());
+
+        user.publishers.push(Pubkey::new_unique());
+        assert!(user.is_publisher());
+    }
+
+    #[test]
+    fn test_is_subscriber() {
+        let mut user = create_test_user();
+        user.subscribers = vec![];
+        assert!(!user.is_subscriber());
+
+        user.subscribers.push(Pubkey::new_unique());
+        assert!(user.is_subscriber());
+    }
+
+    #[test]
+    fn test_needs_allocated_dz_ip() {
+        let mut user = create_test_user();
+
+        // IBRL type does not need allocated IP
+        user.user_type = UserType::IBRL;
+        assert!(!user.needs_allocated_dz_ip());
+
+        // IBRLWithAllocatedIP needs allocated IP
+        user.user_type = UserType::IBRLWithAllocatedIP;
+        assert!(user.needs_allocated_dz_ip());
+
+        // EdgeFiltering needs allocated IP
+        user.user_type = UserType::EdgeFiltering;
+        assert!(user.needs_allocated_dz_ip());
+
+        // Multicast without publishers does not need allocated IP
+        user.user_type = UserType::Multicast;
+        user.publishers = vec![];
+        assert!(!user.needs_allocated_dz_ip());
+
+        // Multicast with publishers needs allocated IP
+        user.publishers.push(Pubkey::new_unique());
+        assert!(user.needs_allocated_dz_ip());
+    }
+
+    #[test]
+    fn test_needs_multicast() {
+        let mut user = create_test_user();
+
+        // User without subscribers does not need multicast
+        user.subscribers = vec![];
+        assert!(!user.needs_multicast());
+
+        // User with subscribers needs multicast
+        user.subscribers.push(Pubkey::new_unique());
+        assert!(user.needs_multicast());
+
+        // This applies regardless of user type
+        user.user_type = UserType::IBRL;
+        assert!(user.needs_multicast());
+
+        user.user_type = UserType::IBRLWithAllocatedIP;
+        assert!(user.needs_multicast());
+
+        user.user_type = UserType::Multicast;
+        assert!(user.needs_multicast());
+
+        user.user_type = UserType::EdgeFiltering;
+        assert!(user.needs_multicast());
+    }
+
+    #[test]
+    fn test_is_multicast_participant() {
+        let mut user = create_test_user();
+        user.publishers = vec![];
+        user.subscribers = vec![];
+
+        // No multicast group membership
+        assert!(!user.is_multicast_participant());
+
+        // User as publisher to one group (only allowed config)
+        let mcast_group = Pubkey::new_unique();
+        user.publishers.push(mcast_group);
+        assert!(user.is_multicast_participant());
+
+        // Reset and test as subscriber to one group (only allowed config)
+        user.publishers = vec![];
+        user.subscribers.push(mcast_group);
+        assert!(user.is_multicast_participant());
+    }
+
+    #[test]
+    fn test_validate_skips_validation_when_deleting() {
+        // A user in Deleting status should always pass validation, even if fields
+        // would otherwise be invalid. This prevents users from getting stuck in the
+        // deleting state due to changed validation rules.
+        let val = User {
+            account_type: AccountType::AccessPass, // invalid account type
+            owner: Pubkey::default(),
+            index: 0,
+            bump_seed: 0,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            device_pk: Pubkey::default(), // invalid: zero pubkey
+            cyoa_type: UserCYOA::None,
+            client_ip: [0, 0, 0, 0].into(), // invalid: not global
+            dz_ip: [0, 0, 0, 0].into(),     // invalid: not global
+            tunnel_id: 9999,                // invalid: > 1024
+            tunnel_net: "8.8.8.8/25".parse().unwrap(), // invalid: not link-local
+            status: UserStatus::Deleting,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 1), // invalid: private IP
+        };
+
+        assert!(val.validate().is_ok());
+    }
+
+    #[test]
+    fn test_needs_multicast_publishers_do_not_trigger() {
+        // Verify that publishers alone do NOT trigger needs_multicast()
+        // This is intentional: needs_multicast() only checks subscribers because
+        // publishers send traffic TO multicast groups but don't need to receive
+        // multicast traffic themselves (unless they're also subscribers)
+        let mut user = create_test_user();
+        user.publishers = vec![Pubkey::new_unique()];
+        user.subscribers = vec![];
+
+        // Publisher without subscribers does NOT need multicast
+        assert!(!user.needs_multicast());
+
+        // This applies regardless of user type
+        user.user_type = UserType::Multicast;
+        assert!(!user.needs_multicast());
+
+        user.user_type = UserType::IBRL;
+        assert!(!user.needs_multicast());
+
+        // But if they're also a subscriber, they DO need multicast
+        user.subscribers.push(Pubkey::new_unique());
+        assert!(user.needs_multicast());
     }
 }

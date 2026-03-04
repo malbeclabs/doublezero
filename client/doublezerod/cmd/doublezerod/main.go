@@ -23,19 +23,23 @@ import (
 )
 
 var (
-	sockFile             = flag.String("sock-file", "/var/run/doublezerod/doublezerod.sock", "path to doublezerod domain socket")
-	enableLatencyProbing = flag.Bool("latency-probing", true, "enable latency probing to doublezero nodes")
-	versionFlag          = flag.Bool("version", false, "build version")
-	env                  = flag.String("env", config.EnvTestnet, "environment to use")
-	programId            = flag.String("program-id", "", "override smartcontract program id to monitor")
-	rpcEndpoint          = flag.String("solana-rpc-endpoint", "", "override solana rpc endpoint url")
-	probeInterval        = flag.Int("probe-interval", 30, "latency probe interval in seconds")
-	cacheUpdateInterval  = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
-	enableVerboseLogging = flag.Bool("v", false, "enables verbose logging")
-	enableLatencyMetrics = flag.Bool("enable-latency-metrics", false, "enables latency metrics")
-	metricsEnable        = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
-	metricsAddr          = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
-	routeConfigPath      = flag.String("route-config", "/var/lib/doublezerod/route-config.json", "path to route config file (unstable)")
+	sockFile                    = flag.String("sock-file", "/var/run/doublezerod/doublezerod.sock", "path to doublezerod domain socket")
+	enableLatencyProbing        = flag.Bool("latency-probing", true, "enable latency probing to doublezero nodes")
+	versionFlag                 = flag.Bool("version", false, "build version")
+	env                         = flag.String("env", config.EnvTestnet, "environment to use")
+	programId                   = flag.String("program-id", "", "override smartcontract program id to monitor")
+	rpcEndpoint                 = flag.String("solana-rpc-endpoint", "", "override solana rpc endpoint url")
+	probeInterval               = flag.Int("probe-interval", 30, "latency probe interval in seconds")
+	cacheUpdateInterval         = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
+	enableVerboseLogging        = flag.Bool("v", false, "enables verbose logging")
+	enableLatencyMetrics        = flag.Bool("enable-latency-metrics", false, "enables latency metrics")
+	latencyProbeTunnelEndpoints = flag.Bool("latency-probe-tunnel-endpoints", true, "also probe UserTunnelEndpoint interfaces in addition to PublicIp")
+	metricsEnable               = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
+	metricsAddr                 = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
+	routeConfigPath             = flag.String("route-config", "/var/lib/doublezerod/route-config.json", "path to route config file (unstable)")
+	clientIP                    = flag.String("client-ip", "", "public IP of this client, used to match onchain user accounts; auto-discovered if not set")
+	reconcilerPollInterval      = flag.Int("reconciler-poll-interval", 10, "reconciler poll interval in seconds")
+	stateDir                    = flag.String("state-dir", "/var/lib/doublezerod", "directory for persistent state files")
 
 	// Route liveness configuration flags.
 	routeLivenessTxMin       = flag.Duration("route-liveness-tx-min", defaultRouteLivenessTxMin, "route liveness tx min")
@@ -49,7 +53,7 @@ var (
 	// TODO(snormore): These flags are temporary for initial rollout testing.
 	// They will be superceded by a single `route-liveness-enable` flag, where false means
 	// passive-mode and true means active-mode.
-	routeLivenessEnablePassive = flag.Bool("route-liveness-enable-passive", false, "enables route liveness in passive mode (experimental)")
+	routeLivenessEnablePassive = flag.Bool("route-liveness-enable-passive", true, "enables route liveness in passive mode")
 	routeLivenessEnableActive  = flag.Bool("route-liveness-enable-active", false, "enables route liveness in active mode (experimental)")
 
 	// set by LDFLAGS
@@ -180,7 +184,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, networkConfig, *probeInterval, *cacheUpdateInterval, lmc); err != nil {
+	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, networkConfig, *probeInterval, *cacheUpdateInterval, lmc, *clientIP, *reconcilerPollInterval, *stateDir); err != nil {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}

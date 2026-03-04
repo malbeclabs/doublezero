@@ -35,14 +35,16 @@ pub struct UserCreateSubscribeArgs {
     pub client_ip: std::net::Ipv4Addr,
     pub publisher: bool,
     pub subscriber: bool,
+    #[incremental(default = Ipv4Addr::UNSPECIFIED)]
+    pub tunnel_endpoint: std::net::Ipv4Addr,
 }
 
 impl fmt::Debug for UserCreateSubscribeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}",
-            self.user_type, self.cyoa_type, &self.client_ip,
+            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}",
+            self.user_type, self.cyoa_type, &self.client_ip, &self.tunnel_endpoint,
         )
     }
 }
@@ -166,16 +168,10 @@ pub fn process_create_subscribe_user(
         return Err(DoubleZeroError::AccessPassUnauthorized.into());
     }
 
-    accesspass.connection_count += 1;
-    accesspass.status = AccessPassStatus::Connected;
-    if accesspass.is_dynamic() && accesspass.client_ip == Ipv4Addr::UNSPECIFIED {
-        accesspass.client_ip = value.client_ip; // lock to the first used IP
-    }
-
     // Read validator_pubkey from AccesPass
-    let validator_pubkey = match accesspass.accesspass_type {
-        AccessPassType::SolanaValidator(pk) => pk,
-        AccessPassType::Prepaid => Pubkey::default(),
+    let validator_pubkey = match &accesspass.accesspass_type {
+        AccessPassType::SolanaValidator(pk) => *pk,
+        _ => Pubkey::default(),
     };
 
     let mut mgroup: MulticastGroup = MulticastGroup::try_from(mgroup_account)?;
@@ -193,21 +189,70 @@ pub fn process_create_subscribe_user(
 
     let mut device = Device::try_from(device_account)?;
 
+    let is_qa = globalstate.qa_allowlist.contains(payer_account.key);
+
     // Only activated devices can have users, or if in foundation allowlist
     if device.status != DeviceStatus::Activated
         && !globalstate.foundation_allowlist.contains(payer_account.key)
+        && !is_qa
     {
         msg!("{:?}", device);
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    if device.users_count >= device.max_users {
+    if device.users_count >= device.max_users && !is_qa {
         msg!("{:?}", device);
         return Err(DoubleZeroError::MaxUsersExceeded.into());
     }
 
+    // Check per-type limits (when max > 0, the limit is enforced)
+    match value.user_type {
+        UserType::Multicast => {
+            if device.max_multicast_users > 0
+                && device.multicast_users_count >= device.max_multicast_users
+                && !is_qa
+            {
+                msg!(
+                    "Max multicast users exceeded: count={}, max={}",
+                    device.multicast_users_count,
+                    device.max_multicast_users
+                );
+                return Err(DoubleZeroError::MaxMulticastUsersExceeded.into());
+            }
+        }
+        _ => {
+            if device.max_unicast_users > 0
+                && device.unicast_users_count >= device.max_unicast_users
+                && !is_qa
+            {
+                msg!(
+                    "Max unicast users exceeded: count={}, max={}",
+                    device.unicast_users_count,
+                    device.max_unicast_users
+                );
+                return Err(DoubleZeroError::MaxUnicastUsersExceeded.into());
+            }
+        }
+    }
+
+    // All validations passed - now update counters
+    accesspass.connection_count += 1;
+    accesspass.status = AccessPassStatus::Connected;
+    if accesspass.is_dynamic() && accesspass.client_ip == Ipv4Addr::UNSPECIFIED {
+        accesspass.client_ip = value.client_ip; // lock to the first used IP
+    }
+
     device.reference_count += 1;
     device.users_count += 1;
+    // Increment per-type counter
+    match value.user_type {
+        UserType::Multicast => {
+            device.multicast_users_count += 1;
+        }
+        _ => {
+            device.unicast_users_count += 1;
+        }
+    }
 
     let user: User = User {
         account_type: AccountType::User,
@@ -222,7 +267,7 @@ pub fn process_create_subscribe_user(
         } else {
             0
         },
-        tenant_pk: Pubkey::default(),
+        tenant_pk: Pubkey::default(), // No tenant support for multicast group users
         user_type: value.user_type,
         device_pk: *device_account.key,
         cyoa_type: value.cyoa_type,
@@ -240,6 +285,7 @@ pub fn process_create_subscribe_user(
             false => vec![],
         },
         validator_pubkey,
+        tunnel_endpoint: value.tunnel_endpoint,
     };
 
     // Update multicastgroup counts

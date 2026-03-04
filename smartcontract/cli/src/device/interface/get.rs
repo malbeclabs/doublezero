@@ -2,7 +2,9 @@ use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
 use doublezero_program_common::validate_iface;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
+use serde::Serialize;
 use std::io::Write;
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct GetDeviceInterfaceCliCommand {
@@ -12,6 +14,26 @@ pub struct GetDeviceInterfaceCliCommand {
     /// Interface name
     #[arg(value_parser = validate_iface, required = true)]
     pub name: String,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Tabled, Serialize)]
+struct InterfaceDisplay {
+    pub name: String,
+    pub status: String,
+    pub loopback_type: String,
+    pub interface_cyoa: String,
+    pub bandwidth: u64,
+    pub cir: u64,
+    pub mtu: u16,
+    pub routing_mode: String,
+    pub vlan_id: u16,
+    pub ip_net: String,
+    pub node_segment_idx: u16,
+    pub user_tunnel_endpoint: bool,
+    pub device_pk: String,
 }
 
 impl GetDeviceInterfaceCliCommand {
@@ -27,35 +49,33 @@ impl GetDeviceInterfaceCliCommand {
             .find(|i| i.name.to_lowercase() == self.name.to_lowercase())
             .ok_or_else(|| eyre::eyre!("Interface '{}' not found", self.name))?;
 
-        writeln!(
-            out,
-            "name: {}\r\n\
-status: {}\r\n\
-loopback_type: {}\r\n\
-interface_cyoa: {}\r\n\
-bandwidth: {}\r\n\
-cir: {}\r\n\
-mtu: {}\r\n\
-routing_mode: {}\r\n\
-vlan_id: {}\r\n\
-ip_net: {}\r\n\
-node_segment_idx: {}\r\n\
-user_tunnel_endpoint: {}\r\n\
-device_pk: {}",
-            interface.name,
-            interface.status,
-            interface.loopback_type,
-            interface.interface_cyoa,
-            interface.bandwidth,
-            interface.cir,
-            interface.mtu,
-            interface.routing_mode,
-            interface.vlan_id,
-            interface.ip_net,
-            interface.node_segment_idx,
-            interface.user_tunnel_endpoint,
-            device_pk,
-        )?;
+        let display = InterfaceDisplay {
+            name: interface.name,
+            status: interface.status.to_string(),
+            loopback_type: interface.loopback_type.to_string(),
+            interface_cyoa: interface.interface_cyoa.to_string(),
+            bandwidth: interface.bandwidth,
+            cir: interface.cir,
+            mtu: interface.mtu,
+            routing_mode: interface.routing_mode.to_string(),
+            vlan_id: interface.vlan_id,
+            ip_net: interface.ip_net.to_string(),
+            node_segment_idx: interface.node_segment_idx,
+            user_tunnel_endpoint: interface.user_tunnel_endpoint,
+            device_pk: device_pk.to_string(),
+        };
+
+        if self.json {
+            let json = serde_json::to_string_pretty(&display)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let headers = InterfaceDisplay::headers();
+            let fields = display.fields();
+            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
+            for (header, value) in headers.iter().zip(fields.iter()) {
+                writeln!(out, " {header:<max_len$} | {value}")?;
+            }
+        }
 
         Ok(())
     }
@@ -123,6 +143,11 @@ mod tests {
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client
@@ -135,25 +160,43 @@ mod tests {
         client
             .expect_get_device()
             .returning(move |_| Err(eyre::eyre!("not found")));
-        /*****************************************************************************************************/
+
         // Expected failure
         let mut output = Vec::new();
         let res = GetDeviceInterfaceCliCommand {
             device: Pubkey::new_unique().to_string(),
             name: "Eth0".to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_err(), "I shouldn't find anything.");
 
-        // Expected success
+        // Expected success (table)
         let mut output = Vec::new();
         let res = GetDeviceInterfaceCliCommand {
             device: device1_pubkey.to_string(),
             name: "eth0".to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "name: eth0\r\nstatus: activated\r\nloopback_type: none\r\ninterface_cyoa: none\r\nbandwidth: 1000\r\ncir: 500\r\nmtu: 1500\r\nrouting_mode: static\r\nvlan_id: 16\r\nip_net: 10.0.0.1/24\r\nnode_segment_idx: 42\r\nuser_tunnel_endpoint: true\r\ndevice_pk: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
+        assert!(
+            has_row("name", "eth0"),
+            "name row should contain interface name"
+        );
+        assert!(
+            has_row("status", "activated"),
+            "status row should contain value"
+        );
+        assert!(
+            has_row("device_pk", &device1_pubkey.to_string()),
+            "device_pk row should contain pubkey"
+        );
     }
 }

@@ -73,6 +73,10 @@ pub fn process_accept_link(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
+    if link.side_z_pk != *side_z_account.key {
+        return Err(DoubleZeroError::InvalidAccountOwner.into());
+    }
+
     // Validate Side Z Device
     let side_z_dev = Device::try_from(side_z_account)?;
     if side_z_dev.contributor_pk != *contributor_account.key {

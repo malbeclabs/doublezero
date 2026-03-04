@@ -4,10 +4,12 @@ pub fn bandwidth_parse(str: &str) -> Result<u64, String> {
     let str = str.replace("mbps", "m");
     let str = str.replace("kbps", "k");
     let str = str.replace("bps", "b");
-    let mut unit = str.chars().last().unwrap_or('k');
+    let unit = str.chars().last().unwrap_or('\0');
 
     if !unit.is_alphabetic() {
-        unit = 'k';
+        return Err(String::from(
+            "bandwidth requires a unit (e.g. 100Kbps, 1Mbps, 10Gbps)",
+        ));
     }
 
     let str: String = str.chars().filter(|c| !c.is_alphabetic()).collect();

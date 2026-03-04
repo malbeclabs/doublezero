@@ -59,13 +59,13 @@ pub fn process_delete_device(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     assert!(device_account.is_writable, "PDA Account is not writable");
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
 
@@ -82,8 +82,19 @@ pub fn process_delete_device(
 
     let mut device: Device = Device::try_from(device_account)?;
 
+    if matches!(
+        device.status,
+        DeviceStatus::Activated | DeviceStatus::Deleting
+    ) {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     if device.reference_count > 0 {
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
+    }
+
+    if !device.interfaces.is_empty() {
+        return Err(DoubleZeroError::DeviceHasInterfaces.into());
     }
 
     device.status = DeviceStatus::Deleting;

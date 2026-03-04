@@ -70,6 +70,21 @@ type DeviceSpec struct {
 
 	// LoopbackInterfaces is a map of interface names to loopback types.
 	LoopbackInterfaces map[string]string
+
+	// UserTunnelEndpoints specifies loopback interfaces to register as user tunnel endpoints.
+	// Each entry creates a Loopback interface with an IP derived from the CYOA subnet
+	// and marked as a user tunnel endpoint onchain.
+	UserTunnelEndpoints []UserTunnelEndpointSpec
+}
+
+// UserTunnelEndpointSpec describes a loopback interface to register as a user tunnel endpoint.
+type UserTunnelEndpointSpec struct {
+	// InterfaceName is the EOS interface name (e.g., "Loopback100").
+	InterfaceName string
+
+	// IPHostIDOffset is added to the device's CYOANetworkIPHostID to derive the loopback IP.
+	// For example, if the device has hostID=8 and offset=1, the loopback gets hostID=9.
+	IPHostIDOffset uint32
 }
 
 type DeviceTelemetrySpec struct {
@@ -179,6 +194,10 @@ type Device struct {
 
 	// ExternalTelemetryMetricsPort is the port on which the device's telemetry metrics server is exposed.
 	ExternalTelemetryMetricsPort int
+
+	// UserTunnelEndpointIPs maps interface names to their IPs for UTE loopbacks.
+	// e.g., {"Loopback100": "9.200.53.9"}
+	UserTunnelEndpointIPs map[string]string
 }
 
 func (d *Device) dockerContainerHostname() string {
@@ -220,7 +239,7 @@ func (d *Device) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 		// Check if the container is running.
 		if container.State.Running {
-			d.log.Info("--> Device already running", "container", shortContainerID(container.ID))
+			d.log.Debug("--> Device already running", "container", shortContainerID(container.ID))
 
 			// Set the component's state.
 			err = d.setState(ctx, container.ID)
@@ -261,7 +280,7 @@ func (d *Device) StartIfNotRunning(ctx context.Context) (bool, error) {
 // network attached, then attach the CYOA network to the container.
 func (d *Device) Start(ctx context.Context) error {
 	spec := d.Spec
-	d.log.Info("==> Starting device", "image", spec.ContainerImage, "code", spec.Code, "cyoaNetworkIPHostID", spec.CYOANetworkIPHostID)
+	d.log.Debug("==> Starting device", "image", spec.ContainerImage, "code", spec.Code, "cyoaNetworkIPHostID", spec.CYOANetworkIPHostID)
 
 	ip, err := netutil.DeriveIPFromCIDR(d.dn.CYOANetwork.SubnetCIDR, uint32(spec.CYOANetworkIPHostID))
 	if err != nil {
@@ -315,23 +334,39 @@ func (d *Device) Start(ctx context.Context) error {
 	dzPrefix := dzPrefixBytes.String() + "/29"
 	d.DZPrefix = dzPrefix
 
-	devicePK, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, spec.MetricsPublisherPK, cyoaNetworkIP, []string{dzPrefix}, "mgmt")
+	// Compute a second dz_prefix for UTE loopback interfaces when needed.
+	// This prefix lives in a different /24 than the CYOA subnet (third octet incremented by 1)
+	// so the loopback IP doesn't overlap with Ethernet1's subnet on EOS.
+	// The IP is globally-routable (same 9.x.x.x space) to pass the onchain is_global check.
+	var uteDzPrefixBytes net.IP
+	dzPrefixes := []string{dzPrefix}
+	if len(spec.UserTunnelEndpoints) > 0 {
+		uteDzPrefixBytes = make(net.IP, 4)
+		copy(uteDzPrefixBytes, publicIPBytes)
+		uteDzPrefixBytes[2]++                            // different /24 than CYOA subnet
+		uteDzPrefixBytes[3] = (publicIPBytes[3] / 8) * 8 // round to /29 boundary
+		uteDzPrefix := uteDzPrefixBytes.String() + "/29"
+		dzPrefixes = append(dzPrefixes, uteDzPrefix)
+	}
+
+	devicePK, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, spec.MetricsPublisherPK, cyoaNetworkIP, dzPrefixes, "mgmt")
 	if err != nil {
 		return fmt.Errorf("failed to create device %s onchain: %w", spec.Code, err)
 	}
-	d.log.Info("--> Created device onchain", "code", spec.Code, "cyoaNetworkIP", cyoaNetworkIP, "dzPrefix", dzPrefix, "devicePK", devicePK)
+	d.log.Debug("--> Created device onchain", "code", spec.Code, "cyoaNetworkIP", cyoaNetworkIP, "dzPrefix", dzPrefix, "devicePK", devicePK)
 
 	// MaxUserTunnelSlots is now a constant from config package
-	d.log.Info("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)
+	d.log.Debug("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)
 
 	// Create interfaces onchain.
 	for name, ifaceType := range spec.Interfaces {
 		out, err := d.dn.Manager.Exec(ctx, []string{
 			"doublezero", "device", "interface", "create", spec.Code, name,
+			"--bandwidth", "10G",
 		}, docker.NoPrintOnError())
 		if err != nil {
 			if strings.Contains(string(out), "already exists") {
-				d.log.Info("--> Interface already exists onchain", "code", spec.Code, "name", name, "ifaceType", ifaceType)
+				d.log.Debug("--> Interface already exists onchain", "code", spec.Code, "name", name, "ifaceType", ifaceType)
 				continue
 			}
 			fmt.Println(string(out))
@@ -364,15 +399,15 @@ func (d *Device) Start(ctx context.Context) error {
 			return fmt.Errorf("failed to wait for interface %s to exist onchain: %w", name, err)
 		}
 
-		d.log.Info("--> Created interface onchain", "code", spec.Code, "name", name, "ifaceType", ifaceType)
+		d.log.Debug("--> Created interface onchain", "code", spec.Code, "name", name, "ifaceType", ifaceType)
 	}
 
 	// Create loopback interfaces onchain.
 	for name, loopbackType := range spec.LoopbackInterfaces {
-		out, err := d.dn.Manager.Exec(ctx, []string{"doublezero", "device", "interface", "create", spec.Code, name, "--loopback-type", loopbackType}, docker.NoPrintOnError())
+		out, err := d.dn.Manager.Exec(ctx, []string{"doublezero", "device", "interface", "create", spec.Code, name, "--loopback-type", loopbackType, "--bandwidth", "10G"}, docker.NoPrintOnError())
 		if err != nil {
 			if strings.Contains(string(out), "already exists") {
-				d.log.Info("--> Loopback interface already exists onchain", "code", spec.Code, "name", name, "loopbackType", loopbackType)
+				d.log.Debug("--> Loopback interface already exists onchain", "code", spec.Code, "name", name, "loopbackType", loopbackType)
 				continue
 			}
 			fmt.Println(string(out))
@@ -405,7 +440,66 @@ func (d *Device) Start(ctx context.Context) error {
 			return fmt.Errorf("failed to wait for loopback interface %s to exist onchain: %w", name, err)
 		}
 
-		d.log.Info("--> Created loopback interface onchain", "code", spec.Code, "name", name, "loopbackType", loopbackType)
+		d.log.Debug("--> Created loopback interface onchain", "code", spec.Code, "name", name, "loopbackType", loopbackType)
+	}
+
+	// Create user tunnel endpoint loopback interfaces onchain.
+	// UTE loopback IPs are derived from the second dz_prefix (different /24 than CYOA subnet)
+	// to avoid IP overlap with Ethernet1 on EOS and to pass the onchain is_global check.
+	// The client adds a static route to reach this IP via the device's CYOA IP on the bridge.
+	d.UserTunnelEndpointIPs = make(map[string]string)
+	for _, ute := range spec.UserTunnelEndpoints {
+		// Derive UTE IP from the second dz_prefix: take the base IP and add the offset.
+		uteIPBytes := make(net.IP, 4)
+		copy(uteIPBytes, uteDzPrefixBytes)
+		uteIPBytes[3] += byte(ute.IPHostIDOffset)
+		uteIPStr := uteIPBytes.String()
+		ipNet := uteIPStr + "/32"
+
+		out, err := d.dn.Manager.Exec(ctx, []string{
+			"doublezero", "device", "interface", "create", spec.Code, ute.InterfaceName,
+			"--ip-net", ipNet,
+			"--user-tunnel-endpoint", "true",
+			"--bandwidth", "10G",
+		}, docker.NoPrintOnError())
+		if err != nil {
+			if strings.Contains(string(out), "already exists") {
+				d.log.Info("--> UTE interface already exists onchain", "code", spec.Code, "name", ute.InterfaceName, "ip", uteIPStr)
+				d.UserTunnelEndpointIPs[ute.InterfaceName] = uteIPStr
+				continue
+			}
+			fmt.Println(string(out))
+			return fmt.Errorf("failed to create UTE interface %s for device %s: %w", ute.InterfaceName, spec.Code, err)
+		}
+
+		// Wait for the UTE interface to exist onchain.
+		serviceabilityClient, err := d.dn.Ledger.GetServiceabilityClient()
+		if err != nil {
+			return fmt.Errorf("failed to get serviceability client: %w", err)
+		}
+		err = poll.Until(ctx, func() (bool, error) {
+			data, err := serviceabilityClient.GetProgramData(ctx)
+			if err != nil {
+				return false, fmt.Errorf("failed to get program data: %w", err)
+			}
+			for _, device := range data.Devices {
+				pk := solana.PublicKeyFromBytes(device.PubKey[:])
+				if pk.String() == devicePK {
+					for _, iface := range device.Interfaces {
+						if iface.Name == ute.InterfaceName {
+							return true, nil
+						}
+					}
+				}
+			}
+			return false, nil
+		}, 30*time.Second, 1*time.Second)
+		if err != nil {
+			return fmt.Errorf("failed to wait for UTE interface %s to exist onchain: %w", ute.InterfaceName, err)
+		}
+
+		d.UserTunnelEndpointIPs[ute.InterfaceName] = uteIPStr
+		d.log.Info("--> Created UTE interface onchain", "code", spec.Code, "name", ute.InterfaceName, "ip", uteIPStr)
 	}
 
 	controllerAddr := net.JoinHostPort(d.dn.Controller.DefaultNetworkIP, fmt.Sprintf("%d", internalControllerPort))
@@ -551,7 +645,7 @@ func (d *Device) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to execute template: %w", err)
 	}
 	containerConfigPath := "/etc/doublezero/agent/startup-config"
-	d.log.Info("==> Writing device config", "path", containerConfigPath)
+	d.log.Debug("==> Writing device config", "path", containerConfigPath)
 	err = container.CopyToContainer(ctx, configContents.Bytes(), containerConfigPath, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write device config file: %w", err)
@@ -577,13 +671,103 @@ func (d *Device) Start(ctx context.Context) error {
 	}
 
 	// Wait for the device container to have status healthy.
-	d.log.Info("--> Waiting for device container to be healthy", "container", shortContainerID(containerID), "name", container.Name)
+	d.log.Debug("--> Waiting for device container to be healthy", "container", shortContainerID(containerID), "name", container.Name)
 	start := time.Now()
 	err = d.dn.waitContainerHealthy(ctx, containerID, 300*time.Second, 2*time.Second)
 	if err != nil {
+		// Collect diagnostics to help debug health check timeouts.
+		fmt.Printf("=== DEVICE HEALTH CHECK TIMEOUT DIAGNOSTICS [%s] ===\n", spec.Code)
+
+		diagCtx, diagCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer diagCancel()
+
+		// Container state and health check log.
+		inspect, inspectErr := d.dn.dockerClient.ContainerInspect(diagCtx, containerID)
+		if inspectErr != nil {
+			fmt.Printf("  container inspect: ERROR: %v\n", inspectErr)
+		} else {
+			fmt.Printf("  container state: status=%s exitCode=%d error=%q startedAt=%s\n",
+				inspect.State.Status, inspect.State.ExitCode, inspect.State.Error, inspect.State.StartedAt)
+			if inspect.State.Health != nil {
+				fmt.Printf("  health check: status=%s failingStreak=%d\n",
+					inspect.State.Health.Status, inspect.State.Health.FailingStreak)
+				for i, entry := range inspect.State.Health.Log {
+					fmt.Printf("  health log[%d]: exitCode=%d start=%s end=%s output=%q\n",
+						i, entry.ExitCode, entry.Start, entry.End, entry.Output)
+				}
+			} else {
+				fmt.Printf("  health check: no health state available\n")
+			}
+		}
+
+		// Disk space on /var/tmp (core dumps can fill this up and prevent daemon starts).
+		dfOut, dfErr := docker.Exec(diagCtx, d.dn.dockerClient, containerID, []string{"df", "-h", "/var/tmp"}, docker.NoPrintOnError())
+		if dfErr != nil {
+			fmt.Printf("  df /var/tmp: ERROR: %v\n", dfErr)
+		} else {
+			fmt.Printf("  df /var/tmp:\n%s\n", string(dfOut))
+		}
+
+		// Syslog (last 50 lines).
+		syslog, syslogErr := docker.Exec(diagCtx, d.dn.dockerClient, containerID, []string{"tail", "-50", "/var/log/messages"}, docker.NoPrintOnError())
+		if syslogErr != nil {
+			fmt.Printf("  /var/log/messages: ERROR: %v\n", syslogErr)
+		} else {
+			fmt.Printf("  /var/log/messages (last 50 lines):\n%s\n", string(syslog))
+		}
+
+		// Agent logs (last 50 lines each).
+		agentFiles, agentFilesErr := docker.Exec(diagCtx, d.dn.dockerClient, containerID, []string{"ls", "/var/log/agents-latest/"}, docker.NoPrintOnError())
+		if agentFilesErr != nil {
+			fmt.Printf("  /var/log/agents-latest/: ERROR: %v\n", agentFilesErr)
+		} else {
+			for _, name := range strings.Split(strings.TrimSpace(string(agentFiles)), "\n") {
+				if name == "" {
+					continue
+				}
+				path := "/var/log/agents-latest/" + name
+				agentLog, agentLogErr := docker.Exec(diagCtx, d.dn.dockerClient, containerID, []string{"tail", "-50", path}, docker.NoPrintOnError())
+				if agentLogErr != nil {
+					fmt.Printf("  %s: ERROR: %v\n", path, agentLogErr)
+				} else {
+					fmt.Printf("  %s (last 50 lines):\n%s\n", path, string(agentLog))
+				}
+			}
+		}
+
+		fmt.Printf("=== END DEVICE HEALTH CHECK TIMEOUT DIAGNOSTICS [%s] ===\n", spec.Code)
+
 		return fmt.Errorf("failed to wait for device container to be healthy: %w", err)
 	}
-	d.log.Info("--> Device container is healthy", "container", shortContainerID(containerID), "cyoaNetworkIP", cyoaNetworkIP, "defaultNetworkIP", defaultNetworkIP, "name", container.Name, "duration", time.Since(start))
+	d.log.Debug("--> Device container is healthy", "container", shortContainerID(containerID), "cyoaNetworkIP", cyoaNetworkIP, "defaultNetworkIP", defaultNetworkIP, "name", container.Name, "duration", time.Since(start))
+
+	// Configure InfluxDB telemetry via EOS `monitor telemetry influx` command.
+	if d.dn.InfluxDB != nil && d.dn.InfluxDB.InternalURL != "" {
+		d.log.Debug("--> Configuring InfluxDB telemetry", "url", d.dn.InfluxDB.InternalURL)
+
+		// Configure EOS monitor telemetry influx destination.
+		// Note: Not using vrf management - the default VRF should have connectivity
+		// to the docker network where InfluxDB runs.
+		influxConfig := fmt.Sprintf(`enable
+configure
+monitor telemetry influx
+   destination influxdb DZ_INFLUX
+      url %s
+      database name %s
+      retention policy autogen
+   tag global dzd_pubkey %s
+   tag global location %s
+exit
+exit
+write memory
+`, d.dn.InfluxDB.InternalURL, d.dn.InfluxDB.Database(), devicePK, spec.Exchange)
+
+		_, err = docker.Exec(ctx, d.dn.dockerClient, containerID, []string{"Cli", "-c", influxConfig})
+		if err != nil {
+			return fmt.Errorf("failed to configure InfluxDB telemetry: %w", err)
+		}
+		d.log.Debug("--> InfluxDB telemetry configured")
+	}
 
 	// Set the component's state.
 	err = d.setState(ctx, container.GetContainerID())
@@ -591,7 +775,7 @@ func (d *Device) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to set device state: %w", err)
 	}
 
-	d.log.Info("--> Device started", "container", d.ContainerID, "cyoaNetworkIP", cyoaNetworkIP, "defaultNetworkIP", defaultNetworkIP, "devicePK", devicePK)
+	d.log.Debug("--> Device started", "container", d.ContainerID, "cyoaNetworkIP", cyoaNetworkIP, "defaultNetworkIP", defaultNetworkIP, "devicePK", devicePK)
 	return nil
 }
 
@@ -658,7 +842,7 @@ func (d *Device) setState(ctx context.Context, containerID string) error {
 	d.CYOANetworkIP = ip
 
 	// MaxUserTunnelSlots is now a constant from config package
-	d.log.Info("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)
+	d.log.Debug("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)
 
 	return nil
 }
@@ -700,6 +884,22 @@ func DeviceExecAristaCliJSON[T any](ctx context.Context, device *Device, command
 	}
 
 	return result, nil
+}
+
+// FetchTelemetryMetricsViaExec fetches Prometheus metrics by execing into the
+// container and curling localhost from within the given network namespace.
+// This avoids reliance on Docker port mapping which can be flaky when the
+// metrics listener runs inside a non-default namespace (e.g. ns-management).
+func (d *Device) FetchTelemetryMetricsViaExec(ctx context.Context, namespace string) ([]byte, error) {
+	port, err := d.InternalTelemetryMetricsPort()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get internal metrics port: %w", err)
+	}
+	cmd := []string{
+		"ip", "netns", "exec", namespace,
+		"wget", "-q", "-O-", fmt.Sprintf("http://localhost:%d/metrics", port),
+	}
+	return d.Exec(ctx, cmd)
 }
 
 func (d *Device) Exec(ctx context.Context, command []string) ([]byte, error) {

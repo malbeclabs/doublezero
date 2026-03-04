@@ -76,5 +76,18 @@ for dev in $(ip -o link show | awk -F': ' '/^ *[0-9]+: eth[0-9]+/ {print $2}' | 
     action pedit munge offset 22 u16 set 0x0800 pipe action pass 2>/dev/null || true
 done
 
+# Start QA agent if enabled (for local QA testing).
+if [ "${DZ_QAAGENT_ENABLE:-}" = "true" ]; then
+  QAAGENT_ADDR="${DZ_QAAGENT_ADDR:-0.0.0.0:7009}"
+  echo "==> Starting QA Agent on ${QAAGENT_ADDR}"
+  doublezero-qaagent -server-addr "${QAAGENT_ADDR}" &
+  QAAGENT_PID=$!
+  sleep 1
+  if ! kill -0 "$QAAGENT_PID" 2>/dev/null; then
+    echo "ERROR: QA Agent failed to start"
+    exit 1
+  fi
+fi
+
 # Start doublezerod.
 doublezerod --env localnet -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -probe-interval 5 -cache-update-interval 3 -metrics-enable -metrics-addr 0.0.0.0:8080 ${DZ_CLIENT_EXTRA_ARGS}

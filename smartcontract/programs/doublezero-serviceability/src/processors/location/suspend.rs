@@ -52,7 +52,7 @@ pub fn process_suspend_location(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     assert!(location_account.is_writable, "PDA Account is not writable");
@@ -64,6 +64,12 @@ pub fn process_suspend_location(
     }
 
     let mut location: Location = Location::try_from(location_account)?;
+
+    if location.status != LocationStatus::Activated {
+        #[cfg(test)]
+        msg!("{:?}", location);
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
 
     location.status = LocationStatus::Suspended;
 

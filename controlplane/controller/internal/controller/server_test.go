@@ -92,6 +92,7 @@ func TestGetConfig(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
+				UnicastVrfs: []uint16{1},
 				Devices: map[string]*Device{
 					"abc123": {
 						Interfaces:   []Interface{},
@@ -106,6 +107,8 @@ func TestGetConfig(t *testing.T) {
 								OverlayDstIP:  net.IP{169, 254, 0, 1},
 								DzIp:          net.IP{100, 0, 0, 0},
 								Allocated:     true,
+								VrfId:         1,
+								MetroRouting:  true,
 							},
 							{
 								Id:            501,
@@ -115,6 +118,8 @@ func TestGetConfig(t *testing.T) {
 								OverlayDstIP:  net.IP{169, 254, 0, 3},
 								DzIp:          net.IP{100, 0, 0, 1},
 								Allocated:     true,
+								VrfId:         1,
+								MetroRouting:  true,
 							},
 							{
 								Id:            502,
@@ -124,6 +129,8 @@ func TestGetConfig(t *testing.T) {
 								OverlayDstIP:  net.IP{169, 254, 0, 5},
 								DzIp:          net.IP{100, 0, 0, 2},
 								Allocated:     true,
+								VrfId:         1,
+								MetroRouting:  true,
 							},
 						},
 						PublicIP:              net.IP{7, 7, 7, 7},
@@ -144,6 +151,7 @@ func TestGetConfig(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
+				UnicastVrfs: []uint16{1},
 				Devices: map[string]*Device{
 					"abc123": {
 						Interfaces:   []Interface{},
@@ -229,6 +237,7 @@ func TestGetConfig(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
+				UnicastVrfs: []uint16{1},
 				Devices: map[string]*Device{
 					"abc123": {
 						ExchangeCode: "tst",
@@ -261,6 +270,8 @@ func TestGetConfig(t *testing.T) {
 								OverlayDstIP:  net.IP{169, 254, 0, 3},
 								DzIp:          net.IP{100, 0, 0, 1},
 								Allocated:     true,
+								VrfId:         1,
+								MetroRouting:  true,
 							},
 							{
 								Id:            502,
@@ -325,6 +336,7 @@ func TestGetConfig(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
+				UnicastVrfs: []uint16{1},
 				Devices: map[string]*Device{
 					"abc123": {
 						ExchangeCode: "tst",
@@ -357,6 +369,8 @@ func TestGetConfig(t *testing.T) {
 								OverlayDstIP:  net.IP{169, 254, 0, 3},
 								DzIp:          net.IP{100, 0, 0, 1},
 								Allocated:     true,
+								VrfId:         1,
+								MetroRouting:  true,
 							},
 							{
 								Id:            502,
@@ -420,6 +434,7 @@ func TestGetConfig(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
+				UnicastVrfs: []uint16{1},
 				Vpnv4BgpPeers: []BgpPeer{
 					{
 						PeerIP:   net.IP{15, 15, 15, 15},
@@ -481,6 +496,7 @@ func TestGetConfig(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
+				UnicastVrfs: []uint16{1},
 				Vpnv4BgpPeers: []BgpPeer{
 					{
 						PeerIP:   net.IP{15, 15, 15, 15},
@@ -598,6 +614,7 @@ func TestGetConfigWithPathologies(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
+				UnicastVrfs: []uint16{1},
 				Devices: map[string]*Device{
 					"abc123": {
 						PubKey:   "abc123",
@@ -693,6 +710,7 @@ func TestStateCache(t *testing.T) {
 		Links           []serviceability.Link
 		MulticastGroups []serviceability.MulticastGroup
 		Exchanges       []serviceability.Exchange
+		Tenants         []serviceability.Tenant
 		StateCache      stateCache
 	}{
 		{
@@ -721,7 +739,7 @@ func TestStateCache(t *testing.T) {
 					DevicePubKey: [32]uint8{1},
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
-					DzIp:         [4]uint8{100, 100, 100, 100},
+					DzIp:         [4]uint8{147, 100, 100, 100},
 					TunnelId:     uint16(500),
 					TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
 					Status:       serviceability.UserStatusActivated,
@@ -733,7 +751,7 @@ func TestStateCache(t *testing.T) {
 					DevicePubKey: [32]uint8{1},
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{3, 3, 3, 3},
-					DzIp:         [4]uint8{100, 100, 100, 101},
+					DzIp:         [4]uint8{147, 100, 100, 101},
 					TunnelId:     uint16(501),
 					TunnelNet:    [5]uint8{10, 1, 1, 2, 31},
 					Status:       serviceability.UserStatusActivated,
@@ -747,7 +765,7 @@ func TestStateCache(t *testing.T) {
 					DevicePubKey: [32]uint8{1},
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{0, 0, 0, 0},
-					DzIp:         [4]uint8{100, 100, 100, 102},
+					DzIp:         [4]uint8{147, 100, 100, 102},
 					TunnelId:     uint16(502),
 					TunnelNet:    [5]uint8{10, 1, 1, 3, 31},
 					Status:       serviceability.UserStatusActivated,
@@ -780,6 +798,32 @@ func TestStateCache(t *testing.T) {
 					TunnelNet:    [5]uint8{10, 1, 1, 5, 31},
 					Status:       serviceability.UserStatusActivated,
 					Subscribers:  [][32]uint8{{1}},
+				},
+				{
+					// Should not be added to StateCache due to martian DzIp (10.x.x.x)
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{6, 6, 6, 6},
+					DzIp:         [4]uint8{10, 0, 0, 1},
+					TunnelId:     uint16(503),
+					TunnelNet:    [5]uint8{10, 1, 1, 6, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+				{
+					// Should not be added to StateCache due to martian DzIp (127.x.x.x)
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{7, 7, 7, 7},
+					DzIp:         [4]uint8{127, 0, 0, 1},
+					TunnelId:     uint16(504),
+					TunnelNet:    [5]uint8{10, 1, 1, 8, 31},
+					Status:       serviceability.UserStatusActivated,
 				},
 			},
 			Devices: []serviceability.Device{
@@ -872,6 +916,8 @@ func TestStateCache(t *testing.T) {
 						MulticastIp: [4]uint8{239, 0, 0, 1},
 					},
 				},
+				Tenants:     map[string]serviceability.Tenant{},
+				UnicastVrfs: []uint16{1},
 				Vpnv4BgpPeers: []BgpPeer{
 					{
 						PeerIP:   net.IP{14, 14, 14, 14},
@@ -901,9 +947,11 @@ func TestStateCache(t *testing.T) {
 								UnderlayDstIP: net.IP{1, 1, 1, 1},
 								OverlaySrcIP:  net.IP{10, 1, 1, 0},
 								OverlayDstIP:  net.IP{10, 1, 1, 1},
-								DzIp:          net.IP{100, 100, 100, 100},
+								DzIp:          net.IP{147, 100, 100, 100},
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
+								VrfId:         1,
+								MetroRouting:  true,
 							},
 							{
 								Id:            501,
@@ -911,7 +959,7 @@ func TestStateCache(t *testing.T) {
 								UnderlayDstIP: net.IP{3, 3, 3, 3},
 								OverlaySrcIP:  net.IP{10, 1, 1, 2},
 								OverlayDstIP:  net.IP{10, 1, 1, 3},
-								DzIp:          net.IP{100, 100, 100, 101},
+								DzIp:          net.IP{147, 100, 100, 101},
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
 								IsMulticast:   true,
@@ -992,7 +1040,7 @@ func TestStateCache(t *testing.T) {
 					DevicePubKey: [32]uint8{1},
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
-					DzIp:         [4]uint8{100, 100, 100, 100},
+					DzIp:         [4]uint8{147, 100, 100, 100},
 					TunnelId:     uint16(500),
 					TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
 					Status:       serviceability.UserStatusActivated,
@@ -1017,6 +1065,8 @@ func TestStateCache(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{},
+				Tenants:         map[string]serviceability.Tenant{},
+				UnicastVrfs:     []uint16{1},
 				Vpnv4BgpPeers:   nil, // No BGP peers since device has pathologies
 				Devices: map[string]*Device{
 					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
@@ -1040,9 +1090,11 @@ func TestStateCache(t *testing.T) {
 								UnderlayDstIP: net.IP{1, 1, 1, 1},
 								OverlaySrcIP:  net.IP{10, 1, 1, 0},
 								OverlayDstIP:  net.IP{10, 1, 1, 1},
-								DzIp:          net.IP{100, 100, 100, 100},
+								DzIp:          net.IP{147, 100, 100, 100},
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
+								VrfId:         1,
+								MetroRouting:  true,
 							},
 						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
 						TunnelSlots: config.MaxUserTunnelSlots,
@@ -1070,7 +1122,7 @@ func TestStateCache(t *testing.T) {
 					DevicePubKey: [32]uint8{1},
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
-					DzIp:         [4]uint8{100, 100, 100, 100},
+					DzIp:         [4]uint8{147, 100, 100, 100},
 					TunnelId:     uint16(500),
 					TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
 					Status:       serviceability.UserStatusActivated,
@@ -1109,6 +1161,8 @@ func TestStateCache(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{},
+				Tenants:         map[string]serviceability.Tenant{},
+				UnicastVrfs:     []uint16{1},
 				Devices: map[string]*Device{
 					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
 						PubKey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
@@ -1148,12 +1202,353 @@ func TestStateCache(t *testing.T) {
 								UnderlayDstIP: net.IP{1, 1, 1, 1},
 								OverlaySrcIP:  net.IP{10, 1, 1, 0},
 								OverlayDstIP:  net.IP{10, 1, 1, 1},
-								DzIp:          net.IP{100, 100, 100, 100},
+								DzIp:          net.IP{147, 100, 100, 100},
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
+								VrfId:         1,
+								MetroRouting:  true,
 							},
 						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
 						TunnelSlots: config.MaxUserTunnelSlots,
+					},
+				},
+			},
+		},
+		{
+			Name: "user_with_explicit_tunnel_endpoint_uses_that_ip",
+			Config: serviceability.Config{
+				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+			},
+			Exchanges: []serviceability.Exchange{
+				{
+					PubKey:       [32]uint8{2},
+					Code:         "tst",
+					BgpCommunity: 10050,
+				},
+			},
+			Users: []serviceability.User{
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					UserType:       serviceability.UserUserType(serviceability.UserTypeIBRL),
+					DevicePubKey:   [32]uint8{1},
+					CyoaType:       serviceability.CyoaTypeGREOverDIA,
+					ClientIp:       [4]uint8{1, 1, 1, 1},
+					DzIp:           [4]uint8{147, 100, 100, 100},
+					TunnelId:       uint16(500),
+					TunnelNet:      [5]uint8{10, 1, 1, 0, 31},
+					Status:         serviceability.UserStatusActivated,
+					TunnelEndpoint: [4]uint8{5, 5, 5, 5}, // Explicit tunnel endpoint
+				},
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					UserType:       serviceability.UserUserType(serviceability.UserTypeIBRL),
+					DevicePubKey:   [32]uint8{1},
+					CyoaType:       serviceability.CyoaTypeGREOverDIA,
+					ClientIp:       [4]uint8{2, 2, 2, 2},
+					DzIp:           [4]uint8{147, 100, 100, 101},
+					TunnelId:       uint16(501),
+					TunnelNet:      [5]uint8{10, 1, 1, 2, 31},
+					Status:         serviceability.UserStatusActivated,
+					TunnelEndpoint: [4]uint8{0, 0, 0, 0}, // Unspecified - should fall back to device PublicIP
+				},
+			},
+			Devices: []serviceability.Device{
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					LocationPubKey: [32]uint8{3},
+					ExchangePubKey: [32]uint8{2},
+					DeviceType:     0,
+					PublicIp:       [4]uint8{3, 3, 3, 3},
+					Interfaces: []serviceability.Interface{
+						{
+							Name:          "Loopback255",
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeVpnv4,
+							IpNet:         [5]uint8{10, 10, 10, 1, 32},
+						},
+						{
+							Name:          "Loopback256",
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{10, 10, 10, 2, 32},
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc01",
+					PubKey: [32]byte{1},
+				},
+			},
+			Links: []serviceability.Link{},
+			StateCache: stateCache{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				MulticastGroups: map[string]serviceability.MulticastGroup{},
+				Tenants:         map[string]serviceability.Tenant{},
+				UnicastVrfs:     []uint16{1},
+				Vpnv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{10, 10, 10, 1},
+						PeerName: "abc01",
+					},
+				},
+				Ipv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{10, 10, 10, 2},
+						PeerName: "abc01",
+					},
+				},
+				Devices: map[string]*Device{
+					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
+						PubKey:                "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+						PublicIP:              net.IP{3, 3, 3, 3},
+						Vpn4vLoopbackIP:       net.IP{10, 10, 10, 1},
+						Vpn4vLoopbackIntfName: "Loopback255",
+						Ipv4LoopbackIP:        net.IP{10, 10, 10, 2},
+						Ipv4LoopbackIntfName:  "Loopback256",
+						IsisNet:               "49.0000.0a0a.0a01.0000.00",
+						DevicePathologies:     []string{},
+						ExchangeCode:          "tst",
+						BgpCommunity:          10050,
+						Status:                serviceability.DeviceStatusActivated,
+						Code:                  "abc01",
+						ContributorCode:       "unknown",
+						LocationCode:          "unknown",
+						Interfaces: []Interface{
+							{
+								Name:          "Loopback255",
+								Ip:            netip.MustParsePrefix("10.10.10.1/32"),
+								InterfaceType: InterfaceTypeLoopback,
+								LoopbackType:  LoopbackTypeVpnv4,
+							},
+							{
+								Name:          "Loopback256",
+								Ip:            netip.MustParsePrefix("10.10.10.2/32"),
+								InterfaceType: InterfaceTypeLoopback,
+								LoopbackType:  LoopbackTypeIpv4,
+							},
+						},
+						Tunnels: append([]*Tunnel{
+							{
+								Id:            500,
+								UnderlaySrcIP: net.IP{5, 5, 5, 5}, // Uses explicit TunnelEndpoint
+								UnderlayDstIP: net.IP{1, 1, 1, 1},
+								OverlaySrcIP:  net.IP{10, 1, 1, 0},
+								OverlayDstIP:  net.IP{10, 1, 1, 1},
+								DzIp:          net.IP{147, 100, 100, 100},
+								PubKey:        "11111111111111111111111111111111",
+								Allocated:     true,
+								VrfId:         1,
+								MetroRouting:  true,
+							},
+							{
+								Id:            501,
+								UnderlaySrcIP: net.IP{3, 3, 3, 3}, // Falls back to device PublicIP
+								UnderlayDstIP: net.IP{2, 2, 2, 2},
+								OverlaySrcIP:  net.IP{10, 1, 1, 2},
+								OverlayDstIP:  net.IP{10, 1, 1, 3},
+								DzIp:          net.IP{147, 100, 100, 101},
+								PubKey:        "11111111111111111111111111111111",
+								Allocated:     true,
+								VrfId:         1,
+								MetroRouting:  true,
+							},
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+2, config.MaxUserTunnelSlots-2)...),
+						TunnelSlots: config.MaxUserTunnelSlots,
+					},
+				},
+			},
+		},
+		{
+			Name: "tenant_vrf_assignment",
+			Config: serviceability.Config{
+				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+			},
+			Exchanges: []serviceability.Exchange{
+				{
+					PubKey:       [32]uint8{2},
+					Code:         "tst",
+					BgpCommunity: 10050,
+				},
+			},
+			Tenants: []serviceability.Tenant{
+				{
+					PubKey: [32]byte{10},
+					VrfId:  1,
+				},
+				{
+					PubKey: [32]byte{20},
+					VrfId:  2,
+				},
+			},
+			Users: []serviceability.User{
+				{
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					TenantPubKey: [32]uint8{10},
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{1, 1, 1, 1},
+					DzIp:         [4]uint8{147, 100, 100, 100},
+					TunnelId:     uint16(500),
+					TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+				{
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					TenantPubKey: [32]uint8{20},
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{2, 2, 2, 2},
+					DzIp:         [4]uint8{147, 100, 100, 101},
+					TunnelId:     uint16(501),
+					TunnelNet:    [5]uint8{10, 1, 1, 2, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+				{
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					TenantPubKey: [32]uint8{99},
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{3, 3, 3, 3},
+					DzIp:         [4]uint8{147, 100, 100, 102},
+					TunnelId:     uint16(502),
+					TunnelNet:    [5]uint8{10, 1, 1, 4, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+			},
+			Devices: []serviceability.Device{
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					LocationPubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{2},
+					DeviceType:     0,
+					PublicIp:       [4]uint8{2, 2, 2, 2},
+					Status:         serviceability.DeviceStatusActivated,
+					Code:           "abc01",
+					PubKey:         [32]byte{1},
+					Interfaces: []serviceability.Interface{
+						{
+							Name:           "Loopback255",
+							InterfaceType:  serviceability.InterfaceTypeLoopback,
+							LoopbackType:   serviceability.LoopbackTypeVpnv4,
+							IpNet:          [5]uint8{14, 14, 14, 14, 32},
+							NodeSegmentIdx: 101,
+						},
+						{
+							Name:          "Loopback256",
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{12, 12, 12, 12, 32},
+						},
+					},
+				},
+			},
+			StateCache: stateCache{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				MulticastGroups: map[string]serviceability.MulticastGroup{},
+				Tenants: map[string]serviceability.Tenant{
+					"g35TxFqwMx95vCk63fTxGTHb6ei4W24qg5t2x6xD3cT": {
+						PubKey: [32]byte{10},
+						VrfId:  1,
+					},
+					"2M59vuWgsiuHAqQVB6KvuXuaBCJR8138gMAm4uCuR6Du": {
+						PubKey: [32]byte{20},
+						VrfId:  2,
+					},
+				},
+				UnicastVrfs: []uint16{1, 2},
+				Vpnv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{14, 14, 14, 14},
+						PeerName: "abc01",
+					},
+				},
+				Ipv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{12, 12, 12, 12},
+						PeerName: "abc01",
+					},
+				},
+				Devices: map[string]*Device{
+					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
+						PubKey:            "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+						PublicIP:          net.IP{2, 2, 2, 2},
+						Vpn4vLoopbackIP:   net.IP{14, 14, 14, 14},
+						IsisNet:           "49.0000.0e0e.0e0e.0000.00",
+						Ipv4LoopbackIP:    net.IP{12, 12, 12, 12},
+						DevicePathologies: []string{},
+						ExchangeCode:      "tst",
+						BgpCommunity:      10050,
+						Tunnels: append([]*Tunnel{
+							{
+								Id:            500,
+								UnderlaySrcIP: net.IP{2, 2, 2, 2},
+								UnderlayDstIP: net.IP{1, 1, 1, 1},
+								OverlaySrcIP:  net.IP{10, 1, 1, 0},
+								OverlayDstIP:  net.IP{10, 1, 1, 1},
+								DzIp:          net.IP{147, 100, 100, 100},
+								PubKey:        "11111111111111111111111111111111",
+								Allocated:     true,
+								VrfId:         1,
+							},
+							{
+								Id:            501,
+								UnderlaySrcIP: net.IP{2, 2, 2, 2},
+								UnderlayDstIP: net.IP{2, 2, 2, 2},
+								OverlaySrcIP:  net.IP{10, 1, 1, 2},
+								OverlayDstIP:  net.IP{10, 1, 1, 3},
+								DzIp:          net.IP{147, 100, 100, 101},
+								PubKey:        "11111111111111111111111111111111",
+								Allocated:     true,
+								VrfId:         2,
+							},
+							{
+								Id:            502,
+								UnderlaySrcIP: net.IP{2, 2, 2, 2},
+								UnderlayDstIP: net.IP{3, 3, 3, 3},
+								OverlaySrcIP:  net.IP{10, 1, 1, 4},
+								OverlayDstIP:  net.IP{10, 1, 1, 5},
+								DzIp:          net.IP{147, 100, 100, 102},
+								PubKey:        "11111111111111111111111111111111",
+								Allocated:     true,
+								VrfId:         1,
+								MetroRouting:  true,
+							},
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+3, config.MaxUserTunnelSlots-3)...),
+						TunnelSlots: config.MaxUserTunnelSlots,
+						Interfaces: []Interface{
+							{
+								InterfaceType:  InterfaceTypeLoopback,
+								LoopbackType:   LoopbackTypeVpnv4,
+								Ip:             netip.MustParsePrefix("14.14.14.14/32"),
+								Name:           "Loopback255",
+								NodeSegmentIdx: 101,
+							},
+							{
+								InterfaceType: InterfaceTypeLoopback,
+								LoopbackType:  LoopbackTypeIpv4,
+								Ip:            netip.MustParsePrefix("12.12.12.12/32"),
+								Name:          "Loopback256",
+							},
+						},
+						Vpn4vLoopbackIntfName: "Loopback255",
+						Ipv4LoopbackIntfName:  "Loopback256",
+						Status:                serviceability.DeviceStatusActivated,
+						Code:                  "abc01",
+						ContributorCode:       "unknown",
+						LocationCode:          "unknown",
 					},
 				},
 			},
@@ -1176,6 +1571,7 @@ func TestStateCache(t *testing.T) {
 						Links:           test.Links,
 						MulticastGroups: test.MulticastGroups,
 						Exchanges:       test.Exchanges,
+						Tenants:         test.Tenants,
 					}, nil
 				},
 				ProgramIDFunc: func() solana.PublicKey {
@@ -1250,6 +1646,7 @@ func TestEndToEnd(t *testing.T) {
 		Links           []serviceability.Link
 		MulticastGroups []serviceability.MulticastGroup
 		Exchanges       []serviceability.Exchange
+		Tenants         []serviceability.Tenant
 		AgentRequest    *pb.ConfigRequest
 		DevicePubKey    string
 		Want            string
@@ -1280,7 +1677,7 @@ func TestEndToEnd(t *testing.T) {
 					DevicePubKey: [32]uint8{1},
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
-					DzIp:         [4]uint8{100, 100, 100, 100},
+					DzIp:         [4]uint8{147, 100, 100, 100},
 					TunnelId:     uint16(500),
 					TunnelNet:    [5]uint8{169, 254, 0, 0, 31},
 					Status:       serviceability.UserStatusActivated,
@@ -1292,7 +1689,7 @@ func TestEndToEnd(t *testing.T) {
 					DevicePubKey: [32]uint8{1},
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{3, 3, 3, 3},
-					DzIp:         [4]uint8{100, 100, 100, 101},
+					DzIp:         [4]uint8{147, 100, 100, 101},
 					TunnelId:     uint16(501),
 					TunnelNet:    [5]uint8{169, 254, 0, 2, 31},
 					Status:       serviceability.UserStatusActivated,
@@ -1412,7 +1809,7 @@ func TestEndToEnd(t *testing.T) {
 					DevicePubKey: [32]uint8{1},
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
-					DzIp:         [4]uint8{100, 100, 100, 100},
+					DzIp:         [4]uint8{147, 100, 100, 100},
 					TunnelId:     uint16(500),
 					TunnelNet:    [5]uint8{169, 254, 0, 0, 31},
 					Status:       serviceability.UserStatusActivated,
@@ -1424,7 +1821,7 @@ func TestEndToEnd(t *testing.T) {
 					DevicePubKey: [32]uint8{1},
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{3, 3, 3, 3},
-					DzIp:         [4]uint8{100, 100, 100, 101},
+					DzIp:         [4]uint8{147, 100, 100, 101},
 					TunnelId:     uint16(501),
 					TunnelNet:    [5]uint8{169, 254, 0, 2, 31},
 					Status:       serviceability.UserStatusActivated,
@@ -1564,6 +1961,98 @@ func TestEndToEnd(t *testing.T) {
 			},
 			Want: "fixtures/e2e.last.user.tmpl",
 		},
+		{
+			Name: "tenant_vrf_end_to_end",
+			Config: serviceability.Config{
+				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+			},
+			MulticastGroups: []serviceability.MulticastGroup{
+				{
+					PubKey:      [32]uint8{1},
+					MulticastIp: [4]uint8{239, 0, 0, 1},
+				},
+			},
+			Exchanges: []serviceability.Exchange{
+				{
+					PubKey:       [32]uint8{2},
+					Code:         "tst",
+					BgpCommunity: 10050,
+				},
+			},
+			Tenants: []serviceability.Tenant{
+				{
+					PubKey:       [32]byte{10},
+					VrfId:        1,
+					MetroRouting: true,
+				},
+				{
+					PubKey:       [32]byte{20},
+					VrfId:        2,
+					MetroRouting: true,
+				},
+			},
+			Users: []serviceability.User{
+				{
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					TenantPubKey: [32]uint8{10},
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{1, 1, 1, 1},
+					DzIp:         [4]uint8{147, 100, 100, 100},
+					TunnelId:     uint16(500),
+					TunnelNet:    [5]uint8{169, 254, 0, 0, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+				{
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					TenantPubKey: [32]uint8{20},
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{2, 2, 2, 2},
+					DzIp:         [4]uint8{147, 100, 100, 101},
+					TunnelId:     uint16(501),
+					TunnelNet:    [5]uint8{169, 254, 0, 2, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+			},
+			Devices: []serviceability.Device{
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					LocationPubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{2},
+					DeviceType:     0,
+					PublicIp:       [4]uint8{2, 2, 2, 2},
+					Interfaces: []serviceability.Interface{
+						{
+							InterfaceType:  serviceability.InterfaceTypeLoopback,
+							LoopbackType:   serviceability.LoopbackTypeVpnv4,
+							IpNet:          [5]uint8{14, 14, 14, 14, 32},
+							Name:           "Loopback255",
+							NodeSegmentIdx: 101,
+						},
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{12, 12, 12, 12, 32},
+							Name:          "Loopback256",
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc01",
+					PubKey: [32]byte{1},
+				},
+			},
+			AgentRequest: &pb.ConfigRequest{
+				Pubkey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+				BgpPeers: []string{},
+			},
+			Want: "fixtures/e2e.multi.vrf.tmpl",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
@@ -1577,6 +2066,7 @@ func TestEndToEnd(t *testing.T) {
 						Links:           test.Links,
 						MulticastGroups: test.MulticastGroups,
 						Exchanges:       test.Exchanges,
+						Tenants:         test.Tenants,
 					}, nil
 				},
 				ProgramIDFunc: func() solana.PublicKey {
@@ -1654,5 +2144,303 @@ func TestEndToEnd(t *testing.T) {
 				t.Errorf("Config mismatch in fixture %s (-want +got):\n%s", test.Want, diff)
 			}
 		})
+	}
+}
+
+func Test_deduplicateTunnels_RemovesDuplicates(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	controller := &Controller{
+		log: logger,
+	}
+
+	device := &Device{
+		PubKey: "testdevice123",
+		Code:   "dz1",
+		Tunnels: []*Tunnel{
+			{
+				Id:            500,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				PubKey:        "user1",
+				Allocated:     true,
+				VrfId:         1,
+			},
+			{
+				Id:            501,
+				UnderlaySrcIP: net.IP{3, 3, 3, 3},
+				UnderlayDstIP: net.IP{4, 4, 4, 4},
+				PubKey:        "user2",
+				Allocated:     true,
+				VrfId:         1,
+			},
+			{
+				Id:            502,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				PubKey:        "user3",
+				Allocated:     true,
+				VrfId:         1,
+			},
+		},
+	}
+
+	result := controller.deduplicateTunnels(device)
+
+	if len(result) != 2 {
+		t.Errorf("expected 2 tunnels after deduplication, got %d", len(result))
+	}
+
+	// Verify the first occurrence was kept
+	if result[0].Id != 500 || result[0].PubKey != "user1" {
+		t.Errorf("expected first tunnel to be kept (ID 500, user1), got ID %d, user %s", result[0].Id, result[0].PubKey)
+	}
+
+	// Verify the unique second tunnel was kept
+	if result[1].Id != 501 || result[1].PubKey != "user2" {
+		t.Errorf("expected second tunnel to be kept (ID 501, user2), got ID %d, user %s", result[1].Id, result[1].PubKey)
+	}
+}
+
+func Test_deduplicateTunnels_KeepsFirstOccurrence(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	controller := &Controller{
+		log: logger,
+	}
+
+	device := &Device{
+		PubKey: "testdevice123",
+		Code:   "dz1",
+		Tunnels: []*Tunnel{
+			{
+				Id:            500,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				PubKey:        "user1",
+				Allocated:     true,
+			},
+			{
+				Id:            501,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				PubKey:        "user2",
+				Allocated:     true,
+			},
+			{
+				Id:            502,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				PubKey:        "user3",
+				Allocated:     true,
+			},
+		},
+	}
+
+	result := controller.deduplicateTunnels(device)
+
+	if len(result) != 1 {
+		t.Errorf("expected 1 tunnel after deduplication, got %d", len(result))
+	}
+
+	if result[0].Id != 500 || result[0].PubKey != "user1" {
+		t.Errorf("expected first tunnel to be kept (ID 500, user1), got ID %d, user %s", result[0].Id, result[0].PubKey)
+	}
+}
+
+func Test_deduplicateTunnels_IgnoresUnallocated(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	controller := &Controller{
+		log: logger,
+	}
+
+	device := &Device{
+		PubKey: "testdevice123",
+		Code:   "dz1",
+		Tunnels: []*Tunnel{
+			{
+				Id:            500,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				PubKey:        "user1",
+				Allocated:     true,
+			},
+			{
+				Id:            501,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				Allocated:     false, // unallocated
+			},
+			{
+				Id:            502,
+				UnderlaySrcIP: net.IP{1, 1, 1, 1},
+				UnderlayDstIP: net.IP{2, 2, 2, 2},
+				PubKey:        "user2",
+				Allocated:     true,
+			},
+		},
+	}
+
+	result := controller.deduplicateTunnels(device)
+
+	// Should have 2 tunnels: one allocated (first), one unallocated
+	// The duplicate allocated tunnel should be removed
+	if len(result) != 2 {
+		t.Errorf("expected 2 tunnels after deduplication, got %d", len(result))
+	}
+
+	// First should be the allocated tunnel
+	if result[0].Id != 500 || !result[0].Allocated {
+		t.Errorf("expected first tunnel to be allocated (ID 500), got ID %d, allocated %v", result[0].Id, result[0].Allocated)
+	}
+
+	// Second should be the unallocated tunnel
+	if result[1].Id != 501 || result[1].Allocated {
+		t.Errorf("expected second tunnel to be unallocated (ID 501), got ID %d, allocated %v", result[1].Id, result[1].Allocated)
+	}
+}
+
+func Test_deduplicateTunnels_EmptyList(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	controller := &Controller{
+		log: logger,
+	}
+
+	device := &Device{
+		PubKey:  "testdevice123",
+		Code:    "dz1",
+		Tunnels: []*Tunnel{},
+	}
+
+	result := controller.deduplicateTunnels(device)
+
+	if len(result) != 0 {
+		t.Errorf("expected 0 tunnels, got %d", len(result))
+	}
+}
+
+func Test_GetConfig_DuplicateTunnelPairs_Integration(t *testing.T) {
+	listener := bufconn.Listen(1024 * 1024)
+	server := grpc.NewServer()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	controller := &Controller{
+		log:            logger,
+		deviceLocalASN: 65342,
+	}
+	pb.RegisterControllerServer(server, controller)
+
+	go func() {
+		if err := server.Serve(listener); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return listener.Dial()
+		}),
+	}
+	conn, err := grpc.NewClient("passthrough://bufnet", opts...)
+	if err != nil {
+		t.Fatalf("error creating controller client: %v", err)
+	}
+	defer conn.Close()
+	defer cancel()
+
+	agent := pb.NewControllerClient(conn)
+
+	// Create a state cache with duplicate tunnel pairs
+	stateCache := stateCache{
+		Config: serviceability.Config{
+			MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+		},
+		UnicastVrfs: []uint16{1},
+		Devices: map[string]*Device{
+			"abc123": {
+				PubKey:                "abc123",
+				Code:                  "dz1",
+				Interfaces:            []Interface{},
+				ExchangeCode:          "tst",
+				BgpCommunity:          10050,
+				PublicIP:              net.IP{7, 7, 7, 7},
+				Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+				Ipv4LoopbackIP:        net.IP{15, 15, 15, 15},
+				Vpn4vLoopbackIntfName: "Loopback255",
+				Ipv4LoopbackIntfName:  "Loopback0",
+				IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+				DevicePathologies:     []string{},
+				Tunnels: []*Tunnel{
+					{
+						Id:            500,
+						UnderlaySrcIP: net.IP{1, 1, 1, 1},
+						UnderlayDstIP: net.IP{2, 2, 2, 2},
+						OverlaySrcIP:  net.IP{169, 254, 0, 0},
+						OverlayDstIP:  net.IP{169, 254, 0, 1},
+						DzIp:          net.IP{100, 0, 0, 0},
+						PubKey:        "user1",
+						Allocated:     true,
+						VrfId:         1,
+						MetroRouting:  true,
+					},
+					{
+						Id:            501,
+						UnderlaySrcIP: net.IP{3, 3, 3, 3},
+						UnderlayDstIP: net.IP{4, 4, 4, 4},
+						OverlaySrcIP:  net.IP{169, 254, 0, 2},
+						OverlayDstIP:  net.IP{169, 254, 0, 3},
+						DzIp:          net.IP{100, 0, 0, 1},
+						PubKey:        "user2",
+						Allocated:     true,
+						VrfId:         1,
+						MetroRouting:  true,
+					},
+					{
+						// Duplicate of tunnel 500
+						Id:            502,
+						UnderlaySrcIP: net.IP{1, 1, 1, 1},
+						UnderlayDstIP: net.IP{2, 2, 2, 2},
+						OverlaySrcIP:  net.IP{169, 254, 0, 4},
+						OverlayDstIP:  net.IP{169, 254, 0, 5},
+						DzIp:          net.IP{100, 0, 0, 2},
+						PubKey:        "user3",
+						Allocated:     true,
+						VrfId:         1,
+						MetroRouting:  true,
+					},
+				},
+			},
+		},
+	}
+
+	controller.swapCache(stateCache)
+
+	// Fetch config
+	resp, err := agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: "abc123"})
+	if err != nil {
+		t.Fatalf("error fetching config: %v", err)
+	}
+
+	// Verify that the rendered config only contains unique tunnel pairs
+	config := resp.Config
+
+	// Check that interface Tunnel500 appears (first occurrence)
+	if !strings.Contains(config, "interface Tunnel500") {
+		t.Errorf("expected config to contain 'interface Tunnel500'")
+	}
+
+	// Check that interface Tunnel501 appears (unique tunnel)
+	if !strings.Contains(config, "interface Tunnel501") {
+		t.Errorf("expected config to contain 'interface Tunnel501'")
+	}
+
+	// Check that interface Tunnel502 does NOT appear (duplicate)
+	if strings.Contains(config, "interface Tunnel502") {
+		t.Errorf("expected config to NOT contain 'interface Tunnel502' (duplicate)")
+	}
+
+	// Count occurrences of "tunnel source" to verify we only have 2 tunnels
+	tunnelSourceCount := strings.Count(config, "tunnel source")
+	if tunnelSourceCount != 2 {
+		t.Errorf("expected 2 tunnels in config (2 'tunnel source' lines), got %d", tunnelSourceCount)
 	}
 }

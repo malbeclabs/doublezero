@@ -50,7 +50,7 @@ pub struct CreateDeviceCliCommand {
     #[arg(long, default_value = "default")]
     pub mgmt_vrf: String,
     /// Desired status for the device (optional)
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub desired_status: Option<DeviceDesiredStatus>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
@@ -350,6 +350,11 @@ mod tests {
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         let mut devices = HashMap::new();

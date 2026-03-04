@@ -36,12 +36,16 @@ impl From<DeallocateResourceCliCommand> for DeallocateResourceCommand {
             ResourceType::DeviceTunnelBlock
             | ResourceType::UserTunnelBlock
             | ResourceType::MulticastGroupBlock
+            | ResourceType::MulticastPublisherBlock
             | ResourceType::DzPrefixBlock => IdOrIp::Ip(
                 cmd.value
                     .parse::<NetworkV4>()
                     .expect("Failed to parse IP address"),
             ),
-            ResourceType::TunnelIds | ResourceType::LinkIds | ResourceType::SegmentRoutingIds => {
+            ResourceType::TunnelIds
+            | ResourceType::LinkIds
+            | ResourceType::SegmentRoutingIds
+            | ResourceType::VrfIds => {
                 IdOrIp::Id(cmd.value.parse::<u16>().expect("Failed to parse ID"))
             }
         };

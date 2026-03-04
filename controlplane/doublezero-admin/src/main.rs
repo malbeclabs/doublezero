@@ -13,6 +13,7 @@ use crate::cli::{
     },
     link::LinkCommands,
     location::LocationCommands,
+    tenant::TenantCommands,
     user::UserCommands,
 };
 use doublezero_cli::doublezerocommand::CliCommandImpl;
@@ -125,6 +126,15 @@ async fn main() -> eyre::Result<()> {
                 args.execute(&client, &mut handle)
             }
         },
+        Command::Tenant(command) => match command.command {
+            TenantCommands::Create(args) => args.execute(&client, &mut handle),
+            TenantCommands::Update(args) => args.execute(&client, &mut handle),
+            TenantCommands::List(args) => args.execute(&client, &mut handle),
+            TenantCommands::Get(args) => args.execute(&client, &mut handle),
+            TenantCommands::Delete(args) => args.execute(&client, &mut handle),
+            TenantCommands::AddAdministrator(args) => args.execute(&client, &mut handle),
+            TenantCommands::RemoveAdministrator(args) => args.execute(&client, &mut handle),
+        },
         Command::Device(command) => match command.command {
             DeviceCommands::Create(args) => args.execute(&client, &mut handle),
             DeviceCommands::Update(args) => args.execute(&client, &mut handle),
@@ -154,6 +164,7 @@ async fn main() -> eyre::Result<()> {
             cli::accesspass::AccessPassCommands::Set(args) => args.execute(&client, &mut handle),
             cli::accesspass::AccessPassCommands::Close(args) => args.execute(&client, &mut handle),
             cli::accesspass::AccessPassCommands::List(args) => args.execute(&client, &mut handle),
+            cli::accesspass::AccessPassCommands::Get(args) => args.execute(&client, &mut handle),
         },
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client, &mut handle),

@@ -7,9 +7,13 @@ use crate::{
 };
 use clap::Args;
 use doublezero_sdk::{
-    commands::{device::get::GetDeviceCommand, user::create::CreateUserCommand},
+    commands::{
+        accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
+        tenant::get::GetTenantCommand, user::create::CreateUserCommand,
+    },
     UserCYOA, UserType,
 };
+use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
 
 #[derive(Args, Debug)]
@@ -23,6 +27,9 @@ pub struct CreateUserCliCommand {
     /// Allocate a new address for the user
     #[arg(short, long, default_value_t = false)]
     pub allocate_addr: bool,
+    /// Tenant Pubkey or code (optional)
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub tenant: Option<String>,
     /// Wait for the user to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -45,6 +52,44 @@ impl CreateUserCliCommand {
             }
         };
 
+        let accesspass = client
+            .get_accesspass(GetAccessPassCommand {
+                client_ip: self.client_ip,
+                user_payer: client.get_payer(),
+            })?
+            .map(|(_, ap)| ap)
+            .ok_or_else(|| {
+                eyre::eyre!(
+                    "No valid AccessPass found for IP: {} user_payer: {}",
+                    self.client_ip,
+                    client.get_payer()
+                )
+            })?;
+
+        // Determine tenant: 1) from CLI argument, 2) from config file, 3) from access pass allowlist
+        let tenant = self.tenant.or_else(|| {
+            accesspass
+                .tenant_allowlist
+                .first()
+                .filter(|pk| **pk != Pubkey::default())
+                .map(|pk| pk.to_string())
+        });
+
+        let tenant_pk = match tenant {
+            None => None,
+            Some(tenant_str) => match parse_pubkey(&tenant_str) {
+                Some(pk) => Some(pk),
+                None => {
+                    let (pubkey, _) = client
+                        .get_tenant(GetTenantCommand {
+                            pubkey_or_code: tenant_str.clone(),
+                        })
+                        .map_err(|_| eyre::eyre!("Tenant not found"))?;
+                    Some(pubkey)
+                }
+            },
+        };
+
         let (signature, pubkey) = client.create_user(CreateUserCommand {
             user_type: if self.allocate_addr {
                 UserType::IBRLWithAllocatedIP
@@ -54,6 +99,8 @@ impl CreateUserCliCommand {
             device_pk,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip: self.client_ip,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tenant_pk,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -73,12 +120,19 @@ mod tests {
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     };
     use doublezero_sdk::{
-        commands::{device::get::GetDeviceCommand, user::create::CreateUserCommand},
+        commands::{
+            accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
+            user::create::CreateUserCommand,
+        },
         AccountType, Device, DeviceStatus, DeviceType, UserCYOA, UserType,
     };
-    use doublezero_serviceability::pda::get_user_old_pda;
+    use doublezero_serviceability::{
+        pda::{get_accesspass_pda, get_user_old_pda},
+        state::accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+    };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use std::net::Ipv4Addr;
 
     use crate::{tests::utils::create_test_client, user::create::CreateUserCliCommand};
 
@@ -118,6 +172,11 @@ mod tests {
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client
@@ -131,6 +190,33 @@ mod tests {
             }))
             .returning(move |_| Ok((device_pubkey, device.clone())));
 
+        let client_ip: Ipv4Addr = [100, 0, 0, 1].into();
+        let user_payer = client.get_payer();
+        let (accesspass_pubkey, _) =
+            get_accesspass_pda(&client.get_program_id(), &client_ip, &user_payer);
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 255,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            user_payer,
+            last_access_epoch: 10,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            owner: client.get_payer(),
+            flags: 0,
+        };
+        client
+            .expect_get_accesspass()
+            .with(predicate::eq(GetAccessPassCommand {
+                client_ip,
+                user_payer,
+            }))
+            .returning(move |_| Ok(Some((accesspass_pubkey, accesspass.clone()))));
+
         client
             .expect_create_user()
             .with(predicate::eq(CreateUserCommand {
@@ -138,6 +224,8 @@ mod tests {
                 device_pk: device_pubkey,
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: [100, 0, 0, 1].into(),
+                tenant_pk: None,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
@@ -148,6 +236,7 @@ mod tests {
             device: "device1".to_string(),
             client_ip: [100, 0, 0, 1].into(),
             allocate_addr: false,
+            tenant: None,
             wait: false,
         }
         .execute(&client, &mut output);

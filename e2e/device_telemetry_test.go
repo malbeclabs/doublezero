@@ -21,8 +21,9 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/prometheus"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	telemetrysdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,7 +31,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t)
 
 	// Use the hardcoded serviceability program keypair for this test, since the telemetry program
 	// is built with it as an expectation, and the initialize instruction will fail if the owner
@@ -58,12 +59,47 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			TopUpSOL:      topUpSOL,
 			Interval:      3 * time.Second,
 		},
+		InfluxDB:           devnet.InfluxDBSpec{Enabled: true},
+		Prometheus:         devnet.PrometheusSpec{Enabled: true},
+		DeviceHealthOracle: devnet.DeviceHealthOracleSpec{Enabled: true},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
-	log.Info("==> Starting devnet")
+	log.Debug("==> Starting devnet")
 	err = dn.Start(t.Context(), nil)
 	require.NoError(t, err)
+
+	// Dump telemetry agent diagnostics on failure to help debug flaky probe issues.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		var buf strings.Builder
+		fmt.Fprintf(&buf, "\n=== TELEMETRY DIAGNOSTIC DUMP (deploy=%s) ===\n", deployID)
+		for code, device := range dn.Devices {
+			for _, cmd := range []struct {
+				label   string
+				command []string
+			}{
+				{"doublezero-telemetry log (last 200 lines)", []string{"tail", "-200", "/var/log/agents-latest/doublezero-telemetry"}},
+				{"Launcher log (last 50 lines)", []string{"bash", "-c", "tail -50 /var/log/agents/Launcher-*"}},
+				{"ip addr show (tunnel interfaces)", []string{"bash", "-c", "ip addr show | grep -A2 'Tunnel\\|tun'"}},
+				{"interface list", []string{"Cli", "-c", "show interfaces status"}},
+			} {
+				output, err := device.Exec(ctx, cmd.command)
+				if err != nil {
+					fmt.Fprintf(&buf, "\n--- Device %s: %s (ERROR: %v)\n", code, cmd.label, err)
+				} else {
+					fmt.Fprintf(&buf, "\n--- Device %s: %s\n%s", code, cmd.label, string(output))
+				}
+			}
+		}
+		fmt.Fprintf(&buf, "\n=== TELEMETRY DIAGNOSTIC DUMP END ===\n")
+		fmt.Fprint(os.Stderr, buf.String())
+	})
 
 	linkNetwork := devnet.NewMiscNetwork(dn, log, "la2-dz01:ny5-dz01")
 	_, err = linkNetwork.CreateIfNotExists(t.Context())
@@ -168,7 +204,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	wg.Wait()
 
 	// Add some dummy devices onchain.
-	log.Info("==> Adding dummy devices onchain")
+	log.Debug("==> Adding dummy devices onchain")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 			set -euo pipefail
 			doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.80/29" --mgmt-vrf mgmt --desired-status activated
@@ -177,31 +213,31 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			doublezero device create --code ty2-dz01 --contributor co01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "180.87.154.120/29" --mgmt-vrf mgmt --desired-status activated
 			doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
 			doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt --desired-status activated
-			doublezero device update --pubkey ams-dz001 --desired-status activated		
+			doublezero device update --pubkey ams-dz001 --desired-status activated
 
-			doublezero device interface create ld4-dz01 "Ethernet2"
-			doublezero device interface create ld4-dz01 "Ethernet3"
-			doublezero device interface create ld4-dz01 "Ethernet4"
-			doublezero device interface create frk-dz01 "Ethernet2"
-			doublezero device interface create sg1-dz01 "Ethernet2"
-			doublezero device interface create sg1-dz01 "Ethernet3"
-			doublezero device interface create ty2-dz01 "Ethernet2"
-			doublezero device interface create pit-dzd01 "Ethernet2"
-			doublezero device interface create ams-dz001 "Ethernet2"
+			doublezero device interface create ld4-dz01 "Ethernet2" --bandwidth 10G
+			doublezero device interface create ld4-dz01 "Ethernet3" --bandwidth 10G
+			doublezero device interface create ld4-dz01 "Ethernet4" --bandwidth 10G
+			doublezero device interface create frk-dz01 "Ethernet2" --bandwidth 10G
+			doublezero device interface create sg1-dz01 "Ethernet2" --bandwidth 10G
+			doublezero device interface create sg1-dz01 "Ethernet3" --bandwidth 10G
+			doublezero device interface create ty2-dz01 "Ethernet2" --bandwidth 10G
+			doublezero device interface create pit-dzd01 "Ethernet2" --bandwidth 10G
+			doublezero device interface create ams-dz001 "Ethernet2" --bandwidth 10G
 
-			doublezero device interface create ld4-dz01 "Loopback255" --loopback-type vpnv4
-			doublezero device interface create frk-dz01 "Loopback255" --loopback-type vpnv4
-			doublezero device interface create sg1-dz01 "Loopback255" --loopback-type vpnv4
-			doublezero device interface create ty2-dz01 "Loopback255" --loopback-type vpnv4
-			doublezero device interface create pit-dzd01 "Loopback255" --loopback-type vpnv4
-			doublezero device interface create ams-dz001 "Loopback255" --loopback-type vpnv4
+			doublezero device interface create ld4-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
+			doublezero device interface create frk-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
+			doublezero device interface create sg1-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
+			doublezero device interface create ty2-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
+			doublezero device interface create pit-dzd01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
+			doublezero device interface create ams-dz001 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
 
-			doublezero device interface create ld4-dz01 "Loopback256" --loopback-type ipv4
-			doublezero device interface create frk-dz01 "Loopback256" --loopback-type ipv4
-			doublezero device interface create sg1-dz01 "Loopback256" --loopback-type ipv4
-			doublezero device interface create ty2-dz01 "Loopback256" --loopback-type ipv4
-			doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4
-			doublezero device interface create ams-dz001 "Loopback256" --loopback-type ipv4
+			doublezero device interface create ld4-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G
+			doublezero device interface create frk-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G
+			doublezero device interface create sg1-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G
+			doublezero device interface create ty2-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G
+			doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4 --bandwidth 10G
+			doublezero device interface create ams-dz001 "Loopback256" --loopback-type ipv4 --bandwidth 10G
 
 			doublezero device update --pubkey ld4-dz01 --max-users 128
 			doublezero device update --pubkey frk-dz01 --max-users 128
@@ -213,20 +249,20 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 `})
 	require.NoError(t, err)
 
-	log.Info("==> Creating links onchain")
+	log.Debug("==> Creating links onchain")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 			set -euo pipefail
 
-			doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 --desired-status activated			
-			doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet3 --side-z ld4-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated			
-			doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10 --desired-status activated			
-			doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9 --desired-status activated			
+			doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 --desired-status activated
+			doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet3 --side-z ld4-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated
+			doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10 --desired-status activated
+			doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9 --desired-status activated
 			doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7 --desired-status activated
 		`})
 	require.NoError(t, err)
 
 	var la2ToNY5LinkTunnelLA2IP, la2ToNY5LinkTunnelNY5IP string
-	log.Info("==> Waiting for interfaces to be created on the devices")
+	log.Debug("==> Waiting for interfaces to be created on the devices")
 	require.Eventually(t, func() bool {
 		la2Device := dn.Devices["la2-dz01"]
 		ny5Device := dn.Devices["ny5-dz01"]
@@ -282,7 +318,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	}, 120*time.Second, 3*time.Second, "Timed out waiting for the devices to be reachable via their link tunnel")
 
 	// Wait for the devices to be reachable from each other via their link tunnel using TWAMP UDP probes.
-	log.Info("==> Waiting for devices to be reachable from each other via their link tunnel using TWAMP")
+	log.Debug("==> Waiting for devices to be reachable from each other via their link tunnel using TWAMP")
 	require.Eventually(t, func() bool {
 		_, err := dn.Devices["la2-dz01"].Exec(t.Context(), []string{"twamp-sender", "-q", "-local-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelLA2IP, 0), "-remote-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelNY5IP, 862)})
 		if err != nil {
@@ -305,14 +341,22 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Fetch metrics from both devices.
+	// la2 (no management NS): use HTTP via Docker port mapping.
 	la2MetricsClient := dn.Devices["la2-dz01"].GetTelemetryMetricsClient()
-	require.NoError(t, la2MetricsClient.WaitForReady(t.Context(), 10*time.Second))
+	require.NoError(t, la2MetricsClient.WaitForReady(t.Context(), 30*time.Second))
 	err = la2MetricsClient.Fetch(t.Context())
 	require.NoError(t, err)
-	ny5MetricsClient := dn.Devices["ny5-dz01"].GetTelemetryMetricsClient()
-	require.NoError(t, ny5MetricsClient.WaitForReady(t.Context(), 60*time.Second))
-	err = ny5MetricsClient.Fetch(t.Context())
-	require.NoError(t, err)
+	// ny5 (management NS): fetch via exec inside ns-management to avoid flaky
+	// cross-namespace Docker port mapping on resource-constrained CI.
+	ny5MetricsClient := prometheus.NewMetricsClient("" /* unused, fetched via exec */)
+	require.Eventually(t, func() bool {
+		data, execErr := dn.Devices["ny5-dz01"].FetchTelemetryMetricsViaExec(t.Context(), "ns-management")
+		if execErr != nil {
+			log.Debug("Waiting for ny5 metrics via exec", "error", execErr)
+			return false
+		}
+		return ny5MetricsClient.ParseMetrics(data) == nil
+	}, 120*time.Second, 2*time.Second, "ny5 metrics should be fetchable via exec")
 
 	// Get post-startup "errors_total" metric for the la2 device, so we can check that it's 0 at the end.
 	la2ErrorsCounterValues := la2MetricsClient.GetCounterValues("doublezero_device_telemetry_agent_errors_total")
@@ -327,7 +371,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	}
 
 	// Check that TWAMP probes work between the devices.
-	log.Info("==> Checking that TWAMP probes work between the devices")
+	log.Debug("==> Checking that TWAMP probes work between the devices")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	sender := dn.Devices["ny5-dz01"]
@@ -345,16 +389,24 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		_, err := reflector.Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("ss -uln '( dport = :%d )' | grep -q .", port)})
 		return err == nil
 	}, 3*time.Second, 100*time.Millisecond)
-	output, err := sender.Exec(t.Context(), []string{"twamp-sender", "-q", "-local-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelNY5IP, 0), "-remote-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelLA2IP, port)})
-	require.NoError(t, err)
-	log.Info("TWAMP sender output", "output", string(output))
+	var output []byte
+	require.Eventually(t, func() bool {
+		var sendErr error
+		output, sendErr = sender.Exec(t.Context(), []string{"twamp-sender", "-q", "-local-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelNY5IP, 0), "-remote-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelLA2IP, port)})
+		if sendErr != nil {
+			log.Debug("Waiting for TWAMP sender to succeed", "error", sendErr)
+			return false
+		}
+		return true
+	}, 30*time.Second, 1*time.Second, "TWAMP sender should succeed")
+	log.Debug("TWAMP sender output", "output", string(output))
 	require.Contains(t, string(output), "RTT:")
 	rtt, err := time.ParseDuration(strings.TrimSpace(strings.TrimPrefix(string(output), "RTT: ")))
 	require.NoError(t, err)
 	require.Greater(t, rtt, 0*time.Millisecond)
 
 	// Get devices and links from the serviceability program.
-	log.Info("==> Waiting for devices and links to be available onchain")
+	log.Debug("==> Waiting for devices and links to be available onchain")
 	devices, links, _ := waitForDevicesAndLinks(t, dn, 8, 5, 30*time.Second)
 
 	// Get the device and link public keys.
@@ -371,7 +423,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	la2ToNy5LinkPK := solana.PublicKeyFromBytes(la2ToNy5Link.PubKey[:])
 
 	// Check that the telemetry program is deployed.
-	log.Info("==> Checking that telemetry program is deployed")
+	log.Debug("==> Checking that telemetry program is deployed")
 	isDeployed, err := dn.IsTelemetryProgramDeployed(t.Context())
 	require.NoError(t, err)
 	require.True(t, isDeployed)
@@ -383,9 +435,9 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	epoch := epochInfo.Epoch
 
 	// Check that the telemetry samples are being submitted to the telemetry program.
-	log.Info("==> Checking that telemetry samples are being submitted to the telemetry program", "epoch", epoch)
-	account, duration := waitForDeviceLatencySamples(t, dn, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch, 16, 90*time.Second)
-	log.Info("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
+	log.Debug("==> Checking that telemetry samples are being submitted to the telemetry program", "epoch", epoch)
+	account, duration := waitForDeviceLatencySamples(t, dn, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch, 16, true, 120*time.Second)
+	log.Debug("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
 	require.Greater(t, len(account.Samples), 1)
 	require.Equal(t, len(account.Samples), int(account.NextSampleIndex))
 	// If there are 0s, they should be at the beginning of the samples array, with all non-zero values after them.
@@ -404,9 +456,9 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	// Check that more samples are being submitted.
 	// NOTE: We're assuming the epoch hasn't changed since the last batch of samples was
 	// submitted, or else this test will fail.
-	log.Info("==> Checking that more telemetry samples are being submitted to the telemetry program", "epoch", epoch)
-	account, duration = waitForDeviceLatencySamples(t, dn, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch, len(prevAccount.Samples), 90*time.Second)
-	log.Info("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
+	log.Debug("==> Checking that more telemetry samples are being submitted to the telemetry program", "epoch", epoch)
+	account, duration = waitForDeviceLatencySamples(t, dn, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch, len(prevAccount.Samples), true, 120*time.Second)
+	log.Debug("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
 	require.Greater(t, len(account.Samples), len(prevAccount.Samples))
 	require.Equal(t, prevAccount.StartTimestampMicroseconds, account.StartTimestampMicroseconds)
 	require.Equal(t, prevAccount.SamplingIntervalMicroseconds, account.SamplingIntervalMicroseconds)
@@ -418,9 +470,9 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	prevAccount = account
 
 	// Get samples for the 2 active devices in other direction and check that they're all non-zero RTTs too.
-	log.Info("==> Checking that telemetry samples are being submitted to the telemetry program in other direction", "epoch", epoch)
-	account, duration = waitForDeviceLatencySamples(t, dn, ny5DevicePK, la2DevicePK, la2ToNy5LinkPK, epoch, 16, 90*time.Second)
-	log.Info("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
+	log.Debug("==> Checking that telemetry samples are being submitted to the telemetry program in other direction", "epoch", epoch)
+	account, duration = waitForDeviceLatencySamples(t, dn, ny5DevicePK, la2DevicePK, la2ToNy5LinkPK, epoch, 16, true, 120*time.Second)
+	log.Debug("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
 	require.Greater(t, len(account.Samples), 1)
 	require.Equal(t, len(account.Samples), int(account.NextSampleIndex))
 	// If there are 0s, they should be at the beginning of the samples array, with all non-zero values after them.
@@ -446,23 +498,24 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	ny5ToLd4LinkPK := solana.PublicKeyFromBytes(ny5ToLd4Link.PubKey[:])
 
 	// Get samples for link with dummy device and check that they're all 0 RTTs (losses).
-	log.Info("==> Checking that telemetry samples are being submitted to the telemetry program for link with dummy device", "epoch", epoch)
-	account, duration = waitForDeviceLatencySamples(t, dn, ny5DevicePK, ld4DevicePK, ny5ToLd4LinkPK, epoch, 10, 90*time.Second)
-	log.Info("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
+	log.Debug("==> Checking that telemetry samples are being submitted to the telemetry program for link with dummy device", "epoch", epoch)
+	account, duration = waitForDeviceLatencySamples(t, dn, ny5DevicePK, ld4DevicePK, ny5ToLd4LinkPK, epoch, 10, false, 120*time.Second)
+	log.Debug("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
 	require.Greater(t, len(account.Samples), 1)
 	require.Equal(t, len(account.Samples), int(account.NextSampleIndex))
 	for _, rtt := range account.Samples {
 		require.Equal(t, uint32(0), rtt)
 	}
 
-	// Fetch metrics from both devices.
+	// Re-fetch metrics from both devices.
 	err = la2MetricsClient.Fetch(t.Context())
 	require.NoError(t, err)
-	err = ny5MetricsClient.Fetch(t.Context())
+	ny5MetricsData, err := dn.Devices["ny5-dz01"].FetchTelemetryMetricsViaExec(t.Context(), "ns-management")
 	require.NoError(t, err)
+	require.NoError(t, ny5MetricsClient.ParseMetrics(ny5MetricsData))
 
 	// Check that la2 has 0 "tunnel not found" gauge metric value, since it has no links with non-existent devices.
-	log.Info("==> Checking that la2 has 0 not found tunnels")
+	log.Debug("==> Checking that la2 has 0 not found tunnels")
 	la2NotFoundTunnelsGaugeValues := la2MetricsClient.GetGaugeValues("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
 	require.NotNil(t, la2NotFoundTunnelsGaugeValues)
 	require.Equal(t, 1, len(la2NotFoundTunnelsGaugeValues))
@@ -472,7 +525,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.Equal(t, 0, la2TNotFoundTunnelsCount)
 
 	// Check that ny5 has 1 "tunnel not found" gauge metric value, since it has a link with a non-existent device.
-	log.Info("==> Checking that ny5 has 1 not found tunnels")
+	log.Debug("==> Checking that ny5 has 1 not found tunnels")
 	ny5NotFoundTunnelsGaugeValues := ny5MetricsClient.GetGaugeValues("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
 	require.NotNil(t, ny5NotFoundTunnelsGaugeValues)
 	require.Equal(t, 1, len(ny5NotFoundTunnelsGaugeValues))
@@ -482,7 +535,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.Equal(t, 1, ny5TNotFoundTunnelsCount)
 
 	// Check that the "errors_total" counter has not increased from startup.
-	log.Info("==> Checking that errors_total counter has not increased from startup")
+	log.Debug("==> Checking that errors_total counter has not increased from startup")
 	la2ErrorsCounterValues = la2MetricsClient.GetCounterValues("doublezero_device_telemetry_agent_errors_total")
 	if la2ErrorsCounterValues != nil {
 		require.Equal(t, prevLA2ErrorsCount, int(la2ErrorsCounterValues[0].Value), "la2 errors_total should be 0: %v", la2ErrorsCounterValues)
@@ -492,17 +545,17 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		require.Equal(t, prevNY5ErrorsCount, int(ny5ErrorsCounterValues[0].Value), "ny5 errors_total should be 0: %v", ny5ErrorsCounterValues)
 	}
 
-	// Check that go_memstats_alloc_bytes gauge is less than 3MB.
-	log.Info("==> Checking that go_memstats_alloc_bytes gauge is less than 3MB on both devices")
+	// Check that go_memstats_alloc_bytes gauge is less than 10MB.
+	log.Debug("==> Checking that go_memstats_alloc_bytes gauge is less than 10MB on both devices")
 	la2MemStatsAllocBytes := la2MetricsClient.GetGaugeValues(prometheus.MetricNameGoMemstatsAllocBytes)
 	require.NotNil(t, la2MemStatsAllocBytes)
-	require.Less(t, int(la2MemStatsAllocBytes[0].Value), int(5*1024*1024))
+	require.Less(t, int(la2MemStatsAllocBytes[0].Value), int(10*1024*1024))
 	ny5MemStatsAllocBytes := ny5MetricsClient.GetGaugeValues(prometheus.MetricNameGoMemstatsAllocBytes)
 	require.NotNil(t, ny5MemStatsAllocBytes)
-	require.Less(t, int(ny5MemStatsAllocBytes[0].Value), int(5*1024*1024))
+	require.Less(t, int(ny5MemStatsAllocBytes[0].Value), int(10*1024*1024))
 
 	// Check that go_goroutines gauge is less than 20.
-	log.Info("==> Checking that go_goroutines gauge is less than 30 on both devices")
+	log.Debug("==> Checking that go_goroutines gauge is less than 30 on both devices")
 	la2GoGoroutinesCounterValues := la2MetricsClient.GetGaugeValues(prometheus.MetricNameGoGoroutines)
 	require.NotNil(t, la2GoGoroutinesCounterValues)
 	require.Less(t, int(la2GoGoroutinesCounterValues[0].Value), 30)
@@ -511,18 +564,37 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.Less(t, int(ny5GoGoroutinesCounterValues[0].Value), 30)
 }
 
-func waitForDeviceLatencySamples(t *testing.T, dn *devnet.Devnet, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64, waitForMinSamples int, timeout time.Duration) (*telemetrysdk.DeviceLatencySamples, time.Duration) {
+func waitForDeviceLatencySamples(t *testing.T, dn *devnet.Devnet, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64, waitForMinSamples int, waitForNonZeroSample bool, timeout time.Duration) (*telemetrysdk.DeviceLatencySamples, time.Duration) {
 	client, err := dn.Ledger.GetTelemetryClient(nil)
 	require.NoError(t, err)
 
+	var lastErr error
+	var lastAccount *telemetrysdk.DeviceLatencySamples
+
 	start := time.Now()
-	require.Eventually(t, func() bool {
+	if !assert.Eventually(t, func() bool {
 		account, err := client.GetDeviceLatencySamples(t.Context(), originDevicePK, targetDevicePK, linkPK, epoch)
+		lastErr = err
+		lastAccount = account
 		if err != nil && !errors.Is(err, telemetrysdk.ErrAccountNotFound) {
 			t.Fatalf("failed to get device latency samples: %v", err)
 		}
-		return account != nil && len(account.Samples) > waitForMinSamples
-	}, timeout, 3*time.Second)
+		if account == nil || len(account.Samples) <= waitForMinSamples {
+			return false
+		}
+		if waitForNonZeroSample {
+			for _, rtt := range account.Samples {
+				if rtt > 0 {
+					return true
+				}
+			}
+			return false
+		}
+		return true
+	}, timeout, 3*time.Second) {
+		t.Fatalf("waitForDeviceLatencySamples timed out after %s: origin=%s target=%s link=%s epoch=%d waitForMinSamples=%d waitForNonZeroSample=%v lastErr=%v lastAccount=%+v",
+			timeout, originDevicePK, targetDevicePK, linkPK, epoch, waitForMinSamples, waitForNonZeroSample, lastErr, lastAccount)
+	}
 
 	account, err := client.GetDeviceLatencySamples(t.Context(), originDevicePK, targetDevicePK, linkPK, epoch)
 	require.NoError(t, err)

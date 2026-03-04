@@ -1,5 +1,6 @@
 use crate::command::util;
 use clap::Args;
+
 use doublezero_cli::doublezerocommand::CliCommand;
 
 use crate::{

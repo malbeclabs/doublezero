@@ -318,6 +318,14 @@ By routing traffic through the GRE tunnel and across the DoubleZero backbone, th
 
 The integration is seamless from the user’s perspective, with the CLI and daemon abstracting the complexities of tunnel management and dynamic route handling.
 
+## Testing
+
+Program integration tests suppress Solana program logs by default to keep output readable. To enable program logs (useful for debugging test failures), set the `PROGRAM_LOG` environment variable:
+
+```bash
+PROGRAM_LOG=1 cargo test-sbf -p doublezero-serviceability
+```
+
 ```mermaid
 flowchart LR
     subgraph Client_Server["Client Server"]
@@ -470,7 +478,7 @@ To disconnect a server from the DoubleZero network, users can use the `doublezer
 ### Example Usage
 
 ```bash
-doublezero disconnect ibrl --client-ip 203.0.113.42 --device la2-dz01
+doublezero disconnect ibrl --device la2-dz01
 ```
 
 ### Parameters
@@ -485,10 +493,10 @@ doublezero disconnect ibrl --client-ip 203.0.113.42 --device la2-dz01
     
     (Optional) Specifies the Device to disconnect from, using either the short code (e.g., `la2-dz01`) or the Device’s public key. If omitted, the daemon will determine the active Device based on session state.
     
-- **`-client-ip <CLIENT_IP>`**
-    
-    (Optional) Defines the public IP address of the server to be disconnected. This ensures that the disconnect operation targets the correct tunnel and route entries, especially in multi-interface or multi-user environments.
-    
+- **`--client-ip <CLIENT_IP>`**
+
+    (Deprecated) Previously used to specify the client IP for disconnect. The daemon (doublezerod) now manages the client IP — set `--client-ip` on the daemon instead.
+
 
 ---
 

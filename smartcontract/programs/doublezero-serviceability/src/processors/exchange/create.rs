@@ -58,7 +58,7 @@ pub fn process_create_exchange(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_create_location({:?})", value);
+    msg!("process_create_exchange({:?})", value);
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
@@ -77,14 +77,14 @@ pub fn process_create_exchange(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
     assert!(exchange_account.is_writable, "PDA Account is not writable");
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
 

@@ -56,8 +56,13 @@ pub fn process_create_resource(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
+    );
+
+    assert!(
+        resource_account.data_is_empty(),
+        "Resource Account must be uninitialized"
     );
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
@@ -68,7 +73,7 @@ pub fn process_create_resource(
     super::create_resource(
         program_id,
         resource_account,
-        associated_account,
+        Some(associated_account),
         globalconfig_account,
         payer_account,
         accounts,

@@ -38,13 +38,14 @@ impl fmt::Debug for DeviceCreateArgs {
         write!(
             f,
             "code: {}, device_type: {:?}, public_ip: {}, dz_prefixes: {}, \
-metrics_publisher_pk: {}, mgmt_vrf: {}",
+metrics_publisher_pk: {}, mgmt_vrf: {}, desired_status: {:?}",
             self.code,
             self.device_type,
             self.public_ip,
             self.dz_prefixes,
             self.metrics_publisher_pk,
             self.mgmt_vrf,
+            self.desired_status,
         )
     }
 }
@@ -92,7 +93,7 @@ pub fn process_create_device(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
 
@@ -159,7 +160,14 @@ pub fn process_create_device(
         // TODO: This line show be change when the health oracle is implemented
         // device_health: DeviceHealth::Pending,
         device_health: DeviceHealth::ReadyForUsers, // Force the device to be ready for users until the health oracle is implemented
-        desired_status: value.desired_status.unwrap_or(DeviceDesiredStatus::Pending),
+        desired_status: value
+            .desired_status
+            .unwrap_or(DeviceDesiredStatus::Activated),
+        unicast_users_count: 0,
+        multicast_users_count: 0,
+        max_unicast_users: 0, // Initially locked, must be set via device update
+        max_multicast_users: 0, // Initially locked, must be set via device update
+        reserved_seats: 0,
     };
 
     device.check_status_transition();

@@ -1,25 +1,23 @@
-use super::helpers::look_for_ip;
 use crate::{
-    dzd_latency::best_latency,
+    dzd_latency::{best_latency, retrieve_latencies, select_tunnel_endpoint},
     requirements::check_doublezero,
-    routes::resolve_route,
-    servicecontroller::{
-        ProvisioningRequest, ResolveRouteRequest, ServiceController, ServiceControllerImpl,
-    },
+    servicecontroller::{ServiceController, ServiceControllerImpl},
 };
 use backon::{BlockingRetryable, ExponentialBuilder};
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
-    helpers::init_command,
+    helpers::{init_command, parse_pubkey},
     requirements::{check_accesspass, check_requirements, CHECK_BALANCE, CHECK_ID_JSON},
 };
-use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::{
+        accesspass::get::GetAccessPassCommand,
         device::{get::GetDeviceCommand, list::ListDeviceCommand},
-        globalconfig::get::GetGlobalConfigCommand,
-        multicastgroup::list::ListMulticastGroupCommand,
+        multicastgroup::{
+            list::ListMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+        },
+        tenant::get::GetTenantCommand,
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
             get::GetUserCommand, list::ListUserCommand,
@@ -43,6 +41,8 @@ pub enum MulticastMode {
 pub enum DzMode {
     /// Provision a user in IBRL mode
     IBRL {
+        /// provide tenant code or pubkey
+        tenant: Option<String>,
         /// Allocate a new address for the user
         #[arg(short, long, default_value_t = false)]
         allocate_addr: bool,
@@ -50,12 +50,21 @@ pub enum DzMode {
     //EdgeFiltering,
     /// Provision a user in Multicast mode
     Multicast {
-        /// Multicast mode: Publisher or Subscriber
+        /// (Legacy) Multicast mode: Publisher or Subscriber
         #[arg(value_enum)]
-        mode: MulticastMode,
+        mode: Option<MulticastMode>,
 
-        /// Multicast group code
-        multicast_group: String,
+        /// (Legacy) Multicast group code(s)
+        #[arg(num_args = 0..)]
+        multicast_groups: Vec<String>,
+
+        /// Multicast groups to publish to
+        #[arg(long = "publish", num_args = 1..)]
+        pub_groups: Vec<String>,
+
+        /// Multicast groups to subscribe to
+        #[arg(long = "subscribe", num_args = 1..)]
+        sub_groups: Vec<String>,
     },
 }
 
@@ -64,7 +73,7 @@ pub struct ProvisioningCliCommand {
     #[clap(subcommand)]
     pub dz_mode: DzMode,
 
-    /// Client IP address in IPv4 format
+    /// [deprecated] Client IP address — ignored; set --client-ip on the daemon (doublezerod) instead
     #[arg(long, global = true)]
     pub client_ip: Option<String>,
 
@@ -75,6 +84,14 @@ pub struct ProvisioningCliCommand {
     /// Verbose output
     #[arg(short, long, global = true, default_value_t = false)]
     pub verbose: bool,
+}
+
+enum ParsedDzMode {
+    Ibrl(UserType, Option<String>),
+    Multicast {
+        pub_groups: Vec<String>,
+        sub_groups: Vec<String>,
+    },
 }
 
 impl ProvisioningCliCommand {
@@ -100,8 +117,29 @@ impl ProvisioningCliCommand {
             client.get_environment()
         ));
 
-        // Get public IP
-        let (client_ip, client_ip_str) = look_for_ip(&self.client_ip, &spinner).await?;
+        // Deprecation warning for --client-ip flag
+        if self.client_ip.is_some() {
+            spinner.println(
+                "⚠️  WARNING: --client-ip on the CLI is deprecated and will be ignored. \
+                 Set --client-ip on the daemon (doublezerod) instead.",
+            );
+        }
+
+        // Get public IP from daemon
+        let v2_status = controller.v2_status().await?;
+        if v2_status.client_ip.is_empty() {
+            return Err(eyre::eyre!(
+                "Daemon has not discovered its client IP. Ensure the daemon is running \
+                 and has started up successfully, or set --client-ip on the daemon."
+            ));
+        }
+        let client_ip: Ipv4Addr = v2_status.client_ip.parse().map_err(|e| {
+            eyre::eyre!(
+                "Daemon returned invalid client IP '{}': {e}",
+                v2_status.client_ip
+            )
+        })?;
+        let client_ip_str = client_ip.to_string();
 
         if !check_accesspass(client, client_ip)? {
             println!(
@@ -117,33 +155,25 @@ impl ProvisioningCliCommand {
         spinner.println(format!("    DoubleZero ID: {}", client.get_payer()));
         spinner.println(format!("🔍  Provisioning User for IP: {client_ip_str}"));
 
-        match self.parse_dz_mode() {
-            (UserType::IBRL, _, _) => {
-                self.execute_ibrl(client, controller, UserType::IBRL, client_ip, &spinner)
+        match self.parse_dz_mode()? {
+            ParsedDzMode::Ibrl(user_type, tenant) => {
+                self.execute_ibrl(client, controller, user_type, client_ip, tenant, &spinner)
                     .await
             }
-            (UserType::IBRLWithAllocatedIP, _, _) => {
-                self.execute_ibrl(
-                    client,
-                    controller,
-                    UserType::IBRLWithAllocatedIP,
-                    client_ip,
-                    &spinner,
-                )
-                .await
-            }
-            (UserType::Multicast, Some(multicast_mode), Some(multicast_group)) => {
+            ParsedDzMode::Multicast {
+                pub_groups,
+                sub_groups,
+            } => {
                 self.execute_multicast(
                     client,
                     controller,
-                    multicast_mode,
-                    multicast_group,
+                    &pub_groups,
+                    &sub_groups,
                     client_ip,
                     &spinner,
                 )
                 .await
             }
-            _ => eyre::bail!("DzMode not supported"),
         }?;
 
         spinner.println("✅  User Provisioned");
@@ -158,33 +188,21 @@ impl ProvisioningCliCommand {
         controller: &T,
         user_type: UserType,
         client_ip: Ipv4Addr,
+        tenant: Option<String>,
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {
         // Look for user
-        let (user_pubkey, user, tunnel_src) = self
-            .find_or_create_user(client, controller, &client_ip, spinner, user_type)
+        let (user_pubkey, user) = self
+            .find_or_create_user(client, controller, &client_ip, spinner, user_type, tenant)
             .await?;
 
         // Check user status
         match user.status {
             UserStatus::Activated => {
-                // User is activated
-                self.user_activated(
-                    client,
-                    controller,
-                    &user,
-                    &tunnel_src,
-                    spinner,
-                    user_type,
-                    None,
-                    None,
-                )
-                .await
+                self.user_activated(controller, user_type, spinner).await;
+                Ok(())
             }
-            UserStatus::Rejected => {
-                // User is rejected
-                self.user_rejected(client, &user_pubkey, spinner).await
-            }
+            UserStatus::Rejected => self.user_rejected(client, &user_pubkey, spinner).await,
             _ => eyre::bail!("User status not expected"),
         }
     }
@@ -193,91 +211,131 @@ impl ProvisioningCliCommand {
         &self,
         client: &dyn CliCommand,
         controller: &T,
-        multicast_mode: &MulticastMode,
-        multicast_group: &String,
+        pub_groups: &[String],
+        sub_groups: &[String],
         client_ip: Ipv4Addr,
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {
-        let mcast_groups = client.list_multicastgroup(ListMulticastGroupCommand)?;
-        let (mcast_group_pk, _) = mcast_groups
-            .iter()
-            .find(|(_, g)| g.code == *multicast_group)
-            .ok_or_else(|| eyre::eyre!("Multicast group not found"))?;
+        // Check if the daemon already has a multicast service running. The daemon
+        // does not support updating an existing service — both publisher and subscriber
+        // roles must be specified in a single connect command.
+        if let Ok(statuses) = controller.status().await {
+            if statuses.iter().any(|s| {
+                s.user_type
+                    .as_ref()
+                    .is_some_and(|t| t.eq_ignore_ascii_case("multicast"))
+            }) {
+                eyre::bail!(
+                    "A multicast service is already running. Disconnect first with \
+                     `doublezero disconnect multicast`, then reconnect with all desired \
+                     groups in a single command (e.g. --publish and --subscribe)."
+                );
+            }
+        }
 
-        // Look for user
+        let mcast_groups = client.list_multicastgroup(ListMulticastGroupCommand)?;
+
+        // Resolve pub group codes to pubkeys
+        let mut pub_group_pks = Vec::new();
+        for group_code in pub_groups {
+            let (pk, _) = mcast_groups
+                .iter()
+                .find(|(_, g)| g.code == *group_code)
+                .ok_or_else(|| eyre::eyre!("Multicast group not found: {}", group_code))?;
+            if pub_group_pks.contains(pk) {
+                eyre::bail!("Duplicate multicast pub group: {}", group_code);
+            }
+            pub_group_pks.push(*pk);
+        }
+
+        // Resolve sub group codes to pubkeys
+        let mut sub_group_pks = Vec::new();
+        for group_code in sub_groups {
+            let (pk, _) = mcast_groups
+                .iter()
+                .find(|(_, g)| g.code == *group_code)
+                .ok_or_else(|| eyre::eyre!("Multicast group not found: {}", group_code))?;
+            if sub_group_pks.contains(pk) {
+                eyre::bail!("Duplicate multicast sub group: {}", group_code);
+            }
+            sub_group_pks.push(*pk);
+        }
+
+        // Look for user and subscribe to all groups
         let (user_pubkey, user) = self
             .find_or_create_user_and_subscribe(
                 client,
                 controller,
                 &client_ip,
                 spinner,
-                multicast_mode,
-                mcast_group_pk,
+                &pub_group_pks,
+                &sub_group_pks,
             )
             .await?;
 
-        let mcast_pub_groups = user
-            .publishers
-            .iter()
-            .map(|pk| {
-                mcast_groups
-                    .get(pk)
-                    .map(|group| group.multicast_ip.to_string())
-                    .ok_or_else(|| eyre::eyre!("Missing multicast group for publisher: {}", pk))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let mcast_sub_groups = user
-            .subscribers
-            .iter()
-            .map(|pk| {
-                mcast_groups
-                    .get(pk)
-                    .map(|group| group.multicast_ip.to_string())
-                    .ok_or_else(|| eyre::eyre!("Missing multicast group for subscriber: {}", pk))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        // Check user status
         match user.status {
             UserStatus::Activated => {
-                // User is activated
-                self.user_activated(
-                    client,
-                    controller,
-                    &user,
-                    &client_ip,
-                    spinner,
-                    UserType::Multicast,
-                    Some(mcast_pub_groups),
-                    Some(mcast_sub_groups),
-                )
-                .await?
+                self.user_activated(controller, UserType::Multicast, spinner)
+                    .await;
+                Ok(())
             }
-            UserStatus::Rejected => {
-                // User is rejected
-                self.user_rejected(client, &user_pubkey, spinner).await?;
-            }
+            UserStatus::Rejected => self.user_rejected(client, &user_pubkey, spinner).await,
             _ => eyre::bail!("User status not expected"),
         }
-
-        // Finish
-        Ok(())
     }
 
-    fn parse_dz_mode(&self) -> (UserType, Option<&MulticastMode>, Option<&String>) {
+    fn parse_dz_mode(&self) -> eyre::Result<ParsedDzMode> {
         match &self.dz_mode {
-            DzMode::IBRL { allocate_addr } => {
+            DzMode::IBRL {
+                tenant,
+                allocate_addr,
+            } => {
                 if *allocate_addr {
-                    (UserType::IBRLWithAllocatedIP, None, None)
+                    Ok(ParsedDzMode::Ibrl(
+                        UserType::IBRLWithAllocatedIP,
+                        tenant.clone(),
+                    ))
                 } else {
-                    (UserType::IBRL, None, None)
+                    Ok(ParsedDzMode::Ibrl(UserType::IBRL, tenant.clone()))
                 }
-            } //DzMode::EdgeFiltering => UserType::EdgeFiltering,
+            }
             DzMode::Multicast {
                 mode,
-                multicast_group,
-            } => (UserType::Multicast, Some(mode), Some(multicast_group)),
+                multicast_groups,
+                pub_groups,
+                sub_groups,
+            } => {
+                let has_legacy = mode.is_some() || !multicast_groups.is_empty();
+                let has_new = !pub_groups.is_empty() || !sub_groups.is_empty();
+
+                if has_legacy && has_new {
+                    eyre::bail!("Cannot mix legacy positional args (mode + groups) with --publish/--subscribe flags");
+                }
+
+                if has_legacy {
+                    let mode = mode.as_ref().ok_or_else(|| {
+                        eyre::eyre!("Multicast mode (publisher/subscriber) is required when using positional arguments")
+                    })?;
+                    if multicast_groups.is_empty() {
+                        eyre::bail!("At least one multicast group code is required");
+                    }
+                    let (pg, sg) = match mode {
+                        MulticastMode::Publisher => (multicast_groups.clone(), vec![]),
+                        MulticastMode::Subscriber => (vec![], multicast_groups.clone()),
+                    };
+                    Ok(ParsedDzMode::Multicast {
+                        pub_groups: pg,
+                        sub_groups: sg,
+                    })
+                } else if has_new {
+                    Ok(ParsedDzMode::Multicast {
+                        pub_groups: pub_groups.clone(),
+                        sub_groups: sub_groups.clone(),
+                    })
+                } else {
+                    eyre::bail!("At least one of --publish or --subscribe is required, or use legacy syntax: multicast <publisher|subscriber> <groups...>")
+                }
+            }
         }
     }
 
@@ -287,25 +345,59 @@ impl ProvisioningCliCommand {
         controller: &T,
         devices: &HashMap<Pubkey, Device>,
         spinner: &ProgressBar,
-    ) -> eyre::Result<(Pubkey, Device)> {
+        exclude_ips: &[Ipv4Addr],
+    ) -> eyre::Result<(Pubkey, Device, Ipv4Addr)> {
         spinner.set_message("Searching for the nearest device...");
-
-        let device_pk = match self.device.as_ref() {
-            Some(device) => match device.parse::<Pubkey>() {
-                Ok(pubkey) => pubkey,
-                Err(_) => {
-                    let (pubkey, _) = devices
-                        .iter()
-                        .find(|(_, d)| d.code == *device)
-                        .ok_or(eyre::eyre!("Device not found"))?;
-                    *pubkey
-                }
-            },
+        // filter out existing devices for users with existing tunnels
+        // put some arbitrary cap on latency for second devices
+        let (device_pk, tunnel_endpoint) = match self.device.as_ref() {
+            Some(device) => {
+                let pk = match device.parse::<Pubkey>() {
+                    Ok(pubkey) => pubkey,
+                    Err(_) => {
+                        let (pubkey, _) = devices
+                            .iter()
+                            .find(|(_, d)| d.code == *device)
+                            .ok_or(eyre::eyre!("Device not found"))?;
+                        *pubkey
+                    }
+                };
+                // For explicit device selection, use latency data to pick the best endpoint
+                let latencies =
+                    retrieve_latencies(controller, devices, false, Some(spinner)).await?;
+                let dev = devices.get(&pk);
+                let device_public_ip = dev.map(|d| d.public_ip).unwrap_or(Ipv4Addr::UNSPECIFIED);
+                let endpoint = select_tunnel_endpoint(
+                    &latencies,
+                    &pk.to_string(),
+                    device_public_ip,
+                    exclude_ips,
+                );
+                (pk, endpoint)
+            }
             None => {
-                let latency = best_latency(controller, devices, true, Some(spinner), None).await?;
+                let latency =
+                    best_latency(controller, devices, true, Some(spinner), None, exclude_ips)
+                        .await?;
                 spinner.set_message("Reading device account...");
-                Pubkey::from_str(&latency.device_pk)
-                    .map_err(|_| eyre::eyre!("Unable to parse pubkey"))?
+                let pk = Pubkey::from_str(&latency.device_pk)
+                    .map_err(|_| eyre::eyre!("Unable to parse pubkey"))?;
+                // Use select_tunnel_endpoint to pick the best available endpoint for this
+                // device, respecting exclude_ips. best_latency picks the device but the
+                // returned record's device_ip might be an excluded endpoint.
+                let latencies =
+                    retrieve_latencies(controller, devices, false, Some(spinner)).await?;
+                let device_public_ip = devices
+                    .get(&pk)
+                    .map(|d| d.public_ip)
+                    .unwrap_or(Ipv4Addr::UNSPECIFIED);
+                let endpoint = select_tunnel_endpoint(
+                    &latencies,
+                    &pk.to_string(),
+                    device_public_ip,
+                    exclude_ips,
+                );
+                (pk, endpoint)
             }
         };
 
@@ -322,7 +414,7 @@ impl ProvisioningCliCommand {
             ));
         }
 
-        Ok((device_pk, device))
+        Ok((device_pk, device, tunnel_endpoint))
     }
 
     async fn find_or_create_user<T: ServiceController>(
@@ -332,7 +424,8 @@ impl ProvisioningCliCommand {
         client_ip: &Ipv4Addr,
         spinner: &ProgressBar,
         user_type: UserType,
-    ) -> eyre::Result<(Pubkey, User, Ipv4Addr)> {
+        tenant: Option<String>,
+    ) -> eyre::Result<(Pubkey, User)> {
         spinner.set_message("Searching for user account...");
         spinner.inc(1);
 
@@ -344,70 +437,90 @@ impl ProvisioningCliCommand {
             devices.retain(|_, d| d.is_device_eligible_for_provisioning());
         }
 
-        let matched_users = users
+        // Find user by both client_ip AND user_type to support multiple tunnel types per IP
+        let matched_user = users
             .iter()
-            .filter(|(_, u)| u.client_ip == *client_ip)
-            .collect::<Vec<_>>();
+            .find(|(_, u)| u.client_ip == *client_ip && u.user_type == user_type);
 
-        if matched_users.len() > 1 {
-            // invariant, this indicates a bug that should never happen
-            panic!("❌ Multiple tunnels found for the same IP address. This should not happen.");
-        }
-
-        let mut tunnel_src = *client_ip;
-
-        let user_pubkey = match matched_users.first() {
+        let user_pubkey = match matched_user {
             Some((pubkey, user)) => {
-                if user.user_type != UserType::IBRL
-                    && user.user_type != UserType::IBRLWithAllocatedIP
-                {
-                    spinner.println(format!(
-                        "❌  User with IP {} already exists with type {:?}. Expected type {:?}. Only one tunnel currently supported.",
-                        client_ip,
-                        user.user_type,
-                        user_type
-                    ));
-                    eyre::bail!("User with different type already exists. Only one tunnel currently supported.");
-                }
-
-                spinner.println(format!("    An account already exists Pubkey: {pubkey}"));
-
+                spinner.println(format!(
+                    "    An account already exists with Pubkey: {pubkey}"
+                ));
                 if user.status == UserStatus::PendingBan || user.status == UserStatus::Banned {
                     spinner.println("❌  The user is banned.");
                     eyre::bail!("User is banned.");
                 }
 
-                let device = devices.get(&user.device_pk).ok_or(eyre::eyre!(
-                    "Device {} not found for user {}",
-                    user.device_pk,
-                    pubkey
-                ))?;
-
-                if user_type == UserType::IBRLWithAllocatedIP {
-                    tunnel_src = resolve_tunnel_src(controller, device).await?;
-                }
-
-                **pubkey
+                *pubkey
             }
             None => {
-                spinner.println("    Creating user account...");
+                let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
 
-                let (device_pk, device) = self
-                    .find_or_create_device(client, controller, &devices, spinner)
+                let (device_pk, device, tunnel_endpoint) = self
+                    .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
                     .await?;
 
+                spinner.println("    Creating user account...");
                 spinner.println(format!("    Device selected: {} ", device.code));
                 spinner.inc(1);
 
-                if user_type == UserType::IBRLWithAllocatedIP {
-                    tunnel_src = resolve_tunnel_src(controller, &device).await?;
+                // Check per-type user limit before attempting to create
+                if let Some(err_msg) = device.check_user_type_capacity(user_type) {
+                    return Err(eyre::eyre!(err_msg));
                 }
+
+                let accesspass = client
+                    .get_accesspass(GetAccessPassCommand {
+                        client_ip: *client_ip,
+                        user_payer: client.get_payer(),
+                    })?
+                    .map(|(_, ap)| ap)
+                    .ok_or_else(|| {
+                        eyre::eyre!(
+                            "No valid AccessPass found for IP: {} user_payer: {}",
+                            client_ip,
+                            client.get_payer()
+                        )
+                    })?;
+
+                // Determine tenant: 1) from CLI argument, 2) from config file, 3) from access pass allowlist
+                let tenant = tenant
+                    .or_else(|| {
+                        doublezero_sdk::read_doublezero_config()
+                            .ok()
+                            .and_then(|(_, cfg)| cfg.tenant)
+                    })
+                    .or_else(|| {
+                        accesspass
+                            .tenant_allowlist
+                            .first()
+                            .filter(|pk| **pk != Pubkey::default())
+                            .map(|pk| pk.to_string())
+                    });
+
+                let tenant_pk = match tenant {
+                    Some(tenant_str) => match parse_pubkey(&tenant_str) {
+                        Some(pk) => Some(pk),
+                        None => {
+                            let (pubkey, _) = client
+                                .get_tenant(GetTenantCommand {
+                                    pubkey_or_code: tenant_str.clone(),
+                                })
+                                .map_err(|_| eyre::eyre!("Tenant not found"))?;
+                            Some(pubkey)
+                        }
+                    },
+                    None => None,
+                };
 
                 let res = client.create_user(CreateUserCommand {
                     user_type,
                     device_pk,
                     cyoa_type: UserCYOA::GREOverDIA,
                     client_ip: *client_ip,
+                    tunnel_endpoint,
+                    tenant_pk,
                 });
 
                 match res {
@@ -427,7 +540,7 @@ impl ProvisioningCliCommand {
 
         let user = self.poll_for_user_activated(client, &user_pubkey, spinner)?;
 
-        Ok((user_pubkey, user, tunnel_src))
+        Ok((user_pubkey, user))
     }
 
     async fn find_or_create_user_and_subscribe<T: ServiceController>(
@@ -436,8 +549,8 @@ impl ProvisioningCliCommand {
         controller: &T,
         client_ip: &Ipv4Addr,
         spinner: &ProgressBar,
-        multicast_mode: &MulticastMode,
-        mcast_group_pk: &Pubkey,
+        pub_group_pks: &[Pubkey],
+        sub_group_pks: &[Pubkey],
     ) -> eyre::Result<(Pubkey, User)> {
         spinner.set_message("Searching for user account...");
         spinner.inc(1);
@@ -450,86 +563,239 @@ impl ProvisioningCliCommand {
             devices.retain(|_, d| d.is_device_eligible_for_provisioning());
         }
 
-        let matched_users = users
+        // Find all users for this IP - multiple user accounts per IP are allowed (one per UserType)
+        let matched_users: Vec<_> = users
             .iter()
             .filter(|(_, u)| u.client_ip == *client_ip)
-            .collect::<Vec<_>>();
+            .collect();
 
-        if matched_users.len() > 1 {
-            // invariant, this indicates a bug that should never happen
-            panic!("Multiple tunnels found for the same IP address. This should not happen.");
+        let ibrl_user = matched_users
+            .iter()
+            .find(|(_, u)| matches!(u.user_type, UserType::IBRL | UserType::IBRLWithAllocatedIP))
+            .copied();
+
+        let mcast_user = matched_users
+            .iter()
+            .find(|(_, u)| u.user_type == UserType::Multicast)
+            .copied();
+
+        // Combine all group pks (deduplicated) for user creation (first group goes in create_subscribe_user)
+        let mut all_group_pks: Vec<Pubkey> = Vec::new();
+        for pk in pub_group_pks.iter().chain(sub_group_pks.iter()) {
+            if !all_group_pks.contains(pk) {
+                all_group_pks.push(*pk);
+            }
         }
 
-        let user_pubkey = match matched_users.first() {
-            Some((user_pk, user)) => {
-                if user.user_type != UserType::Multicast {
-                    spinner.println(format!(
-                        "❌  User with IP {} already exists with type {:?}. Expected type {:?}. Only one tunnel currently supported.",
-                        client_ip,
-                        user.user_type,
-                        UserType::Multicast
-                    ));
-                    eyre::bail!("User with different type already exists. Only one tunnel currently supported.");
-                }
+        let user_pubkey = match (ibrl_user, mcast_user) {
+            // IBRL user exists but no Multicast user - create a separate Multicast user
+            // This allows concurrent unicast (IBRL) and multicast tunnels for the same client IP
+            (Some((ibrl_user_pk, ibrl_user)), None) => {
+                // Select a separate device from the IBRL user to allow independent tunnels
+                // Exclude the IBRL user's tunnel endpoint to ensure we get a different device
+                let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
 
-                let already_subscribed = match multicast_mode {
-                    MulticastMode::Publisher => user.publishers.contains(mcast_group_pk),
-                    MulticastMode::Subscriber => user.subscribers.contains(mcast_group_pk),
-                };
-
-                if !already_subscribed {
-                    let err_msg = format!(
-                        r#"❌ Multicast user already exists for IP: {client_ip}
-    Multicast supports only one subscription at this time.
-    Disconnect and connect again!"#,
-                    );
-
-                    spinner.println(err_msg.clone());
-                    eyre::bail!(err_msg);
-                }
-
-                **user_pk
-            }
-            None => {
-                spinner.println(format!("    Creating an account for the IP: {client_ip}"));
-
-                let (device_pk, device) = self
-                    .find_or_create_device(client, controller, &devices, spinner)
+                let (device_pk, device, tunnel_endpoint) = self
+                    .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
                     .await?;
 
+                spinner.println(format!(
+                    "    Creating separate Multicast user for concurrent tunnels (IBRL user: {})",
+                    ibrl_user_pk
+                ));
+                spinner.println(format!(
+                    "    The Device has been selected: {} ",
+                    device.code
+                ));
+
+                // Check per-type user limit before attempting to create
+                if let Some(err_msg) = device.check_user_type_capacity(UserType::Multicast) {
+                    return Err(eyre::eyre!(err_msg));
+                }
+
+                // Create user with first group (pick from pub_groups first, then sub_groups)
+                let first_group_pk = all_group_pks
+                    .first()
+                    .ok_or_else(|| eyre::eyre!("At least one multicast group is required"))?;
+
+                let res = client.create_subscribe_user(CreateSubscribeUserCommand {
+                    user_type: UserType::Multicast,
+                    device_pk,
+                    cyoa_type: ibrl_user.cyoa_type,
+                    client_ip: *client_ip,
+                    mgroup_pk: *first_group_pk,
+                    publisher: pub_group_pks.contains(first_group_pk),
+                    subscriber: sub_group_pks.contains(first_group_pk),
+                    tunnel_endpoint,
+                });
+
+                let user_pk = match res {
+                    Ok((_, user_pk)) => {
+                        spinner.set_message("Multicast user created");
+                        user_pk
+                    }
+                    Err(e) => {
+                        spinner.println("❌ Error creating Multicast user");
+                        spinner.println(format!("\n{}: {:?}\n", "Error", e));
+                        eyre::bail!("Error creating Multicast user: {:?}", e);
+                    }
+                };
+
+                // Wait for user to be activated before subscribing to additional groups
+                if all_group_pks.len() > 1 {
+                    self.poll_for_user_activated(client, &user_pk, spinner)?;
+                }
+
+                // Subscribe to remaining groups
+                for group_pk in all_group_pks.iter().skip(1) {
+                    spinner.println(format!("    Subscribing to group: {group_pk}"));
+                    client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
+                        user_pk,
+                        group_pk: *group_pk,
+                        client_ip: *client_ip,
+                        publisher: pub_group_pks.contains(group_pk),
+                        subscriber: sub_group_pks.contains(group_pk),
+                    })?;
+                }
+
+                user_pk
+            }
+            // Both IBRL and Multicast users exist - add subscription to existing Multicast user
+            (Some(_), Some((user_pk, user))) | (None, Some((user_pk, user))) => {
+                // Ensure user is activated before subscribing to new groups
+                if user.status != UserStatus::Activated {
+                    self.poll_for_user_activated(client, user_pk, spinner)?;
+                }
+
+                // Subscribe to any pub groups not already subscribed
+                for group_pk in pub_group_pks {
+                    if !user.publishers.contains(group_pk) {
+                        spinner.println(format!(
+                            "    Adding publisher subscription to existing Multicast user: {}",
+                            user_pk
+                        ));
+
+                        let res = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
+                            user_pk: *user_pk,
+                            group_pk: *group_pk,
+                            client_ip: *client_ip,
+                            publisher: true,
+                            subscriber: false,
+                        });
+
+                        match res {
+                            Ok(_) => {
+                                spinner.set_message("Publisher subscription added");
+                            }
+                            Err(e) => {
+                                spinner.println("❌ Error adding publisher subscription");
+                                spinner.println(format!("\n{}: {:?}\n", "Error", e));
+                                eyre::bail!("Error adding publisher subscription to existing user");
+                            }
+                        }
+                    }
+                }
+
+                // Subscribe to any sub groups not already subscribed
+                for group_pk in sub_group_pks {
+                    if !user.subscribers.contains(group_pk) {
+                        spinner.println(format!(
+                            "    Adding subscriber subscription to existing Multicast user: {}",
+                            user_pk
+                        ));
+
+                        let res = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
+                            user_pk: *user_pk,
+                            group_pk: *group_pk,
+                            client_ip: *client_ip,
+                            publisher: false,
+                            subscriber: true,
+                        });
+
+                        match res {
+                            Ok(_) => {
+                                spinner.set_message("Subscriber subscription added");
+                            }
+                            Err(e) => {
+                                spinner.println("❌ Error adding subscriber subscription");
+                                spinner.println(format!("\n{}: {:?}\n", "Error", e));
+                                eyre::bail!(
+                                    "Error adding subscriber subscription to existing user"
+                                );
+                            }
+                        }
+                    }
+                }
+
+                *user_pk
+            }
+            // No user exists, create a new Multicast user
+            (None, None) => {
+                let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
+
+                let (device_pk, device, tunnel_endpoint) = self
+                    .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
+                    .await?;
+
+                spinner.println(format!("    Creating an account for the IP: {client_ip}"));
                 spinner.println(format!(
                     "    The Device has been selected: {} ",
                     device.code
                 ));
                 spinner.inc(1);
 
-                let (publisher, subscriber) = match multicast_mode {
-                    MulticastMode::Publisher => (true, false),
-                    MulticastMode::Subscriber => (false, true),
-                };
+                // Check per-type user limit before attempting to create
+                if let Some(err_msg) = device.check_user_type_capacity(UserType::Multicast) {
+                    return Err(eyre::eyre!(err_msg));
+                }
+
+                // Create user with first group (pick from pub_groups first, then sub_groups)
+                let first_group_pk = all_group_pks
+                    .first()
+                    .ok_or_else(|| eyre::eyre!("At least one multicast group is required"))?;
 
                 let res = client.create_subscribe_user(CreateSubscribeUserCommand {
                     user_type: UserType::Multicast,
                     device_pk,
                     cyoa_type: UserCYOA::GREOverDIA,
                     client_ip: *client_ip,
-                    mgroup_pk: *mcast_group_pk,
-                    publisher,
-                    subscriber,
+                    mgroup_pk: *first_group_pk,
+                    publisher: pub_group_pks.contains(first_group_pk),
+                    subscriber: sub_group_pks.contains(first_group_pk),
+                    tunnel_endpoint,
                 });
 
-                match res {
+                let user_pk = match res {
                     Ok((_, pubkey)) => {
                         spinner.set_message("User created");
-                        Ok(pubkey)
+                        pubkey
                     }
                     Err(e) => {
                         spinner.println("❌ Error creating user");
                         spinner.println(format!("\n{}: {:?}\n", "Error", e));
-                        Err(eyre::eyre!("Error creating user"))
+                        return Err(eyre::eyre!("Error creating user"));
                     }
+                };
+
+                // Wait for user to be activated before subscribing to additional groups
+                if all_group_pks.len() > 1 {
+                    self.poll_for_user_activated(client, &user_pk, spinner)?;
                 }
-            }?,
+
+                // Subscribe to remaining groups
+                for group_pk in all_group_pks.iter().skip(1) {
+                    spinner.println(format!("    Subscribing to group: {group_pk}"));
+                    client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
+                        user_pk,
+                        group_pk: *group_pk,
+                        client_ip: *client_ip,
+                        publisher: pub_group_pks.contains(group_pk),
+                        subscriber: sub_group_pks.contains(group_pk),
+                    })?;
+                }
+
+                user_pk
+            }
         };
 
         let user = self.poll_for_user_activated(client, &user_pubkey, spinner)?;
@@ -579,90 +845,89 @@ impl ProvisioningCliCommand {
             .map_err(|_| eyre::eyre!("Timeout waiting for user activation"))
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn user_activated<T: ServiceController>(
         &self,
-        client: &dyn CliCommand,
         controller: &T,
-        user: &User,
-        tunnel_src: &Ipv4Addr,
-        spinner: &ProgressBar,
         user_type: UserType,
-        mcast_pub_groups: Option<Vec<String>>,
-        mcast_sub_groups: Option<Vec<String>>,
-    ) -> eyre::Result<()> {
-        spinner.inc(1);
-        spinner.set_message("Reading devices...");
-
-        let devices = client.list_device(ListDeviceCommand)?;
-        let prefixes = devices
-            .values()
-            .flat_map(|device| Into::<Vec<NetworkV4>>::into(device.dz_prefixes.clone()))
-            .collect::<Vec<NetworkV4>>();
-
-        spinner.set_message("Getting global-config...");
-        let (_, config) = client
-            .get_globalconfig(GetGlobalConfigCommand)
-            .map_err(|_| eyre::eyre!("Unable to get global config"))?;
-
-        spinner.set_message("Getting user account...");
-        let device = devices
-            .get(&user.device_pk)
-            .ok_or(eyre::eyre!("Device not found"))?;
-
+        spinner: &ProgressBar,
+    ) {
         spinner.inc(1);
 
-        // Tunnel provisioning
-        let tunnel_dst = device.public_ip.to_string();
-        let tunnel_net = user.tunnel_net.to_string();
-        let doublezero_ip = &user.dz_ip;
-        let doublezero_prefixes: Vec<String> =
-            prefixes.into_iter().map(|net| net.to_string()).collect();
+        // Enable the reconciler (no-op if already enabled).
+        if let Err(e) = controller.enable().await {
+            // Check if the reconciler is already enabled despite the enable call failing.
+            let already_enabled = controller
+                .v2_status()
+                .await
+                .map(|s| s.reconciler_enabled)
+                .unwrap_or(false);
+            if !already_enabled {
+                spinner.println(format!(
+                    "    Error: failed to enable reconciler: {e}. Tunnel will not be provisioned."
+                ));
+                return;
+            }
+        }
 
-        if self.verbose {
-            spinner.println(format!(
-                "➤   Provisioning Local Tunnel for IP: {}\n\ttunnel_src: {}\n\ttunnel_dst: {}\n\ttunnel_net: {}\n\tdoublezero_ip: {}\n\tdoublezero_prefixes: {:?}\n\tlocal_asn: {}\n\tremote_asn: {}\n\tmcast_pub_groups: {:?}\n\tmcast_sub_groups: {:?}\n",
-                user.client_ip,
-                tunnel_src,
-                tunnel_dst,
-                tunnel_net,
-                doublezero_ip,
-                doublezero_prefixes,
-                config.local_asn,
-                config.remote_asn,
-                mcast_pub_groups.clone().unwrap_or_default(),
-                mcast_sub_groups.clone().unwrap_or_default(),
-            ));
-        };
+        spinner.set_message("User activated, waiting for daemon to provision tunnel...");
 
-        spinner.set_message("Provisioning DoubleZero service...");
-        match controller
-            .provisioning(ProvisioningRequest {
-                tunnel_src: tunnel_src.to_string(),
-                tunnel_dst,
-                tunnel_net,
-                doublezero_ip: doublezero_ip.to_string(),
-                doublezero_prefixes,
-                bgp_local_asn: Some(config.local_asn),
-                bgp_remote_asn: Some(config.remote_asn),
-                user_type: user_type.to_string(),
-                mcast_pub_groups,
-                mcast_sub_groups,
-            })
+        let user_type_str = user_type.to_string();
+        match self
+            .poll_for_daemon_provisioned(controller, &user_type_str, spinner)
             .await
         {
-            Ok(res) => {
+            Ok(status) => {
+                spinner.inc(1);
+                if let Some(src) = &status.tunnel_src {
+                    spinner.println(format!("    Tunnel Src: {src}"));
+                }
+                if let Some(dst) = &status.tunnel_dst {
+                    spinner.println(format!("    Tunnel Dst: {dst}"));
+                }
+                if let Some(ip) = &status.doublezero_ip {
+                    spinner.println(format!("    DoubleZero IP: {ip}"));
+                }
                 spinner.println(format!(
-                    "    Service provisioned with status: {}",
-                    res.status
+                    "    Session: {}",
+                    status.doublezero_status.session_status
                 ));
             }
             Err(e) => {
-                spinner.println(format!("❌ Error provisioning service: {e:?}"));
+                spinner.inc(1);
+                spinner.println(format!(
+                    "    Tunnel provisioning in progress (daemon will handle it): {e}"
+                ));
             }
-        };
+        }
+    }
 
-        Ok(())
+    async fn poll_for_daemon_provisioned<T: ServiceController>(
+        &self,
+        controller: &T,
+        user_type_str: &str,
+        spinner: &ProgressBar,
+    ) -> eyre::Result<crate::servicecontroller::StatusResponse> {
+        // Poll for up to ~60s (reconciler polls every 10s by default)
+        let max_attempts = 12;
+        let delay = Duration::from_secs(5);
+
+        for attempt in 0..max_attempts {
+            if attempt > 0 {
+                spinner.set_message("waiting for tunnel provisioning...");
+                tokio::time::sleep(delay).await;
+            }
+
+            if let Ok(statuses) = controller.status().await {
+                if let Some(status) = statuses
+                    .iter()
+                    .find(|s| s.user_type.as_ref().is_some_and(|ut| ut == user_type_str))
+                {
+                    return Ok(status.clone());
+                }
+            }
+        }
+
+        eyre::bail!("timed out waiting for daemon to provision tunnel")
     }
 
     async fn user_rejected(
@@ -689,34 +954,33 @@ impl ProvisioningCliCommand {
     }
 }
 
-async fn resolve_tunnel_src<T: ServiceController>(
-    controller: &T,
-    device: &Device,
-) -> eyre::Result<Ipv4Addr> {
-    let resolved_route = resolve_route(
-        controller,
-        None,
-        ResolveRouteRequest {
-            dst: device.public_ip,
-        },
-    )
-    .await?;
-    if let Some(src) = resolved_route.src {
-        Ok(src)
-    } else {
-        Err(eyre::eyre!(
-            "Unable to resolve route for device IP: {}",
-            device.code
-        ))
-    }
+fn exclude_ips(
+    users: &HashMap<Pubkey, User>,
+    client_ip: &Ipv4Addr,
+    devices: &HashMap<Pubkey, Device>,
+) -> Vec<Ipv4Addr> {
+    users
+        .iter()
+        .filter(|(_, u)| u.client_ip == *client_ip && u.has_unicast_tunnel())
+        .map(|(_, u)| {
+            if u.has_tunnel_endpoint() {
+                u.tunnel_endpoint
+            } else {
+                devices
+                    .get(&u.device_pk)
+                    .map(|d| d.public_ip)
+                    .unwrap_or(Ipv4Addr::UNSPECIFIED)
+            }
+        })
+        .filter(|ip| *ip != Ipv4Addr::UNSPECIFIED)
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::servicecontroller::{
-        LatencyRecord, MockServiceController, ProvisioningResponse, ResolveRouteRequest,
-        ResolveRouteResponse,
+        DoubleZeroStatus, LatencyRecord, MockServiceController, StatusResponse, V2StatusResponse,
     };
     use doublezero_cli::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
     use doublezero_config::Environment;
@@ -732,12 +996,13 @@ mod tests {
             device::{Device, DeviceStatus, DeviceType},
             globalconfig::GlobalConfig,
             multicastgroup::{MulticastGroup, MulticastGroupStatus},
+            tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
         },
     };
     use mockall::predicate;
     use solana_sdk::signature::Signature;
     use std::{
-        collections::HashMap,
+        collections::{HashMap, HashSet},
         sync::{Arc, Mutex, OnceLock},
         thread,
         time::Duration,
@@ -764,10 +1029,68 @@ mod tests {
         pub users: Arc<Mutex<HashMap<Pubkey, User>>>,
         pub latencies: Arc<Mutex<Vec<LatencyRecord>>>,
         pub mcast_groups: Arc<Mutex<HashMap<Pubkey, MulticastGroup>>>,
+        pub tenants: Arc<Mutex<HashMap<Pubkey, Tenant>>>,
+        pub default_tenant_pk: Pubkey,
+        /// Tracks which service types the daemon has "provisioned" (simulating
+        /// what the reconciler would do). The status mock only returns entries
+        /// for types in this set.
+        pub provisioned_services: Arc<Mutex<HashSet<String>>>,
     }
 
     impl TestFixture {
         pub fn new() -> Self {
+            let mut fixture = Self::new_base();
+            fixture.setup_enable(|| Ok(()));
+            fixture.controller.expect_v2_status().returning(|| {
+                Ok(V2StatusResponse {
+                    reconciler_enabled: false,
+                    client_ip: "1.2.3.4".to_string(),
+                    network: String::new(),
+                    services: vec![],
+                })
+            });
+            fixture
+        }
+
+        pub fn new_with_failing_enable() -> Self {
+            let mut fixture = Self::new_base();
+            fixture.setup_enable(|| Err(eyre::eyre!("enable failed")));
+            // When enable fails, the connect flow checks v2_status to see if the
+            // reconciler is already enabled. Return disabled to simulate a genuine
+            // enable failure. The first call also provides client_ip for the
+            // connect flow's IP lookup.
+            fixture.controller.expect_v2_status().returning(|| {
+                Ok(V2StatusResponse {
+                    reconciler_enabled: false,
+                    client_ip: "1.2.3.4".to_string(),
+                    network: String::new(),
+                    services: vec![],
+                })
+            });
+            fixture
+        }
+
+        fn new_base() -> Self {
+            // Create a default tenant
+            let default_tenant_pk = Pubkey::new_unique();
+            let default_tenant = Tenant {
+                account_type: AccountType::Tenant,
+                owner: Pubkey::new_unique(),
+                bump_seed: 1,
+                code: "test-tenant".to_string(),
+                vrf_id: 100,
+                reference_count: 0,
+                administrators: vec![],
+                payment_status: TenantPaymentStatus::Paid,
+                token_account: Pubkey::default(),
+                metro_routing: false,
+                route_liveness: false,
+                billing: TenantBillingConfig::default(),
+            };
+
+            let mut tenants = HashMap::new();
+            tenants.insert(default_tenant_pk, default_tenant);
+
             let mut fixture = Self {
                 global_cfg: GlobalConfig {
                     account_type: AccountType::GlobalConfig,
@@ -778,6 +1101,7 @@ mod tests {
                     device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
                     user_tunnel_block: "10.0.1.0/24".parse().unwrap(),
                     multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
+                    multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
                     next_bgp_community: 10000,
                 },
                 client: create_test_client(),
@@ -786,6 +1110,9 @@ mod tests {
                 users: Arc::new(Mutex::new(HashMap::new())),
                 latencies: Arc::new(Mutex::new(vec![])),
                 mcast_groups: Arc::new(Mutex::new(HashMap::new())),
+                tenants: Arc::new(Mutex::new(tenants)),
+                default_tenant_pk,
+                provisioned_services: Arc::new(Mutex::new(HashSet::new())),
             };
 
             fixture
@@ -807,6 +1134,70 @@ mod tests {
                 .controller
                 .expect_service_controller_can_open()
                 .return_const(true);
+
+            // The status mock returns daemon service entries only for service
+            // types tracked in `provisioned_services`. This simulates the daemon's
+            // reconciler: a service only appears in the status after it has been
+            // provisioned. Test helpers (expect_create_user, etc.) add entries to
+            // `provisioned_services` when they simulate successful onchain txs.
+            let status_provisioned = fixture.provisioned_services.clone();
+            fixture.controller.expect_status().returning_st(move || {
+                let provisioned = status_provisioned.lock().unwrap();
+                let mut statuses = Vec::new();
+                if provisioned.contains("IBRL") {
+                    statuses.push(StatusResponse {
+                        doublezero_status: DoubleZeroStatus {
+                            session_status: "BGP Session Up".to_string(),
+                            last_session_update: Some(0),
+                        },
+                        tunnel_name: Some("doublezero1".to_string()),
+                        tunnel_src: Some("1.2.3.4".to_string()),
+                        tunnel_dst: Some("5.6.7.1".to_string()),
+                        doublezero_ip: Some("10.1.1.1".to_string()),
+                        user_type: Some("IBRL".to_string()),
+                    });
+                }
+                if provisioned.contains("IBRLWithAllocatedIP") {
+                    statuses.push(StatusResponse {
+                        doublezero_status: DoubleZeroStatus {
+                            session_status: "BGP Session Up".to_string(),
+                            last_session_update: Some(0),
+                        },
+                        tunnel_name: Some("doublezero1".to_string()),
+                        tunnel_src: Some("1.2.3.4".to_string()),
+                        tunnel_dst: Some("5.6.7.1".to_string()),
+                        doublezero_ip: Some("10.1.1.1".to_string()),
+                        user_type: Some("IBRLWithAllocatedIP".to_string()),
+                    });
+                }
+                if provisioned.contains("EdgeFiltering") {
+                    statuses.push(StatusResponse {
+                        doublezero_status: DoubleZeroStatus {
+                            session_status: "BGP Session Up".to_string(),
+                            last_session_update: Some(0),
+                        },
+                        tunnel_name: Some("doublezero1".to_string()),
+                        tunnel_src: Some("1.2.3.4".to_string()),
+                        tunnel_dst: Some("5.6.7.1".to_string()),
+                        doublezero_ip: Some("10.1.1.1".to_string()),
+                        user_type: Some("EdgeFiltering".to_string()),
+                    });
+                }
+                if provisioned.contains("Multicast") {
+                    statuses.push(StatusResponse {
+                        doublezero_status: DoubleZeroStatus {
+                            session_status: "BGP Session Up".to_string(),
+                            last_session_update: Some(0),
+                        },
+                        tunnel_name: Some("doublezero2".to_string()),
+                        tunnel_src: Some("1.2.3.4".to_string()),
+                        tunnel_dst: Some("5.6.7.2".to_string()),
+                        doublezero_ip: Some("10.1.1.2".to_string()),
+                        user_type: Some("Multicast".to_string()),
+                    });
+                }
+                Ok(statuses)
+            });
 
             let latencies = fixture.latencies.clone();
             fixture
@@ -839,6 +1230,7 @@ mod tests {
                 status: AccessPassStatus::Requested,
                 mgroup_pub_allowlist: vec![],
                 mgroup_sub_allowlist: vec![],
+                tenant_allowlist: vec![],
                 flags: 0,
             };
             fixture
@@ -848,7 +1240,7 @@ mod tests {
                     client_ip: Ipv4Addr::new(1, 2, 3, 4),
                     user_payer: payer,
                 }))
-                .returning_st(move |_| Ok((accesspass_pk, accesspass.clone())));
+                .returning_st(move |_| Ok(Some((accesspass_pk, accesspass.clone()))));
 
             let users = fixture.users.clone();
             fixture
@@ -899,7 +1291,29 @@ mod tests {
                 }
             });
 
+            let tenants = fixture.tenants.clone();
+            fixture.client.expect_get_tenant().returning_st(move |cmd| {
+                let tenants = tenants.lock().unwrap();
+                match parse_pubkey(&cmd.pubkey_or_code) {
+                    Some(pk) => match tenants.get(&pk) {
+                        Some(tenant) => Ok((pk, tenant.clone())),
+                        None => Err(eyre::eyre!("Invalid Account Type")),
+                    },
+                    None => {
+                        let tenant = tenants.iter().find(|(_, v)| v.code == cmd.pubkey_or_code);
+                        match tenant {
+                            Some((pk, tenant)) => Ok((*pk, tenant.clone())),
+                            None => Err(eyre::eyre!("Tenant not found")),
+                        }
+                    }
+                }
+            });
+
             fixture
+        }
+
+        pub fn setup_enable<F: Fn() -> eyre::Result<()> + Send + 'static>(&mut self, f: F) {
+            self.controller.expect_enable().returning(f);
         }
 
         pub fn add_device(
@@ -935,7 +1349,7 @@ mod tests {
                 status: DeviceStatus::Activated,
                 metrics_publisher_pk: Pubkey::default(),
                 code: format!("device{device_number}"),
-                dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+                dz_prefixes: format!("10.{}.0.0/24", device_number).parse().unwrap(),
                 mgmt_vrf: "default".to_string(),
                 interfaces: vec![],
                 max_users: 255,
@@ -944,6 +1358,11 @@ mod tests {
                     doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+                unicast_users_count: 0,
+                multicast_users_count: 0,
+                max_unicast_users: 0,
+                max_multicast_users: 0,
+                reserved_seats: 0,
             };
             devices.insert(pk, device.clone());
             (pk, device)
@@ -973,12 +1392,42 @@ mod tests {
             (pk, group)
         }
 
+        pub fn add_tenant(&mut self, code: &str) -> (Pubkey, Tenant) {
+            let mut tenants = self.tenants.lock().unwrap();
+            let pk = Pubkey::new_unique();
+            let tenant = Tenant {
+                account_type: AccountType::Tenant,
+                owner: Pubkey::new_unique(),
+                bump_seed: 1,
+                code: code.to_string(),
+                vrf_id: 100,
+                reference_count: 0,
+                administrators: vec![],
+                payment_status: TenantPaymentStatus::Paid,
+                token_account: Pubkey::default(),
+                metro_routing: false,
+                route_liveness: false,
+                billing: TenantBillingConfig::default(),
+            };
+            tenants.insert(pk, tenant.clone());
+            (pk, tenant)
+        }
+
         pub fn create_user(
             &mut self,
             user_type: UserType,
             device_pk: Pubkey,
             client_ip: &str,
         ) -> User {
+            // Look up device's public_ip to set as tunnel_endpoint
+            let tunnel_endpoint = self
+                .devices
+                .lock()
+                .unwrap()
+                .get(&device_pk)
+                .map(|d| d.public_ip)
+                .unwrap_or(Ipv4Addr::UNSPECIFIED);
+
             User {
                 account_type: AccountType::User,
                 owner: Pubkey::new_unique(),
@@ -996,6 +1445,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::new_unique(),
+                tunnel_endpoint,
             }
         }
 
@@ -1011,14 +1461,26 @@ mod tests {
         }
 
         pub fn expect_create_user(&mut self, pk: Pubkey, user: &User) {
+            self.expect_create_user_with_tenant(pk, user, Some(self.default_tenant_pk));
+        }
+
+        pub fn expect_create_user_with_tenant(
+            &mut self,
+            pk: Pubkey,
+            user: &User,
+            tenant_pk: Option<Pubkey>,
+        ) {
             let expected_create_user_command = CreateUserCommand {
                 user_type: user.user_type,
                 device_pk: user.device_pk,
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: user.client_ip,
+                tunnel_endpoint: user.tunnel_endpoint,
+                tenant_pk,
             };
 
             let users = self.users.clone();
+            let provisioned = self.provisioned_services.clone();
             let user = user.clone();
             self.client
                 .expect_create_user()
@@ -1026,7 +1488,9 @@ mod tests {
                 .with(predicate::eq(expected_create_user_command))
                 .returning_st(move |_| {
                     thread::sleep(Duration::from_secs(1));
+                    let ut = user.user_type.to_string();
                     users.lock().unwrap().insert(pk, user.clone());
+                    provisioned.lock().unwrap().insert(ut);
                     Ok((Signature::default(), pk))
                 });
         }
@@ -1047,9 +1511,11 @@ mod tests {
                 mgroup_pk: mcast_group_pk,
                 publisher,
                 subscriber,
+                tunnel_endpoint: user.tunnel_endpoint,
             };
 
             let users = self.users.clone();
+            let provisioned = self.provisioned_services.clone();
             let mut user = user.clone();
             if publisher {
                 user.publishers.push(mcast_group_pk);
@@ -1063,90 +1529,53 @@ mod tests {
                 .with(predicate::eq(expected_create_subscribe_user_command))
                 .returning_st(move |_| {
                     thread::sleep(Duration::from_secs(1));
+                    let ut = user.user_type.to_string();
                     users.lock().unwrap().insert(pk, user.clone());
+                    provisioned.lock().unwrap().insert(ut);
                     Ok((Signature::default(), pk))
                 });
         }
 
-        pub fn expected_provisioning_request(
+        #[allow(dead_code)]
+        pub fn expect_subscribe_multicastgroup(
             &mut self,
-            user_type: UserType,
-            client_ip: &str,
-            device_ip: &str,
-            mcast_pub_groups: Option<Vec<String>>,
-            mcast_sub_groups: Option<Vec<String>>,
+            user_pk: Pubkey,
+            mcast_group_pk: Pubkey,
+            client_ip: Ipv4Addr,
+            publisher: bool,
+            subscriber: bool,
         ) {
-            self.expected_provisioning_request_with_tunnel_src(
-                user_type,
+            let expected_command = SubscribeMulticastGroupCommand {
+                user_pk,
+                group_pk: mcast_group_pk,
                 client_ip,
-                client_ip,
-                device_ip,
-                mcast_pub_groups,
-                mcast_sub_groups,
-            );
-        }
-
-        pub fn expected_provisioning_request_with_tunnel_src(
-            &mut self,
-            user_type: UserType,
-            client_ip: &str,
-            tunnel_src: &str,
-            device_ip: &str,
-            mcast_pub_groups: Option<Vec<String>>,
-            mcast_sub_groups: Option<Vec<String>>,
-        ) {
-            let expected_request = ProvisioningRequest {
-                tunnel_src: tunnel_src.to_string(),
-                tunnel_dst: device_ip.to_string(),
-                tunnel_net: "10.1.1.0/31".to_string(),
-                doublezero_ip: client_ip.to_string(),
-                doublezero_prefixes: vec!["10.0.0.0/24".to_string()],
-                bgp_local_asn: Some(self.global_cfg.local_asn),
-                bgp_remote_asn: Some(self.global_cfg.remote_asn),
-                user_type: user_type.to_string(),
-                mcast_pub_groups,
-                mcast_sub_groups,
+                publisher,
+                subscriber,
             };
 
-            self.controller
-                .expect_provisioning()
+            let users = self.users.clone();
+            let provisioned = self.provisioned_services.clone();
+            self.client
+                .expect_subscribe_multicastgroup()
                 .times(1)
-                .with(predicate::eq(expected_request))
-                .returning_st(move |_| {
+                .with(predicate::eq(expected_command))
+                .returning_st(move |cmd| {
                     thread::sleep(Duration::from_secs(1));
-                    Ok(ProvisioningResponse {
-                        status: "success".to_string(),
-                        description: None,
-                    })
+                    let mut users = users.lock().unwrap();
+                    if let Some(user) = users.get_mut(&cmd.user_pk) {
+                        if cmd.publisher {
+                            user.publishers.push(cmd.group_pk);
+                        }
+                        if cmd.subscriber {
+                            user.subscribers.push(cmd.group_pk);
+                        }
+                        provisioned
+                            .lock()
+                            .unwrap()
+                            .insert(user.user_type.to_string());
+                    }
+                    Ok(Signature::default())
                 });
-        }
-
-        pub fn expect_resolve_route(&mut self, device_ip: Ipv4Addr, resolved_src: Ipv4Addr) {
-            self.controller
-                .expect_resolve_route()
-                .times(1)
-                .withf(move |req: &ResolveRouteRequest| req.dst == device_ip)
-                .returning_st(move |_| {
-                    Ok(ResolveRouteResponse {
-                        src: Some(resolved_src),
-                    })
-                });
-        }
-
-        pub fn expect_resolve_route_failure(&mut self, device_ip: Ipv4Addr) {
-            self.controller
-                .expect_resolve_route()
-                .times(1)
-                .withf(move |req: &ResolveRouteRequest| req.dst == device_ip)
-                .returning_st(move |_| Ok(ResolveRouteResponse { src: None }));
-        }
-
-        pub fn expect_resolve_route_error(&mut self, device_ip: Ipv4Addr) {
-            self.controller
-                .expect_resolve_route()
-                .times(1)
-                .withf(move |req: &ResolveRouteRequest| req.dst == device_ip)
-                .returning_st(move |_| Err(eyre::eyre!("Failed to resolve route")));
         }
     }
 
@@ -1154,22 +1583,22 @@ mod tests {
     async fn test_connect_command_ibrl_hybrid() {
         let mut fixture = TestFixture::new();
 
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        // Create a tenant for this test
+        let (tenant_pk, tenant) = fixture.add_tenant("my-tenant");
+
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
+        let (device2_pk, _device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
         let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
-        fixture.expect_create_user(Pubkey::new_unique(), &user);
-        fixture.expected_provisioning_request(
-            UserType::IBRL,
-            user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            None,
-            None,
-        );
+        let user_pk = Pubkey::new_unique();
+        fixture.expect_create_user_with_tenant(user_pk, &user, Some(tenant_pk));
 
         // print new line for readability in test output
         println!();
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some(tenant.code.clone()),
                 allocate_addr: false,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1182,14 +1611,26 @@ mod tests {
             .await;
         assert!(result.is_ok());
 
-        println!("Test that adding an IBRL tunnel with an existing multicast fails");
-        // Test that adding an IBRL tunnel with an existing multicast fails
-        (_, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        println!("Test that adding a multicast tunnel with an existing IBRL creates a separate Multicast user");
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+
+        // When IBRL user exists, a separate Multicast user should be created on a different device
+        // (exclude_ips prevents reusing the same device as the IBRL tunnel)
+        let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &mcast_user,
+            mcast_group_pk,
+            true,  // publisher
+            false, // subscriber
+        );
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Publisher,
-                multicast_group: "test-group".to_string(),
+                mode: Some(MulticastMode::Publisher),
+                multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -1199,33 +1640,29 @@ mod tests {
         let result = command
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Only one tunnel currently supported"));
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_connect_command_ibrl_edge() {
         let mut fixture = TestFixture::new();
 
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Edge, 100, true);
+        // Create a tenant for this test
+        let (tenant_pk, tenant) = fixture.add_tenant("edge-tenant");
+
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Edge, 100, true);
+        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
+        let (device2_pk, _device2) = fixture.add_device(DeviceType::Edge, 110, true);
         let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
-        fixture.expect_create_user(Pubkey::new_unique(), &user);
-        fixture.expected_provisioning_request(
-            UserType::IBRL,
-            user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            None,
-            None,
-        );
+        let user_pk = Pubkey::new_unique();
+        fixture.expect_create_user_with_tenant(user_pk, &user, Some(tenant_pk));
 
         // print new line for readability in test output
         println!();
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some(tenant.code.clone()),
                 allocate_addr: false,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1238,14 +1675,26 @@ mod tests {
             .await;
         assert!(result.is_ok());
 
-        println!("Test that adding an IBRL tunnel with an existing multicast fails");
-        // Test that adding an IBRL tunnel with an existing multicast fails
-        (_, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        println!("Test that adding a multicast tunnel with an existing IBRL creates a separate Multicast user");
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+
+        // When IBRL user exists, a separate Multicast user should be created on a different device
+        // (exclude_ips prevents reusing the same device as the IBRL tunnel)
+        let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &mcast_user,
+            mcast_group_pk,
+            true,  // publisher
+            false, // subscriber
+        );
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Publisher,
-                multicast_group: "test-group".to_string(),
+                mode: Some(MulticastMode::Publisher),
+                multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -1255,11 +1704,7 @@ mod tests {
         let result = command
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Only one tunnel currently supported"));
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -1274,6 +1719,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1292,27 +1738,19 @@ mod tests {
     async fn test_connect_command_ibrl_allocate_hybrid() {
         let mut fixture = TestFixture::new();
 
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        // Create a tenant for this test
+        let (tenant_pk, tenant) = fixture.add_tenant("allocate-tenant");
+
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
-        fixture.expect_create_user(Pubkey::new_unique(), &user);
-
-        let resolved_src = Ipv4Addr::new(192, 168, 1, 100);
-        fixture.expect_resolve_route(device1.public_ip, resolved_src);
-
-        fixture.expected_provisioning_request_with_tunnel_src(
-            UserType::IBRLWithAllocatedIP,
-            user.client_ip.to_string().as_str(),
-            resolved_src.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            None,
-            None,
-        );
+        fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &user, Some(tenant_pk));
 
         // print new line for readability in test output
         println!();
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some(tenant.code.clone()),
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1330,27 +1768,19 @@ mod tests {
     async fn test_connect_command_ibrl_allocate_edge() {
         let mut fixture = TestFixture::new();
 
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Edge, 100, true);
+        // Create a tenant for this test
+        let (tenant_pk, tenant) = fixture.add_tenant("edge-allocate-tenant");
+
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Edge, 100, true);
         let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
-        fixture.expect_create_user(Pubkey::new_unique(), &user);
-
-        let resolved_src = Ipv4Addr::new(192, 168, 1, 101);
-        fixture.expect_resolve_route(device1.public_ip, resolved_src);
-
-        fixture.expected_provisioning_request_with_tunnel_src(
-            UserType::IBRLWithAllocatedIP,
-            user.client_ip.to_string().as_str(),
-            resolved_src.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            None,
-            None,
-        );
+        fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &user, Some(tenant_pk));
 
         // print new line for readability in test output
         println!();
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some(tenant.code.clone()),
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1376,6 +1806,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1401,6 +1832,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1418,8 +1850,8 @@ mod tests {
     async fn test_connect_command_multicast_publisher() {
         let mut fixture = TestFixture::new();
 
-        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -1428,21 +1860,16 @@ mod tests {
             true,
             false,
         );
-        fixture.expected_provisioning_request(
-            UserType::Multicast,
-            user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            Some(vec![mcast_group.multicast_ip.to_string()]),
-            Some(vec![]),
-        );
 
         // print new line for readability in test output
         println!();
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Publisher,
-                multicast_group: "test-group".to_string(),
+                mode: Some(MulticastMode::Publisher),
+                multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -1455,12 +1882,190 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    async fn execute_multicast_test_fail_already_in_a_group(multicast_mode: MulticastMode) {
+    async fn execute_multicast_test_succeed_adding_second_group(multicast_mode: MulticastMode) {
         let mut fixture = TestFixture::new();
 
         let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        let (_mcast_group2_pk, _mcast_group2) =
+        let (mcast_group2_pk, _mcast_group2) =
             fixture.add_multicast_group("test-group2", "239.0.0.2");
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+
+        let (publisher, subscriber) = match multicast_mode {
+            MulticastMode::Publisher => (true, false),
+            MulticastMode::Subscriber => (false, true),
+        };
+
+        // User already has first group
+        if multicast_mode == MulticastMode::Subscriber {
+            user.subscribers.push(mcast_group_pk);
+        } else {
+            user.publishers.push(mcast_group_pk);
+        }
+
+        let user_pk = fixture.add_user(&user);
+
+        // Expect subscribe to second group
+        fixture.expect_subscribe_multicastgroup(
+            user_pk,
+            mcast_group2_pk,
+            user.client_ip,
+            publisher,
+            subscriber,
+        );
+
+        // print new line for readability in test output
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: Some(multicast_mode),
+                multicast_groups: vec!["test-group2".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_multicast_publisher_rejects_duplicate_groups() {
+        let mut fixture = TestFixture::new();
+
+        fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: Some(MulticastMode::Publisher),
+                // Pass the same group twice — should error
+                multicast_groups: vec!["test-group".to_string(), "test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Duplicate multicast pub group"));
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_multicast_publisher_can_add_subscriber_group() {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (mcast_group2_pk, _mcast_group2) =
+            fixture.add_multicast_group("test-group2", "239.0.0.2");
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+        // Create a user who is already a publisher
+        let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        user.publishers.push(mcast_group_pk);
+        let user_pk = fixture.add_user(&user);
+
+        // Expect subscribe_multicastgroup call for the new subscriber group
+        fixture.expect_subscribe_multicastgroup(
+            user_pk,
+            mcast_group2_pk,
+            user.client_ip,
+            false,
+            true,
+        );
+
+        // Add subscriber group to existing publisher - should succeed
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: Some(MulticastMode::Subscriber),
+                multicast_groups: vec!["test-group2".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_multicast_subscriber_can_add_publisher_group() {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (mcast_group2_pk, _mcast_group2) =
+            fixture.add_multicast_group("test-group2", "239.0.0.2");
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+        // Create a user who is already a subscriber
+        let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        user.subscribers.push(mcast_group_pk);
+        let user_pk = fixture.add_user(&user);
+
+        // Expect subscribe_multicastgroup call for the new publisher group
+        fixture.expect_subscribe_multicastgroup(
+            user_pk,
+            mcast_group2_pk,
+            user.client_ip,
+            true,
+            false,
+        );
+
+        // Add publisher group to existing subscriber - should succeed
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: Some(MulticastMode::Publisher),
+                multicast_groups: vec!["test-group2".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_multicast_publisher_succeed_adding_second_group() {
+        execute_multicast_test_succeed_adding_second_group(MulticastMode::Publisher).await;
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_multicast_subscriber_succeed_adding_second_group() {
+        execute_multicast_test_succeed_adding_second_group(MulticastMode::Subscriber).await;
+    }
+
+    async fn execute_multicast_test_succeed_already_in_the_group(multicast_mode: MulticastMode) {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
 
@@ -1477,67 +2082,10 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: multicast_mode,
-                multicast_group: "test-group2".to_string(),
-            },
-            client_ip: Some(user.client_ip.to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_connect_command_multicast_publisher_fail_multiple_groups() {
-        execute_multicast_test_fail_already_in_a_group(MulticastMode::Publisher).await;
-    }
-
-    #[tokio::test]
-    async fn test_connect_command_multicast_subscriber_fail_multiple_groups() {
-        execute_multicast_test_fail_already_in_a_group(MulticastMode::Subscriber).await;
-    }
-
-    async fn execute_multicast_test_succeed_already_in_the_group(multicast_mode: MulticastMode) {
-        let mut fixture = TestFixture::new();
-
-        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
-        let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
-
-        let expect_publishers;
-        let expect_subscribers;
-
-        if multicast_mode == MulticastMode::Subscriber {
-            user.subscribers.push(mcast_group_pk);
-            expect_publishers = Some(vec![]);
-            expect_subscribers = Some(vec![mcast_group.multicast_ip.to_string()]);
-        } else {
-            user.publishers.push(mcast_group_pk);
-            expect_publishers = Some(vec![mcast_group.multicast_ip.to_string()]);
-            expect_subscribers = Some(vec![]);
-        }
-
-        fixture.add_user(&user);
-
-        fixture.expected_provisioning_request(
-            UserType::Multicast,
-            user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            expect_publishers,
-            expect_subscribers,
-        );
-
-        // print new line for readability in test output
-        println!();
-
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::Multicast {
-                mode: multicast_mode,
-                multicast_group: "test-group".to_string(),
+                mode: Some(multicast_mode),
+                multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -1564,9 +2112,11 @@ mod tests {
     async fn test_connect_command_multicast_subscribe() {
         let mut fixture = TestFixture::new();
 
-        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        // Add a second device for concurrent tunnels (Multicast + IBRL must go to different devices)
+        let (device2_pk, _device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
         let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -1575,18 +2125,13 @@ mod tests {
             false,
             true,
         );
-        fixture.expected_provisioning_request(
-            UserType::Multicast,
-            user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            Some(vec![]),
-            Some(vec![mcast_group.multicast_ip.to_string()]),
-        );
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Subscriber,
-                multicast_group: "test-group".to_string(),
+                mode: Some(MulticastMode::Subscriber),
+                multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -1598,32 +2143,17 @@ mod tests {
             .await;
         assert!(result.is_ok());
 
-        // Test that adding a second subscriber fails
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Subscriber,
-                multicast_group: "test-group2".to_string(),
-            },
-            client_ip: Some(user.client_ip.to_string()),
-            device: None,
-            verbose: false,
-        };
+        // Test that adding an IBRL tunnel with an existing multicast succeeds on a DIFFERENT device
+        // (concurrent tunnels from same client IP must go to different devices)
+        let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
+        fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Multicast user already exists for IP: 1.2.3.4"));
-
-        // Test that adding an IBRL tunnel with an existing multicast fails
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
-            client_ip: Some(user.client_ip.to_string()),
+            client_ip: Some(ibrl_user.client_ip.to_string()),
             device: None,
             verbose: false,
         };
@@ -1631,20 +2161,18 @@ mod tests {
         let result = command
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Only one tunnel currently supported"));
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_connect_command_delayed_latencies() {
         let mut fixture = TestFixture::new();
 
-        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        // Add a second device for concurrent tunnels (Multicast + IBRL must go to different devices)
+        let (device2_pk, _device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
         let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -1653,22 +2181,19 @@ mod tests {
             false,
             true,
         );
-        fixture.expected_provisioning_request(
-            UserType::Multicast,
-            user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            Some(vec![]),
-            Some(vec![mcast_group.multicast_ip.to_string()]),
-        );
 
-        let latency_record = fixture.latencies.lock().unwrap()[0].clone();
+        // Save device1's latency for delayed availability test
+        let latency_record_device1 = fixture.latencies.lock().unwrap()[0].clone();
+        let latency_record_device2 = fixture.latencies.lock().unwrap()[1].clone();
         fixture.latencies.lock().unwrap().clear();
         let latencies = Arc::clone(&fixture.latencies);
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Subscriber,
-                multicast_group: "test-group".to_string(),
+                mode: Some(MulticastMode::Subscriber),
+                multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -1678,41 +2203,27 @@ mod tests {
         let coro1 = command.execute_with_service_controller(&fixture.client, &fixture.controller);
         let coro2 = tokio::task::spawn(async move {
             tokio::time::sleep(Duration::from_secs(2)).await;
-            latencies.lock().unwrap().push(latency_record);
+            let mut latencies = latencies.lock().unwrap();
+            latencies.push(latency_record_device1);
+            latencies.push(latency_record_device2);
         });
 
         let (result1, _) = tokio::join!(coro1, coro2);
 
         assert!(result1.is_ok());
 
-        println!("Test that adding a second subscriber fails");
-        // Test that adding a second subscriber fails
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Subscriber,
-                multicast_group: "test-group2".to_string(),
-            },
-            client_ip: Some(user.client_ip.to_string()),
-            device: None,
-            verbose: false,
-        };
+        println!("Test that adding an IBRL tunnel with an existing multicast succeeds");
+        // IBRL user should go to a DIFFERENT device than the existing Multicast user
+        // (concurrent tunnels from same client IP must go to different devices)
+        let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
+        fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Multicast user already exists for IP: 1.2.3.4"));
-
-        println!("Test that adding an IBRL tunnel with an existing multicast fails");
-        // Test that adding an IBRL tunnel with an existing multicast fails
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
-            client_ip: Some(user.client_ip.to_string()),
+            client_ip: Some(ibrl_user.client_ip.to_string()),
             device: None,
             verbose: false,
         };
@@ -1720,11 +2231,7 @@ mod tests {
         let result = command
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Only one tunnel currently supported"));
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -1747,6 +2254,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some("1.2.3.4".to_string()),
@@ -1791,6 +2299,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some("1.2.3.4".to_string()),
@@ -1821,6 +2330,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some("1.2.3.4".to_string()),
@@ -1842,94 +2352,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_connect_command_ibrl_allocate_resolve_route_failure() {
-        let mut fixture = TestFixture::new();
-
-        let (_device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
-
-        fixture.expect_resolve_route_failure(device1.public_ip);
-
-        println!();
-
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::IBRL {
-                allocate_addr: true,
-            },
-            client_ip: Some("1.2.3.4".to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("Unable to resolve route"),
-            "Expected error about unable to resolve route, got: {}",
-            err_msg
-        );
-    }
-
-    #[tokio::test]
-    async fn test_connect_command_ibrl_allocate_resolve_route_error() {
-        let mut fixture = TestFixture::new();
-
-        let (_device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
-
-        fixture.expect_resolve_route_error(device1.public_ip);
-
-        println!();
-
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::IBRL {
-                allocate_addr: true,
-            },
-            client_ip: Some("1.2.3.4".to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("Failed to resolve route"),
-            "Expected error about failed to resolve route, got: {}",
-            err_msg
-        );
-    }
-
-    #[tokio::test]
     async fn test_connect_command_ibrl_allocate_existing_user() {
         let mut fixture = TestFixture::new();
 
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let mut user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
         user.status = UserStatus::Activated;
         fixture.add_user(&user);
 
-        let resolved_src = Ipv4Addr::new(192, 168, 1, 102);
-        fixture.expect_resolve_route(device1.public_ip, resolved_src);
-
-        fixture.expected_provisioning_request_with_tunnel_src(
-            UserType::IBRLWithAllocatedIP,
-            user.client_ip.to_string().as_str(),
-            resolved_src.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            None,
-            None,
-        );
-
         println!();
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1943,23 +2378,131 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// Test that adding multicast to an existing IBRL user creates a separate Multicast user
+    ///
+    /// This test verifies that when multicast is added to an IP that already has an IBRL user,
+    /// the system creates a new Multicast user (enabling concurrent unicast + multicast tunnels).
     #[tokio::test]
-    async fn test_connect_command_ibrl_allocate_existing_user_resolve_failure() {
+    async fn test_add_multicast_to_existing_ibrl_user() {
         let mut fixture = TestFixture::new();
 
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
-        let mut user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
-        user.status = UserStatus::Activated;
-        fixture.add_user(&user);
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
+        let (device2_pk, _device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
 
-        // Mock resolve_route to return None for existing user
-        fixture.expect_resolve_route_failure(device1.public_ip);
+        let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+        let _ibrl_user_pk = fixture.add_user(&ibrl_user);
 
-        println!();
+        // Expect create_subscribe_user to be called to create a NEW Multicast user on a DIFFERENT device
+        // (concurrent tunnels from same client IP must go to different devices)
+        let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &mcast_user,
+            mcast_group_pk,
+            false, // publisher
+            true,  // subscriber
+        );
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: Some(MulticastMode::Subscriber),
+                multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: Some(ibrl_user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_ok(),
+            "Adding multicast to existing IBRL user should succeed by creating separate Multicast user: {:?}",
+            result.err()
+        );
+    }
+
+    /// Test that multiple user types per IP are properly isolated
+    ///
+    /// This test verifies that:
+    /// 1. A Multicast user exists for an IP
+    /// 2. An IBRL user can be created for the same IP (different UserType = different PDA)
+    /// 3. The two users are independent
+    #[tokio::test]
+    async fn test_multiple_user_types_per_ip_isolation() {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
+        let (device2_pk, _device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
+
+        // Create a pure Multicast user and add it to the fixture (simulating existing user)
+        let mut mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        mcast_user.subscribers.push(mcast_group_pk);
+        let mcast_user_pk = fixture.add_user(&mcast_user);
+
+        // Create an IBRL user for the same IP on a DIFFERENT device
+        // (concurrent tunnels from same client IP must go to different devices)
+        let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
+        fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                allocate_addr: true,
+                tenant: Some("test-tenant".to_string()),
+                allocate_addr: false,
+            },
+            client_ip: Some(ibrl_user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_ok(),
+            "IBRL user creation should succeed even with existing Multicast user for same IP: {:?}",
+            result.err()
+        );
+
+        // Verify both users exist for the same IP
+        let users = fixture.users.lock().unwrap();
+        let users_for_ip: Vec<_> = users
+            .values()
+            .filter(|u| u.client_ip == ibrl_user.client_ip)
+            .collect();
+        assert_eq!(
+            users_for_ip.len(),
+            2,
+            "Should have 2 users for the same IP (one IBRL, one Multicast), mcast_pk={}, users={:?}",
+            mcast_user_pk,
+            users_for_ip.iter().map(|u| u.user_type).collect::<Vec<_>>()
+        );
+    }
+
+    /// Test that connect completes even when enable() fails.
+    /// When the reconciler can't be enabled and isn't already enabled,
+    /// the connect flow skips tunnel polling and returns early.
+    #[tokio::test]
+    async fn test_connect_enable_failure_is_nonfatal() {
+        let mut fixture = TestFixture::new_with_failing_enable();
+
+        let (tenant_pk, tenant) = fixture.add_tenant("my-tenant");
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+        let user_pk = Pubkey::new_unique();
+        fixture.expect_create_user_with_tenant(user_pk, &user, Some(tenant_pk));
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                tenant: Some(tenant.code.clone()),
+                allocate_addr: false,
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -1969,13 +2512,10 @@ mod tests {
         let result = command
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
-
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
         assert!(
-            err_msg.contains("Unable to resolve route"),
-            "Expected error about unable to resolve route, got: {}",
-            err_msg
+            result.is_ok(),
+            "Connect should succeed even when enable() fails: {:?}",
+            result.err()
         );
     }
 }

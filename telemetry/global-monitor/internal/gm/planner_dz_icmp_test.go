@@ -9,9 +9,9 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/dz"
-	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/geoip"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/netlink"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/sol"
+	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 	"github.com/stretchr/testify/require"
 )
 
@@ -170,7 +170,7 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedInfluxPoin
 			Region:      "ON",
 			City:        "Toronto",
 			CityID:      123,
-			Metro:       "YYZ",
+			MetroName:   "Yorkton",
 			ASN:         64500,
 			ASNOrg:      "Example",
 			Latitude:    43.7,

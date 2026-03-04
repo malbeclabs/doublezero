@@ -2,8 +2,9 @@ use crate::processors::{
     accesspass::{
         check_status::CheckStatusAccessPassArgs, close::CloseAccessPassArgs, set::SetAccessPassArgs,
     },
-    allowlist::foundation::{
-        add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs,
+    allowlist::{
+        foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
+        qa::{add::AddQaAllowlistArgs, remove::RemoveQaAllowlistArgs},
     },
     contributor::{
         create::ContributorCreateArgs, delete::ContributorDeleteArgs,
@@ -31,7 +32,8 @@ use crate::processors::{
     },
     globalconfig::set::SetGlobalConfigArgs,
     globalstate::{
-        setairdrop::SetAirdropArgs, setauthority::SetAuthorityArgs, setversion::SetVersionArgs,
+        setairdrop::SetAirdropArgs, setauthority::SetAuthorityArgs,
+        setfeatureflags::SetFeatureFlagsArgs, setversion::SetVersionArgs,
     },
     link::{
         accept::LinkAcceptArgs, activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
@@ -64,9 +66,15 @@ use crate::processors::{
         suspend::MulticastGroupSuspendArgs,
         update::MulticastGroupUpdateArgs,
     },
+    reservation::{close::CloseReservationArgs, reserve::ReserveConnectionArgs},
     resource::{
-        allocate::ResourceAllocateArgs, create::ResourceCreateArgs,
-        deallocate::ResourceDeallocateArgs,
+        allocate::ResourceAllocateArgs, closeaccount::ResourceExtensionCloseAccountArgs,
+        create::ResourceCreateArgs, deallocate::ResourceDeallocateArgs,
+    },
+    tenant::{
+        add_administrator::TenantAddAdministratorArgs, create::TenantCreateArgs,
+        delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
+        update::TenantUpdateArgs, update_payment_status::UpdatePaymentStatusArgs,
     },
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
@@ -182,6 +190,22 @@ pub enum DoubleZeroInstruction {
 
     SetDeviceHealth(DeviceSetHealthArgs), // variant 83
     SetLinkHealth(LinkSetHealthArgs),     // variant 84
+
+    CloseResource(ResourceExtensionCloseAccountArgs), // variant 85
+
+    AddQaAllowlist(AddQaAllowlistArgs),       // variant 86
+    RemoveQaAllowlist(RemoveQaAllowlistArgs), // variant 87
+
+    CreateTenant(TenantCreateArgs),                     // variant 88
+    UpdateTenant(TenantUpdateArgs),                     // variant 89
+    DeleteTenant(TenantDeleteArgs),                     // variant 90
+    TenantAddAdministrator(TenantAddAdministratorArgs), // variant 91
+    TenantRemoveAdministrator(TenantRemoveAdministratorArgs), // variant 92
+    UpdatePaymentStatus(UpdatePaymentStatusArgs),       // variant 93
+    SetFeatureFlags(SetFeatureFlagsArgs),               // variant 94
+
+    ReserveConnection(ReserveConnectionArgs), // variant 95
+    CloseReservation(CloseReservationArgs),   // variant 96
 }
 
 impl DoubleZeroInstruction {
@@ -294,6 +318,21 @@ impl DoubleZeroInstruction {
             82 => Ok(Self::DeallocateResource(ResourceDeallocateArgs::try_from(rest).unwrap())),
             83 => Ok(Self::SetDeviceHealth(DeviceSetHealthArgs::try_from(rest).unwrap())),
             84 => Ok(Self::SetLinkHealth(LinkSetHealthArgs::try_from(rest).unwrap())),
+            85 => Ok(Self::CloseResource(ResourceExtensionCloseAccountArgs::try_from(rest).unwrap())),
+
+            86 => Ok(Self::AddQaAllowlist(AddQaAllowlistArgs::try_from(rest).unwrap())),
+            87 => Ok(Self::RemoveQaAllowlist(RemoveQaAllowlistArgs::try_from(rest).unwrap())),
+
+            88 => Ok(Self::CreateTenant(TenantCreateArgs::try_from(rest).unwrap())),
+            89 => Ok(Self::UpdateTenant(TenantUpdateArgs::try_from(rest).unwrap())),
+            90 => Ok(Self::DeleteTenant(TenantDeleteArgs::try_from(rest).unwrap())),
+            91 => Ok(Self::TenantAddAdministrator(TenantAddAdministratorArgs::try_from(rest).unwrap())),
+            92 => Ok(Self::TenantRemoveAdministrator(TenantRemoveAdministratorArgs::try_from(rest).unwrap())),
+            93 => Ok(Self::UpdatePaymentStatus(UpdatePaymentStatusArgs::try_from(rest).unwrap())),
+            94 => Ok(Self::SetFeatureFlags(SetFeatureFlagsArgs::try_from(rest).unwrap())),
+
+            95 => Ok(Self::ReserveConnection(ReserveConnectionArgs::try_from(rest).unwrap())),
+            96 => Ok(Self::CloseReservation(CloseReservationArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -404,6 +443,21 @@ impl DoubleZeroInstruction {
             Self::DeallocateResource(_) => "DeallocateResource".to_string(), // variant 82
             Self::SetDeviceHealth(_) => "SetDeviceHealth".to_string(), // variant 83
             Self::SetLinkHealth(_) => "SetLinkHealth".to_string(), // variant 84
+            Self::CloseResource(_) => "CloseResource".to_string(), // variant 85
+
+            Self::AddQaAllowlist(_) => "AddQaAllowlist".to_string(), // variant 86
+            Self::RemoveQaAllowlist(_) => "RemoveQaAllowlist".to_string(), // variant 87
+
+            Self::CreateTenant(_) => "CreateTenant".to_string(), // variant 88
+            Self::UpdateTenant(_) => "UpdateTenant".to_string(), // variant 89
+            Self::DeleteTenant(_) => "DeleteTenant".to_string(), // variant 90
+            Self::TenantAddAdministrator(_) => "TenantAddAdministrator".to_string(), // variant 91
+            Self::TenantRemoveAdministrator(_) => "TenantRemoveAdministrator".to_string(), // variant 92
+            Self::UpdatePaymentStatus(_) => "UpdatePaymentStatus".to_string(), // variant 93
+            Self::SetFeatureFlags(_) => "SetFeatureFlags".to_string(),         // variant 94
+
+            Self::ReserveConnection(_) => "ReserveConnection".to_string(), // variant 95
+            Self::CloseReservation(_) => "CloseReservation".to_string(),   // variant 96
         }
     }
 
@@ -506,6 +560,21 @@ impl DoubleZeroInstruction {
             Self::DeallocateResource(args) => format!("{args:?}"), // variant 82
             Self::SetDeviceHealth(args) => format!("{args:?}"), // variant 83
             Self::SetLinkHealth(args) => format!("{args:?}"), // variant 84
+            Self::CloseResource(args) => format!("{args:?}"), // variant 85
+
+            Self::AddQaAllowlist(args) => format!("{args:?}"), // variant 86
+            Self::RemoveQaAllowlist(args) => format!("{args:?}"), // variant 87
+
+            Self::CreateTenant(args) => format!("{args:?}"), // variant 88
+            Self::UpdateTenant(args) => format!("{args:?}"), // variant 89
+            Self::DeleteTenant(args) => format!("{args:?}"), // variant 90
+            Self::TenantAddAdministrator(args) => format!("{args:?}"), // variant 91
+            Self::TenantRemoveAdministrator(args) => format!("{args:?}"), // variant 92
+            Self::UpdatePaymentStatus(args) => format!("{args:?}"), // variant 93
+            Self::SetFeatureFlags(args) => format!("{args:?}"), // variant 94
+
+            Self::ReserveConnection(args) => format!("{args:?}"), // variant 95
+            Self::CloseReservation(args) => format!("{args:?}"),  // variant 96
         }
     }
 }
@@ -523,6 +592,7 @@ mod tests {
         },
     };
     use solana_program::pubkey::Pubkey;
+    use std::net::Ipv4Addr;
 
     use super::*;
 
@@ -547,6 +617,7 @@ mod tests {
                 device_tunnel_block: "1.2.3.4/1".parse().unwrap(),
                 user_tunnel_block: "1.2.3.4/1".parse().unwrap(),
                 multicastgroup_block: "1.2.3.4/1".parse().unwrap(),
+                multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
                 next_bgp_community: None,
             }),
             "SetGlobalConfig",
@@ -630,7 +701,7 @@ mod tests {
             "CreateDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 0 }),
             "ActivateDevice",
         );
         test_instruction(
@@ -646,6 +717,10 @@ mod tests {
                 users_count: None,
                 status: None,
                 desired_status: None,
+                reference_count: None,
+                resource_count: 0,
+                max_unicast_users: None,
+                max_multicast_users: None,
             }),
             "UpdateDevice",
         );
@@ -673,6 +748,7 @@ mod tests {
             DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                 tunnel_id: 1,
                 tunnel_net: "1.2.3.4/1".parse().unwrap(),
+                use_onchain_allocation: false,
             }),
             "ActivateLink",
         );
@@ -702,6 +778,8 @@ mod tests {
                 user_type: UserType::IBRL,
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: [1, 2, 3, 4].into(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                dz_prefix_count: 0,
             }),
             "CreateUser",
         );
@@ -710,6 +788,8 @@ mod tests {
                 tunnel_id: 1,
                 tunnel_net: "1.2.3.4/1".parse().unwrap(),
                 dz_ip: [1, 2, 3, 4].into(),
+                dz_prefix_count: 0,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             }),
             "ActivateUser",
         );
@@ -721,6 +801,7 @@ mod tests {
                 tunnel_id: Some(1),
                 tunnel_net: Some("1.2.3.4/1".parse().unwrap()),
                 validator_pubkey: Some(Pubkey::new_unique()),
+                tenant_pk: Some(Pubkey::new_unique()),
             }),
             "UpdateUser",
         );
@@ -731,15 +812,20 @@ mod tests {
             "DeleteUser",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {}),
+            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs { resource_count: 0 }),
             "CloseAccountDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {}),
+            DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {
+                use_onchain_deallocation: false,
+            }),
             "CloseAccountLink",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {}),
+            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+                dz_prefix_count: 0,
+                multicast_publisher_count: 0,
+            }),
             "CloseAccountUser",
         );
         test_instruction(
@@ -771,6 +857,18 @@ mod tests {
                 pubkey: Pubkey::new_unique(),
             }),
             "RemoveFoundationAllowlist",
+        );
+        test_instruction(
+            DoubleZeroInstruction::AddQaAllowlist(AddQaAllowlistArgs {
+                pubkey: Pubkey::new_unique(),
+            }),
+            "AddQaAllowlist",
+        );
+        test_instruction(
+            DoubleZeroInstruction::RemoveQaAllowlist(RemoveQaAllowlistArgs {
+                pubkey: Pubkey::new_unique(),
+            }),
+            "RemoveQaAllowlist",
         );
         test_instruction(
             DoubleZeroInstruction::AddDeviceAllowlist(),
@@ -844,7 +942,9 @@ mod tests {
         );
 
         test_instruction(
-            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {}),
+            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
+                use_onchain_deallocation: false,
+            }),
             "DeactivateMulticastGroup",
         );
 
@@ -899,6 +999,7 @@ mod tests {
                 client_ip: [1, 2, 3, 4].into(),
                 publisher: false,
                 subscriber: true,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             }),
             "CreateSubscribeUser",
         );
@@ -1064,6 +1165,10 @@ mod tests {
             "DeallocateResource",
         );
         test_instruction(
+            DoubleZeroInstruction::CloseResource(ResourceExtensionCloseAccountArgs {}),
+            "CloseResource",
+        );
+        test_instruction(
             DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
                 health: DeviceHealth::Pending,
             }),
@@ -1074,6 +1179,47 @@ mod tests {
                 health: LinkHealth::Pending,
             }),
             "SetLinkHealth",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+                code: "test".to_string(),
+                administrator: Pubkey::new_unique(),
+                token_account: None,
+                metro_routing: true,
+                route_liveness: false,
+            }),
+            "CreateTenant",
+        );
+        test_instruction(
+            DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
+                vrf_id: Some(200),
+                token_account: Some(Pubkey::new_unique()),
+                metro_routing: Some(true),
+                route_liveness: Some(false),
+                billing: None,
+            }),
+            "UpdateTenant",
+        );
+        test_instruction(
+            DoubleZeroInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
+                payment_status: 1,
+                last_deduction_dz_epoch: None,
+            }),
+            "UpdatePaymentStatus",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs { feature_flags: 1 }),
+            "SetFeatureFlags",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs {
+                client_ip: [10, 0, 0, 1].into(),
+            }),
+            "ReserveConnection",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CloseReservation(CloseReservationArgs {}),
+            "CloseReservation",
         );
     }
 }

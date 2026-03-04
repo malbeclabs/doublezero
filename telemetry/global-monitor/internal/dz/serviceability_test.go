@@ -244,6 +244,81 @@ func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_UserMissingDevice(t 
 	require.Nil(t, userOut.Device, "device should be nil if DevicePubKey not found in DevicesByPK")
 }
 
+func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_DuplicateClientIP_PrefersNonMulticast(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	logger := newTestLogger()
+
+	exchangePK := solana.NewWallet().PublicKey()
+	ibrlDevicePK := solana.NewWallet().PublicKey()
+	multicastDevicePK := solana.NewWallet().PublicKey()
+	ibrlUserPK := solana.NewWallet().PublicKey()
+	multicastUserPK := solana.NewWallet().PublicKey()
+
+	clientIPBytes := net.ParseIP("104.248.20.159").To4()
+	require.NotNil(t, clientIPBytes)
+	var clientIP [4]byte
+	copy(clientIP[:], clientIPBytes)
+
+	var ibrlDZIP [4]byte
+	copy(ibrlDZIP[:], net.ParseIP("84.32.223.131").To4())
+	var multicastDZIP [4]byte
+	copy(multicastDZIP[:], net.ParseIP("84.32.223.132").To4())
+
+	pd := &serviceability.ProgramData{
+		Exchanges: []serviceability.Exchange{
+			{PubKey: exchangePK, Code: "EXCH", Name: "Exchange"},
+		},
+		Devices: []serviceability.Device{
+			{PubKey: ibrlDevicePK, Code: "frankry", ExchangePubKey: exchangePK},
+			{PubKey: multicastDevicePK, Code: "fr2-dzx-001", ExchangePubKey: exchangePK},
+		},
+		// Multicast user listed first to ensure ordering doesn't matter.
+		Users: []serviceability.User{
+			{
+				PubKey:          multicastUserPK,
+				ValidatorPubKey: solana.NewWallet().PublicKey(),
+				ClientIp:        clientIP,
+				DzIp:            multicastDZIP,
+				DevicePubKey:    multicastDevicePK,
+				UserType:        serviceability.UserTypeMulticast,
+			},
+			{
+				PubKey:          ibrlUserPK,
+				ValidatorPubKey: solana.NewWallet().PublicKey(),
+				ClientIp:        clientIP,
+				DzIp:            ibrlDZIP,
+				DevicePubKey:    ibrlDevicePK,
+				UserType:        serviceability.UserTypeIBRLWithAllocatedIP,
+			},
+		},
+	}
+
+	rpc := &MockServiceabilityRPC{
+		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return pd, nil
+		},
+	}
+
+	view, err := NewServiceabilityView(logger, rpc)
+	require.NoError(t, err)
+
+	out, err := view.GetProgramData(ctx)
+	require.NoError(t, err)
+
+	// Both users should exist by PK.
+	require.Len(t, out.UsersByPK, 2)
+
+	// UsersByClientIP should prefer the non-multicast user.
+	userByClientIP, ok := out.UsersByClientIP["104.248.20.159"]
+	require.True(t, ok)
+	require.Equal(t, ibrlUserPK, userByClientIP.PubKey)
+	require.Equal(t, UserTypeIBRLWithAllocatedIP, userByClientIP.UserType)
+	require.NotNil(t, userByClientIP.Device)
+	require.Equal(t, "frankry", userByClientIP.Device.Code)
+}
+
 type MockServiceabilityRPC struct {
 	GetProgramDataFunc func(ctx context.Context) (*serviceability.ProgramData, error)
 }

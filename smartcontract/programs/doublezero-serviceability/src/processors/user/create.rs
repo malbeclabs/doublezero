@@ -8,6 +8,7 @@ use crate::{
         accounttype::AccountType,
         device::{Device, DeviceStatus},
         globalstate::GlobalState,
+        tenant::Tenant,
         user::*,
     },
 };
@@ -26,20 +27,33 @@ use solana_program::{
 };
 use std::net::Ipv4Addr;
 
+use super::resource_onchain_helpers;
+use crate::processors::validation::validate_program_account;
+
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct UserCreateArgs {
     pub user_type: UserType,
     pub cyoa_type: UserCYOA,
     #[incremental(default = Ipv4Addr::UNSPECIFIED)]
     pub client_ip: std::net::Ipv4Addr,
+    #[incremental(default = Ipv4Addr::UNSPECIFIED)]
+    pub tunnel_endpoint: std::net::Ipv4Addr,
+    /// Number of DzPrefixBlock accounts passed for on-chain allocation.
+    /// When 0, legacy behavior is used (Pending status). When > 0, atomic create+allocate+activate.
+    #[incremental(default = 0)]
+    pub dz_prefix_count: u8,
 }
 
 impl fmt::Debug for UserCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}",
-            self.user_type, self.cyoa_type, &self.client_ip,
+            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}",
+            self.user_type,
+            self.cyoa_type,
+            &self.client_ip,
+            &self.tunnel_endpoint,
+            self.dz_prefix_count,
         )
     }
 }
@@ -61,6 +75,49 @@ pub fn process_create_user(
     let device_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+
+    // Optional: ResourceExtension accounts for on-chain allocation (between globalstate and optional_tenant)
+    // Account layout WITH ResourceExtension (dz_prefix_count > 0):
+    //   [user, device, accesspass, globalstate, user_tunnel_block, multicast_publisher_block, device_tunnel_ids, dz_prefix_0..N, optional_tenant, payer, system]
+    // Account layout WITHOUT (legacy, dz_prefix_count == 0):
+    //   [user, device, accesspass, globalstate, optional_tenant, payer, system]
+    let resource_extension_accounts = if value.dz_prefix_count > 0 {
+        let user_tunnel_block_ext = next_account_info(accounts_iter)?; // UserTunnelBlock
+        let multicast_publisher_block_ext = next_account_info(accounts_iter)?; // MulticastPublisherBlock
+        let device_tunnel_ids_ext = next_account_info(accounts_iter)?; // TunnelIds
+
+        let mut dz_prefix_accounts = Vec::with_capacity(value.dz_prefix_count as usize);
+        for _ in 0..value.dz_prefix_count {
+            dz_prefix_accounts.push(next_account_info(accounts_iter)?);
+        }
+
+        Some((
+            user_tunnel_block_ext,
+            multicast_publisher_block_ext,
+            device_tunnel_ids_ext,
+            dz_prefix_accounts,
+        ))
+    } else {
+        None
+    };
+
+    // Parse optional tenant account
+    // With resource extensions, the total fixed accounts shift:
+    //   Legacy without tenant: 6 accounts [user, device, accesspass, globalstate, payer, system]
+    //   Legacy with tenant: 7 accounts [user, device, accesspass, globalstate, tenant, payer, system]
+    //   Atomic without tenant: 6 + 3 + dz_prefix_count accounts
+    //   Atomic with tenant: 7 + 3 + dz_prefix_count accounts
+    let resource_ext_accounts = if value.dz_prefix_count > 0 {
+        3 + value.dz_prefix_count as usize
+    } else {
+        0
+    };
+    let tenant_account = if accounts.len() >= 7 + resource_ext_accounts {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -69,15 +126,39 @@ pub fn process_create_user(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
+    // Validate tenant account if provided
+    if let Some(tenant_account) = tenant_account {
+        // Must not be empty (already initialized)
+        if tenant_account.data_is_empty() {
+            return Err(DoubleZeroError::InvalidTenantPubkey.into());
+        }
+
+        validate_program_account!(
+            tenant_account,
+            program_id,
+            writable = true,
+            pda = None::<&Pubkey>,
+            "Tenant"
+        );
+
+        // Verify account type is Tenant
+        if tenant_account.data.borrow()[0] != AccountType::Tenant as u8 {
+            return Err(DoubleZeroError::InvalidAccountType.into());
+        }
+    }
+
     if !user_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
-    assert_eq!(
-        accesspass_account.owner, program_id,
-        "Invalid AccessPass Account Owner"
+    validate_program_account!(
+        accesspass_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "AccessPass"
     );
 
     let mut globalstate = GlobalState::try_from(globalstate_account)?;
@@ -144,6 +225,31 @@ pub fn process_create_user(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
+    // Enforce tenant_allowlist: if access-pass has a non-default tenant in its
+    // allowlist, the user's tenant must be in that list.
+    if accesspass
+        .tenant_allowlist
+        .iter()
+        .any(|pk| *pk != Pubkey::default())
+    {
+        let user_tenant_pk = tenant_account.map(|a| *a.key).unwrap_or(Pubkey::default());
+        if !accesspass.tenant_allowlist.contains(&user_tenant_pk) {
+            msg!(
+                "Tenant {} not in access-pass tenant_allowlist {:?}",
+                user_tenant_pk,
+                accesspass.tenant_allowlist
+            );
+            return Err(DoubleZeroError::TenantNotInAccessPassAllowlist.into());
+        }
+    } else if let Some(tenant_account) = tenant_account {
+        let tenant = Tenant::try_from(tenant_account)?;
+        msg!(
+            "Access-pass has no tenant_allowlist, but user creation specifies tenant {}",
+            tenant.code
+        );
+        return Err(DoubleZeroError::TenantNotInAccessPassAllowlist.into());
+    }
+
     // Check Initial epoch
     let clock = Clock::get()?;
     let current_epoch = clock.epoch;
@@ -156,34 +262,93 @@ pub fn process_create_user(
         return Err(DoubleZeroError::AccessPassUnauthorized.into());
     }
 
-    accesspass.connection_count += 1;
-    accesspass.status = AccessPassStatus::Connected;
-
     // Read validator_pubkey from AccessPass
-    let validator_pubkey = match accesspass.accesspass_type {
-        AccessPassType::SolanaValidator(pk) => pk,
-        AccessPassType::Prepaid => Pubkey::default(),
+    let validator_pubkey = match &accesspass.accesspass_type {
+        AccessPassType::SolanaValidator(pk) => *pk,
+        _ => Pubkey::default(),
     };
 
     let mut device = Device::try_from(device_account)?;
 
+    let is_qa = globalstate.qa_allowlist.contains(payer_account.key);
+
     // Only activated devices can have users, or if in foundation allowlist
     if device.status != DeviceStatus::Activated
         && !globalstate.foundation_allowlist.contains(payer_account.key)
+        && !is_qa
     {
         msg!("{:?}", device);
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    if device.users_count >= device.max_users {
+    if device.users_count + device.reserved_seats >= device.max_users && !is_qa {
         msg!("{:?}", device);
         return Err(DoubleZeroError::MaxUsersExceeded.into());
     }
 
+    // Check per-type limits (when max > 0, the limit is enforced)
+    match value.user_type {
+        UserType::Multicast => {
+            if device.max_multicast_users > 0
+                && device.multicast_users_count >= device.max_multicast_users
+                && !is_qa
+            {
+                msg!(
+                    "Max multicast users exceeded: count={}, max={}",
+                    device.multicast_users_count,
+                    device.max_multicast_users
+                );
+                return Err(DoubleZeroError::MaxMulticastUsersExceeded.into());
+            }
+        }
+        _ => {
+            if device.max_unicast_users > 0
+                && device.unicast_users_count >= device.max_unicast_users
+                && !is_qa
+            {
+                msg!(
+                    "Max unicast users exceeded: count={}, max={}",
+                    device.unicast_users_count,
+                    device.max_unicast_users
+                );
+                return Err(DoubleZeroError::MaxUnicastUsersExceeded.into());
+            }
+        }
+    }
+
+    // All validations passed - now update counters
+    accesspass.connection_count += 1;
+    accesspass.status = AccessPassStatus::Connected;
+
     device.reference_count += 1;
     device.users_count += 1;
+    // Increment per-type counter
+    match value.user_type {
+        UserType::Multicast => {
+            device.multicast_users_count += 1;
+        }
+        _ => {
+            device.unicast_users_count += 1;
+        }
+    }
 
-    let user: User = User {
+    // Handle tenant reference counting and get tenant_pk
+    let tenant_pk = if let Some(tenant_account) = tenant_account {
+        let mut tenant = Tenant::try_from(tenant_account)?;
+
+        tenant.reference_count = tenant
+            .reference_count
+            .checked_add(1)
+            .ok_or(DoubleZeroError::InvalidIndex)?;
+
+        try_acc_write(&tenant, tenant_account, payer_account, accounts)?;
+
+        *tenant_account.key
+    } else {
+        Pubkey::default()
+    };
+
+    let mut user: User = User {
         account_type: AccountType::User,
         owner: *payer_account.key,
         bump_seed: if pda_ver == PDAVersion::V1 {
@@ -196,7 +361,7 @@ pub fn process_create_user(
         } else {
             0
         },
-        tenant_pk: Pubkey::default(),
+        tenant_pk,
         user_type: value.user_type,
         device_pk: *device_account.key,
         cyoa_type: value.cyoa_type,
@@ -208,7 +373,30 @@ pub fn process_create_user(
         publishers: vec![],
         subscribers: vec![],
         validator_pubkey,
+        tunnel_endpoint: value.tunnel_endpoint,
     };
+
+    // Atomic create+allocate+activate if on-chain allocation is requested
+    if let Some((
+        user_tunnel_block_ext,
+        multicast_publisher_block_ext,
+        device_tunnel_ids_ext,
+        dz_prefix_accounts,
+    )) = resource_extension_accounts
+    {
+        let globalstate_ref = GlobalState::try_from(globalstate_account)?;
+        resource_onchain_helpers::validate_and_allocate_user_resources(
+            program_id,
+            &mut user,
+            user_tunnel_block_ext,
+            multicast_publisher_block_ext,
+            device_tunnel_ids_ext,
+            &dz_prefix_accounts,
+            &globalstate_ref,
+        )?;
+
+        user.try_activate(&mut accesspass)?;
+    }
 
     if pda_ver == PDAVersion::V1 {
         try_acc_create(

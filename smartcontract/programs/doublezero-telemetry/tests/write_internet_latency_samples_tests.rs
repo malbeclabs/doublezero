@@ -309,7 +309,7 @@ async fn test_write_internet_latency_samples_fail_agent_not_signer() {
     let accounts = vec![
         AccountMeta::new(latency_samples_pda, false),
         AccountMeta::new(oracle_agent.pubkey(), false), // Oracle NOT the signer
-        AccountMeta::new(solana_program::system_program::id(), false),
+        AccountMeta::new(solana_system_interface::program::ID, false),
     ];
 
     let instruction = Instruction {

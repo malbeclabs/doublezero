@@ -128,11 +128,19 @@ func (m *mockLedgerRPC) GetEpochInfo(ctx context.Context, c solanarpc.Commitment
 }
 
 type mockServiceabilityClient struct {
-	GetProgramDataFunc func(context.Context) (*serviceability.ProgramData, error)
+	GetProgramDataFunc                              func(context.Context) (*serviceability.ProgramData, error)
+	GetMulticastPublisherBlockResourceExtensionFunc func(context.Context) (*serviceability.ResourceExtension, error)
 }
 
 func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
 	return m.GetProgramDataFunc(ctx)
+}
+
+func (m *mockServiceabilityClient) GetMulticastPublisherBlockResourceExtension(ctx context.Context) (*serviceability.ResourceExtension, error) {
+	if m.GetMulticastPublisherBlockResourceExtensionFunc != nil {
+		return m.GetMulticastPublisherBlockResourceExtensionFunc(ctx)
+	}
+	return nil, nil
 }
 
 type mockTelemetryProgramClient struct {

@@ -11,7 +11,8 @@ func DeserializeConfig(reader *ByteReader, cfg *Config) {
 	cfg.TunnelTunnelBlock = reader.ReadNetworkV4()
 	cfg.UserTunnelBlock = reader.ReadNetworkV4()
 	cfg.MulticastGroupBlock = reader.ReadNetworkV4()
-	cfg.PubKey = reader.ReadPubkey()
+	cfg.NextBGPCommunity = reader.ReadU16()
+	cfg.MulticastPublisherBlock = reader.ReadNetworkV4()
 }
 
 func DeserializeLocation(reader *ByteReader, loc *Location) {
@@ -54,8 +55,25 @@ func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
 	contributor.BumpSeed = reader.ReadU8()
 	contributor.Status = ContributorStatus(reader.ReadU8())
 	contributor.Code = reader.ReadString()
-	contributor.Name = reader.ReadString()
 	contributor.PubKey = reader.ReadPubkey()
+}
+
+func DeserializeTenant(reader *ByteReader, tenant *Tenant) {
+	tenant.AccountType = AccountType(reader.ReadU8())
+	tenant.Owner = reader.ReadPubkey()
+	tenant.BumpSeed = reader.ReadU8()
+	tenant.Code = reader.ReadString()
+	tenant.VrfId = reader.ReadU16()
+	tenant.ReferenceCount = reader.ReadU32()
+	tenant.Administrators = reader.ReadPubkeySlice()
+	tenant.PaymentStatus = TenantPaymentStatus(reader.ReadU8())
+	tenant.TokenAccount = reader.ReadPubkey()
+	tenant.MetroRouting = (reader.ReadU8() != 0)
+	tenant.RouteLiveness = (reader.ReadU8() != 0)
+	tenant.BillingDiscriminant = reader.ReadU8()
+	tenant.BillingRate = reader.ReadU64()
+	tenant.BillingLastDeductionDzEpoch = reader.ReadU64()
+	// Note: tenant.PubKey is set separately in client.go after deserialization
 }
 
 func DeserializeInterface(reader *ByteReader, iface *Interface) {
@@ -91,7 +109,8 @@ func DeserializeInterfaceV2(reader *ByteReader, iface *Interface) {
 	iface.InterfaceType = InterfaceType(reader.ReadU8())
 	iface.InterfaceCYOA = InterfaceCYOA(reader.ReadU8())
 	iface.InterfaceDIA = InterfaceDIA(reader.ReadU8())
-	iface.LoopbackType = LoopbackType(reader.ReadU8())
+	loopbackTypeByte := reader.ReadU8()
+	iface.LoopbackType = LoopbackType(loopbackTypeByte)
 	iface.Bandwidth = reader.ReadU64()
 	iface.Cir = reader.ReadU64()
 	iface.Mtu = reader.ReadU16()
@@ -118,7 +137,7 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.ContributorPubKey = reader.ReadPubkey()
 	dev.MgmtVrf = reader.ReadString()
 	dev.Interfaces = make([]Interface, 0)
-	var length = reader.ReadU32()
+	length := reader.ReadU32()
 	if (length * 18) > reader.Remaining() {
 		log.Println("DeserializeDevice: Not enough data for interfaces (# of interfaces = ", length, ")")
 		return
@@ -131,6 +150,8 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.ReferenceCount = reader.ReadU32()
 	dev.UsersCount = reader.ReadU16()
 	dev.MaxUsers = reader.ReadU16()
+	dev.DeviceHealth = DeviceHealth(reader.ReadU8())
+	dev.DeviceDesiredStatus = DeviceDesiredStatus(reader.ReadU8())
 	// Note: dev.PubKey is set separately in client.go after deserialization
 }
 
@@ -174,6 +195,7 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	user.Publishers = reader.ReadPubkeySlice()
 	user.Subscribers = reader.ReadPubkeySlice()
 	user.ValidatorPubKey = reader.ReadPubkey()
+	user.TunnelEndpoint = reader.ReadIPv4()
 	user.PubKey = reader.ReadPubkey()
 }
 
@@ -187,7 +209,8 @@ func DeserializeMulticastGroup(reader *ByteReader, multicastgroup *MulticastGrou
 	multicastgroup.MaxBandwidth = reader.ReadU64()
 	multicastgroup.Status = MulticastGroupStatus(reader.ReadU8())
 	multicastgroup.Code = reader.ReadString()
-	multicastgroup.PubKey = reader.ReadPubkey()
+	multicastgroup.PublisherCount = reader.ReadU32()
+	multicastgroup.SubscriberCount = reader.ReadU32()
 }
 
 func DeserializeProgramConfig(reader *ByteReader, programconfig *ProgramConfig) {
@@ -200,4 +223,64 @@ func DeserializeProgramVersion(reader *ByteReader, programversion *ProgramVersio
 	programversion.Major = reader.ReadU32()
 	programversion.Minor = reader.ReadU32()
 	programversion.Patch = reader.ReadU32()
+}
+
+// ResourceExtension binary layout (from Rust):
+// Header (84 bytes for IP allocator, 83 bytes for ID allocator):
+//
+//	[0]       account_type (u8) = 12
+//	[1-32]    owner (Pubkey/[32]byte)
+//	[33]      bump_seed (u8)
+//	[34-65]   associated_with (Pubkey/[32]byte)
+//	[66]      allocator discriminant (u8): 0=Ip, 1=Id
+//	For Ip allocator (17 bytes):
+//	  [67-71]   base_net IP (4 bytes)
+//	  [72]      base_net prefix (1 byte)
+//	  [73-80]   first_free_index (u64/usize)
+//	For Id allocator (12 bytes):
+//	  [67-68]   range_start (u16)
+//	  [69-70]   range_end (u16)
+//	  [71-78]   first_free_index (u64/usize)
+//
+// Bitmap starts at offset 88 (aligned to 8 bytes)
+const resourceExtensionBitmapOffset = 88
+
+func DeserializeResourceExtension(reader *ByteReader, ext *ResourceExtension) {
+	ext.AccountType = AccountType(reader.ReadU8())
+	ext.Owner = reader.ReadPubkey()
+	ext.BumpSeed = reader.ReadU8()
+	ext.AssociatedWith = reader.ReadPubkey()
+
+	// Read allocator discriminant
+	allocatorType := AllocatorType(reader.ReadU8())
+	ext.Allocator.Type = allocatorType
+
+	switch allocatorType {
+	case AllocatorTypeIp:
+		ext.Allocator.IpAllocator = &IpAllocator{
+			BaseNet:        reader.ReadNetworkV4(),
+			FirstFreeIndex: reader.ReadU64(),
+		}
+	case AllocatorTypeId:
+		ext.Allocator.IdAllocator = &IdAllocator{
+			RangeStart:     reader.ReadU16(),
+			RangeEnd:       reader.ReadU16(),
+			FirstFreeIndex: reader.ReadU64(),
+		}
+	default:
+		log.Println("DeserializeResourceExtension: Unknown allocator type", allocatorType)
+		return
+	}
+
+	// Skip to bitmap offset (header is padded to 88 bytes for alignment)
+	currentOffset := reader.GetOffset()
+	if currentOffset < resourceExtensionBitmapOffset {
+		reader.Skip(resourceExtensionBitmapOffset - currentOffset)
+	}
+
+	// Read remaining bytes as storage bitmap
+	remaining := int(reader.Remaining())
+	if remaining > 0 {
+		ext.Storage = reader.ReadBytes(remaining)
+	}
 }

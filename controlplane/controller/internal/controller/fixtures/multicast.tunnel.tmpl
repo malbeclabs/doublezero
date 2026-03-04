@@ -176,6 +176,7 @@ router isis 1
    !
    segment-routing mpls
       no shutdown
+   no set-overload-bit
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300

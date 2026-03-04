@@ -1046,7 +1046,6 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 						AF:             4,
 						Interval:       int(samplingInterval.Seconds()),
 						Packets:        1,
-						Size:           1280,
 						PacketInterval: 1000, // Delay between packets; only matters when Packets > 1
 						Target:         spec.TargetProbe.Address,
 						Description:    description,

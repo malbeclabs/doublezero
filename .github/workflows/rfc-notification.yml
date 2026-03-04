@@ -2,13 +2,14 @@ name: RFC Slack Notification
 
 on:
   pull_request:
-    types: [opened]
+    types: [opened, ready_for_review]
     paths:
       - 'rfcs/rfc[0-9]*-*.md'
 
 jobs:
   notify:
     runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
     steps:
       - uses: actions/checkout@v4
         with:

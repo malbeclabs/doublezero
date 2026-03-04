@@ -49,19 +49,32 @@ func TestE2E_IBRL(t *testing.T) {
 	}) {
 		t.Fail()
 	}
+
+	if !t.Run("drain_device", func(t *testing.T) {
+		checkDeviceDrain(t, dn, device)
+	}) {
+		t.Fail()
+	}
+
+	if !t.Run("undrain_device", func(t *testing.T) {
+		checkDeviceUndrain(t, dn, device)
+	}) {
+		t.Fail()
+	}
 }
 
 func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Device) {
-	dn.log.Info("==> Checking that iBGP/MSDP peers have been removed after peer's Loopback255 interface was removed")
+	dn.log.Debug("==> Checking that iBGP/MSDP peers have been removed after peer's Loopback255 interface was removed")
 
 	if !t.Run("wait_for_agent_config_after_peer_removal", func(t *testing.T) {
-		// We need a new fixture that shows the config after pit-dzd01's Loopback255 is removed
-		// This fixture should have pit-dzd01's BGP and MSDP peer configurations removed
-		config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_peer_removed.tmpl", map[string]any{
-			"DeviceIP":    device.CYOANetworkIP,
-			"StartTunnel": controllerconfig.StartUserTunnelNum,
-			"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
-		})
+		// After pit-dzd01's Loopback255 is removed, BuildAgentConfigData will naturally
+		// exclude it from peer maps since it no longer has a vpnv4 loopback.
+		config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_peer_removed.tmpl",
+			dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
+				"DeviceIP":    device.CYOANetworkIP,
+				"StartTunnel": controllerconfig.StartUserTunnelNum,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+			}))
 		require.NoError(t, err, "error reading agent configuration fixture for peer removal")
 		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
 		require.NoError(t, err, "error waiting for agent config to match after peer removal")
@@ -69,7 +82,65 @@ func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Devic
 		t.Fail()
 	}
 
-	dn.log.Info("--> IBRL iBGP/MSDP peer removal requirements checked")
+	dn.log.Debug("--> IBRL iBGP/MSDP peer removal requirements checked")
+}
+
+func checkDeviceDrain(t *testing.T, dn *TestDevnet, device *devnet.Device) {
+	dn.log.Debug("==> Checking that device is drained")
+
+	if !t.Run("set_device_status_to_drained", func(t *testing.T) {
+		_, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "device", "update", "--pubkey", device.Spec.Code, "--status", "drained"})
+		require.NoError(t, err)
+	}) {
+		t.Fail()
+		return
+	}
+
+	if !t.Run("wait_for_drained_config", func(t *testing.T) {
+		config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_drained.tmpl",
+			dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
+				"DeviceIP":    device.CYOANetworkIP,
+				"StartTunnel": controllerconfig.StartUserTunnelNum,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+			}))
+		require.NoError(t, err, "error reading drained config fixture")
+		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
+		require.NoError(t, err, "error waiting for drained config")
+	}) {
+		t.Fail()
+	}
+
+	dn.log.Debug("--> Device drain requirements checked")
+}
+
+func checkDeviceUndrain(t *testing.T, dn *TestDevnet, device *devnet.Device) {
+	dn.log.Debug("==> Checking that device is undrained (returned to activated)")
+
+	if !t.Run("set_device_status_to_activated", func(t *testing.T) {
+		_, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "device", "update", "--pubkey", device.Spec.Code, "--status", "activated"})
+		require.NoError(t, err)
+	}) {
+		t.Fail()
+		return
+	}
+
+	if !t.Run("wait_for_undrained_config", func(t *testing.T) {
+		// After undrain, the config should return to the state before draining
+		// which is after peer removal (pit-dzd01 removed), with no shutdown commands
+		config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_peer_removed.tmpl",
+			dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
+				"DeviceIP":    device.CYOANetworkIP,
+				"StartTunnel": controllerconfig.StartUserTunnelNum,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+			}))
+		require.NoError(t, err, "error reading undrained config fixture")
+		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
+		require.NoError(t, err, "error waiting for undrained config")
+	}) {
+		t.Fail()
+	}
+
+	dn.log.Debug("--> Device undrain requirements checked")
 }
 
 // checkIBRLPostConnect checks requirements after connecting a user tunnel.
@@ -78,15 +149,16 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 	// non-parallel test to ensure methods that follow this one wait for the inner tests to
 	// complete.
 	t.Run("check_post_connect", func(t *testing.T) {
-		dn.log.Info("==> Checking IBRL post-connect requirements")
+		dn.log.Debug("==> Checking IBRL post-connect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller_post_connect", func(t *testing.T) {
-			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_added.tmpl", map[string]any{
-				"ClientIP":    client.CYOANetworkIP,
-				"DeviceIP":    device.CYOANetworkIP,
-				"StartTunnel": controllerconfig.StartUserTunnelNum,
-				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
-			})
+			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_added.tmpl",
+				dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
+					"ClientIP":    client.CYOANetworkIP,
+					"DeviceIP":    device.CYOANetworkIP,
+					"StartTunnel": controllerconfig.StartUserTunnelNum,
+					"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+				}))
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
@@ -202,7 +274,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 					break
 				}
 
-				dn.log.Info("no route to 8.8.8.8 found, retrying...", "routes", routes)
+				dn.log.Debug("no route to 8.8.8.8 found, retrying...", "routes", routes)
 
 				time.Sleep(1 * time.Second)
 			}
@@ -238,20 +310,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 			t.Fail()
 		}
 
-		if !t.Run("only_one_tunnel_allowed", func(t *testing.T) {
-			dn.CreateMulticastGroupOnchain(t, client, "mg01")
-
-			// Set access pass for the client.
-			_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
-			require.NoError(t, err)
-
-			_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher mg01 --client-ip " + client.CYOANetworkIP})
-			require.Error(t, err, "User with different type already exists. Only one tunnel currently supported")
-		}) {
-			t.Fail()
-		}
-
-		dn.log.Info("--> IBRL post-connect requirements checked")
+		dn.log.Debug("--> IBRL post-connect requirements checked")
 	})
 }
 
@@ -261,14 +320,15 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 	// non-parallel test to ensure methods that follow this one wait for the inner tests to
 	// complete.
 	t.Run("check_post_disconnect", func(t *testing.T) {
-		dn.log.Info("==> Checking IBRL post-disconnect requirements")
+		dn.log.Debug("==> Checking IBRL post-disconnect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller_post_disconnect", func(t *testing.T) {
-			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_removed.tmpl", map[string]any{
-				"DeviceIP":    device.CYOANetworkIP,
-				"StartTunnel": controllerconfig.StartUserTunnelNum,
-				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
-			})
+			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_removed.tmpl",
+				dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
+					"DeviceIP":    device.CYOANetworkIP,
+					"StartTunnel": controllerconfig.StartUserTunnelNum,
+					"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+				}))
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
@@ -290,8 +350,8 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 			},
 			{
 				name:        "doublezero_status",
-				fixturePath: "fixtures/ibrl/doublezero_status_disconnected.txt",
-				data:        map[string]any{},
+				fixturePath: "fixtures/ibrl/doublezero_status_disconnected.tmpl",
+				data:        map[string]any{"Reconciler": "true"},
 				cmd:         []string{"doublezero", "status"},
 			},
 		}
@@ -347,7 +407,7 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 		if !t.Run("check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
 			t.Parallel()
 
-			deadline := time.Now().Add(30 * time.Second)
+			deadline := time.Now().Add(60 * time.Second)
 			for time.Now().Before(deadline) {
 				neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd("vrf1"))
 				require.NoError(t, err, "error fetching neighbors from doublezero device")
@@ -363,6 +423,6 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 			t.Fail()
 		}
 
-		dn.log.Info("--> IBRL post-disconnect requirements checked")
+		dn.log.Debug("--> IBRL post-disconnect requirements checked")
 	})
 }

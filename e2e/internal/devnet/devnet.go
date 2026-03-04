@@ -2,6 +2,7 @@ package devnet
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -57,14 +58,21 @@ type DevnetSpec struct {
 	CYOANetwork CYOANetworkSpec
 
 	// Override the default device tunnel network onchain.
-	DeviceTunnelNet string
-	Ledger          LedgerSpec
-	Manager         ManagerSpec
-	Funder          FunderSpec
-	Controller      ControllerSpec
-	Activator       ActivatorSpec
-	Devices         map[string]DeviceSpec
-	Clients         map[string]ClientSpec
+	DeviceTunnelNet    string
+	Ledger             LedgerSpec
+	Manager            ManagerSpec
+	Funder             FunderSpec
+	Controller         ControllerSpec
+	Activator          ActivatorSpec
+	DeviceHealthOracle DeviceHealthOracleSpec
+	InfluxDB           InfluxDBSpec
+	Prometheus         PrometheusSpec
+	Devices            map[string]DeviceSpec
+	Clients            map[string]ClientSpec
+
+	// SkipProgramDeploy skips deploying programs and initializing the smart contract.
+	// Use this when the ledger already has cloned program state from a remote cluster.
+	SkipProgramDeploy bool
 }
 
 type Devnet struct {
@@ -83,13 +91,16 @@ type Devnet struct {
 	DefaultNetwork *DefaultNetwork
 	CYOANetwork    *CYOANetwork
 
-	Ledger     *Ledger
-	Manager    *Manager
-	Funder     *Funder
-	Controller *Controller
-	Activator  *Activator
-	Devices    map[string]*Device
-	Clients    map[string]*Client
+	Ledger             *Ledger
+	Manager            *Manager
+	Funder             *Funder
+	Controller         *Controller
+	Activator          *Activator
+	DeviceHealthOracle *DeviceHealthOracle
+	InfluxDB           *InfluxDB
+	Prometheus         *Prometheus
+	Devices            map[string]*Device
+	Clients            map[string]*Client
 }
 
 func (s *DevnetSpec) Validate() error {
@@ -128,6 +139,18 @@ func (s *DevnetSpec) Validate() error {
 
 	if err := s.Activator.Validate(); err != nil {
 		return fmt.Errorf("activator: %w", err)
+	}
+
+	if err := s.DeviceHealthOracle.Validate(); err != nil {
+		return fmt.Errorf("device-health-oracle: %w", err)
+	}
+
+	if err := s.InfluxDB.Validate(); err != nil {
+		return fmt.Errorf("influxdb: %w", err)
+	}
+
+	if err := s.Prometheus.Validate(); err != nil {
+		return fmt.Errorf("prometheus: %w", err)
 	}
 
 	if s.Devices == nil {
@@ -186,9 +209,9 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		}
 		spec.Manager.ManagerKeypairPath = managerKeypairPath
 		if generated {
-			log.Info("--> Generated manager keypair", "path", managerKeypairPath)
+			log.Debug("--> Generated manager keypair", "path", managerKeypairPath)
 		} else {
-			log.Info("--> Using existing manager keypair", "path", managerKeypairPath)
+			log.Debug("--> Using existing manager keypair", "path", managerKeypairPath)
 		}
 	}
 
@@ -207,9 +230,9 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		}
 		spec.Manager.ServiceabilityProgramKeypairPath = serviceabilityProgramKeypairPath
 		if generated {
-			log.Info("--> Generated serviceability program keypair", "path", serviceabilityProgramKeypairPath)
+			log.Debug("--> Generated serviceability program keypair", "path", serviceabilityProgramKeypairPath)
 		} else {
-			log.Info("--> Using existing serviceability program keypair", "path", serviceabilityProgramKeypairPath)
+			log.Debug("--> Using existing serviceability program keypair", "path", serviceabilityProgramKeypairPath)
 		}
 	}
 
@@ -223,9 +246,9 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		}
 		spec.Manager.TelemetryProgramKeypairPath = telemetryProgramKeypairPath
 		if generated {
-			log.Info("--> Generated telemetry program keypair", "path", telemetryProgramKeypairPath)
+			log.Debug("--> Generated telemetry program keypair", "path", telemetryProgramKeypairPath)
 		} else {
-			log.Info("--> Using existing telemetry program keypair", "path", telemetryProgramKeypairPath)
+			log.Debug("--> Using existing telemetry program keypair", "path", telemetryProgramKeypairPath)
 		}
 
 	}
@@ -286,6 +309,24 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 	dn.Activator = &Activator{
 		dn:  dn,
 		log: log.With("component", "activator"),
+	}
+	if spec.DeviceHealthOracle.Enabled {
+		dn.DeviceHealthOracle = &DeviceHealthOracle{
+			dn:  dn,
+			log: log.With("component", "device-health-oracle"),
+		}
+	}
+	if spec.InfluxDB.Enabled {
+		dn.InfluxDB = &InfluxDB{
+			dn:  dn,
+			log: log.With("component", "influxdb"),
+		}
+	}
+	if spec.Prometheus.Enabled {
+		dn.Prometheus = &Prometheus{
+			dn:  dn,
+			log: log.With("component", "prometheus"),
+		}
 	}
 	dn.Devices = make(map[string]*Device)
 	dn.Clients = make(map[string]*Client)
@@ -354,38 +395,61 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 		return fmt.Errorf("failed to start funder: %w", err)
 	}
 
-	var wg sync.WaitGroup
-	errChan := make(chan error, 2)
+	if !d.Spec.SkipProgramDeploy {
+		var wg sync.WaitGroup
+		errChan := make(chan error, 2)
 
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
 
-		// Deploy the serviceability program if it's not already deployed.
-		if _, err := d.DeployServiceabilityProgramIfNotDeployed(ctx); err != nil {
-			errChan <- fmt.Errorf("failed to deploy serviceability program: %w", err)
+			// Deploy the serviceability program if it's not already deployed.
+			if _, err := d.DeployServiceabilityProgramIfNotDeployed(ctx); err != nil {
+				errChan <- fmt.Errorf("failed to deploy serviceability program: %w", err)
+			}
+
+			// Initialize the smart contract.
+			if _, err := d.InitSmartContractIfNotInitialized(ctx); err != nil {
+				errChan <- fmt.Errorf("failed to initialize smart contract: %w", err)
+			}
+		}()
+
+		go func() {
+			defer wg.Done()
+
+			// Deploy the telemetry program if it's not already deployed.
+			if _, err := d.DeployTelemetryProgramIfNotDeployed(ctx); err != nil {
+				errChan <- fmt.Errorf("failed to deploy telemetry program: %w", err)
+			}
+		}()
+
+		wg.Wait()
+		close(errChan)
+		for err := range errChan {
+			if err != nil {
+				return fmt.Errorf("failed to deploy programs: %w", err)
+			}
 		}
+	}
 
-		// Initialize the smart contract.
-		if _, err := d.InitSmartContractIfNotInitialized(ctx); err != nil {
-			errChan <- fmt.Errorf("failed to initialize smart contract: %w", err)
+	// Start the influxdb if it's not already running.
+	if d.InfluxDB != nil {
+		if _, err := d.InfluxDB.StartIfNotRunning(ctx); err != nil {
+			return fmt.Errorf("failed to start influxdb: %w", err)
 		}
-	}()
+	}
 
-	go func() {
-		defer wg.Done()
-
-		// Deploy the telemetry program if it's not already deployed.
-		if _, err := d.DeployTelemetryProgramIfNotDeployed(ctx); err != nil {
-			errChan <- fmt.Errorf("failed to deploy telemetry program: %w", err)
+	// Start the prometheus if it's not already running.
+	if d.Prometheus != nil {
+		if _, err := d.Prometheus.StartIfNotRunning(ctx); err != nil {
+			return fmt.Errorf("failed to start prometheus: %w", err)
 		}
-	}()
+	}
 
-	wg.Wait()
-	close(errChan)
-	for err := range errChan {
-		if err != nil {
-			return fmt.Errorf("failed to deploy programs: %w", err)
+	// Set the onchain allocation feature flag if enabled.
+	if d.Spec.Activator.OnchainAllocation != nil && *d.Spec.Activator.OnchainAllocation {
+		if err := d.SetOnchainAllocationFeatureFlag(ctx); err != nil {
+			return fmt.Errorf("failed to set onchain allocation feature flag: %w", err)
 		}
 	}
 
@@ -397,6 +461,13 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 	// Start the activator if it's not already running.
 	if _, err := d.Activator.StartIfNotRunning(ctx); err != nil {
 		return fmt.Errorf("failed to start activator: %w", err)
+	}
+
+	// Start the device-health-oracle if it's not already running.
+	if d.DeviceHealthOracle != nil {
+		if _, err := d.DeviceHealthOracle.StartIfNotRunning(ctx); err != nil {
+			return fmt.Errorf("failed to start device-health-oracle: %w", err)
+		}
 	}
 
 	// Create the CYOA network if it doesn't exist.
@@ -431,9 +502,9 @@ func (d *Devnet) AddDevice(ctx context.Context, spec DeviceSpec) (*Device, error
 		}
 		spec.Telemetry.KeypairPath = telemetryKeypairPath
 		if generated {
-			d.log.Info("--> Generated telemetry keypair", "path", telemetryKeypairPath)
+			d.log.Debug("--> Generated telemetry keypair", "path", telemetryKeypairPath)
 		} else {
-			d.log.Info("--> Using existing telemetry keypair", "path", telemetryKeypairPath)
+			d.log.Debug("--> Using existing telemetry keypair", "path", telemetryKeypairPath)
 		}
 	}
 
@@ -533,6 +604,14 @@ func (d *Devnet) AddClient(ctx context.Context, spec ClientSpec) (*Client, error
 	_, err = client.StartIfNotRunning(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start client: %w", err)
+	}
+
+	// The container entrypoint starts doublezerod as its last step, so there
+	// is a window after the container is "running" where the socket does not
+	// yet exist. Wait for the daemon to be accepting requests before
+	// returning the client to the caller.
+	if err := client.WaitForDaemonReady(ctx, 30*time.Second); err != nil {
+		return nil, fmt.Errorf("failed to wait for client daemon: %w", err)
 	}
 
 	return client, nil
@@ -752,7 +831,7 @@ func (d *Devnet) CreateDeviceOnchain(ctx context.Context, deviceCode string, loc
 }
 
 func (d *Devnet) GetDevicePubkeyOnchain(ctx context.Context, deviceCode string) (string, error) {
-	output, err := d.Manager.Exec(ctx, []string{"bash", "-c", "doublezero device get --code " + deviceCode}, docker.NoPrintOnError())
+	output, err := d.Manager.Exec(ctx, []string{"bash", "-c", "doublezero device get --code " + deviceCode + " --json"}, docker.NoPrintOnError())
 	if err != nil {
 		if strings.Contains(string(output), "not found") {
 			return "", ErrDeviceNotFoundOnchain
@@ -761,29 +840,41 @@ func (d *Devnet) GetDevicePubkeyOnchain(ctx context.Context, deviceCode string) 
 		return "", fmt.Errorf("failed to get device pubkey onchain: %w", err)
 	}
 
-	for _, line := range strings.SplitAfter(string(output), "\n") {
-		if strings.HasPrefix(line, "account: ") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "account: ")), nil
-		}
+	var result struct {
+		Account string `json:"account"`
 	}
-
-	return "", ErrDevicePubkeyNotFoundOnchain
+	if err := json.Unmarshal(output, &result); err != nil {
+		return "", fmt.Errorf("failed to parse device get output: %w", err)
+	}
+	if result.Account == "" {
+		return "", ErrDevicePubkeyNotFoundOnchain
+	}
+	return result.Account, nil
 }
 
 func (d *Devnet) waitContainerHealthy(ctx context.Context, containerID string, timeout time.Duration, delay time.Duration) error {
-	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	// Use context.Background() to ensure we get the full timeout regardless of parent context deadline.
+	// This matches the pattern used in the diagnostic code and prevents premature context cancellation.
+	waitCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	ticker := time.NewTicker(delay)
 	defer ticker.Stop()
+	var lastInspectErr error
 	for {
 		select {
 		case <-waitCtx.Done():
+			if lastInspectErr != nil {
+				return fmt.Errorf("timeout waiting for container to be healthy (last inspect error: %w)", lastInspectErr)
+			}
 			return fmt.Errorf("timeout waiting for container to be healthy")
 		case <-ticker.C:
 			inspect, err := d.dockerClient.ContainerInspect(waitCtx, containerID)
 			if err != nil {
-				return fmt.Errorf("failed to inspect container: %w", err)
+				lastInspectErr = err
+				d.log.Debug("--> Retrying container inspect after error", "container", shortContainerID(containerID), "error", err)
+				continue
 			}
+			lastInspectErr = nil
 			if inspect.State.Health.Status == "healthy" {
 				return nil
 			}
@@ -817,11 +908,11 @@ func generateKeypairIfNotExists(keypairPath string) (bool, error) {
 }
 
 func (d *Devnet) CreateDeviceLoopbackInterface(ctx context.Context, deviceCode string, interfaceName string, loopbackType string) error {
-	d.log.Info("==> Creating loopback interface for device", "code", deviceCode)
+	d.log.Debug("==> Creating loopback interface for device", "code", deviceCode)
 	d.onchainWriteMutex.Lock()
 	defer d.onchainWriteMutex.Unlock()
 
-	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "interface", "create", deviceCode, interfaceName, "--loopback-type", loopbackType})
+	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "interface", "create", deviceCode, interfaceName, "--loopback-type", loopbackType, "--bandwidth", "10G"})
 	if err != nil {
 		return fmt.Errorf("failed to create loopback interface %s of type %s for device %s: %w", interfaceName, loopbackType, deviceCode, err)
 	}
@@ -830,7 +921,7 @@ func (d *Devnet) CreateDeviceLoopbackInterface(ctx context.Context, deviceCode s
 }
 
 func (d *Devnet) DeleteDeviceLoopbackInterface(ctx context.Context, deviceCode string, interfaceName string) error {
-	d.log.Info("==> Deleting loopback interface for device", "code", deviceCode)
+	d.log.Debug("==> Deleting loopback interface for device", "code", deviceCode)
 	d.onchainWriteMutex.Lock()
 	defer d.onchainWriteMutex.Unlock()
 

@@ -11,17 +11,26 @@ test-ledger/
 **/bin/*
 smartcontract/cli/config/*
 controlplane/funder/cmd/funder/funder
+revdist-cli
 
 .idea
 .private
 .vscode/*
 .vscode
 .zed
+.claude/plans/
+.tmp
+.env
 
 dist/
+node_modules/
+__pycache__/
+.pytest_cache/
+.venv/
 
 # Local devnet deployment artifacts.
 dev/.deploy/
 
 # Ignore the directory used for checking out the monitor tool in CI
 /doublezero_monitor/
+.claude/settings.local.json

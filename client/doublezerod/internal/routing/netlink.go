@@ -14,7 +14,8 @@ type Netlink struct{}
 type Netlinker interface {
 	TunnelAdd(*Tunnel) error
 	TunnelDelete(*Tunnel) error
-	TunnelAddrAdd(*Tunnel, string) error
+	// TunnelAddrAdd adds an address to a tunnel interface with the given scope (syscall.RT_SCOPE_*).
+	TunnelAddrAdd(*Tunnel, string, int) error
 	TunnelUp(*Tunnel) error
 	RouteAdd(*Route) error
 	RouteDelete(*Route) error
@@ -54,7 +55,7 @@ func (n Netlink) TunnelDelete(t *Tunnel) error {
 }
 func (n Netlink) TunnelGet(t *Tunnel) error { return nil }
 
-func (n Netlink) TunnelAddrAdd(t *Tunnel, prefix string) error {
+func (n Netlink) TunnelAddrAdd(t *Tunnel, prefix string, scope int) error {
 	gre := &nl.Gretun{
 		LinkAttrs: nl.LinkAttrs{
 			Name:      t.Name,
@@ -67,6 +68,7 @@ func (n Netlink) TunnelAddrAdd(t *Tunnel, prefix string) error {
 	if err != nil {
 		return fmt.Errorf("tunnel: error parsing addr: %v", err)
 	}
+	addr.Scope = scope
 
 	err = nl.AddrAdd(gre, addr)
 	if err != nil && errors.Is(err, syscall.EEXIST) {

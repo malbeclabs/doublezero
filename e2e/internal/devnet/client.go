@@ -1,23 +1,31 @@
 package devnet
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/docker/go-connections/nat"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/testcontainers/testcontainers-go"
 )
+
+// defaultQAAgentPort is the default port the QA agent listens on inside the client container.
+const defaultQAAgentPort = 7009
 
 type ClientSpec struct {
 	ContainerImage string
@@ -41,8 +49,17 @@ type ClientSpec struct {
 	// RouteLivenessDebug is a flag to enable or disable debug logging for route liveness.
 	RouteLivenessDebug bool
 
+	// LatencyProbeTunnelEndpoints enables probing UserTunnelEndpoint interfaces
+	// in addition to device PublicIp during latency measurements.
+	LatencyProbeTunnelEndpoints bool
+
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
+
+	// EnableQAAgent starts the QA agent inside the client container for local QA testing.
+	EnableQAAgent bool
+	// QAAgentPort is the port the QA agent listens on inside the container (default: 7009).
+	QAAgentPort int
 }
 
 func (s *ClientSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
@@ -77,6 +94,10 @@ type Client struct {
 	ContainerID   string
 	Pubkey        string
 	CYOANetworkIP string
+
+	// QAAgentHostPort is the host-side mapped port for the QA agent gRPC server.
+	// Only set when EnableQAAgent is true.
+	QAAgentHostPort int
 }
 
 func (c *Client) dockerContainerHostname() string {
@@ -118,7 +139,7 @@ func (c *Client) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 		// Check if the container is running.
 		if container.State.Running {
-			c.log.Info("--> Client already running", "container", shortContainerID(container.ID))
+			c.log.Debug("--> Client already running", "container", shortContainerID(container.ID))
 
 			// Set the component's state.
 			err = c.setState(ctx, container.ID)
@@ -148,7 +169,7 @@ func (c *Client) StartIfNotRunning(ctx context.Context) (bool, error) {
 }
 
 func (c *Client) Start(ctx context.Context) error {
-	c.log.Info("==> Starting client", "image", c.Spec.ContainerImage, "cyoaNetworkIPHostID", c.Spec.CYOANetworkIPHostID)
+	c.log.Debug("==> Starting client", "image", c.Spec.ContainerImage, "cyoaNetworkIPHostID", c.Spec.CYOANetworkIPHostID)
 
 	cyoaIP, err := netutil.DeriveIPFromCIDR(c.dn.CYOANetwork.SubnetCIDR, uint32(c.Spec.CYOANetworkIPHostID))
 	if err != nil {
@@ -173,15 +194,47 @@ func (c *Client) Start(ctx context.Context) error {
 	extraArgs := []string{}
 	if c.Spec.RouteLivenessEnablePassive {
 		extraArgs = append(extraArgs, "-route-liveness-enable-passive")
+	} else {
+		extraArgs = append(extraArgs, "-route-liveness-enable-passive=false")
 	}
 	if c.Spec.RouteLivenessEnableActive {
 		extraArgs = append(extraArgs, "-route-liveness-enable-active")
+	} else {
+		extraArgs = append(extraArgs, "-route-liveness-enable-active=false")
 	}
 	if c.Spec.RouteLivenessPeerMetrics {
 		extraArgs = append(extraArgs, "-route-liveness-peer-metrics")
 	}
 	if c.Spec.RouteLivenessDebug {
 		extraArgs = append(extraArgs, "-route-liveness-debug")
+	}
+	if c.Spec.LatencyProbeTunnelEndpoints {
+		extraArgs = append(extraArgs, "-latency-probe-tunnel-endpoints")
+	}
+	extraArgs = append(extraArgs, "-client-ip", clientCYOAIP)
+
+	// Determine QA agent port if enabled.
+	qaAgentPort := c.Spec.QAAgentPort
+	if c.Spec.EnableQAAgent && qaAgentPort == 0 {
+		qaAgentPort = defaultQAAgentPort
+	}
+
+	// Build container environment variables.
+	env := map[string]string{
+		"DZ_LEDGER_URL":                c.dn.Ledger.InternalRPCURL,
+		"DZ_LEDGER_WS":                 c.dn.Ledger.InternalRPCWSURL,
+		"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
+		"DZ_CLIENT_EXTRA_ARGS":         strings.Join(extraArgs, " "),
+	}
+	if c.Spec.EnableQAAgent {
+		env["DZ_QAAGENT_ENABLE"] = "true"
+		env["DZ_QAAGENT_ADDR"] = fmt.Sprintf("0.0.0.0:%d", qaAgentPort)
+	}
+
+	// Build exposed ports list.
+	var exposedPorts []string
+	if c.Spec.EnableQAAgent {
+		exposedPorts = append(exposedPorts, fmt.Sprintf("%d/tcp", qaAgentPort))
 	}
 
 	// Start the client container.
@@ -191,12 +244,8 @@ func (c *Client) Start(ctx context.Context) error {
 		ConfigModifier: func(cfg *dockercontainer.Config) {
 			cfg.Hostname = c.dockerContainerHostname()
 		},
-		Env: map[string]string{
-			"DZ_LEDGER_URL":                c.dn.Ledger.InternalRPCURL,
-			"DZ_LEDGER_WS":                 c.dn.Ledger.InternalRPCWSURL,
-			"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
-			"DZ_CLIENT_EXTRA_ARGS":         strings.Join(extraArgs, " "),
-		},
+		Env:          env,
+		ExposedPorts: exposedPorts,
 		Files: []testcontainers.ContainerFile{
 			{
 				HostFilePath:      c.Spec.KeypairPath,
@@ -231,6 +280,20 @@ func (c *Client) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start client: %w", err)
 	}
 
+	// Get the QA agent mapped host port if enabled.
+	if c.Spec.EnableQAAgent {
+		mappedPort, err := container.MappedPort(ctx, nat.Port(fmt.Sprintf("%d/tcp", qaAgentPort)))
+		if err != nil {
+			return fmt.Errorf("failed to get QA agent mapped port: %w", err)
+		}
+		hostPort, err := strconv.Atoi(mappedPort.Port())
+		if err != nil {
+			return fmt.Errorf("failed to parse QA agent mapped port %q: %w", mappedPort.Port(), err)
+		}
+		c.QAAgentHostPort = hostPort
+		c.log.Debug("QA agent mapped port", "containerPort", qaAgentPort, "hostPort", c.QAAgentHostPort)
+	}
+
 	// Set the component's state.
 	err = c.setState(ctx, container.GetContainerID())
 	if err != nil {
@@ -238,19 +301,22 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 
 	// Fund the client account via airdrop.
-	// Retry a couple times to avoid the observed intermittent failures, even on the first airdrop request.
+	// Retry a few times to avoid rate limit failures when running tests in parallel.
+	// We explicitly pass the RPC URL via -u flag to avoid a race condition where the solana CLI
+	// config may not be set up yet by the entrypoint script, which would cause it to default to mainnet.
 	funded := false
 	var output []byte
-	for range 3 {
-		c.log.Info("--> Funding client account", "clientPubkey", c.Pubkey)
-		output, err = c.Exec(ctx, []string{"solana", "airdrop", "10", c.Pubkey}, docker.NoPrintOnError())
+	for attempt := range 5 {
+		c.log.Debug("--> Funding client account", "clientPubkey", c.Pubkey, "attempt", attempt+1)
+		output, err = c.Exec(ctx, []string{"solana", "airdrop", "-u", c.dn.Ledger.InternalRPCURL, "10", c.Pubkey}, docker.NoPrintOnError())
 		if err != nil {
-			if strings.Contains(string(output), "rate limit") {
-				c.log.Info("--> Solana airdrop request failed with rate limit message, retrying")
-				time.Sleep(1 * time.Second)
+			outputStr := string(output)
+			if strings.Contains(outputStr, "429") || strings.Contains(outputStr, "Too Many Requests") || strings.Contains(outputStr, "rate limit") {
+				c.log.Debug("--> Solana airdrop request rate limited, retrying", "attempt", attempt+1)
+				time.Sleep(2 * time.Second)
 				continue
 			}
-			fmt.Println(string(output))
+			fmt.Println(outputStr)
 			return fmt.Errorf("failed to fund client account: %w", err)
 		}
 		funded = true
@@ -258,10 +324,10 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 	if !funded {
 		fmt.Println(string(output))
-		return fmt.Errorf("failed to fund client account after 3 attempts")
+		return fmt.Errorf("failed to fund client account after 5 attempts")
 	}
 
-	c.log.Info("--> Client started", "container", c.ContainerID, "pubkey", c.Pubkey, "cyoaIP", clientCYOAIP)
+	c.log.Debug("--> Client started", "container", c.ContainerID, "pubkey", c.Pubkey, "cyoaIP", clientCYOAIP)
 	return nil
 }
 
@@ -306,6 +372,23 @@ func (c *Client) setState(ctx context.Context, containerID string) error {
 	}
 	c.CYOANetworkIP = container.NetworkSettings.Networks[c.dn.CYOANetwork.Name].IPAddress
 
+	// Recover QA agent host port from port bindings if the QA agent is enabled.
+	if c.Spec.EnableQAAgent && c.QAAgentHostPort == 0 {
+		qaAgentPort := c.Spec.QAAgentPort
+		if qaAgentPort == 0 {
+			qaAgentPort = defaultQAAgentPort
+		}
+		portKey := nat.Port(fmt.Sprintf("%d/tcp", qaAgentPort))
+		if bindings, ok := container.NetworkSettings.Ports[portKey]; ok && len(bindings) > 0 {
+			hostPort, err := strconv.Atoi(bindings[0].HostPort)
+			if err != nil {
+				return fmt.Errorf("failed to parse recovered QA agent port %q: %w", bindings[0].HostPort, err)
+			}
+			c.QAAgentHostPort = hostPort
+			c.log.Debug("Recovered QA agent mapped port", "containerPort", qaAgentPort, "hostPort", c.QAAgentHostPort)
+		}
+	}
+
 	return nil
 }
 
@@ -336,12 +419,19 @@ type ClientSession struct {
 }
 
 const (
-	ClientSessionStatusUp           ClientSessionStatus = "up"
-	ClientSessionStatusDown         ClientSessionStatus = "down"
+	ClientSessionStatusUp           ClientSessionStatus = "BGP Session Up"
+	ClientSessionStatusDown         ClientSessionStatus = "BGP Session Down"
 	ClientSessionStatusDisconnected ClientSessionStatus = "disconnected"
 )
 
 type ClientUserType string
+
+const (
+	ClientUserTypeIBRL              ClientUserType = "IBRL"
+	ClientUserTypeIBRLWithAllocated ClientUserType = "IBRLWithAllocatedIP"
+	ClientUserTypeEdgeFiltering     ClientUserType = "EdgeFiltering"
+	ClientUserTypeMulticast         ClientUserType = "Multicast"
+)
 
 type ClientStatusResponse struct {
 	TunnelName       string         `json:"tunnel_name"`
@@ -350,6 +440,35 @@ type ClientStatusResponse struct {
 	DoubleZeroIP     net.IP         `json:"doublezero_ip"`
 	DoubleZeroStatus ClientSession  `json:"doublezero_status"`
 	UserType         ClientUserType `json:"user_type"`
+}
+
+// CLIStatusResponse represents the full response from `doublezero status --json`,
+// which includes additional fields like current_device and metro that are computed
+// by the CLI based on on-chain data.
+type CLIStatusResponse struct {
+	Response            ClientStatusResponse `json:"response"`
+	CurrentDevice       string               `json:"current_device"`
+	LowestLatencyDevice string               `json:"lowest_latency_device"`
+	Metro               string               `json:"metro"`
+	Network             string               `json:"network"`
+	Tenant              string               `json:"tenant"`
+}
+
+// GetCLIStatus retrieves the full status output from `doublezero status --json`,
+// which includes current_device, metro, and other fields computed by the CLI.
+// This is useful for verifying that the CLI correctly associates tunnels with devices.
+func (c *Client) GetCLIStatus(ctx context.Context) ([]CLIStatusResponse, error) {
+	output, err := c.Exec(ctx, []string{"doublezero", "status", "--json"})
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute doublezero status --json: %w", err)
+	}
+
+	var resp []CLIStatusResponse
+	if err := json.Unmarshal(output, &resp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal CLI status response: %w, output: %s", err, string(output))
+	}
+
+	return resp, nil
 }
 
 func (c *Client) GetTunnelStatus(ctx context.Context) ([]ClientStatusResponse, error) {
@@ -361,8 +480,72 @@ func (c *Client) GetTunnelStatus(ctx context.Context) ([]ClientStatusResponse, e
 	return resp, nil
 }
 
+// WaitForDaemonReady polls the doublezerod Unix socket until the daemon is
+// accepting requests. The container entrypoint starts doublezerod as its last
+// step, so there is a window after the container is "running" where the socket
+// does not yet exist.
+func (c *Client) WaitForDaemonReady(ctx context.Context, timeout time.Duration) error {
+	c.log.Debug("==> Waiting for doublezerod daemon to be ready", "timeout", timeout)
+	start := time.Now()
+	attempts := 0
+	err := poll.Until(ctx, func() (bool, error) {
+		_, err := c.GetTunnelStatus(ctx)
+		if err != nil {
+			if attempts == 0 || attempts%5 == 0 {
+				c.log.Debug("--> Waiting for doublezerod daemon", "attempts", attempts, "err", err)
+			}
+			attempts++
+			return false, nil
+		}
+		c.log.Debug("✅ doublezerod daemon is ready", "duration", time.Since(start))
+		return true, nil
+	}, timeout, 1*time.Second)
+	if err != nil {
+		return fmt.Errorf("doublezerod daemon not ready: %w", err)
+	}
+	return nil
+}
+
 func (c *Client) WaitForTunnelUp(ctx context.Context, timeout time.Duration) error {
 	return c.WaitForTunnelStatus(ctx, ClientSessionStatusUp, timeout)
+}
+
+// WaitForNTunnelsUp waits for N tunnels to be in the "up" state.
+func (c *Client) WaitForNTunnelsUp(ctx context.Context, n int, timeout time.Duration) error {
+	c.log.Debug("==> Waiting for N tunnels to be up", "n", n, "timeout", timeout)
+
+	attempts := 0
+	start := time.Now()
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.GetTunnelStatus(ctx)
+		if err != nil {
+			return false, fmt.Errorf("failed to get client status: %w", err)
+		}
+
+		upCount := 0
+		for _, s := range resp {
+			if s.DoubleZeroStatus.SessionStatus == ClientSessionStatusUp {
+				upCount++
+			}
+		}
+
+		if upCount >= n {
+			c.log.Debug("✅ Got expected number of tunnels up", "n", n, "upCount", upCount, "duration", time.Since(start))
+			return true, nil
+		}
+
+		if attempts == 1 || attempts%5 == 0 {
+			c.log.Debug("--> Waiting for N tunnels up", "n", n, "upCount", upCount, "response", resp, "attempts", attempts)
+		}
+		attempts++
+
+		return false, nil
+	}, timeout, 1*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to wait for %d tunnels to be up: %w", n, err)
+	}
+
+	return nil
 }
 
 func (c *Client) WaitForTunnelDisconnected(ctx context.Context, timeout time.Duration) error {
@@ -370,7 +553,7 @@ func (c *Client) WaitForTunnelDisconnected(ctx context.Context, timeout time.Dur
 }
 
 func (c *Client) WaitForTunnelStatus(ctx context.Context, wantStatus ClientSessionStatus, timeout time.Duration) error {
-	c.log.Info("==> Waiting for client tunnel status", "wantStatus", wantStatus, "timeout", timeout)
+	c.log.Debug("==> Waiting for client tunnel status", "wantStatus", wantStatus, "timeout", timeout)
 
 	attempts := 0
 	start := time.Now()
@@ -382,7 +565,7 @@ func (c *Client) WaitForTunnelStatus(ctx context.Context, wantStatus ClientSessi
 
 		for _, s := range resp {
 			if s.DoubleZeroStatus.SessionStatus == wantStatus {
-				c.log.Info("✅ Got expected client tunnel status", "wantStatus", wantStatus, "duration", time.Since(start))
+				c.log.Debug("✅ Got expected client tunnel status", "wantStatus", wantStatus, "duration", time.Since(start))
 				return true, nil
 			}
 		}
@@ -395,27 +578,120 @@ func (c *Client) WaitForTunnelStatus(ctx context.Context, wantStatus ClientSessi
 		return false, nil
 	}, timeout, 1*time.Second)
 	if err != nil {
+		c.dumpDiagnostics()
 		return fmt.Errorf("failed to wait for client tunnel status %s: %w", wantStatus, err)
 	}
 
 	return nil
 }
 
+// dumpDiagnostics prints client-side and device-side diagnostic information to help debug
+// tunnel status failures. It uses a fresh context since the test context may have expired.
+// Output is buffered and written in a single fmt.Fprint call so that parallel tests don't
+// interleave each other's diagnostics.
+func (c *Client) dumpDiagnostics() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "\n=== DIAGNOSTIC DUMP (deploy=%s client=%s) ===\n", c.dn.Spec.DeployID, c.Pubkey)
+
+	// Client-side diagnostics.
+	clientCommands := []struct {
+		label   string
+		command []string
+	}{
+		{"doublezero status", []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/status"}},
+		{"ip addr show", []string{"ip", "addr", "show"}},
+		{"ip route show", []string{"ip", "route", "show"}},
+	}
+	for _, cmd := range clientCommands {
+		output, err := c.Exec(ctx, cmd.command, docker.NoPrintOnError())
+		if err != nil {
+			fmt.Fprintf(&buf, "\n--- Client: %s (ERROR: %v)\n", cmd.label, err)
+		} else {
+			fmt.Fprintf(&buf, "\n--- Client: %s\n%s", cmd.label, string(output))
+		}
+	}
+
+	// Dump doublezerod container logs (stdout/stderr).
+	logsReader, err := c.dn.dockerClient.ContainerLogs(ctx, c.ContainerID, dockercontainer.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Tail:       "100",
+	})
+	if err != nil {
+		fmt.Fprintf(&buf, "\n--- Client: doublezerod container logs (ERROR: %v)\n", err)
+	} else {
+		var stdout, stderr bytes.Buffer
+		_, _ = stdcopy.StdCopy(&stdout, &stderr, logsReader)
+		logsReader.Close()
+		fmt.Fprintf(&buf, "\n--- Client: doublezerod container logs (stdout)\n%s", stdout.String())
+		if stderr.Len() > 0 {
+			fmt.Fprintf(&buf, "\n--- Client: doublezerod container logs (stderr)\n%s", stderr.String())
+		}
+	}
+
+	// Device-side diagnostics.
+	for code, device := range c.dn.Devices {
+		deviceCommands := []struct {
+			label   string
+			command []string
+		}{
+			{"show running-config section Tunnel", []string{"Cli", "-p", "15", "-c", "show running-config section Tunnel"}},
+			{"show ip bgp summary", []string{"Cli", "-c", "show ip bgp summary"}},
+			{"show ip bgp summary vrf vrf1", []string{"Cli", "-c", "show ip bgp summary vrf vrf1"}},
+			{"doublezero-agent log (last 100 lines)", []string{"tail", "-100", "/var/log/agents-latest/doublezero-agent"}},
+			{"disk space /var/tmp", []string{"df", "-h", "/var/tmp"}},
+		}
+		for _, cmd := range deviceCommands {
+			output, err := device.Exec(ctx, cmd.command)
+			if err != nil {
+				fmt.Fprintf(&buf, "\n--- Device %s: %s (ERROR: %v)\n", code, cmd.label, err)
+			} else {
+				fmt.Fprintf(&buf, "\n--- Device %s: %s\n%s", code, cmd.label, string(output))
+			}
+		}
+	}
+
+	// Controller-side diagnostics: query the config the controller would send to each device.
+	for code, device := range c.dn.Devices {
+		output, err := docker.Exec(ctx, c.dn.dockerClient, c.dn.Controller.ContainerID, []string{
+			"doublezero-controller", "agent",
+			"-device-pubkey", device.ID,
+			"-controller-addr", "localhost",
+			"-controller-port", "7000",
+		})
+		if err != nil {
+			fmt.Fprintf(&buf, "\n--- Controller config for device %s (ERROR: %v)\n", code, err)
+		} else {
+			fmt.Fprintf(&buf, "\n--- Controller config for device %s\n%s", code, string(output))
+		}
+	}
+
+	fmt.Fprintf(&buf, "\n=== DIAGNOSTIC DUMP END ===\n")
+	fmt.Fprint(os.Stderr, buf.String())
+}
+
 func (c *Client) WaitForLatencyResults(ctx context.Context, wantDevicePK string, timeout time.Duration) error {
-	c.log.Info("==> Waiting for latency results (timeout " + timeout.String() + ")")
+	c.log.Debug("==> Waiting for latency results (timeout " + timeout.String() + ")")
 
 	attempts := 0
 	start := time.Now()
 	err := poll.Until(ctx, func() (bool, error) {
 		results, err := c.ExecReturnJSONList(ctx, []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/latency"})
 		if err != nil {
-			return false, fmt.Errorf("failed to get latency results: %w", err)
+			if attempts == 1 || attempts%5 == 0 {
+				c.log.Debug("--> Waiting for latency results (curl not ready yet)", "wantDevicePK", wantDevicePK, "err", err, "attempts", attempts)
+			}
+			attempts++
+			return false, nil
 		}
 
 		if len(results) > 0 {
 			for _, result := range results {
 				if result["device_pk"] == wantDevicePK && result["reachable"] == true {
-					c.log.Info("✅ Got expected latency results", "wantDevicePK", wantDevicePK, "duration", time.Since(start))
+					c.log.Debug("✅ Got expected latency results", "wantDevicePK", wantDevicePK, "duration", time.Since(start))
 					return true, nil
 				}
 			}
@@ -430,6 +706,26 @@ func (c *Client) WaitForLatencyResults(ctx context.Context, wantDevicePK string,
 	}, timeout, 1*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to wait for latency results: %w", err)
+	}
+
+	return nil
+}
+
+// WaitForPing waits until the given IP is reachable via ICMP ping from the client container.
+func (c *Client) WaitForPing(ctx context.Context, ip string, timeout time.Duration) error {
+	c.log.Debug("==> Waiting for ping to succeed", "ip", ip, "timeout", timeout)
+
+	start := time.Now()
+	err := poll.Until(ctx, func() (bool, error) {
+		_, err := c.Exec(ctx, []string{"ping", "-c", "1", "-W", "1", ip})
+		if err == nil {
+			c.log.Debug("✅ Ping succeeded", "ip", ip, "duration", time.Since(start))
+			return true, nil
+		}
+		return false, nil
+	}, timeout, 2*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to ping %s within %s: %w", ip, timeout, err)
 	}
 
 	return nil

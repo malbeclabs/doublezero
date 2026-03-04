@@ -29,7 +29,7 @@ pub enum UserCommands {
     Update(UpdateUserCliCommand),
     /// List all users
     #[command()]
-    List(ListUserCliCommand),
+    List(Box<ListUserCliCommand>),
     /// Get details for a specific user
     #[command()]
     Get(GetUserCliCommand),

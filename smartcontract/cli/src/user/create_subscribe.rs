@@ -94,6 +94,7 @@ impl CreateSubscribeUserCliCommand {
             mgroup_pk: publisher_pk
                 .or(subscriber_pk)
                 .ok_or(eyre::eyre!("Subscriber is required if publisher is not"))?,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -125,6 +126,7 @@ mod tests {
     use doublezero_serviceability::pda::get_user_old_pda;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use std::net::Ipv4Addr;
 
     #[test]
     fn test_cli_user_create_subscribe() {
@@ -176,6 +178,11 @@ mod tests {
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client
@@ -204,6 +211,7 @@ mod tests {
                 publisher: false,
                 subscriber: true,
                 mgroup_pk: mgroup_pubkey,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));

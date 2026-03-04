@@ -1,11 +1,16 @@
 use crate::{
-    error::DoubleZeroError,
+    error::{DoubleZeroError, Validate},
+    format_option,
+    helper::format_option_displayable,
     serializer::try_acc_write,
     state::{
         accounttype::AccountType,
+        contributor::Contributor,
         device::*,
         globalstate::GlobalState,
-        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LoopbackType, RoutingMode},
+        interface::{
+            InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
+        },
     },
 };
 use borsh::BorshSerialize;
@@ -39,21 +44,25 @@ pub struct DeviceInterfaceUpdateArgs {
 
 impl fmt::Debug for DeviceInterfaceUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "name: {}, ", self.name)?;
-        if self.loopback_type.is_some() {
-            write!(f, "loopback_type: {}, ", self.loopback_type.unwrap())?;
-        }
-        if self.vlan_id.is_some() {
-            write!(f, "vlan_id: {}, ", self.vlan_id.unwrap())?;
-        }
-        if self.user_tunnel_endpoint.is_some() {
-            write!(
-                f,
-                "user_tunnel_endpoint: {}, ",
-                self.user_tunnel_endpoint.unwrap()
-            )?;
-        }
-        Ok(())
+        write!(
+            f,
+            "name: {}, loopback_type: {}, vlan_id: {}, user_tunnel_endpoint: {}, status: {}, \
+ip_net: {}, node_segment_idx: {}, interface_cyoa: {}, interface_dia: {}, bandwidth: {}, \
+cir: {}, mtu: {}, routing_mode: {}",
+            self.name,
+            format_option!(self.loopback_type),
+            format_option!(self.vlan_id),
+            format_option!(self.user_tunnel_endpoint),
+            format_option!(self.status),
+            format_option!(self.ip_net),
+            format_option!(self.node_segment_idx),
+            format_option!(self.interface_cyoa),
+            format_option!(self.interface_dia),
+            format_option!(self.bandwidth),
+            format_option!(self.cir),
+            format_option!(self.mtu),
+            format_option!(self.routing_mode),
+        )
     }
 }
 
@@ -64,11 +73,8 @@ pub fn process_update_device_interface(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    /*  Accounts prefixed with an underscore are not currently used.
-        They are kept for backward compatibility and may be removed in future releases.
-    */
     let device_account = next_account_info(accounts_iter)?;
-    let _contributor_account = next_account_info(accounts_iter)?;
+    let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
@@ -85,6 +91,10 @@ pub fn process_update_device_interface(
         "Invalid PDA Account Owner"
     );
     assert_eq!(
+        contributor_account.owner, program_id,
+        "Invalid Contributor Account Owner"
+    );
+    assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
@@ -94,7 +104,11 @@ pub fn process_update_device_interface(
     let globalstate = GlobalState::try_from(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+    let contributor = Contributor::try_from(contributor_account)?;
+
+    if contributor.owner != *payer_account.key
+        && !globalstate.foundation_allowlist.contains(payer_account.key)
+    {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
@@ -112,9 +126,21 @@ pub fn process_update_device_interface(
         iface.loopback_type = *loopback_type;
     }
     if let Some(interface_cyoa) = &value.interface_cyoa {
+        if *interface_cyoa != InterfaceCYOA::None
+            && iface.status == InterfaceStatus::Activated
+            && iface.interface_type == InterfaceType::Physical
+        {
+            return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
+        }
         iface.interface_cyoa = *interface_cyoa;
     }
     if let Some(interface_dia) = &value.interface_dia {
+        if *interface_dia != InterfaceDIA::None
+            && iface.status == InterfaceStatus::Activated
+            && iface.interface_type == InterfaceType::Physical
+        {
+            return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
+        }
         iface.interface_dia = *interface_dia;
     }
     if let Some(bandwidth) = value.bandwidth {
@@ -139,13 +165,34 @@ pub fn process_update_device_interface(
         iface.status = status;
     }
     if let Some(ip_net) = value.ip_net {
+        // ip_net can only be set on CYOA, DIA, or user-tunnel-endpoint interfaces
+        if iface.interface_cyoa == InterfaceCYOA::None
+            && iface.interface_dia == InterfaceDIA::None
+            && !iface.user_tunnel_endpoint
+        {
+            return Err(DoubleZeroError::InvalidInterfaceIp.into());
+        }
         iface.ip_net = ip_net;
     }
     if let Some(node_segment_idx) = value.node_segment_idx {
+        if !globalstate.foundation_allowlist.contains(payer_account.key) {
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
         iface.node_segment_idx = node_segment_idx;
     }
+
+    // CYOA interfaces must have an ip_net — prevent setting CYOA without ip_net
+    // or clearing ip_net from a CYOA interface via update
+    if iface.interface_cyoa != InterfaceCYOA::None && iface.ip_net == NetworkV4::default() {
+        return Err(DoubleZeroError::InvalidInterfaceIp.into());
+    }
+
     // until we have release V2 version for interfaces, always convert to v1
-    device.interfaces[idx] = iface.to_interface();
+    let updated_interface = iface.to_interface();
+
+    updated_interface.validate()?;
+
+    device.interfaces[idx] = updated_interface;
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

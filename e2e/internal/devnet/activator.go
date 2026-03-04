@@ -13,13 +13,30 @@ import (
 )
 
 type ActivatorSpec struct {
-	ContainerImage string
+	ContainerImage    string
+	OnchainAllocation *bool // nil = default (offchain), true = explicitly enabled for onchain allocation tests
+}
+
+// BoolPtr returns a pointer to the given bool value.
+func BoolPtr(b bool) *bool {
+	return &b
 }
 
 func (s *ActivatorSpec) Validate() error {
 	// If the container image is not set, use the DZ_ACTIVATOR_IMAGE environment variable.
 	if s.ContainerImage == "" {
 		s.ContainerImage = os.Getenv("DZ_ACTIVATOR_IMAGE")
+	}
+
+	// Default to offchain allocation (matching production/mainnet behavior).
+	// Tests that validate onchain ResourceExtension bitmaps must opt in explicitly.
+	// The DZ_E2E_ONCHAIN_ALLOCATION env var allows CI to run dual-mode tests.
+	if s.OnchainAllocation == nil {
+		if os.Getenv("DZ_E2E_ONCHAIN_ALLOCATION") == "true" {
+			s.OnchainAllocation = BoolPtr(true)
+		} else {
+			s.OnchainAllocation = BoolPtr(false)
+		}
 	}
 
 	return nil
@@ -73,7 +90,7 @@ func (a *Activator) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 		// Check if the container is running.
 		if container.State.Running {
-			a.log.Info("--> Activator already running", "container", shortContainerID(container.ID))
+			a.log.Debug("--> Activator already running", "container", shortContainerID(container.ID))
 
 			// Set the component's state.
 			err = a.setState(container.ID)
@@ -104,19 +121,20 @@ func (a *Activator) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 // Start creates and starts the activator container and attaches it to the default network.
 func (a *Activator) Start(ctx context.Context) error {
-	a.log.Info("==> Starting activator", "image", a.dn.Spec.Activator.ContainerImage)
+	a.log.Debug("==> Starting activator", "image", a.dn.Spec.Activator.ContainerImage)
 
+	env := map[string]string{
+		"DZ_LEDGER_URL":                a.dn.Ledger.InternalRPCURL,
+		"DZ_LEDGER_WS":                 a.dn.Ledger.InternalRPCWSURL,
+		"DZ_SERVICEABILITY_PROGRAM_ID": a.dn.Manager.ServiceabilityProgramID,
+	}
 	req := testcontainers.ContainerRequest{
 		Image: a.dn.Spec.Activator.ContainerImage,
 		Name:  a.dockerContainerName(),
 		ConfigModifier: func(cfg *dockercontainer.Config) {
 			cfg.Hostname = a.dockerContainerHostname()
 		},
-		Env: map[string]string{
-			"DZ_LEDGER_URL":                a.dn.Ledger.InternalRPCURL,
-			"DZ_LEDGER_WS":                 a.dn.Ledger.InternalRPCWSURL,
-			"DZ_SERVICEABILITY_PROGRAM_ID": a.dn.Manager.ServiceabilityProgramID,
-		},
+		Env: env,
 		Files: []testcontainers.ContainerFile{
 			{
 				HostFilePath:      a.dn.Spec.Manager.ManagerKeypairPath,
@@ -155,11 +173,20 @@ func (a *Activator) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to set activator state: %w", err)
 	}
 
-	a.log.Info("--> Activator started", "container", a.ContainerID)
+	a.log.Debug("--> Activator started", "container", a.ContainerID)
 	return nil
 }
 
 func (a *Activator) setState(containerID string) error {
 	a.ContainerID = shortContainerID(containerID)
 	return nil
+}
+
+// GetContainerState returns the current state of the activator container.
+func (a *Activator) GetContainerState(ctx context.Context) (*dockercontainer.State, error) {
+	container, err := a.dn.dockerClient.ContainerInspect(ctx, a.dockerContainerName())
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect activator container: %w", err)
+	}
+	return container.State, nil
 }

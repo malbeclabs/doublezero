@@ -14,7 +14,7 @@ import (
 var configPayload = `
 02baae1ce3bce5130ae5f46b6d47884ab60b6d22f55b0c0cfac
 f14abe7ea3118aefd4cfe0000e9fd0000ac10000010a9fe0000
-10df00000004a2aa7d81b23bd270048af6aae3813dea
+10df000000043a2793337e0017
 `
 
 var locationPayload = `
@@ -77,15 +77,16 @@ var multicastgroupPayload = `
 f14abe7ea3118ae23000000000000000000000000000000ff00
 000000000000000000000000000000000000000000000000000
 00000000000d000000000ca9a3b0000000001040000006a6974
-6f01000000baae1ce3bce5130ae5f46b6d47884ab60b6d22f55
-b0c0cfacf14abe7ea3118ae01000000baae1ce3bce5130ae5f4
-6b6d47884ab60b6d22f55b0c0cfacf14abe7ea3118ae0200000
-059d127e5abbd5ce88c1de4abe70b132b4c79d4a1ffe781952a
-8bdf13801d2cb63a316a4505a39d6026a55bf2894e30bad33bc
-1631ce1bd925f02ab4c7994e9d40200000041c6964053cf55d2
-925472dbe01afbc327f5abfdb917ec234ecabc09e5290b2b3a3
-16a4505a39d6026a55bf2894e30bad33bc1631ce1bd925f02ab
-4c7994e9d4b745f92183e1b409bb7006560f858cf3
+6f050000000a000000
+`
+
+var tenantPayload = `
+0d0a3b74b3535cdeb34fd5e4cd7ea1133e55abc521c8850f6d
+08166d11e4828978ff0b000000746573742d74656e616e7464
+00050000000100000000000000000000000000000000000000
+0000000000000000000000000000000001aaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0100
+000000000000000000000000000000000000
 `
 
 var programconfigPayload = `
@@ -93,11 +94,15 @@ var programconfigPayload = `
 `
 
 type mockSolanaClient struct {
-	payload string
-	pubkey  solana.PublicKey
+	payload     string
+	pubkey      solana.PublicKey
+	returnEmpty bool
 }
 
 func (m *mockSolanaClient) GetProgramAccounts(context.Context, solana.PublicKey) (rpc.GetProgramAccountsResult, error) {
+	if m.returnEmpty {
+		return []*rpc.KeyedAccount{}, nil
+	}
 	data, err := hex.DecodeString(strings.ReplaceAll(m.payload, "\n", ""))
 	if err != nil {
 		return nil, err
@@ -108,6 +113,21 @@ func (m *mockSolanaClient) GetProgramAccounts(context.Context, solana.PublicKey)
 			Account: &rpc.Account{
 				Data: rpc.DataBytesOrJSONFromBytes(data),
 			},
+		},
+	}, nil
+}
+
+func (m *mockSolanaClient) GetAccountInfo(context.Context, solana.PublicKey) (*rpc.GetAccountInfoResult, error) {
+	if m.returnEmpty {
+		return nil, nil
+	}
+	data, err := hex.DecodeString(strings.ReplaceAll(m.payload, "\n", ""))
+	if err != nil {
+		return nil, err
+	}
+	return &rpc.GetAccountInfoResult{
+		Value: &rpc.Account{
+			Data: rpc.DataBytesOrJSONFromBytes(data),
 		},
 	}, nil
 }
@@ -141,6 +161,8 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			0xbf, 0xa5, 0x57, 0xc7, 0x5c, 0xd9, 0x67, 0x18, 0x2a, 0x00, 0x39, 0x22, 0x00, 0xb5, 0xde, 0x78},
 		{0xb7, 0x45, 0xf9, 0x21, 0x83, 0xe1, 0xb4, 0x09, 0xbb, 0x70, 0x06, 0x56, 0x0f, 0x85, 0x8c, 0xf3,
 			0xbf, 0xa5, 0x57, 0xc7, 0x5c, 0xd9, 0x67, 0x18, 0x2a, 0x00, 0x39, 0x22, 0x00, 0xb5, 0xde, 0x78},
+		{0xb8, 0x45, 0xf9, 0x21, 0x83, 0xe1, 0xb4, 0x09, 0xbb, 0x70, 0x06, 0x56, 0x0f, 0x85, 0x8c, 0xf3,
+			0xbf, 0xa5, 0x57, 0xc7, 0x5c, 0xd9, 0x67, 0x18, 0x2a, 0x00, 0x39, 0x22, 0x00, 0xb5, 0xde, 0x78},
 	}
 	tests := []struct {
 		Name        string
@@ -148,31 +170,34 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 		Payload     string
 		Want        *ProgramData
 	}{
-
 		{
 			Name:        "parse_valid_config",
 			Description: "parse and populate a valid config struct",
 			Payload:     strings.TrimSuffix(configPayload, "\n"),
 			Want: &ProgramData{
 				Config: Config{
-					AccountType:         ConfigType,
-					Owner:               getOwner(configPayload),
-					Bump_seed:           253,
-					Local_asn:           65100,
-					Remote_asn:          65001,
-					TunnelTunnelBlock:   [5]byte{172, 16, 0, 0, 16},
-					UserTunnelBlock:     [5]byte{169, 254, 0, 0, 16},
-					MulticastGroupBlock: [5]byte{223, 0, 0, 0, 4},
-					PubKey:              pubkeys[0],
+					AccountType:             ConfigType,
+					Owner:                   getOwner(configPayload),
+					Bump_seed:               253,
+					Local_asn:               65100,
+					Remote_asn:              65001,
+					TunnelTunnelBlock:       [5]byte{172, 16, 0, 0, 16},
+					UserTunnelBlock:         [5]byte{169, 254, 0, 0, 16},
+					MulticastGroupBlock:     [5]byte{223, 0, 0, 0, 4},
+					NextBGPCommunity:        10042,
+					MulticastPublisherBlock: [5]byte{147, 51, 126, 0, 23},
+					PubKey:                  pubkeys[0],
 				},
-				Locations:       []Location{},
-				Devices:         []Device{},
-				Links:           []Link{},
-				Users:           []User{},
-				Exchanges:       []Exchange{},
-				Contributors:    []Contributor{},
-				MulticastGroups: []MulticastGroup{},
-				ProgramConfig:   ProgramConfig{},
+				Locations:          []Location{},
+				Devices:            []Device{},
+				Links:              []Link{},
+				Users:              []User{},
+				Exchanges:          []Exchange{},
+				Contributors:       []Contributor{},
+				Tenants:            []Tenant{},
+				MulticastGroups:    []MulticastGroup{},
+				ProgramConfig:      ProgramConfig{},
+				ResourceExtensions: []ResourceExtension{},
 			},
 		},
 		{
@@ -195,13 +220,15 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						PubKey:       pubkeys[1],
 					},
 				},
-				Locations:       []Location{},
-				Devices:         []Device{},
-				Links:           []Link{},
-				Users:           []User{},
-				Contributors:    []Contributor{},
-				MulticastGroups: []MulticastGroup{},
-				ProgramConfig:   ProgramConfig{},
+				Locations:          []Location{},
+				Devices:            []Device{},
+				Links:              []Link{},
+				Users:              []User{},
+				Contributors:       []Contributor{},
+				Tenants:            []Tenant{},
+				MulticastGroups:    []MulticastGroup{},
+				ProgramConfig:      ProgramConfig{},
+				ResourceExtensions: []ResourceExtension{},
 			},
 		},
 		{
@@ -255,13 +282,15 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						PubKey:         pubkeys[2],
 					},
 				},
-				Locations:       []Location{},
-				Exchanges:       []Exchange{},
-				Links:           []Link{},
-				Users:           []User{},
-				Contributors:    []Contributor{},
-				MulticastGroups: []MulticastGroup{},
-				ProgramConfig:   ProgramConfig{},
+				Locations:          []Location{},
+				Exchanges:          []Exchange{},
+				Links:              []Link{},
+				Users:              []User{},
+				Contributors:       []Contributor{},
+				Tenants:            []Tenant{},
+				MulticastGroups:    []MulticastGroup{},
+				ProgramConfig:      ProgramConfig{},
+				ResourceExtensions: []ResourceExtension{},
 			},
 		},
 		{
@@ -285,13 +314,15 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						PubKey:      pubkeys[3],
 					},
 				},
-				Exchanges:       []Exchange{},
-				Devices:         []Device{},
-				Links:           []Link{},
-				Users:           []User{},
-				Contributors:    []Contributor{},
-				MulticastGroups: []MulticastGroup{},
-				ProgramConfig:   ProgramConfig{},
+				Exchanges:          []Exchange{},
+				Devices:            []Device{},
+				Links:              []Link{},
+				Users:              []User{},
+				Contributors:       []Contributor{},
+				Tenants:            []Tenant{},
+				MulticastGroups:    []MulticastGroup{},
+				ProgramConfig:      ProgramConfig{},
+				ResourceExtensions: []ResourceExtension{},
 			},
 		},
 		{
@@ -301,29 +332,32 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			Want: &ProgramData{
 				Users: []User{
 					{
-						AccountType:  UserType,
-						Index:        Uint128{High: 31, Low: 0},
-						Bump_seed:    252,
-						Owner:        getOwner(userPayload),
-						UserType:     UserTypeIBRL,
-						TenantPubKey: getPubKeyOffset(userPayload, 51, 83),
-						DevicePubKey: getPubKeyOffset(userPayload, 83, 115),
-						CyoaType:     CyoaTypeGREOverDIA,
-						ClientIp:     [4]byte{0x0a, 0x00, 0x00, 0x01},
-						TunnelId:     500,
-						TunnelNet:    [5]byte{0xa9, 0xfe, 0x00, 0x00, 0x1f},
-						DzIp:         [4]byte{0x0a, 0x00, 0x00, 0x01},
-						Status:       UserStatusActivated,
-						PubKey:       pubkeys[4],
+						AccountType:    UserType,
+						Index:          Uint128{High: 31, Low: 0},
+						Bump_seed:      252,
+						Owner:          getOwner(userPayload),
+						UserType:       UserTypeIBRL,
+						TenantPubKey:   getPubKeyOffset(userPayload, 51, 83),
+						DevicePubKey:   getPubKeyOffset(userPayload, 83, 115),
+						CyoaType:       CyoaTypeGREOverDIA,
+						ClientIp:       [4]byte{0x0a, 0x00, 0x00, 0x01},
+						TunnelId:       500,
+						TunnelNet:      [5]byte{0xa9, 0xfe, 0x00, 0x00, 0x1f},
+						DzIp:           [4]byte{0x0a, 0x00, 0x00, 0x01},
+						Status:         UserStatusActivated,
+						TunnelEndpoint: [4]byte{0xfc, 0xef, 0x68, 0xd5},
+						PubKey:         pubkeys[4],
 					},
 				},
-				Locations:       []Location{},
-				Devices:         []Device{},
-				Links:           []Link{},
-				Exchanges:       []Exchange{},
-				Contributors:    []Contributor{},
-				MulticastGroups: []MulticastGroup{},
-				ProgramConfig:   ProgramConfig{},
+				Locations:          []Location{},
+				Devices:            []Device{},
+				Links:              []Link{},
+				Exchanges:          []Exchange{},
+				Contributors:       []Contributor{},
+				Tenants:            []Tenant{},
+				MulticastGroups:    []MulticastGroup{},
+				ProgramConfig:      ProgramConfig{},
+				ResourceExtensions: []ResourceExtension{},
 			},
 		},
 		{
@@ -355,13 +389,15 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						PubKey:            pubkeys[5],
 					},
 				},
-				Locations:       []Location{},
-				Devices:         []Device{},
-				Exchanges:       []Exchange{},
-				Users:           []User{},
-				Contributors:    []Contributor{},
-				MulticastGroups: []MulticastGroup{},
-				ProgramConfig:   ProgramConfig{},
+				Locations:          []Location{},
+				Devices:            []Device{},
+				Exchanges:          []Exchange{},
+				Users:              []User{},
+				Contributors:       []Contributor{},
+				Tenants:            []Tenant{},
+				MulticastGroups:    []MulticastGroup{},
+				ProgramConfig:      ProgramConfig{},
+				ResourceExtensions: []ResourceExtension{},
 			},
 		},
 		{
@@ -375,21 +411,62 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				Exchanges:    []Exchange{},
 				Users:        []User{},
 				Contributors: []Contributor{},
+				Tenants:      []Tenant{},
 				MulticastGroups: []MulticastGroup{
 					{
-						AccountType:  MulticastGroupType,
-						Index:        Uint128{High: 35, Low: 0},
-						Bump_seed:    255,
-						Owner:        getOwner(multicastgroupPayload),
-						TenantPubKey: [32]byte{},
-						MulticastIp:  [4]byte{0xd0, 0x00, 0x00, 0x00},
-						MaxBandwidth: 1000000000,
-						Status:       MulticastGroupStatusActivated,
-						Code:         "jito",
-						PubKey:       pubkeys[6],
+						AccountType:     MulticastGroupType,
+						Index:           Uint128{High: 35, Low: 0},
+						Bump_seed:       255,
+						Owner:           getOwner(multicastgroupPayload),
+						TenantPubKey:    [32]byte{},
+						MulticastIp:     [4]byte{0xd0, 0x00, 0x00, 0x00},
+						MaxBandwidth:    1000000000,
+						Status:          MulticastGroupStatusActivated,
+						Code:            "jito",
+						PublisherCount:  5,
+						SubscriberCount: 10,
+						PubKey:          pubkeys[6],
 					},
 				},
-				ProgramConfig: ProgramConfig{},
+				ProgramConfig:      ProgramConfig{},
+				ResourceExtensions: []ResourceExtension{},
+			},
+		},
+		{
+			Name:        "parse_valid_tenant",
+			Description: "parse and populate a valid tenant struct",
+			Payload:     strings.TrimSuffix(tenantPayload, "\n"),
+			Want: &ProgramData{
+				Tenants: []Tenant{
+					{
+						AccountType:    TenantType,
+						Owner:          getOwner(tenantPayload),
+						BumpSeed:       255,
+						Code:           "test-tenant",
+						VrfId:          100,
+						ReferenceCount: 5,
+						Administrators: [][32]byte{{}},
+						PaymentStatus:  TenantPaymentStatusPaid,
+						TokenAccount: [32]byte{
+							0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+							0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+							0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+							0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+						},
+						MetroRouting:  true,
+						RouteLiveness: false,
+						PubKey:        pubkeys[7],
+					},
+				},
+				Locations:          []Location{},
+				Devices:            []Device{},
+				Links:              []Link{},
+				Exchanges:          []Exchange{},
+				Users:              []User{},
+				Contributors:       []Contributor{},
+				MulticastGroups:    []MulticastGroup{},
+				ProgramConfig:      ProgramConfig{},
+				ResourceExtensions: []ResourceExtension{},
 			},
 		},
 		{
@@ -403,6 +480,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				Exchanges:       []Exchange{},
 				Users:           []User{},
 				Contributors:    []Contributor{},
+				Tenants:         []Tenant{},
 				MulticastGroups: []MulticastGroup{},
 				ProgramConfig: ProgramConfig{
 					AccountType: ProgramConfigType,
@@ -413,6 +491,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						Patch: 3,
 					},
 				},
+				ResourceExtensions: []ResourceExtension{},
 			},
 		},
 	}
@@ -428,6 +507,23 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				t.Fatalf("Client diff found; -want, +got: %s", diff)
 			}
 		})
+	}
+}
 
+func TestSDK_Serviceability_GetProgramData_EmptyResult(t *testing.T) {
+	programID := solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+	client := &Client{
+		rpc:       &mockSolanaClient{returnEmpty: true},
+		programID: programID,
+	}
+
+	_, err := client.GetProgramData(t.Context())
+	if err == nil {
+		t.Fatal("expected error for empty GetProgramAccounts result, got nil")
+	}
+
+	expectedErrSubstring := "GetProgramAccounts returned empty result"
+	if !strings.Contains(err.Error(), expectedErrSubstring) {
+		t.Fatalf("expected error to contain %q, got: %v", expectedErrSubstring, err)
 	}
 }

@@ -61,7 +61,7 @@ pub fn process_allocate_resource(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
@@ -101,7 +101,7 @@ pub fn process_allocate_resource(
     if let Some(ref requested) = &value.requested {
         resource.allocate_specific(requested)?;
     } else {
-        resource.allocate()?;
+        resource.allocate(1)?;
     }
 
     Ok(())

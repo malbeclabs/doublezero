@@ -1,0 +1,31 @@
+[project]
+name = "doublezero-telemetry"
+version = "0.0.3"
+description = "DoubleZero Telemetry SDK"
+requires-python = ">=3.10"
+dependencies = [
+    "borsh-incremental",
+    "doublezero-serviceability",
+    "solana>=0.35",
+    "solders>=0.21",
+    "httpx>=0.27",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["telemetry/tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["telemetry"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
+
+[tool.uv.sources]
+borsh-incremental = { path = "../../borsh-incremental/python", editable = true }
+doublezero-serviceability = { path = "../../serviceability/python", editable = true }

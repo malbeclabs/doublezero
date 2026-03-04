@@ -1,0 +1,107 @@
+{
+  "name": "Distribution",
+  "struct_size": 448,
+  "discriminator_hex": "879e8fd81d22c025",
+  "fields": [
+    {
+      "name": "DZEpoch",
+      "value": "100",
+      "typ": "u64"
+    },
+    {
+      "name": "Flags",
+      "value": "7",
+      "typ": "u64"
+    },
+    {
+      "name": "CommunityBurnRate",
+      "value": "250000000",
+      "typ": "u32"
+    },
+    {
+      "name": "BaseBlockRewardsPct",
+      "value": "500",
+      "typ": "u16"
+    },
+    {
+      "name": "PriorityBlockRewardsPct",
+      "value": "1000",
+      "typ": "u16"
+    },
+    {
+      "name": "InflationRewardsPct",
+      "value": "200",
+      "typ": "u16"
+    },
+    {
+      "name": "JitoTipsPct",
+      "value": "300",
+      "typ": "u16"
+    },
+    {
+      "name": "FixedSOLAmount",
+      "value": "50000",
+      "typ": "u32"
+    },
+    {
+      "name": "TotalSolanaValidators",
+      "value": "398",
+      "typ": "u32"
+    },
+    {
+      "name": "SolanaValidatorPaymentsCount",
+      "value": "350",
+      "typ": "u32"
+    },
+    {
+      "name": "TotalSolanaValidatorDebt",
+      "value": "1000000000",
+      "typ": "u64"
+    },
+    {
+      "name": "CollectedSolanaValidatorPayments",
+      "value": "900000000",
+      "typ": "u64"
+    },
+    {
+      "name": "TotalContributors",
+      "value": "13",
+      "typ": "u32"
+    },
+    {
+      "name": "DistributedRewardsCount",
+      "value": "13",
+      "typ": "u32"
+    },
+    {
+      "name": "CollectedPrepaid2ZPayments",
+      "value": "500000",
+      "typ": "u64"
+    },
+    {
+      "name": "Collected2ZConvertedFromSOL",
+      "value": "400000",
+      "typ": "u64"
+    },
+    {
+      "name": "UncollectibleSOLDebt",
+      "value": "100000",
+      "typ": "u64"
+    },
+    {
+      "name": "Distributed2ZAmount",
+      "value": "2000000",
+      "typ": "u64"
+    },
+    {
+      "name": "Burned2ZAmount",
+      "value": "1500000",
+      "typ": "u64"
+    },
+    {
+      "name": "SolanaValidatorWriteOffCount",
+      "value": "5",
+      "typ": "u32"
+    }
+  ]
+}

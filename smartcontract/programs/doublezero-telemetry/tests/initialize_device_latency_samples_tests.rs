@@ -17,7 +17,6 @@ use doublezero_telemetry::{
     processors::telemetry::initialize_device_latency_samples::InitializeDeviceLatencySamplesArgs,
     state::device_latency_samples::DEVICE_LATENCY_SAMPLES_HEADER_SIZE,
 };
-use solana_program::example_mocks::solana_sdk::system_program;
 use solana_program_test::*;
 use solana_sdk::{
     account::Account,
@@ -194,13 +193,15 @@ async fn test_initialize_device_latency_samples_success_suspended_origin_device(
     // Wait for a new blockhash before moving on.
     ledger.wait_for_new_blockhash().await.unwrap();
 
-    // Check that the origin device is suspended.
+    // Check that the origin device has desired_status Drained.
+    // Note: check_status_transition is a no-op (waiting for health oracle),
+    // so status remains Activated but desired_status is Drained.
     let device = ledger
         .serviceability
         .get_device(origin_device_pk)
         .await
         .unwrap();
-    assert_eq!(device.status, DeviceStatus::Drained);
+    assert_eq!(device.desired_status, DeviceDesiredStatus::Drained);
 
     // Execute initialize latency samples transaction.
     let latency_samples_pda = ledger
@@ -253,7 +254,7 @@ async fn test_initialize_device_latency_samples_success_suspended_target_device(
         .await
         .unwrap();
 
-    // Suspend the target device.
+    // Drain the target device.
     ledger
         .serviceability
         .softdrained_device(contributor_pk, target_device_pk)
@@ -263,13 +264,13 @@ async fn test_initialize_device_latency_samples_success_suspended_target_device(
     // Wait for a new blockhash before moving on.
     ledger.wait_for_new_blockhash().await.unwrap();
 
-    // Check that the target device is suspended.
+    // Check that the target device has desired_status Drained.
     let device = ledger
         .serviceability
         .get_device(target_device_pk)
         .await
         .unwrap();
-    assert_eq!(device.status, DeviceStatus::Drained);
+    assert_eq!(device.desired_status, DeviceDesiredStatus::Drained);
 
     // Execute initialize latency samples transaction.
     let latency_samples_pda = ledger
@@ -322,7 +323,7 @@ async fn test_initialize_device_latency_samples_success_suspended_link() {
         .await
         .unwrap();
 
-    // Suspend the link.
+    // Drain the link.
     ledger
         .serviceability
         .soft_drain_link(contributor_pk, link_pk)
@@ -332,9 +333,9 @@ async fn test_initialize_device_latency_samples_success_suspended_link() {
     // Wait for a new blockhash before moving on.
     ledger.wait_for_new_blockhash().await.unwrap();
 
-    // Check that the link is suspended.
+    // Check that the link has desired_status SoftDrained.
     let link = ledger.serviceability.get_link(link_pk).await.unwrap();
-    assert_eq!(link.status, LinkStatus::SoftDrained);
+    assert_eq!(link.desired_status, LinkDesiredStatus::SoftDrained);
 
     // Execute initialize latency samples transaction.
     let latency_samples_pda = ledger
@@ -462,7 +463,7 @@ async fn test_initialize_device_latency_samples_fail_agent_not_signer() {
         AccountMeta::new_readonly(origin_device_pk, false),
         AccountMeta::new_readonly(target_device_pk, false),
         AccountMeta::new_readonly(link_pk, false),
-        AccountMeta::new_readonly(system_program::id(), false),
+        AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         AccountMeta::new_readonly(ledger.serviceability.program_id, false),
     ];
 
@@ -518,6 +519,11 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
         max_users: 0,
         device_health: DeviceHealth::Pending,
         desired_status: DeviceDesiredStatus::Pending,
+        unicast_users_count: 0,
+        multicast_users_count: 0,
+        max_unicast_users: 0,
+        max_multicast_users: 0,
+        reserved_seats: 0,
     };
 
     let mut device_data = Vec::new();
@@ -606,6 +612,11 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         max_users: 0,
         device_health: DeviceHealth::Pending,
         desired_status: DeviceDesiredStatus::Pending,
+        unicast_users_count: 0,
+        multicast_users_count: 0,
+        max_unicast_users: 0,
+        max_multicast_users: 0,
+        reserved_seats: 0,
     };
 
     let mut data = Vec::new();
@@ -1008,7 +1019,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
 }
 
 #[tokio::test]
-async fn test_initialize_device_latency_samples_fail_link_not_activated() {
+async fn test_initialize_device_latency_samples_success_provisioning_link() {
     let mut ledger = LedgerHelper::new().await.unwrap();
     let payer = ledger
         .context
@@ -1101,10 +1112,10 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
         .await
         .unwrap();
 
-    // Create link but do not activate
+    // Create and activate link
     let link_pk = ledger
         .serviceability
-        .create_link(
+        .create_and_activate_link(
             LinkCreateArgs {
                 code: "LINK1".to_string(),
                 link_type: LinkLinkType::WAN,
@@ -1119,6 +1130,8 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
             contributor_pk,
             origin_device_pk,
             target_device_pk,
+            1,
+            "10.1.1.0/30".parse().unwrap(),
         )
         .await
         .unwrap();
@@ -1137,7 +1150,100 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
         )
         .await;
 
-    assert_telemetry_error(result, TelemetryError::LinkNotActivated);
+    // Provisioning links now allow telemetry for burn-in testing
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_initialize_device_latency_samples_success_soft_drained_link() {
+    let mut ledger = LedgerHelper::new().await.unwrap();
+    let payer = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
+
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer)
+        .await
+        .unwrap();
+
+    let (agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
+
+    // Soft drain the link
+    ledger
+        .serviceability
+        .soft_drain_link(contributor_pk, link_pk)
+        .await
+        .unwrap();
+
+    ledger.wait_for_new_blockhash().await.unwrap();
+
+    let result = ledger
+        .telemetry
+        .initialize_device_latency_samples(
+            &agent,
+            origin_device_pk,
+            target_device_pk,
+            link_pk,
+            77,
+            5_000_000,
+        )
+        .await;
+
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_initialize_device_latency_samples_success_hard_drained_link() {
+    let mut ledger = LedgerHelper::new().await.unwrap();
+    let payer = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
+
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer)
+        .await
+        .unwrap();
+
+    let (agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
+
+    // Hard drain the link
+    ledger
+        .serviceability
+        .hard_drain_link(contributor_pk, link_pk)
+        .await
+        .unwrap();
+
+    ledger.wait_for_new_blockhash().await.unwrap();
+
+    let result = ledger
+        .telemetry
+        .initialize_device_latency_samples(
+            &agent,
+            origin_device_pk,
+            target_device_pk,
+            link_pk,
+            88,
+            5_000_000,
+        )
+        .await;
+
+    assert!(result.is_ok());
 }
 
 #[tokio::test]

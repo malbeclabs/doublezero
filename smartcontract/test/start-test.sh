@@ -14,16 +14,16 @@ export OPENSSL_NO_VENDOR=1
 
 # Build the program
 echo "Build the program"
-cargo build-sbf --manifest-path ../programs/doublezero-serviceability/Cargo.toml -- -Znext-lockfile-bump
+cargo build-sbf --manifest-path ../programs/doublezero-serviceability/Cargo.toml -- -Znext-lockfile-bump --target-dir ../../target/
 cp ../../target/deploy/doublezero_serviceability.so ./target/doublezero_serviceability.so
 
 #Build the activator
 echo "Build the activator"
-cargo build --manifest-path ../../activator/Cargo.toml ; cp ../../target/debug/doublezero-activator ./target/
+cargo build --manifest-path ../../activator/Cargo.toml  --target-dir ../../target/ ; cp ../../target/debug/doublezero-activator ./target/
 
 #Build the activator
 echo "Build the client"
-cargo build --manifest-path ../../client/doublezero/Cargo.toml; cp ../../target/debug/doublezero ./target/
+cargo build --manifest-path ../../client/doublezero/Cargo.toml --target-dir ../../target/ ; cp ../../target/debug/doublezero ./target/
 
 # Configure to connect to localnet
 solana config set --url http://127.0.0.1:8899
@@ -53,12 +53,32 @@ solana logs >./logs/instruction.log 2>&1 &
 
 ./target/doublezero global-config authority set --activator-authority me --sentinel-authority me
 
+# Enable onchain allocation feature flag
+./target/doublezero global-config feature-flags set --enable onchain-allocation
+
 # Build the activator
 echo "Start the activator"
 RUST_LOG=debug ./target/doublezero-activator --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX --rpc http://127.0.0.1:8899 --ws ws://127.0.0.1:8900 --keypair ~/.config/doublezero/id.json >./logs/activator.log 2>&1 &
 
 echo "Add allowlist"
 ./target/doublezero global-config allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
+
+### Initialize tenants
+echo "Creating tenants"
+./target/doublezero tenant create --code acme --administrator me
+./target/doublezero tenant create --code corp --administrator me
+./target/doublezero tenant create --code test-tenant --administrator me
+
+echo "Listing all tenants"
+./target/doublezero tenant list
+
+echo "Getting tenant details"
+./target/doublezero tenant get --code acme
+./target/doublezero tenant get --code corp
+
+echo "Updating tenant VRF ID"
+./target/doublezero tenant update --pubkey acme --vrf-id 100
+./target/doublezero tenant update --pubkey corp --vrf-id 200
 
 ### Initialize locations
 echo "Creating locations"
@@ -105,24 +125,24 @@ echo "Creating devices"
 
 ### Initialize device interfaces
 echo "Creating device interfaces"
-./target/doublezero device interface create la2-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create la2-dz01 "Switch1/1/2" -w
-./target/doublezero device interface create la2-dz01 "Switch1/1/3" -w
-./target/doublezero device interface create ny5-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create ny5-dz01 "Switch1/1/2" -w
-./target/doublezero device interface create ld4-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create ld4-dz01 "Switch1/1/2" -w
-./target/doublezero device interface create ld4-dz01 "Switch1/1/3" -w
-./target/doublezero device interface create frk-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create frk-dz01 "Switch1/1/2" -w
-./target/doublezero device interface create sg1-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create sg1-dz01 "Switch1/1/2" -w
-./target/doublezero device interface create ty2-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create ty2-dz01 "Switch1/1/2" -w
-./target/doublezero device interface create pit-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create pit-dz01 "Switch1/1/2" -w
-./target/doublezero device interface create ams-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create ams-dz01 "Switch1/1/2" -w
+./target/doublezero device interface create la2-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create la2-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create la2-dz01 "Switch1/1/3" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ny5-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ny5-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ld4-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ld4-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ld4-dz01 "Switch1/1/3" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create frk-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create frk-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create sg1-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create sg1-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ty2-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ty2-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create pit-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create pit-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ams-dz01 "Switch1/1/1" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ams-dz01 "Switch1/1/2" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
 
 ### Initialize links
 echo "Creating internal links"
@@ -144,7 +164,7 @@ echo "Creating devices"
 
 ### Initialize device interfaces
 echo "Creating device interfaces"
-./target/doublezero device interface create la2-dz02 "Switch1/1/1" -w
+./target/doublezero device interface create la2-dz02 "Switch1/1/1" --bandwidth 1000 --cir 0 --mtu 1500 --routing-mode static -w
 
 ### Initialize links
 echo "Creating external links"
@@ -167,21 +187,40 @@ echo "Update devices to set max users"
 ./target/doublezero device update --pubkey ams-dz01 --max-users 128
 
 # create access pass
-echo "Create AccessPass for all IPs"
-./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.0.0.5
-./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.0.0.6
+echo "Create AccessPass with tenant restrictions"
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.0.0.5 --tenant acme
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.0.0.6 --tenant acme
 
-./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 177.54.159.95
-./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 147.28.171.51
-./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.100.100.100
-./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 200.200.200.200
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 177.54.159.95 --tenant corp
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 147.28.171.51 --tenant corp
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.100.100.100 --tenant test-tenant
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 200.200.200.200 --tenant test-tenant
+
+echo "Create AccessPass without tenant"
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 10.10.10.10
+
+echo "Listing all access passes"
+./target/doublezero access-pass list
+
+echo "Listing prepaid access passes only"
+./target/doublezero access-pass list --prepaid
+
+echo "Filtering access passes by user payer"
+./target/doublezero access-pass list
+
+echo "Filtering access passes by client IP"
+./target/doublezero access-pass list --client-ip 100.0.0.5
+
+# Test updating an access pass with different tenant
+echo "Updating access pass to change tenant"
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.0.0.5 --tenant corp
 
 # create a user
 echo "Creating users"
-./target/doublezero user create --device ld4-dz01 --client-ip 177.54.159.95 -w
-./target/doublezero user create --device ld4-dz01 --client-ip 147.28.171.51 -w
-./target/doublezero user create --device ld4-dz01 --client-ip 100.100.100.100 -w
-./target/doublezero user create --device ld4-dz01 --client-ip 200.200.200.200 -w
+./target/doublezero user create --device ld4-dz01 --client-ip 177.54.159.95 --tenant corp -w
+./target/doublezero user create --device ld4-dz01 --client-ip 147.28.171.51 --tenant corp -w
+./target/doublezero user create --device ld4-dz01 --client-ip 100.100.100.100 --tenant test-tenant -w
+./target/doublezero user create --device ld4-dz01 --client-ip 200.200.200.200 --tenant test-tenant -w
 
 echo "Creating multicast groups"
 ./target/doublezero multicast group create --code mg01 --max-bandwidth 1Gbps --owner me -w

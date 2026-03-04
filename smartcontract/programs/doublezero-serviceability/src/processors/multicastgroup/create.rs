@@ -30,8 +30,8 @@ impl fmt::Debug for MulticastGroupCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, max_bandwidth: {}",
-            self.code, self.max_bandwidth
+            "code: {}, max_bandwidth: {}, owner: {}",
+            self.code, self.max_bandwidth, self.owner
         )
     }
 }
@@ -65,7 +65,7 @@ pub fn process_create_multicastgroup(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable

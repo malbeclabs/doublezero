@@ -5,9 +5,15 @@ use doublezero_sdk::{
             close::CloseAccessPassCommand, get::GetAccessPassCommand, list::ListAccessPassCommand,
             set::SetAccessPassCommand,
         },
-        allowlist::foundation::{
-            add::AddFoundationAllowlistCommand, list::ListFoundationAllowlistCommand,
-            remove::RemoveFoundationAllowlistCommand,
+        allowlist::{
+            foundation::{
+                add::AddFoundationAllowlistCommand, list::ListFoundationAllowlistCommand,
+                remove::RemoveFoundationAllowlistCommand,
+            },
+            qa::{
+                add::AddQaAllowlistCommand, list::ListQaAllowlistCommand,
+                remove::RemoveQaAllowlistCommand,
+            },
         },
         contributor::{
             create::CreateContributorCommand, delete::DeleteContributorCommand,
@@ -39,7 +45,8 @@ use doublezero_sdk::{
         globalconfig::set::SetGlobalConfigCommand,
         globalstate::{
             init::InitGlobalStateCommand, setairdrop::SetAirdropCommand,
-            setauthority::SetAuthorityCommand, setversion::SetVersionCommand,
+            setauthority::SetAuthorityCommand, setfeatureflags::SetFeatureFlagsCommand,
+            setversion::SetVersionCommand,
         },
         link::{
             accept::AcceptLinkCommand, activate::ActivateLinkCommand,
@@ -76,8 +83,15 @@ use doublezero_sdk::{
         },
         programconfig::get::GetProgramConfigCommand,
         resource::{
-            allocate::AllocateResourceCommand, create::CreateResourceCommand,
-            deallocate::DeallocateResourceCommand, get::GetResourceCommand,
+            allocate::AllocateResourceCommand, closeaccount::CloseResourceCommand,
+            create::CreateResourceCommand, deallocate::DeallocateResourceCommand,
+            get::GetResourceCommand,
+        },
+        tenant::{
+            add_administrator::AddAdministratorTenantCommand, create::CreateTenantCommand,
+            delete::DeleteTenantCommand, get::GetTenantCommand, list::ListTenantCommand,
+            remove_administrator::RemoveAdministratorTenantCommand, update::UpdateTenantCommand,
+            update_payment_status::UpdatePaymentStatusCommand,
         },
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
@@ -90,7 +104,8 @@ use doublezero_sdk::{
     GlobalConfig, GlobalState, Link, Location, MulticastGroup, ResourceExtensionOwned, User,
 };
 use doublezero_serviceability::state::{
-    accesspass::AccessPass, contributor::Contributor, programconfig::ProgramConfig,
+    accesspass::AccessPass, accountdata::AccountData, contributor::Contributor,
+    programconfig::ProgramConfig, tenant::Tenant,
 };
 use mockall::automock;
 use solana_client::rpc_config::RpcProgramAccountsConfig;
@@ -113,6 +128,7 @@ pub trait CliCommand {
     fn get_epoch(&self) -> eyre::Result<u64>;
     fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>>;
     fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account>;
+    fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>>;
     fn get_program_accounts(
         &self,
         program_id: &Pubkey,
@@ -128,6 +144,7 @@ pub trait CliCommand {
     fn set_authority(&self, cmd: SetAuthorityCommand) -> eyre::Result<Signature>;
     fn set_globalconfig(&self, cmd: SetGlobalConfigCommand) -> eyre::Result<Signature>;
     fn set_minversion(&self, cmd: SetVersionCommand) -> eyre::Result<Signature>;
+    fn set_feature_flags(&self, cmd: SetFeatureFlagsCommand) -> eyre::Result<Signature>;
 
     fn create_location(&self, cmd: CreateLocationCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn get_location(&self, cmd: GetLocationCommand) -> eyre::Result<(Pubkey, Location)>;
@@ -155,6 +172,24 @@ pub trait CliCommand {
     ) -> eyre::Result<HashMap<Pubkey, Contributor>>;
     fn update_contributor(&self, cmd: UpdateContributorCommand) -> eyre::Result<Signature>;
     fn delete_contributor(&self, cmd: DeleteContributorCommand) -> eyre::Result<Signature>;
+
+    fn create_tenant(&self, cmd: CreateTenantCommand) -> eyre::Result<(Signature, Pubkey)>;
+    fn get_tenant(&self, cmd: GetTenantCommand) -> eyre::Result<(Pubkey, Tenant)>;
+    fn list_tenant(&self, cmd: ListTenantCommand) -> eyre::Result<HashMap<Pubkey, Tenant>>;
+    fn update_tenant(&self, cmd: UpdateTenantCommand) -> eyre::Result<Signature>;
+    fn delete_tenant(&self, cmd: DeleteTenantCommand) -> eyre::Result<Signature>;
+    fn add_administrator_tenant(
+        &self,
+        cmd: AddAdministratorTenantCommand,
+    ) -> eyre::Result<Signature>;
+    fn remove_administrator_tenant(
+        &self,
+        cmd: RemoveAdministratorTenantCommand,
+    ) -> eyre::Result<Signature>;
+    fn update_payment_status_tenant(
+        &self,
+        cmd: UpdatePaymentStatusCommand,
+    ) -> eyre::Result<Signature>;
 
     fn create_device(&self, cmd: CreateDeviceCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn get_device(&self, cmd: GetDeviceCommand) -> eyre::Result<(Pubkey, Device)>;
@@ -217,6 +252,9 @@ pub trait CliCommand {
         &self,
         cmd: RemoveFoundationAllowlistCommand,
     ) -> eyre::Result<Signature>;
+    fn list_qa_allowlist(&self, cmd: ListQaAllowlistCommand) -> eyre::Result<Vec<Pubkey>>;
+    fn add_qa_allowlist(&self, cmd: AddQaAllowlistCommand) -> eyre::Result<Signature>;
+    fn remove_qa_allowlist(&self, cmd: RemoveQaAllowlistCommand) -> eyre::Result<Signature>;
     fn create_multicastgroup(
         &self,
         cmd: CreateMulticastGroupCommand,
@@ -261,7 +299,10 @@ pub trait CliCommand {
         cmd: RemoveMulticastGroupSubAllowlistCommand,
     ) -> eyre::Result<Signature>;
     fn set_accesspass(&self, cmd: SetAccessPassCommand) -> eyre::Result<Signature>;
-    fn get_accesspass(&self, cmd: GetAccessPassCommand) -> eyre::Result<(Pubkey, AccessPass)>;
+    fn get_accesspass(
+        &self,
+        cmd: GetAccessPassCommand,
+    ) -> eyre::Result<Option<(Pubkey, AccessPass)>>;
     fn list_accesspass(
         &self,
         cmd: ListAccessPassCommand,
@@ -275,6 +316,7 @@ pub trait CliCommand {
         &self,
         cmd: GetResourceCommand,
     ) -> eyre::Result<(Pubkey, ResourceExtensionOwned)>;
+    fn close_resource(&self, cmd: CloseResourceCommand) -> eyre::Result<Signature>;
 }
 
 pub struct CliCommandImpl<'a> {
@@ -320,6 +362,9 @@ impl CliCommand for CliCommandImpl<'_> {
     fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account> {
         self.client.get_account(pubkey)
     }
+    fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>> {
+        self.client.get_all()
+    }
     fn get_program_accounts(
         &self,
         program_id: &Pubkey,
@@ -353,6 +398,9 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn set_minversion(&self, cmd: SetVersionCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn set_feature_flags(&self, cmd: SetFeatureFlagsCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
 
@@ -414,6 +462,40 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn delete_contributor(&self, cmd: DeleteContributorCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+
+    fn create_tenant(&self, cmd: CreateTenantCommand) -> eyre::Result<(Signature, Pubkey)> {
+        cmd.execute(self.client)
+    }
+    fn get_tenant(&self, cmd: GetTenantCommand) -> eyre::Result<(Pubkey, Tenant)> {
+        cmd.execute(self.client)
+    }
+    fn list_tenant(&self, cmd: ListTenantCommand) -> eyre::Result<HashMap<Pubkey, Tenant>> {
+        cmd.execute(self.client)
+    }
+    fn update_tenant(&self, cmd: UpdateTenantCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn delete_tenant(&self, cmd: DeleteTenantCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn add_administrator_tenant(
+        &self,
+        cmd: AddAdministratorTenantCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn remove_administrator_tenant(
+        &self,
+        cmd: RemoveAdministratorTenantCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn update_payment_status_tenant(
+        &self,
+        cmd: UpdatePaymentStatusCommand,
+    ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
 
@@ -549,6 +631,15 @@ impl CliCommand for CliCommandImpl<'_> {
     ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
+    fn list_qa_allowlist(&self, cmd: ListQaAllowlistCommand) -> eyre::Result<Vec<Pubkey>> {
+        cmd.execute(self.client)
+    }
+    fn add_qa_allowlist(&self, cmd: AddQaAllowlistCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn remove_qa_allowlist(&self, cmd: RemoveQaAllowlistCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
     fn create_multicastgroup(
         &self,
         cmd: CreateMulticastGroupCommand,
@@ -621,7 +712,10 @@ impl CliCommand for CliCommandImpl<'_> {
     fn set_accesspass(&self, cmd: SetAccessPassCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn get_accesspass(&self, cmd: GetAccessPassCommand) -> eyre::Result<(Pubkey, AccessPass)> {
+    fn get_accesspass(
+        &self,
+        cmd: GetAccessPassCommand,
+    ) -> eyre::Result<Option<(Pubkey, AccessPass)>> {
         cmd.execute(self.client)
     }
     fn list_accesspass(
@@ -646,6 +740,9 @@ impl CliCommand for CliCommandImpl<'_> {
         &self,
         cmd: GetResourceCommand,
     ) -> eyre::Result<(Pubkey, ResourceExtensionOwned)> {
+        cmd.execute(self.client)
+    }
+    fn close_resource(&self, cmd: CloseResourceCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
 }

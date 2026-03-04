@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net"
 	"slices"
+	"syscall"
+	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
@@ -15,13 +17,14 @@ import (
 
 type PIMWriter interface {
 	Start(conn pim.RawConner, iface string, tunnelAddr net.IP, group []net.IP) error
+	UpdateGroups(groups []net.IP) error
 	Close() error
 }
 
-type DBReaderWriter interface {
-	GetState(userTypes ...api.UserType) []*api.ProvisionRequest
-	DeleteState(u api.UserType) error
-	SaveState(p *api.ProvisionRequest) error
+type HeartbeatWriter interface {
+	Start(iface string, srcIP net.IP, groups []net.IP, ttl int, interval time.Duration) error
+	UpdateGroups(groups []net.IP) error
+	Close() error
 }
 
 type BGPReaderWriter interface {
@@ -68,7 +71,7 @@ func createBaseTunnel(nl routing.Netlinker, tun *routing.Tunnel) error {
 		}
 	}
 	slog.Info("tunnel: adding address to tunnel interface", "address", tun.LocalOverlay)
-	err = nl.TunnelAddrAdd(tun, tun.LocalOverlay.String()+"/31")
+	err = nl.TunnelAddrAdd(tun, tun.LocalOverlay.String()+"/31", syscall.RT_SCOPE_LINK)
 	if err != nil {
 		if errors.Is(err, routing.ErrAddressExists) {
 			slog.Error("tunnel: address already present on tunnel")
@@ -90,7 +93,7 @@ func createTunnelWithIP(nl routing.Netlinker, tun *routing.Tunnel, dzIp net.IP) 
 	}
 
 	slog.Info("tunnel: adding dz address to tunnel interface", "dz address", dzIp.String()+"/32")
-	err = nl.TunnelAddrAdd(tun, dzIp.String()+"/32")
+	err = nl.TunnelAddrAdd(tun, dzIp.String()+"/32", syscall.RT_SCOPE_UNIVERSE)
 	if err != nil {
 		if errors.Is(err, routing.ErrAddressExists) {
 			slog.Error("tunnel: address already present on tunnel")

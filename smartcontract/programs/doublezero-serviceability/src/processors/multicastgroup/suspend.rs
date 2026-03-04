@@ -52,7 +52,7 @@ pub fn process_suspend_multicastgroup(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     assert!(
@@ -67,6 +67,13 @@ pub fn process_suspend_multicastgroup(
     }
 
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
+
+    if multicastgroup.status != MulticastGroupStatus::Activated {
+        #[cfg(test)]
+        msg!("{:?}", multicastgroup);
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     multicastgroup.status = MulticastGroupStatus::Suspended;
 
     try_acc_write(

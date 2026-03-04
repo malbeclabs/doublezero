@@ -14,6 +14,7 @@ type BasicSender struct {
 	remote     *net.UDPAddr
 	conn       *net.UDPConn
 	once       sync.Once
+	cancel     context.CancelFunc
 	buf        []byte
 	seq        uint32     // sequence counter
 	mu         sync.Mutex // protects seq
@@ -36,10 +37,12 @@ func NewBasicSender(ctx context.Context, log *slog.Logger, iface string, localAd
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial: %w", err)
 	}
+	ctx, cancel := context.WithCancel(ctx)
 	s := &BasicSender{
 		log:      log,
 		remote:   remoteAddr,
 		conn:     conn.(*net.UDPConn),
+		cancel:   cancel,
 		nowFunc:  time.Now,
 		buf:      make([]byte, PacketSize),
 		received: make(map[Packet]struct{}),
@@ -53,6 +56,7 @@ func NewBasicSender(ctx context.Context, log *slog.Logger, iface string, localAd
 func (s *BasicSender) Close() error {
 	var err error
 	s.once.Do(func() {
+		s.cancel()
 		if s.conn != nil {
 			err = s.conn.Close()
 		}

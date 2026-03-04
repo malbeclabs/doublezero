@@ -77,7 +77,7 @@ func (c *Controller) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 		// Check if the container is running.
 		if container.State.Running {
-			c.log.Info("--> Controller already running", "container", shortContainerID(container.ID))
+			c.log.Debug("--> Controller already running", "container", shortContainerID(container.ID))
 
 			// Set the component's state.
 			err = c.setState(ctx, container.ID)
@@ -107,7 +107,15 @@ func (c *Controller) StartIfNotRunning(ctx context.Context) (bool, error) {
 }
 
 func (c *Controller) Start(ctx context.Context) error {
-	c.log.Info("==> Starting controller", "image", c.dn.Spec.Controller.ContainerImage)
+	c.log.Debug("==> Starting controller", "image", c.dn.Spec.Controller.ContainerImage)
+
+	env := map[string]string{
+		"DZ_LEDGER_URL":                c.dn.Ledger.InternalRPCURL,
+		"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
+	}
+	if c.dn.Prometheus != nil && c.dn.Prometheus.InternalURL != "" {
+		env["ALLOY_PROMETHEUS_URL"] = c.dn.Prometheus.InternalRemoteWriteURL()
+	}
 
 	req := testcontainers.ContainerRequest{
 		Image: c.dn.Spec.Controller.ContainerImage,
@@ -117,11 +125,8 @@ func (c *Controller) Start(ctx context.Context) error {
 		},
 		ExposedPorts: []string{fmt.Sprintf("%d/tcp", internalControllerPort)},
 		WaitingFor:   wait.ForExposedPort(),
-		Env: map[string]string{
-			"DZ_LEDGER_URL":                c.dn.Ledger.InternalRPCURL,
-			"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
-		},
-		Networks: []string{c.dn.DefaultNetwork.Name},
+		Env:          env,
+		Networks:     []string{c.dn.DefaultNetwork.Name},
 		NetworkAliases: map[string][]string{
 			c.dn.DefaultNetwork.Name: {"controller"},
 		},
@@ -149,7 +154,7 @@ func (c *Controller) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to set controller state: %w", err)
 	}
 
-	c.log.Info("--> Controller started", "container", c.ContainerID, "externalPort", c.ExternalPort)
+	c.log.Debug("--> Controller started", "container", c.ContainerID, "externalPort", c.ExternalPort)
 	return nil
 }
 

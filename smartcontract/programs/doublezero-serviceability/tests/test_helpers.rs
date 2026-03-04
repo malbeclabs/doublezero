@@ -2,11 +2,15 @@ use borsh::to_vec;
 use doublezero_serviceability::{
     entrypoint::process_instruction,
     instructions::*,
-    pda::{get_globalconfig_pda, get_globalstate_pda, get_program_config_pda},
+    pda::{
+        get_globalconfig_pda, get_globalstate_pda, get_program_config_pda,
+        get_resource_extension_pda,
+    },
     processors::globalconfig::set::SetGlobalConfigArgs,
+    resource::ResourceType,
     state::{
-        accountdata::AccountData, accounttype::AccountType, globalstate::GlobalState,
-        resource_extension::ResourceExtensionOwned,
+        accountdata::AccountData, accounttype::AccountType, device::Device,
+        globalstate::GlobalState, resource_extension::ResourceExtensionOwned,
     },
 };
 use solana_program_test::*;
@@ -14,10 +18,29 @@ use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    system_instruction, system_program,
     transaction::Transaction,
 };
+
 use std::any::type_name;
+
+#[ctor::ctor]
+fn init_logger() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let mut builder = env_logger::builder();
+
+        // If PROGRAM_LOG is set, show the Solana program logs.
+        if std::env::var_os("PROGRAM_LOG").is_some() {
+            builder.filter_level(log::LevelFilter::Error);
+            builder.filter(
+                Some("solana_runtime::message_processor::stable_log"),
+                log::LevelFilter::Debug,
+            );
+        }
+
+        let _ = builder.try_init();
+    });
+}
 
 // Use a fixed byte array to create a constant Keypair for testing
 // This is safe for tests only; never use hardcoded keys in production!
@@ -123,7 +146,8 @@ pub async fn transfer(
 ) {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    let transfer_ix = system_instruction::transfer(&source.pubkey(), destination, lamports);
+    let transfer_ix =
+        solana_system_interface::instruction::transfer(&source.pubkey(), destination, lamports);
     let mut tx = Transaction::new_with_payer(&[transfer_ix], Some(&source.pubkey()));
     tx.sign(&[&source], recent_blockhash);
     banks_client.process_transaction(tx).await.unwrap();
@@ -185,7 +209,7 @@ async fn execute_transaction_tester(
                 accounts.clone(),
                 vec![
                     AccountMeta::new(test_payer, false),
-                    AccountMeta::new(system_program::id(), false),
+                    AccountMeta::new(solana_system_interface::program::ID, false),
                 ],
             ]
             .concat(),
@@ -225,6 +249,35 @@ pub async fn try_execute_transaction(
     Ok(())
 }
 
+/// Execute a transaction and expect it to fail. Returns the error result.
+#[allow(dead_code)]
+pub async fn execute_transaction_expect_failure(
+    banks_client: &mut BanksClient,
+    _recent_blockhash: solana_program::hash::Hash,
+    program_id: Pubkey,
+    instruction: DoubleZeroInstruction,
+    accounts: Vec<AccountMeta>,
+    payer: &Keypair,
+) -> Result<(), BanksClientError> {
+    print!("➡️  Transaction (expecting failure) {instruction:?} ");
+
+    let recent_blockhash = banks_client
+        .get_latest_blockhash()
+        .await
+        .expect("Failed to get latest blockhash");
+    let mut transaction = create_transaction(program_id, &instruction, &accounts, payer);
+    transaction.try_sign(&[&payer], recent_blockhash).unwrap();
+    let result = banks_client.process_transaction(transaction).await;
+
+    if result.is_err() {
+        println!("❌ (expected)");
+    } else {
+        println!("✅ (unexpected success)");
+    }
+
+    result
+}
+
 pub fn create_transaction(
     program_id: Pubkey,
     instruction: &DoubleZeroInstruction,
@@ -252,7 +305,7 @@ pub fn create_transaction_with_extra_accounts(
                 accounts.to_owned(),
                 vec![
                     AccountMeta::new(payer.pubkey(), true),
-                    AccountMeta::new(system_program::id(), false),
+                    AccountMeta::new(solana_system_interface::program::ID, false),
                 ],
                 extra_accounts.to_vec(),
             ]
@@ -278,6 +331,31 @@ pub async fn get_resource_extension_data(
                 }
                 Err(err) => {
                     println!("Failed to deserialize ResourceExtension: {err:?}");
+                    None
+                }
+            },
+            None => {
+                println!("Account not found");
+                None
+            }
+        },
+        Err(err) => panic!("Failed to get account: {err:?}"),
+    }
+}
+
+#[allow(dead_code)]
+pub async fn get_device(banks_client: &mut BanksClient, pubkey: Pubkey) -> Option<Device> {
+    print!("Read Device: ");
+
+    match banks_client.get_account(pubkey).await {
+        Ok(account) => match account {
+            Some(account_data) => match Device::try_from(&account_data.data[..]) {
+                Ok(device) => {
+                    println!("{device}");
+                    Some(device)
+                }
+                Err(err) => {
+                    println!("Failed to deserialize Device: {err:?}");
                     None
                 }
             },
@@ -319,6 +397,18 @@ pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey,
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     // Initialize global state
     execute_transaction(
@@ -345,11 +435,19 @@ pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey,
             device_tunnel_block: "10.100.0.0/24".parse().unwrap(),
             user_tunnel_block: "10.200.0.0/24".parse().unwrap(),
             multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
             next_bgp_community: None,
         }),
         vec![
             AccountMeta::new(globalconfig_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
     )

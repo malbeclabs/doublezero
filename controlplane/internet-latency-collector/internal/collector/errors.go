@@ -65,14 +65,21 @@ func (e *CollectorError) GetContext(key string) any {
 }
 
 func (e *CollectorError) WithContext(key string, value any) *CollectorError {
-	e.contextMu.Lock()
-	defer e.contextMu.Unlock()
+	e.contextMu.RLock()
+	cloned := maps.Clone(e.context)
+	e.contextMu.RUnlock()
 
-	if e.context == nil {
-		e.context = make(map[string]any)
+	if cloned == nil {
+		cloned = make(map[string]any)
 	}
-	e.context[key] = value
-	return e
+	cloned[key] = value
+	return &CollectorError{
+		Type:      e.Type,
+		Operation: e.Operation,
+		Message:   e.Message,
+		Cause:     e.Cause,
+		context:   cloned,
+	}
 }
 
 func NewAPIError(operation, message string, cause error) *CollectorError {

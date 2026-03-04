@@ -55,11 +55,11 @@ type LivenessManager interface {
 	GetSessions() []liveness.SessionSnapshot
 }
 
-type DBReader interface {
-	GetState(userTypes ...UserType) []*ProvisionRequest
+type ServiceStateReader interface {
+	GetProvisionedServices() []*ProvisionRequest
 }
 
-func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBReader, networkConfig *config.NetworkConfig) http.HandlerFunc {
+func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, ssr ServiceStateReader, networkConfig *config.NetworkConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rts, err := nlr.RouteByProtocol(unix.RTPROT_BGP)
 		if err != nil {
@@ -69,7 +69,7 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 
 		w.Header().Set("Content-Type", "application/json")
 
-		services := db.GetState()
+		services := ssr.GetProvisionedServices()
 
 		// Get the routes from the kernel, filtered by doublezero services.
 		kernelRoutes := make(map[routeKey]*Route, len(rts))

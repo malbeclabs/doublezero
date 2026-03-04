@@ -16,16 +16,21 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 var (
-	devicesFlag       = flag.String("devices", "", "comma separated list of devices to run tests against")
-	allocateAddrHosts = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
+	devicesFlag           = flag.String("devices", "", "comma separated list of devices to run tests against")
+	allocateAddrHosts     = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
+	skipCapacityCheckFlag = flag.Bool("skip-capacity-check", false, "skip device capacity checks (use when running with QA identity that bypasses on-chain max_users)")
 )
 
 func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
+	if *multiTunnelFlag {
+		t.Skip("Skipping: not compatible with multi-tunnel mode")
+	}
 	if testing.Short() {
 		t.Skip("Skipping all-devices test in short mode")
 	}
@@ -49,9 +54,38 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	require.GreaterOrEqual(t, len(clients), 2, "At least 2 clients are required for connectivity testing")
 
 	// Filter devices to only include those with sufficient capacity and skip test devices
-	devices := test.ValidDevices(2)
+	// When using a QA identity (--skip-capacity-check), all devices are included regardless of capacity
+	devices := test.ValidDevices(2, *skipCapacityCheckFlag)
 	if len(devices) == 0 {
 		t.Skip("No valid devices found with sufficient capacity")
+	}
+
+	// Filter out transit devices - they don't participate in unicast connectivity tests
+	devices = slices.DeleteFunc(devices, func(d *qa.Device) bool {
+		if d.DeviceType == serviceability.DeviceDeviceTypeTransit {
+			log.Debug("Skipping transit device", "device", d.Code)
+			return true
+		}
+		return false
+	})
+
+	// Filter out devices that are not actively calling the controller
+	if grafanaCfg := qa.GrafanaConfigFromEnv(); grafanaCfg != nil {
+		activeDevices, err := qa.GetDevicesWithActiveConfigAgents(ctx, grafanaCfg)
+		if err != nil {
+			log.Warn("Failed to query Grafana for active devices, proceeding with all devices", "error", err)
+		} else {
+			log.Debug("Filtering devices by controller activity", "activeDeviceCount", len(activeDevices))
+			devices = slices.DeleteFunc(devices, func(d *qa.Device) bool {
+				if !activeDevices[d.Code] {
+					log.Debug("Skipping device not calling controller", "device", d.Code)
+					return true
+				}
+				return false
+			})
+		}
+	} else {
+		log.Debug("No Grafana config found, including all devices regardless of controller activity")
 	}
 
 	// If devices flag is provided, filter devices to only include those in the list.
@@ -66,7 +100,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		})
 	}
 
-	log.Info("Collect `doublezero latency` for each client")
+	log.Debug("Collect `doublezero latency` for each client")
 	clientLatencies := make(qa.ClientLatencies)
 	for _, client := range clients {
 		latencies, err := client.GetLatency(ctx)
@@ -80,11 +114,11 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		}
 	}
 
-	log.Info("Create a list of devices for each client.")
-	log.Info(fmt.Sprintf("    (If there are multiple clients with <%dms latency for that device, assign the device to the client with the fewest devices", qa.LatencyThresholdMs))
-	log.Info("    Otherwise, associate each device with the client with the lowest latency)")
+	log.Debug("Create a list of devices for each client.")
+	log.Debug(fmt.Sprintf("    (If there are multiple clients with <%dms latency for that device, assign the device to the client with the fewest devices", qa.LatencyThresholdMs))
+	log.Debug("    Otherwise, associate each device with the client with the lowest latency)")
 
-	log.Info("Assign devices to clients based on latency")
+	log.Debug("Assign devices to clients based on latency")
 	batchData := qa.AssignDevicesToClients(devices, clients, clientLatencies, allocateAddrHostsSet, test.ShuffleDevices)
 
 	batchCount := len(batchData)
@@ -92,10 +126,10 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		t.Skip("No devices assigned to any client")
 	}
 
-	log.Info("Client device assignments:")
+	log.Debug("Client device assignments:")
 	printTestReportTable(log, batchData, clientLatencies, false)
 
-	log.Info("Planning to test",
+	log.Debug("Planning to test",
 		"deviceCount", len(devices),
 		"clientCount", len(clients),
 		"totalBatches", batchCount,
@@ -147,7 +181,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		printTestReportTable(log, qa.BatchData{batchNum: batch}, clientLatencies, true)
 	}
 
-	log.Info("Test results:")
+	log.Debug("Test results:")
 	printTestReportTable(log, batchData, clientLatencies, true)
 
 	var totalSent, totalReceived uint32
@@ -173,7 +207,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			}
 		}
 	}
-	log.Info("Test summary", "packetsReceived", totalReceived, "packetsSent", totalSent, "batchesWithLoss", batchesWithLoss, "totalBatches", batchCount)
+	log.Debug("Test summary", "packetsReceived", totalReceived, "packetsSent", totalSent, "batchesWithLoss", batchesWithLoss, "totalBatches", batchCount)
 
 	results := make([]qa.DeviceTestResult, 0, len(deviceResults))
 	for _, result := range deviceResults {
@@ -181,6 +215,9 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	}
 	if err := qa.PublishMetrics(ctx, log, qa.MetricsConfigFromEnv(), envArg, results, time.Since(startTime)); err != nil {
 		log.Error("Failed to publish metrics", "error", err)
+	}
+	if err := qa.PublishToClickhouse(ctx, log, qa.ClickhouseConfigFromEnv(), envArg, results, time.Since(startTime)); err != nil {
+		log.Error("Failed to publish metrics to ClickHouse", "error", err)
 	}
 }
 
@@ -213,9 +250,8 @@ func printTestReportTable(log *slog.Logger, batchData qa.BatchData, clientLatenc
 		}
 	}
 
-	batchColWidth := 1
 	// Calculate batch column width based on max batch number.
-	batchColWidth = len(fmt.Sprintf("Batch %d", batchNums[len(batchNums)-1]+1))
+	batchColWidth := len(fmt.Sprintf("Batch %d", batchNums[len(batchNums)-1]+1))
 
 	var sb strings.Builder
 	sb.WriteString("\n")
@@ -259,7 +295,7 @@ func printTestReportTable(log *slog.Logger, batchData qa.BatchData, clientLatenc
 		sb.WriteString("\n")
 	}
 
-	log.Info(sb.String())
+	log.Debug(sb.String())
 }
 
 func connectClientsAndWaitForRoutes(
@@ -277,18 +313,27 @@ func connectClientsAndWaitForRoutes(
 		err := c.ConnectUserUnicast_NoWait(ctx, device.Code)
 		if err != nil {
 			log.Error("Failed to start connection", "client", c.Host, "device", device.Code, "error", err)
-			t.Errorf("failed to connect client %s to device %s: %v", c.Host, device.Code, err)
 			batch[c.Host].FailedTests++
+			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
+				t.Errorf("failed to connect client %s to device %s: %v", c.Host, device.Code, err)
+			} else {
+				log.Warn("Ignoring connection failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
+			}
 		}
 	}
 
 	// Wait for status up for clients that reconnected
 	for _, c := range clientsToConnect {
+		device := batch[c.Host].Device
 		err := c.WaitForStatusUp(ctx)
 		if err != nil {
 			log.Error("Client failed to reach status up", "client", c.Host, "error", err)
-			t.Errorf("failed to wait for status for client %s: %v", c.Host, err)
 			batch[c.Host].FailedTests++
+			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
+				t.Errorf("failed to wait for status for client %s: %v", c.Host, err)
+			} else {
+				log.Warn("Ignoring status failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
+			}
 		}
 	}
 
@@ -304,7 +349,7 @@ func connectClientsAndWaitForRoutes(
 			continue
 		}
 		statuses[c.Host] = status.SessionStatus
-		if status.SessionStatus != qa.UserStatusUp {
+		if !qa.IsStatusUp(status.SessionStatus) {
 			log.Warn("Client not up", "client", c.Host, "status", status.SessionStatus)
 		}
 	}
@@ -312,13 +357,18 @@ func connectClientsAndWaitForRoutes(
 
 	// Wait for routes between all connected clients
 	for _, c := range connectedClients {
+		device := batch[c.Host].Device
 		targets := qa.ComputeRouteTargets(c, connectedClients, batch, func(client *qa.Client) net.IP {
 			return client.DoublezeroOrPublicIP()
 		})
 		if err := c.WaitForRoutes(ctx, targets); err != nil {
 			log.Error("Failed to wait for routes", "client", c.Host, "error", err)
-			t.Errorf("failed to wait for routes on client %s: %v", c.Host, err)
 			batch[c.Host].FailedTests++
+			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
+				t.Errorf("failed to wait for routes on client %s: %v", c.Host, err)
+			} else {
+				log.Warn("Ignoring route failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
+			}
 		}
 	}
 
@@ -360,10 +410,19 @@ func runConnectivitySubtests(
 					result, err := src.TestUnicastConnectivity(t, subCtx, target, srcDevice, dstDevice)
 					if err != nil {
 						log.Error("Connectivity test failed", "error", err, "source", src.Host, "target", target.Host, "sourceDevice", srcDevice.Code, "targetDevice", dstDevice.Code)
-						assert.NoError(t, err, "failed to test connectivity")
 						mu.Lock()
 						failedTests++
 						mu.Unlock()
+						// Only fail test if both devices are activated with max_users > 0
+						srcReady := srcDevice.Status == serviceability.DeviceStatusActivated && srcDevice.MaxUsers > 0
+						dstReady := dstDevice.Status == serviceability.DeviceStatusActivated && dstDevice.MaxUsers > 0
+						if srcReady && dstReady {
+							assert.NoError(t, err, "failed to test connectivity")
+						} else {
+							log.Warn("Ignoring connectivity failure involving device not ready for users",
+								"sourceDevice", srcDevice.Code, "sourceStatus", srcDevice.Status, "sourceMaxUsers", srcDevice.MaxUsers,
+								"targetDevice", dstDevice.Code, "targetStatus", dstDevice.Status, "targetMaxUsers", dstDevice.MaxUsers)
+						}
 					}
 					if result != nil {
 						mu.Lock()

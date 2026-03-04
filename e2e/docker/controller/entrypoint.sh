@@ -19,5 +19,11 @@ while ! curl -sf -X POST -H 'Content-Type: application/json' \
     sleep 1
 done
 
+# Start Alloy in background if ALLOY_PROMETHEUS_URL is set
+if [ -n "${ALLOY_PROMETHEUS_URL:-}" ]; then
+  echo "Starting Alloy..."
+  alloy run /etc/alloy/config.alloy &
+fi
+
 # Start the controller.
 doublezero-controller start -listen-addr 0.0.0.0 -listen-port 7000 -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -device-local-asn 65342 -no-hardware

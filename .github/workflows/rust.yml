@@ -1,9 +1,9 @@
 name: rust
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'hotfix/**' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, 'hotfix/**' ]
 
 jobs:
   rust-build:

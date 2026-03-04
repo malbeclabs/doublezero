@@ -52,7 +52,7 @@ pub fn process_delete_multicastgroup(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     assert!(
@@ -68,9 +68,19 @@ pub fn process_delete_multicastgroup(
 
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
 
-    if multicastgroup.status != MulticastGroupStatus::Activated {
+    if matches!(multicastgroup.status, MulticastGroupStatus::Deleting) {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
+
+    if multicastgroup.publisher_count != 0 || multicastgroup.subscriber_count != 0 {
+        #[cfg(test)]
+        msg!(
+            "MulticastGroup has active publishers or subscribers: {:?}",
+            multicastgroup
+        );
+        return Err(DoubleZeroError::MulticastGroupNotEmpty.into());
+    }
+
     multicastgroup.status = MulticastGroupStatus::Deleting;
 
     try_acc_write(

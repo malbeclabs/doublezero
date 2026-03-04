@@ -2,16 +2,16 @@ name: release pipeline validation
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'hotfix/**' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, 'hotfix/**' ]
 
 permissions:
   contents: write
 
 jobs:
   validate_pipeline:
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: doublezero-k8s-ci
     strategy:
       matrix:
         include:
@@ -63,7 +63,7 @@ jobs:
       - name: Install dependencies for rpm packaging
         run: |
           sudo apt update
-          sudo apt-get install squashfs-tools rpm -y
+          sudo apt-get install build-essential pkg-config libssl-dev squashfs-tools rpm -y
 
       - name: Set env vars
         run: ./scripts/env.sh >> $GITHUB_ENV

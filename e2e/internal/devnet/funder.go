@@ -92,7 +92,7 @@ func (c *Funder) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 		// Check if the container is running.
 		if container.State.Running {
-			c.log.Info("--> Funder already running", "container", shortContainerID(container.ID))
+			c.log.Debug("--> Funder already running", "container", shortContainerID(container.ID))
 
 			// Set the component's state.
 			err = c.setState(ctx, container.ID)
@@ -122,7 +122,7 @@ func (c *Funder) StartIfNotRunning(ctx context.Context) (bool, error) {
 }
 
 func (c *Funder) Start(ctx context.Context) error {
-	c.log.Info("==> Starting funder", "image", c.dn.Spec.Funder.ContainerImage)
+	c.log.Debug("==> Starting funder", "image", c.dn.Spec.Funder.ContainerImage)
 
 	commandArgs := []string{
 		"-ledger-rpc-url", c.dn.Ledger.InternalRPCURL,
@@ -221,7 +221,7 @@ func (c *Funder) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to set funder state: %w", err)
 	}
 
-	c.log.Info("--> Funder started", "container", c.ContainerID)
+	c.log.Debug("--> Funder started", "container", c.ContainerID)
 	return nil
 }
 

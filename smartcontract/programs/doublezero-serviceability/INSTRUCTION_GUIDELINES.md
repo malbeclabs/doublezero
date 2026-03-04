@@ -11,7 +11,7 @@ This document describes the required steps and best practices for implementing a
   - **Ownership:** Ensure the account is owned by the expected program (usually `program_id`).
   - **Signer:** Verify that required accounts (e.g., payer) are signers.
   - **Writable:** Ensure accounts that will be mutated are marked as writable.
-  - **System Program:** If the system program is required, check its address matches `solana_program::system_program::id()`.
+  - **System Program:** If the system program is required, check its address matches `solana_system_interface::program::ID`.
   - **PDA Validation:** If the instruction involves a PDA, derive the expected PDA and bump seed from internal state (e.g., GlobalState.account_index), then verify the provided account matches.
 
 **Example:**
@@ -23,7 +23,7 @@ let system_program = next_account_info(accounts_iter)?;
 
 assert!(payer_account.is_signer, "Payer must be a signer");
 assert_eq!(globalstate_account.owner, program_id, "Invalid GlobalState Account Owner");
-assert_eq!(*system_program.unsigned_key(), solana_program::system_program::id(), "Invalid System Program Account Owner");
+assert_eq!(*system_program.unsigned_key(), solana_system_interface::program::ID, "Invalid System Program Account Owner");
 assert!(mgroup_account.is_writable, "PDA Account is not writable");
 
 let mut globalstate = GlobalState::try_from(globalstate_account)?;

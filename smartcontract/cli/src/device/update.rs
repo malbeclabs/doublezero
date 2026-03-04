@@ -52,8 +52,17 @@ pub struct UpdateDeviceCliCommand {
     #[arg(long)]
     pub device_type: Option<DeviceType>,
     /// Desired status for the device (optional)
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub desired_status: Option<DeviceDesiredStatus>,
+    /// Reference count for the device (optional, foundation only)
+    #[arg(long)]
+    pub reference_count: Option<u32>,
+    /// Maximum number of unicast users for the device (optional)
+    #[arg(long)]
+    pub max_unicast_users: Option<u16>,
+    /// Maximum number of multicast users for the device (optional)
+    #[arg(long)]
+    pub max_multicast_users: Option<u16>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -153,6 +162,9 @@ impl UpdateDeviceCliCommand {
             users_count: self.users_count,
             status: self.status,
             desired_status: self.desired_status,
+            reference_count: self.reference_count,
+            max_unicast_users: self.max_unicast_users,
+            max_multicast_users: self.max_multicast_users,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -221,6 +233,11 @@ mod tests {
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -244,6 +261,11 @@ mod tests {
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let device3 = Device {
             account_type: AccountType::Device,
@@ -267,6 +289,11 @@ mod tests {
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let device_list = HashMap::from([
             (pda_pubkey, device1.clone()),
@@ -309,6 +336,9 @@ mod tests {
                 users_count: Some(0),
                 status: None,
                 desired_status: None,
+                reference_count: None,
+                max_unicast_users: None,
+                max_multicast_users: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -328,6 +358,9 @@ mod tests {
             users_count: Some(0),
             status: None,
             desired_status: None,
+            reference_count: None,
+            max_unicast_users: None,
+            max_multicast_users: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -370,6 +403,11 @@ mod tests {
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -393,6 +431,11 @@ mod tests {
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 
@@ -427,6 +470,9 @@ mod tests {
             users_count: Some(0),
             status: None,
             desired_status: None,
+            reference_count: None,
+            max_unicast_users: None,
+            max_multicast_users: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -469,6 +515,11 @@ mod tests {
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -492,6 +543,11 @@ mod tests {
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
+            reserved_seats: 0,
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 
@@ -525,6 +581,9 @@ mod tests {
             users_count: None,
             status: None,
             desired_status: None,
+            reference_count: None,
+            max_unicast_users: None,
+            max_multicast_users: None,
             wait: false,
         }
         .execute(&client, &mut output);

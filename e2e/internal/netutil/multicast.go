@@ -91,6 +91,8 @@ func (m *MulticastListener) JoinGroup(ctx context.Context, group net.IP, port st
 	ctx, cancel := context.WithCancel(ctx)
 	m.mu.Lock()
 	m.cancels = append(m.cancels, cancel)
+	// Reset stats for this group when joining to ensure fresh counts.
+	m.packetCounts[group.String()] = 0
 	m.mu.Unlock()
 
 	m.wg.Add(1)

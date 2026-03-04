@@ -38,7 +38,7 @@ pub fn process_reject_device(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_activate_device({:?})", value);
+    msg!("process_reject_device({:?})", value);
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
@@ -54,13 +54,13 @@ pub fn process_reject_device(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     assert!(device_account.is_writable, "PDA Account is not writable");
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
 
@@ -81,7 +81,7 @@ pub fn process_reject_device(
     try_acc_write(&device, device_account, payer_account, accounts)?;
 
     #[cfg(test)]
-    msg!("Rejectd: {:?}", device);
+    msg!("Rejected: {:?}", device);
 
     Ok(())
 }

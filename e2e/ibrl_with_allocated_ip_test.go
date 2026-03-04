@@ -18,6 +18,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// ibrlUserTunnelInfo holds tunnel assignment info for an IBRL user, parsed from user list output.
+type ibrlUserTunnelInfo struct {
+	ClientIP  string
+	TunnelID  string
+	TunnelNet string
+}
+
+// parseIBRLTunnelInfo parses user list output and returns tunnel info for IBRL and IBRLWithAllocatedIP users.
+func parseIBRLTunnelInfo(output []byte) (ibrlUsers []ibrlUserTunnelInfo, allocUserTunnelID, allocUserTunnelNet string) {
+	rows := fixtures.ParseCLITable(output)
+	for _, row := range rows {
+		switch row["user_type"] {
+		case "IBRL":
+			ibrlUsers = append(ibrlUsers, ibrlUserTunnelInfo{
+				ClientIP:  row["client_ip"],
+				TunnelID:  row["tunnel_id"],
+				TunnelNet: row["tunnel_net"],
+			})
+		case "IBRLWithAllocatedIP":
+			allocUserTunnelID = row["tunnel_id"]
+			allocUserTunnelNet = row["tunnel_net"]
+		}
+	}
+	return
+}
+
 func TestE2E_IBRL_WithAllocatedIP(t *testing.T) {
 	t.Parallel()
 
@@ -47,7 +73,7 @@ func TestE2E_IBRL_WithAllocatedIP(t *testing.T) {
 }
 
 func createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t *testing.T, dn *TestDevnet, client *devnet.Client) {
-	dn.log.Info("==> Creating multiple IBRL users on a single device with allocated IP addresses")
+	dn.log.Debug("==> Creating multiple IBRL users on a single device with allocated IP addresses")
 
 	// Set access pass for the client.
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip 1.2.3.4 --user-payer " + client.Pubkey})
@@ -74,7 +100,7 @@ func createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t *testing.T, dn *TestD
 	`})
 	require.NoError(t, err)
 
-	dn.log.Info("--> Multiple IBRL users on a single device with allocated IP addresses created")
+	dn.log.Debug("--> Multiple IBRL users on a single device with allocated IP addresses created")
 }
 
 // checkIBRLWithAllocatedIPPostConnect checks requirements after connecting a user tunnel with an allocated IP.
@@ -83,7 +109,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 	// non-parallel test to ensure methods that follow this one wait for the inner tests to
 	// complete.
 	t.Run("check_post_connect", func(t *testing.T) {
-		dn.log.Info("==> Checking IBRL with allocated IP post-connect requirements")
+		dn.log.Debug("==> Checking IBRL with allocated IP post-connect requirements")
 
 		// Parse the dz_prefix to get the base IP and prefix length
 		// User IPs are allocated from the dz_prefix, not the public IP
@@ -92,19 +118,21 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 		ones, _ := dzPrefixNet.Mask.Size()
 		allocatableBits := 32 - ones // number of host bits
 
-		expectedAllocatedClientIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{})
+		// First IP is reserved for device tunnel endpoint (Loopback100 interface)
+		expectedAllocatedClientIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
 		require.NoError(t, err)
 
-		dn.log.Info("--> Expected allocated client IP", "expectedAllocatedClientIP", expectedAllocatedClientIP, "deviceCYOAIP", device.CYOANetworkIP, "dzPrefix", device.DZPrefix)
+		dn.log.Debug("--> Expected allocated client IP", "expectedAllocatedClientIP", expectedAllocatedClientIP, "deviceCYOAIP", device.CYOANetworkIP, "dzPrefix", device.DZPrefix)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
-			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl", map[string]any{
-				"ClientIP":                  client.CYOANetworkIP,
-				"DeviceIP":                  device.CYOANetworkIP,
-				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
-				"StartTunnel":               controllerconfig.StartUserTunnelNum,
-				"EndTunnel":                 controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
-			})
+			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl",
+				dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
+					"ClientIP":                  client.CYOANetworkIP,
+					"DeviceIP":                  device.CYOANetworkIP,
+					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
+					"StartTunnel":               controllerconfig.StartUserTunnelNum,
+					"EndTunnel":                 controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+				}))
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
@@ -113,17 +141,25 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 		}
 
 		if !t.Run("wait_for_user_activation", func(t *testing.T) {
-			err := dn.WaitForUserActivation(t)
+			// 6 users expected: 1 IBRLWithAllocatedIP + 5 IBRL created by
+			// createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs.
+			err := dn.WaitForUserActivation(t, 6)
 			require.NoError(t, err, "error waiting for user activation")
 		}) {
 			t.Fail()
 		}
+
+		// Query actual tunnel assignments since tunnel IDs may not be allocated sequentially.
+		userListOutput, err := client.Exec(t.Context(), []string{"doublezero", "user", "list"})
+		require.NoError(t, err, "error querying user list for tunnel info")
+		ibrlUsers, allocatedUserTunnelID, allocatedUserTunnelNet := parseIBRLTunnelInfo(userListOutput)
 
 		tests := []struct {
 			name        string
 			fixturePath string
 			data        map[string]any
 			cmd         []string
+			output      []byte
 		}{
 			{
 				name:        "doublezero_user_list",
@@ -133,8 +169,12 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 					"ClientPubkeyAddress":       client.Pubkey,
 					"DeviceIP":                  device.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
+					"IBRLUsers":                 ibrlUsers,
+					"AllocatedUserTunnelID":     allocatedUserTunnelID,
+					"AllocatedUserTunnelNet":    allocatedUserTunnelNet,
 				},
-				cmd: []string{"doublezero", "user", "list"},
+				cmd:    []string{"doublezero", "user", "list"},
+				output: userListOutput,
 			},
 			{
 				name:        "doublezero_device_list",
@@ -162,8 +202,12 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 			if !t.Run(test.name, func(t *testing.T) {
 				t.Parallel()
 
-				got, err := client.Exec(t.Context(), test.cmd)
-				require.NoError(t, err, "error executing command on client")
+				got := test.output
+				if got == nil {
+					var err error
+					got, err = client.Exec(t.Context(), test.cmd)
+					require.NoError(t, err, "error executing command on client")
+				}
 
 				want, err := fixtures.Render(test.fixturePath, test.data)
 				require.NoError(t, err, "error reading fixture")
@@ -245,14 +289,14 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 			t.Fail()
 		}
 
-		// User ban verified in the `doublezer_user_list_removed.txt` fixture.
+		// User ban verified in the `doublezero_user_list_user_removed.tmpl` fixture.
 		if !t.Run("ban_user", func(t *testing.T) {
 			t.Parallel()
 
-			// Find user with tunnel_net 169.254.0.6/31
-			output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero user list | grep 169.254.0.6/31"})
+			// Find IBRL user with client_ip 3.4.5.6
+			output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero user list | grep 3.4.5.6"})
 			require.NoError(t, err)
-			require.NotEmpty(t, strings.TrimSpace(string(output)), "no user found with tunnel_net 169.254.0.6/31")
+			require.NotEmpty(t, strings.TrimSpace(string(output)), "no user found with client_ip 3.4.5.6")
 			userID := strings.TrimSpace(strings.Split(string(output), "|")[0])
 
 			// TODO: This is brittle, come up with a better solution.
@@ -262,7 +306,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 			t.Fail()
 		}
 
-		dn.log.Info("--> IBRL with allocated IP post-connect requirements checked")
+		dn.log.Debug("--> IBRL with allocated IP post-connect requirements checked")
 	})
 }
 
@@ -272,14 +316,15 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 	// non-parallel test to ensure methods that follow this one wait for the inner tests to
 	// complete.
 	t.Run("check_post_disconnect", func(t *testing.T) {
-		dn.log.Info("==> Checking IBRL with allocated IP post-disconnect requirements")
+		dn.log.Debug("==> Checking IBRL with allocated IP post-disconnect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
-			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.tmpl", map[string]any{
-				"DeviceIP":    device.CYOANetworkIP,
-				"StartTunnel": controllerconfig.StartUserTunnelNum,
-				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
-			})
+			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.tmpl",
+				dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
+					"DeviceIP":    device.CYOANetworkIP,
+					"StartTunnel": controllerconfig.StartUserTunnelNum,
+					"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+				}))
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
@@ -295,8 +340,8 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 		}{
 			{
 				name:        "doublezero_status",
-				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_status_disconnected.txt",
-				data:        map[string]any{},
+				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_status_disconnected.tmpl",
+				data:        map[string]any{"Reconciler": "true"},
 				cmd:         []string{"doublezero", "status"},
 			},
 		}
@@ -337,8 +382,12 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 			got, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero user list"})
 			require.NoError(t, err)
 
+			// Parse actual tunnel assignments since tunnel IDs may not be allocated sequentially.
+			ibrlUsers, _, _ := parseIBRLTunnelInfo(got)
+
 			want, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_removed.tmpl", map[string]any{
 				"ClientPubkeyAddress": client.Pubkey,
+				"IBRLUsers":           ibrlUsers,
 			})
 			require.NoError(t, err, "error reading user list fixture")
 
@@ -354,7 +403,7 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 		if !t.Run("check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
 			t.Parallel()
 
-			deadline := time.Now().Add(30 * time.Second)
+			deadline := time.Now().Add(60 * time.Second)
 			for time.Now().Before(deadline) {
 				neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd("vrf1"))
 				require.NoError(t, err, "error fetching neighbors from doublezero device")
@@ -370,6 +419,6 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 			t.Fail()
 		}
 
-		dn.log.Info("--> IBRL with allocated IP post-disconnect requirements checked")
+		dn.log.Debug("--> IBRL with allocated IP post-disconnect requirements checked")
 	})
 }

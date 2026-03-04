@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	dockernetwork "github.com/docker/docker/api/types/network"
+	"github.com/testcontainers/testcontainers-go"
 )
 
 type MiscNetwork struct {
@@ -44,20 +46,39 @@ func (n *MiscNetwork) CreateIfNotExists(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("failed to check if misc network exists: %w", err)
 	}
 	if exists {
-		n.log.Info("--> Default network already exists", "network", n.Name)
+		n.log.Debug("--> Misc network already exists", "network", n.Name)
 		return true, nil
 	}
-	return false, n.Create(ctx)
+	err = n.Create(ctx)
+	if err != nil {
+		// Handle race condition: another process may have created the network
+		// between our Exists() check and Create() call.
+		exists, existsErr := n.Exists(ctx)
+		if existsErr == nil && exists {
+			n.log.Debug("--> Misc network already exists", "network", n.Name)
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
 }
 
 func (n *MiscNetwork) Create(ctx context.Context) error {
-	n.log.Info("==> Creating misc network", "labels", n.dn.labels)
+	// Merge testcontainers labels with devnet labels so that Ryuk can clean up the network.
+	labels := map[string]string{
+		"org.testcontainers":           "true",
+		"org.testcontainers.lang":      "go",
+		"org.testcontainers.sessionId": testcontainers.SessionID(),
+	}
+	maps.Copy(labels, n.dn.labels)
+
+	n.log.Debug("==> Creating misc network", "labels", labels)
 
 	// Create a docker network using Docker API directly to set MTU.
 	_, err := n.dn.dockerClient.NetworkCreate(ctx, n.Name, dockernetwork.CreateOptions{
 		Driver:     "bridge",
 		Attachable: false,
-		Labels:     n.dn.labels,
+		Labels:     labels,
 		Options: map[string]string{
 			"com.docker.network.driver.mtu": "2048",
 		},
@@ -65,6 +86,6 @@ func (n *MiscNetwork) Create(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create network: %w", err)
 	}
-	n.log.Info("--> Network created", "network", n.Name)
+	n.log.Debug("--> Network created", "network", n.Name)
 	return nil
 }

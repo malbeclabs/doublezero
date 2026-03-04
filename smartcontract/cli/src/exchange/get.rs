@@ -3,14 +3,34 @@ use clap::Args;
 use doublezero_sdk::commands::{
     device::list::ListDeviceCommand, exchange::get::GetExchangeCommand,
 };
+use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct GetExchangeCliCommand {
     /// Exchange Pubkey or code to get details for
     #[arg(long, value_parser = validate_code)]
     pub code: String,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Tabled, Serialize)]
+struct ExchangeDisplay {
+    pub account: String,
+    pub code: String,
+    pub name: String,
+    pub device1: String,
+    pub device2: String,
+    pub lat: f64,
+    pub lng: f64,
+    pub bgp_community: u16,
+    pub reference_count: u32,
+    pub status: String,
+    pub owner: String,
 }
 
 impl GetExchangeCliCommand {
@@ -36,19 +56,31 @@ impl GetExchangeCliCommand {
                 .map_or_else(|| exchange.device2_pk.to_string(), |d| d.code.clone())
         };
 
-        writeln!(out,
-            "account: {},\r\ncode: {}\r\nname: {}\r\ndevice1: {}\r\ndevice2: {}\r\nlat: {}\r\nlng: {}\r\nbgp_community: {}\r\nstatus: {}\r\nowner: {}",
-            pubkey,
-            exchange.code,
-            exchange.name,
+        let display = ExchangeDisplay {
+            account: pubkey.to_string(),
+            code: exchange.code,
+            name: exchange.name,
             device1,
             device2,
-            exchange.lat,
-            exchange.lng,
-            exchange.bgp_community,
-            exchange.status,
-            exchange.owner
-        )?;
+            lat: exchange.lat,
+            lng: exchange.lng,
+            bgp_community: exchange.bgp_community,
+            reference_count: exchange.reference_count,
+            status: exchange.status.to_string(),
+            owner: exchange.owner.to_string(),
+        };
+
+        if self.json {
+            let json = serde_json::to_string_pretty(&display)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let headers = ExchangeDisplay::headers();
+            let fields = display.fields();
+            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
+            for (header, value) in headers.iter().zip(fields.iter()) {
+                writeln!(out, " {header:<max_len$} | {value}")?;
+            }
+        }
 
         Ok(())
     }
@@ -99,6 +131,11 @@ mod tests {
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
+            reserved_seats: 0,
         };
 
         client
@@ -155,28 +192,57 @@ mod tests {
         let mut output = Vec::new();
         let res = GetExchangeCliCommand {
             code: Pubkey::new_unique().to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
 
-        // Expected success
+        // Expected success by pubkey (table)
         let mut output = Vec::new();
         let res = GetExchangeCliCommand {
             code: exchange1_pubkey.to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Exchange\r\ndevice1: TestDevice\r\ndevice2: (none)\r\nlat: 12.34\r\nlng: 56.78\r\nbgp_community: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
+        assert!(
+            has_row("account", &exchange1_pubkey.to_string()),
+            "account row should contain pubkey"
+        );
+        assert!(
+            has_row("device1", "TestDevice"),
+            "device1 row should contain device code"
+        );
+        assert!(
+            has_row("status", "activated"),
+            "status row should contain value"
+        );
 
-        // Expected success
+        // Expected success by code (JSON)
         let mut output = Vec::new();
         let res = GetExchangeCliCommand {
             code: "test".to_string(),
+            json: true,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
-        let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Exchange\r\ndevice1: TestDevice\r\ndevice2: (none)\r\nlat: 12.34\r\nlng: 56.78\r\nbgp_community: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        let json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();
+        assert_eq!(
+            json["account"].as_str().unwrap(),
+            exchange1_pubkey.to_string()
+        );
+        assert_eq!(json["code"].as_str().unwrap(), "test");
+        assert_eq!(json["name"].as_str().unwrap(), "Test Exchange");
+        assert_eq!(json["status"].as_str().unwrap(), "activated");
+        assert_eq!(json["bgp_community"].as_u64().unwrap(), 1);
+        assert_eq!(json["device1"].as_str().unwrap(), "TestDevice");
+        assert_eq!(json["device2"].as_str().unwrap(), "(none)");
     }
 }

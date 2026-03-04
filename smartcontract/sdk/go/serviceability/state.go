@@ -22,6 +22,8 @@ const (
 	ProgramConfigType
 	ContributorType
 	AccessPassType
+	ResourceExtensionType // 12
+	TenantType            // 13
 )
 
 type LocationStatus uint8
@@ -39,15 +41,17 @@ type Uint128 struct {
 }
 
 type Config struct {
-	AccountType         AccountType
-	Owner               [32]byte
-	Bump_seed           uint8
-	Local_asn           uint32
-	Remote_asn          uint32
-	TunnelTunnelBlock   [5]uint8
-	UserTunnelBlock     [5]uint8
-	MulticastGroupBlock [5]uint8
-	PubKey              [32]byte
+	AccountType             AccountType
+	Owner                   [32]byte
+	Bump_seed               uint8
+	Local_asn               uint32
+	Remote_asn              uint32
+	TunnelTunnelBlock       [5]uint8
+	UserTunnelBlock         [5]uint8
+	MulticastGroupBlock     [5]uint8
+	NextBGPCommunity        uint16
+	MulticastPublisherBlock [5]uint8
+	PubKey                  [32]byte
 }
 
 type Location struct {
@@ -123,6 +127,8 @@ const (
 	DeviceStatusDeleted
 	DeviceStatusRejected
 	DeviceStatusDrained
+	DeviceStatusDeviceProvisioning
+	DeviceStatusLinkProvisioning
 )
 
 func (d DeviceStatus) String() string {
@@ -133,7 +139,13 @@ func (d DeviceStatus) String() string {
 		"deleted",
 		"rejected",
 		"drained",
+		"device-provisioning",
+		"link-provisioning",
 	}[d]
+}
+
+func (d DeviceStatus) IsDrained() bool {
+	return d == DeviceStatusDrained
 }
 
 func (d DeviceStatus) MarshalJSON() ([]byte, error) {
@@ -143,14 +155,16 @@ func (d DeviceStatus) MarshalJSON() ([]byte, error) {
 type DeviceHealth uint8
 
 const (
-	DeviceHealthPending DeviceHealth = iota
-	DeviceHealthReadyForLinks
-	DeviceHealthReadyForUsers
-	DeviceHealthImpaired
+	DeviceHealthUnknown       DeviceHealth = iota
+	DeviceHealthPending                    // 1
+	DeviceHealthReadyForLinks              // 2
+	DeviceHealthReadyForUsers              // 3
+	DeviceHealthImpaired                   // 4
 )
 
 func (d DeviceHealth) String() string {
 	return [...]string{
+		"unknown",
 		"pending",
 		"ready_for_links",
 		"ready_for_users",
@@ -384,6 +398,10 @@ type Device struct {
 	MaxUsers               uint16              `influx:"field,max_users"`
 	DeviceHealth           DeviceHealth        `influx:"field,device_health"`
 	DeviceDesiredStatus    DeviceDesiredStatus `influx:"tag,device_desired_status"`
+	UnicastUsersCount      uint16              `influx:"field,unicast_users_count"`
+	MulticastUsersCount    uint16              `influx:"field,multicast_users_count"`
+	MaxUnicastUsers        uint16              `influx:"field,max_unicast_users"`
+	MaxMulticastUsers      uint16              `influx:"field,max_multicast_users"`
 	PubKey                 [32]byte            `influx:"tag,pubkey,pubkey"`
 }
 
@@ -478,6 +496,11 @@ func (l LinkStatus) String() string {
 	}[l]
 }
 
+// IsHardDrained returns true if the link status is hard-drained
+func (l LinkStatus) IsHardDrained() bool {
+	return l == LinkStatusHardDrained
+}
+
 func (l LinkStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(l.String())
 }
@@ -505,19 +528,25 @@ func (l LinkHealth) MarshalJSON() ([]byte, error) {
 type LinkDesiredStatus uint8
 
 const (
-	LinkDesiredStatusPending LinkDesiredStatus = iota
-	LinkDesiredStatusActivated
-	LinkDesiredStatusHardDrained
-	LinkDesiredStatusSoftDrained
+	LinkDesiredStatusPending     LinkDesiredStatus = 0
+	LinkDesiredStatusActivated   LinkDesiredStatus = 1
+	LinkDesiredStatusHardDrained LinkDesiredStatus = 6
+	LinkDesiredStatusSoftDrained LinkDesiredStatus = 7
 )
 
 func (l LinkDesiredStatus) String() string {
-	return [...]string{
-		"pending",
-		"activated",
-		"hard-drained",
-		"soft-drained",
-	}[l]
+	switch l {
+	case LinkDesiredStatusPending:
+		return "pending"
+	case LinkDesiredStatusActivated:
+		return "activated"
+	case LinkDesiredStatusHardDrained:
+		return "hard-drained"
+	case LinkDesiredStatusSoftDrained:
+		return "soft-drained"
+	default:
+		return "unknown"
+	}
 }
 
 func (l LinkDesiredStatus) MarshalJSON() ([]byte, error) {
@@ -610,7 +639,6 @@ type Contributor struct {
 	BumpSeed       uint8             `influx:"-"`
 	Status         ContributorStatus `influx:"tag,status"`
 	Code           string            `influx:"tag,code"`
-	Name           string            `influx:"tag,name"`
 	ReferenceCount uint32            `influx:"field,reference_count"`
 	PubKey         [32]byte          `influx:"tag,pubkey,pubkey"`
 }
@@ -632,6 +660,70 @@ func (c Contributor) MarshalJSON() ([]byte, error) {
 	jsonContributor.Status = c.Status.String()
 
 	return json.Marshal(jsonContributor)
+}
+
+type TenantPaymentStatus uint8
+
+const (
+	TenantPaymentStatusDelinquent TenantPaymentStatus = iota
+	TenantPaymentStatusPaid
+)
+
+func (s TenantPaymentStatus) String() string {
+	return [...]string{
+		"delinquent",
+		"paid",
+	}[s]
+}
+
+func (s TenantPaymentStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.String())
+}
+
+type Tenant struct {
+	AccountType                 AccountType
+	Owner                       [32]uint8 `influx:"tag,owner,pubkey"`
+	BumpSeed                    uint8     `influx:"-"`
+	Code                        string    `influx:"tag,code"`
+	VrfId                       uint16    `influx:"field,vrf_id"`
+	ReferenceCount              uint32    `influx:"field,reference_count"`
+	Administrators              [][32]byte
+	PaymentStatus               TenantPaymentStatus `influx:"tag,payment_status"`
+	TokenAccount                [32]byte            `influx:"tag,token_account,pubkey"`
+	MetroRouting                bool                `influx:"field,metro_routing"`
+	RouteLiveness               bool                `influx:"field,route_liveness"`
+	BillingDiscriminant         uint8               `influx:"-"`
+	BillingRate                 uint64              `influx:"field,billing_rate"`
+	BillingLastDeductionDzEpoch uint64              `influx:"field,billing_last_deduction_dz_epoch"`
+	PubKey                      [32]byte            `influx:"tag,pubkey,pubkey"`
+}
+
+func (t Tenant) MarshalJSON() ([]byte, error) {
+	type TenantAlias Tenant
+
+	adminStrings := make([]string, len(t.Administrators))
+	for i, admin := range t.Administrators {
+		adminStrings[i] = base58.Encode(admin[:])
+	}
+
+	jsonTenant := &struct {
+		TenantAlias
+		Owner          string   `json:"Owner"`
+		PubKey         string   `json:"PubKey"`
+		Administrators []string `json:"Administrators"`
+		PaymentStatus  string   `json:"PaymentStatus"`
+		TokenAccount   string   `json:"TokenAccount"`
+	}{
+		TenantAlias:    TenantAlias(t),
+		Administrators: adminStrings,
+	}
+
+	jsonTenant.Owner = base58.Encode(t.Owner[:])
+	jsonTenant.PubKey = base58.Encode(t.PubKey[:])
+	jsonTenant.PaymentStatus = t.PaymentStatus.String()
+	jsonTenant.TokenAccount = base58.Encode(t.TokenAccount[:])
+
+	return json.Marshal(jsonTenant)
 }
 
 type UserUserType uint8
@@ -728,7 +820,9 @@ type User struct {
 	Publishers      [][32]uint8
 	Subscribers     [][32]uint8
 	ValidatorPubKey [32]uint8
-	PubKey          [32]byte
+	// Tunnel endpoint IP (device-side GRE endpoint). 0.0.0.0 means use device.public_ip for backwards compatibility.
+	TunnelEndpoint [4]uint8
+	PubKey         [32]byte
 }
 
 func (u User) MarshalJSON() ([]byte, error) {
@@ -755,6 +849,7 @@ func (u User) MarshalJSON() ([]byte, error) {
 		Publishers      []string `json:"Publishers"`
 		Subscribers     []string `json:"Subscribers"`
 		ValidatorPubKey string   `json:"ValidatorPubKey"`
+		TunnelEndpoint  string   `json:"TunnelEndpoint"`
 		Status          string   `json:"Status"`
 		CyoaType        string   `json:"CyoaType"`
 		UserType        string   `json:"UserType"`
@@ -770,6 +865,7 @@ func (u User) MarshalJSON() ([]byte, error) {
 		Publishers:      publishers,
 		Subscribers:     subscribers,
 		ValidatorPubKey: base58.Encode(u.ValidatorPubKey[:]),
+		TunnelEndpoint:  net.IP(u.TunnelEndpoint[:]).String(),
 		Status:          u.Status.String(),
 		CyoaType:        u.CyoaType.String(),
 		UserType:        u.UserType.String(),
@@ -785,7 +881,8 @@ const (
 	MulticastGroupStatusPending MulticastGroupStatus = iota
 	MulticastGroupStatusActivated
 	MulticastGroupStatusSuspended
-	MulticastGroupStatusDeleted
+	MulticastGroupStatusDeleting
+	MulticastGroupStatusRejected
 )
 
 type MulticastGroup struct {
@@ -823,4 +920,140 @@ func onChainNetToString(n [5]uint8) string {
 		return fmt.Sprintf("%s/%d", ip.String(), prefixLen)
 	}
 	return ""
+}
+
+// AllocatorType represents the type of allocator in a ResourceExtension
+type AllocatorType uint8
+
+const (
+	AllocatorTypeIp AllocatorType = 0
+	AllocatorTypeId AllocatorType = 1
+)
+
+func (a AllocatorType) String() string {
+	switch a {
+	case AllocatorTypeIp:
+		return "ip"
+	case AllocatorTypeId:
+		return "id"
+	default:
+		return "unknown"
+	}
+}
+
+// IpAllocator manages IP address allocation from a CIDR block
+type IpAllocator struct {
+	BaseNet        [5]byte // NetworkV4: 4 bytes IP + 1 byte prefix length
+	FirstFreeIndex uint64  // usize in Rust (8 bytes on 64-bit)
+}
+
+// IdAllocator manages ID allocation from a numeric range
+type IdAllocator struct {
+	RangeStart     uint16 // Start of the range (inclusive)
+	RangeEnd       uint16 // End of the range (exclusive)
+	FirstFreeIndex uint64 // usize in Rust (8 bytes on 64-bit)
+}
+
+// Allocator represents either an IP or ID allocator
+type Allocator struct {
+	Type        AllocatorType
+	IpAllocator *IpAllocator
+	IdAllocator *IdAllocator
+}
+
+// ResourceExtension represents an on-chain resource pool (IP block or ID range)
+type ResourceExtension struct {
+	AccountType    AccountType
+	Owner          [32]byte
+	BumpSeed       uint8
+	AssociatedWith [32]byte // Device pubkey for device-specific pools, or zero for global pools
+	Allocator      Allocator
+	Storage        []byte // Bitmap of allocated resources
+	PubKey         [32]byte
+}
+
+// TotalCapacity returns the total number of resources in the pool
+func (r *ResourceExtension) TotalCapacity() int {
+	switch r.Allocator.Type {
+	case AllocatorTypeIp:
+		if r.Allocator.IpAllocator == nil {
+			return 0
+		}
+		prefixLen := r.Allocator.IpAllocator.BaseNet[4]
+		if prefixLen > 32 {
+			return 0
+		}
+		return 1 << (32 - prefixLen)
+	case AllocatorTypeId:
+		if r.Allocator.IdAllocator == nil {
+			return 0
+		}
+		return int(r.Allocator.IdAllocator.RangeEnd - r.Allocator.IdAllocator.RangeStart)
+	default:
+		return 0
+	}
+}
+
+// AllocatedCount returns the number of currently allocated resources
+func (r *ResourceExtension) AllocatedCount() int {
+	count := 0
+	for _, b := range r.Storage {
+		// Count set bits in each byte
+		for b != 0 {
+			count += int(b & 1)
+			b >>= 1
+		}
+	}
+	return count
+}
+
+// AvailableCount returns the number of available (unallocated) resources
+func (r *ResourceExtension) AvailableCount() int {
+	return r.TotalCapacity() - r.AllocatedCount()
+}
+
+// BaseNetString returns the base network as a CIDR string for IP allocators
+func (r *ResourceExtension) BaseNetString() string {
+	if r.Allocator.Type != AllocatorTypeIp || r.Allocator.IpAllocator == nil {
+		return ""
+	}
+	return onChainNetToString(r.Allocator.IpAllocator.BaseNet)
+}
+
+// RangeString returns the ID range as a string for ID allocators
+func (r *ResourceExtension) RangeString() string {
+	if r.Allocator.Type != AllocatorTypeId || r.Allocator.IdAllocator == nil {
+		return ""
+	}
+	return fmt.Sprintf("[%d, %d)", r.Allocator.IdAllocator.RangeStart, r.Allocator.IdAllocator.RangeEnd)
+}
+
+func (r ResourceExtension) MarshalJSON() ([]byte, error) {
+	type ResourceExtensionAlias ResourceExtension
+
+	jsonExt := &struct {
+		ResourceExtensionAlias
+		Owner          string `json:"Owner"`
+		AssociatedWith string `json:"AssociatedWith"`
+		PubKey         string `json:"PubKey"`
+		AllocatorType  string `json:"AllocatorType"`
+		BaseNet        string `json:"BaseNet,omitempty"`
+		Range          string `json:"Range,omitempty"`
+		TotalCapacity  int    `json:"TotalCapacity"`
+		AllocatedCount int    `json:"AllocatedCount"`
+		AvailableCount int    `json:"AvailableCount"`
+	}{
+		ResourceExtensionAlias: ResourceExtensionAlias(r),
+		Owner:                  base58.Encode(r.Owner[:]),
+		AssociatedWith:         base58.Encode(r.AssociatedWith[:]),
+		PubKey:                 base58.Encode(r.PubKey[:]),
+		AllocatorType:          r.Allocator.Type.String(),
+		BaseNet:                r.BaseNetString(),
+		Range:                  r.RangeString(),
+		TotalCapacity:          r.TotalCapacity(),
+		AllocatedCount:         r.AllocatedCount(),
+		AvailableCount:         r.AvailableCount(),
+	}
+
+	return json.Marshal(jsonExt)
 }

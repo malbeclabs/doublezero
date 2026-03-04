@@ -1,62 +1,3 @@
-#[cfg(test)]
-mod test_check_status_transition {
-    use super::*;
-
-    #[test]
-    fn test_activation_transition() {
-        let mut link = Link {
-            status: LinkStatus::Provisioning,
-            desired_status: LinkDesiredStatus::Activated,
-            link_health: LinkHealth::ReadyForService,
-            ..Link::default()
-        };
-        link.check_status_transition();
-        assert_eq!(link.status, LinkStatus::Activated);
-    }
-
-    #[test]
-    fn test_soft_drained_transition() {
-        let mut link = Link {
-            status: LinkStatus::Activated,
-            desired_status: LinkDesiredStatus::SoftDrained,
-            ..Link::default()
-        };
-        link.check_status_transition();
-        assert_eq!(link.status, LinkStatus::SoftDrained);
-    }
-
-    #[test]
-    fn test_hard_drained_transition() {
-        let mut link = Link {
-            status: LinkStatus::Activated,
-            desired_status: LinkDesiredStatus::HardDrained,
-            ..Link::default()
-        };
-        link.check_status_transition();
-        assert_eq!(link.status, LinkStatus::HardDrained);
-    }
-
-    #[test]
-    fn test_recovery_from_drains() {
-        let mut link = Link {
-            status: LinkStatus::SoftDrained,
-            desired_status: LinkDesiredStatus::Activated,
-            link_health: LinkHealth::ReadyForService,
-            ..Link::default()
-        };
-        link.check_status_transition();
-        assert_eq!(link.status, LinkStatus::Activated);
-
-        let mut link = Link {
-            status: LinkStatus::HardDrained,
-            desired_status: LinkDesiredStatus::Activated,
-            link_health: LinkHealth::ReadyForService,
-            ..Link::default()
-        };
-        link.check_status_transition();
-        assert_eq!(link.status, LinkStatus::Activated);
-    }
-}
 use crate::{
     error::{DoubleZeroError, Validate},
     state::accounttype::AccountType,
@@ -414,6 +355,10 @@ impl TryFrom<&AccountInfo<'_>> for Link {
 
 impl Validate for Link {
     fn validate(&self) -> Result<(), DoubleZeroError> {
+        if self.status == LinkStatus::Deleting {
+            return Ok(());
+        }
+
         // Account type must be Link
         if self.account_type != AccountType::Link {
             return Err(DoubleZeroError::InvalidAccountType);
@@ -481,7 +426,11 @@ impl Link {
     /// This method mutates the `status` field of the `Link` in-place.
     /// Where `_` means any value is valid for that field.
     ///
+    #[allow(unreachable_code)]
     pub fn check_status_transition(&mut self) {
+        // waiting for health oracle to implement this logic
+        return;
+
         match (self.status, self.desired_status, self.link_health) {
             // Activation transition
             (
@@ -931,5 +880,33 @@ mod tests {
         let err_high = val_high.validate();
         assert!(err_high.is_err());
         assert_eq!(err_high.unwrap_err(), DoubleZeroError::InvalidDelay);
+    }
+
+    #[test]
+    fn test_delete_invalid_link() {
+        let bad_link = Link {
+            account_type: AccountType::Link,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: Pubkey::new_unique(),
+            side_z_pk: Pubkey::new_unique(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 1566,
+            delay_ns: 1_000_000,
+            jitter_ns: 1_000_000,
+            delay_override_ns: 10_000, // Less than minimum
+            tunnel_id: 1,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            code: "test-123".to_string(),
+            status: LinkStatus::Deleting,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
+            link_health: LinkHealth::ReadyForService,
+            desired_status: LinkDesiredStatus::Activated,
+        };
+        assert!(bad_link.validate().is_ok());
     }
 }

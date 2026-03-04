@@ -2,6 +2,7 @@ package serviceability
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/gagliardetto/solana-go"
 )
@@ -12,15 +13,17 @@ type Client struct {
 }
 
 type ProgramData struct {
-	Config          Config
-	Locations       []Location
-	Exchanges       []Exchange
-	Contributors    []Contributor
-	Devices         []Device
-	Links           []Link
-	Users           []User
-	MulticastGroups []MulticastGroup
-	ProgramConfig   ProgramConfig
+	Config             Config
+	Locations          []Location
+	Exchanges          []Exchange
+	Contributors       []Contributor
+	Tenants            []Tenant
+	Devices            []Device
+	Links              []Link
+	Users              []User
+	MulticastGroups    []MulticastGroup
+	ProgramConfig      ProgramConfig
+	ResourceExtensions []ResourceExtension
 }
 
 func New(rpc RPCClient, programID solana.PublicKey) *Client {
@@ -37,17 +40,23 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 		return nil, err
 	}
 
+	if len(out) == 0 {
+		return nil, fmt.Errorf("GetProgramAccounts returned empty result for program %s", c.programID)
+	}
+
 	// We need to re-init these fields to prevent appending if this client is reused
 	// and Load() is called multiple times.
 	config := Config{}
 	locations := []Location{}
 	exchanges := []Exchange{}
 	contributors := []Contributor{}
+	tenants := []Tenant{}
 	devices := []Device{}
 	links := []Link{}
 	users := []User{}
 	multicastGroups := []MulticastGroup{}
 	programConfig := ProgramConfig{}
+	resourceExtensions := []ResourceExtension{}
 
 	var errs error
 	for _, element := range out {
@@ -77,6 +86,11 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 			DeserializeContributor(reader, &contributor)
 			contributor.PubKey = element.Pubkey
 			contributors = append(contributors, contributor)
+		case byte(TenantType):
+			var tenant Tenant
+			DeserializeTenant(reader, &tenant)
+			tenant.PubKey = element.Pubkey
+			tenants = append(tenants, tenant)
 		case byte(DeviceType):
 			var device Device
 			DeserializeDevice(reader, &device)
@@ -99,22 +113,62 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 			multicastGroups = append(multicastGroups, multicastgroup)
 		case byte(ProgramConfigType):
 			DeserializeProgramConfig(reader, &programConfig)
+		case byte(ResourceExtensionType):
+			var resourceExtension ResourceExtension
+			DeserializeResourceExtension(reader, &resourceExtension)
+			resourceExtension.PubKey = element.Pubkey
+			resourceExtensions = append(resourceExtensions, resourceExtension)
 		}
 	}
 
 	return &ProgramData{
-		Config:          config,
-		Locations:       locations,
-		Exchanges:       exchanges,
-		Contributors:    contributors,
-		Devices:         devices,
-		Links:           links,
-		Users:           users,
-		MulticastGroups: multicastGroups,
-		ProgramConfig:   programConfig,
+		Config:             config,
+		Locations:          locations,
+		Exchanges:          exchanges,
+		Contributors:       contributors,
+		Tenants:            tenants,
+		Devices:            devices,
+		Links:              links,
+		Users:              users,
+		MulticastGroups:    multicastGroups,
+		ProgramConfig:      programConfig,
+		ResourceExtensions: resourceExtensions,
 	}, errs
+}
+
+// GetMulticastPublisherBlockResourceExtension fetches the global MulticastPublisherBlock resource extension.
+// Returns nil if the account doesn't exist yet.
+func (c *Client) GetMulticastPublisherBlockResourceExtension(ctx context.Context) (*ResourceExtension, error) {
+	pda, _, err := GetMulticastPublisherBlockPDA(c.programID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive MulticastPublisherBlock PDA: %w", err)
+	}
+
+	// Fetch the account data
+	accountInfo, err := c.rpc.GetAccountInfo(ctx, pda)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch MulticastPublisherBlock account: %w", err)
+	}
+
+	if accountInfo == nil || accountInfo.Value == nil {
+		// Account doesn't exist yet (not initialized)
+		return nil, nil
+	}
+
+	data := accountInfo.Value.Data.GetBinary()
+	if len(data) == 0 {
+		return nil, nil
+	}
+
+	reader := NewByteReader(data)
+	var ext ResourceExtension
+	DeserializeResourceExtension(reader, &ext)
+	ext.PubKey = pda
+
+	return &ext, nil
 }
 
 type ProgramDataProvider interface {
 	GetProgramData(ctx context.Context) (*ProgramData, error)
+	ProgramID() solana.PublicKey
 }

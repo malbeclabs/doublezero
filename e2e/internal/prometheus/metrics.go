@@ -1,6 +1,7 @@
 package prometheus
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"time"
@@ -35,8 +36,16 @@ func NewMetricsClient(url string) *MetricsClient {
 
 func (m *MetricsClient) WaitForReady(ctx context.Context, timeout time.Duration) error {
 	return poll.Until(ctx, func() (bool, error) {
-		err := m.Fetch(ctx)
-		return err == nil, err
+		// Use a per-request timeout so individual fetch attempts fail fast.
+		// Without this, http.DefaultClient has no timeout, and if the target
+		// port silently drops packets (e.g. metrics listener in a different
+		// network namespace before cEOS finishes setup), each attempt blocks
+		// for the OS TCP connect timeout (~20-30s), starving the poller of
+		// retry attempts.
+		fetchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		err := m.Fetch(fetchCtx)
+		return err == nil, nil
 	}, timeout, 500*time.Millisecond)
 }
 
@@ -58,6 +67,18 @@ func (m *MetricsClient) Fetch(ctx context.Context) error {
 		return err
 	}
 
+	m.families = families
+	return nil
+}
+
+// ParseMetrics parses raw Prometheus exposition-format text and stores the
+// metric families, just like Fetch does but without making an HTTP request.
+func (m *MetricsClient) ParseMetrics(data []byte) error {
+	parser := expfmt.NewTextParser(model.LegacyValidation)
+	families, err := parser.TextToMetricFamilies(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
 	m.families = families
 	return nil
 }

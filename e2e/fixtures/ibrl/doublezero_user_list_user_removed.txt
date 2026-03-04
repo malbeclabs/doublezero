@@ -1,1 +1,1 @@
- account | user_type | groups | device | location | cyoa_type | client_ip | tunnel_id | tunnel_net | dz_ip | accesspass | status | owner
+ account | tenant | user_type | groups | device | location | cyoa_type | client_ip | tunnel_id | tunnel_net | dz_ip | accesspass | status | owner

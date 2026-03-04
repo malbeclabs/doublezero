@@ -5,7 +5,7 @@ use doublezero_program_common::{
 };
 use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
-    pubkey::Pubkey, system_program,
+    pubkey::Pubkey,
 };
 use std::fmt::Debug;
 
@@ -96,7 +96,7 @@ pub fn try_acc_close(
 
     // Close the account
     close_account.realloc(0, false)?;
-    close_account.assign(&system_program::ID);
+    close_account.assign(&solana_system_interface::program::ID);
 
     Ok(())
 }

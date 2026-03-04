@@ -6,9 +6,15 @@ use crate::{
             check_status::process_check_status_access_pass, close::process_close_access_pass,
             set::process_set_access_pass,
         },
-        allowlist::foundation::{
-            add::process_add_foundation_allowlist_globalconfig,
-            remove::process_remove_foundation_allowlist_globalconfig,
+        allowlist::{
+            foundation::{
+                add::process_add_foundation_allowlist_globalconfig,
+                remove::process_remove_foundation_allowlist_globalconfig,
+            },
+            qa::{
+                add::process_add_qa_allowlist_globalconfig,
+                remove::process_remove_qa_allowlist_globalconfig,
+            },
         },
         contributor::{
             create::process_create_contributor, delete::process_delete_contributor,
@@ -38,7 +44,8 @@ use crate::{
         globalconfig::set::process_set_globalconfig,
         globalstate::{
             initialize::initialize_global_state, setairdrop::process_set_airdrop,
-            setauthority::process_set_authority, setversion::process_set_version,
+            setauthority::process_set_authority, setfeatureflags::process_set_feature_flags,
+            setversion::process_set_version,
         },
         link::{
             accept::process_accept_link, activate::process_activate_link,
@@ -73,9 +80,17 @@ use crate::{
             suspend::process_suspend_multicastgroup,
             update::process_update_multicastgroup,
         },
+        reservation::{close::process_close_reservation, reserve::process_reserve_connection},
         resource::{
-            allocate::process_allocate_resource, create::process_create_resource,
+            allocate::process_allocate_resource,
+            closeaccount::process_closeaccount_resource_extension, create::process_create_resource,
             deallocate::process_deallocate_resource,
+        },
+        tenant::{
+            add_administrator::process_add_administrator_tenant, create::process_create_tenant,
+            delete::process_delete_tenant,
+            remove_administrator::process_remove_administrator_tenant,
+            update::process_update_tenant, update_payment_status::process_update_payment_status,
         },
         user::{
             activate::process_activate_user, ban::process_ban_user,
@@ -137,7 +152,9 @@ pub fn process_instruction(
         DoubleZeroInstruction::ActivateLink(value) => {
             process_activate_link(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ActivateDevice(_) => process_activate_device(program_id, accounts)?,
+        DoubleZeroInstruction::ActivateDevice(value) => {
+            process_activate_device(program_id, accounts, &value)?
+        }
         DoubleZeroInstruction::ActivateUser(value) => {
             process_activate_user(program_id, accounts, &value)?
         }
@@ -340,11 +357,47 @@ pub fn process_instruction(
         DoubleZeroInstruction::DeallocateResource(value) => {
             process_deallocate_resource(program_id, accounts, &value)?
         }
+        DoubleZeroInstruction::CloseResource(value) => {
+            process_closeaccount_resource_extension(program_id, accounts, &value)?
+        }
         DoubleZeroInstruction::SetDeviceHealth(value) => {
             process_set_health_device(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::SetLinkHealth(value) => {
             process_set_health_link(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::AddQaAllowlist(value) => {
+            process_add_qa_allowlist_globalconfig(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::RemoveQaAllowlist(value) => {
+            process_remove_qa_allowlist_globalconfig(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CreateTenant(value) => {
+            process_create_tenant(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::UpdateTenant(value) => {
+            process_update_tenant(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeleteTenant(value) => {
+            process_delete_tenant(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::TenantAddAdministrator(value) => {
+            process_add_administrator_tenant(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::TenantRemoveAdministrator(value) => {
+            process_remove_administrator_tenant(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::UpdatePaymentStatus(value) => {
+            process_update_payment_status(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetFeatureFlags(value) => {
+            process_set_feature_flags(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::ReserveConnection(value) => {
+            process_reserve_connection(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CloseReservation(value) => {
+            process_close_reservation(program_id, accounts, &value)?
         }
     };
     Ok(())

@@ -49,15 +49,17 @@ impl SubscribeMulticastGroupCommand {
             client_ip: Ipv4Addr::UNSPECIFIED,
             user_payer: user.owner,
         }
-        .execute(client)
-        .or_else(|_| {
+        .execute(client)?
+        .or_else(|| {
             GetAccessPassCommand {
                 client_ip: self.client_ip,
                 user_payer: user.owner,
             }
             .execute(client)
+            .ok()
+            .flatten()
         })
-        .map_err(|_err| eyre::eyre!("AccessPass not found"))?;
+        .ok_or_else(|| eyre::eyre!("AccessPass not found"))?;
 
         if self.publisher && !accesspass.mgroup_pub_allowlist.contains(&self.group_pk) {
             eyre::bail!("User not allowed to publish multicast group");
@@ -147,6 +149,7 @@ mod tests {
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(
@@ -166,6 +169,7 @@ mod tests {
             owner: client.get_payer(),
             mgroup_pub_allowlist: vec![mgroup_pubkey],
             mgroup_sub_allowlist: vec![mgroup_pubkey],
+            tenant_allowlist: vec![],
             flags: 0,
         };
 

@@ -65,7 +65,7 @@ pub fn process_add_multicastgroup_pub_allowlist(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
@@ -77,6 +77,7 @@ pub fn process_add_multicastgroup_pub_allowlist(
 
     // Check whether mgroup is authorized
     let is_authorized = (mgroup.owner == *payer_account.key)
+        || globalstate.sentinel_authority_pk == *payer_account.key
         || globalstate.foundation_allowlist.contains(payer_account.key);
     if !is_authorized {
         return Err(DoubleZeroError::NotAllowed.into());
@@ -101,6 +102,7 @@ pub fn process_add_multicastgroup_pub_allowlist(
             owner: *payer_account.key,
             mgroup_pub_allowlist: vec![*mgroup_account.key],
             mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
             flags: 0,
         };
 

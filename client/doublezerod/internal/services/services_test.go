@@ -4,6 +4,7 @@ import (
 	"net"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/jwhited/corebgp"
@@ -48,7 +49,8 @@ type MockNetlink struct {
 }
 
 type MockTunAddr struct {
-	IP string
+	IP    string
+	Scope int
 }
 
 func (m *MockNetlink) TunnelAdd(t *routing.Tunnel) error {
@@ -62,8 +64,8 @@ func (m *MockNetlink) TunnelDelete(n *routing.Tunnel) error {
 	return nil
 }
 
-func (m *MockNetlink) TunnelAddrAdd(t *routing.Tunnel, ip string) error {
-	m.tunAddrAdded = append(m.tunAddrAdded, MockTunAddr{IP: ip})
+func (m *MockNetlink) TunnelAddrAdd(t *routing.Tunnel, ip string, scope int) error {
+	m.tunAddrAdded = append(m.tunAddrAdded, MockTunAddr{IP: ip, Scope: scope})
 	return nil
 }
 
@@ -102,24 +104,47 @@ func (m *MockNetlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return m.routes, nil
 }
 
-type MockDb struct {
-	state []*api.ProvisionRequest
-}
-
-func (m *MockDb) GetState(usertypes ...api.UserType) []*api.ProvisionRequest {
-	return m.state
-}
-
-func (m *MockDb) DeleteState(u api.UserType) error        { return nil }
-func (m *MockDb) SaveState(p *api.ProvisionRequest) error { return nil }
-
 type MockPIMServer struct{}
 
 func (m *MockPIMServer) Start(conn pim.RawConner, iface string, tunnelAddr net.IP, group []net.IP) error {
 	return nil
 }
 
+func (m *MockPIMServer) UpdateGroups(groups []net.IP) error {
+	return nil
+}
+
 func (m *MockPIMServer) Close() error {
+	return nil
+}
+
+type MockHeartbeatSender struct {
+	started bool
+	closed  bool
+	iface   string
+	srcIP   net.IP
+	groups  []net.IP
+	ttl     int
+}
+
+func (m *MockHeartbeatSender) Start(iface string, srcIP net.IP, groups []net.IP, ttl int, interval time.Duration) error {
+	m.started = true
+	m.iface = iface
+	m.srcIP = srcIP
+	m.groups = groups
+	m.ttl = ttl
+	return nil
+}
+
+func (m *MockHeartbeatSender) UpdateGroups(groups []net.IP) error {
+	m.closed = true
+	m.started = true
+	m.groups = groups
+	return nil
+}
+
+func (m *MockHeartbeatSender) Close() error {
+	m.closed = true
 	return nil
 }
 
@@ -166,7 +191,7 @@ func TestServices(t *testing.T) {
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 				MTU:            routing.GREMTU,
 			},
-			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}},
 			wantTunUp:        true,
 			wantRulesAdded:   nil,
 			wantRoutesAdded:  nil,
@@ -218,7 +243,7 @@ func TestServices(t *testing.T) {
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 				MTU:            routing.GREMTU,
 			},
-			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "192.168.1.0/32"}},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}, {IP: "192.168.1.0/32", Scope: syscall.RT_SCOPE_UNIVERSE}},
 			wantTunUp:        true,
 			wantRulesAdded:   nil,
 			wantRoutesAdded:  nil,
@@ -272,7 +297,7 @@ func TestServices(t *testing.T) {
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 				MTU:            routing.GREMTU,
 			},
-			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "7.7.7.7/32"}},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}, {IP: "7.7.7.7/32", Scope: syscall.RT_SCOPE_UNIVERSE}},
 			wantTunUp:        true,
 			wantRulesAdded: []*routing.IPRule{
 				{
@@ -367,7 +392,7 @@ func TestServices(t *testing.T) {
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 				MTU:            routing.GREMTU,
 			},
-			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}},
 			wantTunUp:        true,
 			wantRulesAdded:   nil,
 			wantRoutesAdded: []*routing.Route{
@@ -378,6 +403,131 @@ func TestServices(t *testing.T) {
 					Src:      nil,
 					Protocol: unix.RTPROT_STATIC,
 				}},
+			wantPeerConfig: &bgp.PeerConfig{
+				LocalAddress:  net.IPv4(169, 254, 0, 1),
+				RemoteAddress: net.IPv4(169, 254, 0, 0),
+				LocalAs:       65000,
+				RemoteAs:      65001,
+				NoInstall:     true,
+			},
+			wantTunRemoved: &routing.Tunnel{
+				Name:           "doublezero1",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
+				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+				MTU:            routing.GREMTU,
+			},
+			wantPeerRemoved: net.IP{169, 254, 0, 0},
+		},
+		{
+			name: "provision_multicast_publisher_and_subscriber",
+			provisioningRequest: &api.ProvisionRequest{
+				UserType:           api.UserTypeMulticast,
+				TunnelSrc:          net.IPv4(1, 1, 1, 1),
+				TunnelDst:          net.IPv4(2, 2, 2, 2),
+				MulticastPubGroups: []net.IP{{239, 0, 0, 1}},
+				MulticastSubGroups: []net.IP{{239, 0, 0, 2}},
+				TunnelNet: &net.IPNet{
+					IP:   net.IPv4(169, 254, 0, 0),
+					Mask: net.IPMask{255, 255, 255, 254},
+				},
+				DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+				DoubleZeroPrefixes: []*net.IPNet{},
+				BgpLocalAsn:        65000,
+				BgpRemoteAsn:       65001,
+			},
+			userType:    api.UserTypeMulticast,
+			expectError: false,
+			wantTunAdded: &routing.Tunnel{
+				Name:           "doublezero1",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
+				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+				MTU:            routing.GREMTU,
+			},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}, {IP: "7.7.7.7/32", Scope: syscall.RT_SCOPE_UNIVERSE}},
+			wantTunUp:        true,
+			wantRulesAdded:   nil,
+			wantRoutesAdded: []*routing.Route{
+				{
+					Table:    syscall.RT_TABLE_MAIN,
+					Dst:      &net.IPNet{IP: net.IP{239, 0, 0, 1}, Mask: net.IPMask{255, 255, 255, 255}},
+					NextHop:  net.IP{169, 254, 0, 0},
+					Src:      net.IP{7, 7, 7, 7},
+					Protocol: unix.RTPROT_STATIC,
+				},
+				{
+					Table:    syscall.RT_TABLE_MAIN,
+					Dst:      &net.IPNet{IP: net.IP{239, 0, 0, 2}, Mask: net.IPMask{255, 255, 255, 255}},
+					NextHop:  net.IP{169, 254, 0, 0},
+					Src:      nil,
+					Protocol: unix.RTPROT_STATIC,
+				},
+			},
+			wantPeerConfig: &bgp.PeerConfig{
+				LocalAddress:  net.IPv4(169, 254, 0, 1),
+				RemoteAddress: net.IPv4(169, 254, 0, 0),
+				LocalAs:       65000,
+				RemoteAs:      65001,
+				NoInstall:     true,
+			},
+			wantTunRemoved: &routing.Tunnel{
+				Name:           "doublezero1",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
+				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+				MTU:            routing.GREMTU,
+			},
+			wantPeerRemoved: net.IP{169, 254, 0, 0},
+		},
+		{
+			name: "provision_multicast_publisher_and_subscriber_same_group",
+			provisioningRequest: &api.ProvisionRequest{
+				UserType:           api.UserTypeMulticast,
+				TunnelSrc:          net.IPv4(1, 1, 1, 1),
+				TunnelDst:          net.IPv4(2, 2, 2, 2),
+				MulticastPubGroups: []net.IP{{239, 0, 0, 1}},
+				MulticastSubGroups: []net.IP{{239, 0, 0, 1}},
+				TunnelNet: &net.IPNet{
+					IP:   net.IPv4(169, 254, 0, 0),
+					Mask: net.IPMask{255, 255, 255, 254},
+				},
+				DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+				DoubleZeroPrefixes: []*net.IPNet{},
+				BgpLocalAsn:        65000,
+				BgpRemoteAsn:       65001,
+			},
+			userType:    api.UserTypeMulticast,
+			expectError: false,
+			wantTunAdded: &routing.Tunnel{
+				Name:           "doublezero1",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
+				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+				MTU:            routing.GREMTU,
+			},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}, {IP: "7.7.7.7/32", Scope: syscall.RT_SCOPE_UNIVERSE}},
+			wantTunUp:        true,
+			wantRulesAdded:   nil,
+			// Only one route — the publisher route with Src set. The subscriber
+			// skips the duplicate group because it's already routed by the publisher.
+			wantRoutesAdded: []*routing.Route{
+				{
+					Table:    syscall.RT_TABLE_MAIN,
+					Dst:      &net.IPNet{IP: net.IP{239, 0, 0, 1}, Mask: net.IPMask{255, 255, 255, 255}},
+					NextHop:  net.IP{169, 254, 0, 0},
+					Src:      net.IP{7, 7, 7, 7},
+					Protocol: unix.RTPROT_STATIC,
+				},
+			},
 			wantPeerConfig: &bgp.PeerConfig{
 				LocalAddress:  net.IPv4(169, 254, 0, 1),
 				RemoteAddress: net.IPv4(169, 254, 0, 0),
@@ -423,7 +573,7 @@ func TestServices(t *testing.T) {
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 				MTU:            routing.GREMTU,
 			},
-			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "7.7.7.7/32"}},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}, {IP: "7.7.7.7/32", Scope: syscall.RT_SCOPE_UNIVERSE}},
 			wantTunUp:        true,
 			wantRulesAdded:   nil,
 			wantRoutesAdded: []*routing.Route{
@@ -459,10 +609,10 @@ func TestServices(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockBgp := &MockBgpServer{}
 			mockNetlink := &MockNetlink{}
-			mockDb := &MockDb{}
 			mockPim := &MockPIMServer{}
+			mockHeartbeat := &MockHeartbeatSender{}
 
-			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockDb, mockPim)
+			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockPim, mockHeartbeat)
 			if err != nil {
 				t.Fatalf("failed to create service: %v", err)
 			}
@@ -535,5 +685,261 @@ func TestServices(t *testing.T) {
 				}
 			})
 		})
+	}
+}
+
+func TestMulticastService_UpdateGroups_AddPubGroup(t *testing.T) {
+	mockBgp := &MockBgpServer{}
+	mockNetlink := &MockNetlink{}
+	mockPim := &MockPIMServer{}
+	mockHeartbeat := &MockHeartbeatSender{}
+
+	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	pr := &api.ProvisionRequest{
+		UserType:           api.UserTypeMulticast,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		MulticastPubGroups: []net.IP{{239, 0, 0, 1}},
+		TunnelNet: &net.IPNet{
+			IP:   net.IPv4(169, 254, 0, 0),
+			Mask: net.IPMask{255, 255, 255, 254},
+		},
+		DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+		DoubleZeroPrefixes: []*net.IPNet{},
+		BgpLocalAsn:        65000,
+		BgpRemoteAsn:       65001,
+	}
+	if err := svc.Setup(pr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Reset mock state after setup
+	mockNetlink.routesAdded = nil
+	mockNetlink.routesRemoved = nil
+	mockHeartbeat.started = false
+	mockHeartbeat.closed = false
+
+	// Add a second pub group
+	newPR := &api.ProvisionRequest{
+		UserType:           api.UserTypeMulticast,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		MulticastPubGroups: []net.IP{{239, 0, 0, 1}, {239, 0, 0, 3}},
+		TunnelNet: &net.IPNet{
+			IP:   net.IPv4(169, 254, 0, 0),
+			Mask: net.IPMask{255, 255, 255, 254},
+		},
+		DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+		DoubleZeroPrefixes: []*net.IPNet{},
+		BgpLocalAsn:        65000,
+		BgpRemoteAsn:       65001,
+	}
+
+	gu, ok := svc.(interface {
+		UpdateGroups(*api.ProvisionRequest) error
+	})
+	if !ok {
+		t.Fatal("service does not implement UpdateGroups")
+	}
+	if err := gu.UpdateGroups(newPR); err != nil {
+		t.Fatalf("UpdateGroups failed: %v", err)
+	}
+
+	// Verify route was added for the new group with Src set
+	if len(mockNetlink.routesAdded) != 1 {
+		t.Fatalf("expected 1 route added, got %d", len(mockNetlink.routesAdded))
+	}
+	addedRoute := mockNetlink.routesAdded[0]
+	if !addedRoute.Dst.IP.Equal(net.IP{239, 0, 0, 3}) {
+		t.Fatalf("expected route dst 239.0.0.3, got %v", addedRoute.Dst.IP)
+	}
+	if !addedRoute.Src.Equal(net.IPv4(7, 7, 7, 7)) {
+		t.Fatalf("expected route src 7.7.7.7, got %v", addedRoute.Src)
+	}
+
+	// Heartbeat should have been restarted
+	if !mockHeartbeat.closed {
+		t.Fatal("expected heartbeat to be closed during restart")
+	}
+	if !mockHeartbeat.started {
+		t.Fatal("expected heartbeat to be restarted")
+	}
+	if len(mockHeartbeat.groups) != 2 {
+		t.Fatalf("expected heartbeat restarted with 2 groups, got %d", len(mockHeartbeat.groups))
+	}
+
+	// ProvisionRequest should be updated
+	updatedPR := svc.ProvisionRequest()
+	if len(updatedPR.MulticastPubGroups) != 2 {
+		t.Fatalf("expected 2 pub groups after update, got %d", len(updatedPR.MulticastPubGroups))
+	}
+}
+
+func TestMulticastService_UpdateGroups_RemovePubGroup(t *testing.T) {
+	mockBgp := &MockBgpServer{}
+	mockNetlink := &MockNetlink{}
+	mockPim := &MockPIMServer{}
+	mockHeartbeat := &MockHeartbeatSender{}
+
+	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	pr := &api.ProvisionRequest{
+		UserType:           api.UserTypeMulticast,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		MulticastPubGroups: []net.IP{{239, 0, 0, 1}, {239, 0, 0, 2}},
+		TunnelNet: &net.IPNet{
+			IP:   net.IPv4(169, 254, 0, 0),
+			Mask: net.IPMask{255, 255, 255, 254},
+		},
+		DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+		DoubleZeroPrefixes: []*net.IPNet{},
+		BgpLocalAsn:        65000,
+		BgpRemoteAsn:       65001,
+	}
+	if err := svc.Setup(pr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	mockNetlink.routesAdded = nil
+	mockNetlink.routesRemoved = nil
+
+	// Remove one pub group
+	newPR := &api.ProvisionRequest{
+		UserType:           api.UserTypeMulticast,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		MulticastPubGroups: []net.IP{{239, 0, 0, 1}},
+		TunnelNet: &net.IPNet{
+			IP:   net.IPv4(169, 254, 0, 0),
+			Mask: net.IPMask{255, 255, 255, 254},
+		},
+		DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+		DoubleZeroPrefixes: []*net.IPNet{},
+		BgpLocalAsn:        65000,
+		BgpRemoteAsn:       65001,
+	}
+
+	gu, ok := svc.(interface {
+		UpdateGroups(*api.ProvisionRequest) error
+	})
+	if !ok {
+		t.Fatal("service does not implement UpdateGroups")
+	}
+	if err := gu.UpdateGroups(newPR); err != nil {
+		t.Fatalf("UpdateGroups failed: %v", err)
+	}
+
+	// Verify route was removed
+	if len(mockNetlink.routesRemoved) != 1 {
+		t.Fatalf("expected 1 route removed, got %d", len(mockNetlink.routesRemoved))
+	}
+	if !mockNetlink.routesRemoved[0].Dst.IP.Equal(net.IP{239, 0, 0, 2}) {
+		t.Fatalf("expected removed route dst 239.0.0.2, got %v", mockNetlink.routesRemoved[0].Dst.IP)
+	}
+}
+
+func TestMulticastService_UpdateGroups_PublisherRoleTransition(t *testing.T) {
+	mockBgp := &MockBgpServer{}
+	mockNetlink := &MockNetlink{}
+	mockPim := &MockPIMServer{}
+	mockHeartbeat := &MockHeartbeatSender{}
+
+	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	// Start as subscriber only
+	pr := &api.ProvisionRequest{
+		UserType:           api.UserTypeMulticast,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		MulticastSubGroups: []net.IP{{239, 0, 0, 1}},
+		TunnelNet: &net.IPNet{
+			IP:   net.IPv4(169, 254, 0, 0),
+			Mask: net.IPMask{255, 255, 255, 254},
+		},
+		DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+		DoubleZeroPrefixes: []*net.IPNet{},
+		BgpLocalAsn:        65000,
+		BgpRemoteAsn:       65001,
+	}
+	if err := svc.Setup(pr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Try to gain publisher role — should fail
+	newPR := &api.ProvisionRequest{
+		UserType:           api.UserTypeMulticast,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		MulticastPubGroups: []net.IP{{239, 0, 0, 2}},
+		MulticastSubGroups: []net.IP{{239, 0, 0, 1}},
+		TunnelNet: &net.IPNet{
+			IP:   net.IPv4(169, 254, 0, 0),
+			Mask: net.IPMask{255, 255, 255, 254},
+		},
+		DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+		DoubleZeroPrefixes: []*net.IPNet{},
+		BgpLocalAsn:        65000,
+		BgpRemoteAsn:       65001,
+	}
+
+	gu, ok := svc.(interface {
+		UpdateGroups(*api.ProvisionRequest) error
+	})
+	if !ok {
+		t.Fatal("service does not implement UpdateGroups")
+	}
+	err = gu.UpdateGroups(newPR)
+	if err == nil {
+		t.Fatal("expected error for publisher role transition, got nil")
+	}
+}
+
+func TestMulticastService_DoubleTeardown(t *testing.T) {
+	mockBgp := &MockBgpServer{}
+	mockNetlink := &MockNetlink{}
+	mockPim := &MockPIMServer{}
+	mockHeartbeat := &MockHeartbeatSender{}
+
+	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	pr := &api.ProvisionRequest{
+		UserType:           api.UserTypeMulticast,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		MulticastPubGroups: []net.IP{{239, 0, 0, 1}},
+		TunnelNet: &net.IPNet{
+			IP:   net.IPv4(169, 254, 0, 0),
+			Mask: net.IPMask{255, 255, 255, 254},
+		},
+		DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+		DoubleZeroPrefixes: []*net.IPNet{},
+		BgpLocalAsn:        65000,
+		BgpRemoteAsn:       65001,
+	}
+
+	if err := svc.Setup(pr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// First teardown should succeed.
+	if err := svc.Teardown(); err != nil {
+		t.Fatalf("first Teardown() returned error: %v", err)
+	}
+
+	// Second teardown must not panic (e.g. double close of heartbeat channel).
+	if err := svc.Teardown(); err != nil {
+		t.Fatalf("second Teardown() returned error: %v", err)
 	}
 }

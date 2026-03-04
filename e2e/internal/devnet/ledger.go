@@ -16,26 +16,56 @@ import (
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	dockervolume "github.com/docker/docker/api/types/volume"
+	"github.com/docker/go-connections/nat"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
+	tcwait "github.com/testcontainers/testcontainers-go/wait"
 )
 
 const (
 	// Ledger container is more memory intensive than the others.
+	// The solana-test-validator runtime uses ~1.4GB baseline but can spike higher.
 	ledgerContainerMemory = 4 * 1024 * 1024 * 1024 // 4GB
 
 	internalLedgerRPCPort   = 8899
 	internalLedgerRPCWSPort = 8900
+
+	// UpgradeProgramContainerSOPath is the path to the serviceability program .so
+	// inside the ledger container.
+	UpgradeProgramContainerSOPath = "/doublezero/bin/doublezero_serviceability.so"
 )
 
 type LedgerSpec struct {
 	ContainerImage string
+
+	// CloneFromURL is the RPC URL to clone accounts from (e.g., mainnet-beta RPC URL).
+	// When set along with CloneProgramIDs, the ledger will start with cloned program state.
+	CloneFromURL string
+
+	// CloneProgramIDs is a list of program IDs to clone from the remote cluster.
+	// Each program and its owned accounts will be cloned via --clone-upgradeable-program.
+	CloneProgramIDs []string
+
+	// UpgradeProgramID, when set along with UpgradeProgramSOPath and UpgradeAuthority,
+	// deploys an upgraded program at validator startup via --upgradeable-program.
+	// This overrides the program binary while preserving cloned accounts.
+	UpgradeProgramID string
+
+	// UpgradeProgramSOPath is the host path to the .so file to deploy.
+	UpgradeProgramSOPath string
+
+	// UpgradeAuthority is the pubkey that will be set as the program's upgrade authority.
+	UpgradeAuthority string
+
+	// PatchGlobalStateAuthority, when set, patches the cloned GlobalState account to add
+	// this pubkey to the foundation_allowlist. This allows the test manager to execute
+	// write operations against the cloned mainnet state.
+	PatchGlobalStateAuthority string
 }
 
 func (s *LedgerSpec) Validate() error {
@@ -103,7 +133,7 @@ func (l *Ledger) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 		// Check if the container is running.
 		if container.State.Running {
-			l.log.Info("--> Ledger already running", "container", shortContainerID(container.ID))
+			l.log.Debug("--> Ledger already running", "container", shortContainerID(container.ID))
 
 			// Set the component's state.
 			err = l.setState(ctx, container.ID)
@@ -140,7 +170,7 @@ func (l *Ledger) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 // Start creates and starts the ledger container and attaches it to the default network.
 func (l *Ledger) Start(ctx context.Context) error {
-	l.log.Info("==> Starting ledger", "image", l.dn.Spec.Ledger.ContainerImage)
+	l.log.Debug("==> Starting ledger", "image", l.dn.Spec.Ledger.ContainerImage)
 
 	volumeName := l.dn.Spec.DeployID + "-ledger"
 
@@ -168,13 +198,48 @@ func (l *Ledger) Start(ctx context.Context) error {
 			cfg.Hostname = l.dockerContainerHostname()
 		},
 		ExposedPorts: []string{fmt.Sprintf("%d/tcp", internalLedgerRPCPort), fmt.Sprintf("%d/tcp", internalLedgerRPCWSPort)},
-		Env: map[string]string{
-			"RPC_PORT": fmt.Sprintf("%d", internalLedgerRPCPort),
-			"WS_PORT":  fmt.Sprintf("%d", internalLedgerRPCWSPort),
-		},
-		WaitingFor: wait.ForAll(
-			wait.ForExec([]string{"solana", "cluster-version"}).WithExitCodeMatcher(func(code int) bool { return code == 0 }),
-		).WithDeadline(20 * time.Second),
+		Env: func() map[string]string {
+			env := map[string]string{
+				"RPC_PORT": fmt.Sprintf("%d", internalLedgerRPCPort),
+				"WS_PORT":  fmt.Sprintf("%d", internalLedgerRPCWSPort),
+			}
+			if l.dn.Spec.Ledger.CloneFromURL != "" && len(l.dn.Spec.Ledger.CloneProgramIDs) > 0 {
+				env["CLONE_FROM_URL"] = l.dn.Spec.Ledger.CloneFromURL
+				env["CLONE_PROGRAM_IDS"] = strings.Join(l.dn.Spec.Ledger.CloneProgramIDs, ",")
+			}
+			if l.dn.Spec.Ledger.UpgradeProgramID != "" {
+				env["UPGRADE_PROGRAM_ID"] = l.dn.Spec.Ledger.UpgradeProgramID
+				env["UPGRADE_PROGRAM_SO"] = l.dn.Spec.Ledger.UpgradeProgramSOPath
+				env["UPGRADE_AUTHORITY"] = l.dn.Spec.Ledger.UpgradeAuthority
+			}
+			if l.dn.Spec.Ledger.PatchGlobalStateAuthority != "" {
+				env["PATCH_GLOBALSTATE_AUTHORITY"] = l.dn.Spec.Ledger.PatchGlobalStateAuthority
+			}
+			return env
+		}(),
+		// Use HTTP health check instead of exec-based check. The exec strategy uses
+		// Docker's container exec API which can timeout under load when many containers
+		// start simultaneously (causing "container exec inspect: context deadline exceeded").
+		// HTTP checks are more resilient as they don't require Docker API round-trips.
+		WaitingFor: tcwait.ForHTTP("/").
+			WithPort(nat.Port(fmt.Sprintf("%d/tcp", internalLedgerRPCPort))).
+			WithMethod(http.MethodPost).
+			WithHeaders(map[string]string{"Content-Type": "application/json"}).
+			WithBody(strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"getHealth"}`)).
+			WithResponseMatcher(func(body io.Reader) bool {
+				content, err := io.ReadAll(body)
+				if err != nil {
+					return false
+				}
+				return strings.Contains(string(content), `"result":"ok"`)
+			}).
+			WithStartupTimeout(func() time.Duration {
+				if l.dn.Spec.Ledger.CloneFromURL != "" {
+					return 5 * time.Minute // Account fetching from remote cluster takes time.
+				}
+				return 90 * time.Second
+			}()).
+			WithPollInterval(500 * time.Millisecond),
 		Networks: []string{l.dn.DefaultNetwork.Name},
 		NetworkAliases: map[string][]string{
 			l.dn.DefaultNetwork.Name: {"ledger"},
@@ -186,7 +251,12 @@ func (l *Ledger) Start(ctx context.Context) error {
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   ledgerContainerMemory,
 		},
-		Labels: l.dn.labels,
+		// Ensure host.docker.internal resolves inside the container on Linux.
+		// Docker Desktop (Mac/Windows) provides this automatically, but native
+		// Linux Docker does not. This is needed when CloneFromURL points at a
+		// host-exposed port (e.g., cloning from another devnet's ledger).
+		ExtraHosts: []string{"host.docker.internal:host-gateway"},
+		Labels:     l.dn.labels,
 		Mounts: []testcontainers.ContainerMount{
 			{
 				Source:   testcontainers.GenericVolumeMountSource{Name: volumeName},
@@ -216,13 +286,13 @@ func (l *Ledger) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to wait for ledger to be healthy: %w", err)
 	}
 
-	l.log.Info("--> Ledger started", "container", l.ContainerID, "internalRPCURL", l.InternalRPCURL, "internalRPCWSURL", l.InternalRPCWSURL)
+	l.log.Debug("--> Ledger started", "container", l.ContainerID, "internalRPCURL", l.InternalRPCURL, "internalRPCWSURL", l.InternalRPCWSURL)
 	return nil
 }
 
 func (l *Ledger) setState(ctx context.Context, containerID string) error {
 	// Wait for RPC port to be exposed.
-	port, err := l.dn.waitForContainerPortExposed(ctx, containerID, internalLedgerRPCPort, 10*time.Second)
+	port, err := l.dn.waitForContainerPortExposed(ctx, containerID, internalLedgerRPCPort, 30*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to wait for ledger RPC port to be exposed: %w", err)
 	}
@@ -243,7 +313,7 @@ func (l *Ledger) setState(ctx context.Context, containerID string) error {
 
 func waitForSolanaReady(ctx context.Context, log *slog.Logger, rpcHost string, rpcPort int) error {
 	var loggedWait bool
-	timeout := 20 * time.Second
+	timeout := 60 * time.Second
 	var attempts int
 	err := poll.Until(ctx, func() (bool, error) {
 		attempts++
@@ -294,6 +364,18 @@ func (l *Ledger) GetServiceabilityClient() (*serviceability.Client, error) {
 	}
 	client := serviceability.New(rpcClient, programID)
 	return client, nil
+}
+
+// NewServiceabilityClientForProgram creates a serviceability client targeting a specific
+// program ID (e.g., the mainnet program ID when testing with cloned accounts).
+func NewServiceabilityClientForProgram(dn *Devnet, programIDStr string) (*serviceability.Client, error) {
+	endpoint := "http://" + net.JoinHostPort(dn.ExternalHost, strconv.Itoa(dn.Ledger.ExternalRPCPort))
+	rpcClient := rpc.New(endpoint)
+	programID, err := solana.PublicKeyFromBase58(programIDStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse program ID: %w", err)
+	}
+	return serviceability.New(rpcClient, programID), nil
 }
 
 func (l *Ledger) GetRPCClient() *rpc.Client {

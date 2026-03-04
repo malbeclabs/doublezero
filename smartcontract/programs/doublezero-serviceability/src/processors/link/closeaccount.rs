@@ -1,9 +1,15 @@
 use crate::{
     error::DoubleZeroError,
+    pda::get_resource_extension_pda,
+    resource::{IdOrIp, ResourceType},
     serializer::{try_acc_close, try_acc_write},
     state::{
-        contributor::Contributor, device::*, globalstate::GlobalState, interface::InterfaceStatus,
+        contributor::Contributor,
+        device::*,
+        globalstate::GlobalState,
+        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType},
         link::*,
+        resource_extension::ResourceExtensionBorrowed,
     },
 };
 use borsh::BorshSerialize;
@@ -20,18 +26,27 @@ use solana_program::{
 use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
-pub struct LinkCloseAccountArgs {}
+pub struct LinkCloseAccountArgs {
+    /// When true, on-chain deallocation is used (ResourceExtension accounts required).
+    /// When false, legacy behavior is used (no deallocation).
+    #[incremental(default = false)]
+    pub use_onchain_deallocation: bool,
+}
 
 impl fmt::Debug for LinkCloseAccountArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "")
+        write!(
+            f,
+            "use_onchain_deallocation: {}",
+            self.use_onchain_deallocation
+        )
     }
 }
 
 pub fn process_closeaccount_link(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    _value: &LinkCloseAccountArgs,
+    value: &LinkCloseAccountArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -41,11 +56,25 @@ pub fn process_closeaccount_link(
     let side_a_account = next_account_info(accounts_iter)?;
     let side_z_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+
+    // Optional: ResourceExtension accounts for on-chain deallocation (before payer)
+    // Account layout WITH ResourceExtension (use_onchain_deallocation = true):
+    //   [link, owner, contributor, side_a, side_z, globalstate, device_tunnel_block, link_ids, payer, system]
+    // Account layout WITHOUT (legacy, use_onchain_deallocation = false):
+    //   [link, owner, contributor, side_a, side_z, globalstate, payer, system]
+    let resource_extension_accounts = if value.use_onchain_deallocation {
+        let device_tunnel_block_ext = next_account_info(accounts_iter)?; // DeviceTunnelBlock (global)
+        let link_ids_ext = next_account_info(accounts_iter)?; // LinkIds (global)
+        Some((device_tunnel_block_ext, link_ids_ext))
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_closeaccount_link({:?})", _value);
+    msg!("process_closeaccount_link({:?})", value);
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
@@ -70,14 +99,18 @@ pub fn process_closeaccount_link(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
     assert!(link_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if globalstate.activator_authority_pk != *payer_account.key {
+
+    // Authorization: allow activator_authority_pk OR foundation_allowlist (matching ActivateLink)
+    let is_activator = globalstate.activator_authority_pk == *payer_account.key;
+    let is_foundation = globalstate.foundation_allowlist.contains(payer_account.key);
+    if !is_activator && !is_foundation {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
@@ -101,17 +134,102 @@ pub fn process_closeaccount_link(
         return Err(solana_program::program_error::ProgramError::Custom(1));
     }
 
+    // Deallocate resources from ResourceExtension if accounts provided
+    // Deallocation is idempotent - safe to call even if resources weren't allocated
+    if let Some((device_tunnel_block_ext, link_ids_ext)) = resource_extension_accounts {
+        // Validate device_tunnel_block_ext (DeviceTunnelBlock - global)
+        assert_eq!(
+            device_tunnel_block_ext.owner, program_id,
+            "Invalid ResourceExtension Account Owner for DeviceTunnelBlock"
+        );
+        assert!(
+            device_tunnel_block_ext.is_writable,
+            "ResourceExtension Account for DeviceTunnelBlock is not writable"
+        );
+        assert!(
+            !device_tunnel_block_ext.data_is_empty(),
+            "ResourceExtension Account for DeviceTunnelBlock is empty"
+        );
+
+        let (expected_device_tunnel_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
+        assert_eq!(
+            device_tunnel_block_ext.key, &expected_device_tunnel_pda,
+            "Invalid ResourceExtension PDA for DeviceTunnelBlock"
+        );
+
+        // Validate link_ids_ext (LinkIds - global)
+        assert_eq!(
+            link_ids_ext.owner, program_id,
+            "Invalid ResourceExtension Account Owner for LinkIds"
+        );
+        assert!(
+            link_ids_ext.is_writable,
+            "ResourceExtension Account for LinkIds is not writable"
+        );
+        assert!(
+            !link_ids_ext.data_is_empty(),
+            "ResourceExtension Account for LinkIds is empty"
+        );
+
+        let (expected_link_ids_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::LinkIds);
+        assert_eq!(
+            link_ids_ext.key, &expected_link_ids_pda,
+            "Invalid ResourceExtension PDA for LinkIds"
+        );
+
+        // Deallocate tunnel_net from global DeviceTunnelBlock
+        {
+            let mut buffer = device_tunnel_block_ext.data.borrow_mut();
+            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+            // Deallocate returns false if not allocated; we proceed regardless (idempotent)
+            let _deallocated = resource.deallocate(&IdOrIp::Ip(link.tunnel_net));
+            #[cfg(test)]
+            msg!(
+                "Deallocated tunnel_net {}: {}",
+                link.tunnel_net,
+                _deallocated
+            );
+        }
+
+        // Deallocate tunnel_id from global LinkIds
+        {
+            let mut buffer = link_ids_ext.data.borrow_mut();
+            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+            let _deallocated = resource.deallocate(&IdOrIp::Id(link.tunnel_id));
+            #[cfg(test)]
+            msg!("Deallocated tunnel_id {}: {}", link.tunnel_id, _deallocated);
+        }
+    }
+
     if let Ok((idx_a, side_a_iface)) = side_a_dev.find_interface(&link.side_a_iface_name) {
         let mut updated_iface = side_a_iface.clone();
         updated_iface.status = InterfaceStatus::Unlinked;
-        updated_iface.ip_net = NetworkV4::default();
+        // Preserve user-provided ip_net for CYOA/DIA physical interfaces.
+        // For all other interfaces (loopbacks, plain physical), reset ip_net since it was
+        // set from tunnel_net during activation and is no longer valid.
+        let has_user_ip = updated_iface.interface_type == InterfaceType::Physical
+            && (updated_iface.interface_cyoa != InterfaceCYOA::None
+                || updated_iface.interface_dia != InterfaceDIA::None);
+        if !has_user_ip {
+            updated_iface.ip_net = NetworkV4::default();
+        }
         side_a_dev.interfaces[idx_a] = updated_iface.to_interface();
     }
 
     if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface(&link.side_z_iface_name) {
         let mut updated_iface = side_z_iface.clone();
         updated_iface.status = InterfaceStatus::Unlinked;
-        updated_iface.ip_net = NetworkV4::default();
+        // Preserve user-provided ip_net for CYOA/DIA physical interfaces.
+        // For all other interfaces (loopbacks, plain physical), reset ip_net since it was
+        // set from tunnel_net during activation and is no longer valid.
+        let has_user_ip = updated_iface.interface_type == InterfaceType::Physical
+            && (updated_iface.interface_cyoa != InterfaceCYOA::None
+                || updated_iface.interface_dia != InterfaceDIA::None);
+        if !has_user_ip {
+            updated_iface.ip_net = NetworkV4::default();
+        }
         side_z_dev.interfaces[idx_z] = updated_iface.to_interface();
     }
 

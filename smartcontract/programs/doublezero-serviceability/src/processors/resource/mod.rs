@@ -1,4 +1,5 @@
 use crate::{
+    error::DoubleZeroError,
     pda::{get_globalconfig_pda, get_resource_extension_pda},
     resource::ResourceType,
     seeds::SEED_PREFIX,
@@ -8,28 +9,35 @@ use crate::{
         resource_extension::{ResourceExtensionBorrowed, ResourceExtensionRange},
     },
 };
-use doublezero_program_common::create_account::try_create_account;
-use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, pubkey::Pubkey};
+use doublezero_program_common::{create_account::try_create_account, types::NetworkV4};
+use solana_program::{
+    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
+    pubkey::Pubkey,
+};
+use std::net::Ipv4Addr;
 
 pub mod allocate;
+pub mod closeaccount;
 pub mod create;
 pub mod deallocate;
 
 pub fn get_resource_extension_range(
     program_id: &Pubkey,
     globalconfig: &GlobalConfig,
-    associated_account: &AccountInfo,
+    opt_associated_account: Option<&AccountInfo>,
     resource_type: ResourceType,
 ) -> ResourceExtensionRange {
     let mut device = None;
-    if associated_account.key != &Pubkey::default() {
-        assert_eq!(
-            associated_account.owner, program_id,
-            "Invalid PDA Account Owner (associated account)"
-        );
-        device = Some(Device::try_from(associated_account).expect(
-            "Failed to deserialize associated account as Device when getting resource extension IP block",
-        ));
+    if let Some(associated_account) = opt_associated_account {
+        if associated_account.key != &Pubkey::default() {
+            assert_eq!(
+                associated_account.owner, program_id,
+                "Invalid PDA Account Owner (associated account)"
+            );
+            device = Some(Device::try_from(associated_account).expect(
+                "Failed to deserialize associated account as Device when getting resource extension IP block",
+            ));
+        }
     }
     match resource_type {
         ResourceType::DeviceTunnelBlock => {
@@ -40,6 +48,9 @@ pub fn get_resource_extension_range(
         }
         ResourceType::MulticastGroupBlock => {
             ResourceExtensionRange::IpBlock(globalconfig.multicastgroup_block, 1)
+        }
+        ResourceType::MulticastPublisherBlock => {
+            ResourceExtensionRange::IpBlock(globalconfig.multicast_publisher_block, 1)
         }
         ResourceType::DzPrefixBlock(_, index) => {
             assert!(
@@ -57,13 +68,14 @@ pub fn get_resource_extension_range(
         }
         ResourceType::LinkIds => ResourceExtensionRange::IdRange(0, 65535),
         ResourceType::SegmentRoutingIds => ResourceExtensionRange::IdRange(1, 65535),
+        ResourceType::VrfIds => ResourceExtensionRange::IdRange(1, 1024),
     }
 }
 
 pub fn create_resource(
     program_id: &Pubkey,
     resource_account: &AccountInfo,
-    associated_account: &AccountInfo,
+    associated_account: Option<&AccountInfo>,
     globalconfig_account: &AccountInfo,
     payer_account: &AccountInfo,
     accounts: &[AccountInfo],
@@ -89,46 +101,107 @@ pub fn create_resource(
         "Invalid Resource Account PubKey"
     );
 
-    assert!(resource_account.data_is_empty());
-
     let data_size: usize = ResourceExtensionBorrowed::size(&resource_range);
-    match resource_type {
-        ResourceType::DzPrefixBlock(_, index) | ResourceType::TunnelIds(_, index) => {
-            try_create_account(
-                payer_account.key,           // Account paying for the new account
-                resource_account.key,        // Account to be created
-                resource_account.lamports(), // Current amount of lamports on the new account
-                data_size,                   // Size in bytes to allocate for the data field
-                program_id,                  // Set program owner to our program
+
+    if resource_account.data_is_empty() {
+        match resource_type {
+            ResourceType::DzPrefixBlock(_, index) | ResourceType::TunnelIds(_, index) => {
+                try_create_account(
+                    payer_account.key,           // Account paying for the new account
+                    resource_account.key,        // Account to be created
+                    resource_account.lamports(), // Current amount of lamports on the new account
+                    data_size,                   // Size in bytes to allocate for the data field
+                    program_id,                  // Set program owner to our program
+                    accounts,
+                    &[
+                        SEED_PREFIX,
+                        base_seed,
+                        associated_account.unwrap().key.to_bytes().as_ref(),
+                        index.to_le_bytes().as_ref(),
+                        &[bump_seed],
+                    ] as &[_],
+                )?;
+            }
+            _ => {
+                try_create_account(
+                    payer_account.key,           // Account paying for the new account
+                    resource_account.key,        // Account to be created
+                    resource_account.lamports(), // Current amount of lamports on the new account
+                    data_size,                   // Size in bytes to allocate for the data field
+                    program_id,                  // Set program owner to our program
+                    accounts,
+                    &[SEED_PREFIX, base_seed, &[bump_seed]] as &[_],
+                )?;
+            }
+        };
+    } else {
+        let current_size = resource_account.data.borrow().len();
+        if current_size != data_size {
+            doublezero_program_common::resize_account::resize_account_if_needed(
+                resource_account,
+                payer_account,
                 accounts,
-                &[
-                    SEED_PREFIX,
-                    base_seed,
-                    associated_account.key.to_bytes().as_ref(),
-                    index.to_le_bytes().as_ref(),
-                    &[bump_seed],
-                ] as &[_],
+                data_size,
             )?;
         }
-        _ => {
-            try_create_account(
-                payer_account.key,           // Account paying for the new account
-                resource_account.key,        // Account to be created
-                resource_account.lamports(), // Current amount of lamports on the new account
-                data_size,                   // Size in bytes to allocate for the data field
-                program_id,                  // Set program owner to our program
-                accounts,
-                &[SEED_PREFIX, base_seed, &[bump_seed]] as &[_],
-            )?;
-        }
-    };
+
+        // account exists, has been resized if needed, so clear out existing data
+        let mut resource_data = resource_account.data.borrow_mut();
+        resource_data.fill(0);
+    }
+
+    let default_pubkey = Pubkey::default();
     ResourceExtensionBorrowed::construct_resource(
         resource_account,
-        program_id,
+        payer_account.key,
         bump_seed,
-        associated_account.key,
+        match associated_account {
+            Some(acc) => acc.key,
+            None => &default_pubkey,
+        },
         &resource_range,
     )?;
 
+    // Reserve first IP for DzPrefixBlock (device tunnel endpoint).
+    // Contributors configure the first IP of their dz_prefix on their Loopback100
+    // interface for user tunnels, so we reserve index 0 to prevent user allocation conflicts.
+    if let ResourceType::DzPrefixBlock(_, _) = resource_type {
+        let mut buffer = resource_account.data.borrow_mut();
+        let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+        resource.allocate(1)?; // Allocates index 0
+    }
+
     Ok(())
+}
+
+/// Borrow a ResourceExtension account, deserialize it, and allocate `count` IPs.
+pub fn allocate_ip(account: &AccountInfo, count: usize) -> Result<NetworkV4, ProgramError> {
+    let mut buffer = account.data.borrow_mut();
+    let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+    resource
+        .allocate(count)?
+        .as_ip()
+        .ok_or(DoubleZeroError::InvalidArgument.into())
+}
+
+/// Borrow a ResourceExtension account, deserialize it, and allocate a single ID.
+pub fn allocate_id(account: &AccountInfo) -> Result<u16, ProgramError> {
+    let mut buffer = account.data.borrow_mut();
+    let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+    resource
+        .allocate(1)?
+        .as_id()
+        .ok_or(DoubleZeroError::InvalidArgument.into())
+}
+
+/// Try each account in order and return the first successful single-IP allocation.
+pub fn allocate_ip_from_first_available(
+    accounts: &[&AccountInfo],
+) -> Result<Ipv4Addr, ProgramError> {
+    for account in accounts {
+        if let Ok(ip) = allocate_ip(account, 1) {
+            return Ok(ip.ip());
+        }
+    }
+    Err(DoubleZeroError::AllocationFailed.into())
 }

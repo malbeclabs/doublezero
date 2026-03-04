@@ -1,9 +1,99 @@
 package qa
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"math"
 	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"time"
 )
+
+type GrafanaConfig struct {
+	PrometheusURL string
+	Username      string
+	APIKey        string
+}
+
+func GrafanaConfigFromEnv() *GrafanaConfig {
+	prometheusURL := os.Getenv("GRAFANA_PROMETHEUS_URL")
+	user := os.Getenv("GRAFANA_PROMETHEUS_USER")
+	apiKey := os.Getenv("GRAFANA_API_KEY")
+
+	if prometheusURL == "" || apiKey == "" {
+		return nil
+	}
+
+	return &GrafanaConfig{
+		PrometheusURL: strings.TrimSuffix(prometheusURL, "/"),
+		Username:      user,
+		APIKey:        apiKey,
+	}
+}
+
+func GetDevicesWithActiveConfigAgents(ctx context.Context, cfg *GrafanaConfig) (map[string]bool, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("grafana config is nil")
+	}
+
+	// Query for all devices with GetConfig activity in the last 5m
+	query := `sum by (device_code) (increase(controller_grpc_getconfig_requests_total[5m])) > 0`
+
+	// The PrometheusURL already includes /api/prom, so we just append /api/v1/query
+	queryURL := fmt.Sprintf("%s/api/v1/query?query=%s", cfg.PrometheusURL, url.QueryEscape(query))
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, queryURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	// Grafana Cloud Prometheus uses Basic Auth with instance ID and API key
+	req.SetBasicAuth(cfg.Username, cfg.APIKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query grafana: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("grafana query failed with status: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Status string `json:"status"`
+		Data   struct {
+			ResultType string `json:"resultType"`
+			Result     []struct {
+				Metric map[string]string `json:"metric"`
+				Value  []any             `json:"value"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if result.Status != "success" {
+		return nil, fmt.Errorf("query returned non-success status: %s", result.Status)
+	}
+
+	active := make(map[string]bool)
+	for _, r := range result.Data.Result {
+		if deviceCode, ok := r.Metric["device_code"]; ok && deviceCode != "" {
+			active[deviceCode] = true
+		}
+	}
+
+	return active, nil
+}
 
 const LatencyThresholdMs = 25
 
@@ -60,7 +150,7 @@ func DetermineClientsToConnect(
 
 		// Same device as previous batch - check if client is still connected
 		status, err := getStatus(client.Host)
-		if err != nil || status != UserStatusUp {
+		if err != nil || !IsStatusUp(status) {
 			clientsToConnect = append(clientsToConnect, client)
 		}
 	}
@@ -76,7 +166,7 @@ func FilterStatusUpClients(clients []*Client, batch map[string]*BatchResult, sta
 		if _, inBatch := batch[c.Host]; !inBatch {
 			continue
 		}
-		if statuses[c.Host] != UserStatusUp {
+		if !IsStatusUp(statuses[c.Host]) {
 			continue
 		}
 		connected = append(connected, c)

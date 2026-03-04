@@ -59,6 +59,21 @@ type ServiceabilityView struct {
 	rpc ServiceabilityRPC
 }
 
+func mapUserType(ut serviceability.UserUserType) UserType {
+	switch ut {
+	case serviceability.UserTypeIBRL:
+		return UserTypeIBRL
+	case serviceability.UserTypeIBRLWithAllocatedIP:
+		return UserTypeIBRLWithAllocatedIP
+	case serviceability.UserTypeEdgeFiltering:
+		return UserTypeEdgeFiltering
+	case serviceability.UserTypeMulticast:
+		return UserTypeMulticast
+	default:
+		return UserTypeIBRL
+	}
+}
+
 func NewServiceabilityView(log *slog.Logger, rpc ServiceabilityRPC) (*ServiceabilityView, error) {
 	if log == nil {
 		return nil, fmt.Errorf("log is nil")
@@ -123,6 +138,7 @@ func (v *ServiceabilityView) GetProgramData(ctx context.Context) (*Serviceabilit
 			ValidatorPK: userFromRPC.ValidatorPubKey,
 			DZIP:        net.IP(userFromRPC.DzIp[:]),
 			ClientIP:    net.IP(userFromRPC.ClientIp[:]),
+			UserType:    mapUserType(userFromRPC.UserType),
 		}
 		device, ok := devicesByPK[userFromRPC.DevicePubKey]
 		if ok {
@@ -130,7 +146,13 @@ func (v *ServiceabilityView) GetProgramData(ctx context.Context) (*Serviceabilit
 		}
 		usersByPK[userFromRPC.PubKey] = user
 		usersByDZIP[user.DZIP.String()] = user
-		usersByClientIP[user.ClientIP.String()] = user
+		// Prefer non-multicast users when multiple users share the same
+		// client IP, matching the preference in parseStatus which picks the
+		// non-multicast tunnel as the primary status.
+		clientIPStr := user.ClientIP.String()
+		if existing, ok := usersByClientIP[clientIPStr]; !ok || existing.UserType == UserTypeMulticast {
+			usersByClientIP[clientIPStr] = user
+		}
 	}
 
 	return &ServiceabilityProgramData{

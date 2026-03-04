@@ -1,6 +1,10 @@
+use backon::{BlockingRetryable, ExponentialBuilder};
 use base64::{engine::general_purpose, Engine};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use doublezero_config::Environment;
+use std::time::Duration;
+
+use crate::config::default_program_id;
 use doublezero_serviceability::{
     error::DoubleZeroError, instructions::*, state::accounttype::AccountType,
 };
@@ -13,6 +17,7 @@ use solana_client::{
     rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
     rpc_filter::{Memcmp, MemcmpEncodedBytes, RpcFilterType},
 };
+use solana_rpc_client_api::client_error::{Error as ClientError, ErrorKind as ClientErrorKind};
 use solana_sdk::{
     account::Account,
     commitment_config::CommitmentConfig,
@@ -71,7 +76,7 @@ impl DZClient {
 
         let program_id = match program_id {
             None => match config.program_id.as_ref() {
-                None => doublezero_serviceability::addresses::testnet::program_id::id(),
+                None => default_program_id(),
                 Some(config_pg_id) => {
                     Pubkey::from_str(config_pg_id).map_err(|_| eyre!("Invalid program ID"))?
                 }
@@ -107,26 +112,51 @@ impl DZClient {
         Environment::from_program_id(&self.program_id.to_string()).unwrap_or_default()
     }
 
+    fn rpc_retry_builder() -> ExponentialBuilder {
+        ExponentialBuilder::new()
+            .with_max_times(3)
+            .with_min_delay(Duration::from_millis(500))
+            .with_max_delay(Duration::from_secs(5))
+    }
+
+    /// Returns true for transient network errors that are worth retrying.
+    /// Returns false for permanent errors like AccountNotFound or RPC response errors.
+    fn is_retryable_rpc_error(err: &ClientError) -> bool {
+        matches!(
+            err.kind,
+            ClientErrorKind::Io(_) | ClientErrorKind::Reqwest(_) | ClientErrorKind::Middleware(_)
+        )
+    }
+
     pub fn get_balance(&self) -> eyre::Result<u64> {
         let payer = self
             .payer
             .as_ref()
             .ok_or_else(|| eyre!("No payer configured for client!"))?;
 
-        self.client
-            .get_balance(&payer.pubkey())
+        let pubkey = payer.pubkey();
+        (|| self.client.get_balance(&pubkey))
+            .retry(Self::rpc_retry_builder())
+            .when(Self::is_retryable_rpc_error)
+            .call()
             .map_err(|e| eyre!(e))
     }
 
     pub fn get_epoch(&self) -> eyre::Result<u64> {
-        self.client
-            .get_epoch_info()
+        (|| self.client.get_epoch_info())
+            .retry(Self::rpc_retry_builder())
+            .when(Self::is_retryable_rpc_error)
+            .call()
             .map_err(|e| eyre!(e))
             .map(|info| info.epoch)
     }
 
     pub fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account> {
-        self.client.get_account(&pubkey).map_err(|e| eyre!(e))
+        (|| self.client.get_account(&pubkey))
+            .retry(Self::rpc_retry_builder())
+            .when(Self::is_retryable_rpc_error)
+            .call()
+            .map_err(|e| eyre!(e))
     }
 
     /******************************************************************************************************************************************/
@@ -194,14 +224,21 @@ impl DZClient {
     pub fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>> {
         let mut errors: Vec<String> = Vec::new();
 
-        let signatures = self.client.get_signatures_for_address(pubkey)?;
+        let signatures = (|| self.client.get_signatures_for_address(pubkey))
+            .retry(Self::rpc_retry_builder())
+            .when(Self::is_retryable_rpc_error)
+            .call()?;
 
         for signature_info in signatures {
             let signature = Signature::from_str(&signature_info.signature)?;
 
-            if let Ok(trans) = self
-                .client
-                .get_transaction(&signature, UiTransactionEncoding::Base64)
+            if let Ok(trans) = (|| {
+                self.client
+                    .get_transaction(&signature, UiTransactionEncoding::Base64)
+            })
+            .retry(Self::rpc_retry_builder())
+            .when(Self::is_retryable_rpc_error)
+            .call()
             {
                 if let EncodedTransaction::Binary(_, base) = trans.transaction.transaction {
                     if base == TransactionBinaryEncoding::Base64 {
@@ -234,14 +271,19 @@ impl DoubleZeroClient for DZClient {
     }
 
     fn get_balance(&self) -> eyre::Result<u64> {
-        self.client
-            .get_balance(&self.get_payer())
+        let payer = self.get_payer();
+        (|| self.client.get_balance(&payer))
+            .retry(Self::rpc_retry_builder())
+            .when(Self::is_retryable_rpc_error)
+            .call()
             .map_err(|e| eyre!(e))
     }
 
     fn get_epoch(&self) -> eyre::Result<u64> {
-        self.client
-            .get_epoch_info()
+        (|| self.client.get_epoch_info())
+            .retry(Self::rpc_retry_builder())
+            .when(Self::is_retryable_rpc_error)
+            .call()
             .map_err(|e| eyre!(e))
             .map(|info| info.epoch)
     }
@@ -261,9 +303,13 @@ impl DoubleZeroClient for DZClient {
 
         let mut list: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
 
-        let accounts = self
-            .client
-            .get_program_accounts_with_config(&self.program_id, options)?;
+        let accounts = (|| {
+            self.client
+                .get_program_accounts_with_config(&self.program_id, options.clone())
+        })
+        .retry(Self::rpc_retry_builder())
+        .when(Self::is_retryable_rpc_error)
+        .call()?;
 
         for (pubkey, account) in accounts {
             let account = match AccountData::try_from(&account.data[..]) {
@@ -355,9 +401,14 @@ impl DoubleZeroClient for DZClient {
         };
 
         let mut list: HashMap<Pubkey, AccountData> = HashMap::new();
-        let accounts = self
-            .client
-            .get_program_accounts_with_config(self.get_program_id(), options)?;
+        let program_id = self.get_program_id();
+        let accounts = (|| {
+            self.client
+                .get_program_accounts_with_config(program_id, options.clone())
+        })
+        .retry(Self::rpc_retry_builder())
+        .when(Self::is_retryable_rpc_error)
+        .call()?;
 
         for (pubkey, account) in accounts {
             assert!(account.data[0] == account_type, "Invalid account type");
@@ -368,21 +419,26 @@ impl DoubleZeroClient for DZClient {
     }
 
     fn get(&self, pubkey: Pubkey) -> eyre::Result<AccountData> {
-        match self.client.get_account(&pubkey) {
-            Ok(account) => {
-                if account.owner == self.program_id {
-                    let data = account.data;
-                    Ok(AccountData::try_from(&data[..])?)
-                } else {
-                    Ok(AccountData::None)
-                }
-            }
-            Err(e) => Err(eyre!(e)),
+        let account = (|| self.client.get_account(&pubkey))
+            .retry(Self::rpc_retry_builder())
+            .when(Self::is_retryable_rpc_error)
+            .call()
+            .map_err(|e| eyre!(e))?;
+
+        if account.owner == self.program_id {
+            let data = account.data;
+            Ok(AccountData::try_from(&data[..])?)
+        } else {
+            Ok(AccountData::None)
         }
     }
 
     fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account> {
-        self.client.get_account(&pubkey).map_err(|e| eyre!(e))
+        (|| self.client.get_account(&pubkey))
+            .retry(Self::rpc_retry_builder())
+            .when(Self::is_retryable_rpc_error)
+            .call()
+            .map_err(|e| eyre!(e))
     }
 
     fn get_program_accounts(
@@ -390,22 +446,34 @@ impl DoubleZeroClient for DZClient {
         program_id: &Pubkey,
         config: RpcProgramAccountsConfig,
     ) -> eyre::Result<Vec<(Pubkey, Account)>> {
-        self.client
-            .get_program_accounts_with_config(program_id, config)
-            .map_err(|e| eyre!(e))
+        (|| {
+            self.client
+                .get_program_accounts_with_config(program_id, config.clone())
+        })
+        .retry(Self::rpc_retry_builder())
+        .when(Self::is_retryable_rpc_error)
+        .call()
+        .map_err(|e| eyre!(e))
     }
 
     #[allow(deprecated)]
     fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>> {
         let mut transactions: Vec<DZTransaction> = Vec::new();
 
-        let signatures = self.client.get_signatures_for_address(&pubkey)?;
+        let signatures = (|| self.client.get_signatures_for_address(&pubkey))
+            .retry(Self::rpc_retry_builder())
+            .when(Self::is_retryable_rpc_error)
+            .call()?;
 
         for signature_info in signatures.into_iter() {
             let signature = Signature::from_str(&signature_info.signature)?;
-            let enc_transaction = self
-                .client
-                .get_transaction(&signature, UiTransactionEncoding::Base64)?;
+            let enc_transaction = (|| {
+                self.client
+                    .get_transaction(&signature, UiTransactionEncoding::Base64)
+            })
+            .retry(Self::rpc_retry_builder())
+            .when(Self::is_retryable_rpc_error)
+            .call()?;
 
             let time = enc_transaction.block_time.unwrap_or_default();
 

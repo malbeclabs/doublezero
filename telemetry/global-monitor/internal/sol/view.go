@@ -9,7 +9,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
-	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/geoip"
+	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 )
 
 type SolanaRPC interface {

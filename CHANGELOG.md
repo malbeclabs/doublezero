@@ -4,16 +4,241 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Breaking
+
+### Changes
+
 - CLI
-  - Remove log noise on resolve route
-- Onchain programs
-   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
-   - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
-   - Deprecated the user suspend status, as it is no longer used.
-   - Serviceability: enforce that CloseAccountUser instructions verify the target user has no multicast publishers or subscribers (both `publishers` and `subscribers` are empty) before closing, and add regression coverage for this behavior.
-   - Serviceability: make `contributor_pk` immutable for Device and Link accounts after creation by ignoring contributor changes in update instructions while preserving all other update behavior.
+  - `doublezero resource verify` command will now suggest creating resources or create them with --fix
+  - All `get` commands now display output as a formatted table and support a `--json` flag for machine-readable output
+- SDK
+  - Fix multicast group deserialization in `smartcontract/sdk/go` to correctly read publisher and subscriber counts and align status enum with onchain definition
+- Smartcontract
+  - Serviceability: add `Reservation` account and `ReserveConnection`/`CloseReservation` instructions for pre-reserving connection seats on devices, with `reserved_seats` factored into capacity checks on both reservation and user creation
+  - Allow sentinel authority to add/remove multicast publisher and subscriber allowlist entries
 - Telemetry
-  - Add gNMI tunnel client for state collection
+  - Add `geoprobe-target-sender` CLI tool for sending signed TWAMP probes to a GeoProbe and verifying signed replies (RFC16 inbound probing flow)
+  - Add Signed TWAMP reflector to geoprobe-agent with configurable listen port and allowed-pubkeys allowlist
+  - Fix global monitor crash when IBRL and multicast users share the same client IP but are on different devices, by preferring non-multicast users in client IP lookups to match status device selection
+- Client
+  - Add onchain reconciler to daemon — automatically provisions/removes tunnels by polling onchain User state, replacing CLI-driven provisioning and the `doublezerod.json` state file ([RFC-17](rfcs/rfc17-client-onchain-reconciler.md))
+  - Add `doublezero enable` / `doublezero disable` CLI commands to toggle the reconciler at runtime
+- E2E tests
+  - Publish `TestQA_AllDevices_UnicastConnectivity` results to ClickHouse (`qa_alldevices_results` and `qa_alldevices_metadata` tables) in addition to InfluxDB; configured via `CLICKHOUSE_ADDR` env var, skipped gracefully when not set
+
+## [v0.9.0](https://github.com/malbeclabs/doublezero/compare/client/v0.8.11...client/v0.9.0) - 2026-02-27
+
+### Breaking
+
+- CLI: `--bandwidth` is now a required argument for `doublezero device interface create` and `doublezero device interface update`; callers that previously omitted it (relying on the default of `0`) must now explicitly pass a value with a unit (e.g. `--bandwidth 10Gbps`)
+
+### Changes
+
+- Tools
+  - Add signed TWAMP sender and reflector with Ed25519 authentication and per-pubkey rate-limited signature verification
+- Activator
+    - Adds a stateless mode for when onchain allocation is enabled. This prevents activator/onchain from becoming out-of-sync.
+    - `--onchain-allocation` cli flag replaced with feature flag from GlobalState onchain
+- SDK
+  - Add retry with exponential backoff (3 retries, 500ms–5s) to all read-only RPC calls in `DZClient`, improving resilience to transient RPC timeouts
+- CLI
+  - Fix `doublezero status` showing "Current Device" and "Metro" as N/A for multicast subscribers when the tunnel destination is a `user_tunnel_endpoint` loopback interface IP rather than the device's `public_ip`
+  - Remove redundant `connect ibrl` unit tests that were duplicates of hybrid-device equivalents
+  - `doublezero global-config feature-flags` commands added
+  - Fix multicast subscriber tunnel source resolution for NAT environments — resolve local interface IP instead of using public IP
+  - Added multicast filters to access-pass list, enabling filtering by publisher/subscriber role and identifying access passes not authorized for a specific multicast group.
+  - Device interface `--bandwidth` and `--cir` flags now accept Kbps, Mbps, or Gbps units; `interface list` displays those values as human-readable strings
+  - Add duplicate IP check to prevent a user from assigning the same IP more than once
+- Client
+  - Fix BGP `OnClose` deleting routes from all peers instead of only the closing peer, preventing multicast teardown from nuking unicast routes
+  - Skip route deletion on `OnClose` for `NoInstall` peers (multicast) since they never install kernel routes
+  - Reject BGP martian addresses (CGNAT, multicast, reserved, benchmarking, etc.) as client IP during `connect`
+- Controller
+  - detect duplicate (UnderlaySrcIP, UnderlayDstIP) pairs for tunnels and only render the first to the device config and write a log error for the second
+- Onchain Programs
+  - Serviceability: skip field validation for users in `Deleting` status to prevent accounts from getting stuck during cleanup when validation rules change
+  - Serviceability: require foundation_allowlist privileges to update node_segment_idx on a device interface
+  - Serviceability: add feature flags support
+  - Serviceability: expand `is_global` to reject all BGP martian address ranges (CGNAT 100.64/10, IETF 192.0.0/24, benchmarking 198.18/15, multicast 224/4, reserved 240/4, 0/8)
+  - Serviceability: allow update and deletion of interfaces even when sibling interfaces have invalid CYOA configuration
+  - Geolocation: add `doublezero-geolocation` program scaffolding and GeoProbe account type and related instructions as per rfcs/rfc16-geolocation-verification.md
+- SDK
+  - SetFeatureFlagCommand added to manage on-chain feature flags for conditional behavior rollouts
+  - Serviceability: CreateUser instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
+- Dependencies
+  - Upgrade Solana SDK workspace dependencies from 2.2.7 to 2.3.x (`solana-sdk`, `solana-client`, `solana-program-test`, and others)
+- Internet telemetry
+  - Reduce RIPE Atlas sampling interval from 6 minutes to 10 minutes to work around service limit of 100_000 samples per day
+- E2E
+  - e2e: add multi-tenant access control negative tests ([#3081](https://github.com/malbeclabs/doublezero/pull/3081))
+
+## [v0.8.11](https://github.com/malbeclabs/doublezero/compare/client/v0.8.10...client/v0.8.11) - 2026-02-27
+
+### Breaking
+
+- N/A
+
+### Changes
+
+- Client
+  - Fix BGP `OnClose` deleting routes from all peers instead of only the closing peer, preventing multicast teardown from nuking unicast routes
+
+## [v0.8.10](https://github.com/malbeclabs/doublezero/compare/client/v0.8.9...client/v0.8.10) – 2026-02-19
+
+### Breaking
+
+- N/A
+
+### Changes
+- Activator
+  - removes accesspass monitor task (that expires access passes)
+- Monitor
+  - Add Prometheus metrics for multicast publisher block utilization (`doublezero_multicast_publisher_block_total_ips`, `doublezero_multicast_publisher_block_allocated_ips`, `doublezero_multicast_publisher_block_utilization_percent`) — enables Grafana alerting on IP pool exhaustion thresholds
+  - Include tenant name in the Slack notification table when new users are activated
+- SDK (Go)
+  - Add `GetMulticastPublisherBlockResourceExtension()` method to serviceability client for fetching the global multicast publisher IP allocation bitmap
+  - Fix LinkDesiredStatus discriminants (hard-drained=6, soft-drained=7)
+- Onchain Programs
+  - Upgrade programs from system_instruction to solana_system_interface
+  - Refactor user creation to validate all limits (max_users, max_multicast_users, max_unicast_users) before incrementing counters — improves efficiency by avoiding wasted work on validation failures and follows fail-fast best practice
+  - Serviceability: `UnlinkDeviceInterface` now only allows `Activated` or `Pending` interfaces; when an associated link account is provided for an `Activated` interface, the link must be in `Deleting` status
+  - Links and devices can no longer be deleted from `Activated` status — must be drained first; deletion is rejected with `InvalidStatus`
+  - Contributors, locations, multicast groups, and users can now be deleted from any operational status (not just `Activated`); only `Deleting`/`Updating` states are blocked
+  - SDK: `UnlinkDeviceInterfaceCommand` automatically discovers and passes associated link accounts
+  - Serviceability: allow contributors to update prefixes when for IBRL when no users are allocated
+- CLI
+  - `doublezero status` now shows a `Tenant` column (between `User Type` and `Current Device`) with the tenant code associated with the user; empty when no tenant is assigned
+- Client
+  - Fix tunnel overlay address scope to prevent kernel from selecting link-local /31 as source for routed traffic
+  - Serviceability: close orphaned blocks when dz_prefixes shrink
+  - Serviceability: require ip-net for CYOA interfaces
+- E2E / QA Tests
+  - Fix QA unicast test flake caused by RPC 429 rate limiting during concurrent user deletion — treat transient RPC errors as non-fatal in the deletion polling loop
+  - Backward compatibility test: use `--status` instead of `--desired-status` for drain commands; fix version ranges (link drain compatible since v0.7.2, device drain since v0.8.1)
+  - Add daily devnet QA test for device provisioning lifecycle (RFC12) — deletes/recreates device and links, restarts daemons with new pubkey via Ansible
+  - Remove devnet/testnet environment filter from `TestQA_MulticastPublisherMultipleGroups` — test now runs against all environments
+
+## [v0.8.9](https://github.com/malbeclabs/doublezero/compare/client/v0.8.8...client/v0.8.9) – 2026-02-16
+
+### Breaking
+
+- N/A
+
+### Changes
+
+- Activator
+  - Fail to start if any global config network blocks (`device_tunnel_block`, `user_tunnel_block`, `multicastgroup_block`, `multicast_publisher_block`) are unset (0.0.0.0/0)
+  - Fix multicast publisher dz_ip leak in offchain deallocation — IPs from the global publisher pool were never freed on user deletion because the check required non-empty publishers, which the smartcontract already clears before allowing deletion
+- Client
+  - Fix heartbeat sender not restarting after disconnect due to poisoned done channel
+- Onchain Programs
+  - bugfix(serviceability): contributors can now update their interfaces, CYOA interfaces saved on create, physical interfaces remain after unlink ([#2993](https://github.com/malbeclabs/doublezero/pull/2993))
+- Device controller
+  - Reject users with BGP martian DZ IPs (RFC 1918, loopback, multicast, link-local, documentation nets, shared address space, reserved) to prevent invalid addresses from being advertised via BGP or permitted in device ACLs
+- Claude
+  - chore: update CLAUDE.md ([#2999](https://github.com/malbeclabs/doublezero/pull/2999))
+- e2e
+  - e2e: Add network contributor e2e flow tests ([#2997](https://github.com/malbeclabs/doublezero/pull/2997))
+
+## [v0.8.8](https://github.com/malbeclabs/doublezero/compare/client/v0.8.7...client/v0.8.8) – 2026-02-13
+
+### Breaking
+
+- None for this release
+
+### Changes
+
+- Activator
+  - Assign multicast publisher IPs from global pool in serviceability GlobalConfig instead of per-device blocks
+- Client
+  - Add multicast publisher heartbeat sender — sends periodic UDP packets to each multicast group to keep PIM (S,G) mroute state alive on devices
+  - Fix panic in heartbeat sender when concurrent teardown requests race on close
+- E2E tests
+  - Add daily devnet QA test for device provisioning lifecycle (RFC12) — deletes/recreates device and links, restarts daemons with new pubkey via Ansible
+- Serviceability: prevent creating or activating links on interfaces with CYOA or DIA assignments, and prevent setting CYOA/DIA on interfaces that are already linked
+- CLI: add early validation in `link wan-create` and `link dzx-create` to reject interfaces with CYOA or DIA assignments
+
+## [v0.8.7](https://github.com/malbeclabs/doublezero/compare/client/v0.8.6...client/v0.8.7) – 2026-02-10
+
+### Breaking
+
+- None for this release
+
+### Changes
+
+- SDK
+  - Added Tenant to all sdks
+- E2E tests
+  - Added multi-tenancy deletion test coverage
+- Telemetry
+  - Add `doublezero-geoprobe-agent`, intermediary probe server for RFC16
+  - Adds support for per-tenant metro routing policy
+  - Add `--geoprobe-pubkey` flag to `doublezero-geoprobe-agent` for device identity
+  - `LocationOffset` struct now includes `SenderPubkey` to distinguish individual devices that share the same signing authority
+- Cli
+  - Automatic detection of the authorized tenant is added.
+  - The `delete tenant` command allows cascading deletion of users and access passes.
+- Telemetry
+  - extend device telemetry agent to measure RTT to child geoProbes via TWAMP, generate signed LocationOffset structures, and deliver them via UDP as per rfcs/rfc16-geolocation-verification.md
+  - geoprobe-target: example target listener for geolocation verification with TWAMP reflector, UDP offset receiver, signature chain verification, distance calculation logging, and DoS protections (5-reference depth limit and per-source-IP rate limiting) (#2901)
+- Onchain programs
+  - feat(serviceability): add TenantBillingConfig and epoch tracking to UpdatePaymentStatus ([#2922](https://github.com/malbeclabs/doublezero/pull/2922))
+  - feat(smartcontract): add payment_status, token_account fields and UpdatePaymentStatus instruction ([#2880](https://github.com/malbeclabs/doublezero/pull/2880))
+  - fix(smartcontract): correctly ser/deser ops_manager_pk ([#2887](https://github.com/malbeclabs/doublezero/pull/2887))
+  - Serviceability: add metro_routing and route_liveness boolean fields to Tenant for routing configuration
+  - Serviceability: add Tenant account type with immutable code-based PDA derivation, VRF ID, administrator management, and reference counting for safe deletion
+  - Serviceability: add TenantAddAdministrator and TenantRemoveAdministrator instructions for foundation-managed administrator lists
+  - Serviceability: extend UserUpdate instruction to support tenant_pk field updates with automatic reference count management on old and new tenants (backward compatible with old format)
+  - Serviceability: extend UserCloseAccount instruction to decrement tenant reference count when closing user with assigned tenant
+  - Serviceability: add reference count validation in DeleteMulticastGroup to prevent deletion when active publishers or subscribers exist
+  - Serviceability: fix multicast group closeaccount to use InvalidStatus error and remove redundant publisher/subscriber count check
+  - Serviceability: add tenant_allowlist field to AccessPass to restrict which tenants can use specific access passes (backward compatible with existing accounts)
+  - Serviceability: bypass validation for link delete ([#2934](https://github.com/malbeclabs/doublezero/pull/2934))
+  - Serviceability: add per-device unicast and multicast user limits with separate counters and configurable max values ([RFC-14](rfcs/rfc14-per-device-unicast-multicast-user-limits.md))
+  - Fix link device & link updates
+- SDK
+  - Add metro_routing and route_liveness fields to CreateTenantCommand and UpdateTenantCommand
+  - Add CreateTenant, UpdateTenant (vrf_id only), DeleteTenant, GetTenant, and ListTenant commands with support for code or pubkey lookup
+  - Add AddAdministratorTenant and RemoveAdministratorTenant commands for tenant administrator management
+  - UpdateUserCommand extended with tenant_pk field and automatic tenant account resolution for reference counting
+  - SetAccessPassCommand extended with tenant field to specify allowed tenant for access pass
+  - TypeScript SDK updated with tenantAllowlist field in AccessPass interface and deserialization
+- CLI
+  - Fix `multicastgroup update` command to properly parse human-readable bandwidth values (e.g., "1Gbps", "100Mbps") in `--max-bandwidth` flag
+  - Add --metro-route and --route-aliveness flags to tenant create and update commands
+  - Add tenant subcommands (create, update, delete, get, list, add-administrator, remove-administrator) to doublezero and doublezero-admin CLIs
+  - Support simultaneous publisher and subscriber multicast via `--publish` and `--subscribe` flags
+  - Add `--max-unicast-users` and `--max-multicast-users` flags to `device update` command
+  - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
+  - Added activation check for existing users before subscribing to new groups (#2782)
+  - access-pass set: add --tenant argument to specify tenant code for access pass restriction (converts to tenant PDA onchain)
+  - tenant list: improve output formatting with table support and JSON serialization options (--json, --json-compact)
+  - default tenant support added to config
+- SDK
+  - Add read-only Go SDK (`revdist`) for the revenue distribution Solana program, with typed deserialization of all onchain accounts and Rust-generated fixture tests for cross-language compatibility
+  - Add `revdist-cli` tool for inspecting onchain revenue distribution state
+  - Add Python and TypeScript SDKs for serviceability, telemetry, and revdist programs with typed deserialization, RPC clients, PDA derivation, enum string types, and cross-language fixture tests
+  - Add shared `borsh-incremental` library (Go, Python, TypeScript) for cursor-based Borsh deserialization with backward-compatible trailing field defaults
+  - Add npm and PyPI publish workflows for serviceability and telemetry SDKs
+  - DeleteUserCommand updated to wait for activator to process multicast user unsubscribe before deleting the user
+- Device controller
+  - Record successful GetConfig gRPC calls to ClickHouse for device telemetry tracking
+  - Multi-tenancy vrf support added
+  - Skip isis and pim config for CYOA/DIA tagged interfaces
+- Onchain programs
+  - Enforce that `CloseAccessPass` only closes AccessPass accounts when `connection_count == 0`, preventing closure while active connections are present.
+- Monitor
+  - Add sol-balance watcher to track SOL balances for configured accounts and export Prometheus metrics for alerting
+- Client
+  - Support simultaneous publisher and subscriber multicast in the daemon
+- Telemetry
+  - Add consecutive-loss-based sender eviction to the telemetry collector so broken TWAMP senders are recreated quickly instead of persisting until TTL expiry (`--max-consecutive-sender-losses`, default 30)
+- E2E tests
+  - e2e: add multi-tenancy VRF isolation test ([#2891](https://github.com/malbeclabs/doublezero/pull/2891))
+  - Add backward compatibility test that validates older CLI versions against the current onchain program by cloning live state from testnet and mainnet-beta
+  - QA multicast tests: add diagnostic dumps on failure (status, routes, latency, multicast reports, onchain user/device state), cleanup stale test groups at test start, and fix disconnect blocking on stuck daemon status
+
+## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
 
 ### Breaking
 
@@ -23,12 +248,113 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - Remove log noise on resolve route
+  - `doublezero resource verify` command added to verify onchain resources
+  - Enhance delete multicast group command to cascade into deleting AP entry (#2754)
 - Onchain programs
-   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
+  - Deprecated the user suspend status, as it is no longer used.
+  - Serviceability: enforce that CloseAccountUser instructions verify the target user has no multicast publishers or subscribers (both `publishers` and `subscribers` are empty) before closing, and add regression coverage for this behavior.
+  - Enhance access pass functionality with new Solana-specific types
+  - fix default desired status
+- Telemetry
+  - Fix goroutine leak in TWAMP sender — `cleanUpReceived` goroutines now exit on `Close()` instead of living until process shutdown
+- Client
+  - Cache network interface index/name lookups in liveness UDP service to fix high CPU usage caused by per-packet RTM_GETLINK netlink dumps
+  - Add observability to BGP handleUpdate: log withdrawal/NLRI counts per batch and track processing duration via `doublezero_bgp_handle_update_duration_seconds` histogram
+- E2E tests
+  - The QA alldevices test now skips devices that are not calling the controller
+  - e2e: Expand RFC11 end-to-end testing ([#2801](https://github.com/malbeclabs/doublezero/pull/2801))
+  - e2e(RFC11): add dz prefix rollover allocation test ([#2820](https://github.com/malbeclabs/doublezero/pull/2820))
+
+## [v0.8.5](https://github.com/malbeclabs/doublezero/compare/client/v0.8.4...client/v0.8.5) – 2026-02-02
+
+### Breaking
+
+- None for this release
+
+### Changes
+
+- Smartcontract
+  - fix(smartcontract): reserve first IP of DzPrefixBlock for device ([#2753](https://github.com/malbeclabs/doublezero/pull/2753))
+- Client
+  - Fix race in bgp status handling on peer deletion
+
+## [v0.8.4](https://github.com/malbeclabs/doublezero/compare/client/v0.8.3...client/v0.8.4) – 2026-01-28
+
+### Breaking
+
+- None for this release
+
+### Changes
+
+- Telemetry
+  - Force IPv4-only connections for gNMI tunnel client and fix TLS credential handling
+- Client
+  - Support simultaneous unicast and multicast tunnels in doublezerod
+  - Support publishing and subscribing to multiple multicast groups simultaneously
+- CLI
+  - Support publishing and subscribing a user to multiple multicast groups via `--group` flag
+  - Remove single tunnel constraint
+- SDK
+  - Go SDK can now perform batch writes to device.health and link.health as per rfc12
+- Activator
+  - fix(activator): add on-chain allocation support for users ([#2744](https://github.com/malbeclabs/doublezero/pull/2744))
+  - On-chain allocation enabled
+- Smartcontract
+  - feat(smartcontract): add use_onchain_deallocation flag to MulticastGroup ([#2748](https://github.com/malbeclabs/doublezero/pull/2748))
+- CLI
+  - Remove restriction for a single tunnel per user; now a user can have a unicast and multicast tunnel concurrently (but can only be a publisher _or_ a subscriber) ([2728](https://github.com/malbeclabs/doublezero/pull/2728))
+
+## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
+
+- Data
+  - Add indexer that syncs serviceability and telemetry data to ClickHouse and Neo4J
+
+### Breaking
+
+- None for this release
+
+### Changes
+
+- CLI
+  - Remove log noise on resolve route
+  - Add `global-config qa-allowlist` commands to manage QA identity allowlist to bypass status and max_users checks in QA
+  - Add "-skip-capacity-check" flag to bypass status and max_users checks in QA to test devices that are still being provisioned
+  - Remove "unknown" status from doublezero status command and implement "failed" and "unreachable" statuses
+- Client
+  - Enable route liveness passive-mode by default
+  - Add `make install` make target. To build and deploy from source, users can now run `cd client && make build && make install` to install the doublezero and doublezerod binaries and the doublezerod systemd unit.
+- Onchain programs
+  - Serviceability: remove validation check for interface delete ([#2707](https://github.com/malbeclabs/doublezero/pull/2707))
+  - Serviceability: interface-cyoa only on physical interfaces, don't require interfaces to be tagged, add same validation logic to update interface ([#2700](https://github.com/malbeclabs/doublezero/pull/2700))
+  - Enforce Activated status check before suspending contributor, exchange, location, and multicastgroup accounts
+  - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
+  - Deprecated the user suspend status, as it is no longer used.
+  - Serviceability: enforce that CloseAccountUser instructions verify the target user has no multicast publishers or subscribers (both `publishers` and `subscribers` are empty) before closing, and add regression coverage for this behavior.
+  - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - SetGlobalConfig, ActivateDevice, UpdateDevice and CloseAccountDevice instructions updated to manage resource accounts.
+  - Add option for Contributor B to reject a link created by Contributor A just as Contributor A can cancel its own created link
+- Telemetry
+  - Add gNMI tunnel client for state collection
+- Activator
+  - fix(activator): ip_to_index fn honors ip range #2658
+- E2E tests
+  - Add influxdb, prometheus, and device-health-oracle containers
+  - Add interface lifecycle tests ([#2700](https://github.com/malbeclabs/doublezero/pull/2700))
+  - Only fail QA alldevices test run if device status is "Activated" and max users > 0
+- SDK
+  - Commands for setting global config, activating devices, updating devices, and closing device accounts now manage resource accounts.
+  - Serviceability: return error when GetProgramAccounts returns empty result instead of silently returning empty data
+- Smartcontract
+  - feat(smartcontract): RFC 11 activation for User entity
+  - feat(smartcontract): RFC 11 add on-chain resource allocation for Link
 - Device Health Oracle
   - Add new device-health-oracle component. See rfcs/rfc12-network-provisioning.md for details.
-- Client
-  - Add `make install` make target. To build and deploy from source, users can now run `cd client && make build && make install` to install the doublezero and doublezerod binaries and the doublezerod systemd unit.
+  - Calculate burn-in timestamp based from slot numbers (current minus 200_000 slots for provisioning, current minus 5_000 slots for maintenance)
+- CI
+  - Add separate apt repo for doublezero-testnet
 
 ## [v0.8.2](https://github.com/malbeclabs/doublezero/compare/client/v0.8.1...client/v0.8.2) – 2025-01-13
 
@@ -42,6 +368,7 @@ All notable changes to this project will be documented in this file.
   - Always delegate RouteAdd regardless of noUninstall flag
 - Telemetry
   - Include solana vote pubkey in global monitor metrics
+  - Run telemetry agent on pending and drained links
 
 ## [v0.8.1](https://github.com/malbeclabs/doublezero/compare/client/v0.8.0...client/v0.8.1) – 2025-01-12
 
@@ -85,12 +412,13 @@ All notable changes to this project will be documented in this file.
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle
-- Link & device Latency Telemetry 
+- Link & device Latency Telemetry
   - Telemetry data can now be received while entities are in provisioning and draining states.
 - Device controller
   - Add histogram metric for GetConfig request duration
   - Add gRPC middleware for prometheus metrics
   - Add device status label to controller_grpc_getconfig_requests_total metric
+  - Add logic to shutdown user BGP, IBGP sessions, MSDP neighbors, and ISIS when device.status is drained
 - Device agents
   - Increase default controller request timeout in config agent
   - Initial state collect in telemetry agent

@@ -4,7 +4,8 @@ use crate::{
         accesspass::AccessPass, accounttype::AccountType, contributor::Contributor, device::Device,
         exchange::Exchange, globalconfig::GlobalConfig, globalstate::GlobalState, link::Link,
         location::Location, multicastgroup::MulticastGroup, programconfig::ProgramConfig,
-        resource_extension::ResourceExtensionOwned, user::User,
+        reservation::Reservation, resource_extension::ResourceExtensionOwned, tenant::Tenant,
+        user::User,
     },
 };
 use solana_program::program_error::ProgramError;
@@ -26,6 +27,8 @@ pub enum AccountData {
     Contributor(Contributor),
     AccessPass(AccessPass),
     ResourceExtension(ResourceExtensionOwned),
+    Tenant(Tenant),
+    Reservation(Reservation),
 }
 
 impl AccountData {
@@ -44,6 +47,8 @@ impl AccountData {
             AccountData::Contributor(_) => "Contributor",
             AccountData::AccessPass(_) => "AccessPass",
             AccountData::ResourceExtension(_) => "ResourceExtension",
+            AccountData::Tenant(_) => "Tenant",
+            AccountData::Reservation(_) => "Reservation",
         }
     }
 
@@ -62,6 +67,8 @@ impl AccountData {
             AccountData::Contributor(contributor) => contributor.to_string(),
             AccountData::AccessPass(access_pass) => access_pass.to_string(),
             AccountData::ResourceExtension(resource_extension) => resource_extension.to_string(),
+            AccountData::Tenant(tenant) => tenant.to_string(),
+            AccountData::Reservation(reservation) => reservation.to_string(),
         }
     }
 
@@ -160,6 +167,14 @@ impl AccountData {
             Err(DoubleZeroError::InvalidAccountType)
         }
     }
+
+    pub fn get_tenant(&self) -> Result<Tenant, DoubleZeroError> {
+        if let AccountData::Tenant(tenant) = self {
+            Ok(tenant.clone())
+        } else {
+            Err(DoubleZeroError::InvalidAccountType)
+        }
+    }
 }
 
 impl TryFrom<&[u8]> for AccountData {
@@ -197,6 +212,10 @@ impl TryFrom<&[u8]> for AccountData {
             AccountType::ResourceExtension => Ok(AccountData::ResourceExtension(
                 ResourceExtensionOwned::try_from(bytes)?,
             )),
+            AccountType::Tenant => Ok(AccountData::Tenant(Tenant::try_from(bytes as &[u8])?)),
+            AccountType::Reservation => Ok(AccountData::Reservation(Reservation::try_from(
+                bytes as &[u8],
+            )?)),
         }
     }
 }

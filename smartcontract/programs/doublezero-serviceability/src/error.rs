@@ -1,6 +1,7 @@
 use solana_program::program_error::ProgramError;
 use thiserror::Error;
 
+#[cfg_attr(test, derive(strum_macros::EnumIter))]
 #[derive(Debug, Error, PartialEq, Clone)]
 pub enum DoubleZeroError {
     #[error("Custom program error: {0:#x}")]
@@ -50,7 +51,7 @@ pub enum DoubleZeroError {
     #[error("Unauthorized")]
     Unauthorized, // variant 22
     #[error("Invalid Solana Validator Pubkey")]
-    InvalidSolanaValidatorPubkey, // variant 23
+    InvalidSolanaPubkey, // variant 23
     #[error("InterfaceNotFound")]
     InterfaceNotFound, // variant 24
     #[error("Invalid Access Pass")]
@@ -139,6 +140,40 @@ pub enum DoubleZeroError {
     InvalidFoundationAllowlist, // variant 66
     #[error("Deprecated error")]
     Deprecated, // variant 67
+    #[error("Immutable Field")]
+    ImmutableField, // variant 68
+    #[error("CYOA can only be set on physical interfaces")]
+    CyoaRequiresPhysical, // variant 69
+    #[error("Device can only be removed if it has no interfaces")]
+    DeviceHasInterfaces, // variant 70
+    #[error("MulticastGroup can only be deleted if it has no active publishers or subscribers")]
+    MulticastGroupNotEmpty, // variant 71
+    #[error("Access Pass is in use (non-zero connection_count)")]
+    AccessPassInUse, // variant 72
+    #[error("You are trying to assign a Pubkey that does not correspond to a Tenant")]
+    InvalidTenantPubkey, // variant 73
+    #[error("Invalid VRF ID")]
+    InvalidVrfId, // variant 74
+    #[error("VRF ID too long")]
+    VrfIdTooLong, // variant 75
+    #[error("Administrator already exists")]
+    AdministratorAlreadyExists, // variant 76
+    #[error("Administrator not found")]
+    AdministratorNotFound, // variant 77
+    #[error("Invalid Payment Status")]
+    InvalidPaymentStatus, // variant 78
+    #[error("Tenant not in access-pass tenant_allowlist")]
+    TenantNotInAccessPassAllowlist, // variant 79
+    #[error("Invalid Tunnel Endpoint")]
+    InvalidTunnelEndpoint, // variant 80
+    #[error("Max unicast users exceeded")]
+    MaxUnicastUsersExceeded, // variant 81
+    #[error("Max multicast users exceeded")]
+    MaxMulticastUsersExceeded, // variant 82
+    #[error("Interface cannot have both a link and a CYOA or DIA assignment")]
+    InterfaceHasEdgeAssignment, // variant 83
+    #[error("Feature not enabled")]
+    FeatureNotEnabled, // variant 84
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -167,7 +202,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::MaxUsersExceeded => ProgramError::Custom(20),
             DoubleZeroError::InvalidLastAccessEpoch => ProgramError::Custom(21),
             DoubleZeroError::Unauthorized => ProgramError::Custom(22),
-            DoubleZeroError::InvalidSolanaValidatorPubkey => ProgramError::Custom(23),
+            DoubleZeroError::InvalidSolanaPubkey => ProgramError::Custom(23),
             DoubleZeroError::InterfaceNotFound => ProgramError::Custom(24),
             DoubleZeroError::AccessPassUnauthorized => ProgramError::Custom(25),
             DoubleZeroError::InvalidClientIp => ProgramError::Custom(26),
@@ -212,6 +247,23 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidArgument => ProgramError::Custom(65),
             DoubleZeroError::InvalidFoundationAllowlist => ProgramError::Custom(66),
             DoubleZeroError::Deprecated => ProgramError::Custom(67),
+            DoubleZeroError::ImmutableField => ProgramError::Custom(68),
+            DoubleZeroError::CyoaRequiresPhysical => ProgramError::Custom(69),
+            DoubleZeroError::DeviceHasInterfaces => ProgramError::Custom(70),
+            DoubleZeroError::MulticastGroupNotEmpty => ProgramError::Custom(71),
+            DoubleZeroError::AccessPassInUse => ProgramError::Custom(72),
+            DoubleZeroError::InvalidTenantPubkey => ProgramError::Custom(73),
+            DoubleZeroError::InvalidVrfId => ProgramError::Custom(74),
+            DoubleZeroError::VrfIdTooLong => ProgramError::Custom(75),
+            DoubleZeroError::AdministratorAlreadyExists => ProgramError::Custom(76),
+            DoubleZeroError::AdministratorNotFound => ProgramError::Custom(77),
+            DoubleZeroError::InvalidPaymentStatus => ProgramError::Custom(78),
+            DoubleZeroError::TenantNotInAccessPassAllowlist => ProgramError::Custom(79),
+            DoubleZeroError::InvalidTunnelEndpoint => ProgramError::Custom(80),
+            DoubleZeroError::MaxUnicastUsersExceeded => ProgramError::Custom(81),
+            DoubleZeroError::MaxMulticastUsersExceeded => ProgramError::Custom(82),
+            DoubleZeroError::InterfaceHasEdgeAssignment => ProgramError::Custom(83),
+            DoubleZeroError::FeatureNotEnabled => ProgramError::Custom(84),
         }
     }
 }
@@ -241,7 +293,7 @@ impl From<u32> for DoubleZeroError {
             20 => DoubleZeroError::MaxUsersExceeded,
             21 => DoubleZeroError::InvalidLastAccessEpoch,
             22 => DoubleZeroError::Unauthorized,
-            23 => DoubleZeroError::InvalidSolanaValidatorPubkey,
+            23 => DoubleZeroError::InvalidSolanaPubkey,
             24 => DoubleZeroError::InterfaceNotFound,
             25 => DoubleZeroError::AccessPassUnauthorized,
             26 => DoubleZeroError::InvalidClientIp,
@@ -286,6 +338,23 @@ impl From<u32> for DoubleZeroError {
             65 => DoubleZeroError::InvalidArgument,
             66 => DoubleZeroError::InvalidFoundationAllowlist,
             67 => DoubleZeroError::Deprecated,
+            68 => DoubleZeroError::ImmutableField,
+            69 => DoubleZeroError::CyoaRequiresPhysical,
+            70 => DoubleZeroError::DeviceHasInterfaces,
+            71 => DoubleZeroError::MulticastGroupNotEmpty,
+            72 => DoubleZeroError::AccessPassInUse,
+            73 => DoubleZeroError::InvalidTenantPubkey,
+            74 => DoubleZeroError::InvalidVrfId,
+            75 => DoubleZeroError::VrfIdTooLong,
+            76 => DoubleZeroError::AdministratorAlreadyExists,
+            77 => DoubleZeroError::AdministratorNotFound,
+            78 => DoubleZeroError::InvalidPaymentStatus,
+            79 => DoubleZeroError::TenantNotInAccessPassAllowlist,
+            80 => DoubleZeroError::InvalidTunnelEndpoint,
+            81 => DoubleZeroError::MaxUnicastUsersExceeded,
+            82 => DoubleZeroError::MaxMulticastUsersExceeded,
+            83 => DoubleZeroError::InterfaceHasEdgeAssignment,
+            84 => DoubleZeroError::FeatureNotEnabled,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -307,84 +376,26 @@ pub trait Validate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use strum::IntoEnumIterator;
 
     #[test]
     fn test_error_enum_conversions() {
-        use DoubleZeroError::*;
-        let variants = vec![
-            Custom(123),
-            InvalidOwnerPubkey,
-            InvalidExchangePubkey,
-            InvalidDevicePubkey,
-            InvalidLocationPubkey,
-            InvalidDeviceAPubkey,
-            InvalidDeviceZPubkey,
-            InvalidStatus,
-            NotAllowed,
-            InvalidAccountType,
-            InvalidContributorPubkey,
-            InvalidInterfaceVersion,
-            InvalidInterfaceName,
-            ReferenceCountNotZero,
-            InvalidContributor,
-            InvalidInterfaceZForExternal,
-            InvalidIndex,
-            DeviceAlreadySet,
-            DeviceNotSet,
-            InvalidAccountCode,
-            MaxUsersExceeded,
-            InvalidLastAccessEpoch,
-            Unauthorized,
-            InvalidSolanaValidatorPubkey,
-            InterfaceNotFound,
-            AccessPassUnauthorized,
-            InvalidClientIp,
-            InvalidDzIp,
-            InvalidTunnelNet,
-            InvalidTunnelId,
-            InvalidTunnelIp,
-            InvalidBandwidth,
-            InvalidDelay,
-            InvalidJitter,
-            CodeTooLong,
-            NoDzPrefixes,
-            InvalidLocation,
-            InvalidExchange,
-            InvalidDzPrefix,
-            NameTooLong,
-            InvalidLatitude,
-            InvalidLongitude,
-            InvalidLocId,
-            InvalidCountryCode,
-            InvalidLocalAsn,
-            InvalidRemoteAsn,
-            InvalidMtu,
-            InvalidInterfaceIp,
-            InvalidInterfaceIpNet,
-            InvalidVlanId,
-            InvalidMaxBandwidth,
-            InvalidMulticastIp,
-            InvalidAccountOwner,
-            AccessPassNotFound,
-            UserAccountNotFound,
-            InvalidBgpCommunity,
-            InterfaceAlreadyExists,
-            InvalidInterfaceType,
-            InvalidLoopbackType,
-            InvalidMinCompatibleVersion,
-            InvalidActualLocation,
-            InvalidUserPubkey,
-            InvalidPublicIp,
-            AllocationFailed,
-            SerializationFailure,
-            InvalidArgument,
-            InvalidFoundationAllowlist,
-            Deprecated,
-        ];
-        for err in variants {
+        // Using EnumIter ensures all variants are tested - if a new variant is added
+        // to the enum, this test will automatically include it.
+        for err in DoubleZeroError::iter() {
             let pe: ProgramError = err.clone().into();
             let err2: DoubleZeroError = pe.into();
             assert_eq!(err, err2, "Error conversion failed for {err:?}");
+        }
+
+        // EnumIter generates Custom(0) by default, so we explicitly test values
+        // outside the known variant range (currently 0-72) to ensure the conversion
+        // logic handles arbitrary custom codes correctly.
+        for code in [100u32, 1000, u32::MAX] {
+            let err = DoubleZeroError::Custom(code);
+            let pe: ProgramError = err.clone().into();
+            let err2: DoubleZeroError = pe.into();
+            assert_eq!(err, err2, "Error conversion failed for Custom({code})");
         }
     }
 }

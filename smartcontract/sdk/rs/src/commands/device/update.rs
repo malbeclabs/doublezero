@@ -1,11 +1,16 @@
 use crate::{
-    commands::{device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand},
+    commands::{
+        device::get::GetDeviceCommand, globalconfig::get::GetGlobalConfigCommand,
+        globalstate::get::GetGlobalStateCommand,
+    },
     DoubleZeroClient,
 };
 use doublezero_program_common::{types::NetworkV4List, validate_account_code};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
+    pda::get_resource_extension_pda,
     processors::device::update::DeviceUpdateArgs,
+    resource::ResourceType,
     state::{
         device::{DeviceDesiredStatus, DeviceStatus, DeviceType},
         interface::Interface,
@@ -29,6 +34,9 @@ pub struct UpdateDeviceCommand {
     pub users_count: Option<u16>,
     pub status: Option<DeviceStatus>,
     pub desired_status: Option<DeviceDesiredStatus>,
+    pub reference_count: Option<u32>,
+    pub max_unicast_users: Option<u16>,
+    pub max_multicast_users: Option<u16>,
 }
 
 impl UpdateDeviceCommand {
@@ -43,11 +51,34 @@ impl UpdateDeviceCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (_, device) = GetDeviceCommand {
+        let (globalconfig_pubkey, _globalconfig) = GetGlobalConfigCommand
+            .execute(client)
+            .map_err(|_err| eyre::eyre!("Globalconfig not initialized"))?;
+
+        let (device_pubkey, device) = GetDeviceCommand {
             pubkey_or_code: self.pubkey.to_string(),
         }
         .execute(client)
         .map_err(|_err| eyre::eyre!("Device not found"))?;
+
+        let mut extra_accounts = vec![];
+        let mut resource_count = 0;
+        if let Some(dz_prefixes) = &self.dz_prefixes {
+            extra_accounts.push(AccountMeta::new(globalconfig_pubkey, false));
+            let old_count = device.dz_prefixes.len();
+            let new_count = dz_prefixes.len();
+            let max_count = old_count.max(new_count);
+            for idx in 0..max_count + 1 {
+                let resource_type = match idx {
+                    0 => ResourceType::TunnelIds(device_pubkey, 0),
+                    _ => ResourceType::DzPrefixBlock(device_pubkey, idx - 1),
+                };
+                let (pda, _, _) =
+                    get_resource_extension_pda(&client.get_program_id(), resource_type);
+                extra_accounts.push(AccountMeta::new(pda, false));
+            }
+            resource_count += max_count + 1;
+        }
 
         client.execute_transaction(
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
@@ -62,14 +93,22 @@ impl UpdateDeviceCommand {
                 users_count: self.users_count,
                 status: self.status,
                 desired_status: self.desired_status,
+                resource_count,
+                reference_count: self.reference_count,
+                max_unicast_users: self.max_unicast_users,
+                max_multicast_users: self.max_multicast_users,
             }),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(device.contributor_pk, false),
-                AccountMeta::new(device.location_pk, false),
-                AccountMeta::new(self.location_pk.unwrap_or(device.location_pk), false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
+            [
+                vec![
+                    AccountMeta::new(self.pubkey, false),
+                    AccountMeta::new(device.contributor_pk, false),
+                    AccountMeta::new(device.location_pk, false),
+                    AccountMeta::new(self.location_pk.unwrap_or(device.location_pk), false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                ],
+                extra_accounts,
+            ]
+            .concat(),
         )
     }
 }
@@ -82,12 +121,13 @@ mod tests {
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::get_contributor_pda,
+        pda::{get_contributor_pda, get_globalconfig_pda},
         processors::device::update::DeviceUpdateArgs,
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
             device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
+            globalconfig::GlobalConfig,
         },
     };
     use mockall::predicate;
@@ -98,6 +138,7 @@ mod tests {
         let mut client = create_test_client();
 
         let (pda_pubkey, _) = get_contributor_pda(&client.get_program_id(), 1);
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
 
         let device_pubkey = Pubkey::new_unique();
         let device = Device {
@@ -121,7 +162,30 @@ mod tests {
             users_count: 0,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
+            reserved_seats: 0,
         };
+
+        client
+            .expect_get()
+            .with(predicate::eq(globalconfig_pubkey))
+            .returning(move |_| {
+                Ok(AccountData::GlobalConfig(GlobalConfig {
+                    account_type: AccountType::GlobalConfig,
+                    owner: Pubkey::default(),
+                    bump_seed: 0,
+                    local_asn: 0,
+                    remote_asn: 0,
+                    device_tunnel_block: "1.0.0.0/24".parse().unwrap(),
+                    user_tunnel_block: "2.0.0.0/24".parse().unwrap(),
+                    multicastgroup_block: "224.0.0.0/24".parse().unwrap(),
+                    multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
+                    next_bgp_community: 0,
+                }))
+            });
 
         client
             .expect_get()
@@ -142,6 +206,10 @@ mod tests {
                     users_count: None,
                     status: None,
                     desired_status: None,
+                    resource_count: 2,
+                    reference_count: None,
+                    max_unicast_users: None,
+                    max_multicast_users: None,
                 })),
                 predicate::always(),
             )
@@ -161,6 +229,9 @@ mod tests {
             users_count: None,
             status: None,
             desired_status: None,
+            reference_count: None,
+            max_unicast_users: None,
+            max_multicast_users: None,
         };
 
         let update_invalid = UpdateDeviceCommand {

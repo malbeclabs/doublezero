@@ -52,7 +52,7 @@ pub fn process_delete_contributor(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
     assert!(
@@ -61,7 +61,7 @@ pub fn process_delete_contributor(
     );
     assert_eq!(
         *system_program.unsigned_key(),
-        solana_program::system_program::id(),
+        solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
 
@@ -72,9 +72,10 @@ pub fn process_delete_contributor(
     }
 
     let contributor = Contributor::try_from(contributor_account)?;
-    if contributor.status != ContributorStatus::Activated {
+    if matches!(contributor.status, ContributorStatus::Deleting) {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
+
     if contributor.reference_count > 0 {
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }

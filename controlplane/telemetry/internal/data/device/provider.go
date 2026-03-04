@@ -12,9 +12,9 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/stats"
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/epoch"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	"github.com/malbeclabs/doublezero/tools/solana/pkg/epoch"
 )
 
 const (

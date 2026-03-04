@@ -13,7 +13,10 @@ RUN mkdir -p /opt/solana/bin && \
     mv /root/.local/share/solana/install/active_release/bin/* /opt/solana/bin/
 ENV PATH="/opt/solana/bin:${PATH}"
 
-# Force COPY in later stages to always copy the binaries, even if they appear to be the same.
+# CACHE_BUSTER should be passed as a build arg with a changing value (e.g. timestamp)
+# to force Docker to re-run build commands, allowing cargo/go to do proper incremental
+# compilation. Without this, switching branches can result in stale cached artifacts.
+# It also forces COPY in later stages to always copy the binaries.
 ARG CACHE_BUSTER=1
 RUN echo "$CACHE_BUSTER" > /opt/solana/bin/.cache-buster && \
     find /opt/solana/bin -type f -exec touch {} +
@@ -69,9 +72,14 @@ ENV CARGO_INCREMENTAL=0
 WORKDIR /doublezero
 COPY . .
 
+# Hash of Cargo.lock for cache isolation. When dependencies change, we get a fresh
+# cache instead of reusing potentially stale compiled artifacts that cause
+# "two different versions of crate" errors.
+ARG CARGO_LOCK_HASH=default
+
 # Pre-fetch and cache rust dependencies
-RUN --mount=type=cache,target=/cargo \
-    --mount=type=cache,target=/target \
+RUN --mount=type=cache,id=cargo-${CARGO_LOCK_HASH},target=/cargo \
+    --mount=type=cache,id=target-${CARGO_LOCK_HASH},target=/target \
     cargo fetch
 
 # Set up a binaries directory
@@ -79,12 +87,13 @@ ENV BIN_DIR=/doublezero/bin
 RUN mkdir -p ${BIN_DIR}
 
 # Build all rust components except the Solana program
-RUN --mount=type=cache,target=/cargo \
-    --mount=type=cache,target=/target \
+RUN --mount=type=cache,id=cargo-${CARGO_LOCK_HASH},target=/cargo \
+    --mount=type=cache,id=target-${CARGO_LOCK_HASH},target=/target \
     RUSTFLAGS="-C link-arg=-fuse-ld=mold" cargo build --workspace --release --exclude doublezero-serviceability --exclude doublezero-telemetry && \
     cp /target/release/doublezero ${BIN_DIR}/ && \
     cp /target/release/doublezero-activator ${BIN_DIR}/ && \
-    cp /target/release/doublezero-admin ${BIN_DIR}/
+    cp /target/release/doublezero-admin ${BIN_DIR}/ && \
+    cp /target/release/fork-accounts ${BIN_DIR}/
 
 # Force COPY in later stages to always copy the binaries, even if they appear to be the same.
 ARG CACHE_BUSTER=1
@@ -99,6 +108,15 @@ RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \
 # -----------------------------------------------------------------------------
 FROM builder-base AS builder-rust-sbf
 
+# Solana version for cache isolation. Cache mounts are keyed by SOLANA_VERSION so that
+# when the Solana SDK version changes, we get a fresh cache instead of using potentially
+# corrupted or incompatible cached platform-tools. This must match SOLANA_VERSION in the
+# solana stage above.
+ARG SOLANA_VERSION=2.3.13
+
+# Hash of Cargo.lock for cache isolation (same as builder-rust stage).
+ARG CARGO_LOCK_HASH=default
+
 # Set cargo environment variables for build caching
 ENV CARGO_HOME=/cargo-sbf
 ENV CARGO_TARGET_DIR=/target-sbf
@@ -108,15 +126,15 @@ WORKDIR /doublezero
 COPY . .
 
 # Pre-fetch and cache rust dependencies
-RUN --mount=type=cache,target=/cargo-sbf \
-    --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana \
+RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
+    --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
+    --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-serviceability && \
     cargo fetch
 
-RUN --mount=type=cache,target=/cargo-sbf \
-    --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana \
+RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
+    --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
+    --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-telemetry && \
     cargo fetch
 
@@ -124,18 +142,30 @@ RUN --mount=type=cache,target=/cargo-sbf \
 ENV BIN_DIR=/doublezero/bin
 RUN mkdir -p ${BIN_DIR}
 
+# Validate that the cached platform-tools installation is intact. If a previous build was
+# interrupted during the platform-tools download/extraction, the cache can contain a
+# partially extracted directory where rust/lib is not a valid directory. Removing the
+# corrupted directory allows cargo build-sbf to re-download platform-tools cleanly.
+RUN --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
+    for pt_dir in /root/.cache/solana/*/platform-tools; do \
+        if [ -e "$pt_dir" ] && [ ! -d "$pt_dir/rust/lib" ]; then \
+            echo "Removing corrupted platform-tools cache: $pt_dir"; \
+            rm -rf "$pt_dir"; \
+        fi; \
+    done
+
 # Build the Solana programs with build-sbf (rust)
 # Note that we don't use mold here.
-RUN --mount=type=cache,target=/cargo-sbf \
-    --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana \
+RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
+    --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
+    --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-serviceability && \
     cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_serviceability.so ${BIN_DIR}/doublezero_serviceability.so
 
-RUN --mount=type=cache,target=/cargo-sbf \
-    --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana \
+RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
+    --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
+    --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-telemetry && \
     cargo build-sbf --features localnet && \
     cp /target-sbf/deploy/doublezero_telemetry.so ${BIN_DIR}/doublezero_telemetry.so
@@ -177,6 +207,16 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go build -o ${BIN_DIR}/doublezero-funder controlplane/funder/cmd/funder/main.go
+
+# Build the device-health-oracle (golang)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -o ${BIN_DIR}/device-health-oracle controlplane/device-health-oracle/cmd/device-health-oracle/main.go
+
+# Build the QA agent (golang)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -o ${BIN_DIR}/doublezero-qaagent ./e2e/cmd/qaagent/
 
 # Force COPY in later stages to always copy the binaries, even if they appear to be the same.
 ARG CACHE_BUSTER=1

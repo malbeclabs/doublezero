@@ -17,6 +17,7 @@ use doublezero_serviceability::{
         location::create::*,
         user::{activate::*, create::*},
     },
+    resource::ResourceType,
     state::{
         accesspass::{AccessPassStatus, AccessPassType},
         accounttype::AccountType,
@@ -30,6 +31,7 @@ use doublezero_serviceability::{
 };
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
+use std::net::Ipv4Addr;
 
 mod test_helpers;
 use test_helpers::*;
@@ -60,6 +62,18 @@ async fn test_doublezero_program() {
 
     /***********************************************************************************************************************************/
     let (globalconfig_pubkey, _globalconfig_bump_seed) = get_globalconfig_pda(&program_id);
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     execute_transaction(
         &mut banks_client,
@@ -70,12 +84,20 @@ async fn test_doublezero_program() {
             remote_asn: 65001,
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
-            multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
+            multicastgroup_block: "224.0.0.0/16".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
             next_bgp_community: None,
         }),
         vec![
             AccountMeta::new(globalconfig_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
     )
@@ -489,14 +511,24 @@ async fn test_doublezero_program() {
         .unwrap();
     assert_eq!(device_la.max_users, 128);
 
+    let (tunnel_ids_ny_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_ny_pubkey, 0));
+    let (dz_prefix_ny_pda, _, _) = get_resource_extension_pda(
+        &program_id,
+        ResourceType::DzPrefixBlock(device_ny_pubkey, 0),
+    );
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
+        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
         vec![
             AccountMeta::new(device_ny_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_ny_pda, false),
+            AccountMeta::new(dz_prefix_ny_pda, false),
         ],
         &payer,
     )
@@ -513,14 +545,24 @@ async fn test_doublezero_program() {
         device_ny.index
     );
 
+    let (tunnel_ids_la_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_la_pubkey, 0));
+    let (dz_prefix_la_pda, _, _) = get_resource_extension_pda(
+        &program_id,
+        ResourceType::DzPrefixBlock(device_la_pubkey, 0),
+    );
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
+        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
         vec![
             AccountMeta::new(device_la_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_la_pda, false),
+            AccountMeta::new(dz_prefix_la_pda, false),
         ],
         &payer,
     )
@@ -643,6 +685,7 @@ async fn test_doublezero_program() {
     let tunnel_activate: LinkActivateArgs = LinkActivateArgs {
         tunnel_id: 1,
         tunnel_net,
+        use_onchain_allocation: false,
     };
 
     execute_transaction(
@@ -746,6 +789,8 @@ async fn test_doublezero_program() {
         user_type: UserType::IBRL,
         cyoa_type: UserCYOA::GREOverDIA,
         client_ip: user_ip,
+        tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        dz_prefix_count: 0,
     };
 
     println!("Testing User1 initialization...");
@@ -784,6 +829,8 @@ async fn test_doublezero_program() {
         tunnel_id: 1,
         tunnel_net,
         dz_ip,
+        dz_prefix_count: 0, // legacy path - no ResourceExtension accounts
+        tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
     };
 
     println!("Testing User1 activation...");

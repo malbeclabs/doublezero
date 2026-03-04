@@ -14,7 +14,8 @@ use crate::cli::{
     device::{DeviceCommands, InterfaceCommands},
     exchange::ExchangeCommands,
     globalconfig::{
-        AirdropCommands, AuthorityCommands, FoundationAllowlistCommands, GlobalConfigCommands,
+        AirdropCommands, AuthorityCommands, FeatureFlagsCommands, FoundationAllowlistCommands,
+        GlobalConfigCommands, QaAllowlistCommands,
     },
     link::LinkCommands,
     location::LocationCommands,
@@ -91,6 +92,8 @@ async fn main() -> eyre::Result<()> {
     // Skip version check for Status command to allow checking status of services when the program is running
     if !app.no_version_warning
         && !matches!(app.command, Command::Status(_))
+        && !matches!(app.command, Command::Enable(_))
+        && !matches!(app.command, Command::Disable(_))
         && !matches!(app.command, Command::Address(_))
         && !matches!(app.command, Command::Balance(_))
         && !matches!(app.command, Command::Export(_))
@@ -105,6 +108,8 @@ async fn main() -> eyre::Result<()> {
         Command::Address(args) => args.execute(&client, &mut handle),
         Command::Balance(args) => args.execute(&client, &mut handle),
         Command::Connect(args) => args.execute(&client).await,
+        Command::Enable(args) => args.execute(&client).await,
+        Command::Disable(args) => args.execute(&client).await,
         Command::Status(args) => args.execute(&client).await,
         Command::Disconnect(args) => args.execute(&client).await,
         Command::Latency(args) => args.execute(&client).await,
@@ -132,7 +137,16 @@ async fn main() -> eyre::Result<()> {
                 FoundationAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
                 FoundationAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
             },
+            GlobalConfigCommands::QaAllowlist(command) => match command.command {
+                QaAllowlistCommands::List(args) => args.execute(&client, &mut handle),
+                QaAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
+                QaAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
+            },
             GlobalConfigCommands::SetVersion(args) => args.execute(&client, &mut handle),
+            GlobalConfigCommands::FeatureFlags(command) => match command.command {
+                FeatureFlagsCommands::Get(args) => args.execute(&client, &mut handle),
+                FeatureFlagsCommands::Set(args) => args.execute(&client, &mut handle),
+            },
         },
         Command::Account(args) => args.execute(&dzclient, &mut handle),
         Command::Accounts(args) => args.execute(&dzclient, &mut handle),
@@ -163,6 +177,19 @@ async fn main() -> eyre::Result<()> {
             cli::contributor::ContributorCommands::Delete(args) => {
                 args.execute(&client, &mut handle)
             }
+        },
+        Command::Tenant(command) => match command.command {
+            cli::tenant::TenantCommands::Create(args) => args.execute(&client, &mut handle),
+            cli::tenant::TenantCommands::Update(args) => args.execute(&client, &mut handle),
+            cli::tenant::TenantCommands::List(args) => args.execute(&client, &mut handle),
+            cli::tenant::TenantCommands::Get(args) => args.execute(&client, &mut handle),
+            cli::tenant::TenantCommands::Delete(args) => args.execute(&client, &mut handle),
+            cli::tenant::TenantCommands::Administrator(command) => match command.command {
+                cli::tenant::AdministratorCommands::Add(args) => args.execute(&client, &mut handle),
+                cli::tenant::AdministratorCommands::Remove(args) => {
+                    args.execute(&client, &mut handle)
+                }
+            },
         },
         Command::Device(command) => match command.command {
             DeviceCommands::Create(args) => args.execute(&client, &mut handle),
@@ -196,6 +223,7 @@ async fn main() -> eyre::Result<()> {
             cli::accesspass::AccessPassCommands::Set(args) => args.execute(&client, &mut handle),
             cli::accesspass::AccessPassCommands::Close(args) => args.execute(&client, &mut handle),
             cli::accesspass::AccessPassCommands::List(args) => args.execute(&client, &mut handle),
+            cli::accesspass::AccessPassCommands::Get(args) => args.execute(&client, &mut handle),
         },
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client, &mut handle),
@@ -262,6 +290,8 @@ async fn main() -> eyre::Result<()> {
             cli::resource::ResourceCommands::Create(args) => args.execute(&client, &mut handle),
             cli::resource::ResourceCommands::Deallocate(args) => args.execute(&client, &mut handle),
             cli::resource::ResourceCommands::Get(args) => args.execute(&client, &mut handle),
+            cli::resource::ResourceCommands::Close(args) => args.execute(&client, &mut handle),
+            cli::resource::ResourceCommands::Verify(args) => args.execute(&client, &mut handle),
         },
 
         Command::Export(args) => args.execute(&client, &mut handle),

@@ -110,7 +110,13 @@ mod tests {
     #[test]
     fn test_validate_bandwidth() {
         assert!(validate_parse_bandwidth("100Mbps").is_ok());
+        assert!(validate_parse_bandwidth("1Gbps").is_ok());
+        assert!(validate_parse_bandwidth("1.5Gbps").is_ok());
+        assert!(validate_parse_bandwidth("500Kbps").is_ok());
+        assert!(validate_parse_bandwidth("200bps").is_ok());
         assert!(validate_parse_bandwidth("invalid").is_err());
+        assert!(validate_parse_bandwidth("1000").is_err());
+        assert!(validate_parse_bandwidth("0").is_err());
     }
 
     #[test]

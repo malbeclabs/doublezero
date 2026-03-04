@@ -2,12 +2,29 @@ package serviceability
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 )
 
 type ByteReader struct {
 	data   []byte
 	offset int
+}
+
+// DumpBytes returns a hex dump of the next n bytes without advancing the offset
+func (br *ByteReader) DumpBytes(n int) string {
+	if br.offset+n > len(br.data) {
+		n = len(br.data) - br.offset
+	}
+	if n <= 0 {
+		return "<no bytes>"
+	}
+	return fmt.Sprintf("offset=%d bytes=%x", br.offset, br.data[br.offset:br.offset+n])
+}
+
+// GetOffset returns the current offset position
+func (br *ByteReader) GetOffset() int {
+	return br.offset
 }
 
 func (br *ByteReader) Remaining() uint32 {
@@ -143,4 +160,23 @@ func (br *ByteReader) ReadString() string {
 	val := string(br.data[br.offset : br.offset+int(length)])
 	br.offset += int(length)
 	return val
+}
+
+// ReadBytes reads n bytes from the reader
+func (br *ByteReader) ReadBytes(n int) []byte {
+	if br.offset+n > len(br.data) {
+		return nil
+	}
+	val := make([]byte, n)
+	copy(val, br.data[br.offset:br.offset+n])
+	br.offset += n
+	return val
+}
+
+// Skip advances the reader offset by n bytes
+func (br *ByteReader) Skip(n int) {
+	br.offset += n
+	if br.offset > len(br.data) {
+		br.offset = len(br.data)
+	}
 }

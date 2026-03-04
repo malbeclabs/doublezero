@@ -52,6 +52,8 @@ type stateCache struct {
 	Config          serviceability.Config
 	Devices         map[string]*Device
 	MulticastGroups map[string]serviceability.MulticastGroup
+	Tenants         map[string]serviceability.Tenant
+	UnicastVrfs     []uint16
 	Vpnv4BgpPeers   []BgpPeer
 	Ipv4BgpPeers    []BgpPeer
 }
@@ -69,6 +71,7 @@ type Controller struct {
 	tlsConfig      *tls.Config
 	environment    string
 	deviceLocalASN uint32
+	clickhouse     *ClickhouseWriter
 }
 
 type Option func(*Controller)
@@ -148,6 +151,12 @@ func WithEnvironment(env string) Option {
 func WithDeviceLocalASN(asn uint32) Option {
 	return func(c *Controller) {
 		c.deviceLocalASN = asn
+	}
+}
+
+func WithClickhouse(cw *ClickhouseWriter) Option {
+	return func(c *Controller) {
+		c.clickhouse = cw
 	}
 }
 
@@ -396,6 +405,20 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		cache.MulticastGroups[base58.Encode(group.PubKey[:])] = group
 	}
 
+	// Build cache of tenants keyed by base58-encoded pubkey and collect all VRF IDs.
+	cache.Tenants = make(map[string]serviceability.Tenant)
+	vrfSet := map[uint16]struct{}{1: {}} // always include VRF 1 as default
+	for _, tenant := range data.Tenants {
+		cache.Tenants[base58.Encode(tenant.PubKey[:])] = tenant
+		vrfSet[tenant.VrfId] = struct{}{}
+	}
+	vrfs := make([]uint16, 0, len(vrfSet))
+	for v := range vrfSet {
+		vrfs = append(vrfs, v)
+	}
+	sort.Slice(vrfs, func(i, j int) bool { return vrfs[i] < vrfs[j] })
+	cache.UnicastVrfs = vrfs
+
 	// create user tunnels and add to the appropriate device
 	for _, user := range users {
 		if user.Status != serviceability.UserStatusActivated {
@@ -427,6 +450,10 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				slog.Error("DZ IP is set to 0.0.0.0 for user", "user pubkey", userPubKey)
 				return false
 			}
+			if isBgpMartian(net.IP(user.DzIp[:])) {
+				slog.Error("DZ IP is a BGP martian address", "dz_ip", net.IP(user.DzIp[:]), "user pubkey", userPubKey)
+				return false
+			}
 			if user.TunnelNet[4] != 31 {
 				c.log.Error("tunnel network mask is not 31\n", "tunnel network mask", user.TunnelNet[4])
 				return false
@@ -447,7 +474,16 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			continue
 		}
 		tunnel.UnderlayDstIP = net.IP(user.ClientIp[:])
-		tunnel.UnderlaySrcIP = cache.Devices[devicePubKey].PublicIP
+
+		// Use user's tunnel_endpoint if set, otherwise fall back to device PublicIP.
+		// This allows multiple tunnels from the same client IP to terminate on the same device
+		// using different tunnel endpoint IPs (avoiding GRE key conflicts).
+		tunnelEndpoint := net.IP(user.TunnelEndpoint[:])
+		if tunnelEndpoint.IsUnspecified() {
+			tunnel.UnderlaySrcIP = cache.Devices[devicePubKey].PublicIP
+		} else {
+			tunnel.UnderlaySrcIP = tunnelEndpoint
+		}
 
 		// OverlaySrcIP is the device/link side of the tunnel.
 		var overlaySrc [4]byte
@@ -464,6 +500,16 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		tunnel.DzIp = net.IP(user.DzIp[:])
 		tunnel.PubKey = userPubKey
 		tunnel.Allocated = true
+
+		if user.UserType != serviceability.UserTypeMulticast {
+			// Set the VRF ID and metro routing from the user's tenant. Default to VRF 1 with metro routing enabled.
+			tunnel.VrfId = 1
+			tunnel.MetroRouting = true
+			if tenant, ok := cache.Tenants[base58.Encode(user.TenantPubKey[:])]; ok {
+				tunnel.VrfId = tenant.VrfId
+				tunnel.MetroRouting = tenant.MetroRouting
+			}
+		}
 
 		if user.UserType == serviceability.UserTypeMulticast {
 			tunnel.IsMulticast = true
@@ -526,6 +572,15 @@ func (c *Controller) Run(ctx context.Context) error {
 		http.ListenAndServe("127.0.0.1:2112", mux) //nolint
 	}()
 
+	if c.clickhouse != nil {
+		if err := c.clickhouse.CreateTable(ctx); err != nil {
+			c.log.Warn("error creating clickhouse table, continuing without clickhouse", "error", err)
+			c.clickhouse = nil
+		} else {
+			go c.clickhouse.Run(ctx)
+		}
+	}
+
 	// start on-chain fetcher
 	go func() {
 		c.log.Info("starting fetch of on-chain data", "program-id", c.serviceability.ProgramID())
@@ -574,7 +629,58 @@ func (c *Controller) Run(ctx context.Context) error {
 	case err := <-errChan:
 		return err
 	}
+}
 
+// deduplicateTunnels removes tunnels with duplicate (UnderlaySrcIP, UnderlayDstIP) pairs.
+// Returns a new slice containing only unique tunnel pairs. Keeps the first occurrence of
+// each pair. Logs an error and increments metrics when duplicates are found.
+func (c *Controller) deduplicateTunnels(device *Device) []*Tunnel {
+	if len(device.Tunnels) == 0 {
+		return device.Tunnels
+	}
+
+	// Track seen (UnderlaySrcIP, UnderlayDstIP) pairs
+	seen := make(map[string]*Tunnel)
+	unique := make([]*Tunnel, 0, len(device.Tunnels))
+	duplicateCount := 0
+
+	for _, tunnel := range device.Tunnels {
+		// Only check allocated tunnels (unallocated slots don't render config)
+		if !tunnel.Allocated {
+			unique = append(unique, tunnel)
+			continue
+		}
+
+		// Create unique key from underlay IP pair
+		key := fmt.Sprintf("%s:%s", tunnel.UnderlaySrcIP.String(), tunnel.UnderlayDstIP.String())
+
+		if existing, found := seen[key]; found {
+			// Duplicate detected - log and skip
+			duplicateCount++
+			c.log.Error("duplicate tunnel pair detected, removing from config",
+				"device_pubkey", device.PubKey,
+				"device_code", device.Code,
+				"kept_tunnel_id", existing.Id,
+				"kept_user_pubkey", existing.PubKey,
+				"removed_tunnel_id", tunnel.Id,
+				"removed_user_pubkey", tunnel.PubKey,
+				"underlay_src_ip", tunnel.UnderlaySrcIP.String(),
+				"underlay_dst_ip", tunnel.UnderlayDstIP.String(),
+				"vrf_id", tunnel.VrfId,
+			)
+		} else {
+			// First occurrence - keep it
+			seen[key] = tunnel
+			unique = append(unique, tunnel)
+		}
+	}
+
+	// Increment metric if duplicates found
+	if duplicateCount > 0 {
+		duplicateTunnelPairs.WithLabelValues(device.PubKey, device.Code).Add(float64(duplicateCount))
+	}
+
+	return unique
 }
 
 // GetConfig renders the latest device configuration based on cached device data
@@ -592,6 +698,10 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		err := status.Errorf(codes.FailedPrecondition, "cannot render config for device %s: %v", req.Pubkey, device.DevicePathologies)
 		return nil, err
 	}
+
+	// Create shallow copy of device with deduplicated tunnels
+	deviceForRender := *device
+	deviceForRender.Tunnels = c.deduplicateTunnels(device)
 
 	agentVersion := req.GetAgentVersion()
 	agentCommit := req.GetAgentCommit()
@@ -612,7 +722,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 
 	// compare peers from device to on-chain
 	peerFound := func(peer net.IP) bool {
-		for _, tun := range device.Tunnels {
+		for _, tun := range deviceForRender.Tunnels {
 			if tun.OverlayDstIP.Equal(peer) {
 				return true
 			}
@@ -653,7 +763,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	// router msdp
 	// ```
 	ipv4Peers := c.cache.Ipv4BgpPeers
-	if len(ipv4Peers) == 1 && ipv4Peers[0].PeerIP.Equal(device.Ipv4LoopbackIP) {
+	if len(ipv4Peers) == 1 && ipv4Peers[0].PeerIP.Equal(deviceForRender.Ipv4LoopbackIP) {
 		ipv4Peers = nil
 	}
 
@@ -678,13 +788,14 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 
 	data := templateData{
 		MulticastGroupBlock:      multicastGroupBlock,
-		Device:                   device,
+		Device:                   &deviceForRender,
 		Vpnv4BgpPeers:            c.cache.Vpnv4BgpPeers,
 		Ipv4BgpPeers:             ipv4Peers,
 		UnknownBgpPeers:          unknownPeers,
 		NoHardware:               c.noHardware,
 		TelemetryTWAMPListenPort: telemetryconfig.TWAMPListenPort,
 		LocalASN:                 localASN,
+		UnicastVrfs:              c.cache.UnicastVrfs,
 		Strings:                  StringsHelper{},
 	}
 
@@ -697,6 +808,12 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	resp := &pb.ConfigResponse{Config: config}
 	getConfigMsgSize.Observe(float64(proto.Size(resp)))
 	getConfigDuration.Observe(float64(time.Since(reqStart).Seconds()))
+	if c.clickhouse != nil {
+		c.clickhouse.Record(getConfigEvent{
+			Timestamp:    reqStart,
+			DevicePubkey: req.GetPubkey(),
+		})
+	}
 	return resp, nil
 }
 

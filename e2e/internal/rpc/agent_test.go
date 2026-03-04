@@ -37,7 +37,7 @@ func TestQAAgentConnectivity(t *testing.T) {
 	// Create a mock HTTP server to simulate the doublezerod unix socket API
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/status" {
-			_, _ = w.Write([]byte(`[{"tunnel_name":"dz-1","doublezero_ip":"100.64.0.1","user_type":"ibrl","doublezero_status":{"session_status":"up"}}]`))
+			_, _ = w.Write([]byte(`[{"tunnel_name":"dz-1","doublezero_ip":"100.64.0.1","user_type":"ibrl","doublezero_status":{"session_status":"BGP Session Up"}}]`))
 		}
 		if r.URL.Path == "/latency" {
 			_, _ = w.Write([]byte(`[{"device_pk":"8PQkip3CxWhQTdP7doCyhT2kwjSL2csRTdnRg2zbDPs1","device_code":"chi-dn-dzd1","device_ip":"100.0.0.1","min_latency_ns":24989983,"max_latency_ns":25115111,"avg_latency_ns":25063568,"reachable":true}]`))
@@ -127,7 +127,7 @@ func TestQAAgentConnectivity(t *testing.T) {
 		statusResult, err := client.GetStatus(ctx, &emptypb.Empty{})
 		require.NoError(t, err)
 		require.NotNil(t, statusResult)
-		require.Equal(t, "up", statusResult.GetStatus()[0].GetSessionStatus())
+		require.Equal(t, "BGP Session Up", statusResult.GetStatus()[0].GetSessionStatus())
 	})
 
 	t.Run("GetLatency", func(t *testing.T) {

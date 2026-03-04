@@ -3,19 +3,23 @@ use clap::ValueEnum;
 use doublezero_sdk::{commands::device::get::GetDeviceCommand, ResourceType as SdkResourceType};
 
 pub mod allocate;
+pub mod close;
 pub mod create;
 pub mod deallocate;
 pub mod get;
+pub mod verify;
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum ResourceType {
     DeviceTunnelBlock,
     UserTunnelBlock,
     MulticastGroupBlock,
+    MulticastPublisherBlock,
     DzPrefixBlock,
     TunnelIds,
     LinkIds,
     SegmentRoutingIds,
+    VrfIds,
 }
 
 pub fn resource_type_from(
@@ -27,6 +31,7 @@ pub fn resource_type_from(
         ResourceType::DeviceTunnelBlock => SdkResourceType::DeviceTunnelBlock,
         ResourceType::UserTunnelBlock => SdkResourceType::UserTunnelBlock,
         ResourceType::MulticastGroupBlock => SdkResourceType::MulticastGroupBlock,
+        ResourceType::MulticastPublisherBlock => SdkResourceType::MulticastPublisherBlock,
         ResourceType::DzPrefixBlock => {
             let pk = associated_pubkey.unwrap_or_default();
             let idx = index.unwrap_or(0);
@@ -39,6 +44,7 @@ pub fn resource_type_from(
         }
         ResourceType::LinkIds => SdkResourceType::LinkIds,
         ResourceType::SegmentRoutingIds => SdkResourceType::SegmentRoutingIds,
+        ResourceType::VrfIds => SdkResourceType::VrfIds,
     }
 }
 
@@ -85,6 +91,12 @@ mod tests {
     fn test_multicast_group_block() {
         let result = resource_type_from(ResourceType::MulticastGroupBlock, None, None);
         assert_eq!(result, SdkResourceType::MulticastGroupBlock);
+    }
+
+    #[test]
+    fn test_multicast_publisher_block() {
+        let result = resource_type_from(ResourceType::MulticastPublisherBlock, None, None);
+        assert_eq!(result, SdkResourceType::MulticastPublisherBlock);
     }
 
     #[test]

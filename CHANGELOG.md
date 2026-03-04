@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: add `Reservation` account and `ReserveConnection`/`CloseReservation` instructions for pre-reserving connection seats on devices, with `reserved_seats` factored into capacity checks on both reservation and user creation
   - Allow sentinel authority to add/remove multicast publisher and subscriber allowlist entries
 - Telemetry
+  - Add `geoprobe-target-sender` CLI tool for sending signed TWAMP probes to a GeoProbe and verifying signed replies (RFC16 inbound probing flow)
   - Add Signed TWAMP reflector to geoprobe-agent with configurable listen port and allowed-pubkeys allowlist
   - Fix global monitor crash when IBRL and multicast users share the same client IP but are on different devices, by preferring non-multicast users in client IP lookups to match status device selection
 - Client

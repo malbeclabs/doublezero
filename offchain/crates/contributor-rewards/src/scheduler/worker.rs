@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail, ensure};
 use backon::{ExponentialBuilder, Retryable};
 use chrono::Utc;
 use doublezero_program_tools::zero_copy;
@@ -17,7 +17,11 @@ use doublezero_revenue_distribution::{
     types::DoubleZeroEpoch,
 };
 use doublezero_sdk::record::pubkey::create_record_key;
-use doublezero_solana_client_tools::rpc::try_fetch_zero_copy_data_with_commitment;
+use doublezero_solana_client_tools::{
+    payer::Wallet,
+    rpc::{DoubleZeroLedgerConnection, SolanaConnection, try_fetch_zero_copy_data_with_commitment},
+};
+use doublezero_solana_sdk::revenue_distribution::fetch::{SolConversionState, try_fetch_config};
 use slack_notifier::contributor_rewards::{WriteResultInfo, post_detailed_completion};
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
@@ -30,7 +34,10 @@ use tokio::{
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    calculator::{WriteConfig, ledger_operations::WriteResult, orchestrator::Orchestrator},
+    calculator::{
+        DistributionOutcome, WriteConfig, distribute, keypair_loader::load_keypair,
+        ledger_operations::WriteResult, orchestrator::Orchestrator,
+    },
     cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
     ingestor::{epoch::EpochFinder, fetcher::Fetcher},
     scheduler::state::SchedulerState,
@@ -153,9 +160,121 @@ impl ScheduleWorker {
                     }
                 }
             }
+
+            // Try to distribute rewards for the eligible epoch.
+            if !self.dry_run {
+                match self.try_get_distribution_epoch().await {
+                    Ok((dz_epoch, rewards_accountant_key)) => {
+                        let calc_epoch = state.last_processed_epoch;
+                        info!(
+                            "Calculation epoch: {:?} | Distribution epoch: {dz_epoch}",
+                            calc_epoch
+                        );
+
+                        if !state.should_distribute_epoch(dz_epoch) {
+                            debug!("Epoch {dz_epoch} already fully distributed, skipping");
+                        } else {
+                            match self
+                                .try_distribute_rewards(dz_epoch, &rewards_accountant_key)
+                                .await
+                            {
+                                Ok(DistributionOutcome::AlreadyComplete) => {
+                                    state.mark_distribution_success(dz_epoch);
+                                    state.save(&self.state_file)?;
+                                }
+                                Ok(DistributionOutcome::Distributed(n)) => {
+                                    info!("Distributed {n} contributors for epoch {dz_epoch}");
+                                    metrics::counter!(
+                                        "doublezero_contributor_rewards_distribution_success"
+                                    )
+                                    .increment(1);
+                                }
+                                Ok(DistributionOutcome::NotReady) => {
+                                    debug!("Distribution not ready for epoch {dz_epoch}");
+                                }
+                                Err(e) => {
+                                    error!(
+                                        "Failed to distribute rewards for epoch {dz_epoch}: {e}"
+                                    );
+                                    state.mark_distribution_failure();
+                                    state.save(&self.state_file)?;
+                                    metrics::counter!(
+                                        "doublezero_contributor_rewards_distribution_failure"
+                                    )
+                                    .increment(1);
+                                    if state.consecutive_distribution_failures % 10 == 0 {
+                                        error!(
+                                            "Distribution has failed {} consecutive times",
+                                            state.consecutive_distribution_failures
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to fetch distribution epoch: {e}");
+                        metrics::counter!(
+                            "doublezero_contributor_rewards_distribution_fetch_failure"
+                        )
+                        .increment(1);
+                    }
+                }
+            }
         }
 
         Ok(())
+    }
+
+    /// Fetch the config and compute the distribution-eligible epoch.
+    async fn try_get_distribution_epoch(&self) -> Result<(u64, Pubkey)> {
+        let connection =
+            SolanaConnection::new(self.orchestrator.settings.rpc.solana_write_url.clone());
+        let (_, config) = try_fetch_config(&connection).await?;
+
+        let sol_conversion_state = SolConversionState::try_fetch(&connection).await?;
+        let next_sweep = sol_conversion_state
+            .journal
+            .1
+            .next_dz_epoch_to_sweep_tokens
+            .value();
+        ensure!(next_sweep > 0, "No epochs have been swept yet");
+        let dz_epoch_value = next_sweep - 1;
+
+        Ok((dz_epoch_value, config.rewards_accountant_key))
+    }
+
+    /// Attempt to distribute rewards for the given epoch.
+    async fn try_distribute_rewards(
+        &self,
+        dz_epoch_value: u64,
+        rewards_accountant_key: &Pubkey,
+    ) -> Result<DistributionOutcome> {
+        let signer = load_keypair(&self.keypair_path)?;
+        let connection =
+            SolanaConnection::new(self.orchestrator.settings.rpc.solana_write_url.clone());
+        let dz_connection =
+            DoubleZeroLedgerConnection::new(self.orchestrator.settings.rpc.dz_url.clone());
+
+        let wallet = Wallet {
+            connection,
+            signer,
+            compute_unit_price_ix: None,
+            verbose: false,
+            fee_payer: None,
+            dry_run: false,
+        };
+
+        let shapley_prefix = self.orchestrator.settings.get_contributor_rewards_prefix();
+
+        distribute::try_distribute_epoch_rewards(
+            &wallet,
+            &dz_connection,
+            rewards_accountant_key,
+            dz_epoch_value,
+            &shapley_prefix,
+        )
+        .await
     }
 
     /// Process rewards for the current epoch if needed

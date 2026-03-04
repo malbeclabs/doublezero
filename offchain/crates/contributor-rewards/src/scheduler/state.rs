@@ -19,6 +19,12 @@ pub struct SchedulerState {
     pub last_check_time: DateTime<Utc>,
     /// Last time rewards were successfully calculated
     pub last_success_time: Option<DateTime<Utc>>,
+    /// Last epoch for which distribution completed fully
+    #[serde(default)]
+    pub last_distributed_epoch: Option<u64>,
+    /// Number of consecutive distribution failures
+    #[serde(default)]
+    pub consecutive_distribution_failures: u32,
 }
 
 impl Default for SchedulerState {
@@ -29,6 +35,8 @@ impl Default for SchedulerState {
             consecutive_failures: 0,
             last_check_time: Utc::now(),
             last_success_time: None,
+            last_distributed_epoch: None,
+            consecutive_distribution_failures: 0,
         }
     }
 }
@@ -156,5 +164,71 @@ impl SchedulerState {
     /// Check if we're in a failure state that should halt processing
     pub fn is_in_failure_state(&self, max_failures: u32) -> bool {
         self.consecutive_failures >= max_failures
+    }
+
+    /// Returns true if this epoch hasn't been fully distributed yet.
+    pub fn should_distribute_epoch(&self, epoch: u64) -> bool {
+        self.last_distributed_epoch.is_none_or(|last| epoch > last)
+    }
+
+    /// Record a completed distribution epoch and reset the failure counter.
+    pub fn mark_distribution_success(&mut self, epoch: u64) {
+        self.last_distributed_epoch = Some(epoch);
+        self.consecutive_distribution_failures = 0;
+        info!("Distribution complete for epoch {epoch}");
+    }
+
+    /// Increment the consecutive distribution failure counter.
+    pub fn mark_distribution_failure(&mut self) {
+        self.consecutive_distribution_failures += 1;
+        error!(
+            "Distribution failure #{}",
+            self.consecutive_distribution_failures
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SchedulerState;
+
+    #[test]
+    fn test_should_distribute_epoch_when_never_distributed() {
+        let state = SchedulerState::default();
+        assert!(state.should_distribute_epoch(0));
+        assert!(state.should_distribute_epoch(42));
+    }
+
+    #[test]
+    fn test_should_distribute_epoch_skips_already_distributed() {
+        let mut state = SchedulerState::default();
+        state.mark_distribution_success(10);
+        assert!(!state.should_distribute_epoch(10));
+        assert!(!state.should_distribute_epoch(9));
+        assert!(state.should_distribute_epoch(11));
+    }
+
+    #[test]
+    fn test_mark_distribution_success_resets_failures() {
+        let mut state = SchedulerState::default();
+        state.mark_distribution_failure();
+        state.mark_distribution_failure();
+        assert_eq!(state.consecutive_distribution_failures, 2);
+        state.mark_distribution_success(5);
+        assert_eq!(state.consecutive_distribution_failures, 0);
+        assert_eq!(state.last_distributed_epoch, Some(5));
+    }
+
+    #[test]
+    fn test_backward_compat_missing_distribution_fields() {
+        let old_json = r#"{
+            "last_processed_epoch": 42,
+            "consecutive_failures": 0,
+            "last_check_time": "2026-01-01T00:00:00Z"
+        }"#;
+        let state: SchedulerState = serde_json::from_str(old_json).unwrap();
+        assert_eq!(state.last_distributed_epoch, None);
+        assert_eq!(state.consecutive_distribution_failures, 0);
+        assert_eq!(state.last_processed_epoch, Some(42));
     }
 }

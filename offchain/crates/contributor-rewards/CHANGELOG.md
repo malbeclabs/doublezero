@@ -7,44 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- feat(contributor-rewards): add on-chain reward distribution ([#269](https://github.com/doublezerofoundation/doublezero-offchain/pull/269))
+
+## [0.4.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.4.1) - 2026-03-03
+
 - feat(contributor-rewards): bump network-shapley to v0.4.0 ([#278](https://github.com/doublezerofoundation/doublezero-offchain/pull/278))
 
-## [0.4.0](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.4.0) - 2026-03-03
+## [0.4.0](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.4.0) - 2026-03-03
 
 - feat: billing sentinel for tenant payment status monitoring ([#265](https://github.com/doublezerofoundation/doublezero-offchain/pull/265))
 - feat(contributor-rewards): add export shapley command ([#234](https://github.com/doublezerofoundation/doublezero-offchain/pull/234))
 - feat(contributor-rewards): add read-rewards command ([#212](https://github.com/doublezerofoundation/doublezero-offchain/pull/212))
 
-## [0.3.5](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.5) - 2025-11-24
+## [0.3.5](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.3.5) - 2025-11-24
 
 - feat(contributor-rewards): add snapshot flag to inspect shapley cmd ([#209](https://github.com/doublezerofoundation/doublezero-offchain/pull/209))
 - fix(contributor-rewards): track shapley output record address for slack notifications ([#208](https://github.com/doublezerofoundation/doublezero-offchain/pull/208))
 
-## [0.3.4](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.4) - 2025-11-21
+## [0.3.4](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.3.4) - 2025-11-21
 
 - feat(contributor-rewards): add support to send slack notifications ([#206](https://github.com/doublezerofoundation/doublezero-offchain/pull/206))
 
-## [0.3.3](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.3) - 2025-11-20
+## [0.3.3](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.3.3) - 2025-11-20
 
 - feat(contributor-rewards): add granular support to skip writes ([#203](https://github.com/doublezerofoundation/doublezero-offchain/pull/203)
 - fix(contributor-rewards): add Distribution merkle root check to idempotency ([#202](https://github.com/doublezerofoundation/doublezero-offchain/pull/202))
 
-## [0.3.2](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.2) - 2025-11-17
+## [0.3.2](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.3.2) - 2025-11-17
 
 - fix(contributor-rewards): make scheduler retry infinitely ([#198](https://github.com/doublezerofoundation/doublezero-offchain/pull/198))
 
-## [0.3.1-rc1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.1-rc1) - 2025-11-11
+## [0.3.1-rc1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.3.1-rc1) - 2025-11-11
 
 - feat(solana-cli): add `revenue-distribution fetch distribution --view` argument ([#182](https://github.com/doublezerofoundation/doublezero-offchain/pull/182))
 - move binary from /usr/local/bin/ to /usr/bin to comply with package management standards ([#187](https://github.com/doublezerofoundation/doublezero-offchain/pull/187))
 - fix(contributor-rewards): handle grace period for scheduling rewards ([#186](https://github.com/doublezerofoundation/doublezero-offchain/pull/186))
 
-## [0.3.0-rc1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.0-rc1) - 2025-11-04
+## [0.3.0-rc1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.3.0-rc1) - 2025-11-04
 
 - fix(contributor-rewards): ci fix to derive default ([#176](https://github.com/doublezerofoundation/doublezero-offchain/pull/176))
 - feat(contributor-rewards): Add S3 storage for snapshots ([#174](https://github.com/doublezerofoundation/doublezero-offchain/pull/174))
 
-## [0.2.1-rc1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.2.1-rc1) - 2025-10-21
+## [0.2.1-rc1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.2.1-rc1) - 2025-10-21
 
 ### Other
 

@@ -197,13 +197,16 @@ mod tests {
 
         let obj = &parsed.as_object();
 
-        let state_keys: Vec<&String> = obj.unwrap().keys().collect();
-        // make sure the keys don't change
+        let mut state_keys: Vec<&String> = obj.unwrap().keys().collect();
+        state_keys.sort();
+        // make sure the keys don't change unexpectedly
         assert_eq!(
             state_keys,
             [
+                "consecutive_distribution_failures",
                 "consecutive_failures",
                 "last_check_time",
+                "last_distributed_epoch",
                 "last_processed_epoch",
                 "last_snapshot_location",
                 "last_success_time"

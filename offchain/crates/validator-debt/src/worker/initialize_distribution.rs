@@ -214,8 +214,6 @@ pub async fn try_initialize_distribution(
         wallet.print_verbose_output(&[tx_sig]).await?;
     }
 
-    // TODO: Add the distribute-rewards calls here.
-
     Ok(())
 }
 

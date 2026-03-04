@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- feat(contributor-rewards): add on-chain reward distribution ([#269](https://github.com/doublezerofoundation/doublezero-offchain/pull/269))
 - ensure debt is finalized before collection ([#268](https://github.com/doublezerofoundation/doublezero-offchain/pull/268))
 - use inclusive range for completed DZ epochs ([#2815](https://github.com/malbeclabs/doublezero/issues/2815))
 - remove dz_ledger as argument ([#255](https://github.com/doublezerofoundation/doublezero-offchain/pull/255))

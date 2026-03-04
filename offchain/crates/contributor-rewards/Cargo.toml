@@ -1,9 +1,9 @@
 [package]
 name = "doublezero-contributor-rewards"
 readme = "README.md"
-version = "0.3.1-rc1"
 
 # Workspace inherited keys
+version.workspace = true
 edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
@@ -40,6 +40,7 @@ doublezero-revenue-distribution.workspace = true
 doublezero_sdk.workspace = true
 doublezero-serviceability.workspace = true
 doublezero-solana-client-tools.workspace = true
+doublezero-solana-sdk.workspace = true
 doublezero-telemetry.workspace = true
 governor.workspace = true
 indexmap.workspace = true
@@ -56,6 +57,8 @@ solana-account-decoder.workspace = true
 solana-client.workspace = true
 solana-sdk.workspace = true
 solana-system-interface.workspace = true
+spl-associated-token-account-interface.workspace = true
+spl-token-interface.workspace = true
 svm-hash.workspace = true
 tabled.workspace = true
 tempfile.workspace = true

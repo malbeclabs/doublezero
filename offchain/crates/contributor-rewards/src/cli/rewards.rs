@@ -1,7 +1,11 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use clap::Subcommand;
+use doublezero_solana_client_tools::rpc::SolanaConnection;
+use doublezero_solana_sdk::revenue_distribution::fetch::{
+    SolConversionState, try_fetch_config, try_fetch_distribution,
+};
 use slack_notifier::contributor_rewards::{WriteResultInfo, post_detailed_completion};
 use solana_sdk::pubkey::Pubkey;
 use tracing::info;
@@ -283,6 +287,43 @@ pub enum RewardsCommands {
         )]
         keypair: Option<PathBuf>,
     },
+    #[command(
+        about = "Distribute rewards to contributors for a finalized epoch",
+        long_about = "Three modes of operation:\n\n\
+            1. Readiness check (--dry-run, no keypair): shows distribution status without simulation\n\
+            2. Simulate (--dry-run with keypair): simulates transactions without sending\n\
+            3. Execute (no --dry-run, keypair required): sends real transactions",
+        after_help = r#"Examples:
+    # Check distribution readiness (no keypair needed)
+    distribute-rewards --dry-run
+
+    # Check a specific epoch
+    distribute-rewards --dry-run -e 27
+
+    # Simulate distribution (dry-run with keypair)
+    distribute-rewards --dry-run -k keypair.json -e 27
+
+    # Execute distribution
+    distribute-rewards -k keypair.json -e 27"#
+    )]
+    DistributeRewards {
+        /// DZ epoch to distribute rewards for (defaults to current eligible epoch)
+        #[arg(short = 'e', long, value_name = "EPOCH")]
+        dz_epoch: Option<u64>,
+
+        /// Skip sending transactions and show what would happen
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Path to keypair file for signing transactions
+        #[arg(
+            short = 'k',
+            long,
+            value_name = "FILE",
+            required_unless_present = "dry_run"
+        )]
+        keypair: Option<PathBuf>,
+    },
 }
 
 /// Handle rewards commands
@@ -455,6 +496,105 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
             orchestrator
                 .write_telemetry_aggregates(epoch, keypair, dry_run, r#type)
                 .await
+        }
+        RewardsCommands::DistributeRewards {
+            dz_epoch,
+            dry_run,
+            keypair,
+        } => {
+            let connection =
+                SolanaConnection::new(orchestrator.settings.rpc.solana_write_url.clone());
+
+            let (_, config) = try_fetch_config(&connection).await?;
+
+            let dz_epoch_value = match dz_epoch {
+                Some(epoch) => {
+                    info!("Will distribute for provided dz_epoch: {epoch}");
+                    epoch
+                }
+                None => {
+                    let sol_conversion_state = SolConversionState::try_fetch(&connection).await?;
+                    let next_sweep = sol_conversion_state
+                        .journal
+                        .1
+                        .next_dz_epoch_to_sweep_tokens
+                        .value();
+                    ensure!(next_sweep > 0, "No epochs have been swept yet");
+                    let dist_epoch = next_sweep - 1;
+                    info!("Will distribute for dz_epoch: {dist_epoch}, next_sweep: {next_sweep}");
+                    dist_epoch
+                }
+            };
+
+            match (dry_run, keypair) {
+                // Mode 1: Readiness check only (no keypair, no wallet)
+                (true, None) => {
+                    let (_, distribution) =
+                        try_fetch_distribution(&connection, dz_epoch_value).await?;
+                    info!("Epoch {dz_epoch_value} readiness:");
+                    info!(
+                        "  Rewards finalized: {}",
+                        distribution.is_rewards_calculation_finalized()
+                    );
+                    info!("  2Z tokens swept: {}", distribution.has_swept_2z_tokens());
+                    info!(
+                        "  Progress: {}/{}",
+                        distribution.distributed_rewards_count, distribution.total_contributors
+                    );
+                }
+                // Mode 2 & 3: Simulate or Execute (keypair present)
+                (dry_run, Some(keypair_path)) => {
+                    use doublezero_solana_client_tools::{
+                        payer::Wallet, rpc::DoubleZeroLedgerConnection,
+                    };
+
+                    use crate::calculator::{distribute, keypair_loader::load_keypair};
+
+                    let signer = load_keypair(&Some(keypair_path))?;
+                    let dz_connection =
+                        DoubleZeroLedgerConnection::new(orchestrator.settings.rpc.dz_url.clone());
+
+                    let wallet = Wallet {
+                        connection,
+                        signer,
+                        compute_unit_price_ix: None,
+                        verbose: false,
+                        fee_payer: None,
+                        dry_run,
+                    };
+
+                    info!("Distributing rewards for epoch {dz_epoch_value}");
+
+                    let shapley_prefix = orchestrator.settings.get_contributor_rewards_prefix();
+
+                    let outcome = distribute::try_distribute_epoch_rewards(
+                        &wallet,
+                        &dz_connection,
+                        &config.rewards_accountant_key,
+                        dz_epoch_value,
+                        &shapley_prefix,
+                    )
+                    .await?;
+
+                    match outcome {
+                        distribute::DistributionOutcome::AlreadyComplete => {
+                            info!(
+                                "All contributors already distributed for epoch {dz_epoch_value}"
+                            );
+                        }
+                        distribute::DistributionOutcome::Distributed(n) => {
+                            info!("Distributed {n} contributors for epoch {dz_epoch_value}");
+                        }
+                        distribute::DistributionOutcome::NotReady => {
+                            info!("Distribution not ready for epoch {dz_epoch_value}");
+                        }
+                    }
+                }
+                // Unreachable: clap enforces keypair is required unless dry_run
+                (false, None) => unreachable!(),
+            }
+
+            Ok(())
         }
     }
 }

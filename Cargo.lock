@@ -1785,6 +1785,7 @@ dependencies = [
  "serial_test",
  "solana-account-decoder",
  "solana-client",
+ "solana-loader-v3-interface 3.0.0",
  "solana-program",
  "solana-pubsub-client",
  "solana-rpc-client-api",

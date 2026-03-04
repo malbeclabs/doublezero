@@ -37,6 +37,7 @@ serde_yaml.workspace = true
 serial_test.workspace = true
 solana-account-decoder.workspace = true
 solana-client.workspace = true
+solana-loader-v3-interface.workspace = true
 solana-program.workspace = true
 solana-pubsub-client.workspace = true
 solana-rpc-client-api.workspace = true

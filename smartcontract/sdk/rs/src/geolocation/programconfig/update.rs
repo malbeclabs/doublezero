@@ -2,8 +2,7 @@ use doublezero_geolocation::{
     instructions::{GeolocationInstruction, UpdateProgramConfigArgs},
     pda,
 };
-use solana_program::bpf_loader_upgradeable;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
 use crate::geolocation::client::GeolocationClient;
 
@@ -21,8 +20,7 @@ impl UpdateProgramConfigCommand {
 
         let program_id = client.get_program_id();
         let (config_pda, _) = pda::get_program_config_pda(&program_id);
-        let (program_data_pk, _) =
-            Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id());
+        let program_data_pk = solana_loader_v3_interface::get_program_data_address(&program_id);
 
         client.execute_transaction(
             GeolocationInstruction::UpdateProgramConfig(UpdateProgramConfigArgs {
@@ -42,6 +40,7 @@ mod tests {
     use super::*;
     use crate::geolocation::client::MockGeolocationClient;
     use mockall::predicate;
+    use solana_sdk::pubkey::Pubkey;
 
     #[test]
     fn test_geolocation_programconfig_update_command() {
@@ -51,8 +50,7 @@ mod tests {
         client.expect_get_program_id().returning(move || program_id);
 
         let (config_pda, _) = pda::get_program_config_pda(&program_id);
-        let (program_data_pk, _) =
-            Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id());
+        let program_data_pk = solana_loader_v3_interface::get_program_data_address(&program_id);
 
         client
             .expect_execute_transaction()

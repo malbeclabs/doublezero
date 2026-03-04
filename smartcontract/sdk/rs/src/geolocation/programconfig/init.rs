@@ -2,7 +2,6 @@ use doublezero_geolocation::{
     instructions::{GeolocationInstruction, InitProgramConfigArgs},
     pda,
 };
-use solana_program::bpf_loader_upgradeable;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 use crate::geolocation::client::GeolocationClient;
@@ -14,8 +13,7 @@ impl InitProgramConfigCommand {
     pub fn execute(&self, client: &dyn GeolocationClient) -> eyre::Result<(Signature, Pubkey)> {
         let program_id = client.get_program_id();
         let (config_pda, _) = pda::get_program_config_pda(&program_id);
-        let (program_data_pk, _) =
-            Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id());
+        let program_data_pk = solana_loader_v3_interface::get_program_data_address(&program_id);
 
         client
             .execute_transaction(
@@ -43,8 +41,7 @@ mod tests {
         client.expect_get_program_id().returning(move || program_id);
 
         let (config_pda, _) = pda::get_program_config_pda(&program_id);
-        let (program_data_pk, _) =
-            Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id());
+        let program_data_pk = solana_loader_v3_interface::get_program_data_address(&program_id);
 
         client
             .expect_execute_transaction()

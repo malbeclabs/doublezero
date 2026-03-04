@@ -323,10 +323,13 @@ func main() {
 
 	// Set up Signed TWAMP reflector.
 	signedSigner := signed.NewEd25519Signer(ed25519.PrivateKey(keypair))
+	var geoprobePubkeyBytes [32]byte
+	copy(geoprobePubkeyBytes[:], geoProbePubkey[:])
 	signedReflector, err := signed.NewReflector(
 		fmt.Sprintf("0.0.0.0:%d", *signedTWAMPListenPort),
 		defaultTWAMPReflectorTimeout,
 		signedSigner,
+		geoprobePubkeyBytes,
 		allowedKeys,
 	)
 	if err != nil {

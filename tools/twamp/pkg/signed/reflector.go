@@ -20,6 +20,6 @@ type Reflector interface {
 }
 
 // NewReflector creates a signed TWAMP reflector. Only the port in addr is used; any IP is ignored.
-func NewReflector(addr string, timeout time.Duration, signer Signer, authorizedKeys [][32]byte) (Reflector, error) {
-	return NewLinuxReflector(addr, timeout, signer, authorizedKeys)
+func NewReflector(addr string, timeout time.Duration, signer Signer, geoprobePubkey [32]byte, authorizedKeys [][32]byte) (Reflector, error) {
+	return NewLinuxReflector(addr, timeout, signer, geoprobePubkey, authorizedKeys)
 }

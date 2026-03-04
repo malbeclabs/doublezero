@@ -20,6 +20,7 @@ type LinuxReflector struct {
 	port           uint16
 	timeout        time.Duration
 	signer         Signer
+	geoprobePubkey [32]byte
 	authorizedKeys sync.Map // map[[32]byte]struct{}
 	lastVerify     sync.Map // map[[32]byte]time.Time
 	shutdown       chan struct{}
@@ -27,7 +28,7 @@ type LinuxReflector struct {
 }
 
 // NewLinuxReflector creates a signed TWAMP reflector. Only the port in addr is used; any IP is ignored.
-func NewLinuxReflector(addr string, timeout time.Duration, signer Signer, authorizedKeys [][32]byte) (*LinuxReflector, error) {
+func NewLinuxReflector(addr string, timeout time.Duration, signer Signer, geoprobePubkey [32]byte, authorizedKeys [][32]byte) (*LinuxReflector, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("resolve addr: %w", err)
@@ -68,13 +69,14 @@ func NewLinuxReflector(addr string, timeout time.Duration, signer Signer, author
 	}
 
 	r := &LinuxReflector{
-		fd:       fd,
-		epfd:     epfd,
-		port:     boundPort,
-		timeout:  timeout,
-		signer:   signer,
-		shutdown: make(chan struct{}),
-		closed:   make(chan struct{}),
+		fd:             fd,
+		epfd:           epfd,
+		port:           boundPort,
+		timeout:        timeout,
+		signer:         signer,
+		geoprobePubkey: geoprobePubkey,
+		shutdown:       make(chan struct{}),
+		closed:         make(chan struct{}),
 	}
 
 	for _, key := range authorizedKeys {
@@ -178,7 +180,7 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 				continue
 			}
 
-			reply := NewReplyPacket(probe, r.signer)
+			reply := NewReplyPacket(probe, r.signer, r.geoprobePubkey)
 			var replyBuf [ReplyPacketSize]byte
 			_ = reply.Marshal(replyBuf[:])
 

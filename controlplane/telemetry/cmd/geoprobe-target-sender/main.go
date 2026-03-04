@@ -29,7 +29,7 @@ const (
 var (
 	probeIP     = flag.String("probe-ip", "", "IP address of the GeoProbe to probe (required)")
 	probePort   = flag.Uint("probe-port", defaultProbePort, "TWAMP port on the probe")
-	probePK     = flag.String("probe-pk", "", "Base58 Ed25519 public key of the GeoProbe's Signing Authority (required)")
+	probePK     = flag.String("probe-pk", "", "Base58 Ed25519 public key of the GeoProbe's signing authority (required)")
 	keypairPath = flag.String("keypair", "", "Path to this target's Ed25519 keypair file for signing outbound message (required)")
 	interval    = flag.Duration("interval", defaultInterval, "Interval between probes")
 	count       = flag.Uint("count", 0, "Number of probes to send (0 = infinite)")
@@ -207,16 +207,18 @@ func setupLogger(format string, debug bool) *slog.Logger {
 }
 
 func logProbeResult(log *slog.Logger, seq uint32, rtt time.Duration, probeSigValid, replySigValid bool, reply *signed.ReplyPacket) {
-	reflectorPK := solana.PublicKeyFromBytes(reply.ReflectorPubkey[:])
+	authorityPK := solana.PublicKeyFromBytes(reply.AuthorityPubkey[:])
+	geoprobePK := solana.PublicKeyFromBytes(reply.GeoprobePubkey[:])
 
 	if *logFormat == "json" {
 		output := probeOutput{
-			Timestamp:         time.Now().UTC().Format(time.RFC3339),
-			Seq:               seq,
-			RttMs:             float64(rtt.Microseconds()) / 1000.0,
-			ProbeSigValid:     probeSigValid,
-			ReflectorSigValid: replySigValid,
-			ReflectorPubkey:   reflectorPK.String(),
+			Timestamp:      time.Now().UTC().Format(time.RFC3339),
+			Seq:            seq,
+			RttMs:          float64(rtt.Microseconds()) / 1000.0,
+			ProbeSigValid:  probeSigValid,
+			ReplySigValid:  replySigValid,
+			AuthorityPubkey: authorityPK.String(),
+			GeoprobePubkey:  geoprobePK.String(),
 		}
 		data, err := json.Marshal(output)
 		if err != nil {
@@ -233,13 +235,14 @@ func logProbeResult(log *slog.Logger, seq uint32, rtt time.Duration, probeSigVal
 		if !replySigValid {
 			replySigStr = "INVALID"
 		}
-		fmt.Printf("[%s] seq=%d rtt=%s probe_sig=%s reflector_sig=%s probe=%s\n",
+		fmt.Printf("[%s] seq=%d rtt=%s probe_sig=%s reflector_sig=%s authority=%s geoprobe=%s\n",
 			time.Now().UTC().Format("2006-01-02 15:04:05 MST"),
 			seq,
 			formatRTT(rtt),
 			probeSigStr,
 			replySigStr,
-			abbreviatePubkey(reflectorPK.String()),
+			abbreviatePubkey(authorityPK.String()),
+			abbreviatePubkey(geoprobePK.String()),
 		)
 	}
 }
@@ -273,13 +276,14 @@ func logProbeError(log *slog.Logger, seq uint32, probeErr error) {
 }
 
 type probeOutput struct {
-	Timestamp         string  `json:"timestamp"`
-	Seq               uint32  `json:"seq"`
-	RttMs             float64 `json:"rtt_ms"`
-	ProbeSigValid     bool    `json:"probe_sig_valid,omitempty"`
-	ReflectorSigValid bool    `json:"reflector_sig_valid,omitempty"`
-	ReflectorPubkey   string  `json:"reflector_pubkey,omitempty"`
-	Error             string  `json:"error,omitempty"`
+	Timestamp       string  `json:"timestamp"`
+	Seq             uint32  `json:"seq"`
+	RttMs           float64 `json:"rtt_ms"`
+	ProbeSigValid   bool    `json:"probe_sig_valid,omitempty"`
+	ReplySigValid   bool    `json:"reply_sig_valid,omitempty"`
+	AuthorityPubkey string  `json:"authority_pubkey,omitempty"`
+	GeoprobePubkey  string  `json:"geoprobe_pubkey,omitempty"`
+	Error           string  `json:"error,omitempty"`
 }
 
 func formatRTT(d time.Duration) string {

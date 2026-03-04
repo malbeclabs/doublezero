@@ -26,13 +26,16 @@ func TestSender_Linux(t *testing.T) {
 
 		senderPub, senderSigner := newTestSigner(t)
 		reflectorPub, reflectorSigner := newTestSigner(t)
+		geoprobePub, _ := newTestSigner(t)
 
 		var senderPubKey [32]byte
 		copy(senderPubKey[:], senderPub)
 		var reflectorPubKey [32]byte
 		copy(reflectorPubKey[:], reflectorPub)
+		var geoprobePubKey [32]byte
+		copy(geoprobePubKey[:], geoprobePub)
 
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [][32]byte{senderPubKey})
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, geoprobePubKey, [][32]byte{senderPubKey})
 		require.NoError(t, err)
 		defer reflector.Close()
 
@@ -53,7 +56,8 @@ func TestSender_Linux(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, rtt >= 0, "RTT should be non-negative")
 		assert.NotNil(t, reply)
-		assert.Equal(t, reflectorPubKey, reply.ReflectorPubkey)
+		assert.Equal(t, reflectorPubKey, reply.AuthorityPubkey)
+		assert.Equal(t, geoprobePubKey, reply.GeoprobePubkey)
 		assert.True(t, reply.Probe.Verify())
 		assert.True(t, reply.Verify())
 	})
@@ -88,7 +92,7 @@ func TestSender_Linux(t *testing.T) {
 		var reflectorPubKey [32]byte
 		copy(reflectorPubKey[:], reflectorPub)
 
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [][32]byte{senderPubKey})
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, reflectorPubKey, [][32]byte{senderPubKey})
 		require.NoError(t, err)
 		defer reflector.Close()
 
@@ -124,7 +128,7 @@ func TestSender_Linux(t *testing.T) {
 		var reflectorPubKey [32]byte
 		copy(reflectorPubKey[:], reflectorPub)
 
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [][32]byte{senderPubKey})
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, reflectorPubKey, [][32]byte{senderPubKey})
 		require.NoError(t, err)
 		defer reflector.Close()
 

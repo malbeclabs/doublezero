@@ -351,17 +351,20 @@ type SignedProbePacket struct {
 
 The signature covers `[Seq, Sec, Frac, SenderPubkey]` (bytes 0–43)
 
-**SignedReplyPacket (204 bytes)** — sent from Probe to Target:
+**SignedReplyPacket (236 bytes)** — sent from Probe to Target:
 
 ```go
 type SignedReplyPacket struct {
     Probe           SignedProbePacket  // Bytes 0-107: Complete original signed probe (echoed)
-    ReflectorPubkey [32]byte          // Bytes 108-139: Probe's Ed25519 Authority public key
-    Signature       [64]byte          // Bytes 140-203: Ed25519 signature over bytes 0-139
+    AuthorityPubkey [32]byte          // Bytes 108-139: Signing authority's Ed25519 public key
+    GeoprobePubkey  [32]byte          // Bytes 140-171: Geoprobe identity public key
+    Signature       [64]byte          // Bytes 172-235: Ed25519 signature over bytes 0-171
 }
 ```
 
-The probe's signature covers `[Probe, ReflectorPubkey]` (bytes 0–139)
+`AuthorityPubkey` is the key used to sign and verify the reply. `GeoprobePubkey` identifies the specific geoprobe that produced the reply
+
+The probe's signature covers `[Probe, AuthorityPubkey, GeoprobePubkey]` (bytes 0–171)
 
 #### Interfaces
 

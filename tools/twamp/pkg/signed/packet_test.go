@@ -46,9 +46,12 @@ func TestReplyPacket_MarshalUnmarshal(t *testing.T) {
 
 	_, senderSigner := newTestSigner(t)
 	reflectorPub, reflectorSigner := newTestSigner(t)
+	geoprobePub, _ := newTestSigner(t)
+	var geoprobePubkey [32]byte
+	copy(geoprobePubkey[:], geoprobePub)
 
 	probe := signed.NewProbePacket(7, senderSigner)
-	reply := signed.NewReplyPacket(probe, reflectorSigner)
+	reply := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey)
 
 	buf := make([]byte, signed.ReplyPacketSize)
 	err := reply.Marshal(buf)
@@ -62,9 +65,11 @@ func TestReplyPacket_MarshalUnmarshal(t *testing.T) {
 	assert.Equal(t, reply.Probe.Frac, got.Probe.Frac)
 	assert.Equal(t, reply.Probe.SenderPubkey, got.Probe.SenderPubkey)
 	assert.Equal(t, reply.Probe.Signature, got.Probe.Signature)
-	assert.Equal(t, reply.ReflectorPubkey, got.ReflectorPubkey)
+	assert.Equal(t, reply.AuthorityPubkey, got.AuthorityPubkey)
+	assert.Equal(t, reply.GeoprobePubkey, got.GeoprobePubkey)
 	assert.Equal(t, reply.Signature, got.Signature)
-	assert.Equal(t, [32]byte(reflectorPub), got.ReflectorPubkey)
+	assert.Equal(t, [32]byte(reflectorPub), got.AuthorityPubkey)
+	assert.Equal(t, geoprobePubkey, got.GeoprobePubkey)
 }
 
 func TestProbePacket_Verify(t *testing.T) {
@@ -92,24 +97,43 @@ func TestReplyPacket_Verify(t *testing.T) {
 
 	_, senderSigner := newTestSigner(t)
 	_, reflectorSigner := newTestSigner(t)
+	geoprobePub, _ := newTestSigner(t)
+	var geoprobePubkey [32]byte
+	copy(geoprobePubkey[:], geoprobePub)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply := signed.NewReplyPacket(probe, reflectorSigner)
+	reply := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey)
 
 	assert.True(t, reply.Probe.Verify())
 	assert.True(t, reply.Verify())
 }
 
-func TestReplyPacket_Verify_TamperedReflectorPubkey(t *testing.T) {
+func TestReplyPacket_Verify_TamperedAuthorityPubkey(t *testing.T) {
 	t.Parallel()
 
 	_, senderSigner := newTestSigner(t)
 	_, reflectorSigner := newTestSigner(t)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply := signed.NewReplyPacket(probe, reflectorSigner)
+	reply := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{})
 
-	reply.ReflectorPubkey[0] ^= 0xff
+	reply.AuthorityPubkey[0] ^= 0xff
+	assert.False(t, reply.Verify())
+}
+
+func TestReplyPacket_Verify_TamperedGeoprobePubkey(t *testing.T) {
+	t.Parallel()
+
+	_, senderSigner := newTestSigner(t)
+	_, reflectorSigner := newTestSigner(t)
+	geoprobePub, _ := newTestSigner(t)
+	var geoprobePubkey [32]byte
+	copy(geoprobePubkey[:], geoprobePub)
+
+	probe := signed.NewProbePacket(1, senderSigner)
+	reply := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey)
+
+	reply.GeoprobePubkey[0] ^= 0xff
 	assert.False(t, reply.Verify())
 }
 
@@ -173,7 +197,7 @@ func TestReplyPacket_Marshal_BufferTooSmall(t *testing.T) {
 	_, reflectorSigner := newTestSigner(t)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply := signed.NewReplyPacket(probe, reflectorSigner)
+	reply := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{})
 	buf := make([]byte, signed.ReplyPacketSize-1)
 	err := reply.Marshal(buf)
 	assert.Error(t, err)
@@ -201,9 +225,12 @@ func TestReplyPacket_ByteLayout(t *testing.T) {
 
 	_, senderSigner := newTestSigner(t)
 	reflectorPub, reflectorSigner := newTestSigner(t)
+	geoprobePub, _ := newTestSigner(t)
+	var geoprobePubkey [32]byte
+	copy(geoprobePubkey[:], geoprobePub)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply := signed.NewReplyPacket(probe, reflectorSigner)
+	reply := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey)
 
 	buf := make([]byte, signed.ReplyPacketSize)
 	require.NoError(t, reply.Marshal(buf))
@@ -212,9 +239,10 @@ func TestReplyPacket_ByteLayout(t *testing.T) {
 	require.NoError(t, probe.Marshal(probeBuf))
 	assert.Equal(t, probeBuf, buf[0:108], "embedded probe at bytes 0-107")
 
-	assert.Equal(t, []byte(reflectorPub), buf[108:140], "reflector pubkey at bytes 108-139")
+	assert.Equal(t, []byte(reflectorPub), buf[108:140], "authority pubkey at bytes 108-139")
+	assert.Equal(t, geoprobePubkey[:], buf[140:172], "geoprobe pubkey at bytes 140-171")
 
-	assert.Equal(t, reply.Signature[:], buf[140:204], "signature at bytes 140-203")
+	assert.Equal(t, reply.Signature[:], buf[172:236], "signature at bytes 172-235")
 }
 
 func TestProbePacket_Verify_InvalidSignatureBytes(t *testing.T) {
@@ -235,7 +263,7 @@ func TestReplyPacket_Verify_TamperedEmbeddedProbe(t *testing.T) {
 	_, reflectorSigner := newTestSigner(t)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply := signed.NewReplyPacket(probe, reflectorSigner)
+	reply := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{})
 
 	reply.Probe.Seq = 999
 	assert.False(t, reply.Verify())

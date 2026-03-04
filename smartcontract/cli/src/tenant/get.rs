@@ -1,7 +1,9 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
+use doublezero_program_common::serializer;
 use doublezero_sdk::commands::tenant::get::GetTenantCommand;
 use serde::Serialize;
+use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 use tabled::Tabled;
 
@@ -17,13 +19,15 @@ pub struct GetTenantCliCommand {
 
 #[derive(Tabled, Serialize)]
 struct TenantDisplay {
-    pub account: String,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub account: Pubkey,
     pub code: String,
     pub vrf_id: u16,
     pub metro_routing: bool,
     pub route_liveness: bool,
     pub reference_count: u32,
-    pub owner: String,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub owner: Pubkey,
 }
 
 impl GetTenantCliCommand {
@@ -33,13 +37,13 @@ impl GetTenantCliCommand {
         })?;
 
         let display = TenantDisplay {
-            account: pubkey.to_string(),
+            account: pubkey,
             code: tenant.code,
             vrf_id: tenant.vrf_id,
             metro_routing: tenant.metro_routing,
             route_liveness: tenant.route_liveness,
             reference_count: tenant.reference_count,
-            owner: tenant.owner.to_string(),
+            owner: tenant.owner,
         };
 
         if self.json {
@@ -134,7 +138,10 @@ mod tests {
             has_row("account", &tenant_pubkey.to_string()),
             "account row should contain pubkey"
         );
-        assert!(has_row("code", "test-tenant"), "code row should contain value");
+        assert!(
+            has_row("code", "test-tenant"),
+            "code row should contain value"
+        );
         assert!(has_row("vrf_id", "100"), "vrf_id row should contain value");
         assert!(
             has_row("metro_routing", "true"),
@@ -155,18 +162,12 @@ mod tests {
         assert!(res.is_ok(), "I should find a item by code");
         let json: serde_json::Value =
             serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();
-        assert_eq!(
-            json["account"].as_str().unwrap(),
-            tenant_pubkey.to_string()
-        );
+        assert_eq!(json["account"].as_str().unwrap(), tenant_pubkey.to_string());
         assert_eq!(json["code"].as_str().unwrap(), "test-tenant");
         assert_eq!(json["vrf_id"].as_u64().unwrap(), 100);
-        assert_eq!(json["metro_routing"].as_bool().unwrap(), true);
-        assert_eq!(json["route_liveness"].as_bool().unwrap(), false);
+        assert!(json["metro_routing"].as_bool().unwrap());
+        assert!(!json["route_liveness"].as_bool().unwrap());
         assert_eq!(json["reference_count"].as_u64().unwrap(), 0);
-        assert_eq!(
-            json["owner"].as_str().unwrap(),
-            tenant_pubkey.to_string()
-        );
+        assert_eq!(json["owner"].as_str().unwrap(), tenant_pubkey.to_string());
     }
 }

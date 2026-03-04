@@ -79,7 +79,6 @@ impl GetMulticastGroupCliCommand {
         let users = client.list_user(ListUserCommand)?;
         let devices = client.list_device(ListDeviceCommand)?;
         let locations = client.list_location(ListLocationCommand)?;
-        let tenants = client.list_tenant(ListTenantCommand {})?;
 
         let list_accesspass = client.list_accesspass(ListAccessPassCommand {})?;
 
@@ -160,6 +159,8 @@ impl GetMulticastGroupCliCommand {
         let tenant_str = if mgroup.tenant_pk == Pubkey::default() {
             String::new()
         } else {
+            let tenants = client.list_tenant(ListTenantCommand {})?;
+
             tenants
                 .get(&mgroup.tenant_pk)
                 .map_or(mgroup.tenant_pk.to_string(), |t| t.code.clone())

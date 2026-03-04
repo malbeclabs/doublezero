@@ -16,14 +16,12 @@ pub enum CliAccessPassType {
     Prepaid,
     SolanaValidator,
     SolanaRPC,
-    SolanaMulticastPublisher,
-    SolanaMulticastSubscriber,
     Others,
 }
 
 #[derive(Args, Debug)]
 pub struct SetAccessPassCliCommand {
-    /// Specifies the access pass type (prepaid, solana_validator, solana_rpc, solana_multicast_publisher, solana_multicast_subscriber)
+    /// Specifies the access pass type
     #[arg(long, default_value = "prepaid")]
     pub accesspass_type: CliAccessPassType,
     /// Client IP address in IPv4 format
@@ -35,14 +33,8 @@ pub struct SetAccessPassCliCommand {
     /// Specifies the number of epochs for the access pass.
     #[arg(long, default_value = "max")]
     pub epochs: String,
-    /// Specifies the solana validator node id for the access pass. Required if accesspass_type is solana_validator, solana_rpc, solana_multicast_publisher, or solana_multicast_subscriber
-    #[arg(
-        long,
-        required_if_eq("accesspass_type", "solana_validator"),
-        required_if_eq("accesspass_type", "solana_rpc"),
-        required_if_eq("accesspass_type", "solana_multicast_publisher"),
-        required_if_eq("accesspass_type", "solana_multicast_subscriber")
-    )]
+    /// Specifies the solana validator node id for the access pass. Required if accesspass_type is solana-validator
+    #[arg(long, required_if_eq("accesspass_type", "solana_validator"))]
     pub solana_validator: Option<Pubkey>, // This will be integrated with identity for all access pass types in future
     /// Allow multiple IP addresses for this access pass (only for Prepaid type)    
     #[arg(long, default_value_t = false)]
@@ -86,28 +78,9 @@ impl SetAccessPassCliCommand {
                     "Solana validator access pass type requires --solana-validator <PUBKEY>"
                 ),
             },
-            CliAccessPassType::SolanaRPC => match self.solana_validator {
-                Some(solana_validator) => AccessPassType::SolanaRPC(solana_validator),
-                None => {
-                    eyre::bail!("Solana RPC access pass type requires --solana-validator <STRING>")
-                }
-            },
-            CliAccessPassType::SolanaMulticastPublisher => match self.solana_validator {
-                Some(solana_validator) => {
-                    AccessPassType::SolanaMulticastPublisher(solana_validator)
-                }
-                None => eyre::bail!(
-                    "Solana Multicast Publisher access pass type requires --solana-validator <STRING>"
-                ),
-            },
-            CliAccessPassType::SolanaMulticastSubscriber => match self.solana_validator {
-                Some(solana_validator) => {
-                    AccessPassType::SolanaMulticastSubscriber(solana_validator)
-                }
-                None => eyre::bail!(
-                    "Solana Multicast Subscriber access pass type requires --solana-validator <STRING>"
-                ),
-            },
+            CliAccessPassType::SolanaRPC => {
+                AccessPassType::SolanaRPC(self.solana_validator.unwrap_or_default())
+            }
             CliAccessPassType::Others => match (self.others_name, self.others_key) {
                 (Some(name), Some(key)) => AccessPassType::Others( name, key ),
                 _ => eyre::bail!(
@@ -155,7 +128,10 @@ mod tests {
         tests::utils::create_test_client,
     };
     use doublezero_sdk::commands::accesspass::set::SetAccessPassCommand;
-    use doublezero_serviceability::{pda::get_accesspass_pda, state::accesspass::AccessPassType};
+    use doublezero_serviceability::{
+        pda::{get_accesspass_pda, get_tenant_pda},
+        state::accesspass::AccessPassType,
+    };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -305,17 +281,37 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_accesspass_set_solana_rpc_missing_validator() {
+    fn test_cli_accesspass_set_solana_rpc_without_validator() {
         let mut client = create_test_client();
 
         let client_ip = [100, 0, 0, 1].into();
         let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+
+        let (_pda_pubkey, _bump_seed) =
+            get_accesspass_pda(&client.get_program_id(), &client_ip, &payer);
+        let signature = Signature::from([
+            120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
+            82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
+            139, 130, 217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139,
+            100, 221, 20, 137, 4, 5,
+        ]);
 
         client.expect_get_epoch().returning(|| Ok(10));
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
+        client
+            .expect_set_accesspass()
+            .with(predicate::eq(SetAccessPassCommand {
+                accesspass_type: AccessPassType::SolanaRPC(Pubkey::default()),
+                client_ip,
+                user_payer: payer,
+                last_access_epoch: 11,
+                allow_multiple_ip: false,
+                tenant: Pubkey::default(),
+            }))
+            .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();
         let res = SetAccessPassCliCommand {
@@ -330,11 +326,7 @@ mod tests {
             tenant: None,
         }
         .execute(&client, &mut output);
-        assert!(res.is_err());
-        assert_eq!(
-            res.err().unwrap().to_string(),
-            "Solana RPC access pass type requires --solana-validator <STRING>"
-        );
+        assert!(res.is_ok());
     }
 
     #[test]
@@ -375,184 +367,6 @@ mod tests {
         let mut output = Vec::new();
         let res = SetAccessPassCliCommand {
             accesspass_type: CliAccessPassType::SolanaRPC,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
-            solana_validator: Some(solana_validator),
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
-        assert!(res.is_ok());
-        let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(
-            output_str,
-            "AccessPass PDA: 6pw9fvwzjjkkocGuwxhmv1TwHHnYTFjGvV9GKX6nkFMw\nSignature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
-        );
-    }
-
-    #[test]
-    fn test_cli_accesspass_set_solana_multicast_publisher_missing_validator() {
-        let mut client = create_test_client();
-
-        let client_ip = [100, 0, 0, 1].into();
-        let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
-
-        client.expect_get_epoch().returning(|| Ok(10));
-        client
-            .expect_check_requirements()
-            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
-            .returning(|_| Ok(()));
-
-        let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::SolanaMulticastPublisher,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
-        assert!(res.is_err());
-        assert_eq!(
-            res.err().unwrap().to_string(),
-            "Solana Multicast Publisher access pass type requires --solana-validator <STRING>"
-        );
-    }
-
-    #[test]
-    fn test_cli_accesspass_set_solana_multicast_publisher_success() {
-        let mut client = create_test_client();
-
-        let client_ip = [100, 0, 0, 1].into();
-        let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
-
-        let (_pda_pubkey, _bump_seed) =
-            get_accesspass_pda(&client.get_program_id(), &client_ip, &payer);
-        let signature = Signature::from([
-            120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
-            82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
-            139, 130, 217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139,
-            100, 221, 20, 137, 4, 5,
-        ]);
-
-        let solana_validator = Pubkey::new_unique();
-
-        client.expect_get_epoch().returning(|| Ok(10));
-        client
-            .expect_check_requirements()
-            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
-            .returning(|_| Ok(()));
-        client
-            .expect_set_accesspass()
-            .with(predicate::eq(SetAccessPassCommand {
-                accesspass_type: AccessPassType::SolanaMulticastPublisher(solana_validator),
-                client_ip,
-                user_payer: payer,
-                last_access_epoch: 11,
-                allow_multiple_ip: false,
-                tenant: Pubkey::default(),
-            }))
-            .returning(move |_| Ok(signature));
-
-        let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::SolanaMulticastPublisher,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
-            solana_validator: Some(solana_validator),
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
-        assert!(res.is_ok());
-        let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(
-            output_str,
-            "AccessPass PDA: 6pw9fvwzjjkkocGuwxhmv1TwHHnYTFjGvV9GKX6nkFMw\nSignature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
-        );
-    }
-
-    #[test]
-    fn test_cli_accesspass_set_solana_multicast_subscriber_missing_validator() {
-        let mut client = create_test_client();
-
-        let client_ip = [100, 0, 0, 1].into();
-        let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
-
-        client.expect_get_epoch().returning(|| Ok(10));
-        client
-            .expect_check_requirements()
-            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
-            .returning(|_| Ok(()));
-
-        let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::SolanaMulticastSubscriber,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
-        assert!(res.is_err());
-        assert_eq!(
-            res.err().unwrap().to_string(),
-            "Solana Multicast Subscriber access pass type requires --solana-validator <STRING>"
-        );
-    }
-
-    #[test]
-    fn test_cli_accesspass_set_solana_multicast_subscriber_success() {
-        let mut client = create_test_client();
-
-        let client_ip = [100, 0, 0, 1].into();
-        let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
-
-        let (_pda_pubkey, _bump_seed) =
-            get_accesspass_pda(&client.get_program_id(), &client_ip, &payer);
-        let signature = Signature::from([
-            120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
-            82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
-            139, 130, 217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139,
-            100, 221, 20, 137, 4, 5,
-        ]);
-
-        let solana_validator = Pubkey::new_unique();
-
-        client.expect_get_epoch().returning(|| Ok(10));
-        client
-            .expect_check_requirements()
-            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
-            .returning(|_| Ok(()));
-        client
-            .expect_set_accesspass()
-            .with(predicate::eq(SetAccessPassCommand {
-                accesspass_type: AccessPassType::SolanaMulticastSubscriber(solana_validator),
-                client_ip,
-                user_payer: payer,
-                last_access_epoch: 11,
-                allow_multiple_ip: false,
-                tenant: Pubkey::default(),
-            }))
-            .returning(move |_| Ok(signature));
-
-        let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::SolanaMulticastSubscriber,
             client_ip: Some(client_ip),
             user_payer: payer.to_string(),
             epochs: "1".into(),
@@ -692,5 +506,297 @@ mod tests {
             output_str,
             "AccessPass PDA: 6pw9fvwzjjkkocGuwxhmv1TwHHnYTFjGvV9GKX6nkFMw\nSignature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
         );
+    }
+
+    #[test]
+    fn test_cli_accesspass_set_invalid_user_payer() {
+        let mut client = create_test_client();
+
+        client.expect_get_epoch().returning(|| Ok(10));
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+
+        let mut output = Vec::new();
+        let res = SetAccessPassCliCommand {
+            accesspass_type: CliAccessPassType::Prepaid,
+            client_ip: Some([100, 0, 0, 1].into()),
+            user_payer: "not-a-valid-pubkey".to_string(),
+            epochs: "max".into(),
+            solana_validator: None,
+            allow_multiple_ip: false,
+            others_name: None,
+            others_key: None,
+            tenant: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_cli_accesspass_set_invalid_epochs() {
+        let mut client = create_test_client();
+
+        client.expect_get_epoch().returning(|| Ok(10));
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+
+        let mut output = Vec::new();
+        let res = SetAccessPassCliCommand {
+            accesspass_type: CliAccessPassType::Prepaid,
+            client_ip: Some([100, 0, 0, 1].into()),
+            user_payer: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB")
+                .to_string(),
+            epochs: "not-a-number".into(),
+            solana_validator: None,
+            allow_multiple_ip: false,
+            others_name: None,
+            others_key: None,
+            tenant: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_cli_accesspass_set_tenant_code_too_long() {
+        let mut client = create_test_client();
+
+        client.expect_get_epoch().returning(|| Ok(10));
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+
+        let too_long = "a".repeat(33);
+        let mut output = Vec::new();
+        let res = SetAccessPassCliCommand {
+            accesspass_type: CliAccessPassType::Prepaid,
+            client_ip: Some([100, 0, 0, 1].into()),
+            user_payer: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB")
+                .to_string(),
+            epochs: "max".into(),
+            solana_validator: None,
+            allow_multiple_ip: false,
+            others_name: None,
+            others_key: None,
+            tenant: Some(too_long.clone()),
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert_eq!(
+            res.err().unwrap().to_string(),
+            format!("Tenant code '{}' exceeds 32 bytes", too_long)
+        );
+    }
+
+    #[test]
+    fn test_cli_accesspass_set_prepaid_with_allow_multiple_ip() {
+        let mut client = create_test_client();
+
+        let client_ip = [100, 0, 0, 1].into();
+        let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let signature = Signature::from([1u8; 64]);
+
+        client.expect_get_epoch().returning(|| Ok(10));
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_set_accesspass()
+            .with(predicate::eq(SetAccessPassCommand {
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip,
+                user_payer: payer,
+                last_access_epoch: u64::MAX,
+                allow_multiple_ip: true,
+                tenant: Pubkey::default(),
+            }))
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let res = SetAccessPassCliCommand {
+            accesspass_type: CliAccessPassType::Prepaid,
+            client_ip: Some(client_ip),
+            user_payer: payer.to_string(),
+            epochs: "max".into(),
+            solana_validator: None,
+            allow_multiple_ip: true,
+            others_name: None,
+            others_key: None,
+            tenant: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_cli_accesspass_set_prepaid_with_tenant() {
+        let mut client = create_test_client();
+
+        let client_ip = [100, 0, 0, 1].into();
+        let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let signature = Signature::from([2u8; 64]);
+
+        let tenant_pda = get_tenant_pda(&client.get_program_id(), "acme").0;
+
+        client.expect_get_epoch().returning(|| Ok(10));
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_set_accesspass()
+            .with(predicate::eq(SetAccessPassCommand {
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip,
+                user_payer: payer,
+                last_access_epoch: u64::MAX,
+                allow_multiple_ip: false,
+                tenant: tenant_pda,
+            }))
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let res = SetAccessPassCliCommand {
+            accesspass_type: CliAccessPassType::Prepaid,
+            client_ip: Some(client_ip),
+            user_payer: payer.to_string(),
+            epochs: "max".into(),
+            solana_validator: None,
+            allow_multiple_ip: false,
+            others_name: None,
+            others_key: None,
+            tenant: Some("acme".to_string()),
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_cli_accesspass_set_dynamic_client_ip() {
+        let mut client = create_test_client();
+
+        let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let signature = Signature::from([3u8; 64]);
+
+        client.expect_get_epoch().returning(|| Ok(10));
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_set_accesspass()
+            .with(predicate::eq(SetAccessPassCommand {
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip: Ipv4Addr::UNSPECIFIED,
+                user_payer: payer,
+                last_access_epoch: u64::MAX,
+                allow_multiple_ip: false,
+                tenant: Pubkey::default(),
+            }))
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let res = SetAccessPassCliCommand {
+            accesspass_type: CliAccessPassType::Prepaid,
+            client_ip: None,
+            user_payer: payer.to_string(),
+            epochs: "max".into(),
+            solana_validator: None,
+            allow_multiple_ip: false,
+            others_name: None,
+            others_key: None,
+            tenant: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_cli_accesspass_set_epochs_zero() {
+        let mut client = create_test_client();
+
+        let client_ip = [100, 0, 0, 1].into();
+        let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let signature = Signature::from([4u8; 64]);
+
+        client.expect_get_epoch().returning(|| Ok(10));
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_set_accesspass()
+            .with(predicate::eq(SetAccessPassCommand {
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip,
+                user_payer: payer,
+                last_access_epoch: 0,
+                allow_multiple_ip: false,
+                tenant: Pubkey::default(),
+            }))
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let res = SetAccessPassCliCommand {
+            accesspass_type: CliAccessPassType::Prepaid,
+            client_ip: Some(client_ip),
+            user_payer: payer.to_string(),
+            epochs: "0".into(),
+            solana_validator: None,
+            allow_multiple_ip: false,
+            others_name: None,
+            others_key: None,
+            tenant: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_cli_accesspass_set_user_payer_me() {
+        let mut client = create_test_client();
+
+        let client_ip = [100, 0, 0, 1].into();
+        // "me" resolves to the payer from the test client
+        let me = Pubkey::from_str_const("DDddB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt");
+        let signature = Signature::from([5u8; 64]);
+
+        client.expect_get_epoch().returning(|| Ok(10));
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_set_accesspass()
+            .with(predicate::eq(SetAccessPassCommand {
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip,
+                user_payer: me,
+                last_access_epoch: u64::MAX,
+                allow_multiple_ip: false,
+                tenant: Pubkey::default(),
+            }))
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let res = SetAccessPassCliCommand {
+            accesspass_type: CliAccessPassType::Prepaid,
+            client_ip: Some(client_ip),
+            user_payer: "me".to_string(),
+            epochs: "max".into(),
+            solana_validator: None,
+            allow_multiple_ip: false,
+            others_name: None,
+            others_key: None,
+            tenant: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
     }
 }

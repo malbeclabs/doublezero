@@ -151,33 +151,9 @@ impl Validate for AccessPassType {
                 }
                 Ok(())
             }
-            AccessPassType::SolanaRPC(solana_identity) => {
-                if *solana_identity == Pubkey::default() {
-                    msg!("Invalid Solana RPC Pubkey: {}", solana_identity);
-                    return Err(DoubleZeroError::InvalidSolanaPubkey);
-                }
-                Ok(())
-            }
-            AccessPassType::SolanaMulticastPublisher(solana_identity) => {
-                if *solana_identity == Pubkey::default() {
-                    msg!(
-                        "Invalid Solana Multicast Publisher Pubkey: {}",
-                        solana_identity
-                    );
-                    return Err(DoubleZeroError::InvalidSolanaPubkey);
-                }
-                Ok(())
-            }
-            AccessPassType::SolanaMulticastSubscriber(solana_identity) => {
-                if *solana_identity == Pubkey::default() {
-                    msg!(
-                        "Invalid Solana Multicast Subscriber Pubkey: {}",
-                        solana_identity
-                    );
-                    return Err(DoubleZeroError::InvalidSolanaPubkey);
-                }
-                Ok(())
-            }
+            AccessPassType::SolanaRPC(_) => Ok(()),
+            AccessPassType::SolanaMulticastPublisher(_) => Ok(()),
+            AccessPassType::SolanaMulticastSubscriber(_) => Ok(()),
             _ => Ok(()),
         }
     }

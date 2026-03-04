@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.4.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.4.1) - 2026-02-26
+
 - solana-cli: add `revenue-distribution configure-contributor-rewards` command to update ContributorRewards recipients and (optionally) protocol-management block/allow flags ([#257](https://github.com/doublezerofoundation/doublezero-offchain/pull/257))
 - ensure debt is finalized before collection ([#268](https://github.com/doublezerofoundation/doublezero-offchain/pull/268))
 - add prepaid 2Z row for `revenue-distribution fetch distribution` ([#266](https://github.com/doublezerofoundation/doublezero-offchain/pull/266))

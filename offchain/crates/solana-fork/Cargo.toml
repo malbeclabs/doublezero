@@ -1,6 +1,8 @@
 [package]
 name = "doublezero-solana-fork-cli"
-version.workspace = true
+version = "0.0.1"
+
+# Workspace inherited keys
 edition.workspace = true
 authors.workspace = true
 readme.workspace = true

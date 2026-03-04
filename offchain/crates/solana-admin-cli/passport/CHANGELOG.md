@@ -7,8 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/compare/doublezero-passport-admin-cli/v0.0.0...doublezero-passport-admin-cli/v0.0.1) - 2025-10-21
-
-### Other
+## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-passport-admin-cli%2Fv0.0.1) - 2025-10-21
 
 - add sol-conversion-admin-cli ([#156](https://github.com/doublezerofoundation/doublezero-offchain/pull/156))
+
+### Other

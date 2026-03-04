@@ -6,9 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/slack-notifier%2Fv0.0.1) - 2025-10-21
+
 - display distribution in SOL ([#256](https://github.com/doublezerofoundation/doublezero-offchain/pull/256))
 - ignore overlapping dz epochs in report ([#228](https://github.com/doublezerofoundation/doublezero-offchain/pull/228))
-## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/compare/slack-notifier/v0.0.0...slack-notifier/v0.0.1) - 2025-10-21
 
 ### Other
 

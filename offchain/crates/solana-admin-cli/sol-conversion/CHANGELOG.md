@@ -7,10 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- fix println ([#226](https://github.com/doublezerofoundation/doublezero-offchain/pull/226))
+## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-sol-conversion-admin-cli%2Fv0.0.1) - 2025-10-21
 
-## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/compare/doublezero-sol-conversion-admin-cli/v0.0.0...doublezero-sol-conversion-admin-cli/v0.0.1) - 2025-10-21
+- fix println ([#226](https://github.com/doublezerofoundation/doublezero-offchain/pull/226))
+- add sol-conversion-admin-cli ([#156](https://github.com/doublezerofoundation/doublezero-offchain/pull/156))
 
 ### Other
-
-- add sol-conversion-admin-cli ([#156](https://github.com/doublezerofoundation/doublezero-offchain/pull/156))

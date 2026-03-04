@@ -2360,7 +2360,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-contributor-rewards"
-version = "0.0.1"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2413,7 +2413,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-ledger-sentinel"
-version = "0.2.2"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2629,7 +2629,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-solana-cli"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "async-trait",

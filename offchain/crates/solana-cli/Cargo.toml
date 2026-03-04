@@ -1,8 +1,9 @@
 [package]
 name = "doublezero-solana-cli"
 description = "Command line to interact with DoubleZero Solana programs"
-version = "0.4.0"
+version = "0.4.1"
 
+# Workspace inherited keys
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true

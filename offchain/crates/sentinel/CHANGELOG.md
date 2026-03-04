@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.2.5](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/sentinel%2Fv0.2.5) - 2026-02-26
+
 - feat: autojoin validators to approved mcast pub groups
 - feat: billing sentinel for tenant payment status monitoring ([#265](https://github.com/doublezerofoundation/doublezero-offchain/pull/265))
 - change default leader schedule lookahead from 2 epochs to 1 ([#259](https://github.com/doublezerofoundation/doublezero-offchain/pull/259))
@@ -13,16 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix leader schedule evaluation ([#214](https://github.com/doublezerofoundation/doublezero-offchain/pull/214))
 - improve previous epoch slot evaluation ([#213](https://github.com/doublezerofoundation/doublezero-offchain/pull/213))
 
-## [0.2.2](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/sentinel/v0.2.2) - 2025-11-11
+## [0.2.2](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/sentinel%2Fv0.2.2) - 2025-11-11
 
 - fix(sentinel): retry on conn reset, one more time [#184](https://github.com/doublezerofoundation/doublezero-offchain/pull/184)
 - move binary from /usr/local/bin/ to /usr/bin to comply with package management standards ([#187](https://github.com/doublezerofoundation/doublezero-offchain/pull/187))
 
-## [0.2.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/sentinel/v0.2.1) - 2025-11-04
+## [0.2.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/sentinel%2Fv0.2.1) - 2025-11-04
 
 - retry on ECONNRESET [#177](https://github.com/doublezerofoundation/doublezero-offchain/pull/177)
 
-## [0.2.0](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/sentinel/v0.2.0) - 2025-10-21
+## [0.2.0](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/sentinel%2Fv0.2.0) - 2025-10-21
 
 ### Fixed
 

@@ -7,11 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-revenue-distribution-admin-cli%2Fv0.0.1) - 2025-10-21
+
 - add `--solana_validator_debt_write_off_feature_activation_epoch` ([#237](https://github.com/doublezerofoundation/doublezero-offchain/pull/237))
 - update migration command ([#229](https://github.com/doublezerofoundation/doublezero-offchain/pull/229))
 - use `doublezero-solana-sdk` as dependency ([#225](https://github.com/doublezerofoundation/doublezero-offchain/pull/225))
 - update migration command ([#195](https://github.com/doublezerofoundation/doublezero-offchain/pull/195))
-
-## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-revenue-distribution-admin-cli/v0.0.1) - 2025-10-21
-
 - add sol-conversion-admin-cli ([#156](https://github.com/doublezerofoundation/doublezero-offchain/pull/156))
+
+## Other

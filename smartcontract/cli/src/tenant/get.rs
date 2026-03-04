@@ -224,6 +224,9 @@ mod tests {
         assert_eq!(json["owner"].as_str().unwrap(), tenant_pubkey.to_string());
         let admins = json["administrators"].as_array().unwrap();
         assert_eq!(admins.len(), 1);
-        assert_eq!(admins[0]["pubkey"].as_str().unwrap(), admin_pubkey.to_string());
+        assert_eq!(
+            admins[0]["pubkey"].as_str().unwrap(),
+            admin_pubkey.to_string()
+        );
     }
 }

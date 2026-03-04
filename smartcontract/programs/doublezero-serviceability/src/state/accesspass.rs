@@ -38,26 +38,6 @@ pub enum AccessPassType {
         )]
         Pubkey,
     ),
-    SolanaMulticastPublisher(
-        #[cfg_attr(
-            feature = "serde",
-            serde(
-                serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
-                deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
-            )
-        )]
-        Pubkey,
-    ),
-    SolanaMulticastSubscriber(
-        #[cfg_attr(
-            feature = "serde",
-            serde(
-                serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
-                deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
-            )
-        )]
-        Pubkey,
-    ),
     Others(String, String), // (type_name, key)
 }
 
@@ -67,10 +47,6 @@ impl AccessPassType {
             AccessPassType::Prepaid => "prepaid".to_string(),
             AccessPassType::SolanaValidator(_) => "solana_validator".to_string(),
             AccessPassType::SolanaRPC(_) => "solana_rpc".to_string(),
-            AccessPassType::SolanaMulticastPublisher(_) => "solana_multicast_publisher".to_string(),
-            AccessPassType::SolanaMulticastSubscriber(_) => {
-                "solana_multicast_subscriber".to_string()
-            }
             AccessPassType::Others(type_name, _) => type_name.clone(),
         }
     }
@@ -82,12 +58,6 @@ impl fmt::Display for AccessPassType {
             AccessPassType::Prepaid => write!(f, "prepaid"),
             AccessPassType::SolanaValidator(node_id) => write!(f, "solana_validator: {node_id}"),
             AccessPassType::SolanaRPC(node_id) => write!(f, "solana_rpc: {node_id}"),
-            AccessPassType::SolanaMulticastPublisher(node_id) => {
-                write!(f, "solana_multicast_publisher: {node_id}")
-            }
-            AccessPassType::SolanaMulticastSubscriber(node_id) => {
-                write!(f, "solana_multicast_subscriber: {node_id}")
-            }
             AccessPassType::Others(type_name, key) => {
                 write!(f, "others: {} ({})", type_name, key)
             }
@@ -151,9 +121,13 @@ impl Validate for AccessPassType {
                 }
                 Ok(())
             }
-            AccessPassType::SolanaRPC(_) => Ok(()),
-            AccessPassType::SolanaMulticastPublisher(_) => Ok(()),
-            AccessPassType::SolanaMulticastSubscriber(_) => Ok(()),
+            AccessPassType::SolanaRPC(solana_identity) => {
+                if *solana_identity == Pubkey::default() {
+                    msg!("Invalid Solana RPC Pubkey: {}", solana_identity);
+                    return Err(DoubleZeroError::InvalidSolanaPubkey);
+                }
+                Ok(())
+            }
             _ => Ok(()),
         }
     }
@@ -209,12 +183,6 @@ impl fmt::Display for AccessPass {
             }
             AccessPassType::SolanaRPC(node_id) => {
                 write!(f, "SolanaRPC: ({node_id})")
-            }
-            AccessPassType::SolanaMulticastPublisher(node_id) => {
-                write!(f, "SolanaMulticastPublisher: ({node_id})")
-            }
-            AccessPassType::SolanaMulticastSubscriber(node_id) => {
-                write!(f, "SolanaMulticastSubscriber: ({node_id})")
             }
             AccessPassType::Others(type_name, details) => {
                 write!(f, "Others: {} ({})", type_name, details)

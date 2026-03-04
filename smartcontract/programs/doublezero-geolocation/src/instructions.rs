@@ -1,7 +1,10 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 
 pub use crate::processors::{
-    geo_probe::{create::CreateGeoProbeArgs, update::UpdateGeoProbeArgs},
+    geo_probe::{
+        create::CreateGeoProbeArgs, remove_parent_device::RemoveParentDeviceArgs,
+        update::UpdateGeoProbeArgs,
+    },
     program_config::{init::InitProgramConfigArgs, update::UpdateProgramConfigArgs},
 };
 
@@ -12,6 +15,8 @@ pub enum GeolocationInstruction {
     CreateGeoProbe(CreateGeoProbeArgs),
     UpdateGeoProbe(UpdateGeoProbeArgs),
     DeleteGeoProbe,
+    AddParentDevice,
+    RemoveParentDevice(RemoveParentDeviceArgs),
 }
 
 #[cfg(test)]
@@ -55,6 +60,12 @@ mod tests {
             metrics_publisher_pk: None,
         }));
         test_instruction(GeolocationInstruction::DeleteGeoProbe);
+        test_instruction(GeolocationInstruction::AddParentDevice);
+        test_instruction(GeolocationInstruction::RemoveParentDevice(
+            RemoveParentDeviceArgs {
+                device_pk: Pubkey::new_unique(),
+            },
+        ));
     }
 
     #[test]

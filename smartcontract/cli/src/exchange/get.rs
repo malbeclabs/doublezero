@@ -1,5 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
+use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
     device::list::ListDeviceCommand, exchange::get::GetExchangeCommand,
 };
@@ -23,7 +24,13 @@ struct ExchangeDisplay {
     pub account: String,
     pub code: String,
     pub name: String,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    #[tabled(skip)]
+    pub device1_pk: Pubkey,
     pub device1: String,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    #[tabled(skip)]
+    pub device2_pk: Pubkey,
     pub device2: String,
     pub lat: f64,
     pub lng: f64,
@@ -60,7 +67,9 @@ impl GetExchangeCliCommand {
             account: pubkey.to_string(),
             code: exchange.code,
             name: exchange.name,
+            device1_pk: exchange.device1_pk,
             device1,
+            device2_pk: exchange.device2_pk,
             device2,
             lat: exchange.lat,
             lng: exchange.lng,

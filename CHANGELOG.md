@@ -8,10 +8,17 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.10.0](https://github.com/malbeclabs/doublezero/compare/client/v0.9.0...client/v0.10.0) - 2026-03-04
+
+### Breaking
+
+### Changes
+
 - CLI
   - `doublezero resource verify` command will now suggest creating resources or create them with --fix
   - All `get` commands now display output as a formatted table and support a `--json` flag for machine-readable output
   - `doublezero tenant get` now shows a second table listing administrator pubkeys; `--json` output includes an `administrators` array
+  - `get` commands now expose all onchain account fields: `user get` adds `tunnel_id`, `tunnel_endpoint`, and `validator_pubkey`; `device get` adds `reserved_seats`; `link get` adds `tunnel_id`; `multicastgroup get` adds `tenant`, `publisher_count`, and `subscriber_count`; `tenant get` adds `payment_status`, `billing`, `administrators`, and `token_account`; `exchange get` adds `device1_pk` and `device2_pk`
 - SDK
   - Fix multicast group deserialization in `smartcontract/sdk/go` to correctly read publisher and subscriber counts and align status enum with onchain definition
 - Smartcontract
@@ -26,6 +33,9 @@ All notable changes to this project will be documented in this file.
   - Add `doublezero enable` / `doublezero disable` CLI commands to toggle the reconciler at runtime
 - E2E tests
   - Publish `TestQA_AllDevices_UnicastConnectivity` results to ClickHouse (`qa_alldevices_results` and `qa_alldevices_metadata` tables) in addition to InfluxDB; configured via `CLICKHOUSE_ADDR` env var, skipped gracefully when not set
+- Onchain Programs
+  - Serviceability: CreateUser instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
+  - Serviceability: DeleteUser instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
 
 ## [v0.9.0](https://github.com/malbeclabs/doublezero/compare/client/v0.8.11...client/v0.9.0) - 2026-02-27
 
@@ -65,7 +75,6 @@ All notable changes to this project will be documented in this file.
   - Geolocation: add `doublezero-geolocation` program scaffolding and GeoProbe account type and related instructions as per rfcs/rfc16-geolocation-verification.md
 - SDK
   - SetFeatureFlagCommand added to manage on-chain feature flags for conditional behavior rollouts
-  - Serviceability: CreateUser instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
 - Dependencies
   - Upgrade Solana SDK workspace dependencies from 2.2.7 to 2.3.x (`solana-sdk`, `solana-client`, `solana-program-test`, and others)
 - Internet telemetry

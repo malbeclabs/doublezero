@@ -17,10 +17,6 @@ func TestSender_Linux(t *testing.T) {
 		t.Skip("Linux-specific test")
 	}
 
-	origInterval := signed.VerifyInterval
-	signed.VerifyInterval = 0
-	t.Cleanup(func() { signed.VerifyInterval = origInterval })
-
 	t.Run("successful signed RTT probe", func(t *testing.T) {
 		t.Parallel()
 
@@ -35,7 +31,7 @@ func TestSender_Linux(t *testing.T) {
 		var geoprobePubKey [32]byte
 		copy(geoprobePubKey[:], geoprobePub)
 
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, geoprobePubKey, [][32]byte{senderPubKey})
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, geoprobePubKey, [][32]byte{senderPubKey}, 0)
 		require.NoError(t, err)
 		defer reflector.Close()
 
@@ -92,7 +88,7 @@ func TestSender_Linux(t *testing.T) {
 		var reflectorPubKey [32]byte
 		copy(reflectorPubKey[:], reflectorPub)
 
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, reflectorPubKey, [][32]byte{senderPubKey})
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, reflectorPubKey, [][32]byte{senderPubKey}, 0)
 		require.NoError(t, err)
 		defer reflector.Close()
 
@@ -128,7 +124,7 @@ func TestSender_Linux(t *testing.T) {
 		var reflectorPubKey [32]byte
 		copy(reflectorPubKey[:], reflectorPub)
 
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, reflectorPubKey, [][32]byte{senderPubKey})
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, reflectorPubKey, [][32]byte{senderPubKey}, 0)
 		require.NoError(t, err)
 		defer reflector.Close()
 

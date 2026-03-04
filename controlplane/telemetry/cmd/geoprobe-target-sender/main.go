@@ -22,7 +22,7 @@ import (
 
 const (
 	defaultProbePort = 8924
-	defaultInterval  = 60 * time.Second
+	defaultInterval  = 30 * time.Second
 	defaultTimeout   = 2 * time.Second
 )
 
@@ -212,11 +212,11 @@ func logProbeResult(log *slog.Logger, seq uint32, rtt time.Duration, probeSigVal
 
 	if *logFormat == "json" {
 		output := probeOutput{
-			Timestamp:      time.Now().UTC().Format(time.RFC3339),
-			Seq:            seq,
-			RttMs:          float64(rtt.Microseconds()) / 1000.0,
-			ProbeSigValid:  probeSigValid,
-			ReplySigValid:  replySigValid,
+			Timestamp:       time.Now().UTC().Format(time.RFC3339),
+			Seq:             seq,
+			RttMs:           float64(rtt.Microseconds()) / 1000.0,
+			ProbeSigValid:   probeSigValid,
+			ReplySigValid:   replySigValid,
 			AuthorityPubkey: authorityPK.String(),
 			GeoprobePubkey:  geoprobePK.String(),
 		}

@@ -19,6 +19,7 @@ type LinuxReflector struct {
 	epfd           int
 	port           uint16
 	timeout        time.Duration
+	verifyInterval time.Duration
 	signer         Signer
 	geoprobePubkey [32]byte
 	authorizedKeys sync.Map // map[[32]byte]struct{}
@@ -28,7 +29,7 @@ type LinuxReflector struct {
 }
 
 // NewLinuxReflector creates a signed TWAMP reflector. Only the port in addr is used; any IP is ignored.
-func NewLinuxReflector(addr string, timeout time.Duration, signer Signer, geoprobePubkey [32]byte, authorizedKeys [][32]byte) (*LinuxReflector, error) {
+func NewLinuxReflector(addr string, timeout time.Duration, signer Signer, geoprobePubkey [32]byte, authorizedKeys [][32]byte, verifyInterval time.Duration) (*LinuxReflector, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("resolve addr: %w", err)
@@ -73,6 +74,7 @@ func NewLinuxReflector(addr string, timeout time.Duration, signer Signer, geopro
 		epfd:           epfd,
 		port:           boundPort,
 		timeout:        timeout,
+		verifyInterval: verifyInterval,
 		signer:         signer,
 		geoprobePubkey: geoprobePubkey,
 		shutdown:       make(chan struct{}),
@@ -167,7 +169,7 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			}
 
 			now := time.Now()
-			if interval := VerifyInterval; interval > 0 {
+			if interval := r.verifyInterval; interval > 0 {
 				if last, ok := r.lastVerify.Load(probe.SenderPubkey); ok {
 					if now.Sub(last.(time.Time)) < interval {
 						continue

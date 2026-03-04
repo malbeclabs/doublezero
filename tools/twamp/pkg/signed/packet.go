@@ -60,10 +60,10 @@ type ProbePacket struct {
 
 // ReplyPacket is sent from Probe to Target in the inbound probing flow.
 type ReplyPacket struct {
-	Probe          ProbePacket // Bytes 0-107: Complete original signed probe (echoed)
-	AuthorityPubkey [32]byte   // Bytes 108-139: Signing authority's Ed25519 public key
-	GeoprobePubkey  [32]byte   // Bytes 140-171: Geoprobe identity public key
-	Signature       [64]byte   // Bytes 172-235: Ed25519 signature over bytes 0-171
+	Probe           ProbePacket // Bytes 0-107: Complete original signed probe (echoed)
+	AuthorityPubkey [32]byte    // Bytes 108-139: Signing authority's Ed25519 public key
+	GeoprobePubkey  [32]byte    // Bytes 140-171: Geoprobe identity public key
+	Signature       [64]byte    // Bytes 172-235: Ed25519 signature over bytes 0-171
 }
 
 func NewProbePacket(seq uint32, signer Signer) *ProbePacket {

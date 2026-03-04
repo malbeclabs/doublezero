@@ -14,6 +14,10 @@ pub enum GeolocationError {
     InvalidIpAddress = 5,
     #[error("Maximum parent devices reached")]
     MaxParentDevicesReached = 6,
+    #[error("Parent device already exists in probe")]
+    ParentDeviceAlreadyExists = 7,
+    #[error("Parent device not found in probe")]
+    ParentDeviceNotFound = 8,
     #[error("Invalid serviceability program ID")]
     InvalidServiceabilityProgramId = 11,
     #[error("Invalid account code")]
@@ -43,6 +47,8 @@ mod tests {
             (GeolocationError::InvalidCodeLength, 4),
             (GeolocationError::InvalidIpAddress, 5),
             (GeolocationError::MaxParentDevicesReached, 6),
+            (GeolocationError::ParentDeviceAlreadyExists, 7),
+            (GeolocationError::ParentDeviceNotFound, 8),
             (GeolocationError::InvalidServiceabilityProgramId, 11),
             (GeolocationError::InvalidAccountCode, 12),
             (GeolocationError::ReferenceCountNotZero, 15),

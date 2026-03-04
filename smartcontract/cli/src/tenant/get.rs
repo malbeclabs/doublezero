@@ -25,6 +25,10 @@ struct TenantDisplay {
     pub vrf_id: u16,
     pub metro_routing: bool,
     pub route_liveness: bool,
+    pub payment_status: String,
+    pub billing: String,
+    pub administrators: String,
+    pub token_account: String,
     pub reference_count: u32,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
@@ -42,6 +46,15 @@ impl GetTenantCliCommand {
             vrf_id: tenant.vrf_id,
             metro_routing: tenant.metro_routing,
             route_liveness: tenant.route_liveness,
+            payment_status: tenant.payment_status.to_string(),
+            billing: tenant.billing.to_string(),
+            administrators: tenant
+                .administrators
+                .iter()
+                .map(|pk| pk.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            token_account: tenant.token_account.to_string(),
             reference_count: tenant.reference_count,
             owner: tenant.owner,
         };

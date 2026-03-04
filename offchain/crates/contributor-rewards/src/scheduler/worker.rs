@@ -178,12 +178,27 @@ impl ScheduleWorker {
                                 .try_distribute_rewards(dz_epoch, &rewards_accountant_key)
                                 .await
                             {
-                                Ok(DistributionOutcome::AlreadyComplete) => {
+                                Ok(DistributionOutcome::Complete { total_contributors }) => {
+                                    info!(
+                                        "Epoch {dz_epoch} complete: {total_contributors}/{total_contributors} distributed"
+                                    );
                                     state.mark_distribution_success(dz_epoch);
                                     state.save(&self.state_file)?;
+                                    metrics::counter!(
+                                        "doublezero_contributor_rewards_distribution_success"
+                                    )
+                                    .increment(1);
                                 }
-                                Ok(DistributionOutcome::Distributed(n)) => {
-                                    info!("Distributed {n} contributors for epoch {dz_epoch}");
+                                Ok(DistributionOutcome::PartiallyComplete {
+                                    total_contributors,
+                                    distributed,
+                                    skipped,
+                                }) => {
+                                    info!(
+                                        "Epoch {dz_epoch} partially complete: {distributed}/{total_contributors} distributed, {skipped} skipped (missing ContributorRewards accounts)"
+                                    );
+                                    state.mark_distribution_success(dz_epoch);
+                                    state.save(&self.state_file)?;
                                     metrics::counter!(
                                         "doublezero_contributor_rewards_distribution_success"
                                     )

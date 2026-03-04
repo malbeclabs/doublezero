@@ -577,13 +577,19 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
                     .await?;
 
                     match outcome {
-                        distribute::DistributionOutcome::AlreadyComplete => {
+                        distribute::DistributionOutcome::Complete { total_contributors } => {
                             info!(
-                                "All contributors already distributed for epoch {dz_epoch_value}"
+                                "Epoch {dz_epoch_value} complete: {total_contributors}/{total_contributors} distributed"
                             );
                         }
-                        distribute::DistributionOutcome::Distributed(n) => {
-                            info!("Distributed {n} contributors for epoch {dz_epoch_value}");
+                        distribute::DistributionOutcome::PartiallyComplete {
+                            total_contributors,
+                            distributed,
+                            skipped,
+                        } => {
+                            info!(
+                                "Epoch {dz_epoch_value} partially complete: {distributed}/{total_contributors} distributed, {skipped} skipped (missing ContributorRewards accounts)"
+                            );
                         }
                         distribute::DistributionOutcome::NotReady => {
                             info!("Distribution not ready for epoch {dz_epoch_value}");

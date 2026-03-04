@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(contributor-rewards): stop infinite retry when recipient accounts are missing ([#280](https://github.com/doublezerofoundation/doublezero-offchain/pull/280))
+
 ## [0.4.2](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.4.2) - 2026-03-04
 
 - feat(contributor-rewards): add on-chain reward distribution ([#269](https://github.com/doublezerofoundation/doublezero-offchain/pull/269))

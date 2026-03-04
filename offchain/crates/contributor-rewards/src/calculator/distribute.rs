@@ -30,12 +30,17 @@ const RELAY_MEMO_CU: u32 = 5_000;
 /// Outcome of a distribution attempt.
 #[derive(Debug)]
 pub enum DistributionOutcome {
-    /// Finalization or sweep guards not met.
+    /// Finalization or sweep guards not met — will retry.
     NotReady,
-    /// All contributors have already been distributed.
-    AlreadyComplete,
-    /// N contributors were distributed this run (may be a partial batch).
-    Distributed(usize),
+    /// All contributors distributed (distributed_rewards_count == total_contributors).
+    Complete { total_contributors: u32 },
+    /// Some contributors skipped (missing ContributorRewards accounts onchain).
+    /// No further progress possible without contributor action.
+    PartiallyComplete {
+        total_contributors: u32,
+        distributed: u32,
+        skipped: u32,
+    },
 }
 
 /// Attempt to distribute rewards for the current eligible epoch.
@@ -66,18 +71,20 @@ pub async fn try_distribute_epoch_rewards(
         return Ok(DistributionOutcome::NotReady);
     }
 
+    let total_contributors = distribution.total_contributors;
+
     // Check if all contributors are already distributed.
-    if distribution.distributed_rewards_count == distribution.total_contributors {
+    if distribution.distributed_rewards_count == total_contributors {
         debug!(
             "All {} contributors already distributed for epoch {}, skipping",
-            distribution.total_contributors, dz_epoch_value
+            total_contributors, dz_epoch_value
         );
-        return Ok(DistributionOutcome::AlreadyComplete);
+        return Ok(DistributionOutcome::Complete { total_contributors });
     }
 
     info!(
-        "Distributing rewards for epoch {}: {}/{} contributors processed",
-        dz_epoch_value, distribution.distributed_rewards_count, distribution.total_contributors
+        "Distributing rewards for epoch {}: {}/{} already distributed onchain",
+        dz_epoch_value, distribution.distributed_rewards_count, total_contributors
     );
 
     let network_env = wallet.connection.try_network_environment().await?;
@@ -92,7 +99,8 @@ pub async fn try_distribute_epoch_rewards(
     )
     .await?;
 
-    let mut distributed_count = 0usize;
+    let mut distributed_count = 0u32;
+    let mut skipped_count = 0u32;
 
     for (leaf_index, reward_share, is_processed) in
         try_distribution_rewards_iter(&distribution, &shapley_output)?
@@ -106,7 +114,7 @@ pub async fn try_distribute_epoch_rewards(
             dz_epoch_value, leaf_index, reward_share.contributor_key
         );
 
-        try_distribute_contributor_rewards(
+        let was_distributed = try_distribute_contributor_rewards(
             wallet,
             &dz_mint_key,
             &distribution,
@@ -116,10 +124,22 @@ pub async fn try_distribute_epoch_rewards(
         )
         .await?;
 
-        distributed_count += 1;
+        if was_distributed {
+            distributed_count += 1;
+        } else {
+            skipped_count += 1;
+        }
     }
 
-    Ok(DistributionOutcome::Distributed(distributed_count))
+    if skipped_count > 0 {
+        Ok(DistributionOutcome::PartiallyComplete {
+            total_contributors,
+            distributed: distribution.distributed_rewards_count + distributed_count,
+            skipped: skipped_count,
+        })
+    } else {
+        Ok(DistributionOutcome::Complete { total_contributors })
+    }
 }
 
 /// Iterate over distribution rewards, yielding (leaf_index, reward_share, is_processed)
@@ -158,7 +178,7 @@ async fn try_distribute_contributor_rewards(
     shapley_output: &ShapleyOutputStorage,
     leaf_index: usize,
     reward_share: &RewardShare,
-) -> Result<()> {
+) -> Result<bool> {
     const DISTRIBUTE_REWARDS_CU_BASE: u32 = 30_000;
     const CREATE_ATA_CU_BASE: u32 = 25_000;
     const PER_RECIPIENT_CU: u32 = 12_500;
@@ -187,7 +207,7 @@ async fn try_distribute_contributor_rewards(
                     reward_share.contributor_key
                 );
 
-                return Ok(());
+                return Ok(false);
             }
 
             recipient_shares
@@ -198,7 +218,7 @@ async fn try_distribute_contributor_rewards(
                 reward_share.contributor_key
             );
 
-            return Ok(());
+            return Ok(false);
         }
     };
 
@@ -301,7 +321,7 @@ async fn try_distribute_contributor_rewards(
         wallet.print_verbose_output(&[tx_sig]).await?;
     }
 
-    Ok(())
+    Ok(true)
 }
 
 #[cfg(test)]

@@ -31,8 +31,11 @@ struct UserDisplay {
     pub device: String,
     pub cyoa_type: String,
     pub client_ip: String,
+    pub tunnel_id: u16,
     pub tunnel_net: String,
     pub dz_ip: String,
+    pub tunnel_endpoint: String,
+    pub validator_pubkey: String,
     pub accesspass: String,
     pub publishers: String,
     pub subscribers: String,
@@ -72,8 +75,11 @@ impl GetUserCliCommand {
                 .map_or(user.device_pk.to_string(), |d| d.code.clone()),
             cyoa_type: user.cyoa_type.to_string(),
             client_ip: user.client_ip.to_string(),
+            tunnel_id: user.tunnel_id,
             tunnel_net: user.tunnel_net.to_string(),
             dz_ip: user.dz_ip.to_string(),
+            tunnel_endpoint: user.tunnel_endpoint.to_string(),
+            validator_pubkey: user.validator_pubkey.to_string(),
             accesspass: accesspass.to_string(),
             publishers: user
                 .publishers

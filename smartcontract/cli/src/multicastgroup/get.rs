@@ -9,13 +9,26 @@ use doublezero_sdk::commands::{
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
-use tabled::{builder::Builder, settings::Style, Table, Tabled};
+use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct GetMulticastGroupCliCommand {
     /// MulticastCroup code or Pubkey to query
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub code: String,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Tabled, Serialize)]
+struct MulticastGroupDisplay {
+    pub account: String,
+    pub code: String,
+    pub multicast_ip: String,
+    pub max_bandwidth: String,
+    pub status: String,
+    pub owner: String,
 }
 
 #[derive(Tabled, Serialize)]
@@ -28,6 +41,29 @@ pub struct MulticastAllowlistDisplay {
     pub user_payer: Pubkey,
 }
 
+#[derive(Tabled, Serialize)]
+struct MulticastUserDisplay {
+    pub account: String,
+    pub multicast_mode: String,
+    pub device: String,
+    pub location: String,
+    pub cyoa_type: String,
+    pub client_ip: String,
+    pub tunnel_id: u16,
+    pub tunnel_net: String,
+    pub dz_ip: String,
+    pub status: String,
+    pub owner: String,
+}
+
+#[derive(Serialize)]
+struct MulticastGroupOutput {
+    #[serde(flatten)]
+    pub info: MulticastGroupDisplay,
+    pub allowlist: Vec<MulticastAllowlistDisplay>,
+    pub users: Vec<MulticastUserDisplay>,
+}
+
 impl GetMulticastGroupCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let (mgroup_pubkey, mgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
@@ -38,20 +74,9 @@ impl GetMulticastGroupCliCommand {
         let devices = client.list_device(ListDeviceCommand)?;
         let locations = client.list_location(ListLocationCommand)?;
 
-        // Write the multicast group details first
-        writeln!(out,
-        "account: {}\r\ncode: {}\r\nmulticast_ip: {}\r\nmax_bandwidth: {}\r\nstatus: {}\r\nowner: {}",
-        mgroup_pubkey,
-        mgroup.code,
-        &mgroup.multicast_ip,
-        bandwidth_to_string(&mgroup.max_bandwidth),
-        mgroup.status,
-        mgroup.owner
-        )?;
-
         let list_accesspass = client.list_accesspass(ListAccessPassCommand {})?;
 
-        let mga_displays = list_accesspass
+        let allowlist: Vec<MulticastAllowlistDisplay> = list_accesspass
             .into_iter()
             .filter(|(_, accesspass)| {
                 accesspass.mgroup_sub_allowlist.contains(&mgroup_pubkey)
@@ -71,82 +96,95 @@ impl GetMulticastGroupCliCommand {
                 client_ip: accesspass.client_ip,
                 user_payer: accesspass.user_payer,
             })
-            .collect::<Vec<_>>();
+            .collect();
 
-        let table = Table::new(mga_displays)
-            .with(Style::psql().remove_horizontals())
-            .to_string();
+        let user_displays: Vec<MulticastUserDisplay> = users
+            .into_iter()
+            .filter(|(_, user)| {
+                user.publishers.contains(&mgroup_pubkey)
+                    || user.subscribers.contains(&mgroup_pubkey)
+            })
+            .map(|(pubkey, user)| {
+                let device = devices.get(&user.device_pk);
+                let location = match device {
+                    Some(device) => locations.get(&device.location_pk),
+                    None => None,
+                };
 
-        writeln!(out, "\r\nallowlist:\r\n{table}")?;
-
-        let mut builder = Builder::default();
-        builder.push_record([
-            "account",
-            "multicast_mode",
-            "device",
-            "location",
-            "cyoa_type",
-            "client_ip",
-            "tunnel_id",
-            "tunnel_net",
-            "dz_ip",
-            "status",
-            "owner",
-        ]);
-
-        for (pubkey, user) in users.into_iter().filter(|(_, user)| {
-            user.publishers.contains(&mgroup_pubkey) || user.subscribers.contains(&mgroup_pubkey)
-        }) {
-            let device = devices.get(&user.device_pk);
-            let location = match device {
-                Some(device) => locations.get(&device.location_pk),
-                None => None,
-            };
-
-            let device_name = match device {
-                Some(device) => device.code.clone(),
-                None => user.device_pk.to_string(),
-            };
-            let location_name = match device {
-                Some(device) => match location {
-                    Some(location) => location.name.clone(),
-                    None => device.location_pk.to_string(),
-                },
-                None => "".to_string(),
-            };
-            let mode_text = if user.publishers.contains(&mgroup_pubkey) {
-                if !user.subscribers.contains(&mgroup_pubkey) {
-                    "P"
+                let device_name = match device {
+                    Some(device) => device.code.clone(),
+                    None => user.device_pk.to_string(),
+                };
+                let location_name = match device {
+                    Some(device) => match location {
+                        Some(location) => location.name.clone(),
+                        None => device.location_pk.to_string(),
+                    },
+                    None => "".to_string(),
+                };
+                let mode_text = if user.publishers.contains(&mgroup_pubkey) {
+                    if !user.subscribers.contains(&mgroup_pubkey) {
+                        "P"
+                    } else {
+                        "PS"
+                    }
+                } else if user.subscribers.contains(&mgroup_pubkey) {
+                    "S"
                 } else {
-                    "PS"
+                    "X"
+                };
+
+                MulticastUserDisplay {
+                    account: pubkey.to_string(),
+                    multicast_mode: mode_text.to_string(),
+                    device: device_name,
+                    location: location_name,
+                    cyoa_type: user.cyoa_type.to_string(),
+                    client_ip: user.client_ip.to_string(),
+                    tunnel_id: user.tunnel_id,
+                    tunnel_net: user.tunnel_net.to_string(),
+                    dz_ip: user.dz_ip.to_string(),
+                    status: user.status.to_string(),
+                    owner: user.owner.to_string(),
                 }
-            } else if user.subscribers.contains(&mgroup_pubkey) {
-                "S"
-            } else {
-                "X"
+            })
+            .collect();
+
+        let info = MulticastGroupDisplay {
+            account: mgroup_pubkey.to_string(),
+            code: mgroup.code,
+            multicast_ip: mgroup.multicast_ip.to_string(),
+            max_bandwidth: bandwidth_to_string(&mgroup.max_bandwidth),
+            status: mgroup.status.to_string(),
+            owner: mgroup.owner.to_string(),
+        };
+
+        if self.json {
+            let output_data = MulticastGroupOutput {
+                info,
+                allowlist,
+                users: user_displays,
             };
+            let json = serde_json::to_string_pretty(&output_data)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let headers = MulticastGroupDisplay::headers();
+            let fields = info.fields();
+            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
+            for (header, value) in headers.iter().zip(fields.iter()) {
+                writeln!(out, " {header:<max_len$} | {value}")?;
+            }
 
-            builder.push_record([
-                &pubkey.to_string(),
-                mode_text,
-                &device_name,
-                &location_name,
-                &user.cyoa_type.to_string(),
-                user.client_ip.to_string().as_str(),
-                &user.tunnel_id.to_string(),
-                user.tunnel_net.to_string().as_str(),
-                user.dz_ip.to_string().as_str(),
-                &user.status.to_string(),
-                &user.owner.to_string(),
-            ]);
+            let allowlist_table = Table::new(allowlist)
+                .with(Style::psql().remove_horizontals())
+                .to_string();
+            writeln!(out, "\r\nallowlist:\r\n{allowlist_table}")?;
+
+            let users_table = Table::new(user_displays)
+                .with(Style::psql().remove_horizontals())
+                .to_string();
+            writeln!(out, "\r\nusers:\r\n{users_table}")?;
         }
-
-        let table = builder
-            .build()
-            .with(Style::psql().remove_horizontals())
-            .to_string();
-
-        writeln!(out, "\r\nusers:\r\n{table}")?;
 
         Ok(())
     }
@@ -341,33 +379,62 @@ mod tests {
         client
             .expect_get_multicastgroup()
             .returning(move |_| Err(eyre::eyre!("not found")));
-        /*****************************************************************************************************/
+
         // Expected failure
         let mut output = Vec::new();
         let res = GetMulticastGroupCliCommand {
             code: Pubkey::new_unique().to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_err(), "I shouldn't find anything.");
 
-        // Expected success
+        // Expected success by pubkey (table)
         let mut output = Vec::new();
         let res = GetMulticastGroupCliCommand {
             code: mgroup_pubkey.to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\nstatus: activated\r\nowner: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\n\r\nallowlist:\r\n account                                      | mode | client_ip   | user_payer                                \n G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj | P+S  | 192.168.1.1 | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n\r\nusers:\r\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | P              | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
+        assert!(
+            has_row("account", &mgroup_pubkey.to_string()),
+            "account row should contain pubkey"
+        );
+        assert!(has_row("code", "test"), "code row should contain value");
+        assert!(
+            has_row("status", "activated"),
+            "status row should contain value"
+        );
+        assert!(
+            output_str.contains("allowlist"),
+            "should contain allowlist section"
+        );
+        assert!(output_str.contains("users"), "should contain users section");
 
-        // Expected success
+        // Expected success by code (JSON)
         let mut output = Vec::new();
         let res = GetMulticastGroupCliCommand {
             code: "test".to_string(),
+            json: true,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
-        let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\nstatus: activated\r\nowner: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\n\r\nallowlist:\r\n account                                      | mode | client_ip   | user_payer                                \n G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj | P+S  | 192.168.1.1 | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n\r\nusers:\r\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | P              | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
+        let json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();
+        assert_eq!(json["account"].as_str().unwrap(), mgroup_pubkey.to_string());
+        assert_eq!(json["code"].as_str().unwrap(), "test");
+        assert_eq!(json["status"].as_str().unwrap(), "activated");
+        assert!(
+            json["allowlist"].is_array(),
+            "allowlist should be a JSON array"
+        );
+        assert!(json["users"].is_array(), "users should be a JSON array");
     }
 }

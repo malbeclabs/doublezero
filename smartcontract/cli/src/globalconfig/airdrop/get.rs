@@ -3,10 +3,14 @@ use ::serde::Serialize;
 use clap::Args;
 use doublezero_sdk::GetGlobalStateCommand;
 use std::io::Write;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
-pub struct GetAirdropCliCommand;
+pub struct GetAirdropCliCommand {
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
 
 #[derive(Tabled, Serialize)]
 pub struct AirdropDisplay {
@@ -22,11 +26,18 @@ impl GetAirdropCliCommand {
             contributor_airdrop_lamports: gstate.contributor_airdrop_lamports,
             user_airdrop_lamports: gstate.user_airdrop_lamports,
         };
-        let config_displays = vec![config_display];
-        let table = Table::new(config_displays)
-            .with(Style::psql().remove_horizontals())
-            .to_string();
-        writeln!(out, "{table}")?;
+
+        if self.json {
+            let json = serde_json::to_string_pretty(&config_display)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let headers = AirdropDisplay::headers();
+            let fields = config_display.fields();
+            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
+            for (header, value) in headers.iter().zip(fields.iter()) {
+                writeln!(out, " {header:<max_len$} | {value}")?;
+            }
+        }
 
         Ok(())
     }
@@ -68,14 +79,35 @@ mod tests {
             .with(predicate::eq(GetGlobalStateCommand))
             .returning(move |_| Ok((gstate_pubkey, globalstate.clone())));
 
-        /*****************************************************************************************************/
+        // Table output
         let mut output = Vec::new();
-        let res = GetAirdropCliCommand.execute(&client, &mut output);
+        let res = GetAirdropCliCommand { json: false }.execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(
-            output_str,
-            " contributor_airdrop_lamports | user_airdrop_lamports \n 1000000000                   | 40000                 \n"
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
+        assert!(
+            has_row("contributor_airdrop_lamports", "1000000000"),
+            "contributor_airdrop_lamports row should contain value"
         );
+        assert!(
+            has_row("user_airdrop_lamports", "40000"),
+            "user_airdrop_lamports row should contain value"
+        );
+
+        // JSON output
+        let mut output = Vec::new();
+        let res = GetAirdropCliCommand { json: true }.execute(&client, &mut output);
+        assert!(res.is_ok());
+        let json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();
+        assert_eq!(
+            json["contributor_airdrop_lamports"].as_u64().unwrap(),
+            1_000_000_000
+        );
+        assert_eq!(json["user_airdrop_lamports"].as_u64().unwrap(), 40_000);
     }
 }

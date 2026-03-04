@@ -1,27 +1,25 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::globalconfig::get::GetGlobalConfigCommand;
+use serde::Serialize;
 use std::io::Write;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
-pub struct GetGlobalConfigCliCommand;
+pub struct GetGlobalConfigCliCommand {
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
 
-#[derive(Tabled)]
+#[derive(Tabled, Serialize)]
 pub struct ConfigDisplay {
-    #[tabled(rename = "local asn")]
     pub local_asn: u32,
-    #[tabled(rename = "remote asn")]
     pub remote_asn: u32,
-    #[tabled(rename = "device tunnel block")]
     pub device_tunnel_block: String,
-    #[tabled(rename = "user tunnel block")]
     pub user_tunnel_block: String,
-    #[tabled(rename = "multicast group block")]
     pub multicast_group_block: String,
-    #[tabled(rename = "multicast publisher block")]
     pub multicast_publisher_block: String,
-    #[tabled(rename = "next bgp community")]
     pub next_bgp_community: u16,
 }
 
@@ -38,11 +36,18 @@ impl GetGlobalConfigCliCommand {
             multicast_publisher_block: config.multicast_publisher_block.to_string(),
             next_bgp_community: config.next_bgp_community,
         };
-        let config_displays = vec![config_display];
-        let table = Table::new(config_displays)
-            .with(Style::psql().remove_horizontals())
-            .to_string();
-        writeln!(out, "{table}")?;
+
+        if self.json {
+            let json = serde_json::to_string_pretty(&config_display)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let headers = ConfigDisplay::headers();
+            let fields = config_display.fields();
+            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
+            for (header, value) in headers.iter().zip(fields.iter()) {
+                writeln!(out, " {header:<max_len$} | {value}")?;
+            }
+        }
 
         Ok(())
     }
@@ -82,13 +87,39 @@ mod tests {
             .with(predicate::eq(GetGlobalConfigCommand))
             .returning(move |_| Ok((pubkey, globalconfig.clone())));
 
-        /*****************************************************************************************************/
+        // Table output
         let mut output = Vec::new();
-        let res = GetGlobalConfigCliCommand.execute(&client, &mut output);
+        let res = GetGlobalConfigCliCommand { json: false }.execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(
-            output_str, " local asn | remote asn | device tunnel block | user tunnel block | multicast group block | multicast publisher block | next bgp community \n 1234      | 5678       | 10.1.0.0/24         | 10.5.0.0/24       | 224.2.0.0/4           | 148.51.120.0/21           | 10000              \n"
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
+        assert!(
+            has_row("local_asn", "1234"),
+            "local_asn row should contain value"
         );
+        assert!(
+            has_row("remote_asn", "5678"),
+            "remote_asn row should contain value"
+        );
+        assert!(
+            has_row("device_tunnel_block", "10.1.0.0/24"),
+            "device_tunnel_block row should contain value"
+        );
+
+        // JSON output
+        let mut output = Vec::new();
+        let res = GetGlobalConfigCliCommand { json: true }.execute(&client, &mut output);
+        assert!(res.is_ok());
+        let json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();
+        assert_eq!(json["local_asn"].as_u64().unwrap(), 1234);
+        assert_eq!(json["remote_asn"].as_u64().unwrap(), 5678);
+        assert_eq!(json["device_tunnel_block"].as_str().unwrap(), "10.1.0.0/24");
+        assert_eq!(json["user_tunnel_block"].as_str().unwrap(), "10.5.0.0/24");
+        assert_eq!(json["next_bgp_community"].as_u64().unwrap(), 10000);
     }
 }

@@ -1,18 +1,43 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey};
 use clap::Args;
+use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
     accesspass::get::GetAccessPassCommand, device::list::ListDeviceCommand,
     multicastgroup::list::ListMulticastGroupCommand, tenant::list::ListTenantCommand,
     user::get::GetUserCommand,
 };
+use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct GetUserCliCommand {
     /// User Pubkey to retrieve
     #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Tabled, Serialize)]
+struct UserDisplay {
+    pub account: String,
+    pub user_type: String,
+    pub tenant: String,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub device_pk: Pubkey,
+    pub device: String,
+    pub cyoa_type: String,
+    pub client_ip: String,
+    pub tunnel_net: String,
+    pub dz_ip: String,
+    pub accesspass: String,
+    pub publishers: String,
+    pub subscribers: String,
+    pub status: String,
+    pub owner: String,
 }
 
 impl GetUserCliCommand {
@@ -30,51 +55,61 @@ impl GetUserCliCommand {
         let tenants = client.list_tenant(ListTenantCommand {})?;
         let devices = client.list_device(ListDeviceCommand {})?;
 
-        writeln!(
-            out,
-            "account: {}\r\n\
-        user_type: {}\r\n\
-        tenant: {}\r\n\
-        device: {}\r\n\
-        cyoa_type: {}\r\n\
-        client_ip: {}\r\n\
-        tunnel_net: {}\r\n\
-        dz_ip: {}\r\n\
-        accesspass: {}\r\n\
-        publishers: {}\r\n\
-        subscribers: {}\r\n\
-        status: {}\r\n\
-        owner: {}",
-            pubkey,
-            user.user_type,
+        let tenant_str = if user.tenant_pk == Pubkey::default() {
+            String::new()
+        } else {
             tenants
                 .get(&user.tenant_pk)
-                .map_or(user.tenant_pk.to_string(), |t| t.code.clone()),
-            devices
+                .map_or(user.tenant_pk.to_string(), |t| t.code.clone())
+        };
+        let display = UserDisplay {
+            account: pubkey.to_string(),
+            user_type: user.user_type.to_string(),
+            tenant: tenant_str,
+            device_pk: user.device_pk,
+            device: devices
                 .get(&user.device_pk)
                 .map_or(user.device_pk.to_string(), |d| d.code.clone()),
-            user.cyoa_type,
-            &user.client_ip,
-            &user.tunnel_net,
-            &user.dz_ip,
-            accesspass,
-            user.publishers
+            cyoa_type: user.cyoa_type.to_string(),
+            client_ip: user.client_ip.to_string(),
+            tunnel_net: user.tunnel_net.to_string(),
+            dz_ip: user.dz_ip.to_string(),
+            accesspass: accesspass.to_string(),
+            publishers: user
+                .publishers
                 .iter()
-                .map(|pk| multicast_groups
-                    .get(pk)
-                    .map_or(pk.to_string(), |mg| mg.code.clone()))
+                .map(|pk| {
+                    multicast_groups
+                        .get(pk)
+                        .map_or(pk.to_string(), |mg| mg.code.clone())
+                })
                 .collect::<Vec<_>>()
                 .join(", "),
-            user.subscribers
+            subscribers: user
+                .subscribers
                 .iter()
-                .map(|pk| multicast_groups
-                    .get(pk)
-                    .map_or(pk.to_string(), |mg| mg.code.clone()))
+                .map(|pk| {
+                    multicast_groups
+                        .get(pk)
+                        .map_or(pk.to_string(), |mg| mg.code.clone())
+                })
                 .collect::<Vec<_>>()
                 .join(", "),
-            user.status,
-            user.owner
-        )?;
+            status: user.status.to_string(),
+            owner: user.owner.to_string(),
+        };
+
+        if self.json {
+            let json = serde_json::to_string_pretty(&display)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let headers = UserDisplay::headers();
+            let fields = display.fields();
+            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
+            for (header, value) in headers.iter().zip(fields.iter()) {
+                writeln!(out, " {header:<max_len$} | {value}")?;
+            }
+        }
 
         Ok(())
     }
@@ -259,15 +294,43 @@ mod tests {
             .with(predicate::eq(DeleteUserCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok(signature));
 
-        /*****************************************************************************************************/
-        // Expected success
+        // Expected success (table)
         let mut output = Vec::new();
         let res = GetUserCliCommand {
             pubkey: pda_pubkey.to_string(),
+            json: false,
         }
         .execute(&client, &mut output);
-        assert!(res.is_ok(), "I should find a item by code");
+        assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\r\nuser_type: IBRL\r\ntenant: test-tenant\r\ndevice: test-device\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\naccesspass: Prepaid: (expires epoch 10)\r\npublishers: \r\nsubscribers: test\r\nstatus: activated\r\nowner: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\n");
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
+        assert!(
+            has_row("account", &pda_pubkey.to_string()),
+            "account row should contain pubkey"
+        );
+        assert!(
+            has_row("user_type", "IBRL"),
+            "user_type row should contain value"
+        );
+        assert!(
+            has_row("tenant", "test-tenant"),
+            "tenant row should contain value"
+        );
+        assert!(
+            has_row("device", "test-device"),
+            "device row should contain value"
+        );
+        assert!(
+            has_row("status", "activated"),
+            "status row should contain value"
+        );
+        assert!(
+            has_row("subscribers", "test"),
+            "subscribers row should contain group name"
+        );
     }
 }

@@ -108,6 +108,7 @@ mod tests {
             websocket_url: Some(devnet_config.ledger_public_ws_rpc_url.clone()),
             keypair_path: keypair_path.clone(),
             program_id: Some(devnet_config.serviceability_program_id.to_string()),
+            geo_program_id: None,
             tenant: None,
             address_labels: Default::default(),
         };

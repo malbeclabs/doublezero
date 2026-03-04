@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: add `Reservation` account and `ReserveConnection`/`CloseReservation` instructions for pre-reserving connection seats on devices, with `reserved_seats` factored into capacity checks on both reservation and user creation
   - Allow sentinel authority to add/remove multicast publisher and subscriber allowlist entries
 - Telemetry
+  - Add Signed TWAMP reflector to geoprobe-agent with configurable listen port and allowed-pubkeys allowlist
   - Fix global monitor crash when IBRL and multicast users share the same client IP but are on different devices, by preferring non-multicast users in client IP lookups to match status device selection
 - Client
   - Add onchain reconciler to daemon — automatically provisions/removes tunnels by polling onchain User state, replacing CLI-driven provisioning and the `doublezerod.json` state file ([RFC-17](rfcs/rfc17-client-onchain-reconciler.md))

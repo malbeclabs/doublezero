@@ -63,11 +63,11 @@ var (
 )
 
 const (
-	defaultRouteLivenessTxMin      = 300 * time.Millisecond
-	defaultRouteLivenessRxMin      = 300 * time.Millisecond
+	defaultRouteLivenessTxMin      = 1 * time.Second
+	defaultRouteLivenessRxMin      = 1 * time.Second
 	defaultRouteLivenessDetectMult = 3
 	defaultRouteLivenessMinTxFloor = 50 * time.Millisecond
-	defaultRouteLivenessMaxTxCeil  = 1 * time.Second
+	defaultRouteLivenessMaxTxCeil  = 3 * time.Second
 
 	defaultRouteLivenessBindIP = "0.0.0.0"
 )

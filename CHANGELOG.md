@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - `doublezero resource verify` command will now suggest creating resources or create them with --fix
   - All `get` commands now display output as a formatted table and support a `--json` flag for machine-readable output
+  - Remove `solana-multicast-publisher` and `solana-multicast-subscriber` from `access-pass set` type options (multicast roles use the tenant field on a `prepaid` pass instead); make `--solana-validator` optional for `solana-rpc` type
 - SDK
   - Fix multicast group deserialization in `smartcontract/sdk/go` to correctly read publisher and subscriber counts and align status enum with onchain definition
 - Smartcontract

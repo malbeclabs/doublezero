@@ -4,7 +4,7 @@ use doublezero_program_common::{serializer, types::parse_utils::bandwidth_to_str
 use doublezero_sdk::commands::{
     accesspass::list::ListAccessPassCommand, device::list::ListDeviceCommand,
     location::list::ListLocationCommand, multicastgroup::get::GetMulticastGroupCommand,
-    user::list::ListUserCommand,
+    tenant::list::ListTenantCommand, user::list::ListUserCommand,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
@@ -25,8 +25,14 @@ pub struct GetMulticastGroupCliCommand {
 struct MulticastGroupDisplay {
     pub account: String,
     pub code: String,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    #[tabled(skip)]
+    pub tenant_pk: Pubkey,
+    pub tenant: String,
     pub multicast_ip: String,
     pub max_bandwidth: String,
+    pub publisher_count: u32,
+    pub subscriber_count: u32,
     pub status: String,
     pub owner: String,
 }
@@ -150,11 +156,25 @@ impl GetMulticastGroupCliCommand {
             })
             .collect();
 
+        let tenant_str = if mgroup.tenant_pk == Pubkey::default() {
+            String::new()
+        } else {
+            let tenants = client.list_tenant(ListTenantCommand {})?;
+
+            tenants
+                .get(&mgroup.tenant_pk)
+                .map_or(mgroup.tenant_pk.to_string(), |t| t.code.clone())
+        };
+
         let info = MulticastGroupDisplay {
             account: mgroup_pubkey.to_string(),
             code: mgroup.code,
+            tenant_pk: mgroup.tenant_pk,
+            tenant: tenant_str,
             multicast_ip: mgroup.multicast_ip.to_string(),
             max_bandwidth: bandwidth_to_string(&mgroup.max_bandwidth),
+            publisher_count: mgroup.publisher_count,
+            subscriber_count: mgroup.subscriber_count,
             status: mgroup.status.to_string(),
             owner: mgroup.owner.to_string(),
         };
@@ -201,6 +221,7 @@ mod tests {
             device::{get::GetDeviceCommand, list::ListDeviceCommand},
             location::list::ListLocationCommand,
             multicastgroup::get::GetMulticastGroupCommand,
+            tenant::list::ListTenantCommand,
         },
         get_multicastgroup_pda, AccountType, Device, DeviceStatus, GetLocationCommand, Location,
         LocationStatus, MulticastGroup, MulticastGroupStatus, User, UserCYOA, UserStatus, UserType,
@@ -333,6 +354,11 @@ mod tests {
             publisher_count: 5,
             subscriber_count: 10,
         };
+
+        client
+            .expect_list_tenant()
+            .with(predicate::eq(ListTenantCommand {}))
+            .returning(move |_| Ok(std::collections::HashMap::new()));
 
         client.expect_list_user().returning(move |_| {
             let mut users = std::collections::HashMap::new();

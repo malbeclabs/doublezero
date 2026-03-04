@@ -193,6 +193,79 @@ func TestOffsetCache_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
+func TestParseAllowedPubkeys_Empty(t *testing.T) {
+	keys, err := parseAllowedPubkeys("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if keys != nil {
+		t.Errorf("expected nil for empty input, got %v", keys)
+	}
+}
+
+func TestParseAllowedPubkeys_Single(t *testing.T) {
+	wallet := solana.NewWallet()
+	keys, err := parseAllowedPubkeys(wallet.PublicKey().String())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(keys) != 1 {
+		t.Fatalf("expected 1 key, got %d", len(keys))
+	}
+
+	var expected [32]byte
+	pk := wallet.PublicKey()
+	copy(expected[:], pk[:])
+	if keys[0] != expected {
+		t.Errorf("key mismatch: got %v, want %v", keys[0], expected)
+	}
+}
+
+func TestParseAllowedPubkeys_Multiple(t *testing.T) {
+	w1 := solana.NewWallet()
+	w2 := solana.NewWallet()
+	w3 := solana.NewWallet()
+
+	input := w1.PublicKey().String() + "," + w2.PublicKey().String() + "," + w3.PublicKey().String()
+	keys, err := parseAllowedPubkeys(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(keys) != 3 {
+		t.Fatalf("expected 3 keys, got %d", len(keys))
+	}
+}
+
+func TestParseAllowedPubkeys_Whitespace(t *testing.T) {
+	w1 := solana.NewWallet()
+	w2 := solana.NewWallet()
+
+	input := "  " + w1.PublicKey().String() + " , " + w2.PublicKey().String() + "  "
+	keys, err := parseAllowedPubkeys(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(keys) != 2 {
+		t.Fatalf("expected 2 keys, got %d", len(keys))
+	}
+}
+
+func TestParseAllowedPubkeys_Invalid(t *testing.T) {
+	_, err := parseAllowedPubkeys("not-a-valid-pubkey")
+	if err == nil {
+		t.Fatal("expected error for invalid pubkey")
+	}
+}
+
+func TestParseAllowedPubkeys_MixedValid_Invalid(t *testing.T) {
+	wallet := solana.NewWallet()
+	input := wallet.PublicKey().String() + ",not-a-pubkey"
+	_, err := parseAllowedPubkeys(input)
+	if err == nil {
+		t.Fatal("expected error for mixed valid/invalid pubkeys")
+	}
+}
+
 func TestParseParentDZD_Empty(t *testing.T) {
 	parent, err := parseParentDZD("")
 	if err != nil {

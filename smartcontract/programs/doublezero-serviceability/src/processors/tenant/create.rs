@@ -1,13 +1,11 @@
 use crate::{
     error::DoubleZeroError,
     pda::*,
+    processors::resource::allocate_id,
     resource::ResourceType,
     seeds::{SEED_PREFIX, SEED_TENANT},
     serializer::try_acc_create,
-    state::{
-        accounttype::AccountType, globalstate::GlobalState,
-        resource_extension::ResourceExtensionBorrowed, tenant::*,
-    },
+    state::{accounttype::AccountType, globalstate::GlobalState, tenant::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -126,14 +124,7 @@ pub fn process_create_tenant(
     }
 
     // Allocate VRF ID from the ResourceExtension
-    let vrf_id = {
-        let mut buffer = vrf_ids_account.data.borrow_mut();
-        let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-        resource
-            .allocate(1)?
-            .as_id()
-            .ok_or(DoubleZeroError::InvalidArgument)?
-    };
+    let vrf_id = allocate_id(vrf_ids_account)?;
 
     let tenant = Tenant {
         account_type: AccountType::Tenant,

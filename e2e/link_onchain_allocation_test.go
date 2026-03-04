@@ -3,6 +3,7 @@
 package e2e_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -246,10 +247,13 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 
 	// Verify link details via CLI
 	log.Debug("==> Verifying link details via CLI")
-	output, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero link get --code test-dz01:test-dz02"})
+	output, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero link get --code test-dz01:test-dz02 --json"})
 	require.NoError(t, err)
-	outputStr := string(output)
-	require.Contains(t, outputStr, "status: activated", "link should show activated status")
+	var linkState struct {
+		Status string `json:"status"`
+	}
+	require.NoError(t, json.Unmarshal(output, &linkState))
+	require.Equal(t, "activated", linkState.Status, "link should show activated status")
 
 	// === Part 2: Test on-chain deallocation ===
 	// The closeaccount handler should deallocate tunnel_id and tunnel_net back to ResourceExtension

@@ -21,14 +21,10 @@ import (
 // TestE2E_DzPrefix_ResourceExhaustion tests the behavior when a device's DzPrefix IP pool
 // is fully exhausted. It verifies that:
 //   - Users consume IPs until the pool is full
-//   - When the pool is exhausted, new users remain stuck in Pending (not rejected)
-//   - The activator continues to function normally after allocation failures
-//   - Freeing a slot (deleting a user) allows the stuck user to be activated
+//   - When the pool is exhausted, user creation fails with an error
+//   - The activator continues to function normally after exhaustion
+//   - Freeing a slot (deleting a user) allows a new user to be created and activated
 //   - All resources return to baseline after cleanup
-//
-// This covers a gap in PR #2848 (stateless activator mode): when onchain resource allocation
-// fails (AllocationFailed error code 63), the activator logs the error but does NOT reject
-// the user. The user stays in Pending indefinitely with no retry signal.
 //
 // Test uses a single /30 prefix (4 IPs total, 3 usable after loopback reservation):
 //   - 45.33.105.0/30: loopback=.0 (pre-reserved), usable=.1, .2, .3
@@ -150,6 +146,22 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 		return client
 	}
 
+	tryCreateUserOnchain := func(t *testing.T, hostID uint32) (*devnet.Client, error) {
+		t.Helper()
+		client, err := dn.AddClient(ctx, devnet.ClientSpec{
+			CYOANetworkIPHostID: hostID,
+		})
+		require.NoError(t, err)
+
+		_, err = dn.Manager.Exec(ctx, []string{"bash", "-c",
+			"doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
+		require.NoError(t, err)
+
+		_, err = client.Exec(ctx, []string{"bash", "-c",
+			"doublezero user create --device test-dz01 --client-ip " + client.CYOANetworkIP + " --allocate-addr"})
+		return client, err
+	}
+
 	waitForUserActivated := func(t *testing.T, clientIP string) *serviceability.User {
 		t.Helper()
 		var activated *serviceability.User
@@ -171,7 +183,6 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 
 	dzPrefix := "45.33.105.0/30"
 	var fillUsers []userInfo
-	var stuckClient *devnet.Client
 
 	// =========================================================================
 	// Subtest 1: Fill the pool — create 3 users to exhaust all usable IPs.
@@ -215,43 +226,24 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 	}
 
 	// =========================================================================
-	// Subtest 2: Exhaustion blocks activation — 4th user stays Pending.
-	// The activator encounters AllocationFailed (error 63) but does NOT reject
-	// the user, leaving it stuck in Pending indefinitely.
+	// Subtest 2: Exhaustion causes user creation to fail — 4th user create
+	// returns an error because the DzPrefix pool is fully exhausted.
 	// =========================================================================
-	if !t.Run("exhaustion_blocks_activation", func(t *testing.T) {
-		log.Debug("==> Creating 4th user — expect stuck in Pending (pool exhausted)")
-		stuckClient = createUserOnchain(t, 103)
+	if !t.Run("exhaustion_fails_creation", func(t *testing.T) {
+		log.Debug("==> Creating 4th user — expect user create to fail (pool exhausted)")
+		_, err := tryCreateUserOnchain(t, 103)
+		require.Error(t, err, "user create should fail when DzPrefix pool is exhausted")
 
-		// The user should remain in Pending because the DzPrefix pool is exhausted.
-		log.Debug("==> Verifying 4th user remains in Pending state")
-		require.Never(t, func() bool {
-			data, err := serviceabilityClient.GetProgramData(ctx)
-			if err != nil {
-				return false
-			}
-			for _, user := range data.Users {
-				if net.IP(user.ClientIp[:]).String() == stuckClient.CYOANetworkIP &&
-					user.Status == serviceability.UserStatusActivated {
-					return true
-				}
-			}
-			return false
-		}, 30*time.Second, 3*time.Second, "4th user should NOT be activated when DzPrefix pool is exhausted")
+		log.Debug("==> Confirmed: user create failed due to exhausted pool", "err", err)
 
-		// Confirm: user exists onchain in Pending state.
+		// Verify no 4th user exists onchain.
 		data, err := serviceabilityClient.GetProgramData(ctx)
 		require.NoError(t, err)
-		var foundPending bool
-		for _, user := range data.Users {
-			if net.IP(user.ClientIp[:]).String() == stuckClient.CYOANetworkIP {
-				require.Equal(t, serviceability.UserStatusPending, user.Status,
-					"exhausted user should be in Pending state, got %v", user.Status)
-				foundPending = true
-				break
-			}
+		userCount := 0
+		for range data.Users {
+			userCount++
 		}
-		require.True(t, foundPending, "4th user should exist onchain in Pending state")
+		require.Equal(t, 3, userCount, "only the 3 fill users should exist onchain")
 
 		// Verify DzPrefix allocation unchanged — no new IPs allocated.
 		afterExhaustion, err := verifier.CaptureSnapshot(ctx)
@@ -260,45 +252,40 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 		require.Equal(t, initialDzPrefixAllocated+3, dzPrefixAfterExhaustion,
 			"DzPrefix allocation count should not increase when pool is exhausted")
 
-		log.Debug("==> Confirmed: 4th user stuck in Pending, DzPrefix pool fully exhausted")
+		log.Debug("==> Confirmed: DzPrefix pool fully exhausted, user creation rejected")
 	}) {
 		t.FailNow()
 	}
 
 	// =========================================================================
 	// Subtest 3: Activator still healthy — verify it hasn't crashed after
-	// repeated AllocationFailed errors.
+	// the exhaustion scenario.
 	// =========================================================================
 	if !t.Run("activator_still_healthy", func(t *testing.T) {
-		log.Debug("==> Verifying activator is still operational after AllocationFailed errors")
+		log.Debug("==> Verifying activator is still operational after exhaustion")
 
-		// If the activator crashed, the 3 fill users would not still be in
-		// Activated state and the stuck user wouldn't still be Pending.
+		// If the activator crashed, the 3 fill users would not still be Activated.
 		data, err := serviceabilityClient.GetProgramData(ctx)
 		require.NoError(t, err)
 
 		activatedCount := 0
-		pendingCount := 0
 		for _, user := range data.Users {
-			switch user.Status {
-			case serviceability.UserStatusActivated:
+			if user.Status == serviceability.UserStatusActivated {
 				activatedCount++
-			case serviceability.UserStatusPending:
-				pendingCount++
 			}
 		}
 		require.Equal(t, 3, activatedCount, "all 3 fill users should still be Activated")
-		require.Equal(t, 1, pendingCount, "stuck user should still be Pending")
 
-		log.Debug("==> Activator confirmed healthy — 3 Activated, 1 Pending")
+		log.Debug("==> Activator confirmed healthy — 3 Activated")
 	}) {
 		t.FailNow()
 	}
 
 	// =========================================================================
 	// Subtest 4: Recovery — free a slot by deleting a fill user, then verify
-	// the stuck user gets activated on the activator's next retry.
+	// a new user can be created and activated successfully.
 	// =========================================================================
+	var recoveryClient *devnet.Client
 	if !t.Run("recovery_after_freeing_slot", func(t *testing.T) {
 		freedUser := fillUsers[0]
 		log.Debug("==> Deleting first fill user to free a DzPrefix slot", "pubkey", freedUser.pubkey)
@@ -322,20 +309,22 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 			return true
 		}, 90*time.Second, 2*time.Second, "deleted user was not closed within timeout")
 
-		// The stuck user should now get activated as the activator retries.
-		log.Debug("==> Waiting for previously stuck user to be activated")
-		activated := waitForUserActivated(t, stuckClient.CYOANetworkIP)
+		// Create a new user now that a slot is available.
+		log.Debug("==> Creating new user after freeing a slot")
+		recoveryClient = createUserOnchain(t, 104)
+
+		activated := waitForUserActivated(t, recoveryClient.CYOANetworkIP)
 		recoveredDzIP := net.IP(activated.DzIp[:]).String()
 
-		log.Debug("==> Previously stuck user now activated", "dz_ip", recoveredDzIP)
+		log.Debug("==> New user activated after freeing slot", "dz_ip", recoveredDzIP)
 
-		// Verify the recovered user got an IP from the /30 prefix.
+		// Verify the new user got an IP from the /30 prefix.
 		_, network, err := net.ParseCIDR(dzPrefix)
 		require.NoError(t, err)
 		require.True(t, network.Contains(net.ParseIP(recoveredDzIP)),
 			"recovered user dz_ip (%s) should be from prefix %s", recoveredDzIP, dzPrefix)
 
-		log.Debug("==> Recovery verified: stuck user activated after freeing a slot")
+		log.Debug("==> Recovery verified: new user activated after freeing a slot")
 	}) {
 		t.FailNow()
 	}
@@ -355,14 +344,14 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		// Delete the recovered stuck user.
+		// Delete the recovery user created in subtest 4.
 		data, err := serviceabilityClient.GetProgramData(ctx)
 		require.NoError(t, err)
 		for _, user := range data.Users {
-			if net.IP(user.ClientIp[:]).String() == stuckClient.CYOANetworkIP {
+			if net.IP(user.ClientIp[:]).String() == recoveryClient.CYOANetworkIP {
 				pubkey := base58.Encode(user.PubKey[:])
-				log.Debug("==> Deleting recovered stuck user", "pubkey", pubkey)
-				_, err := stuckClient.Exec(ctx, []string{"bash", "-c",
+				log.Debug("==> Deleting recovery user", "pubkey", pubkey)
+				_, err := recoveryClient.Exec(ctx, []string{"bash", "-c",
 					"doublezero user delete --pubkey " + pubkey})
 				require.NoError(t, err)
 				break

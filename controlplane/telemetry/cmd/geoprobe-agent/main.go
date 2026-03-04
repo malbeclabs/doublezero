@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,10 +20,12 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
+	"github.com/malbeclabs/doublezero/tools/twamp/pkg/signed"
 )
 
 const (
 	defaultTWAMPListenPort       = 862
+	defaultSignedTWAMPListenPort = 8924
 	defaultUDPListenPort         = 8923
 	defaultProbeInterval         = 5 * time.Minute
 	defaultTWAMPSenderTimeout    = 1 * time.Second
@@ -33,19 +36,21 @@ const (
 )
 
 var (
-	env                = flag.String("env", "", "The network environment to use (devnet, testnet, mainnet-beta).")
-	ledgerRPCURL       = flag.String("ledger-rpc-url", "", "The url of the ledger RPC. If env is provided, this flag is ignored.")
-	keypairPath        = flag.String("keypair", "", "The path to the probe's Ed25519 keypair file.")
-	geoProbePubkeyStr  = flag.String("geoprobe-pubkey", "", "The geoprobe device's public key (base58). Identifies this specific probe in offsets.")
-	additionalParent   = flag.String("additional-parent", "", "Trusted parent DZD in the format devicekey,metricskey (base58 pubkeys).")
-	additionalTargets  = flag.String("additional-targets", "", "Comma-separated list of target addresses (host:port) to measure and send composite offsets.")
-	twampListenPort    = flag.Uint("twamp-listen-port", defaultTWAMPListenPort, "Port for TWAMP reflector.")
-	udpListenPort      = flag.Uint("udp-listen-port", defaultUDPListenPort, "Port for receiving DZD offset datagrams.")
-	probeInterval      = flag.Duration("probe-interval", defaultProbeInterval, "Interval between measurement cycles.")
-	twampSenderTimeout = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "Timeout for TWAMP probes to targets.")
-	maxOffsetAge       = flag.Duration("max-offset-age", defaultMaxOffsetAge, "TTL for cached DZD offsets.")
-	verbose            = flag.Bool("verbose", false, "Enable verbose logging.")
-	showVersion        = flag.Bool("version", false, "Print the version and exit.")
+	env                   = flag.String("env", "", "The network environment to use (devnet, testnet, mainnet-beta).")
+	ledgerRPCURL          = flag.String("ledger-rpc-url", "", "The url of the ledger RPC. If env is provided, this flag is ignored.")
+	keypairPath           = flag.String("keypair", "", "The path to the probe's Ed25519 keypair file for signing messages.")
+	geoProbePubkeyStr     = flag.String("geoprobe-pubkey", "", "The geoprobe device's public key (base58). Identifies this specific probe in offsets. Should Match DZ Ledger")
+	additionalParent      = flag.String("additional-parent", "", "Trusted parent DZD in the format devicekey,metricskey (base58 pubkeys).")
+	additionalTargets     = flag.String("additional-targets", "", "Comma-separated list of target addresses (host:port) to measure and send composite offsets.")
+	twampListenPort       = flag.Uint("twamp-listen-port", defaultTWAMPListenPort, "Port for TWAMP reflector.")
+	signedTWAMPListenPort = flag.Uint("signed-twamp-port", defaultSignedTWAMPListenPort, "Port for Signed TWAMP reflector.")
+	allowedPubkeysFlag    = flag.String("allowed-pubkeys", "", "Comma-separated base58 Ed25519 pubkeys always authorized for signed TWAMP probes.")
+	udpListenPort         = flag.Uint("udp-listen-port", defaultUDPListenPort, "Port for receiving DZD offset datagrams.")
+	probeInterval         = flag.Duration("probe-interval", defaultProbeInterval, "Interval between measurement cycles.")
+	twampSenderTimeout    = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "Timeout for TWAMP probes to targets.")
+	maxOffsetAge          = flag.Duration("max-offset-age", defaultMaxOffsetAge, "TTL for cached DZD offsets.")
+	verbose               = flag.Bool("verbose", false, "Enable verbose logging.")
+	showVersion           = flag.Bool("version", false, "Print the version and exit.")
 	// Set by LDFLAGS
 	version = "dev"
 	commit  = "none"
@@ -91,6 +96,30 @@ func parseParentDZD(s string) (*parentDZD, error) {
 		pubkey:          pubkeyBytes,
 		authorityPubkey: authorityBytes,
 	}, nil
+}
+
+// parseAllowedPubkeys parses a comma-separated list of base58 Ed25519 public keys.
+func parseAllowedPubkeys(s string) ([][32]byte, error) {
+	if s == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(s, ",")
+	keys := make([][32]byte, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		pk, err := solana.PublicKeyFromBase58(p)
+		if err != nil {
+			return nil, fmt.Errorf("invalid pubkey %q: %w", p, err)
+		}
+		var key [32]byte
+		copy(key[:], pk[:])
+		keys = append(keys, key)
+	}
+	return keys, nil
 }
 
 // offsetCache stores recent DZD offsets keyed by sender (device) pubkey.
@@ -261,6 +290,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Parse allowed pubkeys for signed TWAMP reflector.
+	allowedKeys, err := parseAllowedPubkeys(*allowedPubkeysFlag)
+	if err != nil {
+		log.Error("Failed to parse allowed-pubkeys", "error", err)
+		os.Exit(1)
+	}
+
 	log.Info("Starting geoprobe agent",
 		"version", version,
 		"parents", len(parents),
@@ -268,6 +304,8 @@ func main() {
 		"probeInterval", *probeInterval,
 		"maxOffsetAge", *maxOffsetAge,
 		"twampListenPort", *twampListenPort,
+		"signedTWAMPListenPort", *signedTWAMPListenPort,
+		"allowedPubkeys", len(allowedKeys),
 		"udpListenPort", *udpListenPort,
 		"authority_pubkey", keypair.PublicKey(),
 		"geoprobe_pubkey", geoProbePubkey,
@@ -280,6 +318,19 @@ func main() {
 	reflector, err := twamplight.NewReflector(log, fmt.Sprintf("0.0.0.0:%d", *twampListenPort), defaultTWAMPReflectorTimeout)
 	if err != nil {
 		log.Error("Failed to create TWAMP reflector", "error", err)
+		os.Exit(1)
+	}
+
+	// Set up Signed TWAMP reflector.
+	signedSigner := signed.NewEd25519Signer(ed25519.PrivateKey(keypair))
+	signedReflector, err := signed.NewReflector(
+		fmt.Sprintf("0.0.0.0:%d", *signedTWAMPListenPort),
+		defaultTWAMPReflectorTimeout,
+		signedSigner,
+		allowedKeys,
+	)
+	if err != nil {
+		log.Error("Failed to create Signed TWAMP reflector", "error", err)
 		os.Exit(1)
 	}
 
@@ -365,12 +416,19 @@ func main() {
 	}
 	defer senderConn.Close()
 
-	errCh := make(chan error, 3)
+	errCh := make(chan error, 4)
 
 	// Run TWAMP reflector.
 	go func() {
 		if err := reflector.Run(ctx); err != nil {
 			errCh <- fmt.Errorf("TWAMP reflector: %w", err)
+		}
+	}()
+
+	// Run Signed TWAMP reflector.
+	go func() {
+		if err := signedReflector.Run(ctx); err != nil {
+			errCh <- fmt.Errorf("signed TWAMP reflector: %w", err)
 		}
 	}()
 

@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - `doublezero resource verify` command will now suggest creating resources or create them with --fix
+  - All `get` commands now display output as a formatted table and support a `--json` flag for machine-readable output
 - SDK
   - Fix multicast group deserialization in `smartcontract/sdk/go` to correctly read publisher and subscriber counts and align status enum with onchain definition
 - Smartcontract
@@ -17,7 +18,11 @@ All notable changes to this project will be documented in this file.
   - Allow sentinel authority to add/remove multicast publisher and subscriber allowlist entries
 - Telemetry
   - Add `geoprobe-target-sender` CLI tool for sending signed TWAMP probes to a GeoProbe and verifying signed replies (RFC16 inbound probing flow)
+  - Add Signed TWAMP reflector to geoprobe-agent with configurable listen port and allowed-pubkeys allowlist
   - Fix global monitor crash when IBRL and multicast users share the same client IP but are on different devices, by preferring non-multicast users in client IP lookups to match status device selection
+- Client
+  - Add onchain reconciler to daemon — automatically provisions/removes tunnels by polling onchain User state, replacing CLI-driven provisioning and the `doublezerod.json` state file ([RFC-17](rfcs/rfc17-client-onchain-reconciler.md))
+  - Add `doublezero enable` / `doublezero disable` CLI commands to toggle the reconciler at runtime
 - E2E tests
   - Publish `TestQA_AllDevices_UnicastConnectivity` results to ClickHouse (`qa_alldevices_results` and `qa_alldevices_metadata` tables) in addition to InfluxDB; configured via `CLICKHOUSE_ADDR` env var, skipped gracefully when not set
 
@@ -48,8 +53,6 @@ All notable changes to this project will be documented in this file.
   - Fix BGP `OnClose` deleting routes from all peers instead of only the closing peer, preventing multicast teardown from nuking unicast routes
   - Skip route deletion on `OnClose` for `NoInstall` peers (multicast) since they never install kernel routes
   - Reject BGP martian addresses (CGNAT, multicast, reserved, benchmarking, etc.) as client IP during `connect`
-  - Add onchain reconciler to daemon — automatically provisions/removes tunnels by polling onchain User state, replacing CLI-driven provisioning and the `doublezerod.json` state file ([RFC-17](rfcs/rfc17-client-onchain-reconciler.md))
-  - Add `doublezero enable` / `doublezero disable` CLI commands to toggle the reconciler at runtime
 - Controller
   - detect duplicate (UnderlaySrcIP, UnderlayDstIP) pairs for tunnels and only render the first to the device config and write a log error for the second
 - Onchain Programs
@@ -61,6 +64,7 @@ All notable changes to this project will be documented in this file.
   - Geolocation: add `doublezero-geolocation` program scaffolding and GeoProbe account type and related instructions as per rfcs/rfc16-geolocation-verification.md
 - SDK
   - SetFeatureFlagCommand added to manage on-chain feature flags for conditional behavior rollouts
+  - Serviceability: CreateUser instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
 - Dependencies
   - Upgrade Solana SDK workspace dependencies from 2.2.7 to 2.3.x (`solana-sdk`, `solana-client`, `solana-program-test`, and others)
 - Internet telemetry

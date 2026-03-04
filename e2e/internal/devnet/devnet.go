@@ -2,6 +2,7 @@ package devnet
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -830,7 +831,7 @@ func (d *Devnet) CreateDeviceOnchain(ctx context.Context, deviceCode string, loc
 }
 
 func (d *Devnet) GetDevicePubkeyOnchain(ctx context.Context, deviceCode string) (string, error) {
-	output, err := d.Manager.Exec(ctx, []string{"bash", "-c", "doublezero device get --code " + deviceCode}, docker.NoPrintOnError())
+	output, err := d.Manager.Exec(ctx, []string{"bash", "-c", "doublezero device get --code " + deviceCode + " --json"}, docker.NoPrintOnError())
 	if err != nil {
 		if strings.Contains(string(output), "not found") {
 			return "", ErrDeviceNotFoundOnchain
@@ -839,13 +840,16 @@ func (d *Devnet) GetDevicePubkeyOnchain(ctx context.Context, deviceCode string) 
 		return "", fmt.Errorf("failed to get device pubkey onchain: %w", err)
 	}
 
-	for _, line := range strings.SplitAfter(string(output), "\n") {
-		if strings.HasPrefix(line, "account: ") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "account: ")), nil
-		}
+	var result struct {
+		Account string `json:"account"`
 	}
-
-	return "", ErrDevicePubkeyNotFoundOnchain
+	if err := json.Unmarshal(output, &result); err != nil {
+		return "", fmt.Errorf("failed to parse device get output: %w", err)
+	}
+	if result.Account == "" {
+		return "", ErrDevicePubkeyNotFoundOnchain
+	}
+	return result.Account, nil
 }
 
 func (d *Devnet) waitContainerHealthy(ctx context.Context, containerID string, timeout time.Duration, delay time.Duration) error {

@@ -1910,7 +1910,6 @@ async fn test_activate_user_already_activated_fails() {
 // ResourceExtension bitmap before attempting activation. This is resource-intensive
 // and may be better suited for a stress test file.
 
-
 // ============================================================================
 // Atomic Create+Allocate+Activate Tests (Issue 2402)
 // ============================================================================
@@ -2477,7 +2476,6 @@ async fn test_create_user_atomic_feature_flag_disabled() {
 
     println!("[PASS] test_create_user_atomic_feature_flag_disabled");
 }
-
 
 // ============================================================================
 // DeleteUser Atomic Tests

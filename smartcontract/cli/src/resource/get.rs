@@ -36,7 +36,6 @@ impl From<GetResourceCliCommand> for GetResourceCommand {
 
 #[derive(Tabled, Serialize)]
 pub struct ResourceDisplay {
-    #[tabled(rename = "Allocated Resources")]
     pub resource: String,
 }
 
@@ -116,7 +115,7 @@ mod tests {
         assert!(result.is_ok());
         let output_str = String::from_utf8(output.into_inner()).unwrap();
         assert!(
-            output_str.contains("Allocated Resources"),
+            output_str.contains("resource"),
             "should contain table header"
         );
         assert!(

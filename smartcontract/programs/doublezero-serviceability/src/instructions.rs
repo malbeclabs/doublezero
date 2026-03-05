@@ -741,6 +741,7 @@ mod tests {
                 side_a_iface_name: "eth0".to_string(),
                 side_z_iface_name: Some("eth1".to_string()),
                 desired_status: None,
+                use_onchain_allocation: false,
             }),
             "CreateLink",
         );
@@ -770,7 +771,9 @@ mod tests {
         test_instruction(DoubleZeroInstruction::SuspendLink(), "SuspendLink");
         test_instruction(DoubleZeroInstruction::ResumeLink(), "ResumeLink");
         test_instruction(
-            DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+            DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+                use_onchain_deallocation: false,
+            }),
             "DeleteLink",
         );
         test_instruction(

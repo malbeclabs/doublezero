@@ -504,6 +504,7 @@ async fn test_wan_link() {
             side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: Some("Ethernet1".to_string()),
             desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
@@ -768,7 +769,9 @@ async fn test_wan_link() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
@@ -1173,6 +1176,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: Some("Ethernet1".to_string()),
             desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(link_pubkey, false),
@@ -1263,6 +1267,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: Some("Ethernet1".to_string()),
             desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(link_pubkey, false),
@@ -1327,6 +1332,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: Some("Ethernet1".to_string()),
             desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(link_pubkey, false),
@@ -1718,6 +1724,7 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
             side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: Some("Ethernet1".to_string()),
             desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(link_pubkey, false),
@@ -2159,6 +2166,7 @@ async fn setup_link_env() -> (
             side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: Some("Ethernet1".to_string()),
             desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
@@ -2212,7 +2220,9 @@ async fn test_link_delete_from_pending() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
@@ -2280,7 +2290,9 @@ async fn test_link_delete_from_soft_drained() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
@@ -2328,7 +2340,9 @@ async fn test_link_delete_from_soft_drained() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
@@ -2414,7 +2428,9 @@ async fn test_link_delete_from_hard_drained() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),

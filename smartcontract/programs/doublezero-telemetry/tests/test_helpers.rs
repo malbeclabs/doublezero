@@ -149,6 +149,7 @@ impl LinkCreateArgsExt for LinkCreateArgs {
             side_a_iface_name: String::default(),
             side_z_iface_name: Some(String::default()),
             desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: false,
         }
     }
 }
@@ -375,6 +376,7 @@ impl LedgerHelper {
                     side_a_iface_name: "Ethernet0".to_string(),
                     side_z_iface_name: Some("Ethernet1".to_string()),
                     desired_status: Some(LinkDesiredStatus::Activated),
+                    use_onchain_allocation: false,
                 },
                 contributor_pk,
                 origin_device_pk,
@@ -1152,6 +1154,7 @@ impl ServiceabilityProgramHelper {
                 side_a_iface_name: link.side_a_iface_name,
                 side_z_iface_name: link.side_z_iface_name,
                 desired_status: Some(LinkDesiredStatus::Activated),
+                use_onchain_allocation: false,
             }),
             vec![
                 AccountMeta::new(link_pk, false),

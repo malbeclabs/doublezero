@@ -11,6 +11,7 @@ type Reflector interface {
 	Close() error
 	Port() uint16
 	SetAuthorizedKeys(keys [][32]byte)
+	SetOffsets(offsets [][]byte)
 }
 
 // NewReflector creates a signed TWAMP reflector. Only the port in addr is used; any IP is ignored.

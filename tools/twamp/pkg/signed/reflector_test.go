@@ -59,10 +59,10 @@ func TestReflector_Linux(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
-		replyBuf := make([]byte, signed.ReplyPacketSize)
+		replyBuf := make([]byte, signed.MaxReplyPacketSize)
 		n, err := conn.Read(replyBuf)
 		require.NoError(t, err)
-		assert.Equal(t, signed.ReplyPacketSize, n)
+		assert.Equal(t, signed.MinReplyPacketSize, n)
 
 		reply, err := signed.UnmarshalReplyPacket(replyBuf[:n])
 		require.NoError(t, err)
@@ -72,6 +72,7 @@ func TestReflector_Linux(t *testing.T) {
 		assert.Equal(t, probe.Frac, reply.Probe.Frac)
 		assert.Equal(t, reflectorPubKey, reply.AuthorityPubkey)
 		assert.Equal(t, geoprobePubKey, reply.GeoprobePubkey)
+		assert.Empty(t, reply.Offsets)
 		assert.True(t, reply.Probe.Verify())
 		assert.True(t, reply.Verify())
 	})
@@ -111,7 +112,7 @@ func TestReflector_Linux(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, conn.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
-		replyBuf := make([]byte, signed.ReplyPacketSize)
+		replyBuf := make([]byte, signed.MaxReplyPacketSize)
 		_, err = conn.Read(replyBuf)
 		assert.Error(t, err, "should not receive reply for unauthorized pubkey")
 	})
@@ -151,7 +152,7 @@ func TestReflector_Linux(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, conn.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
-		replyBuf := make([]byte, signed.ReplyPacketSize)
+		replyBuf := make([]byte, signed.MaxReplyPacketSize)
 		_, err = conn.Read(replyBuf)
 		assert.Error(t, err, "should not receive reply for invalid signature")
 	})
@@ -182,7 +183,7 @@ func TestReflector_Linux(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, conn.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
-		replyBuf := make([]byte, signed.ReplyPacketSize)
+		replyBuf := make([]byte, signed.MaxReplyPacketSize)
 		_, err = conn.Read(replyBuf)
 		assert.Error(t, err, "should not receive reply for wrong-size packet")
 	})
@@ -250,7 +251,7 @@ func TestReflector_Linux(t *testing.T) {
 					t.Errorf("client %d: set deadline failed: %v", idx, err)
 					return
 				}
-				replyBuf := make([]byte, signed.ReplyPacketSize)
+				replyBuf := make([]byte, signed.MaxReplyPacketSize)
 				n, err := conn.Read(replyBuf)
 				if err != nil {
 					t.Errorf("client %d: read failed: %v", idx, err)
@@ -331,7 +332,7 @@ func TestReflector_Linux(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, conn.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
-		replyBuf := make([]byte, signed.ReplyPacketSize)
+		replyBuf := make([]byte, signed.MaxReplyPacketSize)
 		_, err = conn.Read(replyBuf)
 		assert.Error(t, err, "should not receive reply before authorization")
 
@@ -345,7 +346,7 @@ func TestReflector_Linux(t *testing.T) {
 		require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
 		n, err := conn.Read(replyBuf)
 		require.NoError(t, err, "should receive reply after authorization")
-		assert.Equal(t, signed.ReplyPacketSize, n)
+		assert.Equal(t, signed.MinReplyPacketSize, n)
 
 		reply, err := signed.UnmarshalReplyPacket(replyBuf[:n])
 		require.NoError(t, err)
@@ -385,7 +386,7 @@ func TestReflector_Linux(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
-		replyBuf := make([]byte, signed.ReplyPacketSize)
+		replyBuf := make([]byte, signed.MaxReplyPacketSize)
 		_, err = conn.Read(replyBuf)
 		require.NoError(t, err, "first probe should receive reply")
 

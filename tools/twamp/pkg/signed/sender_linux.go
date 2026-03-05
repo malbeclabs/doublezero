@@ -148,7 +148,7 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, *ReplyPacket, e
 		}
 		fallbackRecvTime := time.Now()
 
-		if n != ReplyPacketSize {
+		if n < MinReplyPacketSize || n > MaxReplyPacketSize {
 			continue
 		}
 

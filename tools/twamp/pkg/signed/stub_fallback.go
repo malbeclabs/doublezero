@@ -16,6 +16,6 @@ func NewLinuxSender(_ context.Context, _ string, _, _ *net.UDPAddr, _ Signer, _ 
 	return nil, errPlatformNotSupported
 }
 
-func NewLinuxReflector(_ string, _ time.Duration, _ Signer, _ [][32]byte) (Reflector, error) {
+func NewLinuxReflector(_ string, _ time.Duration, _ Signer, _ [32]byte, _ [][32]byte, _ time.Duration) (Reflector, error) {
 	return nil, errPlatformNotSupported
 }

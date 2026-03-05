@@ -25,13 +25,16 @@ func TestReflector_Linux(t *testing.T) {
 
 		senderPub, senderSigner := newTestSigner(t)
 		reflectorPub, reflectorSigner := newTestSigner(t)
+		geoprobePub, _ := newTestSigner(t)
 
 		var senderPubKey [32]byte
 		copy(senderPubKey[:], senderPub)
 		var reflectorPubKey [32]byte
 		copy(reflectorPubKey[:], reflectorPub)
+		var geoprobePubKey [32]byte
+		copy(geoprobePubKey[:], geoprobePub)
 
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [][32]byte{senderPubKey})
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, geoprobePubKey, [][32]byte{senderPubKey}, 0)
 		require.NoError(t, err)
 		defer reflector.Close()
 
@@ -67,7 +70,8 @@ func TestReflector_Linux(t *testing.T) {
 		assert.Equal(t, probe.Seq, reply.Probe.Seq)
 		assert.Equal(t, probe.Sec, reply.Probe.Sec)
 		assert.Equal(t, probe.Frac, reply.Probe.Frac)
-		assert.Equal(t, reflectorPubKey, reply.ReflectorPubkey)
+		assert.Equal(t, reflectorPubKey, reply.AuthorityPubkey)
+		assert.Equal(t, geoprobePubKey, reply.GeoprobePubkey)
 		assert.True(t, reply.Probe.Verify())
 		assert.True(t, reply.Verify())
 	})
@@ -83,7 +87,7 @@ func TestReflector_Linux(t *testing.T) {
 		var authorizedPubKey [32]byte
 		copy(authorizedPubKey[:], authorizedPub)
 
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [][32]byte{authorizedPubKey})
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [32]byte{}, [][32]byte{authorizedPubKey}, 0)
 		require.NoError(t, err)
 		defer reflector.Close()
 
@@ -121,7 +125,7 @@ func TestReflector_Linux(t *testing.T) {
 		var senderPubKey [32]byte
 		copy(senderPubKey[:], senderPub)
 
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [][32]byte{senderPubKey})
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [32]byte{}, [][32]byte{senderPubKey}, 0)
 		require.NoError(t, err)
 		defer reflector.Close()
 
@@ -157,7 +161,7 @@ func TestReflector_Linux(t *testing.T) {
 
 		_, reflectorSigner := newTestSigner(t)
 
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, nil)
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [32]byte{}, nil, 0)
 		require.NoError(t, err)
 		defer reflector.Close()
 
@@ -205,7 +209,7 @@ func TestReflector_Linux(t *testing.T) {
 			authorizedKeys[i] = senderKeys[i].pub
 		}
 
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, authorizedKeys)
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, reflectorPubKey, authorizedKeys, 0)
 		require.NoError(t, err)
 		defer reflector.Close()
 
@@ -273,7 +277,7 @@ func TestReflector_Linux(t *testing.T) {
 
 		_, reflectorSigner := newTestSigner(t)
 
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, nil)
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [32]byte{}, nil, 0)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -303,7 +307,7 @@ func TestReflector_Linux(t *testing.T) {
 		var senderPubKey [32]byte
 		copy(senderPubKey[:], senderPub)
 
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, nil)
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [32]byte{}, nil, 0)
 		require.NoError(t, err)
 		defer reflector.Close()
 
@@ -357,7 +361,7 @@ func TestReflector_Linux(t *testing.T) {
 		var senderPubKey [32]byte
 		copy(senderPubKey[:], senderPub)
 
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [][32]byte{senderPubKey})
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [32]byte{}, [][32]byte{senderPubKey}, 10*time.Second)
 		require.NoError(t, err)
 		defer reflector.Close()
 

@@ -10,10 +10,10 @@ import (
 
 const (
 	ProbePacketSize = 108
-	ReplyPacketSize = 204
+	ReplyPacketSize = 236
 
 	probePayloadSize = 44  // bytes 0-43: fields signed by sender
-	replyPayloadSize = 140 // bytes 0-139: fields signed by reflector
+	replyPayloadSize = 172 // bytes 0-171: fields signed by reflector
 )
 
 var errInvalidPacket = errors.New("invalid packet format")
@@ -61,8 +61,9 @@ type ProbePacket struct {
 // ReplyPacket is sent from Probe to Target in the inbound probing flow.
 type ReplyPacket struct {
 	Probe           ProbePacket // Bytes 0-107: Complete original signed probe (echoed)
-	ReflectorPubkey [32]byte    // Bytes 108-139: Probe's Ed25519 public key
-	Signature       [64]byte    // Bytes 140-203: Ed25519 signature over bytes 0-139
+	AuthorityPubkey [32]byte    // Bytes 108-139: Signing authority's Ed25519 public key
+	GeoprobePubkey  [32]byte    // Bytes 140-171: Geoprobe identity public key
+	Signature       [64]byte    // Bytes 172-235: Ed25519 signature over bytes 0-171
 }
 
 func NewProbePacket(seq uint32, signer Signer) *ProbePacket {
@@ -134,8 +135,9 @@ func (r *ReplyPacket) Marshal(buf []byte) error {
 	if err := r.Probe.Marshal(buf[0:108]); err != nil {
 		return err
 	}
-	copy(buf[108:140], r.ReflectorPubkey[:])
-	copy(buf[140:204], r.Signature[:])
+	copy(buf[108:140], r.AuthorityPubkey[:])
+	copy(buf[140:172], r.GeoprobePubkey[:])
+	copy(buf[172:236], r.Signature[:])
 	return nil
 }
 
@@ -152,22 +154,25 @@ func UnmarshalReplyPacket(buf []byte) (*ReplyPacket, error) {
 	r := &ReplyPacket{
 		Probe: *probe,
 	}
-	copy(r.ReflectorPubkey[:], buf[108:140])
-	copy(r.Signature[:], buf[140:204])
+	copy(r.AuthorityPubkey[:], buf[108:140])
+	copy(r.GeoprobePubkey[:], buf[140:172])
+	copy(r.Signature[:], buf[172:236])
 	return r, nil
 }
 
-func NewReplyPacket(probe *ProbePacket, signer Signer) *ReplyPacket {
+func NewReplyPacket(probe *ProbePacket, signer Signer, geoprobePubkey [32]byte) *ReplyPacket {
 	pub := signer.Public()
 
 	r := &ReplyPacket{
-		Probe: *probe,
+		Probe:          *probe,
+		GeoprobePubkey: geoprobePubkey,
 	}
-	copy(r.ReflectorPubkey[:], pub)
+	copy(r.AuthorityPubkey[:], pub)
 
 	var payload [replyPayloadSize]byte
 	_ = probe.Marshal(payload[0:108])
-	copy(payload[108:140], r.ReflectorPubkey[:])
+	copy(payload[108:140], r.AuthorityPubkey[:])
+	copy(payload[140:172], r.GeoprobePubkey[:])
 
 	sig := signer.Sign(payload[:])
 	copy(r.Signature[:], sig)
@@ -178,7 +183,8 @@ func NewReplyPacket(probe *ProbePacket, signer Signer) *ReplyPacket {
 func (r *ReplyPacket) Verify() bool {
 	var payload [replyPayloadSize]byte
 	_ = r.Probe.Marshal(payload[0:108])
-	copy(payload[108:140], r.ReflectorPubkey[:])
+	copy(payload[108:140], r.AuthorityPubkey[:])
+	copy(payload[140:172], r.GeoprobePubkey[:])
 
-	return ed25519.Verify(ed25519.PublicKey(r.ReflectorPubkey[:]), payload[:], r.Signature[:])
+	return ed25519.Verify(ed25519.PublicKey(r.AuthorityPubkey[:]), payload[:], r.Signature[:])
 }

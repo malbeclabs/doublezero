@@ -163,7 +163,7 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, *ReplyPacket, e
 		if !reply.Probe.Verify() {
 			continue
 		}
-		if reply.ReflectorPubkey != s.remotePubkey {
+		if reply.AuthorityPubkey != s.remotePubkey {
 			continue
 		}
 		if !reply.Verify() {

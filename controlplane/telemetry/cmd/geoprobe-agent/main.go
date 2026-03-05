@@ -32,6 +32,7 @@ const (
 	defaultTWAMPReflectorTimeout = 1 * time.Second
 	defaultMaxOffsetAge          = 1 * time.Hour
 	defaultEvictionInterval      = 30 * time.Minute
+	defaultVerifyInterval        = 29 * time.Second
 	discoveryInterval            = 60 * time.Second
 )
 
@@ -43,12 +44,13 @@ var (
 	additionalParent      = flag.String("additional-parent", "", "Trusted parent DZD in the format devicekey,metricskey (base58 pubkeys).")
 	additionalTargets     = flag.String("additional-targets", "", "Comma-separated list of target addresses (host:port) to measure and send composite offsets.")
 	twampListenPort       = flag.Uint("twamp-listen-port", defaultTWAMPListenPort, "Port for TWAMP reflector.")
-	signedTWAMPListenPort = flag.Uint("signed-twamp-port", defaultSignedTWAMPListenPort, "Port for Signed TWAMP reflector.")
-	allowedPubkeysFlag    = flag.String("allowed-pubkeys", "", "Comma-separated base58 Ed25519 pubkeys always authorized for signed TWAMP probes.")
+	signedTWAMPListenPort = flag.Uint("signed-twamp-port", defaultSignedTWAMPListenPort, "Port for Signed TWAMP reflector for inbound probing.")
+	allowedPubkeysFlag    = flag.String("allowed-pubkeys", "", "Comma-separated base58 Ed25519 pubkeys always authorized for signed TWAMP probes in inbound probing.")
 	udpListenPort         = flag.Uint("udp-listen-port", defaultUDPListenPort, "Port for receiving DZD offset datagrams.")
 	probeInterval         = flag.Duration("probe-interval", defaultProbeInterval, "Interval between measurement cycles.")
 	twampSenderTimeout    = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "Timeout for TWAMP probes to targets.")
 	maxOffsetAge          = flag.Duration("max-offset-age", defaultMaxOffsetAge, "TTL for cached DZD offsets.")
+	verifyInterval        = flag.Duration("verify-interval", defaultVerifyInterval, "Minimum time between signature verifications per sender for the signed TWAMP reflector in inbound probing.")
 	verbose               = flag.Bool("verbose", false, "Enable verbose logging.")
 	showVersion           = flag.Bool("version", false, "Print the version and exit.")
 	// Set by LDFLAGS
@@ -323,11 +325,15 @@ func main() {
 
 	// Set up Signed TWAMP reflector.
 	signedSigner := signed.NewEd25519Signer(ed25519.PrivateKey(keypair))
+	var geoprobePubkeyBytes [32]byte
+	copy(geoprobePubkeyBytes[:], geoProbePubkey[:])
 	signedReflector, err := signed.NewReflector(
 		fmt.Sprintf("0.0.0.0:%d", *signedTWAMPListenPort),
 		defaultTWAMPReflectorTimeout,
 		signedSigner,
+		geoprobePubkeyBytes,
 		allowedKeys,
+		*verifyInterval,
 	)
 	if err != nil {
 		log.Error("Failed to create Signed TWAMP reflector", "error", err)

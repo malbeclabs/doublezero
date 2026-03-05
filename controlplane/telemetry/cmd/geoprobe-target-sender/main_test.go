@@ -89,12 +89,13 @@ func TestAbbreviatePubkey(t *testing.T) {
 
 func TestProbeOutput_JSON(t *testing.T) {
 	output := probeOutput{
-		Timestamp:         "2025-01-15T14:23:45Z",
-		Seq:               1,
-		RttMs:             12.534,
-		ProbeSigValid:     true,
-		ReflectorSigValid: true,
-		ReflectorPubkey:   "FSM7abc123456zmQ",
+		Timestamp:       "2025-01-15T14:23:45Z",
+		Seq:             1,
+		RttMs:           12.534,
+		ProbeSigValid:   true,
+		ReplySigValid:   true,
+		AuthorityPubkey: "FSM7abc123456zmQ",
+		GeoprobePubkey:  "ABCD1234xyz",
 	}
 
 	data, err := json.Marshal(output)
@@ -113,8 +114,11 @@ func TestProbeOutput_JSON(t *testing.T) {
 	if decoded.RttMs != 12.534 {
 		t.Errorf("expected rtt_ms=12.534, got %f", decoded.RttMs)
 	}
-	if decoded.ReflectorPubkey != "FSM7abc123456zmQ" {
-		t.Errorf("expected reflector_pubkey=FSM7abc123456zmQ, got %s", decoded.ReflectorPubkey)
+	if decoded.AuthorityPubkey != "FSM7abc123456zmQ" {
+		t.Errorf("expected authority_pubkey=FSM7abc123456zmQ, got %s", decoded.AuthorityPubkey)
+	}
+	if decoded.GeoprobePubkey != "ABCD1234xyz" {
+		t.Errorf("expected geoprobe_pubkey=ABCD1234xyz, got %s", decoded.GeoprobePubkey)
 	}
 }
 
@@ -143,8 +147,11 @@ func TestProbeOutput_TimeoutJSON(t *testing.T) {
 		t.Errorf("expected rtt_ms=-1, got %v", decoded["rtt_ms"])
 	}
 	// omitempty fields should not be present.
-	if _, ok := decoded["reflector_pubkey"]; ok {
-		t.Error("expected reflector_pubkey to be omitted for timeout")
+	if _, ok := decoded["authority_pubkey"]; ok {
+		t.Error("expected authority_pubkey to be omitted for timeout")
+	}
+	if _, ok := decoded["geoprobe_pubkey"]; ok {
+		t.Error("expected geoprobe_pubkey to be omitted for timeout")
 	}
 	if _, ok := decoded["probe_sig_valid"]; ok {
 		t.Error("expected probe_sig_valid to be omitted for timeout")
@@ -153,12 +160,13 @@ func TestProbeOutput_TimeoutJSON(t *testing.T) {
 
 func TestProbeOutput_SuccessJSON_OmitsError(t *testing.T) {
 	output := probeOutput{
-		Timestamp:         "2025-01-15T14:23:45Z",
-		Seq:               1,
-		RttMs:             5.0,
-		ProbeSigValid:     true,
-		ReflectorSigValid: true,
-		ReflectorPubkey:   "test",
+		Timestamp:       "2025-01-15T14:23:45Z",
+		Seq:             1,
+		RttMs:           5.0,
+		ProbeSigValid:   true,
+		ReplySigValid:   true,
+		AuthorityPubkey: "test",
+		GeoprobePubkey:  "test2",
 	}
 
 	data, err := json.Marshal(output)

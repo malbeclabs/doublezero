@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain Programs
+  - Serviceability: add `Permission` account with `CreatePermission`, `UpdatePermission`, `DeletePermission`, `SuspendPermission`, and `ResumePermission` instructions for managing per-keypair permission bitmasks onchain
+- SDK
+  - Split `execute_transaction` into `execute_transaction` (no auth) and `execute_authorized_transaction` (injects Permission PDA) to avoid breaking processors that use `accounts.len()` for optional-account detection
+- CLI
+  - Add `permission get`, `permission list`, and `permission set` commands with table and JSON output; `permission set` supports incremental `--add` / `--remove` flags and creates or updates the account as needed
 - Client
   - Increase default route liveness probe interval (TxMin/RxMin) from 300ms to 1s and raise MaxTxCeil from 1s to 3s to preserve backoff headroom
 

@@ -24,6 +24,7 @@ type ProgramData struct {
 	MulticastGroups    []MulticastGroup
 	ProgramConfig      ProgramConfig
 	ResourceExtensions []ResourceExtension
+	Permissions        []Permission
 }
 
 func New(rpc RPCClient, programID solana.PublicKey) *Client {
@@ -57,6 +58,7 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 	multicastGroups := []MulticastGroup{}
 	programConfig := ProgramConfig{}
 	resourceExtensions := []ResourceExtension{}
+	permissions := []Permission{}
 
 	var errs error
 	for _, element := range out {
@@ -118,6 +120,11 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 			DeserializeResourceExtension(reader, &resourceExtension)
 			resourceExtension.PubKey = element.Pubkey
 			resourceExtensions = append(resourceExtensions, resourceExtension)
+		case byte(PermissionType):
+			var permission Permission
+			DeserializePermission(reader, &permission)
+			permission.PubKey = element.Pubkey
+			permissions = append(permissions, permission)
 		}
 	}
 
@@ -133,6 +140,7 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 		MulticastGroups:    multicastGroups,
 		ProgramConfig:      programConfig,
 		ResourceExtensions: resourceExtensions,
+		Permissions:        permissions,
 	}, errs
 }
 

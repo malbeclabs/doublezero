@@ -19,6 +19,7 @@ from serviceability.state import (
     Link,
     Location,
     MulticastGroup,
+    Permission,
     ProgramConfig,
     User,
 )
@@ -43,6 +44,7 @@ class ProgramData:
         self.multicast_groups: list[MulticastGroup] = []
         self.contributors: list[Contributor] = []
         self.access_passes: list[AccessPass] = []
+        self.permissions: list[Permission] = []
 
 
 class Client:
@@ -133,5 +135,8 @@ class Client:
             elif account_type == AccountTypeEnum.ACCESS_PASS:
                 ap = AccessPass.from_bytes(data)
                 pd.access_passes.append(ap)
+            elif account_type == AccountTypeEnum.PERMISSION:
+                perm = Permission.from_bytes(data)
+                pd.permissions.append(perm)
 
         return pd

@@ -311,6 +311,17 @@ func DeserializeResourceExtension(reader *ByteReader, ext *ResourceExtension) {
 	}
 }
 
+func DeserializePermission(reader *ByteReader, perm *Permission) {
+	perm.AccountType = AccountType(reader.ReadU8())
+	perm.Owner = reader.ReadPubkey()
+	perm.BumpSeed = reader.ReadU8()
+	perm.Status = PermissionStatus(reader.ReadU8())
+	perm.UserPayer = reader.ReadPubkey()
+	u128 := reader.ReadU128()
+	perm.PermissionsLo = u128.Low
+	perm.PermissionsHi = u128.High
+}
+
 func DeserializeTenant(reader *ByteReader, tenant *Tenant) {
 	tenant.AccountType = AccountType(reader.ReadU8())
 	tenant.Owner = reader.ReadPubkey()

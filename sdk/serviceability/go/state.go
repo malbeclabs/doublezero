@@ -24,6 +24,7 @@ const (
 	AccessPassType        AccountType = 11
 	ResourceExtensionType AccountType = 12
 	TenantType            AccountType = 13
+	PermissionType        AccountType = 15
 )
 
 type LocationStatus uint8
@@ -1070,4 +1071,62 @@ func (t Tenant) MarshalJSON() ([]byte, error) {
 	jsonTenant.TokenAccount = base58.Encode(t.TokenAccount[:])
 
 	return json.Marshal(jsonTenant)
+}
+
+type PermissionStatus uint8
+
+const (
+	PermissionStatusNone      PermissionStatus = 0
+	PermissionStatusActivated PermissionStatus = 1
+	PermissionStatusSuspended PermissionStatus = 2
+	PermissionStatusDeleting  PermissionStatus = 3
+)
+
+func (s PermissionStatus) String() string {
+	switch s {
+	case PermissionStatusNone:
+		return "none"
+	case PermissionStatusActivated:
+		return "activated"
+	case PermissionStatusSuspended:
+		return "suspended"
+	case PermissionStatusDeleting:
+		return "deleting"
+	default:
+		return "unknown"
+	}
+}
+
+func (s PermissionStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.String())
+}
+
+// Permission flag bit positions (bitmask).
+const (
+	PermissionFlagFoundation       uint64 = 1 << 0
+	PermissionFlagPermissionAdmin  uint64 = 1 << 1
+	PermissionFlagGlobalstateAdmin uint64 = 1 << 13
+	PermissionFlagContributorAdmin uint64 = 1 << 14
+	PermissionFlagInfraAdmin       uint64 = 1 << 2
+	PermissionFlagNetworkAdmin     uint64 = 1 << 3
+	PermissionFlagTenantAdmin      uint64 = 1 << 4
+	PermissionFlagMulticastAdmin   uint64 = 1 << 5
+	PermissionFlagReservation      uint64 = 1 << 6
+	PermissionFlagActivator        uint64 = 1 << 7
+	PermissionFlagSentinel         uint64 = 1 << 8
+	PermissionFlagUserAdmin        uint64 = 1 << 9
+	PermissionFlagAccessPassAdmin  uint64 = 1 << 10
+	PermissionFlagHealthOracle     uint64 = 1 << 11
+	PermissionFlagQA               uint64 = 1 << 12
+)
+
+type Permission struct {
+	AccountType   AccountType
+	Owner         [32]byte
+	BumpSeed      uint8
+	Status        PermissionStatus
+	UserPayer     [32]byte
+	PermissionsLo uint64
+	PermissionsHi uint64
+	PubKey        [32]byte
 }

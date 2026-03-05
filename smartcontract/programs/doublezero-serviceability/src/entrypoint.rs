@@ -80,6 +80,11 @@ use crate::{
             suspend::process_suspend_multicastgroup,
             update::process_update_multicastgroup,
         },
+        permission::{
+            create::process_create_permission, delete::process_delete_permission,
+            resume::process_resume_permission, suspend::process_suspend_permission,
+            update::process_update_permission,
+        },
         reservation::{close::process_close_reservation, reserve::process_reserve_connection},
         resource::{
             allocate::process_allocate_resource,
@@ -398,6 +403,21 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::CloseReservation(value) => {
             process_close_reservation(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CreatePermission(value) => {
+            process_create_permission(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::UpdatePermission(value) => {
+            process_update_permission(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SuspendPermission(value) => {
+            process_suspend_permission(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::ResumePermission(value) => {
+            process_resume_permission(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeletePermission(value) => {
+            process_delete_permission(program_id, accounts, &value)?
         }
     };
     Ok(())

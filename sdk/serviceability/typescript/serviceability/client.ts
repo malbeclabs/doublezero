@@ -15,6 +15,7 @@ import {
   ACCOUNT_TYPE_PROGRAM_CONFIG,
   ACCOUNT_TYPE_CONTRIBUTOR,
   ACCOUNT_TYPE_ACCESS_PASS,
+  ACCOUNT_TYPE_PERMISSION,
   deserializeGlobalState,
   deserializeGlobalConfig,
   deserializeLocation,
@@ -26,6 +27,7 @@ import {
   deserializeProgramConfig,
   deserializeContributor,
   deserializeAccessPass,
+  deserializePermission,
   type GlobalState,
   type GlobalConfig,
   type Location,
@@ -37,6 +39,7 @@ import {
   type ProgramConfig,
   type Contributor,
   type AccessPass,
+  type Permission,
 } from "./state.js";
 
 export interface ProgramData {
@@ -51,6 +54,7 @@ export interface ProgramData {
   multicastGroups: MulticastGroup[];
   contributors: Contributor[];
   accessPasses: AccessPass[];
+  permissions: Permission[];
 }
 
 export class Client {
@@ -102,6 +106,7 @@ export class Client {
       multicastGroups: [],
       contributors: [],
       accessPasses: [],
+      permissions: [],
     };
 
     for (const { account } of accounts) {
@@ -143,6 +148,9 @@ export class Client {
           break;
         case ACCOUNT_TYPE_ACCESS_PASS:
           pd.accessPasses.push(deserializeAccessPass(data));
+          break;
+        case ACCOUNT_TYPE_PERMISSION:
+          pd.permissions.push(deserializePermission(data));
           break;
       }
     }

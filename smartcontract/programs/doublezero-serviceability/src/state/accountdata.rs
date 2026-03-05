@@ -3,9 +3,9 @@ use crate::{
     state::{
         accesspass::AccessPass, accounttype::AccountType, contributor::Contributor, device::Device,
         exchange::Exchange, globalconfig::GlobalConfig, globalstate::GlobalState, link::Link,
-        location::Location, multicastgroup::MulticastGroup, programconfig::ProgramConfig,
-        reservation::Reservation, resource_extension::ResourceExtensionOwned, tenant::Tenant,
-        user::User,
+        location::Location, multicastgroup::MulticastGroup, permission::Permission,
+        programconfig::ProgramConfig, reservation::Reservation,
+        resource_extension::ResourceExtensionOwned, tenant::Tenant, user::User,
     },
 };
 use solana_program::program_error::ProgramError;
@@ -29,6 +29,7 @@ pub enum AccountData {
     ResourceExtension(ResourceExtensionOwned),
     Tenant(Tenant),
     Reservation(Reservation),
+    Permission(Permission),
 }
 
 impl AccountData {
@@ -49,6 +50,7 @@ impl AccountData {
             AccountData::ResourceExtension(_) => "ResourceExtension",
             AccountData::Tenant(_) => "Tenant",
             AccountData::Reservation(_) => "Reservation",
+            AccountData::Permission(_) => "Permission",
         }
     }
 
@@ -69,6 +71,7 @@ impl AccountData {
             AccountData::ResourceExtension(resource_extension) => resource_extension.to_string(),
             AccountData::Tenant(tenant) => tenant.to_string(),
             AccountData::Reservation(reservation) => reservation.to_string(),
+            AccountData::Permission(permission) => permission.to_string(),
         }
     }
 
@@ -175,6 +178,14 @@ impl AccountData {
             Err(DoubleZeroError::InvalidAccountType)
         }
     }
+
+    pub fn get_permission(&self) -> Result<Permission, DoubleZeroError> {
+        if let AccountData::Permission(permission) = self {
+            Ok(permission.clone())
+        } else {
+            Err(DoubleZeroError::InvalidAccountType)
+        }
+    }
 }
 
 impl TryFrom<&[u8]> for AccountData {
@@ -214,6 +225,9 @@ impl TryFrom<&[u8]> for AccountData {
             )),
             AccountType::Tenant => Ok(AccountData::Tenant(Tenant::try_from(bytes as &[u8])?)),
             AccountType::Reservation => Ok(AccountData::Reservation(Reservation::try_from(
+                bytes as &[u8],
+            )?)),
+            AccountType::Permission => Ok(AccountData::Permission(Permission::try_from(
                 bytes as &[u8],
             )?)),
         }

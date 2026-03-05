@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -31,6 +32,9 @@ type Executor struct {
 	signer                *solana.PrivateKey
 	programID             solana.PublicKey
 	waitForVisibleTimeout time.Duration
+
+	permissionOnce sync.Once
+	permissionPDA  *solana.PublicKey // nil if no Permission account exists for this signer
 }
 
 type ExecutorRPCClient interface {
@@ -38,6 +42,7 @@ type ExecutorRPCClient interface {
 	SendTransactionWithOpts(ctx context.Context, transaction *solana.Transaction, opts solanarpc.TransactionOpts) (solana.Signature, error)
 	GetSignatureStatuses(ctx context.Context, searchTransactionHistory bool, transactionSignatures ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error)
 	GetTransaction(ctx context.Context, txSig solana.Signature, opts *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error)
+	GetAccountInfo(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error)
 }
 
 type ExecutorOption func(*Executor)
@@ -200,12 +205,43 @@ func (i *genericInstruction) Data() ([]byte, error) {
 	return i.data, nil
 }
 
+// resolvePermissionPDA checks on-chain (once) whether a Permission account exists for this
+// executor's signer and caches the PDA address. Subsequent calls are no-ops.
+func (e *Executor) resolvePermissionPDA(ctx context.Context) {
+	e.permissionOnce.Do(func() {
+		if e.signer == nil {
+			return
+		}
+		pda, _, err := GetPermissionPDA(e.programID, e.signer.PublicKey())
+		if err != nil {
+			e.log.Warn("failed to derive Permission PDA", "error", err)
+			return
+		}
+		info, err := e.rpc.GetAccountInfo(ctx, pda)
+		if err != nil || info == nil || info.Value == nil {
+			return
+		}
+		e.permissionPDA = &pda
+		e.log.Debug("Permission account found, will include in transactions", "pda", pda)
+	})
+}
+
 func (e *Executor) executeTransaction(ctx context.Context, instructions []solana.Instruction) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 	if e.signer == nil {
 		return solana.Signature{}, nil, ErrNoPrivateKey
 	}
 	if e.programID.IsZero() {
 		return solana.Signature{}, nil, ErrNoProgramID
+	}
+
+	// Resolve and inject the Permission PDA into every instruction when the account exists.
+	e.resolvePermissionPDA(ctx)
+	if e.permissionPDA != nil {
+		for _, instr := range instructions {
+			if gi, ok := instr.(*genericInstruction); ok {
+				gi.accounts = append(gi.accounts, solana.Meta(*e.permissionPDA))
+			}
+		}
 	}
 
 	blockhashResult, err := e.rpc.GetLatestBlockhash(ctx, solanarpc.CommitmentFinalized)

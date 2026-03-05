@@ -13,6 +13,7 @@ use crate::cli::{
     },
     link::LinkCommands,
     location::LocationCommands,
+    permission::PermissionCommands,
     tenant::TenantCommands,
     user::UserCommands,
 };
@@ -165,6 +166,14 @@ async fn main() -> eyre::Result<()> {
             cli::accesspass::AccessPassCommands::Close(args) => args.execute(&client, &mut handle),
             cli::accesspass::AccessPassCommands::List(args) => args.execute(&client, &mut handle),
             cli::accesspass::AccessPassCommands::Get(args) => args.execute(&client, &mut handle),
+        },
+        Command::Permission(command) => match command.command {
+            PermissionCommands::Set(args) => args.execute(&client, &mut handle),
+            PermissionCommands::Suspend(args) => args.execute(&client, &mut handle),
+            PermissionCommands::Resume(args) => args.execute(&client, &mut handle),
+            PermissionCommands::Delete(args) => args.execute(&client, &mut handle),
+            PermissionCommands::Get(args) => args.execute(&client, &mut handle),
+            PermissionCommands::List(args) => args.execute(&client, &mut handle),
         },
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client, &mut handle),

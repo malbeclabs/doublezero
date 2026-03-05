@@ -105,7 +105,7 @@ impl CloseAccountUserCommand {
             accounts.push(AccountMeta::new(user.tenant_pk, false));
         }
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
                 dz_prefix_count,
                 multicast_publisher_count,
@@ -174,7 +174,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::User(user.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {
@@ -278,7 +278,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::GlobalConfig(globalconfig.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {
@@ -343,7 +343,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::User(user.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {
@@ -446,7 +446,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::GlobalConfig(globalconfig.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {

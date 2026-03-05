@@ -178,6 +178,16 @@ async fn main() -> eyre::Result<()> {
                 args.execute(&client, &mut handle)
             }
         },
+        Command::Permission(command) => match command.command {
+            cli::permission::PermissionCommands::Set(args) => args.execute(&client, &mut handle),
+            cli::permission::PermissionCommands::Suspend(args) => {
+                args.execute(&client, &mut handle)
+            }
+            cli::permission::PermissionCommands::Resume(args) => args.execute(&client, &mut handle),
+            cli::permission::PermissionCommands::Delete(args) => args.execute(&client, &mut handle),
+            cli::permission::PermissionCommands::Get(args) => args.execute(&client, &mut handle),
+            cli::permission::PermissionCommands::List(args) => args.execute(&client, &mut handle),
+        },
         Command::Tenant(command) => match command.command {
             cli::tenant::TenantCommands::Create(args) => args.execute(&client, &mut handle),
             cli::tenant::TenantCommands::Update(args) => args.execute(&client, &mut handle),

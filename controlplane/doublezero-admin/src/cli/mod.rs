@@ -9,5 +9,6 @@ pub mod link;
 pub mod location;
 pub mod multicast;
 pub mod multicastgroup;
+pub mod permission;
 pub mod tenant;
 pub mod user;

@@ -12,6 +12,7 @@ const (
 	SeedMulticastGroupBlock     = "multicastgroupblock"
 	SeedMulticastPublisherBlock = "multicastpublisherblock"
 	SeedTenant                  = "tenant"
+	SeedPermission              = "permission"
 )
 
 // GetLinkIdsPDA derives the PDA for the global LinkIds resource extension
@@ -74,6 +75,16 @@ func GetTenantPDA(programID solana.PublicKey, code string) (solana.PublicKey, ui
 		[]byte(SeedPrefix),
 		[]byte(SeedTenant),
 		[]byte(code),
+	}
+	return solana.FindProgramAddress(seeds, programID)
+}
+
+// GetPermissionPDA derives the PDA for a Permission account given the user_payer pubkey.
+func GetPermissionPDA(programID solana.PublicKey, userPayer solana.PublicKey) (solana.PublicKey, uint8, error) {
+	seeds := [][]byte{
+		[]byte(SeedPrefix),
+		[]byte(SeedPermission),
+		userPayer[:],
 	}
 	return solana.FindProgramAddress(seeds, programID)
 }

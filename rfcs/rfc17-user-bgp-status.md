@@ -48,15 +48,15 @@ Add three fields to the end of the `User` struct:
        Up      = 1
        Down    = 2
 
-2. `last_bgp_up_at: i64` (8 bytes, Unix timestamp in seconds) — the last time `bgp_status`
-   transitioned to `Up`. Zero means the session has never been observed Up.
+2. `last_bgp_up_at: u64` (8 bytes, DZ ledger slot) — the last slot when `bgp_status`
+  transitioned to `Up`. Zero means the session has never been observed Up.
 
-3. `last_bgp_reported_at: i64` (8 bytes, Unix timestamp in seconds) — the last time the
-   telemetry agent successfully wrote a BGP status change for this user. Updated only
-   when `bgp_status` transitions to a different value. Consumers can use this field to
-   detect agent silence: if `last_bgp_reported_at` is older than a threshold, the
-   `bgp_status` value should be treated as stale rather than authoritative, avoiding
-   false `Up` readings when the agent has stopped reporting.
+3. `last_bgp_reported_at: u64` (8 bytes, DZ ledger slot) — the last slot when the
+  telemetry agent successfully wrote a BGP status change for this user. Updated only
+  when `bgp_status` transitions to a different value. Consumers can use this field to
+  detect agent silence: if `last_bgp_reported_at` is older than a threshold, the
+  `bgp_status` value should be treated as stale rather than authoritative, avoiding
+  false `Up` readings when the agent has stopped reporting.
 
 The `SetUserBGPStatus` instruction reallocates the account by 17 bytes on first write
 (1 + 8 + 8), with the metrics publisher covering any additional rent. `last_bgp_up_at`

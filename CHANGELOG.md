@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - SDK
   - Add read-only Go SDK for `doublezero-geolocation` program with state deserialization, PDA derivation, and RPC client for querying geoprobe configuration
+  - Add write-side geolocation Go SDK: instruction builders for all 7 program instructions, transaction executor with finalization polling, and client write methods
 - Client
   - Increase default route liveness probe interval (TxMin/RxMin) from 300ms to 1s and raise MaxTxCeil from 1s to 3s to preserve backoff headroom
 - Smartcontract

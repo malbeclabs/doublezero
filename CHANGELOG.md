@@ -319,10 +319,11 @@ All notable changes to this project will be documented in this file.
   - feat(smartcontract): add use_onchain_deallocation flag to MulticastGroup ([#2748](https://github.com/malbeclabs/doublezero/pull/2748))
 - CLI
   - Remove restriction for a single tunnel per user; now a user can have a unicast and multicast tunnel concurrently (but can only be a publisher _or_ a subscriber) ([2728](https://github.com/malbeclabs/doublezero/pull/2728))
-- Data
-  - Add indexer that syncs serviceability and telemetry data to ClickHouse and Neo4J
 
 ## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
+
+- Data
+  - Add indexer that syncs serviceability and telemetry data to ClickHouse and Neo4J
 
 ### Breaking
 

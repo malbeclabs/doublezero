@@ -1,6 +1,6 @@
 //! Integration tests for RFC 11: On-Chain Resource Allocation for Link Entity
 //!
-//! These tests verify that Links can be activated and closed with on-chain
+//! These tests verify that Links can be activated and closed with onchain
 //! resource allocation using ResourceExtension accounts (DeviceTunnelBlock, LinkIds).
 
 use doublezero_serviceability::{
@@ -30,7 +30,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
 mod test_helpers;
 use test_helpers::*;
 
-/// Test that ActivateLink works with on-chain allocation from ResourceExtension
+/// Test that ActivateLink works with onchain allocation from ResourceExtension
 #[tokio::test]
 async fn test_activate_link_with_onchain_allocation() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
@@ -367,8 +367,8 @@ async fn test_activate_link_with_onchain_allocation() {
         .expect("LinkIds ResourceExtension not found");
     println!("LinkIds before activation: {link_ids_ext}");
 
-    // Activate Link with on-chain allocation
-    println!("Activating Link with on-chain allocation...");
+    // Activate Link with onchain allocation
+    println!("Activating Link with onchain allocation...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -406,7 +406,7 @@ async fn test_activate_link_with_onchain_allocation() {
     );
 
     println!(
-        "Link activated with on-chain allocation: tunnel_id={}, tunnel_net={}",
+        "Link activated with onchain allocation: tunnel_id={}, tunnel_net={}",
         link.tunnel_id, link.tunnel_net
     );
 
@@ -425,7 +425,7 @@ async fn test_activate_link_with_onchain_allocation() {
     println!("test_activate_link_with_onchain_allocation PASSED");
 }
 
-/// Test that the legacy ActivateLink path (without on-chain allocation) still works
+/// Test that the legacy ActivateLink path (without onchain allocation) still works
 #[tokio::test]
 async fn test_activate_link_legacy_path() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
@@ -739,7 +739,7 @@ async fn test_activate_link_legacy_path() {
     println!("test_activate_link_legacy_path PASSED");
 }
 
-/// Test that CloseAccountLink works with on-chain deallocation
+/// Test that CloseAccountLink works with onchain deallocation
 #[tokio::test]
 async fn test_closeaccount_link_with_deallocation() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
@@ -1013,7 +1013,7 @@ async fn test_closeaccount_link_with_deallocation() {
         get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
     let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
 
-    // Activate Link with on-chain allocation
+    // Activate Link with onchain allocation
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1091,8 +1091,8 @@ async fn test_closeaccount_link_with_deallocation() {
         .unwrap();
     assert_eq!(link.status, LinkStatus::Deleting);
 
-    // CloseAccount Link with on-chain deallocation
-    println!("Closing Link with on-chain deallocation...");
+    // CloseAccount Link with onchain deallocation
+    println!("Closing Link with onchain deallocation...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1388,7 +1388,7 @@ async fn test_create_link_atomic_with_onchain_allocation() {
         link_ids_pda,
     ) = setup_wan_link_infra(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
 
-    // Create Link with atomic on-chain allocation (WAN link with both interfaces)
+    // Create Link with atomic onchain allocation (WAN link with both interfaces)
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
@@ -1456,7 +1456,7 @@ async fn test_create_link_atomic_backward_compat() {
         _link_ids_pda,
     ) = setup_wan_link_infra(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
 
-    // Create Link without on-chain allocation (legacy path)
+    // Create Link without onchain allocation (legacy path)
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
@@ -1516,7 +1516,7 @@ async fn test_create_link_atomic_feature_flag_disabled() {
         link_ids_pda,
     ) = setup_wan_link_infra(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
 
-    // Try to create Link with atomic on-chain allocation - should fail
+    // Try to create Link with atomic onchain allocation - should fail
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
@@ -1581,7 +1581,7 @@ async fn test_delete_link_atomic_with_deallocation() {
         link_ids_pda,
     ) = setup_wan_link_infra(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
 
-    // Create Link with atomic on-chain allocation
+    // Create Link with atomic onchain allocation
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
@@ -1684,7 +1684,7 @@ async fn test_delete_link_atomic_backward_compat() {
         link_ids_pda,
     ) = setup_wan_link_infra(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
 
-    // Create Link with atomic on-chain allocation
+    // Create Link with atomic onchain allocation
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
@@ -1791,7 +1791,7 @@ async fn test_delete_link_atomic_feature_flag_disabled() {
         link_ids_pda,
     ) = setup_wan_link_infra(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
 
-    // Create Link with atomic on-chain allocation
+    // Create Link with atomic onchain allocation
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 

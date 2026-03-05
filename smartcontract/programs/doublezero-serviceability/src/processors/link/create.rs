@@ -38,7 +38,7 @@ pub struct LinkCreateArgs {
     pub side_a_iface_name: String,
     pub side_z_iface_name: Option<String>,
     pub desired_status: Option<LinkDesiredStatus>,
-    /// When true, on-chain allocation is used (ResourceExtension accounts required).
+    /// When true, onchain allocation is used (ResourceExtension accounts required).
     /// Performs atomic create+allocate+activate in a single transaction.
     #[incremental(default = false)]
     pub use_onchain_allocation: bool,
@@ -67,7 +67,7 @@ pub fn process_create_link(
     let side_z_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for on-chain allocation (before payer)
+    // Optional: ResourceExtension accounts for onchain allocation (before payer)
     // Account layout WITH ResourceExtension (use_onchain_allocation = true):
     //   [link, contributor, side_a, side_z, globalstate, device_tunnel_block, link_ids, payer, system]
     // Account layout WITHOUT (legacy, use_onchain_allocation = false):
@@ -227,7 +227,7 @@ pub fn process_create_link(
 
     link.check_status_transition();
 
-    // Atomic create+allocate+activate if on-chain allocation is enabled
+    // Atomic create+allocate+activate if onchain allocation is enabled
     if let Some((device_tunnel_block_ext, link_ids_ext)) = resource_extension_accounts {
         let globalstate_ref = GlobalState::try_from(globalstate_account)?;
         resource_onchain_helpers::validate_and_allocate_link_resources(

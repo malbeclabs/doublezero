@@ -205,8 +205,10 @@ pub fn process_update_device(
     }
 
     if let Some(ref code) = value.code {
-        device.code =
+        let mut code =
             validate_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+        code.make_ascii_lowercase();
+        device.code = code;
     }
     if let Some(device_type) = value.device_type {
         device.device_type = device_type;

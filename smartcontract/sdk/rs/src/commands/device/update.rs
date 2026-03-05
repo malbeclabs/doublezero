@@ -45,7 +45,12 @@ impl UpdateDeviceCommand {
         let code = self
             .code
             .as_ref()
-            .map(|code| validate_account_code(code))
+            .map(|code| {
+                validate_account_code(code).map(|mut c| {
+                    c.make_ascii_lowercase();
+                    c
+                })
+            })
             .transpose()
             .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
@@ -216,9 +221,11 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        // Use mixed-case input to verify SDK lowercases device codes,
+        // preventing duplicates like "Test_Device" vs "test_device"
         let update_command = UpdateDeviceCommand {
             pubkey: device_pubkey,
-            code: Some("test_device".to_string()),
+            code: Some("Test_Device".to_string()),
             contributor_pk: None,
             device_type: Some(DeviceType::Hybrid),
             public_ip: None,

@@ -26,8 +26,9 @@ pub struct CreateDeviceCommand {
 
 impl CreateDeviceCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let code =
+        let mut code =
             validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+        code.make_ascii_lowercase();
 
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
@@ -155,8 +156,10 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        // Use mixed-case input to verify SDK lowercases device codes,
+        // preventing duplicates like "Test_Device" vs "test_device"
         let command = CreateDeviceCommand {
-            code: "test_device".to_string(),
+            code: "Test_Device".to_string(),
             contributor_pk: contributor_pubkey,
             location_pk: location_pubkey,
             exchange_pk: exchange_pubkey,

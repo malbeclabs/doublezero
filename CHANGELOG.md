@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - `doublezero resource verify` command will now suggest creating resources or create them with --fix
+  - Print an explicit message when the tenant is resolved implicitly from the configuration file (`Using tenant '...' from configuration file.`) or from the Access Pass allowlist (`Using tenant '...' from Access Pass.`)
   - All `get` commands now display output as a formatted table and support a `--json` flag for machine-readable output
   - Remove `solana-multicast-publisher` and `solana-multicast-subscriber` from `access-pass set` type options (multicast roles use the tenant field on a `prepaid` pass instead); make `--solana-validator` optional for `solana-rpc` type
   - `get` commands now expose all onchain account fields: `user get` adds `tunnel_id`, `tunnel_endpoint`, and `validator_pubkey`; `device get` adds `reserved_seats`; `link get` adds `tunnel_id`; `multicastgroup get` adds `tenant`, `publisher_count`, and `subscriber_count`; `tenant get` adds `payment_status`, `billing`, `administrators`, and `token_account`; `exchange get` adds `device1_pk` and `device2_pk`

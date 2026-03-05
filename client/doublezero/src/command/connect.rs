@@ -485,19 +485,27 @@ impl ProvisioningCliCommand {
                     })?;
 
                 // Determine tenant: 1) from CLI argument, 2) from config file, 3) from access pass allowlist
-                let tenant = tenant
-                    .or_else(|| {
-                        doublezero_sdk::read_doublezero_config()
-                            .ok()
-                            .and_then(|(_, cfg)| cfg.tenant)
-                    })
-                    .or_else(|| {
+                let tenant = if let Some(t) = tenant {
+                    Some(t)
+                } else {
+                    let cfg_tenant = doublezero_sdk::read_doublezero_config()
+                        .ok()
+                        .and_then(|(_, cfg)| cfg.tenant);
+                    if let Some(ref t) = cfg_tenant {
+                        spinner.println(format!("Using tenant '{t}' from configuration file."));
+                    }
+                    cfg_tenant.or_else(|| {
                         accesspass
                             .tenant_allowlist
                             .first()
                             .filter(|pk| **pk != Pubkey::default())
-                            .map(|pk| pk.to_string())
-                    });
+                            .map(|pk| {
+                                let t = pk.to_string();
+                                spinner.println(format!("Using tenant '{t}' from Access Pass."));
+                                t
+                            })
+                    })
+                };
 
                 let tenant_pk = match tenant {
                     Some(tenant_str) => match parse_pubkey(&tenant_str) {

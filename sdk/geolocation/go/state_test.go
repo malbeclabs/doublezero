@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/geolocation"
+	geolocation "github.com/malbeclabs/doublezero/sdk/geolocation/go"
 	"github.com/stretchr/testify/require"
 )
 

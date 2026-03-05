@@ -62,6 +62,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: DeleteUser instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
   - Serviceability: CreateLink instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
   - Serviceability: DeleteLink instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
+  - Serviceability: CreateSubscribeUser instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
 
 ## [v0.9.0](https://github.com/malbeclabs/doublezero/compare/client/v0.8.11...client/v0.9.0) - 2026-02-27
 

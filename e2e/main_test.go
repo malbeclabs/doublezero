@@ -5,6 +5,7 @@ package e2e_test
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -373,16 +374,14 @@ func (dn *TestDevnet) DisconnectUserTunnel(t *testing.T, client *devnet.Client) 
 }
 
 func (dn *TestDevnet) GetDevicePubkeyOnchain(t *testing.T, deviceCode string) string {
-	output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero device get --code " + deviceCode})
+	output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero device get --code " + deviceCode + " --json"})
 	require.NoError(t, err)
 
-	for _, line := range strings.Split(string(output), "\n") {
-		if strings.HasPrefix(line, "account: ") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "account: "))
-		}
+	var result struct {
+		Account string `json:"account"`
 	}
-
-	return ""
+	require.NoError(t, json.Unmarshal(output, &result))
+	return result.Account
 }
 
 func (dn *TestDevnet) CreateMulticastGroupOnchain(t *testing.T, client *devnet.Client, multicastGroupCode string) {
@@ -419,14 +418,22 @@ func (dn *TestDevnet) WaitForAgentConfigMatchViaController(t *testing.T, deviceA
 	return fmt.Errorf("output mismatch: +(want), -(got): %s", diff)
 }
 
-func (dn *TestDevnet) WaitForUserActivation(t *testing.T) error {
+func (dn *TestDevnet) WaitForUserActivation(t *testing.T, minUsers ...int) error {
 	client, err := dn.Ledger.GetServiceabilityClient()
 	require.NoError(t, err, "error getting serviceability client")
+
+	minCount := 0
+	if len(minUsers) > 0 {
+		minCount = minUsers[0]
+	}
 
 	condition := func() (bool, error) {
 		data, err := client.GetProgramData(t.Context())
 		if err != nil {
 			return false, err
+		}
+		if len(data.Users) < minCount {
+			return false, nil
 		}
 		for _, user := range data.Users {
 			if user.Status != serviceability.UserStatusActivated {

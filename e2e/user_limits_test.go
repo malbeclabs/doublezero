@@ -3,6 +3,7 @@
 package e2e_test
 
 import (
+	"encoding/json"
 	"net"
 	"os"
 	"path/filepath"
@@ -206,11 +207,15 @@ func TestE2E_UserLimits(t *testing.T) {
 
 		// Verify device state shows unicast_users_count=1
 		deviceOut, err := dn.Manager.Exec(ctx, []string{"bash", "-c",
-			"doublezero device get --code " + deviceCode})
+			"doublezero device get --code " + deviceCode + " --json"})
 		require.NoError(t, err)
 		log.Info("Device state after first unicast user", "device", string(deviceOut))
-		require.Contains(t, string(deviceOut), "unicast_users_count: 1",
-			"Expected unicast_users_count=1, got: %s", string(deviceOut))
+		var deviceState struct {
+			UnicastUsersCount uint16 `json:"unicast_users_count"`
+		}
+		require.NoError(t, json.Unmarshal(deviceOut, &deviceState))
+		require.Equal(t, uint16(1), deviceState.UnicastUsersCount,
+			"Expected unicast_users_count=1, got: %d", deviceState.UnicastUsersCount)
 
 		// Try to create second unicast user (should fail with limit exceeded)
 		log.Info("==> Creating second unicast user (should fail)")
@@ -293,11 +298,15 @@ func TestE2E_UserLimits(t *testing.T) {
 
 		// Verify device state shows multicast_users_count=1
 		deviceOut, err := dn.Manager.Exec(ctx, []string{"bash", "-c",
-			"doublezero device get --code " + deviceCode})
+			"doublezero device get --code " + deviceCode + " --json"})
 		require.NoError(t, err)
 		log.Info("Device state after first multicast user", "device", string(deviceOut))
-		require.Contains(t, string(deviceOut), "multicast_users_count: 1",
-			"Expected multicast_users_count=1, got: %s", string(deviceOut))
+		var deviceState struct {
+			MulticastUsersCount uint16 `json:"multicast_users_count"`
+		}
+		require.NoError(t, json.Unmarshal(deviceOut, &deviceState))
+		require.Equal(t, uint16(1), deviceState.MulticastUsersCount,
+			"Expected multicast_users_count=1, got: %d", deviceState.MulticastUsersCount)
 
 		// Try to create second multicast user (should fail with limit exceeded)
 		log.Info("==> Creating second multicast user (should fail)")

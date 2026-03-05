@@ -8,18 +8,37 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Client
+  - Increase default route liveness probe interval (TxMin/RxMin) from 300ms to 1s and raise MaxTxCeil from 1s to 3s to preserve backoff headroom
+
+## [v0.10.0](https://github.com/malbeclabs/doublezero/compare/client/v0.9.0...client/v0.10.0) - 2026-03-04
+
+### Breaking
+
+### Changes
+
 - CLI
   - `doublezero resource verify` command will now suggest creating resources or create them with --fix
   - Print an explicit message when the tenant is resolved implicitly from the configuration file (`Using tenant '...' from configuration file.`) or from the Access Pass allowlist (`Using tenant '...' from Access Pass.`)
+  - All `get` commands now display output as a formatted table and support a `--json` flag for machine-readable output
+  - `get` commands now expose all onchain account fields: `user get` adds `tunnel_id`, `tunnel_endpoint`, and `validator_pubkey`; `device get` adds `reserved_seats`; `link get` adds `tunnel_id`; `multicastgroup get` adds `tenant`, `publisher_count`, and `subscriber_count`; `tenant get` adds `payment_status`, `billing`, `administrators`, and `token_account`; `exchange get` adds `device1_pk` and `device2_pk`
 - SDK
   - Fix multicast group deserialization in `smartcontract/sdk/go` to correctly read publisher and subscriber counts and align status enum with onchain definition
 - Smartcontract
   - Serviceability: add `Reservation` account and `ReserveConnection`/`CloseReservation` instructions for pre-reserving connection seats on devices, with `reserved_seats` factored into capacity checks on both reservation and user creation
   - Allow sentinel authority to add/remove multicast publisher and subscriber allowlist entries
 - Telemetry
+  - Add `geoprobe-target-sender` CLI tool for sending signed TWAMP probes to a GeoProbe and verifying signed replies (RFC16 inbound probing flow)
+  - Add Signed TWAMP reflector to geoprobe-agent with configurable listen port and allowed-pubkeys allowlist
   - Fix global monitor crash when IBRL and multicast users share the same client IP but are on different devices, by preferring non-multicast users in client IP lookups to match status device selection
+- Client
+  - Add onchain reconciler to daemon — automatically provisions/removes tunnels by polling onchain User state, replacing CLI-driven provisioning and the `doublezerod.json` state file ([RFC-17](rfcs/rfc17-client-onchain-reconciler.md))
+  - Add `doublezero enable` / `doublezero disable` CLI commands to toggle the reconciler at runtime
 - E2E tests
   - Publish `TestQA_AllDevices_UnicastConnectivity` results to ClickHouse (`qa_alldevices_results` and `qa_alldevices_metadata` tables) in addition to InfluxDB; configured via `CLICKHOUSE_ADDR` env var, skipped gracefully when not set
+- Onchain Programs
+  - Serviceability: CreateUser instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
+  - Serviceability: DeleteUser instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
 
 ## [v0.9.0](https://github.com/malbeclabs/doublezero/compare/client/v0.8.11...client/v0.9.0) - 2026-02-27
 
@@ -84,7 +103,6 @@ All notable changes to this project will be documented in this file.
 - N/A
 
 ### Changes
-
 - Activator
   - removes accesspass monitor task (that expires access passes)
 - Monitor

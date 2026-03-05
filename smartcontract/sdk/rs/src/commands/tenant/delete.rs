@@ -290,7 +290,7 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs {})),
+                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs::default())),
                 predicate::always(),
             )
             .times(1)

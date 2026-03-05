@@ -342,6 +342,7 @@ async fn test_accesspass_allow_multiple_ip() {
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -474,7 +475,10 @@ async fn test_accesspass_allow_multiple_ip() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),

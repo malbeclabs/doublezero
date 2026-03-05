@@ -17,3 +17,4 @@ build:
 	CGO_ENABLED=0 go build -v $(LDFLAGS) -o bin/doublezero-telemetry-data-api cmd/data-api/main.go
 	CGO_ENABLED=0 go build -v $(LDFLAGS) -o bin/doublezero-geoprobe-agent cmd/geoprobe-agent/main.go
 	CGO_ENABLED=0 go build -v $(LDFLAGS) -o bin/doublezero-geoprobe-target cmd/geoprobe-target/main.go
+	CGO_ENABLED=0 go build -v $(LDFLAGS) -o bin/doublezero-geoprobe-target-sender cmd/geoprobe-target-sender/main.go

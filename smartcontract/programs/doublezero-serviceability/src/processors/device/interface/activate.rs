@@ -1,13 +1,13 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
+    processors::resource::{allocate_id, allocate_ip},
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
         device::*,
         globalstate::GlobalState,
         interface::{InterfaceStatus, InterfaceType, LoopbackType},
-        resource_extension::ResourceExtensionBorrowed,
     },
 };
 use borsh::BorshSerialize;
@@ -133,24 +133,14 @@ pub fn process_activate_device_interface(
         if updated_iface.interface_type == InterfaceType::Loopback {
             // Allocate ip_net from global DeviceTunnelBlock (skip if already allocated)
             if updated_iface.ip_net == NetworkV4::default() {
-                let mut buffer = link_ips_acc.data.borrow_mut();
-                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-                updated_iface.ip_net = resource
-                    .allocate(1)?
-                    .as_ip()
-                    .ok_or(DoubleZeroError::InvalidArgument)?;
+                updated_iface.ip_net = allocate_ip(link_ips_acc, 1)?;
             }
 
             // Allocate segment_routing_id from global LinkIds (skip if already allocated)
             if updated_iface.loopback_type == LoopbackType::Vpnv4
                 && updated_iface.node_segment_idx == 0
             {
-                let mut buffer = segment_routing_ids_acc.data.borrow_mut();
-                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-                updated_iface.node_segment_idx = resource
-                    .allocate(1)?
-                    .as_id()
-                    .ok_or(DoubleZeroError::InvalidArgument)?;
+                updated_iface.node_segment_idx = allocate_id(segment_routing_ids_acc)?;
             }
         }
     } else {

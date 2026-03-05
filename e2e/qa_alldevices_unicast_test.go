@@ -216,10 +216,8 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	if err := qa.PublishMetrics(ctx, log, qa.MetricsConfigFromEnv(), envArg, results, time.Since(startTime)); err != nil {
 		log.Error("Failed to publish metrics", "error", err)
 	}
-	if envArg == "devnet" {
-		if err := qa.PublishToClickhouse(ctx, log, qa.ClickhouseConfigFromEnv(), envArg, results, time.Since(startTime)); err != nil {
-			log.Error("Failed to publish metrics to ClickHouse", "error", err)
-		}
+	if err := qa.PublishToClickhouse(ctx, log, qa.ClickhouseConfigFromEnv(), envArg, results, time.Since(startTime)); err != nil {
+		log.Error("Failed to publish metrics to ClickHouse", "error", err)
 	}
 }
 

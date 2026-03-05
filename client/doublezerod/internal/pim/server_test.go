@@ -83,6 +83,87 @@ func TestPIMServer(t *testing.T) {
 	})
 }
 
+func TestPIMServer_UpdateGroups(t *testing.T) {
+	c := &mockRawConn{writeChan: make(chan []byte, 10)}
+	svr := pim.NewPIMServer()
+	err := svr.Start(c, "eth0", net.IPv4(169, 254, 0, 0), []net.IP{net.IPv4(239, 0, 0, 1)})
+	if err != nil {
+		t.Fatalf("failed to start PIM server: %v", err)
+	}
+
+	// Drain initial hello + join.
+	for range 2 {
+		select {
+		case <-c.writeChan:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for initial PIM messages")
+		}
+	}
+
+	// Add a second group — should send a join for the added group on the same conn.
+	err = svr.UpdateGroups([]net.IP{net.IPv4(239, 0, 0, 1), net.IPv4(239, 0, 0, 2)})
+	if err != nil {
+		t.Fatalf("UpdateGroups (add) failed: %v", err)
+	}
+
+	// Expect a join message for the added group on the same connection.
+	select {
+	case msg := <-c.writeChan:
+		// Verify it's a join/prune message (for the added group 239.0.0.2).
+		p := gopacket.NewPacket(msg, pim.PIMMessageType, gopacket.Default)
+		if p.ErrorLayer() != nil {
+			t.Fatalf("error decoding join packet: %v", p.ErrorLayer().Error())
+		}
+		jp, ok := p.Layer(pim.JoinPruneMessageType).(*pim.JoinPruneMessage)
+		if !ok {
+			t.Fatal("expected JoinPruneMessage layer")
+		}
+		if jp.NumGroups != 1 {
+			t.Fatalf("expected 1 group in join, got %d", jp.NumGroups)
+		}
+		if !jp.Groups[0].MulticastGroupAddress.Equal(net.IPv4(239, 0, 0, 2)) {
+			t.Fatalf("expected join for 239.0.0.2, got %v", jp.Groups[0].MulticastGroupAddress)
+		}
+		if len(jp.Groups[0].Joins) != 1 {
+			t.Fatalf("expected 1 join source, got %d", len(jp.Groups[0].Joins))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for join message after UpdateGroups (add)")
+	}
+
+	// Remove the first group — should send a prune for the removed group.
+	err = svr.UpdateGroups([]net.IP{net.IPv4(239, 0, 0, 2)})
+	if err != nil {
+		t.Fatalf("UpdateGroups (remove) failed: %v", err)
+	}
+
+	// Expect a prune message for the removed group on the same connection.
+	select {
+	case msg := <-c.writeChan:
+		p := gopacket.NewPacket(msg, pim.PIMMessageType, gopacket.Default)
+		if p.ErrorLayer() != nil {
+			t.Fatalf("error decoding prune packet: %v", p.ErrorLayer().Error())
+		}
+		jp, ok := p.Layer(pim.JoinPruneMessageType).(*pim.JoinPruneMessage)
+		if !ok {
+			t.Fatal("expected JoinPruneMessage layer")
+		}
+		if jp.NumGroups != 1 {
+			t.Fatalf("expected 1 group in prune, got %d", jp.NumGroups)
+		}
+		if !jp.Groups[0].MulticastGroupAddress.Equal(net.IPv4(239, 0, 0, 1)) {
+			t.Fatalf("expected prune for 239.0.0.1, got %v", jp.Groups[0].MulticastGroupAddress)
+		}
+		if len(jp.Groups[0].Prunes) != 1 {
+			t.Fatalf("expected 1 prune source, got %d", len(jp.Groups[0].Prunes))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for prune message after UpdateGroups (remove)")
+	}
+
+	svr.Close()
+}
+
 func checkHelloMesssage(t *testing.T, b []byte) {
 	p := gopacket.NewPacket(b, pim.PIMMessageType, gopacket.Default)
 	if p.ErrorLayer() != nil {

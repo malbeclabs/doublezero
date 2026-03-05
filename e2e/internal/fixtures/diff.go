@@ -30,22 +30,42 @@ func mapFromTable(output []byte, ignoreKeys []string) []map[string]string {
 	var sliceOfMaps []map[string]string
 
 	scanner := bufio.NewScanner(bytes.NewReader(output))
-	scanner.Scan()
-	header := scanner.Text()
+
+	// Find the header line (first line containing a pipe delimiter).
+	var header string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "|") {
+			header = line
+			break
+		}
+	}
+	if header == "" {
+		return nil
+	}
 	split := strings.Split(header, "|")
 	trimmed_header := make([]string, len(split))
 	for i, key := range split {
 		trimmed_header[i] = strings.TrimSpace(key)
 	}
 
-	for i := 0; scanner.Scan(); i++ {
-		formattedMap := make(map[string]string)
+	for scanner.Scan() {
 		line := scanner.Text()
+		if !strings.Contains(line, "|") {
+			continue
+		}
+		formattedMap := make(map[string]string)
 		split := strings.Split(line, "|")
 		for i, key := range split {
-			formattedMap[trimmed_header[i]] = strings.TrimSpace(key)
+			if i < len(trimmed_header) {
+				formattedMap[trimmed_header[i]] = strings.TrimSpace(key)
+			}
 		}
 		sliceOfMaps = append(sliceOfMaps, formattedMap)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil
 	}
 
 	sortMaps(sliceOfMaps, ignoreKeys)

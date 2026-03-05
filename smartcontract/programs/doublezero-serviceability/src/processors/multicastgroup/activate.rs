@@ -1,11 +1,10 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
-    resource::{IdOrIp, ResourceType},
+    processors::resource::allocate_ip,
+    resource::ResourceType,
     serializer::try_acc_write,
-    state::{
-        globalstate::GlobalState, multicastgroup::*, resource_extension::ResourceExtensionBorrowed,
-    },
+    state::{globalstate::GlobalState, multicastgroup::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -110,19 +109,7 @@ pub fn process_activate_multicastgroup(
         // Allocate from ResourceExtension bitmap (only if not already allocated)
         // This check handles potential re-activation scenarios where resources may already be assigned
         if multicastgroup.multicast_ip == std::net::Ipv4Addr::UNSPECIFIED {
-            let mut buffer = resource_ext.data.borrow_mut();
-            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-
-            let allocated = resource.allocate(1)?;
-
-            match allocated {
-                IdOrIp::Ip(network) => {
-                    multicastgroup.multicast_ip = network.ip();
-                }
-                IdOrIp::Id(_) => {
-                    return Err(DoubleZeroError::InvalidArgument.into());
-                }
-            }
+            multicastgroup.multicast_ip = allocate_ip(resource_ext, 1)?.ip();
         }
     } else {
         // Legacy behavior: use provided multicast_ip

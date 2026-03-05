@@ -367,7 +367,8 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	require.Eventually(t, func() bool {
 		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
 		if err != nil {
-			return false
+			// Interface gone (tunnel torn down) means the route is withdrawn.
+			return true
 		}
 		return !strings.Contains(string(output), client2DZIP)
 	}, 120*time.Second, 2*time.Second, "timeout waiting for client1's route to client2 to be withdrawn after banning")

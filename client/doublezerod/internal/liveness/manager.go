@@ -19,7 +19,7 @@ const (
 	// Default floors/ceilings for TX interval clamping; chosen to avoid
 	// overly chatty probes and to keep failure detection reasonably fast.
 	defaultMinTxFloor = 50 * time.Millisecond
-	defaultMaxTxCeil  = 1 * time.Second
+	defaultMaxTxCeil  = 3 * time.Second
 
 	// Default max backoff for exponential backoff.
 	defaultBackoffMax = 1 * time.Minute

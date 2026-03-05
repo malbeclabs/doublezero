@@ -779,6 +779,7 @@ mod tests {
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: [1, 2, 3, 4].into(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                dz_prefix_count: 0,
             }),
             "CreateUser",
         );
@@ -807,7 +808,10 @@ mod tests {
         test_instruction(DoubleZeroInstruction::SuspendUser(), "SuspendUser");
         test_instruction(DoubleZeroInstruction::ResumeUser(), "ResumeUser");
         test_instruction(
-            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
+            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+                dz_prefix_count: 0,
+                multicast_publisher_count: 0,
+            }),
             "DeleteUser",
         );
         test_instruction(

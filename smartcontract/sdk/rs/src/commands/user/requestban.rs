@@ -15,7 +15,7 @@ impl RequestBanUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {}),
             vec![
                 AccountMeta::new(self.pubkey, false),

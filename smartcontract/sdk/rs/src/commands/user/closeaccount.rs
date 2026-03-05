@@ -113,16 +113,13 @@ impl CloseAccountUserCommand {
             accounts.push(AccountMeta::new(user.tenant_pk, false));
         }
 
-        let instruction = DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-            dz_prefix_count,
-            multicast_publisher_count,
-        });
-
-        if quiet {
-            client.execute_transaction_quiet(instruction, accounts)
-        } else {
-            client.execute_transaction(instruction, accounts)
-        }
+        client.execute_authorized_transaction(
+            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+                dz_prefix_count,
+                multicast_publisher_count,
+            }),
+            accounts,
+        )
     }
 }
 
@@ -185,7 +182,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::User(user.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {
@@ -289,7 +286,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::GlobalConfig(globalconfig.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {
@@ -354,7 +351,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::User(user.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {
@@ -457,7 +454,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::GlobalConfig(globalconfig.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {

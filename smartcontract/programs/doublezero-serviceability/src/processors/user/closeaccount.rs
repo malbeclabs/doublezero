@@ -1,11 +1,11 @@
 use crate::{
-    error::DoubleZeroError,
+    authorize::authorize,
     pda::get_resource_extension_pda,
     resource::{IdOrIp, ResourceType},
     serializer::{try_acc_close, try_acc_write},
     state::{
-        device::Device, globalstate::GlobalState, resource_extension::ResourceExtensionBorrowed,
-        tenant::Tenant, user::*,
+        device::Device, globalstate::GlobalState, permission::permission_flags,
+        resource_extension::ResourceExtensionBorrowed, tenant::Tenant, user::*,
     },
 };
 use borsh::BorshSerialize;
@@ -133,12 +133,13 @@ pub fn process_closeaccount_user(
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
-    // Authorization: allow activator_authority_pk OR foundation_allowlist (matching ActivateUser)
-    let is_activator = globalstate.activator_authority_pk == *payer_account.key;
-    let is_foundation = globalstate.foundation_allowlist.contains(payer_account.key);
-    if !is_activator && !is_foundation {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::USER_ADMIN,
+    )?;
 
     let user = User::try_from(user_account)?;
 

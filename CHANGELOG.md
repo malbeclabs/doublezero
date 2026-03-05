@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain Programs
+  - Serviceability: add `Permission` account with `CreatePermission`, `UpdatePermission`, `DeletePermission`, `SuspendPermission`, and `ResumePermission` instructions for managing per-keypair permission bitmasks onchain
+- SDK
+  - Split `execute_transaction` into `execute_transaction` (no auth) and `execute_authorized_transaction` (injects Permission PDA) to avoid breaking processors that use `accounts.len()` for optional-account detection
+- CLI
+  - Add `permission get`, `permission list`, and `permission set` commands with table and JSON output; `permission set` supports incremental `--add` / `--remove` flags and creates or updates the account as needed
 - Activator
   - Suppress noisy program log output from race conditions caused by dual event processing (websocket + snapshot poll). The SDK's new `execute_transaction_quiet` returns a `SimulationError` with program logs; the activator verifies suspected races by re-fetching user state before deciding whether to print logs ([#3197](https://github.com/malbeclabs/doublezero/pull/3197))
 - Telemetry

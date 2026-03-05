@@ -198,6 +198,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				MulticastGroups:    []MulticastGroup{},
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
+				Permissions:        []Permission{},
 			},
 		},
 		{
@@ -229,6 +230,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				MulticastGroups:    []MulticastGroup{},
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
+				Permissions:        []Permission{},
 			},
 		},
 		{
@@ -291,6 +293,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				MulticastGroups:    []MulticastGroup{},
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
+				Permissions:        []Permission{},
 			},
 		},
 		{
@@ -323,6 +326,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				MulticastGroups:    []MulticastGroup{},
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
+				Permissions:        []Permission{},
 			},
 		},
 		{
@@ -358,6 +362,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				MulticastGroups:    []MulticastGroup{},
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
+				Permissions:        []Permission{},
 			},
 		},
 		{
@@ -398,6 +403,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				MulticastGroups:    []MulticastGroup{},
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
+				Permissions:        []Permission{},
 			},
 		},
 		{
@@ -430,6 +436,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				},
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
+				Permissions:        []Permission{},
 			},
 		},
 		{
@@ -467,6 +474,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				MulticastGroups:    []MulticastGroup{},
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
+				Permissions:        []Permission{},
 			},
 		},
 		{
@@ -492,6 +500,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 					},
 				},
 				ResourceExtensions: []ResourceExtension{},
+				Permissions:        []Permission{},
 			},
 		},
 	}

@@ -50,6 +50,15 @@ pub trait DoubleZeroClient {
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature>;
 
+    /// Like `execute_transaction` but appends the payer's Permission PDA
+    /// (read-only) when it exists on-chain, so `authorize()` can find it.
+    /// Use this for instructions whose processor calls `authorize()`.
+    fn execute_authorized_transaction(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+    ) -> eyre::Result<Signature>;
+
     fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>>;
 }
 

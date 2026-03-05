@@ -1,6 +1,7 @@
 #![allow(unexpected_cfgs)]
 
 pub mod addresses;
+pub mod authorize;
 pub mod entrypoint;
 pub mod error;
 mod helper;

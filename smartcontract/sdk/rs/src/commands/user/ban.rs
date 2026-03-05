@@ -24,16 +24,12 @@ impl BanUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let instruction = DoubleZeroInstruction::BanUser(UserBanArgs {});
-        let accounts = vec![
-            AccountMeta::new(self.pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ];
-
-        if quiet {
-            client.execute_transaction_quiet(instruction, accounts)
-        } else {
-            client.execute_transaction(instruction, accounts)
-        }
+        client.execute_authorized_transaction(
+            DoubleZeroInstruction::BanUser(UserBanArgs {}),
+            vec![
+                AccountMeta::new(self.pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+        )
     }
 }

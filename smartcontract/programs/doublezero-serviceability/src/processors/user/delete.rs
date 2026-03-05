@@ -1,4 +1,5 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::get_accesspass_pda,
     serializer::{try_acc_close, try_acc_write},
@@ -6,6 +7,7 @@ use crate::{
         accesspass::{AccessPass, AccessPassStatus},
         device::Device,
         globalstate::GlobalState,
+        permission::permission_flags,
         tenant::Tenant,
         user::*,
     },
@@ -143,10 +145,15 @@ pub fn process_delete_user(
     let user: User = User::try_from(user_account)?;
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key)
-        && user.owner != *payer_account.key
-    {
-        return Err(DoubleZeroError::NotAllowed.into());
+    // The user owner can always delete their own account without a Permission account.
+    if user.owner != *payer_account.key {
+        authorize(
+            program_id,
+            accounts_iter,
+            payer_account.key,
+            &globalstate,
+            permission_flags::USER_ADMIN,
+        )?;
     }
 
     let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);

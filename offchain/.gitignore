@@ -1,5 +1,6 @@
 
 /target
+programs/mock-reservation-program/target
 
 # IDE
 .vscode

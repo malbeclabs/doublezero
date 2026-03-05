@@ -1,4 +1,5 @@
 [workspace]
+exclude = ["programs/mock-reservation-program"]
 members = [
     "crates/contributor-rewards",
     "crates/scheduled-command",
@@ -40,7 +41,7 @@ md5 = "0.8"
 borsh = { version = "1", features = ["derive"] }
 bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
 chrono = { version = "0.4", features = ["serde"] }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 config = "0.15"
 csv = "1"
 dotenvy = "0.15"
@@ -73,6 +74,9 @@ solana-transaction-status-client-types = "2"
 spl-associated-token-account-interface = "1"
 spl-memo-interface = "1"
 spl-token-interface = "1"
+solana-loader-v3-interface = "5"
+solana-program-pack = "2"
+solana-program-test = "=2.3.13"
 strum = { version = "0.27", features = ["derive"] }
 svm-hash = { version = "0.1", features = ["bytemuck", "borsh"] }
 tabled = { version = "0.20", features = ["std", "derive"] }

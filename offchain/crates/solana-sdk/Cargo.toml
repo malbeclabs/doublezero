@@ -19,5 +19,14 @@ doublezero-revenue-distribution.workspace = true
 doublezero-sol-conversion-interface.workspace = true
 doublezero-solana-client-tools.workspace = true
 solana-sdk.workspace = true
+spl-associated-token-account-interface.workspace = true
 spl-memo-interface.workspace = true
+spl-token-interface.workspace = true
 svm-hash.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+solana-client.workspace = true
+solana-loader-v3-interface.workspace = true
+solana-program-pack.workspace = true
+tempfile.workspace = true

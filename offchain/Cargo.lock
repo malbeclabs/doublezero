@@ -2728,9 +2728,16 @@ dependencies = [
  "doublezero-revenue-distribution",
  "doublezero-sol-conversion-interface",
  "doublezero-solana-client-tools",
+ "serde_json",
+ "solana-client",
+ "solana-loader-v3-interface",
+ "solana-program-pack",
  "solana-sdk",
+ "spl-associated-token-account-interface",
  "spl-memo-interface",
+ "spl-token-interface",
  "svm-hash",
+ "tempfile",
 ]
 
 [[package]]

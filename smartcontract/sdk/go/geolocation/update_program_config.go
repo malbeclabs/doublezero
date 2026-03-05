@@ -8,8 +8,9 @@ import (
 )
 
 type UpdateProgramConfigInstructionConfig struct {
-	Payer                   solana.PublicKey
-	ServiceabilityProgramID *solana.PublicKey
+	Payer                solana.PublicKey
+	Version              *uint32
+	MinCompatibleVersion *uint32
 }
 
 func (c *UpdateProgramConfigInstructionConfig) Validate() error {
@@ -28,13 +29,15 @@ func BuildUpdateProgramConfigInstruction(
 	}
 
 	type updateArgs struct {
-		Discriminator           uint8
-		ServiceabilityProgramID *solana.PublicKey `borsh_optional:"true"`
+		Discriminator        uint8
+		Version              *uint32 `borsh_optional:"true"`
+		MinCompatibleVersion *uint32 `borsh_optional:"true"`
 	}
 
 	data, err := borsh.Serialize(updateArgs{
-		Discriminator:           uint8(UpdateProgramConfigInstructionIndex),
-		ServiceabilityProgramID: config.ServiceabilityProgramID,
+		Discriminator:        uint8(UpdateProgramConfigInstructionIndex),
+		Version:              config.Version,
+		MinCompatibleVersion: config.MinCompatibleVersion,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize args: %w", err)
@@ -52,9 +55,9 @@ func BuildUpdateProgramConfigInstruction(
 
 	accounts := []*solana.AccountMeta{
 		{PublicKey: programConfigPDA, IsSigner: false, IsWritable: true},
-		{PublicKey: config.Payer, IsSigner: true, IsWritable: false},
-		{PublicKey: solana.SystemProgramID, IsSigner: false, IsWritable: false},
 		{PublicKey: programDataPDA, IsSigner: false, IsWritable: false},
+		{PublicKey: config.Payer, IsSigner: true, IsWritable: true},
+		{PublicKey: solana.SystemProgramID, IsSigner: false, IsWritable: false},
 	}
 
 	return &solana.GenericInstruction{

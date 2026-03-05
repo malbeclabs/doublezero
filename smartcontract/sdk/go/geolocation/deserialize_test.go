@@ -13,11 +13,10 @@ func TestSDK_Geolocation_DeserializeProgramConfig_HappyPath(t *testing.T) {
 	t.Parallel()
 
 	original := &geolocation.GeolocationProgramConfig{
-		AccountType:             geolocation.AccountTypeProgramConfig,
-		BumpSeed:                255,
-		Version:                 1,
-		MinCompatibleVersion:    1,
-		ServiceabilityProgramID: solana.NewWallet().PublicKey(),
+		AccountType:          geolocation.AccountTypeProgramConfig,
+		BumpSeed:             255,
+		Version:              1,
+		MinCompatibleVersion: 1,
 	}
 
 	var buf bytes.Buffer
@@ -26,7 +25,7 @@ func TestSDK_Geolocation_DeserializeProgramConfig_HappyPath(t *testing.T) {
 	result, err := geolocation.DeserializeProgramConfig(buf.Bytes())
 	require.NoError(t, err)
 	require.Equal(t, original.AccountType, result.AccountType)
-	require.Equal(t, original.ServiceabilityProgramID, result.ServiceabilityProgramID)
+	require.Equal(t, original.Version, result.Version)
 }
 
 func TestSDK_Geolocation_DeserializeProgramConfig_WrongAccountType(t *testing.T) {
@@ -36,14 +35,12 @@ func TestSDK_Geolocation_DeserializeProgramConfig_WrongAccountType(t *testing.T)
 	original := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		BumpSeed:           100,
 		ExchangePK:         solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{10, 0, 0, 1},
 		LocationOffsetPort: 8923,
 		Code:               "test",
 		ParentDevices:      []solana.PublicKey{},
 		MetricsPublisherPK: solana.NewWallet().PublicKey(),
-		LatencyThresholdNs: 1_000_000,
 		ReferenceCount:     0,
 	}
 
@@ -69,7 +66,6 @@ func TestSDK_Geolocation_DeserializeGeoProbe_HappyPath(t *testing.T) {
 	original := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		BumpSeed:           200,
 		ExchangePK:         solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{10, 0, 1, 42},
 		LocationOffsetPort: 8923,
@@ -78,7 +74,6 @@ func TestSDK_Geolocation_DeserializeGeoProbe_HappyPath(t *testing.T) {
 			solana.NewWallet().PublicKey(),
 		},
 		MetricsPublisherPK: solana.NewWallet().PublicKey(),
-		LatencyThresholdNs: 1_000_000,
 		ReferenceCount:     3,
 	}
 
@@ -96,11 +91,10 @@ func TestSDK_Geolocation_DeserializeGeoProbe_WrongAccountType(t *testing.T) {
 	t.Parallel()
 
 	original := &geolocation.GeolocationProgramConfig{
-		AccountType:             geolocation.AccountTypeProgramConfig,
-		BumpSeed:                255,
-		Version:                 1,
-		MinCompatibleVersion:    1,
-		ServiceabilityProgramID: solana.NewWallet().PublicKey(),
+		AccountType:          geolocation.AccountTypeProgramConfig,
+		BumpSeed:             255,
+		Version:              1,
+		MinCompatibleVersion: 1,
 	}
 
 	var buf bytes.Buffer
@@ -125,14 +119,12 @@ func TestSDK_Geolocation_DeserializeGeoProbe_ExtraTrailingBytes(t *testing.T) {
 	original := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		BumpSeed:           100,
 		ExchangePK:         solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{10, 0, 0, 1},
 		LocationOffsetPort: 8923,
 		Code:               "test",
 		ParentDevices:      []solana.PublicKey{},
 		MetricsPublisherPK: solana.NewWallet().PublicKey(),
-		LatencyThresholdNs: 1_000_000,
 		ReferenceCount:     0,
 	}
 

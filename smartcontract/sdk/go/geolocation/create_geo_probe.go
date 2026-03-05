@@ -14,7 +14,6 @@ type CreateGeoProbeInstructionConfig struct {
 	ServiceabilityGlobalStatePK solana.PublicKey
 	PublicIP                    [4]uint8
 	LocationOffsetPort          uint16
-	LatencyThresholdNs          uint64
 	MetricsPublisherPK          solana.PublicKey
 }
 
@@ -53,14 +52,12 @@ func BuildCreateGeoProbeInstruction(
 		Code               string
 		PublicIP           [4]uint8
 		LocationOffsetPort uint16
-		LatencyThresholdNs uint64
 		MetricsPublisherPK solana.PublicKey
 	}{
 		Discriminator:      uint8(CreateGeoProbeInstructionIndex),
 		Code:               config.Code,
 		PublicIP:           config.PublicIP,
 		LocationOffsetPort: config.LocationOffsetPort,
-		LatencyThresholdNs: config.LatencyThresholdNs,
 		MetricsPublisherPK: config.MetricsPublisherPK,
 	})
 	if err != nil {

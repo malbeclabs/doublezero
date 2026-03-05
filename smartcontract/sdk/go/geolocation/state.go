@@ -17,11 +17,10 @@ const (
 )
 
 type GeolocationProgramConfig struct {
-	AccountType             AccountType      // 1 byte
-	BumpSeed                uint8            // 1 byte
-	Version                 uint32           // 4 bytes LE
-	MinCompatibleVersion    uint32           // 4 bytes LE
-	ServiceabilityProgramID solana.PublicKey // 32 bytes
+	AccountType          AccountType // 1 byte
+	BumpSeed             uint8       // 1 byte
+	Version              uint32      // 4 bytes LE
+	MinCompatibleVersion uint32      // 4 bytes LE
 }
 
 func (g *GeolocationProgramConfig) Serialize(w io.Writer) error {
@@ -36,9 +35,6 @@ func (g *GeolocationProgramConfig) Serialize(w io.Writer) error {
 		return err
 	}
 	if err := enc.Encode(g.MinCompatibleVersion); err != nil {
-		return err
-	}
-	if err := enc.Encode(g.ServiceabilityProgramID); err != nil {
 		return err
 	}
 	return nil
@@ -58,24 +54,19 @@ func (g *GeolocationProgramConfig) Deserialize(data []byte) error {
 	if err := dec.Decode(&g.MinCompatibleVersion); err != nil {
 		return err
 	}
-	if err := dec.Decode(&g.ServiceabilityProgramID); err != nil {
-		return err
-	}
 	return nil
 }
 
 type GeoProbe struct {
 	AccountType        AccountType        // 1 byte
 	Owner              solana.PublicKey   // 32 bytes
-	BumpSeed           uint8              // 1 byte
 	ExchangePK         solana.PublicKey   // 32 bytes
 	PublicIP           [4]uint8           // 4 bytes (IPv4 octets)
 	LocationOffsetPort uint16             // 2 bytes LE
+	MetricsPublisherPK solana.PublicKey   // 32 bytes
+	ReferenceCount     uint32             // 4 bytes LE
 	Code               string             // 4-byte length prefix + UTF-8 bytes
 	ParentDevices      []solana.PublicKey // 4-byte count + N*32 bytes
-	MetricsPublisherPK solana.PublicKey   // 32 bytes
-	LatencyThresholdNs uint64             // 8 bytes LE
-	ReferenceCount     uint32             // 4 bytes LE
 }
 
 func (g *GeoProbe) Serialize(w io.Writer) error {
@@ -84,9 +75,6 @@ func (g *GeoProbe) Serialize(w io.Writer) error {
 		return err
 	}
 	if err := enc.Encode(g.Owner); err != nil {
-		return err
-	}
-	if err := enc.Encode(g.BumpSeed); err != nil {
 		return err
 	}
 	if err := enc.Encode(g.ExchangePK); err != nil {
@@ -98,19 +86,16 @@ func (g *GeoProbe) Serialize(w io.Writer) error {
 	if err := enc.Encode(g.LocationOffsetPort); err != nil {
 		return err
 	}
+	if err := enc.Encode(g.MetricsPublisherPK); err != nil {
+		return err
+	}
+	if err := enc.Encode(g.ReferenceCount); err != nil {
+		return err
+	}
 	if err := enc.Encode(g.Code); err != nil {
 		return err
 	}
 	if err := enc.Encode(g.ParentDevices); err != nil {
-		return err
-	}
-	if err := enc.Encode(g.MetricsPublisherPK); err != nil {
-		return err
-	}
-	if err := enc.Encode(g.LatencyThresholdNs); err != nil {
-		return err
-	}
-	if err := enc.Encode(g.ReferenceCount); err != nil {
 		return err
 	}
 	return nil
@@ -124,9 +109,6 @@ func (g *GeoProbe) Deserialize(data []byte) error {
 	if err := dec.Decode(&g.Owner); err != nil {
 		return err
 	}
-	if err := dec.Decode(&g.BumpSeed); err != nil {
-		return err
-	}
 	if err := dec.Decode(&g.ExchangePK); err != nil {
 		return err
 	}
@@ -134,6 +116,12 @@ func (g *GeoProbe) Deserialize(data []byte) error {
 		return err
 	}
 	if err := dec.Decode(&g.LocationOffsetPort); err != nil {
+		return err
+	}
+	if err := dec.Decode(&g.MetricsPublisherPK); err != nil {
+		return err
+	}
+	if err := dec.Decode(&g.ReferenceCount); err != nil {
 		return err
 	}
 	if err := dec.Decode(&g.Code); err != nil {
@@ -147,15 +135,6 @@ func (g *GeoProbe) Deserialize(data []byte) error {
 	}
 	if len(g.ParentDevices) > MaxParentDevices {
 		return fmt.Errorf("parent devices count %d exceeds max allowed %d", len(g.ParentDevices), MaxParentDevices)
-	}
-	if err := dec.Decode(&g.MetricsPublisherPK); err != nil {
-		return err
-	}
-	if err := dec.Decode(&g.LatencyThresholdNs); err != nil {
-		return err
-	}
-	if err := dec.Decode(&g.ReferenceCount); err != nil {
-		return err
 	}
 	return nil
 }

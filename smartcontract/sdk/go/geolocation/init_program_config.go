@@ -8,16 +8,12 @@ import (
 )
 
 type InitProgramConfigInstructionConfig struct {
-	Payer                   solana.PublicKey
-	ServiceabilityProgramID solana.PublicKey
+	Payer solana.PublicKey
 }
 
 func (c *InitProgramConfigInstructionConfig) Validate() error {
 	if c.Payer.IsZero() {
 		return fmt.Errorf("payer public key is required")
-	}
-	if c.ServiceabilityProgramID.IsZero() {
-		return fmt.Errorf("serviceability program ID is required")
 	}
 	return nil
 }
@@ -31,11 +27,9 @@ func BuildInitProgramConfigInstruction(
 	}
 
 	data, err := borsh.Serialize(struct {
-		Discriminator           uint8
-		ServiceabilityProgramID solana.PublicKey
+		Discriminator uint8
 	}{
-		Discriminator:           uint8(InitProgramConfigInstructionIndex),
-		ServiceabilityProgramID: config.ServiceabilityProgramID,
+		Discriminator: uint8(InitProgramConfigInstructionIndex),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize args: %w", err)
@@ -53,9 +47,9 @@ func BuildInitProgramConfigInstruction(
 
 	accounts := []*solana.AccountMeta{
 		{PublicKey: programConfigPDA, IsSigner: false, IsWritable: true},
+		{PublicKey: programDataPDA, IsSigner: false, IsWritable: false},
 		{PublicKey: config.Payer, IsSigner: true, IsWritable: true},
 		{PublicKey: solana.SystemProgramID, IsSigner: false, IsWritable: false},
-		{PublicKey: programDataPDA, IsSigner: false, IsWritable: false},
 	}
 
 	return &solana.GenericInstruction{

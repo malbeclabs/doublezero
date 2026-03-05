@@ -221,9 +221,7 @@ func (c *Client) AddParentDevice(
 		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)
 	}
 
-	sig, res, err := c.executor.ExecuteTransaction(ctx, instruction, &ExecuteTransactionOptions{
-		SkipPreflight: true,
-	})
+	sig, res, err := c.executor.ExecuteTransaction(ctx, instruction, nil)
 	if err != nil {
 		return solana.Signature{}, nil, fmt.Errorf("failed to execute instruction: %w", err)
 	}

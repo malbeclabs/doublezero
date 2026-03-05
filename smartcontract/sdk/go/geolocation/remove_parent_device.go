@@ -8,9 +8,10 @@ import (
 )
 
 type RemoveParentDeviceInstructionConfig struct {
-	Payer    solana.PublicKey
-	ProbePK  solana.PublicKey
-	DevicePK solana.PublicKey
+	Payer                       solana.PublicKey
+	ProbePK                     solana.PublicKey
+	DevicePK                    solana.PublicKey
+	ServiceabilityGlobalStatePK solana.PublicKey
 }
 
 func (c *RemoveParentDeviceInstructionConfig) Validate() error {
@@ -22,6 +23,9 @@ func (c *RemoveParentDeviceInstructionConfig) Validate() error {
 	}
 	if c.DevicePK.IsZero() {
 		return fmt.Errorf("device public key is required")
+	}
+	if c.ServiceabilityGlobalStatePK.IsZero() {
+		return fmt.Errorf("serviceability global state public key is required")
 	}
 	return nil
 }
@@ -45,9 +49,16 @@ func BuildRemoveParentDeviceInstruction(
 		return nil, fmt.Errorf("failed to serialize args: %w", err)
 	}
 
+	programConfigPDA, _, err := DeriveProgramConfigPDA(programID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive program config PDA: %w", err)
+	}
+
 	accounts := []*solana.AccountMeta{
 		{PublicKey: config.ProbePK, IsSigner: false, IsWritable: true},
-		{PublicKey: config.Payer, IsSigner: true, IsWritable: false},
+		{PublicKey: programConfigPDA, IsSigner: false, IsWritable: false},
+		{PublicKey: config.ServiceabilityGlobalStatePK, IsSigner: false, IsWritable: false},
+		{PublicKey: config.Payer, IsSigner: true, IsWritable: true},
 		{PublicKey: solana.SystemProgramID, IsSigner: false, IsWritable: false},
 	}
 

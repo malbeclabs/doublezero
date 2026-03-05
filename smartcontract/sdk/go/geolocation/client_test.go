@@ -19,11 +19,10 @@ func TestSDK_Geolocation_Client_GetProgramConfig_HappyPath(t *testing.T) {
 	programID := solana.NewWallet().PublicKey()
 
 	expected := &geolocation.GeolocationProgramConfig{
-		AccountType:             geolocation.AccountTypeProgramConfig,
-		BumpSeed:                255,
-		Version:                 1,
-		MinCompatibleVersion:    1,
-		ServiceabilityProgramID: solana.NewWallet().PublicKey(),
+		AccountType:          geolocation.AccountTypeProgramConfig,
+		BumpSeed:             255,
+		Version:              1,
+		MinCompatibleVersion: 1,
 	}
 
 	mockRPC := &mockRPCClient{
@@ -44,7 +43,7 @@ func TestSDK_Geolocation_Client_GetProgramConfig_HappyPath(t *testing.T) {
 	got, err := client.GetProgramConfig(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, expected.AccountType, got.AccountType)
-	require.Equal(t, expected.ServiceabilityProgramID, got.ServiceabilityProgramID)
+	require.Equal(t, expected.Version, got.Version)
 }
 
 func TestSDK_Geolocation_Client_GetProgramConfig_NotFound(t *testing.T) {
@@ -73,14 +72,12 @@ func TestSDK_Geolocation_Client_GetGeoProbeByCode_HappyPath(t *testing.T) {
 	expected := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		BumpSeed:           200,
 		ExchangePK:         solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{10, 0, 1, 42},
 		LocationOffsetPort: 8923,
 		Code:               "ams-probe-01",
 		ParentDevices:      []solana.PublicKey{solana.NewWallet().PublicKey()},
 		MetricsPublisherPK: solana.NewWallet().PublicKey(),
-		LatencyThresholdNs: 1_000_000,
 		ReferenceCount:     3,
 	}
 
@@ -131,27 +128,23 @@ func TestSDK_Geolocation_Client_GetGeoProbes_HappyPath(t *testing.T) {
 	probe1 := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		BumpSeed:           200,
 		ExchangePK:         solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{10, 0, 1, 1},
 		LocationOffsetPort: 8923,
 		Code:               "ams-probe-01",
 		ParentDevices:      []solana.PublicKey{},
 		MetricsPublisherPK: solana.NewWallet().PublicKey(),
-		LatencyThresholdNs: 1_000_000,
 		ReferenceCount:     0,
 	}
 	probe2 := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		BumpSeed:           201,
 		ExchangePK:         solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{10, 0, 1, 2},
 		LocationOffsetPort: 8923,
 		Code:               "fra-probe-01",
 		ParentDevices:      []solana.PublicKey{},
 		MetricsPublisherPK: solana.NewWallet().PublicKey(),
-		LatencyThresholdNs: 1_000_000,
 		ReferenceCount:     0,
 	}
 

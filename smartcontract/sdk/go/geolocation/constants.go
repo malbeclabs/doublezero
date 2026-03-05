@@ -5,12 +5,12 @@ type GeolocationInstructionType uint8
 
 const (
 	InitProgramConfigInstructionIndex   GeolocationInstructionType = 0
-	CreateGeoProbeInstructionIndex      GeolocationInstructionType = 1
-	UpdateGeoProbeInstructionIndex      GeolocationInstructionType = 2
-	DeleteGeoProbeInstructionIndex      GeolocationInstructionType = 3
-	AddParentDeviceInstructionIndex     GeolocationInstructionType = 4
-	RemoveParentDeviceInstructionIndex  GeolocationInstructionType = 5
-	UpdateProgramConfigInstructionIndex GeolocationInstructionType = 6
+	UpdateProgramConfigInstructionIndex GeolocationInstructionType = 1
+	CreateGeoProbeInstructionIndex      GeolocationInstructionType = 2
+	UpdateGeoProbeInstructionIndex      GeolocationInstructionType = 3
+	DeleteGeoProbeInstructionIndex      GeolocationInstructionType = 4
+	AddParentDeviceInstructionIndex     GeolocationInstructionType = 5
+	RemoveParentDeviceInstructionIndex  GeolocationInstructionType = 6
 )
 
 // PDA seeds for geolocation program

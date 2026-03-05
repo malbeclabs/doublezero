@@ -249,10 +249,7 @@ pub fn process_set_access_pass(
                 "Tenant Remove Account is not writable"
             );
             let mut tenant_remove = Tenant::try_from(tenant_remove_acc)?;
-            tenant_remove.reference_count = tenant_remove
-                .reference_count
-                .checked_sub(1)
-                .ok_or(DoubleZeroError::InvalidIndex)?;
+            tenant_remove.reference_count = tenant_remove.reference_count.saturating_sub(1);
             try_acc_write(&tenant_remove, tenant_remove_acc, payer_account, accounts)?;
         }
     }

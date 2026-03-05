@@ -114,20 +114,10 @@ pub fn process_delete_link(
     }
 
     // Any link can be deleted by its contributor or foundation allowlist
-    let link: Link = Link::try_from(link_account)?;
+    let mut link: Link = Link::try_from(link_account)?;
 
-    // Status check differs between legacy and atomic paths
-    if value.use_onchain_deallocation {
-        // Atomic: reject only Deleting (already being deleted)
-        // Allow Activated/SoftDrained/HardDrained — we deallocate and close in one step
-        if link.status == LinkStatus::Deleting {
-            return Err(DoubleZeroError::InvalidStatus.into());
-        }
-    } else {
-        // Legacy: reject Activated and Deleting
-        if matches!(link.status, LinkStatus::Activated | LinkStatus::Deleting) {
-            return Err(DoubleZeroError::InvalidStatus.into());
-        }
+    if matches!(link.status, LinkStatus::Activated | LinkStatus::Deleting) {
+        return Err(DoubleZeroError::InvalidStatus.into());
     }
 
     if !payer_in_foundation && link.contributor_pk != *contributor_account.key {
@@ -212,7 +202,6 @@ pub fn process_delete_link(
         msg!("DeleteLink (atomic): Link deallocated and closed");
     } else {
         // Legacy path: just mark as Deleting
-        let mut link: Link = Link::try_from(link_account)?;
         link.status = LinkStatus::Deleting;
 
         try_acc_write(&link, link_account, payer_account, accounts)?;

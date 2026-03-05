@@ -25,7 +25,12 @@ use doublezero_serviceability::{
     },
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
+use solana_sdk::{
+    instruction::{AccountMeta, InstructionError},
+    pubkey::Pubkey,
+    signer::Signer,
+    transaction::TransactionError,
+};
 
 mod test_helpers;
 use test_helpers::*;
@@ -1627,6 +1632,24 @@ async fn test_delete_link_atomic_with_deallocation() {
         link.tunnel_id, link.tunnel_net
     );
 
+    // Drain the link first (delete rejects Activated status)
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            status: Some(LinkStatus::SoftDrained),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
     // Atomic delete+deallocate+close
     execute_transaction(
         &mut banks_client,
@@ -1876,4 +1899,119 @@ async fn test_delete_link_atomic_feature_flag_disabled() {
     assert_eq!(link_after.status, LinkStatus::Activated);
 
     println!("test_delete_link_atomic_feature_flag_disabled PASSED");
+}
+
+/// Test that atomic delete rejects Activated links (must be drained first)
+#[tokio::test]
+async fn test_delete_link_atomic_rejects_activated_status() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Enable OnChainAllocation feature flag
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    let (
+        device_a_pubkey,
+        device_z_pubkey,
+        contributor_pubkey,
+        device_tunnel_block_pda,
+        link_ids_pda,
+    ) = setup_wan_link_infra(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
+    // Create Link with atomic onchain allocation (ends up Activated)
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
+            code: "wan1".to_string(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 9000,
+            delay_ns: 500000,
+            jitter_ns: 50000,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: Some("Ethernet1".to_string()),
+            desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify link is Activated
+    let link = get_account_data(&mut banks_client, link_pubkey)
+        .await
+        .expect("Link not found")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link.status, LinkStatus::Activated);
+    let owner = link.owner;
+
+    // Attempt atomic delete while still Activated — should fail with InvalidStatus
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+            use_onchain_deallocation: true,
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(owner, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // InvalidStatus = Custom(7)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(7),
+        ))) => {}
+        _ => panic!(
+            "Expected InvalidStatus error (Custom(7)), got {:?}",
+            result
+        ),
+    }
+
+    // Verify link is unchanged
+    let link_after = get_account_data(&mut banks_client, link_pubkey)
+        .await
+        .expect("Link should still exist")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link_after.status, LinkStatus::Activated);
+
+    println!("test_delete_link_atomic_rejects_activated_status PASSED");
 }

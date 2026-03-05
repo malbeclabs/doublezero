@@ -251,10 +251,7 @@ pub fn process_delete_user(
             assert!(tenant_acc.is_writable, "Tenant Account is not writable");
 
             let mut tenant = Tenant::try_from(tenant_acc)?;
-            tenant.reference_count = tenant
-                .reference_count
-                .checked_sub(1)
-                .ok_or(DoubleZeroError::InvalidIndex)?;
+            tenant.reference_count = tenant.reference_count.saturating_sub(1);
 
             try_acc_write(&tenant, tenant_acc, payer_account, accounts)?;
         }

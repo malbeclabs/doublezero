@@ -158,10 +158,7 @@ pub fn process_update_user(
             let mut new_tenant = Tenant::try_from(new_tenant_acc)?;
 
             // Decrement old tenant reference count
-            old_tenant.reference_count = old_tenant
-                .reference_count
-                .checked_sub(1)
-                .ok_or(DoubleZeroError::InvalidIndex)?;
+            old_tenant.reference_count = old_tenant.reference_count.saturating_sub(1);
 
             // Increment new tenant reference count
             new_tenant.reference_count = new_tenant

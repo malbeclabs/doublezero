@@ -184,7 +184,6 @@ func (c *offsetCache) GetBest() *geoprobe.LocationOffset {
 	return best
 }
 
-
 // Evict removes expired entries.
 func (c *offsetCache) Evict() int {
 	c.mu.Lock()

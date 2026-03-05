@@ -110,17 +110,6 @@ func (w *Worker) updatePendingDeviceHealth(ctx context.Context, devices []servic
 			"health", device.DeviceHealth,
 			"healthValue", int(device.DeviceHealth))
 
-		// Only update health for devices in a provisioning state
-		if device.Status != serviceability.DeviceStatusDeviceProvisioning &&
-			device.Status != serviceability.DeviceStatusLinkProvisioning {
-			continue
-		}
-
-		if device.DeviceHealth == serviceability.DeviceHealthReadyForUsers ||
-			device.DeviceHealth == serviceability.DeviceHealthReadyForLinks {
-			continue
-		}
-
 		updates = append(updates, serviceability.DeviceHealthUpdate{
 			DevicePubkey: devicePubkey,
 			Health:       serviceability.DeviceHealthReadyForUsers,
@@ -158,17 +147,6 @@ func (w *Worker) updatePendingLinkHealth(ctx context.Context, links []serviceabi
 	// Collect links that need health updates
 	var updates []serviceability.LinkHealthUpdate
 	for _, link := range links {
-		// Update health for links in provisioning or drained states
-		if link.Status != serviceability.LinkStatusProvisioning &&
-			link.Status != serviceability.LinkStatusSoftDrained &&
-			link.Status != serviceability.LinkStatusHardDrained {
-			continue
-		}
-
-		if link.LinkHealth == serviceability.LinkHealthReadyForService {
-			continue
-		}
-
 		linkPubkey := solana.PublicKeyFromBytes(link.PubKey[:])
 		updates = append(updates, serviceability.LinkHealthUpdate{
 			LinkPubkey: linkPubkey,

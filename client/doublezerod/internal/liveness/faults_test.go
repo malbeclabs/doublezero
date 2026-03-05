@@ -18,8 +18,8 @@ import (
 
 var (
 	clientsFlag    = flag.Int("clients", 10, "number of clients")
-	txMinFlag      = flag.Duration("tx-min", 300*time.Millisecond, "tx min")
-	rxMinFlag      = flag.Duration("rx-min", 300*time.Millisecond, "rx min")
+	txMinFlag      = flag.Duration("tx-min", 1*time.Second, "tx min")
+	rxMinFlag      = flag.Duration("rx-min", 1*time.Second, "rx min")
 	detectMultFlag = flag.Uint("detect-mult", 3, "detect mult")
 	backoffMaxFlag = flag.Duration("backoff-max", 1*time.Second, "backoff max")
 

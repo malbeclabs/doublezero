@@ -1999,10 +1999,7 @@ async fn test_delete_link_atomic_rejects_activated_status() {
             0,
             InstructionError::Custom(7),
         ))) => {}
-        _ => panic!(
-            "Expected InvalidStatus error (Custom(7)), got {:?}",
-            result
-        ),
+        _ => panic!("Expected InvalidStatus error (Custom(7)), got {:?}", result),
     }
 
     // Verify link is unchanged

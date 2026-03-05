@@ -15,26 +15,36 @@ var (
 )
 
 type Client struct {
-	log       *slog.Logger
-	rpc       RPCClient
-	programID solana.PublicKey
+	log      *slog.Logger
+	rpc      RPCClient
+	executor *executor
 }
 
-func New(log *slog.Logger, rpc RPCClient, programID solana.PublicKey) *Client {
+func New(log *slog.Logger, rpc RPCClient, signer *solana.PrivateKey, programID solana.PublicKey) *Client {
 	return &Client{
-		log:       log,
-		rpc:       rpc,
-		programID: programID,
+		log:      log,
+		rpc:      rpc,
+		executor: NewExecutor(log, rpc, signer, programID),
 	}
 }
 
 func (c *Client) ProgramID() solana.PublicKey {
-	return c.programID
+	if c.executor == nil {
+		return solana.PublicKey{}
+	}
+	return c.executor.programID
+}
+
+func (c *Client) Signer() *solana.PrivateKey {
+	if c.executor == nil {
+		return nil
+	}
+	return c.executor.signer
 }
 
 // GetProgramConfig fetches the GeolocationProgramConfig account.
 func (c *Client) GetProgramConfig(ctx context.Context) (*GeolocationProgramConfig, error) {
-	pda, _, err := DeriveProgramConfigPDA(c.programID)
+	pda, _, err := DeriveProgramConfigPDA(c.executor.programID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to derive PDA: %w", err)
 	}
@@ -59,7 +69,7 @@ func (c *Client) GetProgramConfig(ctx context.Context) (*GeolocationProgramConfi
 
 // GetGeoProbeByCode fetches a GeoProbe account by its code.
 func (c *Client) GetGeoProbeByCode(ctx context.Context, code string) (*GeoProbe, error) {
-	pda, _, err := DeriveGeoProbePDA(c.programID, code)
+	pda, _, err := DeriveGeoProbePDA(c.executor.programID, code)
 	if err != nil {
 		return nil, fmt.Errorf("failed to derive PDA: %w", err)
 	}
@@ -95,7 +105,7 @@ func (c *Client) GetGeoProbes(ctx context.Context) ([]GeoProbe, error) {
 		},
 	}
 
-	accounts, err := c.rpc.GetProgramAccountsWithOpts(ctx, c.programID, opts)
+	accounts, err := c.rpc.GetProgramAccountsWithOpts(ctx, c.executor.programID, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get program accounts: %w", err)
 	}
@@ -110,4 +120,127 @@ func (c *Client) GetGeoProbes(ctx context.Context) ([]GeoProbe, error) {
 		probes = append(probes, *probe)
 	}
 	return probes, nil
+}
+
+// InitProgramConfig initializes the geolocation program config.
+func (c *Client) InitProgramConfig(
+	ctx context.Context,
+	config InitProgramConfigInstructionConfig,
+) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+	instruction, err := BuildInitProgramConfigInstruction(c.executor.programID, config)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)
+	}
+
+	sig, res, err := c.executor.ExecuteTransaction(ctx, instruction, &ExecuteTransactionOptions{
+		SkipPreflight: true,
+	})
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to execute instruction: %w", err)
+	}
+	return sig, res, nil
+}
+
+// UpdateProgramConfig updates the geolocation program config.
+func (c *Client) UpdateProgramConfig(
+	ctx context.Context,
+	config UpdateProgramConfigInstructionConfig,
+) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+	instruction, err := BuildUpdateProgramConfigInstruction(c.executor.programID, config)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)
+	}
+
+	sig, res, err := c.executor.ExecuteTransaction(ctx, instruction, nil)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to execute instruction: %w", err)
+	}
+	return sig, res, nil
+}
+
+// CreateGeoProbe creates a new GeoProbe account.
+func (c *Client) CreateGeoProbe(
+	ctx context.Context,
+	config CreateGeoProbeInstructionConfig,
+) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+	instruction, err := BuildCreateGeoProbeInstruction(c.executor.programID, config)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)
+	}
+
+	sig, res, err := c.executor.ExecuteTransaction(ctx, instruction, &ExecuteTransactionOptions{
+		SkipPreflight: true,
+	})
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to execute instruction: %w", err)
+	}
+	return sig, res, nil
+}
+
+// UpdateGeoProbe updates an existing GeoProbe account.
+func (c *Client) UpdateGeoProbe(
+	ctx context.Context,
+	config UpdateGeoProbeInstructionConfig,
+) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+	instruction, err := BuildUpdateGeoProbeInstruction(c.executor.programID, config)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)
+	}
+
+	sig, res, err := c.executor.ExecuteTransaction(ctx, instruction, nil)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to execute instruction: %w", err)
+	}
+	return sig, res, nil
+}
+
+// DeleteGeoProbe deletes a GeoProbe account.
+func (c *Client) DeleteGeoProbe(
+	ctx context.Context,
+	config DeleteGeoProbeInstructionConfig,
+) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+	instruction, err := BuildDeleteGeoProbeInstruction(c.executor.programID, config)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)
+	}
+
+	sig, res, err := c.executor.ExecuteTransaction(ctx, instruction, nil)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to execute instruction: %w", err)
+	}
+	return sig, res, nil
+}
+
+// AddParentDevice adds a parent device to a GeoProbe.
+func (c *Client) AddParentDevice(
+	ctx context.Context,
+	config AddParentDeviceInstructionConfig,
+) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+	instruction, err := BuildAddParentDeviceInstruction(c.executor.programID, config)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)
+	}
+
+	sig, res, err := c.executor.ExecuteTransaction(ctx, instruction, nil)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to execute instruction: %w", err)
+	}
+	return sig, res, nil
+}
+
+// RemoveParentDevice removes a parent device from a GeoProbe.
+func (c *Client) RemoveParentDevice(
+	ctx context.Context,
+	config RemoveParentDeviceInstructionConfig,
+) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+	instruction, err := BuildRemoveParentDeviceInstruction(c.executor.programID, config)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)
+	}
+
+	sig, res, err := c.executor.ExecuteTransaction(ctx, instruction, nil)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to execute instruction: %w", err)
+	}
+	return sig, res, nil
 }

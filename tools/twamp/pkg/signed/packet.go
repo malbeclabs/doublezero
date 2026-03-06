@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 )
 
@@ -13,11 +14,13 @@ const (
 	LocationOffsetSize = 169 // size of a 0-reference LocationOffset, Borsh-encoded
 	MaxOffsets         = 5
 
-	replyHeaderSize = 173 // Probe(108) + AuthorityPubkey(32) + GeoprobePubkey(32) + NumOffsets(1)
+	// Probe(108) + AuthorityPubkey(32) + GeoprobePubkey(32) +
+	// MeasurementSlot(8) + Lat(8) + Lng(8) + SinceLastRxNs(8) + RttNs(8) + NumOffsets(1)
+	replyHeaderSize = 213
 	signatureSize   = 64
 
-	MinReplyPacketSize = replyHeaderSize + signatureSize                                 // 237
-	MaxReplyPacketSize = replyHeaderSize + MaxOffsets*LocationOffsetSize + signatureSize // 1082
+	MinReplyPacketSize = replyHeaderSize + signatureSize                                 // 277
+	MaxReplyPacketSize = replyHeaderSize + MaxOffsets*LocationOffsetSize + signatureSize // 1122
 
 	probePayloadSize = 44 // bytes 0-43: fields signed by sender
 )
@@ -65,19 +68,30 @@ type ProbePacket struct {
 }
 
 // ReplyPacket is sent from Probe to Target in the inbound probing flow.
+// Fields mirror LocationOffset to provide consistent geolocation attestation.
 //
 // Wire format:
 //
 //	Bytes 0-107:   Probe (108B)
 //	Bytes 108-139: AuthorityPubkey (32B)
 //	Bytes 140-171: GeoprobePubkey (32B)
-//	Byte  172:     NumOffsets (1B)
-//	Bytes 173-...: Offset blobs (N × LocationOffsetSize bytes)
+//	Bytes 172-179: MeasurementSlot (8B)
+//	Bytes 180-187: Lat (8B)
+//	Bytes 188-195: Lng (8B)
+//	Bytes 196-203: SinceLastRxNs (8B)
+//	Bytes 204-211: RttNs (8B)
+//	Byte  212:     NumOffsets (1B)
+//	Bytes 213-...: Offset blobs (N × LocationOffsetSize bytes)
 //	Bytes ...-end: Signature (64B) over all preceding bytes
 type ReplyPacket struct {
 	Probe           ProbePacket
 	AuthorityPubkey [32]byte
 	GeoprobePubkey  [32]byte
+	MeasurementSlot uint64   // DoubleZero slot from reference offset
+	Lat             float64  // Reference point latitude (WGS84 decimal degrees)
+	Lng             float64  // Reference point longitude (WGS84 decimal degrees)
+	SinceLastRxNs   uint64   // Nanoseconds since previous probe arrival (≡ MeasuredRttNs)
+	RttNs           uint64   // Accumulated RTT from Lat/Lng in nanoseconds
 	Offsets         [][]byte // 0-5 opaque offset blobs, each exactly LocationOffsetSize bytes
 	Signature       [64]byte
 }
@@ -161,7 +175,12 @@ func (r *ReplyPacket) marshalPayload(buf []byte) (int, error) {
 	}
 	copy(buf[108:140], r.AuthorityPubkey[:])
 	copy(buf[140:172], r.GeoprobePubkey[:])
-	buf[172] = uint8(len(r.Offsets))
+	binary.BigEndian.PutUint64(buf[172:180], r.MeasurementSlot)
+	binary.BigEndian.PutUint64(buf[180:188], math.Float64bits(r.Lat))
+	binary.BigEndian.PutUint64(buf[188:196], math.Float64bits(r.Lng))
+	binary.BigEndian.PutUint64(buf[196:204], r.SinceLastRxNs)
+	binary.BigEndian.PutUint64(buf[204:212], r.RttNs)
+	buf[212] = uint8(len(r.Offsets))
 
 	off := replyHeaderSize
 	for _, blob := range r.Offsets {
@@ -191,7 +210,7 @@ func UnmarshalReplyPacket(buf []byte) (*ReplyPacket, error) {
 		return nil, errInvalidPacket
 	}
 
-	numOffsets := int(buf[172])
+	numOffsets := int(buf[212])
 	if numOffsets > MaxOffsets {
 		return nil, errInvalidPacket
 	}
@@ -207,7 +226,12 @@ func UnmarshalReplyPacket(buf []byte) (*ReplyPacket, error) {
 	}
 
 	r := &ReplyPacket{
-		Probe: *probe,
+		Probe:           *probe,
+		MeasurementSlot: binary.BigEndian.Uint64(buf[172:180]),
+		Lat:             math.Float64frombits(binary.BigEndian.Uint64(buf[180:188])),
+		Lng:             math.Float64frombits(binary.BigEndian.Uint64(buf[188:196])),
+		SinceLastRxNs:   binary.BigEndian.Uint64(buf[196:204]),
+		RttNs:           binary.BigEndian.Uint64(buf[204:212]),
 	}
 	copy(r.AuthorityPubkey[:], buf[108:140])
 	copy(r.GeoprobePubkey[:], buf[140:172])
@@ -227,7 +251,7 @@ func UnmarshalReplyPacket(buf []byte) (*ReplyPacket, error) {
 	return r, nil
 }
 
-func NewReplyPacket(probe *ProbePacket, signer Signer, geoprobePubkey [32]byte, offsets [][]byte) (*ReplyPacket, error) {
+func NewReplyPacket(probe *ProbePacket, signer Signer, geoprobePubkey [32]byte, offsets [][]byte, slot uint64, lat, lng float64, sinceLastRxNs, rttNs uint64) (*ReplyPacket, error) {
 	if len(offsets) > MaxOffsets {
 		return nil, fmt.Errorf("too many offsets: %d > %d", len(offsets), MaxOffsets)
 	}
@@ -240,9 +264,14 @@ func NewReplyPacket(probe *ProbePacket, signer Signer, geoprobePubkey [32]byte, 
 	pub := signer.Public()
 
 	r := &ReplyPacket{
-		Probe:          *probe,
-		GeoprobePubkey: geoprobePubkey,
-		Offsets:        offsets,
+		Probe:           *probe,
+		GeoprobePubkey:  geoprobePubkey,
+		MeasurementSlot: slot,
+		Lat:             lat,
+		Lng:             lng,
+		SinceLastRxNs:   sinceLastRxNs,
+		RttNs:           rttNs,
+		Offsets:         offsets,
 	}
 	copy(r.AuthorityPubkey[:], pub)
 
@@ -266,4 +295,27 @@ func (r *ReplyPacket) Verify() bool {
 	}
 
 	return ed25519.Verify(ed25519.PublicKey(r.AuthorityPubkey[:]), payload, r.Signature[:])
+}
+
+// OffsetInfo holds the fields extracted from a Borsh-encoded LocationOffset blob
+// that the reflector needs for populating reply packets.
+type OffsetInfo struct {
+	MeasurementSlot uint64
+	Lat             float64
+	Lng             float64
+	RttNs           uint64
+}
+
+// ParseOffsetInfo extracts location and timing fields from a Borsh-encoded
+// LocationOffset blob at known byte positions (little-endian).
+func ParseOffsetInfo(blob []byte) (OffsetInfo, bool) {
+	if len(blob) < LocationOffsetSize {
+		return OffsetInfo{}, false
+	}
+	return OffsetInfo{
+		MeasurementSlot: binary.LittleEndian.Uint64(blob[128:136]),
+		Lat:             math.Float64frombits(binary.LittleEndian.Uint64(blob[136:144])),
+		Lng:             math.Float64frombits(binary.LittleEndian.Uint64(blob[144:152])),
+		RttNs:           binary.LittleEndian.Uint64(blob[160:168]),
+	}, true
 }

@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/binary"
+	"math"
 	"testing"
 
 	"github.com/malbeclabs/doublezero/tools/twamp/pkg/signed"
@@ -59,7 +60,7 @@ func TestReplyPacket_MarshalUnmarshal(t *testing.T) {
 	copy(geoprobePubkey[:], geoprobePub)
 
 	probe := signed.NewProbePacket(7, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 
 	buf := make([]byte, reply.Size())
@@ -92,7 +93,7 @@ func TestReplyPacket_MarshalUnmarshal_WithOffsets(t *testing.T) {
 	offsets := [][]byte{makeTestOffset(t), makeTestOffset(t)}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 	assert.Equal(t, signed.MinReplyPacketSize+2*signed.LocationOffsetSize, reply.Size())
 
@@ -121,7 +122,7 @@ func TestReplyPacket_MarshalUnmarshal_MaxOffsets(t *testing.T) {
 	}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 	assert.Equal(t, signed.MaxReplyPacketSize, reply.Size())
 
@@ -136,6 +137,32 @@ func TestReplyPacket_MarshalUnmarshal_MaxOffsets(t *testing.T) {
 	for i := range offsets {
 		assert.Equal(t, offsets[i], got.Offsets[i])
 	}
+}
+
+func TestReplyPacket_MarshalUnmarshal_NewFields(t *testing.T) {
+	t.Parallel()
+
+	_, senderSigner := newTestSigner(t)
+	_, reflectorSigner := newTestSigner(t)
+
+	probe := signed.NewProbePacket(1, senderSigner)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil,
+		42_000_000, 37.7749, -122.4194, 1_500_000, 3_000_000)
+	require.NoError(t, err)
+
+	buf := make([]byte, reply.Size())
+	n, err := reply.Marshal(buf)
+	require.NoError(t, err)
+
+	got, err := signed.UnmarshalReplyPacket(buf[:n])
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(42_000_000), got.MeasurementSlot)
+	assert.Equal(t, 37.7749, got.Lat)
+	assert.Equal(t, -122.4194, got.Lng)
+	assert.Equal(t, uint64(1_500_000), got.SinceLastRxNs)
+	assert.Equal(t, uint64(3_000_000), got.RttNs)
+	assert.True(t, got.Verify())
 }
 
 func TestProbePacket_Verify(t *testing.T) {
@@ -168,7 +195,7 @@ func TestReplyPacket_Verify(t *testing.T) {
 	copy(geoprobePubkey[:], geoprobePub)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 
 	assert.True(t, reply.Probe.Verify())
@@ -184,7 +211,7 @@ func TestReplyPacket_Verify_WithOffsets(t *testing.T) {
 	offsets := [][]byte{makeTestOffset(t), makeTestOffset(t), makeTestOffset(t)}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 
 	assert.True(t, reply.Verify())
@@ -199,7 +226,7 @@ func TestReplyPacket_Verify_TamperedOffset(t *testing.T) {
 	offsets := [][]byte{makeTestOffset(t)}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 
 	reply.Offsets[0][0] ^= 0xff
@@ -213,7 +240,7 @@ func TestReplyPacket_Verify_TamperedAuthorityPubkey(t *testing.T) {
 	_, reflectorSigner := newTestSigner(t)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 
 	reply.AuthorityPubkey[0] ^= 0xff
@@ -230,11 +257,55 @@ func TestReplyPacket_Verify_TamperedGeoprobePubkey(t *testing.T) {
 	copy(geoprobePubkey[:], geoprobePub)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 
 	reply.GeoprobePubkey[0] ^= 0xff
 	assert.False(t, reply.Verify())
+}
+
+func TestReplyPacket_Verify_TamperedNewFields(t *testing.T) {
+	t.Parallel()
+
+	_, senderSigner := newTestSigner(t)
+	_, reflectorSigner := newTestSigner(t)
+
+	probe := signed.NewProbePacket(1, senderSigner)
+
+	t.Run("tampered MeasurementSlot", func(t *testing.T) {
+		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000)
+		require.NoError(t, err)
+		reply.MeasurementSlot = 999
+		assert.False(t, reply.Verify())
+	})
+
+	t.Run("tampered Lat", func(t *testing.T) {
+		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000)
+		require.NoError(t, err)
+		reply.Lat = 99.0
+		assert.False(t, reply.Verify())
+	})
+
+	t.Run("tampered Lng", func(t *testing.T) {
+		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000)
+		require.NoError(t, err)
+		reply.Lng = 99.0
+		assert.False(t, reply.Verify())
+	})
+
+	t.Run("tampered SinceLastRxNs", func(t *testing.T) {
+		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000)
+		require.NoError(t, err)
+		reply.SinceLastRxNs = 999999
+		assert.False(t, reply.Verify())
+	})
+
+	t.Run("tampered RttNs", func(t *testing.T) {
+		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000)
+		require.NoError(t, err)
+		reply.RttNs = 999999
+		assert.False(t, reply.Verify())
+	})
 }
 
 func TestProbePacket_UnmarshalRejectsWrongSize(t *testing.T) {
@@ -282,11 +353,10 @@ func TestReplyPacket_UnmarshalRejectsWrongSize(t *testing.T) {
 func TestReplyPacket_UnmarshalRejectsTooManyOffsets(t *testing.T) {
 	t.Parallel()
 
-	// Construct a buffer with NumOffsets = MaxOffsets+1 but otherwise valid size.
 	numOffsets := signed.MaxOffsets + 1
-	size := 173 + numOffsets*signed.LocationOffsetSize + 64
+	size := 213 + numOffsets*signed.LocationOffsetSize + 64
 	buf := make([]byte, size)
-	buf[172] = uint8(numOffsets)
+	buf[212] = uint8(numOffsets)
 
 	_, err := signed.UnmarshalReplyPacket(buf)
 	assert.Error(t, err)
@@ -304,7 +374,7 @@ func TestNewReplyPacket_RejectsTooManyOffsets(t *testing.T) {
 	}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	_, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets)
+	_, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
 	assert.Error(t, err)
 }
 
@@ -317,7 +387,7 @@ func TestNewReplyPacket_RejectsWrongSizeOffset(t *testing.T) {
 	offsets := [][]byte{make([]byte, signed.LocationOffsetSize-1)}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	_, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets)
+	_, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
 	assert.Error(t, err)
 }
 
@@ -339,7 +409,7 @@ func TestReplyPacket_Marshal_BufferTooSmall(t *testing.T) {
 	_, reflectorSigner := newTestSigner(t)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 	buf := make([]byte, reply.Size()-1)
 	_, err = reply.Marshal(buf)
@@ -355,7 +425,7 @@ func TestReplyPacket_Marshal_BufferTooSmallWithOffsets(t *testing.T) {
 	offsets := [][]byte{makeTestOffset(t)}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 	buf := make([]byte, reply.Size()-1)
 	_, err = reply.Marshal(buf)
@@ -389,7 +459,8 @@ func TestReplyPacket_ByteLayout(t *testing.T) {
 	copy(geoprobePubkey[:], geoprobePub)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil,
+		42_000_000, 37.7749, -122.4194, 1_500_000, 3_000_000)
 	require.NoError(t, err)
 
 	buf := make([]byte, reply.Size())
@@ -401,8 +472,13 @@ func TestReplyPacket_ByteLayout(t *testing.T) {
 	assert.Equal(t, probeBuf, buf[0:108], "embedded probe at bytes 0-107")
 	assert.Equal(t, []byte(reflectorPub), buf[108:140], "authority pubkey at bytes 108-139")
 	assert.Equal(t, geoprobePubkey[:], buf[140:172], "geoprobe pubkey at bytes 140-171")
-	assert.Equal(t, byte(0), buf[172], "num offsets at byte 172")
-	assert.Equal(t, reply.Signature[:], buf[173:n], "signature at bytes 173-end")
+	assert.Equal(t, uint64(42_000_000), binary.BigEndian.Uint64(buf[172:180]), "measurement slot at bytes 172-179")
+	assert.Equal(t, math.Float64bits(37.7749), binary.BigEndian.Uint64(buf[180:188]), "lat at bytes 180-187")
+	assert.Equal(t, math.Float64bits(-122.4194), binary.BigEndian.Uint64(buf[188:196]), "lng at bytes 188-195")
+	assert.Equal(t, uint64(1_500_000), binary.BigEndian.Uint64(buf[196:204]), "since last rx ns at bytes 196-203")
+	assert.Equal(t, uint64(3_000_000), binary.BigEndian.Uint64(buf[204:212]), "rtt ns at bytes 204-211")
+	assert.Equal(t, byte(0), buf[212], "num offsets at byte 212")
+	assert.Equal(t, reply.Signature[:], buf[213:n], "signature at bytes 213-end")
 }
 
 func TestReplyPacket_ByteLayout_WithOffsets(t *testing.T) {
@@ -414,16 +490,16 @@ func TestReplyPacket_ByteLayout_WithOffsets(t *testing.T) {
 	offsets := [][]byte{makeTestOffset(t), makeTestOffset(t)}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 
 	buf := make([]byte, reply.Size())
 	n, err := reply.Marshal(buf)
 	require.NoError(t, err)
 
-	assert.Equal(t, byte(2), buf[172], "num offsets at byte 172")
-	assert.Equal(t, offsets[0], buf[173:173+signed.LocationOffsetSize], "offset 0")
-	assert.Equal(t, offsets[1], buf[173+signed.LocationOffsetSize:173+2*signed.LocationOffsetSize], "offset 1")
+	assert.Equal(t, byte(2), buf[212], "num offsets at byte 212")
+	assert.Equal(t, offsets[0], buf[213:213+signed.LocationOffsetSize], "offset 0")
+	assert.Equal(t, offsets[1], buf[213+signed.LocationOffsetSize:213+2*signed.LocationOffsetSize], "offset 1")
 	sigStart := n - 64
 	assert.Equal(t, reply.Signature[:], buf[sigStart:n], "signature at end")
 }
@@ -446,7 +522,7 @@ func TestReplyPacket_Verify_TamperedEmbeddedProbe(t *testing.T) {
 	_, reflectorSigner := newTestSigner(t)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 0, 0, 0, 0, 0)
 	require.NoError(t, err)
 
 	reply.Probe.Seq = 999
@@ -476,9 +552,35 @@ func TestReplyPacket_Size(t *testing.T) {
 			for i := range offsets {
 				offsets[i] = makeTestOffset(t)
 			}
-			reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets)
+			reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedSize, reply.Size())
 		})
 	}
+}
+
+func TestParseOffsetInfo(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid blob", func(t *testing.T) {
+		blob := make([]byte, signed.LocationOffsetSize)
+		binary.LittleEndian.PutUint64(blob[128:136], 42_000_000)                  // MeasurementSlot
+		binary.LittleEndian.PutUint64(blob[136:144], math.Float64bits(37.7749))   // Lat
+		binary.LittleEndian.PutUint64(blob[144:152], math.Float64bits(-122.4194)) // Lng
+		binary.LittleEndian.PutUint64(blob[152:160], 99_999_999)                  // MeasuredRttNs (skipped by ParseOffsetInfo)
+		binary.LittleEndian.PutUint64(blob[160:168], 5_000_000)                   // RttNs
+
+		info, ok := signed.ParseOffsetInfo(blob)
+		require.True(t, ok)
+		assert.Equal(t, uint64(42_000_000), info.MeasurementSlot)
+		assert.Equal(t, 37.7749, info.Lat)
+		assert.Equal(t, -122.4194, info.Lng)
+		assert.Equal(t, uint64(5_000_000), info.RttNs, "should read RttNs, not MeasuredRttNs")
+	})
+
+	t.Run("blob too small", func(t *testing.T) {
+		blob := make([]byte, signed.LocationOffsetSize-1)
+		_, ok := signed.ParseOffsetInfo(blob)
+		assert.False(t, ok)
+	})
 }

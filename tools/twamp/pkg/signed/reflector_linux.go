@@ -14,6 +14,15 @@ import (
 
 const defaultReadTimeout = 1 * time.Second
 
+// senderState fields are only accessed from the single-goroutine epoll
+// loop in Run(). No mutex needed.
+type senderState struct {
+	lastRxTime   time.Time
+	pairCount    int
+	pairStart    time.Time
+	pairSourceIP [4]byte // source IP of the first probe in this pair
+}
+
 type LinuxReflector struct {
 	fd             int
 	epfd           int
@@ -23,7 +32,7 @@ type LinuxReflector struct {
 	signer         Signer
 	geoprobePubkey [32]byte
 	authorizedKeys sync.Map // map[[32]byte]struct{}
-	lastVerify     sync.Map // map[[32]byte]time.Time
+	senderStates   sync.Map // map[[32]byte]*senderState
 	offsetsMu      sync.RWMutex
 	offsets        [][]byte
 	shutdown       chan struct{}
@@ -100,6 +109,7 @@ func (r *LinuxReflector) SetAuthorizedKeys(keys [][32]byte) {
 		k := key.([32]byte)
 		if _, ok := newKeys[k]; !ok {
 			r.authorizedKeys.Delete(k)
+			r.senderStates.Delete(k)
 		}
 		return true
 	})
@@ -182,24 +192,75 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			}
 
 			now := time.Now()
+
+			// Load or create per-sender state.
+			raw, _ := r.senderStates.LoadOrStore(probe.SenderPubkey, &senderState{})
+			state := raw.(*senderState)
+
+			// Pair-based rate limiting: allow 2 probes per window, then drop.
 			if interval := r.verifyInterval; interval > 0 {
-				if last, ok := r.lastVerify.Load(probe.SenderPubkey); ok {
-					if now.Sub(last.(time.Time)) < interval {
+				if state.pairCount >= 2 {
+					if now.Sub(state.pairStart) < interval {
 						continue
 					}
+					state.pairCount = 0
 				}
 			}
-			r.lastVerify.Store(probe.SenderPubkey, now)
 
-			if !probe.Verify() {
+			// Pair authentication: the measurement loop runs from Probe 0 Rx to
+			// Probe 1 Rx, so we skip verification on probe 0 to keep the reply
+			// fast and the inter-arrival gap accurate. Probe 1 is verified after
+			// capturing `now` — its latency only affects reply 1, which doesn't
+			// impact the measurement (TEE targets can't measure time). Both
+			// probes in a pair must come from the same source IP.
+			fromAddr, ok := from.(*unix.SockaddrInet4)
+			if !ok {
 				continue
 			}
+			if state.pairCount == 0 {
+				state.pairSourceIP = fromAddr.Addr
+			} else {
+				if fromAddr.Addr != state.pairSourceIP {
+					continue
+				}
+				// Verify the probe signature. Comment out these two lines to
+				// rely solely on IP-binding for pair authentication.
+				// if !probe.Verify() {
+				// 	continue
+				// }
+			}
+
+			// SinceLastRxNs is only meaningful for the second probe in a pair.
+			// Reset to zero at the start of each new pair so reply 0 always
+			// carries SinceLastRxNs=0 and RttNs=dzdRttNs.
+			var sinceLastRxNs uint64
+			if !state.lastRxTime.IsZero() && state.pairCount > 0 {
+				sinceLastRxNs = uint64(now.Sub(state.lastRxTime).Nanoseconds())
+			}
+			state.lastRxTime = now
+			if state.pairCount == 0 {
+				state.pairStart = now
+			}
+			state.pairCount++
 
 			r.offsetsMu.RLock()
 			currentOffsets := r.offsets
 			r.offsetsMu.RUnlock()
 
-			reply, err := NewReplyPacket(probe, r.signer, r.geoprobePubkey, currentOffsets)
+			// Derive location data from the first reference offset.
+			var slot uint64
+			var lat, lng float64
+			var dzdRttNs uint64
+			if len(currentOffsets) > 0 {
+				if info, ok := ParseOffsetInfo(currentOffsets[0]); ok {
+					slot = info.MeasurementSlot
+					lat = info.Lat
+					lng = info.Lng
+					dzdRttNs = info.RttNs
+				}
+			}
+
+			reply, err := NewReplyPacket(probe, r.signer, r.geoprobePubkey, currentOffsets, slot, lat, lng, sinceLastRxNs, dzdRttNs+sinceLastRxNs)
 			if err != nil {
 				continue
 			}

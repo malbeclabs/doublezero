@@ -157,10 +157,12 @@ _Inbound Measurement Flow_
 2. **Offset Generation:** DZD creates Offset with lat/lng, latency, timestamp, signs with Ed25519
 3. **Dual Posting:** DZD submits samples to `ProbeLatencySamples` PDA onchain AND sends Offset to Probe via UDP
 4. **Probe Caches Offset:** Probe verifies DZD signature, caches Offset, and updates the signed TWAMP reflector's embedded offsets with the best cached offset
-5. **Target Probes:** Target sends a signed probe message, containing its Pubkey as well as Ed25519 signature of the probe packet contents.
-6. **Probe Replies With Offsets:** Probe receives probe, and verifies that the Pubkey is registered. If so, it embeds the original probe message into its response, appends its Pubkey, the probe's current best LocationOffset from a parent DZD, and an Ed25519 signature over the whole packet.
-7. **Target Verifies Reply:** Target verifies that the reply is for the message it sent, has not been tampered with, and verifies the embedded offset signature chain. The target now has both the measured RTT and the probe's location attestation in a single exchange. Forwards to Client Oracle.
-8. **Client Oracle Computes Location:** Client Oracle uses the embedded offset (lat/lng + DZD→Probe RTT) along with the Target's reported probe RTT to compute location. The offset can also be cross-checked against the DZ ledger for additional assurance.
+5. **Target Sends Probe 0:** Target sends a signed probe packet (containing its Pubkey and Ed25519 signature). Paired probing is needed because TEEs cannot perform time measurements; the probe-side inter-arrival time serves as a proxy RTT.
+6. **Probe Sends Reply 0:** Reflector checks that the sender's Pubkey is registered (it does not verify the probe's Ed25519 signature — the pubkey allowlist is sufficient). Reply 0 embeds the original probe, the reflector's signing key, geoprobe identity, location data derived from its best cached DZD offset (`Lat`, `Lng`, `MeasurementSlot`, `RttNs`), the opaque DZD offset blobs, and an Ed25519 signature over the whole packet. Reply 0's `SinceLastRxNs` is 0 (no previous arrival from this sender).
+7. **Target Sends Probe 1:** Immediately after receiving reply 0 (before verifying it), target sends probe 1.
+8. **Probe Sends Reply 1:** Same structure as reply 0, but `SinceLastRxNs` now contains the time between probe 0 and probe 1 arrivals — this is the useful measurement. `RttNs` = DZD offset's `RttNs` + `SinceLastRxNs`. The reflector allows 2 probes per rate-limit window per sender, then drops until the window resets.
+9. **Target Verifies Replies:** Target verifies both replies, then derives two RTT measurements: "Probe-Measured RTT" = `reply1.SinceLastRxNs` (inter-arrival time at the reflector), and "Target-Measured RTT" = `min(rtt0, rtt1)` (lower of the two sender-side RTTs). Forwards to Client Oracle.
+10. **Client Oracle Computes Location:** Client Oracle uses the reply's location fields (`Lat`/`Lng` + `RttNs`) along with the Target's reported probe RTT to compute location. The embedded offset blobs can be cross-checked against the DZ ledger for additional assurance.
 
 ### Smart Contract Changes
 
@@ -352,23 +354,28 @@ type SignedProbePacket struct {
 
 The signature covers `[Seq, Sec, Frac, SenderPubkey]` (bytes 0–43)
 
-**SignedReplyPacket (237–1082 bytes)** — sent from Probe to Target:
+**SignedReplyPacket (277–1122 bytes)** — sent from Probe to Target:
+
+The reply mirrors an Outbound Probing LocationOffset but adds the original probe echoed.
 
 ```go
 type SignedReplyPacket struct {
     Probe           SignedProbePacket  // Bytes 0-107: Complete original signed probe (echoed)
     AuthorityPubkey [32]byte          // Bytes 108-139: Signing authority's Ed25519 public key
     GeoprobePubkey  [32]byte          // Bytes 140-171: Geoprobe identity public key
-    NumOffsets      uint8             // Byte 172: Number of LocationOffset blobs (0-5)
-    Offsets         [][]byte          // Bytes 173-...: N × LocationOffset blobs (each 169 bytes)
+    MeasurementSlot uint64            // Bytes 172-179: DoubleZero slot from reference offset
+    Lat             float64           // Bytes 180-187: Reference point latitude (WGS84)
+    Lng             float64           // Bytes 188-195: Reference point longitude (WGS84)
+    SinceLastRxNs   uint64            // Bytes 196-203: Nanoseconds since previous probe arrival
+    RttNs           uint64            // Bytes 204-211: Accumulated RTT from Lat/Lng in nanoseconds
+    NumOffsets      uint8             // Byte 212: Number of LocationOffset blobs (0-5)
+    Offsets         [][]byte          // Bytes 213-...: N × LocationOffset blobs (each 169 bytes)
     Signature       [64]byte          // Last 64 bytes: Ed25519 signature over all preceding bytes
 }
 ```
 
-`AuthorityPubkey` is the key used to sign and verify the reply. 
-`GeoprobePubkey` identifies the specific geoprobe that produced the reply. 
-`Offsets` carries 0–5 Borsh-encoded `LocationOffset` structs from the probe's parent DZDs, Each reference has no references.
-The probe's signature covers all preceding bytes: `[Probe, AuthorityPubkey, GeoprobePubkey, NumOffsets, Offsets]`.
+`AuthorityPubkey` is the key used to sign and verify the reply. `GeoprobePubkey` identifies the specific geoprobe. `MeasurementSlot`, `Lat`, `Lng`, and `RttNs` are derived from the probe's best cached DZD offset. `SinceLastRxNs` is the inter-arrival time between consecutive probes — the target sends paired probes and uses `SinceLastRxNs` from the second reply as the probe-measured RTT (analogous to `MeasuredRttNs` in a LocationOffset). `RttNs` = DZD offset's `RttNs` + `SinceLastRxNs`. `Offsets` carries 0–5 Borsh-encoded `LocationOffset` structs from the probe's parent DZDs (each with no references).
+The probe's signature covers all preceding bytes.
 
 #### Interfaces
 
@@ -512,18 +519,28 @@ max_offset_age_seconds: 300
 
 **Example Output:**
 ```
-[2025-01-15 14:23:45] Received TWAMP Reply
-  Probe: ams-probe-01 (FProbe123...xyz)
-  RTT to Target: 12.5ms
-  My Signature:    VALID ✓
-  Probe Signature: VALID ✓
-  Offsets: 1
-    offset[0] sig=VALID sender=FDZD456...abc authority=FAuth789...def lat=50.1109 lng=8.6821 rtt_ns=800000 measured_rtt_ns=800000
+[2025-01-15 14:23:45 UTC] Probe Pair #10
+  Probe-Measured RTT:  11.056ms
+  Target-Measured RTT: 10.224ms
+  Reference Point: 52.3676°N, 4.9041°E
+  Accumulated RTT: 21.194ms
+  Measurement Slot: 12345
+  Authority: GVm8...mQkT
+  GeoProbe:  GVm8...mQkT
+  Reply 0 Signature: VALID
+  Reply 1 Signature: VALID
+
+  DZD Reference Chain:
+    [1] Authority: GyQB...pK7q
+        Sender:    9rSY...Yx5r
+        Location:  52.3676°N, 4.9041°E
+        RTT: 10.138ms  Measured RTT: 10.138ms
+        Signature: VALID
 ```
 
 **Usage:**
 ```bash
-./geoprobe-target-sender --probe_ip 111.222.333.444 --probe_pk FSM7vubNpDT7Z6ZwGLfbcAuqEciF8iDR6c4i8WRK6zmQ --keypair /path/to/keypair.json
+./geoprobe-target-sender --probe-ip 1.2.3.4 --probe-pk FSM7vubNpDT7Z6ZwGLfbcAuqEciF8iDR6c4i8WRK6zmQ --keypair /path/to/keypair.json
 ```
 
 #### CLI For DZ Ledger Management

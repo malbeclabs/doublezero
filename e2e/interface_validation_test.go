@@ -328,20 +328,19 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		err = waitForDeviceInterfaceActivated(t.Context(), dn.Devnet, testDeviceCode, testInterfaceName, 60*time.Second)
 		require.NoError(t, err, "interface was not activated")
 
-		// Step 3: Update interface (change loopback type AND mtu to test multiple fields)
-		dn.log.Debug("==> Updating interface loopback type and mtu")
+		// Step 3: Update interface (change loopback type to test update path)
+		dn.log.Debug("==> Updating interface loopback type")
 
 		updateOutput, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "update",
 			testDeviceCode, testInterfaceName,
 			"--loopback-type", "ipv4",
-			"--mtu", "9000",
 		})
 		dn.log.Debug("==> Update command output", "output", string(updateOutput))
 		require.NoError(t, err, "failed to update loopback interface")
 
 		// Poll until the Go SDK sees the updated values
-		iface, err := waitForInterfaceUpdate(t.Context(), dn.Devnet, testDeviceCode, testInterfaceName, serviceability.LoopbackTypeIpv4, 9000, 30*time.Second)
+		iface, err := waitForInterfaceUpdate(t.Context(), dn.Devnet, testDeviceCode, testInterfaceName, serviceability.LoopbackTypeIpv4, 2048, 30*time.Second)
 		if err != nil {
 			// If polling times out, get the final state for debugging
 			finalIface, _ := waitForDeviceInterface(t.Context(), dn.Devnet, testDeviceCode, testInterfaceName, 5*time.Second)
@@ -351,7 +350,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 			require.NoError(t, err, "timed out waiting for interface update to propagate to Go SDK")
 		}
 		dn.log.Debug("==> Retrieved interface via SDK", "loopback_type", iface.LoopbackType, "mtu", iface.Mtu, "version", iface.Version, "name", iface.Name)
-		require.Equal(t, uint16(9000), iface.Mtu, "mtu mismatch - update not reflected in SDK")
+		require.Equal(t, uint16(2048), iface.Mtu, "mtu mismatch - update not reflected in SDK")
 		require.Equal(t, serviceability.LoopbackTypeIpv4, iface.LoopbackType, "loopback type mismatch")
 
 		// Step 5: Delete interface

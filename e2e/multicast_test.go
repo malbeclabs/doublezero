@@ -83,29 +83,29 @@ func TestE2E_Multicast(t *testing.T) {
 		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
 		doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt --desired-status activated
 
-		doublezero device interface create ny5-dz01 "Ethernet2" --bandwidth 10G -w
-		doublezero device interface create ny5-dz01 "Vlan4001" --bandwidth 10G -w
-		doublezero device interface create ny5-dz01 "Ethernet4" --bandwidth 10G -w
-		doublezero device interface create ny5-dz01 "Ethernet5" --bandwidth 10G -w
-		doublezero device interface create ny5-dz01 "Ethernet6" --bandwidth 10G -w
-		doublezero device interface create la2-dz01 "Ethernet2" --bandwidth 10G -w
-		doublezero device interface create la2-dz01 "Ethernet3" --bandwidth 10G -w
-		doublezero device interface create la2-dz01 "Ethernet4" --bandwidth 10G -w
-		doublezero device interface create la2-dz01 "Ethernet5" --bandwidth 10G -w
-		doublezero device interface create la2-dz01 "Ethernet6" --bandwidth 10G -w
-		doublezero device interface create ld4-dz01 "Vlan4001" --bandwidth 10G -w
-		doublezero device interface create ld4-dz01 "Ethernet3" --bandwidth 10G -w
-		doublezero device interface create ld4-dz01 "Ethernet4" --bandwidth 10G -w
-		doublezero device interface create frk-dz01 "Ethernet2" --bandwidth 10G -w
-		doublezero device interface create frk-dz01 "Ethernet3" --bandwidth 10G -w
-		doublezero device interface create sg1-dz01 "Ethernet2" --bandwidth 10G -w
-		doublezero device interface create sg1-dz01 "Ethernet3" --bandwidth 10G -w
-		doublezero device interface create ty2-dz01 "Ethernet2" --bandwidth 10G -w
-		doublezero device interface create ty2-dz01 "Ethernet3" --bandwidth 10G -w
-		doublezero device interface create pit-dzd01 "Ethernet2" --bandwidth 10G -w
-		doublezero device interface create pit-dzd01 "Ethernet3" --bandwidth 10G -w
-		doublezero device interface create ams-dz001 "Ethernet2" --bandwidth 10G -w
-		doublezero device interface create ams-dz001 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create ny5-dz01 "Vlan4001" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create ny5-dz01 "Ethernet4" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create ny5-dz01 "Ethernet5" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create ny5-dz01 "Ethernet6" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create la2-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create la2-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create la2-dz01 "Ethernet4" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create la2-dz01 "Ethernet5" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create la2-dz01 "Ethernet6" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create ld4-dz01 "Vlan4001" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create ld4-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create ld4-dz01 "Ethernet4" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create frk-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create frk-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create sg1-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create sg1-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create ty2-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create ty2-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create pit-dzd01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create pit-dzd01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create ams-dz001 "Ethernet2" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create ams-dz001 "Ethernet3" --bandwidth 10G --mtu 2048 -w
 
 		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
 		doublezero device interface create la2-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
@@ -132,16 +132,16 @@ func TestE2E_Multicast(t *testing.T) {
 		doublezero device update --pubkey pit-dzd01 --max-users 128
 		doublezero device update --pubkey ams-dz001 --max-users 128
 
-		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 --desired-status activated -w
-		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Vlan4001 --side-z ld4-dz01 --side-z-interface Vlan4001 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
-		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10 --desired-status activated -w
-		doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9 --desired-status activated -w
-		doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7 --desired-status activated -w
-		doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Ethernet3 --side-z la2-dz01 --side-z-interface Ethernet3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10 --desired-status activated -w
+		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 40 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Vlan4001 --side-z ld4-dz01 --side-z-interface Vlan4001 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 25 --jitter-ms 10 --desired-status activated -w
+		doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 120 --jitter-ms 9 --desired-status activated -w
+		doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 40 --jitter-ms 7 --desired-status activated -w
+		doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Ethernet3 --side-z la2-dz01 --side-z-interface Ethernet3 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 30 --jitter-ms 10 --desired-status activated -w
 
-		doublezero link create wan --code "ny5-dz01:la2-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet4 --side-z la2-dz01 --side-z-interface Ethernet4 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
-		doublezero link create wan --code "ny5-dz01_e5:la2-dz01_e5" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet5 --side-z la2-dz01 --side-z-interface Ethernet5 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
-		doublezero link create wan --code "ny5-dz01_e6:la2-dz01_e6" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet6 --side-z la2-dz01 --side-z-interface Ethernet6 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 8 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ny5-dz01:la2-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet4 --side-z la2-dz01 --side-z-interface Ethernet4 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ny5-dz01_e5:la2-dz01_e5" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet5 --side-z la2-dz01 --side-z-interface Ethernet5 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ny5-dz01_e6:la2-dz01_e6" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet6 --side-z la2-dz01 --side-z-interface Ethernet6 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 8 --jitter-ms 3 --desired-status activated -w
 
 		doublezero link update --pubkey "ny5-dz01:la2-dz01" --delay-override-ms 500
 		doublezero link update --pubkey "ny5-dz01_e5:la2-dz01_e5" --status=soft-drained

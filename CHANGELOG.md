@@ -8,10 +8,16 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+<<<<<<< HEAD
 - Activator
   - Suppress noisy program log output from race conditions caused by dual event processing (websocket + snapshot poll). The SDK's new `execute_transaction_quiet` returns a `SimulationError` with program logs; the activator verifies suspected races by re-fetching user state before deciding whether to print logs ([#3197](https://github.com/malbeclabs/doublezero/pull/3197))
 - Telemetry
   - Fix race condition in internet-latency-collector where export and management goroutines independently loaded/saved the same state file, causing newly created RIPE Atlas measurement metadata to be overwritten and measurements to be stuck in a create-destroy-create loop ([#3195](https://github.com/malbeclabs/doublezero/pull/3195))
+=======
+- CLI
+  - Add `doublezero-geolocation` CLI for managing geolocation program entities: GeoProbe CRUD (create, get, list, update, delete), parent device management (add/remove), program config initialization, and geolocation-specific config get/set
+  - Extend `config set` in main CLI to support `--geo-program-id` for setting the default geolocation program ID
+>>>>>>> 1fe5a64c (fixup)
 - SDK
   - Add read-only Go SDK for `doublezero-geolocation` program with state deserialization, PDA derivation, and RPC client for querying geoprobe configuration
 - Telemetry

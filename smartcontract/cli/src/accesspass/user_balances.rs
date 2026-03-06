@@ -8,8 +8,11 @@ use doublezero_sdk::{
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::fmt;
-use std::{collections::HashMap, collections::HashSet, io::Write};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    io::Write,
+};
 
 use tabled::{
     settings::{object::Columns, Alignment, Modify, Style},
@@ -195,10 +198,10 @@ impl UserBalancesAccessPassCliCommand {
         let (red_indices, display_rows): (HashSet<usize>, Vec<UserBalanceDisplay>) = rows
             .into_iter()
             .filter(|(lamports, row)| {
-                min_lamports.map_or(true, |min| *lamports >= min)
-                    && max_lamports.map_or(true, |max| *lamports <= max)
-                    && min_missing_lamports.map_or(true, |min| row.missing.0 >= min)
-                    && max_missing_lamports.map_or(true, |max| row.missing.0 <= max)
+                min_lamports.is_none_or(|min| *lamports >= min)
+                    && max_lamports.is_none_or(|max| *lamports <= max)
+                    && min_missing_lamports.is_none_or(|min| row.missing.0 >= min)
+                    && max_missing_lamports.is_none_or(|max| row.missing.0 <= max)
             })
             .take(top.unwrap_or(usize::MAX))
             .enumerate()

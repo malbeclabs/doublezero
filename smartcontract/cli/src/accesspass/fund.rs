@@ -5,7 +5,10 @@ use doublezero_sdk::{
     UserType,
 };
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, collections::HashSet, io::{BufRead, Write}};
+use std::{
+    collections::{HashMap, HashSet},
+    io::{BufRead, Write},
+};
 
 const USER_RENT_BYTES: usize = 240;
 const GAS_FEE_RESERVE: u64 = 50 * 5_000;
@@ -95,7 +98,8 @@ impl FundAccessPassCliCommand {
                 let connected = unicast_by_payer.get(&user_payer).copied().unwrap_or(0) as usize
                     + multicast_by_payer.get(&user_payer).copied().unwrap_or(0) as usize;
                 let remaining_slots = access_passes.saturating_sub(connected);
-                let needs_rent = rent_per_user.saturating_mul(remaining_slots as u64) + GAS_FEE_RESERVE;
+                let needs_rent =
+                    rent_per_user.saturating_mul(remaining_slots as u64) + GAS_FEE_RESERVE;
                 let required = needs_rent.max(min_balance_lamports).max(wallet_rent_min);
                 let deficit = required.saturating_sub(lamports);
                 if deficit > 0 {
@@ -155,7 +159,10 @@ impl FundAccessPassCliCommand {
         for (user_payer, deficit) in to_fund {
             let sol = deficit as f64 / 1_000_000_000.0;
             let signature = client.transfer_sol(user_payer, deficit)?;
-            writeln!(out, "transferred {sol:.9} SOL to {user_payer} (sig: {signature})")?;
+            writeln!(
+                out,
+                "transferred {sol:.9} SOL to {user_payer} (sig: {signature})"
+            )?;
         }
 
         Ok(())
@@ -206,15 +213,16 @@ mod tests {
             map.insert(ap_key, ap.clone());
             Ok(map)
         });
-        client
-            .expect_list_user()
-            .returning(|_| Ok(HashMap::new()));
+        client.expect_list_user().returning(|_| Ok(HashMap::new()));
         client
             .expect_get_minimum_balance_for_rent_exemption()
             .returning(|_| Ok(RENT_PER_USER));
-        client
-            .expect_get_multiple_accounts()
-            .returning(move |_| Ok(vec![Some(Account { lamports: balance, ..Account::default() })]));
+        client.expect_get_multiple_accounts().returning(move |_| {
+            Ok(vec![Some(Account {
+                lamports: balance,
+                ..Account::default()
+            })])
+        });
         client
     }
 
@@ -225,7 +233,8 @@ mod tests {
         let client = setup_client_with_balance(payer, 2_000_000);
 
         let mut out = Vec::new();
-        let res = FundAccessPassCliCommand::default().execute(&client, &mut out, &mut "".as_bytes());
+        let res =
+            FundAccessPassCliCommand::default().execute(&client, &mut out, &mut "".as_bytes());
 
         assert!(res.is_ok());
         assert_eq!(
@@ -265,8 +274,8 @@ mod tests {
             .returning(|_, _| Ok(solana_sdk::signature::Signature::default()));
 
         let mut out = Vec::new();
-        let res = FundAccessPassCliCommand::default()
-            .execute(&client, &mut out, &mut "y\n".as_bytes());
+        let res =
+            FundAccessPassCliCommand::default().execute(&client, &mut out, &mut "y\n".as_bytes());
 
         assert!(res.is_ok());
         let output = String::from_utf8(out).unwrap();
@@ -280,8 +289,8 @@ mod tests {
         let client = setup_client_with_balance(payer, 500_000);
 
         let mut out = Vec::new();
-        let res = FundAccessPassCliCommand::default()
-            .execute(&client, &mut out, &mut "n\n".as_bytes());
+        let res =
+            FundAccessPassCliCommand::default().execute(&client, &mut out, &mut "n\n".as_bytes());
 
         assert!(res.is_ok());
         let output = String::from_utf8(out).unwrap();

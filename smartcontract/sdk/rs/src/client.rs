@@ -173,10 +173,8 @@ impl DZClient {
             .as_ref()
             .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
         let ix = solana_system_interface::instruction::transfer(&payer.pubkey(), &to, lamports);
-        let mut transaction = solana_sdk::transaction::Transaction::new_with_payer(
-            &[ix],
-            Some(&payer.pubkey()),
-        );
+        let mut transaction =
+            solana_sdk::transaction::Transaction::new_with_payer(&[ix], Some(&payer.pubkey()));
         let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
         transaction.sign(&[payer], blockhash);
         self.client

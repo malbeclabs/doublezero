@@ -1,7 +1,7 @@
 use clap::{Args, Subcommand};
 use doublezero_cli::accesspass::{
-    close::CloseAccessPassCliCommand, fund::FundAccessPassCliCommand,
-    get::GetAccessPassCliCommand, list::ListAccessPassCliCommand, set::SetAccessPassCliCommand,
+    close::CloseAccessPassCliCommand, fund::FundAccessPassCliCommand, get::GetAccessPassCliCommand,
+    list::ListAccessPassCliCommand, set::SetAccessPassCliCommand,
     user_balances::UserBalancesAccessPassCliCommand,
 };
 

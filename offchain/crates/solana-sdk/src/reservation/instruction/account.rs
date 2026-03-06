@@ -29,7 +29,7 @@ impl From<InitializeClientSeatAccounts> for Vec<AccountMeta> {
     fn from(accounts: InitializeClientSeatAccounts) -> Self {
         vec![
             AccountMeta::new_readonly(accounts.program_config_key, false),
-            AccountMeta::new_readonly(accounts.execution_controller_key, false),
+            AccountMeta::new(accounts.execution_controller_key, false),
             AccountMeta::new_readonly(accounts.device_history_key, false),
             AccountMeta::new(accounts.payer_key, true),
             AccountMeta::new(accounts.new_client_seat_key, false),

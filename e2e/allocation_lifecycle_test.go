@@ -486,8 +486,8 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 	log.Debug("==> Creating multiple links")
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
-		doublezero link create wan --code "test-dz01:test-dz02" --contributor co01 --side-a test-dz01 --side-a-interface Ethernet1 --side-z test-dz02 --side-z-interface Ethernet1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 10 --jitter-ms 1 --desired-status activated -w
-		doublezero link create wan --code "test-dz02:test-dz03" --contributor co01 --side-a test-dz02 --side-a-interface Ethernet2 --side-z test-dz03 --side-z-interface Ethernet1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 15 --jitter-ms 1 --desired-status activated -w
+		doublezero link create wan --code "test-dz01:test-dz02" --contributor co01 --side-a test-dz01 --side-a-interface Ethernet1 --side-z test-dz02 --side-z-interface Ethernet1 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 10 --jitter-ms 1 --desired-status activated -w
+		doublezero link create wan --code "test-dz02:test-dz03" --contributor co01 --side-a test-dz02 --side-a-interface Ethernet2 --side-z test-dz03 --side-z-interface Ethernet1 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 15 --jitter-ms 1 --desired-status activated -w
 	`})
 	require.NoError(t, err)
 

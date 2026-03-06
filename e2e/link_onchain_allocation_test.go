@@ -178,7 +178,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 			--side-z test-dz02 \
 			--side-z-interface Ethernet2 \
 			--bandwidth "10 Gbps" \
-			--mtu 9000 \
+			--mtu 2048 \
 			--delay-ms 10 \
 			--jitter-ms 1 \
 			--desired-status activated \

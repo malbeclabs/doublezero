@@ -464,7 +464,7 @@ async fn device_update_location_test() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {}),
+        DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs::default()),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),

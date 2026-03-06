@@ -224,6 +224,12 @@ async fn main() -> eyre::Result<()> {
             cli::accesspass::AccessPassCommands::Close(args) => args.execute(&client, &mut handle),
             cli::accesspass::AccessPassCommands::List(args) => args.execute(&client, &mut handle),
             cli::accesspass::AccessPassCommands::Get(args) => args.execute(&client, &mut handle),
+            cli::accesspass::AccessPassCommands::UserBalances(args) => {
+                args.execute(&client, &mut handle)
+            }
+            cli::accesspass::AccessPassCommands::Fund(args) => {
+                args.execute(&client, &mut handle, &mut std::io::stdin().lock())
+            }
         },
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client, &mut handle),

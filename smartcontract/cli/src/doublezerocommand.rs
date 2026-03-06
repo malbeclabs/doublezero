@@ -128,6 +128,9 @@ pub trait CliCommand {
     fn get_epoch(&self) -> eyre::Result<u64>;
     fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>>;
     fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account>;
+    fn get_minimum_balance_for_rent_exemption(&self, data_len: usize) -> eyre::Result<u64>;
+    fn get_multiple_accounts(&self, pubkeys: Vec<Pubkey>) -> eyre::Result<Vec<Option<Account>>>;
+    fn transfer_sol(&self, to: Pubkey, lamports: u64) -> eyre::Result<Signature>;
     fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>>;
     fn get_program_accounts(
         &self,
@@ -361,6 +364,17 @@ impl CliCommand for CliCommandImpl<'_> {
     }
     fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account> {
         self.client.get_account(pubkey)
+    }
+    fn get_minimum_balance_for_rent_exemption(&self, data_len: usize) -> eyre::Result<u64> {
+        self.client.get_minimum_balance_for_rent_exemption(data_len)
+    }
+
+    fn get_multiple_accounts(&self, pubkeys: Vec<Pubkey>) -> eyre::Result<Vec<Option<Account>>> {
+        self.client.get_multiple_accounts(&pubkeys)
+    }
+
+    fn transfer_sol(&self, to: Pubkey, lamports: u64) -> eyre::Result<Signature> {
+        self.client.transfer_sol(to, lamports)
     }
     fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>> {
         self.client.get_all()

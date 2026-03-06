@@ -159,6 +159,42 @@ impl DZClient {
             .map_err(|e| eyre!(e))
     }
 
+    pub fn get_minimum_balance_for_rent_exemption(&self, data_len: usize) -> eyre::Result<u64> {
+        (|| self.client.get_minimum_balance_for_rent_exemption(data_len))
+            .retry(Self::rpc_retry_builder())
+            .when(Self::is_retryable_rpc_error)
+            .call()
+            .map_err(|e| eyre!(e))
+    }
+
+    pub fn transfer_sol(&self, to: Pubkey, lamports: u64) -> eyre::Result<Signature> {
+        let payer = self
+            .payer
+            .as_ref()
+            .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
+        let ix = solana_system_interface::instruction::transfer(&payer.pubkey(), &to, lamports);
+        let mut transaction =
+            solana_sdk::transaction::Transaction::new_with_payer(&[ix], Some(&payer.pubkey()));
+        let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
+        transaction.sign(&[payer], blockhash);
+        self.client
+            .send_and_confirm_transaction(&transaction)
+            .map_err(|e| eyre!(e))
+    }
+
+    pub fn get_multiple_accounts(&self, pubkeys: &[Pubkey]) -> eyre::Result<Vec<Option<Account>>> {
+        let mut results = Vec::with_capacity(pubkeys.len());
+        for chunk in pubkeys.chunks(100) {
+            let accounts = (|| self.client.get_multiple_accounts(chunk))
+                .retry(Self::rpc_retry_builder())
+                .when(Self::is_retryable_rpc_error)
+                .call()
+                .map_err(|e| eyre!(e))?;
+            results.extend(accounts);
+        }
+        Ok(results)
+    }
+
     /******************************************************************************************************************************************/
 
     pub fn gets_and_subscribe<F>(
@@ -439,6 +475,18 @@ impl DoubleZeroClient for DZClient {
             .when(Self::is_retryable_rpc_error)
             .call()
             .map_err(|e| eyre!(e))
+    }
+
+    fn get_minimum_balance_for_rent_exemption(&self, data_len: usize) -> eyre::Result<u64> {
+        self.get_minimum_balance_for_rent_exemption(data_len)
+    }
+
+    fn get_multiple_accounts(&self, pubkeys: Vec<Pubkey>) -> eyre::Result<Vec<Option<Account>>> {
+        self.get_multiple_accounts(&pubkeys)
+    }
+
+    fn transfer_sol(&self, to: Pubkey, lamports: u64) -> eyre::Result<Signature> {
+        self.transfer_sol(to, lamports)
     }
 
     fn get_program_accounts(

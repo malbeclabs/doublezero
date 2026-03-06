@@ -105,8 +105,8 @@ impl UpdateDeviceInterfaceCliCommand {
                     != doublezero_serviceability::state::interface::InterfaceDIA::None;
             if is_cyoa_or_dia && mtu != 1500 {
                 return Err(eyre::eyre!("CYOA/DIA interfaces must have MTU of 1500"));
-            } else if mtu < 1500 {
-                return Err(eyre::eyre!("MTU {} is below the minimum of 1500", mtu));
+            } else if !is_cyoa_or_dia && mtu != 2048 {
+                return Err(eyre::eyre!("WAN/DZX interfaces must have MTU of 2048"));
             }
         }
 
@@ -456,7 +456,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_device_interface_update_rejects_low_mtu() {
+    fn test_cli_device_interface_update_rejects_wan_non_2048_mtu() {
         let mut client = create_test_client();
 
         let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
@@ -525,7 +525,7 @@ mod tests {
             interface_dia: None,
             bandwidth: None,
             cir: None,
-            mtu: Some(1499),
+            mtu: Some(9000),
             routing_mode: None,
             vlan_id: None,
             user_tunnel_endpoint: None,
@@ -538,7 +538,7 @@ mod tests {
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
-            "MTU 1499 is below the minimum of 1500"
+            "WAN/DZX interfaces must have MTU of 2048"
         );
     }
 }

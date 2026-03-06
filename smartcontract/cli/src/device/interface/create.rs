@@ -38,9 +38,9 @@ pub struct CreateDeviceInterfaceCliCommand {
     /// Committed Information Rate. Accepts values in Kbps, Mbps, or Gbps.
     #[arg(long, value_parser = validate_parse_bandwidth, default_value = "0bps")]
     pub cir: u64,
-    /// MTU
-    #[arg(long, default_value = "1500")]
-    pub mtu: u16,
+    /// MTU (derived from interface type if not specified: 1500 for CYOA/DIA, 2048 for WAN/DZX)
+    #[arg(long)]
+    pub mtu: Option<u16>,
     /// Routing mode
     #[arg(long, default_value = "static")]
     pub routing_mode: types::RoutingMode,
@@ -78,11 +78,23 @@ impl CreateDeviceInterfaceCliCommand {
             })?;
         let is_cyoa_or_dia = self.interface_cyoa.is_some()
             || matches!(self.interface_dia, Some(types::InterfaceDIA::DIA));
-        if is_cyoa_or_dia && self.mtu != 1500 {
-            return Err(eyre::eyre!("CYOA/DIA interfaces must have MTU of 1500"));
-        } else if self.mtu < 1500 {
-            return Err(eyre::eyre!("MTU {} is below the minimum of 1500", self.mtu));
-        }
+        let mtu = match self.mtu {
+            Some(mtu) => {
+                if is_cyoa_or_dia && mtu != 1500 {
+                    return Err(eyre::eyre!("CYOA/DIA interfaces must have MTU of 1500"));
+                } else if !is_cyoa_or_dia && mtu != 2048 {
+                    return Err(eyre::eyre!("WAN/DZX interfaces must have MTU of 2048"));
+                }
+                mtu
+            }
+            None => {
+                if is_cyoa_or_dia {
+                    1500
+                } else {
+                    2048
+                }
+            }
+        };
         if let Some(ref ip_net) = self.ip_net {
             let devices = client.list_device(ListDeviceCommand)?;
             for dev in devices.values() {
@@ -112,7 +124,7 @@ impl CreateDeviceInterfaceCliCommand {
             interface_dia: self.interface_dia.map(|id| id.into()).unwrap_or_default(),
             bandwidth: self.bandwidth,
             cir: self.cir,
-            mtu: self.mtu,
+            mtu,
             routing_mode: self.routing_mode.into(),
             vlan_id: self.vlan_id,
             user_tunnel_endpoint: self.user_tunnel_endpoint.unwrap_or(false),
@@ -245,7 +257,7 @@ mod tests {
             ip_net: Some("185.189.47.80/32".parse().unwrap()),
             bandwidth: 0,
             cir: 0,
-            mtu: 1500,
+            mtu: None,
             routing_mode: types::RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: None,
@@ -359,7 +371,7 @@ mod tests {
             ip_net: None,
             bandwidth: 0,
             cir: 0,
-            mtu: 1500,
+            mtu: None,
             routing_mode: types::RoutingMode::Static,
             vlan_id: 20,
             user_tunnel_endpoint: None,
@@ -372,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_device_interface_create_rejects_low_mtu() {
+    fn test_cli_device_interface_create_rejects_wan_non_2048_mtu() {
         let mut client = create_test_client();
 
         let device1_pubkey = Pubkey::new_unique();
@@ -426,7 +438,7 @@ mod tests {
             ip_net: None,
             bandwidth: 1000,
             cir: 0,
-            mtu: 1499,
+            mtu: Some(9000),
             routing_mode: types::RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: None,
@@ -436,7 +448,7 @@ mod tests {
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
-            "MTU 1499 is below the minimum of 1500"
+            "WAN/DZX interfaces must have MTU of 2048"
         );
     }
 
@@ -495,7 +507,7 @@ mod tests {
             ip_net: None,
             bandwidth: 1000,
             cir: 0,
-            mtu: 2048,
+            mtu: Some(2048),
             routing_mode: types::RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: None,

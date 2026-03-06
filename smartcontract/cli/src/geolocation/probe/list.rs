@@ -83,7 +83,6 @@ mod tests {
         let probe1 = GeoProbe {
             account_type: AccountType::GeoProbe,
             owner: Pubkey::new_unique(),
-            bump_seed: 255,
             exchange_pk,
             public_ip: Ipv4Addr::new(10, 0, 0, 1),
             location_offset_port: 8923,
@@ -122,7 +121,6 @@ mod tests {
         let probe1 = GeoProbe {
             account_type: AccountType::GeoProbe,
             owner: Pubkey::new_unique(),
-            bump_seed: 255,
             exchange_pk,
             public_ip: Ipv4Addr::new(10, 0, 0, 1),
             location_offset_port: 8923,

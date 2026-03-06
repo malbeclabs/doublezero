@@ -63,7 +63,6 @@ mod tests {
         let probe = GeoProbe {
             account_type: AccountType::GeoProbe,
             owner: owner_pk,
-            bump_seed: 255,
             exchange_pk,
             public_ip: Ipv4Addr::new(10, 0, 0, 1),
             location_offset_port: 8923,

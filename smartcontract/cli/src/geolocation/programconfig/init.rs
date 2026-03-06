@@ -1,24 +1,14 @@
-use crate::{geoclicommand::GeoCliCommand, validators::validate_pubkey};
+use crate::geoclicommand::GeoCliCommand;
 use clap::Args;
 use doublezero_sdk::geolocation::programconfig::init::InitProgramConfigCommand;
-use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct InitProgramConfigCliCommand {
-    /// Serviceability program ID
-    #[arg(long, value_parser = validate_pubkey)]
-    pub serviceability_program_id: String,
-}
+pub struct InitProgramConfigCliCommand {}
 
 impl InitProgramConfigCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let serviceability_program_id =
-            Pubkey::try_from(self.serviceability_program_id.as_str()).unwrap();
-
-        let (sig, pda) = client.init_program_config(InitProgramConfigCommand {
-            serviceability_program_id,
-        })?;
+        let (sig, pda) = client.init_program_config(InitProgramConfigCommand {})?;
 
         writeln!(out, "Signature: {sig}\r\nAccount: {pda}")?;
 
@@ -37,7 +27,6 @@ mod tests {
     fn test_cli_geo_init_program_config() {
         let mut client = MockGeoCliCommand::new();
 
-        let svc_program_id = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let config_pda = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
@@ -48,16 +37,11 @@ mod tests {
 
         client
             .expect_init_program_config()
-            .with(predicate::eq(InitProgramConfigCommand {
-                serviceability_program_id: svc_program_id,
-            }))
+            .with(predicate::eq(InitProgramConfigCommand {}))
             .returning(move |_| Ok((signature, config_pda)));
 
         let mut output = Vec::new();
-        let res = InitProgramConfigCliCommand {
-            serviceability_program_id: svc_program_id.to_string(),
-        }
-        .execute(&client, &mut output);
+        let res = InitProgramConfigCliCommand {}.execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));

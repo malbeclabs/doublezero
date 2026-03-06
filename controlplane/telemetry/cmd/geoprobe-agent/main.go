@@ -198,6 +198,18 @@ func (c *offsetCache) Evict() int {
 	return evicted
 }
 
+func marshalBestOffset(cache *offsetCache) [][]byte {
+	best := cache.GetBest()
+	if best == nil {
+		return nil
+	}
+	data, err := best.Marshal()
+	if err != nil {
+		return nil
+	}
+	return [][]byte{data}
+}
+
 func main() {
 	flag.Parse()
 
@@ -440,7 +452,7 @@ func main() {
 
 	// Run UDP offset listener.
 	go func() {
-		runOffsetListener(ctx, log, offsetListener, cache, parentAuthorities)
+		runOffsetListener(ctx, log, offsetListener, cache, parentAuthorities, signedReflector)
 	}()
 
 	// Run eviction goroutine.
@@ -454,6 +466,7 @@ func main() {
 			case <-evictionTicker.C:
 				if evicted := cache.Evict(); evicted > 0 {
 					log.Debug("Evicted expired offsets", "count", evicted)
+					signedReflector.SetOffsets(marshalBestOffset(cache))
 				}
 			}
 		}
@@ -483,6 +496,7 @@ func runOffsetListener(
 	conn *net.UDPConn,
 	cache *offsetCache,
 	parentAuthorities map[[32]byte][32]byte, // parent pubkey → expected authority pubkey
+	signedReflector signed.Reflector,
 ) {
 	log.Info("Starting offset listener", "addr", conn.LocalAddr().String())
 
@@ -536,6 +550,7 @@ func runOffsetListener(
 		}
 
 		cache.Put(offset)
+		signedReflector.SetOffsets(marshalBestOffset(cache))
 
 		log.Debug("Cached DZD offset",
 			"authority_pubkey", authorityPK,

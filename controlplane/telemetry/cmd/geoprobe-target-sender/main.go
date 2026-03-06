@@ -17,6 +17,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
 	"github.com/malbeclabs/doublezero/tools/twamp/pkg/signed"
 )
 
@@ -209,6 +210,7 @@ func setupLogger(format string, debug bool) *slog.Logger {
 func logProbeResult(log *slog.Logger, seq uint32, rtt time.Duration, probeSigValid, replySigValid bool, reply *signed.ReplyPacket) {
 	authorityPK := solana.PublicKeyFromBytes(reply.AuthorityPubkey[:])
 	geoprobePK := solana.PublicKeyFromBytes(reply.GeoprobePubkey[:])
+	offsets := parseOffsets(reply.Offsets)
 
 	if *logFormat == "json" {
 		output := probeOutput{
@@ -219,6 +221,7 @@ func logProbeResult(log *slog.Logger, seq uint32, rtt time.Duration, probeSigVal
 			ReplySigValid:   replySigValid,
 			AuthorityPubkey: authorityPK.String(),
 			GeoprobePubkey:  geoprobePK.String(),
+			Offsets:         offsets,
 		}
 		data, err := json.Marshal(output)
 		if err != nil {
@@ -235,7 +238,7 @@ func logProbeResult(log *slog.Logger, seq uint32, rtt time.Duration, probeSigVal
 		if !replySigValid {
 			replySigStr = "INVALID"
 		}
-		fmt.Printf("[%s] seq=%d rtt=%s probe_sig=%s reflector_sig=%s authority=%s geoprobe=%s\n",
+		fmt.Printf("[%s] seq=%d rtt=%s probe_sig=%s reflector_sig=%s authority=%s geoprobe=%s offsets=%d\n",
 			time.Now().UTC().Format("2006-01-02 15:04:05 MST"),
 			seq,
 			formatRTT(rtt),
@@ -243,7 +246,20 @@ func logProbeResult(log *slog.Logger, seq uint32, rtt time.Duration, probeSigVal
 			replySigStr,
 			abbreviatePubkey(authorityPK.String()),
 			abbreviatePubkey(geoprobePK.String()),
+			len(offsets),
 		)
+		for i, o := range offsets {
+			sigStr := "VALID"
+			if !o.SigValid {
+				sigStr = "INVALID"
+			}
+			fmt.Printf("  offset[%d] sig=%s sender=%s authority=%s lat=%.4f lng=%.4f rtt_ns=%d measured_rtt_ns=%d\n",
+				i, sigStr,
+				abbreviatePubkey(o.SenderPubkey),
+				abbreviatePubkey(o.AuthorityPubkey),
+				o.Lat, o.Lng, o.RttNs, o.MeasuredRttNs,
+			)
+		}
 	}
 }
 
@@ -276,14 +292,25 @@ func logProbeError(log *slog.Logger, seq uint32, probeErr error) {
 }
 
 type probeOutput struct {
-	Timestamp       string  `json:"timestamp"`
-	Seq             uint32  `json:"seq"`
-	RttMs           float64 `json:"rtt_ms"`
-	ProbeSigValid   bool    `json:"probe_sig_valid,omitempty"`
-	ReplySigValid   bool    `json:"reply_sig_valid,omitempty"`
-	AuthorityPubkey string  `json:"authority_pubkey,omitempty"`
-	GeoprobePubkey  string  `json:"geoprobe_pubkey,omitempty"`
-	Error           string  `json:"error,omitempty"`
+	Timestamp       string         `json:"timestamp"`
+	Seq             uint32         `json:"seq"`
+	RttMs           float64        `json:"rtt_ms"`
+	ProbeSigValid   bool           `json:"probe_sig_valid,omitempty"`
+	ReplySigValid   bool           `json:"reply_sig_valid,omitempty"`
+	AuthorityPubkey string         `json:"authority_pubkey,omitempty"`
+	GeoprobePubkey  string         `json:"geoprobe_pubkey,omitempty"`
+	Offsets         []offsetOutput `json:"offsets,omitempty"`
+	Error           string         `json:"error,omitempty"`
+}
+
+type offsetOutput struct {
+	AuthorityPubkey string  `json:"authority_pubkey"`
+	SenderPubkey    string  `json:"sender_pubkey"`
+	Lat             float64 `json:"lat"`
+	Lng             float64 `json:"lng"`
+	RttNs           uint64  `json:"rtt_ns"`
+	MeasuredRttNs   uint64  `json:"measured_rtt_ns"`
+	SigValid        bool    `json:"sig_valid"`
 }
 
 func formatRTT(d time.Duration) string {
@@ -295,4 +322,29 @@ func abbreviatePubkey(pk string) string {
 		return pk
 	}
 	return pk[:4] + "..." + pk[len(pk)-4:]
+}
+
+func parseOffsets(blobs [][]byte) []offsetOutput {
+	if len(blobs) == 0 {
+		return nil
+	}
+	results := make([]offsetOutput, 0, len(blobs))
+	for _, blob := range blobs {
+		var offset geoprobe.LocationOffset
+		if err := offset.Unmarshal(blob); err != nil {
+			results = append(results, offsetOutput{SigValid: false})
+			continue
+		}
+		sigValid := geoprobe.VerifyOffsetChain(&offset) == nil
+		results = append(results, offsetOutput{
+			AuthorityPubkey: solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(),
+			SenderPubkey:    solana.PublicKeyFromBytes(offset.SenderPubkey[:]).String(),
+			Lat:             offset.Lat,
+			Lng:             offset.Lng,
+			RttNs:           offset.RttNs,
+			MeasuredRttNs:   offset.MeasuredRttNs,
+			SigValid:        sigValid,
+		})
+	}
+	return results
 }

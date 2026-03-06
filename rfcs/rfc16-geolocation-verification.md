@@ -119,17 +119,17 @@ Inbound Probing Flow
   ┌──────────┐                  ┌───────────┐                  ┌───────────┐
   │          │──────TWAMP──────>│           │<──Signed Probe───│           │
   │   DZD    │<─────Reply───────│   Probe   │───Signed Reply──>│  Target   │
-  │          │──Signed Offset──>│           │                  │           │
+  │          │──Signed Offset──>│           │   w/ offsets     │           │
   └──────────┘                  └───────────┘                  └───────────┘
       ^ │ Measured                 ^  │                             │
-Child │ │ Offset to                │  │                     Reports │
-IP    │ │ Probes    Target Pubkeys │  │ Measured            Latency │
-      │ V            & DZD Pubkey  │  │ Offset                      v
+Child │ │ Offset                   │  │                     Reports │
+IP    │ │ (future)  Target Pubkeys │  │ Measured            Latency │
+      │ V            & DZD Pubkey  │  │ Offset            & Offsets │
   ┌───────────┐                    │  │ (future)               ┌───────────┐
   │           │────────────────────┘  │                        │           │
   │    DZ     │<──────────────────────┘                        │  Client   │
   │  Ledger   │<──Submit Target Pubkeys Allowed to Measure─────│  Oracle   │
-  │           │<───────Get Probe Offset From Ledger────────────│           │
+  │           │<─────────Confirm Against Ledger────────────────│           │
   └───────────┘                                                └───────────┘
 ```
 
@@ -155,11 +155,12 @@ _Outbound Measurement Flow_
 _Inbound Measurement Flow_
 1. **DZD→Probe Measurement (10s interval):** DZD sends TWAMP probe, measures RTT
 2. **Offset Generation:** DZD creates Offset with lat/lng, latency, timestamp, signs with Ed25519
-3. **Dual Posting:** DZD submits samples to `ProbeLatencySamples` PDA onchain
-4. **Target Probes:** Target sends a signed probe message, containing its Pubkey as well as Ed25519 signature of the probe packet contents.
-5. **Probe Might Reply:** Probe receives probe, and verifies that the Pubkey is registered. If so, it embeds the original probe message into its response, appends its Pubkey, an Ed25519 signature of the whole packet, and sends it.
-6. **Target Verifies Reply:** Target verifies that the reply is for the message it sent, and has not been tampered with. Forwards to Client Oracle.
-7. **Client Oracle Gets Probe Offset:** Client Oracle gets the probe's LocationOffset from the DZ ledger, and uses that along with the Target's reported latency to compute location.
+3. **Dual Posting:** DZD submits samples to `ProbeLatencySamples` PDA onchain AND sends Offset to Probe via UDP
+4. **Probe Caches Offset:** Probe verifies DZD signature, caches Offset, and updates the signed TWAMP reflector's embedded offsets with the best cached offset
+5. **Target Probes:** Target sends a signed probe message, containing its Pubkey as well as Ed25519 signature of the probe packet contents.
+6. **Probe Replies With Offsets:** Probe receives probe, and verifies that the Pubkey is registered. If so, it embeds the original probe message into its response, appends its Pubkey, the probe's current best LocationOffset from a parent DZD, and an Ed25519 signature over the whole packet.
+7. **Target Verifies Reply:** Target verifies that the reply is for the message it sent, has not been tampered with, and verifies the embedded offset signature chain. The target now has both the measured RTT and the probe's location attestation in a single exchange. Forwards to Client Oracle.
+8. **Client Oracle Computes Location:** Client Oracle uses the embedded offset (lat/lng + DZD→Probe RTT) along with the Target's reported probe RTT to compute location. The offset can also be cross-checked against the DZ ledger for additional assurance.
 
 ### Smart Contract Changes
 
@@ -351,20 +352,23 @@ type SignedProbePacket struct {
 
 The signature covers `[Seq, Sec, Frac, SenderPubkey]` (bytes 0–43)
 
-**SignedReplyPacket (236 bytes)** — sent from Probe to Target:
+**SignedReplyPacket (237–1082 bytes)** — sent from Probe to Target:
 
 ```go
 type SignedReplyPacket struct {
     Probe           SignedProbePacket  // Bytes 0-107: Complete original signed probe (echoed)
     AuthorityPubkey [32]byte          // Bytes 108-139: Signing authority's Ed25519 public key
     GeoprobePubkey  [32]byte          // Bytes 140-171: Geoprobe identity public key
-    Signature       [64]byte          // Bytes 172-235: Ed25519 signature over bytes 0-171
+    NumOffsets      uint8             // Byte 172: Number of LocationOffset blobs (0-5)
+    Offsets         [][]byte          // Bytes 173-...: N × LocationOffset blobs (each 169 bytes)
+    Signature       [64]byte          // Last 64 bytes: Ed25519 signature over all preceding bytes
 }
 ```
 
-`AuthorityPubkey` is the key used to sign and verify the reply. `GeoprobePubkey` identifies the specific geoprobe that produced the reply
-
-The probe's signature covers `[Probe, AuthorityPubkey, GeoprobePubkey]` (bytes 0–171)
+`AuthorityPubkey` is the key used to sign and verify the reply. 
+`GeoprobePubkey` identifies the specific geoprobe that produced the reply. 
+`Offsets` carries 0–5 Borsh-encoded `LocationOffset` structs from the probe's parent DZDs, Each reference has no references.
+The probe's signature covers all preceding bytes: `[Probe, AuthorityPubkey, GeoprobePubkey, NumOffsets, Offsets]`.
 
 #### Interfaces
 
@@ -379,12 +383,15 @@ type SignedSender interface {
 // SignedReflector is used by the Probe to respond to inbound probes.
 type SignedReflector interface {
     Run(ctx context.Context) error
+    SetOffsets(offsets [][]byte)
     Close() error
     LocalAddr() *net.UDPAddr
 }
 ```
 
 `SignedSender.Probe()` returns both the measured RTT and the `SignedReplyPacket`.
+
+`SignedReflector.SetOffsets()` allows the geoprobe agent to inject its current best `LocationOffset` blobs into every reply. The reflector deep-copies the provided slices and updates them under a write lock, so offset updates from the offset listener are thread-safe with concurrent probe handling.
 
 ### Component Implementation
 
@@ -425,7 +432,7 @@ Reuses the new modules for the telemetry agent in `controlplane/telemetry/intern
 - **Offset Cache:** Stores recent DZD Offsets (keyed by DZD pubkey)
 - **Target Handler:** Measures RTT to targets, generates composite Offsets
 - **Signature Verifier:** Validates Ed25519 signatures
-- **Signed TWAMP Reflector:** Responds to Probes from allowed Targets
+- **Signed TWAMP Reflector:** Responds to Probes from allowed Targets, embedding the probe's best cached LocationOffset into each reply
 
 **Language:** Go (for consistency with other infrastructure)
 
@@ -499,7 +506,8 @@ max_offset_age_seconds: 300
 **Components:**
 - **Signed TWAMP Sender:** Sends Signed probes
 - **Response Verification:** Validates Ed25519 signatures from probes
-- **Logging:** Outputs RTT measurements, and signature details
+- **Offset Parsing:** Deserializes embedded LocationOffsets from replies and verifies their signature chains
+- **Logging:** Outputs RTT measurements, signature details, and offset information (authority, sender, lat/lng, RTT)
 - **SDK:** Built on a new GeoLocation Go SDK (see smartcontract/sdk/go for examples)
 
 **Example Output:**
@@ -509,6 +517,8 @@ max_offset_age_seconds: 300
   RTT to Target: 12.5ms
   My Signature:    VALID ✓
   Probe Signature: VALID ✓
+  Offsets: 1
+    offset[0] sig=VALID sender=FDZD456...abc authority=FAuth789...def lat=50.1109 lng=8.6821 rtt_ns=800000 measured_rtt_ns=800000
 ```
 
 **Usage:**

@@ -27,6 +27,9 @@ pub trait DoubleZeroClient {
     fn get(&self, pubkey: Pubkey) -> eyre::Result<AccountData>;
     fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>>;
     fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account>;
+    fn get_minimum_balance_for_rent_exemption(&self, data_len: usize) -> eyre::Result<u64>;
+    fn get_multiple_accounts(&self, pubkeys: Vec<Pubkey>) -> eyre::Result<Vec<Option<Account>>>;
+    fn transfer_sol(&self, to: Pubkey, lamports: u64) -> eyre::Result<Signature>;
     fn get_program_accounts(
         &self,
         program_id: &Pubkey,

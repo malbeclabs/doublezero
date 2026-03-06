@@ -1,7 +1,8 @@
 use clap::{Args, Subcommand};
 use doublezero_cli::accesspass::{
-    close::CloseAccessPassCliCommand, get::GetAccessPassCliCommand, list::ListAccessPassCliCommand,
-    set::SetAccessPassCliCommand,
+    close::CloseAccessPassCliCommand, fund::FundAccessPassCliCommand,
+    get::GetAccessPassCliCommand, list::ListAccessPassCliCommand, set::SetAccessPassCliCommand,
+    user_balances::UserBalancesAccessPassCliCommand,
 };
 
 #[derive(Args, Debug)]
@@ -24,4 +25,10 @@ pub enum AccessPassCommands {
     /// Get access pass details
     #[clap()]
     Get(GetAccessPassCliCommand),
+    /// List unique user_payer addresses and their SOL balances
+    #[clap()]
+    UserBalances(UserBalancesAccessPassCliCommand),
+    /// Fund user payers that have insufficient balance
+    #[clap()]
+    Fund(FundAccessPassCliCommand),
 }

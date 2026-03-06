@@ -38,6 +38,9 @@ pub struct ListUserCliCommand {
     /// Filter by owner public key
     #[arg(long, value_delimiter = ',', value_name = "OWNER_PUBLIC_KEY,...")]
     pub owner: Option<Vec<Pubkey>>,
+    /// Filter by user payer public key
+    #[arg(long, value_delimiter = ',', value_name = "USER_PAYER,...")]
+    pub user_payer: Option<Vec<Pubkey>>,
     /// Filter by user type
     #[arg(long, value_delimiter = ',', value_name = "USER_TYPE,...")]
     pub user_type: Option<Vec<String>>,
@@ -184,6 +187,9 @@ impl ListUserCliCommand {
 
         if let Some(ref owner_vec) = self.owner {
             users.retain(|(_, user, _)| owner_vec.contains(&user.owner));
+        }
+        if let Some(ref user_payer_vec) = self.user_payer {
+            users.retain(|(_, user, _)| user_payer_vec.contains(&user.owner));
         }
         if let Some(ref client_ips) = self.client_ip {
             users.retain(|(_, user, _)| client_ips.contains(&user.client_ip));
@@ -707,6 +713,7 @@ mod tests {
             device: None,
             location: None,
             owner: None,
+            user_payer: None,
             client_ip: None,
             user_type: None,
             cyoa_type: None,
@@ -732,6 +739,7 @@ mod tests {
             device: None,
             location: None,
             owner: None,
+            user_payer: None,
             client_ip: None,
             user_type: None,
             cyoa_type: None,
@@ -831,6 +839,7 @@ mod tests {
             device: None,
             location: None,
             owner: None,
+            user_payer: None,
             client_ip: None,
             user_type: Some(vec!["Multicast".to_string()]),
             cyoa_type: None,
@@ -931,6 +940,7 @@ mod tests {
             device: None,
             location: None,
             owner: None,
+            user_payer: None,
             client_ip: None,
             user_type: None,
             cyoa_type: Some(vec!["GREOverDIA".to_string()]),
@@ -1031,6 +1041,7 @@ mod tests {
             device: None,
             location: None,
             owner: None,
+            user_payer: None,
             client_ip: None,
             user_type: None,
             cyoa_type: None,
@@ -1131,6 +1142,7 @@ mod tests {
             device: None,
             location: None,
             owner: None,
+            user_payer: None,
             client_ip: None,
             user_type: None,
             cyoa_type: None,
@@ -1231,6 +1243,7 @@ mod tests {
             device: None,
             location: None,
             owner: None,
+            user_payer: None,
             client_ip: None,
             user_type: None,
             cyoa_type: None,
@@ -1348,6 +1361,7 @@ mod tests {
             device: None,
             location: None,
             owner: None,
+            user_payer: None,
             client_ip: None,
             user_type: None,
             cyoa_type: None,
@@ -1486,6 +1500,7 @@ mod tests {
             device: None,
             location: None,
             owner: None,
+            user_payer: None,
             client_ip: None,
             user_type: None,
             cyoa_type: None,
@@ -1514,6 +1529,7 @@ mod tests {
             device: None,
             location: None,
             owner: None,
+            user_payer: None,
             client_ip: None,
             user_type: None,
             cyoa_type: None,
@@ -1651,6 +1667,7 @@ mod tests {
             device: None,
             location: None,
             owner: None,
+            user_payer: None,
             client_ip: None,
             user_type: None,
             cyoa_type: None,

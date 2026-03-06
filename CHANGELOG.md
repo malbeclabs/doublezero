@@ -16,6 +16,10 @@ All notable changes to this project will be documented in this file.
   - Increase default route liveness probe interval (TxMin/RxMin) from 300ms to 1s and raise MaxTxCeil from 1s to 3s to preserve backoff headroom
 - Smartcontract
   - Serviceability: fix `validate_account_code` forcing lowercase on all entity types — restrict lowercase normalization to device and link codes only, preserving original case for locations, exchanges, contributors, and other entities
+- CLI
+  - Add `access-pass user-balances` command to show per-payer SOL balance, required amount (rent + gas reserve), and missing amount, with filters (`--user-payer`, `--min-balance`, `--max-balance`, `--min-missing`, `--max-missing`), sorting, and `--top N`
+  - Add `access-pass fund` command to top up underfunded user payers, with `--dry-run`, `--force` (skip confirmation), `--min-balance`, and a pre-transfer sender balance check; required balance floor includes a gas-fee reserve (50 × 5,000 lamports) and the wallet rent-exempt minimum to prevent on-chain transfer failures
+  - Add `--user-payer` filter to `user list` command
   - Serviceability: onchain activation - atomic close for DeleteDevice ([#3188](https://github.com/malbeclabs/doublezero/pull/3188))
 
 ## [v0.10.0](https://github.com/malbeclabs/doublezero/compare/client/v0.9.0...client/v0.10.0) - 2026-03-04

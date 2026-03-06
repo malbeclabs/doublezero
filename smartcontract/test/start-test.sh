@@ -164,7 +164,7 @@ echo "Creating devices"
 
 ### Initialize device interfaces
 echo "Creating device interfaces"
-./target/doublezero device interface create la2-dz02 "Switch1/1/1" --bandwidth 1000 --cir 0 --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create la2-dz02 "Switch1/1/1" --bandwidth "1G" --cir "1G" --mtu 1500 --routing-mode static -w
 
 ### Initialize links
 echo "Creating external links"
@@ -252,6 +252,28 @@ echo "Creating multicast user & subscribe"
 solana transfer testGjWJiksK7wdGmH7ZZsaqRGU695LHgvjRd6jfHYF 5 --allow-unfunded-recipient
 
 
+
+./target/doublezero access-pass set --client-ip 1.1.1.1 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3aa --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.2 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3aa --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.3 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3aa --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.4 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3aa --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.5 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3aa --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.6 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3aa --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.7 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3aa --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.8 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3aa --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.9 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3aa --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.10 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3aa --epochs MAX
+
+./target/doublezero access-pass set --client-ip 1.1.1.1 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3bb --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.2 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3bb --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.3 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3bb --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.4 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3bb --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.5 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3bb --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.6 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3bb --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.7 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3bb --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.8 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3bb --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.9 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3bb --epochs MAX
+./target/doublezero access-pass set --client-ip 1.1.1.10 --user-payer DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3bb --epochs MAX
 
 echo "########################################################################"
 echo "Setup complete"

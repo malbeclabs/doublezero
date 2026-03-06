@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(sentinel): associate access passes with solana tenant PDA ([#283](https://github.com/doublezerofoundation/doublezero-offchain/pull/283))
+
 ## [0.2.5](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/sentinel%2Fv0.2.5) - 2026-02-26
 
 - feat: autojoin validators to approved mcast pub groups

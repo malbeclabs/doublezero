@@ -9,11 +9,17 @@ import (
 )
 
 const (
-	ProbePacketSize = 108
-	ReplyPacketSize = 236
+	ProbePacketSize    = 108
+	LocationOffsetSize = 169 // size of a 0-reference LocationOffset, Borsh-encoded
+	MaxOffsets         = 5
 
-	probePayloadSize = 44  // bytes 0-43: fields signed by sender
-	replyPayloadSize = 172 // bytes 0-171: fields signed by reflector
+	replyHeaderSize = 173 // Probe(108) + AuthorityPubkey(32) + GeoprobePubkey(32) + NumOffsets(1)
+	signatureSize   = 64
+
+	MinReplyPacketSize = replyHeaderSize + signatureSize                                 // 237
+	MaxReplyPacketSize = replyHeaderSize + MaxOffsets*LocationOffsetSize + signatureSize // 1082
+
+	probePayloadSize = 44 // bytes 0-43: fields signed by sender
 )
 
 var errInvalidPacket = errors.New("invalid packet format")
@@ -59,11 +65,26 @@ type ProbePacket struct {
 }
 
 // ReplyPacket is sent from Probe to Target in the inbound probing flow.
+//
+// Wire format:
+//
+//	Bytes 0-107:   Probe (108B)
+//	Bytes 108-139: AuthorityPubkey (32B)
+//	Bytes 140-171: GeoprobePubkey (32B)
+//	Byte  172:     NumOffsets (1B)
+//	Bytes 173-...: Offset blobs (N × LocationOffsetSize bytes)
+//	Bytes ...-end: Signature (64B) over all preceding bytes
 type ReplyPacket struct {
-	Probe           ProbePacket // Bytes 0-107: Complete original signed probe (echoed)
-	AuthorityPubkey [32]byte    // Bytes 108-139: Signing authority's Ed25519 public key
-	GeoprobePubkey  [32]byte    // Bytes 140-171: Geoprobe identity public key
-	Signature       [64]byte    // Bytes 172-235: Ed25519 signature over bytes 0-171
+	Probe           ProbePacket
+	AuthorityPubkey [32]byte
+	GeoprobePubkey  [32]byte
+	Offsets         [][]byte // 0-5 opaque offset blobs, each exactly LocationOffsetSize bytes
+	Signature       [64]byte
+}
+
+// Size returns the wire size of the reply packet.
+func (r *ReplyPacket) Size() int {
+	return replyHeaderSize + len(r.Offsets)*LocationOffsetSize + signatureSize
 }
 
 func NewProbePacket(seq uint32, signer Signer) *ProbePacket {
@@ -127,22 +148,56 @@ func (p *ProbePacket) Verify() bool {
 	return ed25519.Verify(ed25519.PublicKey(p.SenderPubkey[:]), payload[:], p.Signature[:])
 }
 
-func (r *ReplyPacket) Marshal(buf []byte) error {
-	if len(buf) < ReplyPacketSize {
-		return fmt.Errorf("buffer too small: %d < %d", len(buf), ReplyPacketSize)
+// marshalPayload writes the signed portion of the reply (everything before the
+// signature) into buf and returns the number of bytes written.
+func (r *ReplyPacket) marshalPayload(buf []byte) (int, error) {
+	payloadSize := replyHeaderSize + len(r.Offsets)*LocationOffsetSize
+	if len(buf) < payloadSize {
+		return 0, fmt.Errorf("buffer too small: %d < %d", len(buf), payloadSize)
 	}
 
 	if err := r.Probe.Marshal(buf[0:108]); err != nil {
-		return err
+		return 0, err
 	}
 	copy(buf[108:140], r.AuthorityPubkey[:])
 	copy(buf[140:172], r.GeoprobePubkey[:])
-	copy(buf[172:236], r.Signature[:])
-	return nil
+	buf[172] = uint8(len(r.Offsets))
+
+	off := replyHeaderSize
+	for _, blob := range r.Offsets {
+		copy(buf[off:off+LocationOffsetSize], blob)
+		off += LocationOffsetSize
+	}
+
+	return payloadSize, nil
+}
+
+func (r *ReplyPacket) Marshal(buf []byte) (int, error) {
+	size := r.Size()
+	if len(buf) < size {
+		return 0, fmt.Errorf("buffer too small: %d < %d", len(buf), size)
+	}
+
+	payloadSize, err := r.marshalPayload(buf)
+	if err != nil {
+		return 0, err
+	}
+	copy(buf[payloadSize:payloadSize+signatureSize], r.Signature[:])
+	return size, nil
 }
 
 func UnmarshalReplyPacket(buf []byte) (*ReplyPacket, error) {
-	if len(buf) != ReplyPacketSize {
+	if len(buf) < MinReplyPacketSize {
+		return nil, errInvalidPacket
+	}
+
+	numOffsets := int(buf[172])
+	if numOffsets > MaxOffsets {
+		return nil, errInvalidPacket
+	}
+
+	expectedSize := replyHeaderSize + numOffsets*LocationOffsetSize + signatureSize
+	if len(buf) != expectedSize {
 		return nil, errInvalidPacket
 	}
 
@@ -156,35 +211,59 @@ func UnmarshalReplyPacket(buf []byte) (*ReplyPacket, error) {
 	}
 	copy(r.AuthorityPubkey[:], buf[108:140])
 	copy(r.GeoprobePubkey[:], buf[140:172])
-	copy(r.Signature[:], buf[172:236])
+
+	if numOffsets > 0 {
+		r.Offsets = make([][]byte, numOffsets)
+		off := replyHeaderSize
+		for i := range numOffsets {
+			r.Offsets[i] = make([]byte, LocationOffsetSize)
+			copy(r.Offsets[i], buf[off:off+LocationOffsetSize])
+			off += LocationOffsetSize
+		}
+	}
+
+	sigStart := len(buf) - signatureSize
+	copy(r.Signature[:], buf[sigStart:])
 	return r, nil
 }
 
-func NewReplyPacket(probe *ProbePacket, signer Signer, geoprobePubkey [32]byte) *ReplyPacket {
+func NewReplyPacket(probe *ProbePacket, signer Signer, geoprobePubkey [32]byte, offsets [][]byte) (*ReplyPacket, error) {
+	if len(offsets) > MaxOffsets {
+		return nil, fmt.Errorf("too many offsets: %d > %d", len(offsets), MaxOffsets)
+	}
+	for i, blob := range offsets {
+		if len(blob) != LocationOffsetSize {
+			return nil, fmt.Errorf("offset %d has wrong size: %d != %d", i, len(blob), LocationOffsetSize)
+		}
+	}
+
 	pub := signer.Public()
 
 	r := &ReplyPacket{
 		Probe:          *probe,
 		GeoprobePubkey: geoprobePubkey,
+		Offsets:        offsets,
 	}
 	copy(r.AuthorityPubkey[:], pub)
 
-	var payload [replyPayloadSize]byte
-	_ = probe.Marshal(payload[0:108])
-	copy(payload[108:140], r.AuthorityPubkey[:])
-	copy(payload[140:172], r.GeoprobePubkey[:])
+	payloadSize := replyHeaderSize + len(offsets)*LocationOffsetSize
+	payload := make([]byte, payloadSize)
+	if _, err := r.marshalPayload(payload); err != nil {
+		return nil, err
+	}
 
-	sig := signer.Sign(payload[:])
+	sig := signer.Sign(payload)
 	copy(r.Signature[:], sig)
 
-	return r
+	return r, nil
 }
 
 func (r *ReplyPacket) Verify() bool {
-	var payload [replyPayloadSize]byte
-	_ = r.Probe.Marshal(payload[0:108])
-	copy(payload[108:140], r.AuthorityPubkey[:])
-	copy(payload[140:172], r.GeoprobePubkey[:])
+	payloadSize := replyHeaderSize + len(r.Offsets)*LocationOffsetSize
+	payload := make([]byte, payloadSize)
+	if _, err := r.marshalPayload(payload); err != nil {
+		return false
+	}
 
-	return ed25519.Verify(ed25519.PublicKey(r.AuthorityPubkey[:]), payload[:], r.Signature[:])
+	return ed25519.Verify(ed25519.PublicKey(r.AuthorityPubkey[:]), payload, r.Signature[:])
 }

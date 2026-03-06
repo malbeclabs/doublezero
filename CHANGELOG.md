@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - SDK
   - Add read-only Go SDK for `doublezero-geolocation` program with state deserialization, PDA derivation, and RPC client for querying geoprobe configuration
+- Telemetry
+  - Embed LocationOffsets from parent DZDs in signed TWAMP replies so inbound probes carry geolocation context
 - Client
   - Increase default route liveness probe interval (TxMin/RxMin) from 300ms to 1s and raise MaxTxCeil from 1s to 3s to preserve backoff headroom
 - Smartcontract

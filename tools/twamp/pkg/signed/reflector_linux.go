@@ -24,6 +24,8 @@ type LinuxReflector struct {
 	geoprobePubkey [32]byte
 	authorizedKeys sync.Map // map[[32]byte]struct{}
 	lastVerify     sync.Map // map[[32]byte]time.Time
+	offsetsMu      sync.RWMutex
+	offsets        [][]byte
 	shutdown       chan struct{}
 	closed         chan struct{}
 }
@@ -107,6 +109,17 @@ func (r *LinuxReflector) SetAuthorizedKeys(keys [][32]byte) {
 	}
 }
 
+func (r *LinuxReflector) SetOffsets(offsets [][]byte) {
+	cp := make([][]byte, len(offsets))
+	for i, blob := range offsets {
+		cp[i] = make([]byte, len(blob))
+		copy(cp[i], blob)
+	}
+	r.offsetsMu.Lock()
+	r.offsets = cp
+	r.offsetsMu.Unlock()
+}
+
 func (r *LinuxReflector) Port() uint16 {
 	return r.port
 }
@@ -182,11 +195,18 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 				continue
 			}
 
-			reply := NewReplyPacket(probe, r.signer, r.geoprobePubkey)
-			var replyBuf [ReplyPacketSize]byte
-			_ = reply.Marshal(replyBuf[:])
+			r.offsetsMu.RLock()
+			currentOffsets := r.offsets
+			r.offsetsMu.RUnlock()
 
-			_ = unix.Sendto(r.fd, replyBuf[:], 0, from)
+			reply, err := NewReplyPacket(probe, r.signer, r.geoprobePubkey, currentOffsets)
+			if err != nil {
+				continue
+			}
+			var replyBuf [MaxReplyPacketSize]byte
+			replyLen, _ := reply.Marshal(replyBuf[:])
+
+			_ = unix.Sendto(r.fd, replyBuf[:replyLen], 0, from)
 		}
 	}
 }

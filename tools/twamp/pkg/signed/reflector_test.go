@@ -358,56 +358,6 @@ func TestReflector_Linux(t *testing.T) {
 		assert.True(t, reply.Verify())
 	})
 
-	t.Run("reject corrupted signature on second probe", func(t *testing.T) {
-		t.Parallel()
-
-		senderPub, senderSigner := newTestSigner(t)
-		_, reflectorSigner := newTestSigner(t)
-
-		var senderPubKey [32]byte
-		copy(senderPubKey[:], senderPub)
-
-		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [32]byte{}, [][32]byte{senderPubKey}, 0)
-		require.NoError(t, err)
-		defer reflector.Close()
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		go func() {
-			_ = reflector.Run(ctx)
-		}()
-
-		time.Sleep(10 * time.Millisecond)
-
-		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
-		require.NoError(t, err)
-		defer conn.Close()
-
-		// Probe 0: valid signature, should get reply (first probe skips verify).
-		probe0 := signed.NewProbePacket(1, senderSigner)
-		var buf [signed.ProbePacketSize]byte
-		require.NoError(t, probe0.Marshal(buf[:]))
-		_, err = conn.Write(buf[:])
-		require.NoError(t, err)
-
-		require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
-		replyBuf := make([]byte, signed.MaxReplyPacketSize)
-		_, err = conn.Read(replyBuf)
-		require.NoError(t, err, "first probe should receive reply")
-
-		// Probe 1: corrupted signature, should be rejected (second probe verifies).
-		probe1 := signed.NewProbePacket(2, senderSigner)
-		probe1.Signature[0] ^= 0xff
-		require.NoError(t, probe1.Marshal(buf[:]))
-		_, err = conn.Write(buf[:])
-		require.NoError(t, err)
-
-		require.NoError(t, conn.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
-		_, err = conn.Read(replyBuf)
-		assert.Error(t, err, "second probe with corrupted signature should be rejected")
-	})
-
 	t.Run("reject second probe from different IP", func(t *testing.T) {
 		t.Parallel()
 

@@ -21,6 +21,8 @@ pub const ENV_MAINNET_BETA_TELEMETRY_PUBKEY: Pubkey =
     Pubkey::from_str_const("tE1exJ5VMyoC9ByZeSmgtNzJCFF74G9JAv338sJiqkC");
 pub const ENV_MAINNET_BETA_INTERNET_LATENCY_COLLECTOR_PUBKEY: Pubkey =
     Pubkey::from_str_const("8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH");
+pub const ENV_MAINNET_BETA_GEOLOCATION_PUBKEY: Pubkey =
+    Pubkey::from_str_const("8H7nS6eZiuf7rGQtz3PPz2q9m4eJRL37PPM678KHnspG");
 
 // Constants related to DoubleZero testnet configuration
 pub const ENV_TESTNET_DOUBLEZERO_LEDGER_RPC_URL: &str =
@@ -33,6 +35,8 @@ pub const ENV_TESTNET_TELEMETRY_PUBKEY: Pubkey =
     Pubkey::from_str_const("3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1");
 pub const ENV_TESTNET_INTERNET_LATENCY_COLLECTOR_PUBKEY: Pubkey =
     Pubkey::from_str_const("HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1");
+pub const ENV_TESTNET_GEOLOCATION_PUBKEY: Pubkey =
+    Pubkey::from_str_const("3AG2BCA7gAm47Q6xZzPQcUUYvnBjxAvPKnPz919cxHF4");
 
 // Constants related to DoubleZero devnet configuration
 pub const ENV_DEVNET_DOUBLEZERO_LEDGER_RPC_URL: &str =
@@ -45,6 +49,8 @@ pub const ENV_DEVNET_TELEMETRY_PUBKEY: Pubkey =
     Pubkey::from_str_const("C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG");
 pub const ENV_DEVNET_INTERNET_LATENCY_COLLECTOR_PUBKEY: Pubkey =
     Pubkey::from_str_const("3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ");
+pub const ENV_DEVNET_GEOLOCATION_PUBKEY: Pubkey =
+    Pubkey::from_str_const("EXUUFfAjjuXnaBtsAMLsJX18ynnNHPwtkmk33bLVVoCm");
 
 // Constants related to DoubleZero localnet configuration
 pub const ENV_LOCAL_DOUBLEZERO_LEDGER_RPC_URL: &str = "http://localhost:8899";
@@ -55,3 +61,5 @@ pub const ENV_LOCAL_TELEMETRY_PUBKEY: Pubkey =
     Pubkey::from_str_const("C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG");
 pub const ENV_LOCAL_INTERNET_LATENCY_COLLECTOR_PUBKEY: Pubkey =
     Pubkey::from_str_const("3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ");
+pub const ENV_LOCAL_GEOLOCATION_PUBKEY: Pubkey =
+    Pubkey::from_str_const("36WA9nUCsJaAQL5h44WYoLezDpocy8Q71NZbtrUN8DyC");

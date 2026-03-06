@@ -39,6 +39,9 @@ All notable changes to this project will be documented in this file.
 - Smartcontract
   - Serviceability: add `Reservation` account and `ReserveConnection`/`CloseReservation` instructions for pre-reserving connection seats on devices, with `reserved_seats` factored into capacity checks on both reservation and user creation
   - Allow sentinel authority to add/remove multicast publisher and subscriber allowlist entries
+- SDK
+  - Add Rust SDK for geolocation program with `GeoClient`, GeoProbe CRUD operations (create, get, list, update, delete, add/remove parent device), and ProgramConfig management (init, get, update)
+  - Add `geo_program_id` to `NetworkConfig` for geolocation program discovery
 - Telemetry
   - Add `geoprobe-target-sender` CLI tool for sending signed TWAMP probes to a GeoProbe and verifying signed replies (RFC16 inbound probing flow)
   - Add Signed TWAMP reflector to geoprobe-agent with configurable listen port and allowed-pubkeys allowlist

@@ -75,6 +75,7 @@ impl CreateSubscribeUserCommand {
                     publisher: self.publisher,
                     subscriber: self.subscriber,
                     tunnel_endpoint: self.tunnel_endpoint,
+                    dz_prefix_count: 0,
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),

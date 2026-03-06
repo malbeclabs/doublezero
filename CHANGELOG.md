@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
   - Increase default route liveness probe interval (TxMin/RxMin) from 300ms to 1s and raise MaxTxCeil from 1s to 3s to preserve backoff headroom
 - Smartcontract
   - Serviceability: fix `validate_account_code` forcing lowercase on all entity types — restrict lowercase normalization to device and link codes only, preserving original case for locations, exchanges, contributors, and other entities
+  - Serviceability: onchain activation - atomic close for DeleteDevice ([#3188](https://github.com/malbeclabs/doublezero/pull/3188))
 
 ## [v0.10.0](https://github.com/malbeclabs/doublezero/compare/client/v0.9.0...client/v0.10.0) - 2026-03-04
 
@@ -60,8 +61,8 @@ All notable changes to this project will be documented in this file.
 - Tools
   - Add signed TWAMP sender and reflector with Ed25519 authentication and per-pubkey rate-limited signature verification
 - Activator
-    - Adds a stateless mode for when onchain allocation is enabled. This prevents activator/onchain from becoming out-of-sync.
-    - `--onchain-allocation` cli flag replaced with feature flag from GlobalState onchain
+  - Adds a stateless mode for when onchain allocation is enabled. This prevents activator/onchain from becoming out-of-sync.
+  - `--onchain-allocation` cli flag replaced with feature flag from GlobalState onchain
 - SDK
   - Add retry with exponential backoff (3 retries, 500ms–5s) to all read-only RPC calls in `DZClient`, improving resilience to transient RPC timeouts
 - CLI
@@ -112,6 +113,7 @@ All notable changes to this project will be documented in this file.
 - N/A
 
 ### Changes
+
 - Activator
   - removes accesspass monitor task (that expires access passes)
 - Monitor

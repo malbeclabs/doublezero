@@ -727,7 +727,7 @@ mod tests {
         test_instruction(DoubleZeroInstruction::SuspendDevice(), "SuspendDevice");
         test_instruction(DoubleZeroInstruction::ResumeDevice(), "ResumeDevice");
         test_instruction(
-            DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {}),
+            DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs::default()),
             "DeleteDevice",
         );
         test_instruction(

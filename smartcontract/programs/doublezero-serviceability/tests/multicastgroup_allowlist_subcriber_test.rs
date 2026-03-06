@@ -71,6 +71,7 @@ async fn test_multicast_subscriber_allowlist() {
             code: "test".to_string(),
             max_bandwidth: 100,
             owner: payer.pubkey(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -281,6 +282,7 @@ async fn test_multicast_subscriber_allowlist_sentinel_authority() {
             code: "sentinel-test".to_string(),
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),

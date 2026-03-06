@@ -31,6 +31,7 @@ impl CreateMulticastGroupCommand {
                     code,
                     max_bandwidth: self.max_bandwidth,
                     owner: self.owner,
+                    use_onchain_allocation: false,
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -70,6 +71,7 @@ mod tests {
                         code: "test_group".to_string(),
                         max_bandwidth: 1000,
                         owner: globalstate_pubkey,
+                        use_onchain_allocation: false,
                     },
                 )),
                 predicate::eq(vec![

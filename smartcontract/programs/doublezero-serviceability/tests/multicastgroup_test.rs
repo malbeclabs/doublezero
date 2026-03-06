@@ -59,6 +59,7 @@ async fn test_multicastgroup() {
             code: "la".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -204,7 +205,9 @@ async fn test_multicastgroup() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {}),
+        DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -282,6 +285,7 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
             code: "la".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -340,7 +344,9 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {}),
+        DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -400,6 +406,7 @@ async fn test_multicastgroup_deactivate_fails_when_not_deleting() {
             code: "la".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -504,6 +511,7 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
             code: "test".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(wrong_multicastgroup_pubkey, false),
@@ -531,6 +539,7 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
             code: "test".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(correct_multicastgroup_pubkey, false),
@@ -588,6 +597,7 @@ async fn test_multicastgroup_reactivate_invalid_status_fails() {
             code: "reactivate-test".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -661,6 +671,7 @@ async fn test_suspend_multicastgroup_from_pending_fails() {
             code: "test".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -738,6 +749,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             code: "delete-test".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -795,7 +807,9 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {}),
+        DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -838,7 +852,9 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {}),
+        DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -881,7 +897,9 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {}),
+        DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),

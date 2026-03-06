@@ -21,7 +21,9 @@ impl DeleteMulticastGroupCommand {
         // TODO: Check for existing AccessPass referencing this multicast group pubkey in either publishers or subscribers lists before deletion
 
         client.execute_transaction(
-            DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {}),
+            DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
+                use_onchain_deallocation: false,
+            }),
             vec![
                 AccountMeta::new(mgroup_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -81,7 +83,9 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteMulticastGroup(
-                    MulticastGroupDeleteArgs {},
+                    MulticastGroupDeleteArgs {
+                        use_onchain_deallocation: false,
+                    },
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),

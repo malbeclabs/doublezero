@@ -213,7 +213,10 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			// capturing `now` — its latency only affects reply 1, which doesn't
 			// impact the measurement (TEE targets can't measure time). Both
 			// probes in a pair must come from the same source IP.
-			fromAddr := from.(*unix.SockaddrInet4)
+			fromAddr, ok := from.(*unix.SockaddrInet4)
+			if !ok {
+				continue
+			}
 			if state.pairCount == 0 {
 				state.pairSourceIP = fromAddr.Addr
 			} else {

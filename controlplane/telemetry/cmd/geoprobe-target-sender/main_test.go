@@ -66,6 +66,26 @@ func TestFormatRTT(t *testing.T) {
 	}
 }
 
+func TestFormatNsAsMs(t *testing.T) {
+	tests := []struct {
+		name     string
+		ns       uint64
+		expected string
+	}{
+		{"zero", 0, "0.000ms"},
+		{"one millisecond", 1_000_000, "1.000ms"},
+		{"sub-millisecond", 500_000, "0.500ms"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatNsAsMs(tt.ns)
+			if got != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
 func TestAbbreviatePubkey(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -89,13 +109,14 @@ func TestAbbreviatePubkey(t *testing.T) {
 
 func TestProbeOutput_JSON(t *testing.T) {
 	output := probeOutput{
-		Timestamp:       "2025-01-15T14:23:45Z",
-		Seq:             1,
-		RttMs:           12.534,
-		ProbeSigValid:   true,
-		ReplySigValid:   true,
-		AuthorityPubkey: "FSM7abc123456zmQ",
-		GeoprobePubkey:  "ABCD1234xyz",
+		Timestamp:           "2025-01-15T14:23:45Z",
+		Seq:                 1,
+		ProbeMeasuredRttMs:  12.534,
+		TargetMeasuredRttMs: 5.200,
+		Reply0SigValid:      true,
+		Reply1SigValid:      true,
+		AuthorityPubkey:     "FSM7abc123456zmQ",
+		GeoprobePubkey:      "ABCD1234xyz",
 	}
 
 	data, err := json.Marshal(output)
@@ -111,8 +132,11 @@ func TestProbeOutput_JSON(t *testing.T) {
 	if decoded.Seq != 1 {
 		t.Errorf("expected seq=1, got %d", decoded.Seq)
 	}
-	if decoded.RttMs != 12.534 {
-		t.Errorf("expected rtt_ms=12.534, got %f", decoded.RttMs)
+	if decoded.ProbeMeasuredRttMs != 12.534 {
+		t.Errorf("expected probe_measured_rtt_ms=12.534, got %f", decoded.ProbeMeasuredRttMs)
+	}
+	if decoded.TargetMeasuredRttMs != 5.200 {
+		t.Errorf("expected target_measured_rtt_ms=5.200, got %f", decoded.TargetMeasuredRttMs)
 	}
 	if decoded.AuthorityPubkey != "FSM7abc123456zmQ" {
 		t.Errorf("expected authority_pubkey=FSM7abc123456zmQ, got %s", decoded.AuthorityPubkey)
@@ -124,10 +148,11 @@ func TestProbeOutput_JSON(t *testing.T) {
 
 func TestProbeOutput_TimeoutJSON(t *testing.T) {
 	output := probeOutput{
-		Timestamp: "2025-01-15T14:23:47Z",
-		Seq:       3,
-		RttMs:     -1,
-		Error:     "timeout",
+		Timestamp:           "2025-01-15T14:23:47Z",
+		Seq:                 3,
+		ProbeMeasuredRttMs:  -1,
+		TargetMeasuredRttMs: -1,
+		Error:               "timeout",
 	}
 
 	data, err := json.Marshal(output)
@@ -143,8 +168,8 @@ func TestProbeOutput_TimeoutJSON(t *testing.T) {
 	if decoded["error"] != "timeout" {
 		t.Errorf("expected error=timeout, got %v", decoded["error"])
 	}
-	if decoded["rtt_ms"].(float64) != -1 {
-		t.Errorf("expected rtt_ms=-1, got %v", decoded["rtt_ms"])
+	if decoded["probe_measured_rtt_ms"].(float64) != -1 {
+		t.Errorf("expected probe_measured_rtt_ms=-1, got %v", decoded["probe_measured_rtt_ms"])
 	}
 	// omitempty fields should not be present.
 	if _, ok := decoded["authority_pubkey"]; ok {
@@ -153,20 +178,21 @@ func TestProbeOutput_TimeoutJSON(t *testing.T) {
 	if _, ok := decoded["geoprobe_pubkey"]; ok {
 		t.Error("expected geoprobe_pubkey to be omitted for timeout")
 	}
-	if _, ok := decoded["probe_sig_valid"]; ok {
-		t.Error("expected probe_sig_valid to be omitted for timeout")
+	if _, ok := decoded["reply0_sig_valid"]; ok {
+		t.Error("expected reply0_sig_valid to be omitted for timeout")
 	}
 }
 
 func TestProbeOutput_SuccessJSON_OmitsError(t *testing.T) {
 	output := probeOutput{
-		Timestamp:       "2025-01-15T14:23:45Z",
-		Seq:             1,
-		RttMs:           5.0,
-		ProbeSigValid:   true,
-		ReplySigValid:   true,
-		AuthorityPubkey: "test",
-		GeoprobePubkey:  "test2",
+		Timestamp:           "2025-01-15T14:23:45Z",
+		Seq:                 1,
+		ProbeMeasuredRttMs:  5.0,
+		TargetMeasuredRttMs: 3.0,
+		Reply0SigValid:      true,
+		Reply1SigValid:      true,
+		AuthorityPubkey:     "test",
+		GeoprobePubkey:      "test2",
 	}
 
 	data, err := json.Marshal(output)
@@ -185,7 +211,6 @@ func TestProbeOutput_SuccessJSON_OmitsError(t *testing.T) {
 }
 
 func TestNewEd25519Signer_Integration(t *testing.T) {
-	// Verify that a Solana wallet's private key works with the signed package's signer.
 	wallet := solana.NewWallet()
 	signer := signed.NewEd25519Signer(ed25519.PrivateKey(wallet.PrivateKey))
 
@@ -194,7 +219,6 @@ func TestNewEd25519Signer_Integration(t *testing.T) {
 		t.Fatalf("expected 32-byte public key, got %d bytes", len(pub))
 	}
 
-	// Verify the public key matches.
 	expected := wallet.PublicKey()
 	var got [32]byte
 	copy(got[:], pub)

@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -32,8 +33,8 @@ var (
 	probePort   = flag.Uint("probe-port", defaultProbePort, "TWAMP port on the probe")
 	probePK     = flag.String("probe-pk", "", "Base58 Ed25519 public key of the GeoProbe's signing authority (required)")
 	keypairPath = flag.String("keypair", "", "Path to this target's Ed25519 keypair file for signing outbound message (required)")
-	interval    = flag.Duration("interval", defaultInterval, "Interval between probes")
-	count       = flag.Uint("count", 0, "Number of probes to send (0 = infinite)")
+	interval    = flag.Duration("interval", defaultInterval, "Interval between probe pairs")
+	count       = flag.Uint("count", 0, "Number of probe pairs to send (0 = infinite)")
 	timeout     = flag.Duration("timeout", defaultTimeout, "Per-probe timeout")
 	logFormat   = flag.String("log-format", "text", "Log format: text or json")
 	verbose     = flag.Bool("verbose", false, "Enable debug logging")
@@ -108,9 +109,9 @@ func main() {
 	}
 	defer sender.Close()
 
-	log.Info("sending probes", "target", remoteAddr.String())
+	log.Info("sending paired probes", "target", remoteAddr.String())
 
-	// Probe loop.
+	// Paired probe loop.
 	var seq uint32
 	for {
 		select {
@@ -122,23 +123,12 @@ func main() {
 
 		seq++
 		if *count > 0 && seq > uint32(*count) {
-			log.Info("completed all probes", "count", *count)
+			log.Info("completed all probe pairs", "count", *count)
 			return
 		}
 
-		probeCtx, probeCancel := context.WithTimeout(ctx, *timeout)
-		rtt, reply, err := sender.Probe(probeCtx)
-		probeCancel()
+		probePair(ctx, log, sender, seq)
 
-		if err != nil {
-			logProbeError(log, seq, err)
-		} else {
-			probeSigValid := reply.Probe.Verify()
-			replySigValid := reply.Verify()
-			logProbeResult(log, seq, rtt, probeSigValid, replySigValid, reply)
-		}
-
-		// Wait for next interval (unless this is the last probe).
 		if *count > 0 && seq >= uint32(*count) {
 			continue
 		}
@@ -149,6 +139,127 @@ func main() {
 		case <-time.After(*interval):
 		}
 	}
+}
+
+// probePair sends two probes in quick succession and logs the combined result.
+// Probe 0 is sent, its reply is received, then probe 1 is sent immediately
+// (before verifying reply 0). Reply 1's SinceLastRxNs gives the probe-measured RTT.
+func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq uint32) {
+	// Probe 0.
+	probeCtx0, cancel0 := context.WithTimeout(ctx, *timeout)
+	rtt0, reply0, err0 := sender.Probe(probeCtx0)
+	cancel0()
+	if err0 != nil {
+		logProbeError(log, seq, err0)
+		return
+	}
+
+	// Probe 1: sent immediately after receiving reply 0 (before verifying it).
+	probeCtx1, cancel1 := context.WithTimeout(ctx, *timeout)
+	rtt1, reply1, err1 := sender.Probe(probeCtx1)
+	cancel1()
+	if err1 != nil {
+		logProbeError(log, seq, err1)
+		return
+	}
+
+	// Verify both replies.
+	reply0SigValid := reply0.Verify()
+	reply1SigValid := reply1.Verify()
+
+	// Probe Measured RTT: inter-arrival time at the reflector (from reply 1).
+	probeMeasuredRttNs := reply1.SinceLastRxNs
+
+	// Target Measured RTT: lower of the two sender-measured RTTs.
+	targetMeasuredRtt := min(rtt0, rtt1)
+
+	logPairedResult(log, seq, probeMeasuredRttNs, targetMeasuredRtt, reply0SigValid, reply1SigValid, reply1)
+}
+
+func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0SigValid, reply1SigValid bool, reply *signed.ReplyPacket) {
+	authorityPK := solana.PublicKeyFromBytes(reply.AuthorityPubkey[:])
+	geoprobePK := solana.PublicKeyFromBytes(reply.GeoprobePubkey[:])
+	offsets := parseOffsets(reply.Offsets)
+
+	if *logFormat == "json" {
+		output := probeOutput{
+			Timestamp:           time.Now().UTC().Format(time.RFC3339),
+			Seq:                 seq,
+			ProbeMeasuredRttMs:  float64(probeMeasuredRttNs) / 1e6,
+			TargetMeasuredRttMs: float64(targetMeasuredRtt.Microseconds()) / 1000.0,
+			Reply0SigValid:      reply0SigValid,
+			Reply1SigValid:      reply1SigValid,
+			MeasurementSlot:     reply.MeasurementSlot,
+			Lat:                 reply.Lat,
+			Lng:                 reply.Lng,
+			RttNs:               reply.RttNs,
+			SinceLastRxNs:       reply.SinceLastRxNs,
+			AuthorityPubkey:     authorityPK.String(),
+			GeoprobePubkey:      geoprobePK.String(),
+			Offsets:             offsets,
+		}
+		data, err := json.Marshal(output)
+		if err != nil {
+			log.Error("failed to marshal output", "error", err)
+			return
+		}
+		fmt.Println(string(data))
+	} else {
+		fmt.Print(formatTextResult(seq, probeMeasuredRttNs, targetMeasuredRtt, reply0SigValid, reply1SigValid, authorityPK, geoprobePK, reply, offsets))
+	}
+}
+
+func logProbeError(log *slog.Logger, seq uint32, probeErr error) {
+	errStr := probeErr.Error()
+	if errors.Is(probeErr, context.DeadlineExceeded) {
+		errStr = "timeout"
+	}
+
+	if *logFormat == "json" {
+		output := probeOutput{
+			Timestamp:           time.Now().UTC().Format(time.RFC3339),
+			Seq:                 seq,
+			ProbeMeasuredRttMs:  -1,
+			TargetMeasuredRttMs: -1,
+			Error:               errStr,
+		}
+		data, err := json.Marshal(output)
+		if err != nil {
+			log.Error("failed to marshal output", "error", err)
+			return
+		}
+		fmt.Println(string(data))
+	} else {
+		fmt.Printf("\n[%s] Probe Pair #%d — ERROR\n  %s\n\n", time.Now().UTC().Format("2006-01-02 15:04:05 MST"), seq, errStr)
+	}
+}
+
+type probeOutput struct {
+	Timestamp           string         `json:"timestamp"`
+	Seq                 uint32         `json:"seq"`
+	ProbeMeasuredRttMs  float64        `json:"probe_measured_rtt_ms"`
+	TargetMeasuredRttMs float64        `json:"target_measured_rtt_ms"`
+	Reply0SigValid      bool           `json:"reply0_sig_valid,omitempty"`
+	Reply1SigValid      bool           `json:"reply1_sig_valid,omitempty"`
+	MeasurementSlot     uint64         `json:"measurement_slot,omitempty"`
+	Lat                 float64        `json:"lat,omitempty"`
+	Lng                 float64        `json:"lng,omitempty"`
+	RttNs               uint64         `json:"rtt_ns,omitempty"`
+	SinceLastRxNs       uint64         `json:"since_last_rx_ns,omitempty"`
+	AuthorityPubkey     string         `json:"authority_pubkey,omitempty"`
+	GeoprobePubkey      string         `json:"geoprobe_pubkey,omitempty"`
+	Offsets             []offsetOutput `json:"offsets,omitempty"`
+	Error               string         `json:"error,omitempty"`
+}
+
+type offsetOutput struct {
+	AuthorityPubkey string  `json:"authority_pubkey"`
+	SenderPubkey    string  `json:"sender_pubkey"`
+	Lat             float64 `json:"lat"`
+	Lng             float64 `json:"lng"`
+	RttNs           uint64  `json:"rtt_ns"`
+	MeasuredRttNs   uint64  `json:"measured_rtt_ns"`
+	SigValid        bool    `json:"sig_valid"`
 }
 
 func validateFlags() error {
@@ -207,114 +318,12 @@ func setupLogger(format string, debug bool) *slog.Logger {
 	return slog.New(handler)
 }
 
-func logProbeResult(log *slog.Logger, seq uint32, rtt time.Duration, probeSigValid, replySigValid bool, reply *signed.ReplyPacket) {
-	authorityPK := solana.PublicKeyFromBytes(reply.AuthorityPubkey[:])
-	geoprobePK := solana.PublicKeyFromBytes(reply.GeoprobePubkey[:])
-	offsets := parseOffsets(reply.Offsets)
-
-	if *logFormat == "json" {
-		output := probeOutput{
-			Timestamp:       time.Now().UTC().Format(time.RFC3339),
-			Seq:             seq,
-			RttMs:           float64(rtt.Microseconds()) / 1000.0,
-			ProbeSigValid:   probeSigValid,
-			ReplySigValid:   replySigValid,
-			AuthorityPubkey: authorityPK.String(),
-			GeoprobePubkey:  geoprobePK.String(),
-			Offsets:         offsets,
-		}
-		data, err := json.Marshal(output)
-		if err != nil {
-			log.Error("failed to marshal output", "error", err)
-			return
-		}
-		fmt.Println(string(data))
-	} else {
-		probeSigStr := "VALID"
-		if !probeSigValid {
-			probeSigStr = "INVALID"
-		}
-		replySigStr := "VALID"
-		if !replySigValid {
-			replySigStr = "INVALID"
-		}
-		fmt.Printf("[%s] seq=%d rtt=%s probe_sig=%s reflector_sig=%s authority=%s geoprobe=%s offsets=%d\n",
-			time.Now().UTC().Format("2006-01-02 15:04:05 MST"),
-			seq,
-			formatRTT(rtt),
-			probeSigStr,
-			replySigStr,
-			abbreviatePubkey(authorityPK.String()),
-			abbreviatePubkey(geoprobePK.String()),
-			len(offsets),
-		)
-		for i, o := range offsets {
-			sigStr := "VALID"
-			if !o.SigValid {
-				sigStr = "INVALID"
-			}
-			fmt.Printf("  offset[%d] sig=%s sender=%s authority=%s lat=%.4f lng=%.4f rtt_ns=%d measured_rtt_ns=%d\n",
-				i, sigStr,
-				abbreviatePubkey(o.SenderPubkey),
-				abbreviatePubkey(o.AuthorityPubkey),
-				o.Lat, o.Lng, o.RttNs, o.MeasuredRttNs,
-			)
-		}
-	}
-}
-
-func logProbeError(log *slog.Logger, seq uint32, probeErr error) {
-	errStr := probeErr.Error()
-	if errors.Is(probeErr, context.DeadlineExceeded) {
-		errStr = "timeout"
-	}
-
-	if *logFormat == "json" {
-		output := probeOutput{
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-			Seq:       seq,
-			RttMs:     -1,
-			Error:     errStr,
-		}
-		data, err := json.Marshal(output)
-		if err != nil {
-			log.Error("failed to marshal output", "error", err)
-			return
-		}
-		fmt.Println(string(data))
-	} else {
-		fmt.Printf("[%s] seq=%d rtt=%s\n",
-			time.Now().UTC().Format("2006-01-02 15:04:05 MST"),
-			seq,
-			errStr,
-		)
-	}
-}
-
-type probeOutput struct {
-	Timestamp       string         `json:"timestamp"`
-	Seq             uint32         `json:"seq"`
-	RttMs           float64        `json:"rtt_ms"`
-	ProbeSigValid   bool           `json:"probe_sig_valid,omitempty"`
-	ReplySigValid   bool           `json:"reply_sig_valid,omitempty"`
-	AuthorityPubkey string         `json:"authority_pubkey,omitempty"`
-	GeoprobePubkey  string         `json:"geoprobe_pubkey,omitempty"`
-	Offsets         []offsetOutput `json:"offsets,omitempty"`
-	Error           string         `json:"error,omitempty"`
-}
-
-type offsetOutput struct {
-	AuthorityPubkey string  `json:"authority_pubkey"`
-	SenderPubkey    string  `json:"sender_pubkey"`
-	Lat             float64 `json:"lat"`
-	Lng             float64 `json:"lng"`
-	RttNs           uint64  `json:"rtt_ns"`
-	MeasuredRttNs   uint64  `json:"measured_rtt_ns"`
-	SigValid        bool    `json:"sig_valid"`
-}
-
 func formatRTT(d time.Duration) string {
 	return fmt.Sprintf("%.3fms", float64(d.Microseconds())/1000.0)
+}
+
+func formatNsAsMs(ns uint64) string {
+	return fmt.Sprintf("%.3fms", float64(ns)/1e6)
 }
 
 func abbreviatePubkey(pk string) string {
@@ -322,6 +331,57 @@ func abbreviatePubkey(pk string) string {
 		return pk
 	}
 	return pk[:4] + "..." + pk[len(pk)-4:]
+}
+
+func formatTextResult(seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0SigValid, reply1SigValid bool, authorityPK, geoprobePK solana.PublicKey, reply *signed.ReplyPacket, offsets []offsetOutput) string {
+	var sb strings.Builder
+
+	sb.WriteString("\n")
+	fmt.Fprintf(&sb, "[%s] Probe Pair #%d\n", time.Now().UTC().Format("2006-01-02 15:04:05 MST"), seq)
+	fmt.Fprintf(&sb, "  Probe-Measured RTT:  %s\n", formatNsAsMs(probeMeasuredRttNs))
+	fmt.Fprintf(&sb, "  Target-Measured RTT: %s\n", formatRTT(targetMeasuredRtt))
+	fmt.Fprintf(&sb, "  Reference Point: %s\n", formatCoordinate(reply.Lat, reply.Lng))
+	fmt.Fprintf(&sb, "  Accumulated RTT: %s\n", formatNsAsMs(reply.RttNs))
+	fmt.Fprintf(&sb, "  Measurement Slot: %d\n", reply.MeasurementSlot)
+	fmt.Fprintf(&sb, "  Authority: %s\n", abbreviatePubkey(authorityPK.String()))
+	fmt.Fprintf(&sb, "  GeoProbe:  %s\n", abbreviatePubkey(geoprobePK.String()))
+	fmt.Fprintf(&sb, "  Reply 0 Signature: %s\n", sigMark(reply0SigValid))
+	fmt.Fprintf(&sb, "  Reply 1 Signature: %s\n", sigMark(reply1SigValid))
+
+	if len(offsets) > 0 {
+		sb.WriteString("\n  DZD Reference Chain:\n")
+		for i, o := range offsets {
+			fmt.Fprintf(&sb, "    [%d] Authority: %s\n", i+1, abbreviatePubkey(o.AuthorityPubkey))
+			fmt.Fprintf(&sb, "        Sender:    %s\n", abbreviatePubkey(o.SenderPubkey))
+			fmt.Fprintf(&sb, "        Location:  %s\n", formatCoordinate(o.Lat, o.Lng))
+			fmt.Fprintf(&sb, "        RTT: %s  Measured RTT: %s\n", formatNsAsMs(o.RttNs), formatNsAsMs(o.MeasuredRttNs))
+			fmt.Fprintf(&sb, "        Signature: %s\n", sigMark(o.SigValid))
+		}
+	}
+
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+func formatCoordinate(lat, lng float64) string {
+	latDir := "N"
+	if lat < 0 {
+		latDir = "S"
+		lat = -lat
+	}
+	lngDir := "E"
+	if lng < 0 {
+		lngDir = "W"
+		lng = -lng
+	}
+	return fmt.Sprintf("%.4f\u00b0%s, %.4f\u00b0%s", lat, latDir, lng, lngDir)
+}
+
+func sigMark(valid bool) string {
+	if valid {
+		return "VALID"
+	}
+	return "INVALID"
 }
 
 func parseOffsets(blobs [][]byte) []offsetOutput {

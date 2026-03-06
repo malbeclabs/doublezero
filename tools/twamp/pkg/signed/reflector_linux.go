@@ -14,6 +14,12 @@ import (
 
 const defaultReadTimeout = 1 * time.Second
 
+type senderState struct {
+	lastRxTime time.Time
+	pairCount  int
+	pairStart  time.Time
+}
+
 type LinuxReflector struct {
 	fd             int
 	epfd           int
@@ -23,7 +29,7 @@ type LinuxReflector struct {
 	signer         Signer
 	geoprobePubkey [32]byte
 	authorizedKeys sync.Map // map[[32]byte]struct{}
-	lastVerify     sync.Map // map[[32]byte]time.Time
+	senderStates   sync.Map // map[[32]byte]*senderState
 	offsetsMu      sync.RWMutex
 	offsets        [][]byte
 	shutdown       chan struct{}
@@ -182,24 +188,56 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			}
 
 			now := time.Now()
-			if interval := r.verifyInterval; interval > 0 {
-				if last, ok := r.lastVerify.Load(probe.SenderPubkey); ok {
-					if now.Sub(last.(time.Time)) < interval {
-						continue
-					}
+
+			// Load or create per-sender state.
+			var state *senderState
+			if raw, ok := r.senderStates.Load(probe.SenderPubkey); ok {
+				state = raw.(*senderState)
+			} else {
+				state = &senderState{}
+				if actual, loaded := r.senderStates.LoadOrStore(probe.SenderPubkey, state); loaded {
+					state = actual.(*senderState)
 				}
 			}
-			r.lastVerify.Store(probe.SenderPubkey, now)
 
-			if !probe.Verify() {
-				continue
+			// Pair-based rate limiting: allow 2 probes per window, then drop.
+			if interval := r.verifyInterval; interval > 0 {
+				if state.pairCount >= 2 && now.Sub(state.pairStart) < interval {
+					continue
+				}
+				if state.pairCount >= 2 {
+					state.pairCount = 0
+				}
 			}
+
+			var sinceLastRxNs uint64
+			if !state.lastRxTime.IsZero() {
+				sinceLastRxNs = uint64(now.Sub(state.lastRxTime).Nanoseconds())
+			}
+			state.lastRxTime = now
+			if state.pairCount == 0 {
+				state.pairStart = now
+			}
+			state.pairCount++
 
 			r.offsetsMu.RLock()
 			currentOffsets := r.offsets
 			r.offsetsMu.RUnlock()
 
-			reply, err := NewReplyPacket(probe, r.signer, r.geoprobePubkey, currentOffsets)
+			// Derive location data from the first reference offset.
+			var slot uint64
+			var lat, lng float64
+			var dzdRttNs uint64
+			if len(currentOffsets) > 0 {
+				if info, ok := ParseOffsetInfo(currentOffsets[0]); ok {
+					slot = info.MeasurementSlot
+					lat = info.Lat
+					lng = info.Lng
+					dzdRttNs = info.RttNs
+				}
+			}
+
+			reply, err := NewReplyPacket(probe, r.signer, r.geoprobePubkey, currentOffsets, slot, lat, lng, sinceLastRxNs, dzdRttNs+sinceLastRxNs)
 			if err != nil {
 				continue
 			}

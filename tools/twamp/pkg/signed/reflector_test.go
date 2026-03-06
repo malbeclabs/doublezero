@@ -75,6 +75,7 @@ func TestReflector_Linux(t *testing.T) {
 		assert.Empty(t, reply.Offsets)
 		assert.True(t, reply.Probe.Verify())
 		assert.True(t, reply.Verify())
+		assert.Equal(t, uint64(0), reply.SinceLastRxNs, "first probe should have zero SinceLastRxNs")
 	})
 
 	t.Run("reject unauthorized pubkey", func(t *testing.T) {
@@ -117,7 +118,7 @@ func TestReflector_Linux(t *testing.T) {
 		assert.Error(t, err, "should not receive reply for unauthorized pubkey")
 	})
 
-	t.Run("reject invalid signature", func(t *testing.T) {
+	t.Run("reply to corrupted signature from authorized pubkey", func(t *testing.T) {
 		t.Parallel()
 
 		senderPub, senderSigner := newTestSigner(t)
@@ -151,10 +152,14 @@ func TestReflector_Linux(t *testing.T) {
 		_, err = conn.Write(buf[:])
 		require.NoError(t, err)
 
-		require.NoError(t, conn.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
 		replyBuf := make([]byte, signed.MaxReplyPacketSize)
-		_, err = conn.Read(replyBuf)
-		assert.Error(t, err, "should not receive reply for invalid signature")
+		n, err := conn.Read(replyBuf)
+		require.NoError(t, err, "should receive reply for authorized pubkey even with corrupted signature")
+
+		reply, err := signed.UnmarshalReplyPacket(replyBuf[:n])
+		require.NoError(t, err)
+		assert.True(t, reply.Verify(), "reply signature should be valid")
 	})
 
 	t.Run("reject wrong-size packets", func(t *testing.T) {
@@ -353,7 +358,7 @@ func TestReflector_Linux(t *testing.T) {
 		assert.True(t, reply.Verify())
 	})
 
-	t.Run("rate limit drops repeated probes from same pubkey", func(t *testing.T) {
+	t.Run("pair-based rate limiting", func(t *testing.T) {
 		t.Parallel()
 
 		senderPub, senderSigner := newTestSigner(t)
@@ -379,6 +384,7 @@ func TestReflector_Linux(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 
+		// Probe 1: should get reply (first of pair).
 		probe1 := signed.NewProbePacket(1, senderSigner)
 		var buf [signed.ProbePacketSize]byte
 		require.NoError(t, probe1.Marshal(buf[:]))
@@ -387,16 +393,35 @@ func TestReflector_Linux(t *testing.T) {
 
 		require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
 		replyBuf := make([]byte, signed.MaxReplyPacketSize)
-		_, err = conn.Read(replyBuf)
+		n, err := conn.Read(replyBuf)
 		require.NoError(t, err, "first probe should receive reply")
 
+		reply1, err := signed.UnmarshalReplyPacket(replyBuf[:n])
+		require.NoError(t, err)
+		assert.Equal(t, uint64(0), reply1.SinceLastRxNs, "first probe should have zero SinceLastRxNs")
+
+		// Probe 2: should get reply (second of pair).
 		probe2 := signed.NewProbePacket(2, senderSigner)
 		require.NoError(t, probe2.Marshal(buf[:]))
 		_, err = conn.Write(buf[:])
 		require.NoError(t, err)
 
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+		n, err = conn.Read(replyBuf)
+		require.NoError(t, err, "second probe should receive reply (pair allowed)")
+
+		reply2, err := signed.UnmarshalReplyPacket(replyBuf[:n])
+		require.NoError(t, err)
+		assert.Greater(t, reply2.SinceLastRxNs, uint64(0), "second probe should have non-zero SinceLastRxNs")
+
+		// Probe 3: should be dropped (pair exhausted, within verifyInterval).
+		probe3 := signed.NewProbePacket(3, senderSigner)
+		require.NoError(t, probe3.Marshal(buf[:]))
+		_, err = conn.Write(buf[:])
+		require.NoError(t, err)
+
 		require.NoError(t, conn.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
 		_, err = conn.Read(replyBuf)
-		assert.Error(t, err, "second probe should be rate-limited")
+		assert.Error(t, err, "third probe should be rate-limited")
 	})
 }

@@ -88,8 +88,7 @@ pub fn find_payment_escrow_address(
 //   [0..8)    discriminator
 //   [8..40)   device_key: Pubkey
 //   [40..44)  client_ip_bits: u32
-//   [44)      bump_seed: u8
-//   [45)      usdc_token_pda_bump_seed: u8
+//   [44..46)  _padding: [u8; 2]
 //   [46..48)  tenure_epochs: u16
 //   [48..56)  _flags: Flags (u64)
 //   [56..64)  funded_epoch: u64
@@ -102,8 +101,6 @@ pub const CLIENT_SEAT_DISCRIMINATOR: Discriminator<DISCRIMINATOR_LEN> =
 
 pub const CLIENT_SEAT_DEVICE_KEY_OFFSET: usize = DISCRIMINATOR_LEN;
 pub const CLIENT_SEAT_CLIENT_IP_OFFSET: usize = DISCRIMINATOR_LEN + 32;
-pub const CLIENT_SEAT_BUMP_OFFSET: usize = DISCRIMINATOR_LEN + 36;
-pub const CLIENT_SEAT_TOKEN_PDA_BUMP_OFFSET: usize = DISCRIMINATOR_LEN + 37;
 pub const CLIENT_SEAT_TENURE_OFFSET: usize = DISCRIMINATOR_LEN + 38;
 pub const CLIENT_SEAT_FUNDED_EPOCH_OFFSET: usize = DISCRIMINATOR_LEN + 48;
 pub const CLIENT_SEAT_ACTIVE_EPOCH_OFFSET: usize = DISCRIMINATOR_LEN + 56;
@@ -194,10 +191,13 @@ pub fn parse_payment_escrow(data: &[u8]) -> Option<(Pubkey, Pubkey, u64)> {
 // DeviceHistory raw-byte parsing.
 //
 // Layout (ZeroCopy with 8-byte discriminator prefix):
-//   [0..8)   discriminator
-//   [8..40)  device_key: Pubkey
-//   [40..48) flags: u64
-//   [48..80) metro_exchange_key: Pubkey
+//   [0..8)    discriminator
+//   [8..40)   device_key: Pubkey
+//   [40..48)  flags: u64
+//   [48)      bump_seed: u8
+//   [49)      usdc_token_pda_bump_seed: u8
+//   [50..56)  _padding: [u8; 6]
+//   [56..88)  metro_exchange_key: Pubkey
 // ---------------------------------------------------------------------------
 
 pub const DEVICE_HISTORY_DISCRIMINATOR: Discriminator<DISCRIMINATOR_LEN> =
@@ -205,8 +205,8 @@ pub const DEVICE_HISTORY_DISCRIMINATOR: Discriminator<DISCRIMINATOR_LEN> =
 
 pub const DEVICE_HISTORY_DEVICE_KEY_OFFSET: usize = DISCRIMINATOR_LEN;
 pub const DEVICE_HISTORY_FLAGS_OFFSET: usize = DISCRIMINATOR_LEN + 32;
-pub const DEVICE_HISTORY_EXCHANGE_KEY_OFFSET: usize = DISCRIMINATOR_LEN + 32 + 8;
-const DEVICE_HISTORY_RING_OFFSET: usize = DISCRIMINATOR_LEN + 200; // after StorageGap<4> (128 bytes)
+pub const DEVICE_HISTORY_EXCHANGE_KEY_OFFSET: usize = DISCRIMINATOR_LEN + 32 + 16;
+const DEVICE_HISTORY_RING_OFFSET: usize = DISCRIMINATOR_LEN + 208; // after StorageGap<4> (128 bytes)
 const DEVICE_HISTORY_ENTRY_SIZE: usize = 88; // EpochEntry<DeviceSubscription>
 
 /// Parse the metro exchange pubkey directly from raw `DeviceHistory` account data.

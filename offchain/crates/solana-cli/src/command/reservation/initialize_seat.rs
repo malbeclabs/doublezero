@@ -14,12 +14,12 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
-use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
+use solana_sdk::compute_budget::ComputeBudgetInstruction;
 
 /*
    doublezero-solana reservation initialize-seat \
        --device <PUBKEY> | --device-code <CODE> \
-       --client-ip <IP> [--usdc-mint <PUBKEY>]
+       --client-ip <IP>
 */
 
 #[derive(Debug, Args)]
@@ -29,9 +29,6 @@ pub struct InitializeSeatCommand {
     /// Client IPv4 address
     #[arg(long)]
     client_ip: Ipv4Addr,
-    /// USDC mint (defaults to mainnet USDC)
-    #[arg(long, hide = true)]
-    usdc_mint: Option<Pubkey>,
 
     #[command(flatten)]
     solana_payer_options: SolanaPayerOptions,
@@ -48,12 +45,10 @@ impl InitializeSeatCommand {
         println!("Connected to Solana: {network_env:?}");
 
         let device = self.device_args.resolve(network_env).await?;
-        let usdc_mint_key = self.usdc_mint.unwrap_or(*state::USDC_MINT_KEY);
         let client_ip_bits = u32::from(self.client_ip);
 
         // Derive PDAs.
         let (client_seat_key, seat_bump) = state::find_client_seat_address(&device, client_ip_bits);
-        let (_, token_pda_bump) = state::find_token_pda_address(&client_seat_key, &usdc_mint_key);
         let (_, escrow_bump) = state::find_payment_escrow_address(&client_seat_key, &wallet_key);
 
         // Check if the client seat already exists on-chain.
@@ -71,19 +66,13 @@ impl InitializeSeatCommand {
         } else {
             let seat_ix = try_build_instruction(
                 &ID,
-                InitializeClientSeatAccounts::new(
-                    &wallet_key,
-                    &device,
-                    client_ip_bits,
-                    &usdc_mint_key,
-                ),
+                InitializeClientSeatAccounts::new(&wallet_key, &device, client_ip_bits),
                 &ReservationInstructionData::InitializeClientSeat {
                     client_ip: client_ip_bits,
                 },
             )?;
             instructions.push(seat_ix);
-            compute_unit_limit += Wallet::compute_units_for_bump_seed(seat_bump)
-                + Wallet::compute_units_for_bump_seed(token_pda_bump);
+            compute_unit_limit += Wallet::compute_units_for_bump_seed(seat_bump);
         }
 
         // InitializePaymentEscrow — creates escrow PDA for this payer.

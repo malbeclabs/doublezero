@@ -59,7 +59,8 @@ impl WithdrawCommand {
         }
 
         let accounts = ClosePaymentEscrowAccounts::new(
-            &client_seat_key,
+            &device,
+            client_ip_bits,
             &wallet_key,
             &usdc_mint_key,
             self.refund_token_account.as_ref(),

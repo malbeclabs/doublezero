@@ -3,7 +3,7 @@ use spl_associated_token_account_interface::address::get_associated_token_addres
 
 use crate::reservation::state;
 
-/// Accounts for the `InitializeClientSeat` instruction (9 accounts).
+/// Accounts for the `InitializeClientSeat` instruction (6 accounts).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InitializeClientSeatAccounts {
     pub program_config_key: Pubkey,
@@ -11,30 +11,16 @@ pub struct InitializeClientSeatAccounts {
     pub device_history_key: Pubkey,
     pub payer_key: Pubkey,
     pub new_client_seat_key: Pubkey,
-    pub new_client_seat_usdc_token_pda_key: Pubkey,
-    pub usdc_mint_key: Pubkey,
 }
 
 impl InitializeClientSeatAccounts {
-    pub fn new(
-        payer: &Pubkey,
-        device_key: &Pubkey,
-        client_ip_bits: u32,
-        usdc_mint: &Pubkey,
-    ) -> Self {
-        let client_seat_key = state::find_client_seat_address(device_key, client_ip_bits).0;
+    pub fn new(payer: &Pubkey, device_key: &Pubkey, client_ip_bits: u32) -> Self {
         Self {
             program_config_key: state::find_program_config_address().0,
             execution_controller_key: state::find_execution_controller_address().0,
             device_history_key: state::find_device_history_address(device_key).0,
             payer_key: *payer,
-            new_client_seat_key: client_seat_key,
-            new_client_seat_usdc_token_pda_key: state::find_token_pda_address(
-                &client_seat_key,
-                usdc_mint,
-            )
-            .0,
-            usdc_mint_key: *usdc_mint,
+            new_client_seat_key: state::find_client_seat_address(device_key, client_ip_bits).0,
         }
     }
 }
@@ -47,9 +33,6 @@ impl From<InitializeClientSeatAccounts> for Vec<AccountMeta> {
             AccountMeta::new_readonly(accounts.device_history_key, false),
             AccountMeta::new(accounts.payer_key, true),
             AccountMeta::new(accounts.new_client_seat_key, false),
-            AccountMeta::new(accounts.new_client_seat_usdc_token_pda_key, false),
-            AccountMeta::new_readonly(accounts.usdc_mint_key, false),
-            AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
         ]
     }
@@ -91,10 +74,7 @@ impl From<InitializePaymentEscrowAccounts> for Vec<AccountMeta> {
     }
 }
 
-/// Accounts for the `ClosePaymentEscrow` instruction (8 accounts).
-///
-/// Always passes all 8 accounts. The on-chain program only reads accounts 4-7
-/// when `usdc_balance > 0`; extra accounts are harmless when balance is zero.
+/// Accounts for the `ClosePaymentEscrow` instruction (9 accounts).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClosePaymentEscrowAccounts {
     pub program_config_key: Pubkey,
@@ -102,13 +82,15 @@ pub struct ClosePaymentEscrowAccounts {
     pub payment_escrow_key: Pubkey,
     pub withdraw_authority_key: Pubkey,
     pub client_seat_key: Pubkey,
-    pub client_seat_usdc_token_pda_key: Pubkey,
+    pub device_history_key: Pubkey,
+    pub device_history_usdc_token_account_key: Pubkey,
     pub refund_usdc_token_account_key: Pubkey,
 }
 
 impl ClosePaymentEscrowAccounts {
     pub fn new(
-        client_seat_key: &Pubkey,
+        device_key: &Pubkey,
+        client_ip_bits: u32,
         withdraw_authority: &Pubkey,
         usdc_mint: &Pubkey,
         refund_usdc_token_account: Option<&Pubkey>,
@@ -116,18 +98,21 @@ impl ClosePaymentEscrowAccounts {
         let refund_key = refund_usdc_token_account
             .copied()
             .unwrap_or_else(|| get_associated_token_address(withdraw_authority, usdc_mint));
+        let client_seat_key = state::find_client_seat_address(device_key, client_ip_bits).0;
+        let device_history_key = state::find_device_history_address(device_key).0;
         Self {
             program_config_key: state::find_program_config_address().0,
             execution_controller_key: state::find_execution_controller_address().0,
             payment_escrow_key: state::find_payment_escrow_address(
-                client_seat_key,
+                &client_seat_key,
                 withdraw_authority,
             )
             .0,
             withdraw_authority_key: *withdraw_authority,
-            client_seat_key: *client_seat_key,
-            client_seat_usdc_token_pda_key: state::find_token_pda_address(
-                client_seat_key,
+            client_seat_key,
+            device_history_key,
+            device_history_usdc_token_account_key: state::find_token_pda_address(
+                &device_history_key,
                 usdc_mint,
             )
             .0,
@@ -144,7 +129,8 @@ impl From<ClosePaymentEscrowAccounts> for Vec<AccountMeta> {
             AccountMeta::new(accounts.payment_escrow_key, false),
             AccountMeta::new(accounts.withdraw_authority_key, true),
             AccountMeta::new_readonly(accounts.client_seat_key, false),
-            AccountMeta::new(accounts.client_seat_usdc_token_pda_key, false),
+            AccountMeta::new_readonly(accounts.device_history_key, false),
+            AccountMeta::new(accounts.device_history_usdc_token_account_key, false),
             AccountMeta::new(accounts.refund_usdc_token_account_key, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ]
@@ -160,7 +146,7 @@ pub struct FundPaymentEscrowUsdcAccounts {
     pub device_history_key: Pubkey,
     pub client_seat_key: Pubkey,
     pub payment_escrow_key: Pubkey,
-    pub client_seat_usdc_token_account_key: Pubkey,
+    pub device_history_usdc_token_account_key: Pubkey,
     pub source_usdc_token_account_key: Pubkey,
     pub transfer_authority_key: Pubkey,
 }
@@ -176,19 +162,20 @@ impl FundPaymentEscrowUsdcAccounts {
         transfer_authority_key: &Pubkey,
     ) -> Self {
         let client_seat_key = state::find_client_seat_address(device_key, client_ip_bits).0;
+        let device_history_key = state::find_device_history_address(device_key).0;
         Self {
             program_config_key: state::find_program_config_address().0,
             execution_controller_key: state::find_execution_controller_address().0,
             metro_history_key: state::find_metro_history_address(exchange_key).0,
-            device_history_key: state::find_device_history_address(device_key).0,
+            device_history_key,
             client_seat_key,
             payment_escrow_key: state::find_payment_escrow_address(
                 &client_seat_key,
                 withdraw_authority_key,
             )
             .0,
-            client_seat_usdc_token_account_key: state::find_token_pda_address(
-                &client_seat_key,
+            device_history_usdc_token_account_key: state::find_token_pda_address(
+                &device_history_key,
                 usdc_mint_key,
             )
             .0,
@@ -207,7 +194,7 @@ impl From<FundPaymentEscrowUsdcAccounts> for Vec<AccountMeta> {
             AccountMeta::new_readonly(accounts.device_history_key, false),
             AccountMeta::new(accounts.client_seat_key, false),
             AccountMeta::new(accounts.payment_escrow_key, false),
-            AccountMeta::new(accounts.client_seat_usdc_token_account_key, false),
+            AccountMeta::new(accounts.device_history_usdc_token_account_key, false),
             AccountMeta::new(accounts.source_usdc_token_account_key, false),
             AccountMeta::new_readonly(accounts.transfer_authority_key, true),
             AccountMeta::new_readonly(spl_token_interface::ID, false),

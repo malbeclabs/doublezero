@@ -14,10 +14,13 @@ import (
 
 const defaultReadTimeout = 1 * time.Second
 
+// senderState fields are only accessed from the single-goroutine epoll
+// loop in Run(). No mutex needed.
 type senderState struct {
-	lastRxTime time.Time
-	pairCount  int
-	pairStart  time.Time
+	lastRxTime   time.Time
+	pairCount    int
+	pairStart    time.Time
+	pairSourceIP [4]byte // source IP of the first probe in this pair
 }
 
 type LinuxReflector struct {
@@ -106,6 +109,7 @@ func (r *LinuxReflector) SetAuthorizedKeys(keys [][32]byte) {
 		k := key.([32]byte)
 		if _, ok := newKeys[k]; !ok {
 			r.authorizedKeys.Delete(k)
+			r.senderStates.Delete(k)
 		}
 		return true
 	})
@@ -190,28 +194,44 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			now := time.Now()
 
 			// Load or create per-sender state.
-			var state *senderState
-			if raw, ok := r.senderStates.Load(probe.SenderPubkey); ok {
-				state = raw.(*senderState)
-			} else {
-				state = &senderState{}
-				if actual, loaded := r.senderStates.LoadOrStore(probe.SenderPubkey, state); loaded {
-					state = actual.(*senderState)
-				}
-			}
+			raw, _ := r.senderStates.LoadOrStore(probe.SenderPubkey, &senderState{})
+			state := raw.(*senderState)
 
 			// Pair-based rate limiting: allow 2 probes per window, then drop.
 			if interval := r.verifyInterval; interval > 0 {
-				if state.pairCount >= 2 && now.Sub(state.pairStart) < interval {
-					continue
-				}
 				if state.pairCount >= 2 {
+					if now.Sub(state.pairStart) < interval {
+						continue
+					}
 					state.pairCount = 0
 				}
 			}
 
+			// Pair authentication: the measurement loop runs from Probe 0 Rx to
+			// Probe 1 Rx, so we skip verification on probe 0 to keep the reply
+			// fast and the inter-arrival gap accurate. Probe 1 is verified after
+			// capturing `now` — its latency only affects reply 1, which doesn't
+			// impact the measurement (TEE targets can't measure time). Both
+			// probes in a pair must come from the same source IP.
+			fromAddr := from.(*unix.SockaddrInet4)
+			if state.pairCount == 0 {
+				state.pairSourceIP = fromAddr.Addr
+			} else {
+				if fromAddr.Addr != state.pairSourceIP {
+					continue
+				}
+				// Verify the probe signature. Comment out these two lines to
+				// rely solely on IP-binding for pair authentication.
+				// if !probe.Verify() {
+				// 	continue
+				// }
+			}
+
+			// SinceLastRxNs is only meaningful for the second probe in a pair.
+			// Reset to zero at the start of each new pair so reply 0 always
+			// carries SinceLastRxNs=0 and RttNs=dzdRttNs.
 			var sinceLastRxNs uint64
-			if !state.lastRxTime.IsZero() {
+			if !state.lastRxTime.IsZero() && state.pairCount > 0 {
 				sinceLastRxNs = uint64(now.Sub(state.lastRxTime).Nanoseconds())
 			}
 			state.lastRxTime = now

@@ -567,6 +567,7 @@ func TestParseOffsetInfo(t *testing.T) {
 		binary.LittleEndian.PutUint64(blob[128:136], 42_000_000)                  // MeasurementSlot
 		binary.LittleEndian.PutUint64(blob[136:144], math.Float64bits(37.7749))   // Lat
 		binary.LittleEndian.PutUint64(blob[144:152], math.Float64bits(-122.4194)) // Lng
+		binary.LittleEndian.PutUint64(blob[152:160], 99_999_999)                  // MeasuredRttNs (skipped by ParseOffsetInfo)
 		binary.LittleEndian.PutUint64(blob[160:168], 5_000_000)                   // RttNs
 
 		info, ok := signed.ParseOffsetInfo(blob)
@@ -574,7 +575,7 @@ func TestParseOffsetInfo(t *testing.T) {
 		assert.Equal(t, uint64(42_000_000), info.MeasurementSlot)
 		assert.Equal(t, 37.7749, info.Lat)
 		assert.Equal(t, -122.4194, info.Lng)
-		assert.Equal(t, uint64(5_000_000), info.RttNs)
+		assert.Equal(t, uint64(5_000_000), info.RttNs, "should read RttNs, not MeasuredRttNs")
 	})
 
 	t.Run("blob too small", func(t *testing.T) {

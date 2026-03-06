@@ -122,16 +122,13 @@ func main() {
 		}
 
 		seq++
-		if *count > 0 && seq > uint32(*count) {
+		probePair(ctx, log, sender, seq)
+
+		if *count > 0 && seq >= uint32(*count) {
 			log.Info("completed all probe pairs", "count", *count)
 			return
 		}
 
-		probePair(ctx, log, sender, seq)
-
-		if *count > 0 && seq >= uint32(*count) {
-			continue
-		}
 		select {
 		case <-ctx.Done():
 			log.Info("shutdown signal received, exiting gracefully")
@@ -163,8 +160,11 @@ func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq 
 		return
 	}
 
-	// Verify both replies.
+	// Verify both replies (defense-in-depth: LinuxSender already verifies,
+	// but we check independently for audit logging).
+	reply0ProbeSigValid := reply0.Probe.Verify()
 	reply0SigValid := reply0.Verify()
+	reply1ProbeSigValid := reply1.Probe.Verify()
 	reply1SigValid := reply1.Verify()
 
 	// Probe Measured RTT: inter-arrival time at the reflector (from reply 1).
@@ -173,10 +173,11 @@ func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq 
 	// Target Measured RTT: lower of the two sender-measured RTTs.
 	targetMeasuredRtt := min(rtt0, rtt1)
 
-	logPairedResult(log, seq, probeMeasuredRttNs, targetMeasuredRtt, reply0SigValid, reply1SigValid, reply1)
+	logPairedResult(log, seq, probeMeasuredRttNs, targetMeasuredRtt,
+		reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid, reply1)
 }
 
-func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0SigValid, reply1SigValid bool, reply *signed.ReplyPacket) {
+func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid bool, reply *signed.ReplyPacket) {
 	authorityPK := solana.PublicKeyFromBytes(reply.AuthorityPubkey[:])
 	geoprobePK := solana.PublicKeyFromBytes(reply.GeoprobePubkey[:])
 	offsets := parseOffsets(reply.Offsets)
@@ -187,7 +188,9 @@ func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, ta
 			Seq:                 seq,
 			ProbeMeasuredRttMs:  float64(probeMeasuredRttNs) / 1e6,
 			TargetMeasuredRttMs: float64(targetMeasuredRtt.Microseconds()) / 1000.0,
+			Reply0ProbeSigValid: reply0ProbeSigValid,
 			Reply0SigValid:      reply0SigValid,
+			Reply1ProbeSigValid: reply1ProbeSigValid,
 			Reply1SigValid:      reply1SigValid,
 			MeasurementSlot:     reply.MeasurementSlot,
 			Lat:                 reply.Lat,
@@ -205,7 +208,9 @@ func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, ta
 		}
 		fmt.Println(string(data))
 	} else {
-		fmt.Print(formatTextResult(seq, probeMeasuredRttNs, targetMeasuredRtt, reply0SigValid, reply1SigValid, authorityPK, geoprobePK, reply, offsets))
+		fmt.Print(formatTextResult(seq, probeMeasuredRttNs, targetMeasuredRtt,
+			reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid,
+			authorityPK, geoprobePK, reply, offsets))
 	}
 }
 
@@ -239,7 +244,9 @@ type probeOutput struct {
 	Seq                 uint32         `json:"seq"`
 	ProbeMeasuredRttMs  float64        `json:"probe_measured_rtt_ms"`
 	TargetMeasuredRttMs float64        `json:"target_measured_rtt_ms"`
+	Reply0ProbeSigValid bool           `json:"reply0_probe_sig_valid,omitempty"`
 	Reply0SigValid      bool           `json:"reply0_sig_valid,omitempty"`
+	Reply1ProbeSigValid bool           `json:"reply1_probe_sig_valid,omitempty"`
 	Reply1SigValid      bool           `json:"reply1_sig_valid,omitempty"`
 	MeasurementSlot     uint64         `json:"measurement_slot,omitempty"`
 	Lat                 float64        `json:"lat,omitempty"`
@@ -333,7 +340,7 @@ func abbreviatePubkey(pk string) string {
 	return pk[:4] + "..." + pk[len(pk)-4:]
 }
 
-func formatTextResult(seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0SigValid, reply1SigValid bool, authorityPK, geoprobePK solana.PublicKey, reply *signed.ReplyPacket, offsets []offsetOutput) string {
+func formatTextResult(seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid bool, authorityPK, geoprobePK solana.PublicKey, reply *signed.ReplyPacket, offsets []offsetOutput) string {
 	var sb strings.Builder
 
 	sb.WriteString("\n")
@@ -345,8 +352,8 @@ func formatTextResult(seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt t
 	fmt.Fprintf(&sb, "  Measurement Slot: %d\n", reply.MeasurementSlot)
 	fmt.Fprintf(&sb, "  Authority: %s\n", abbreviatePubkey(authorityPK.String()))
 	fmt.Fprintf(&sb, "  GeoProbe:  %s\n", abbreviatePubkey(geoprobePK.String()))
-	fmt.Fprintf(&sb, "  Reply 0 Signature: %s\n", sigMark(reply0SigValid))
-	fmt.Fprintf(&sb, "  Reply 1 Signature: %s\n", sigMark(reply1SigValid))
+	fmt.Fprintf(&sb, "  Reply 0: sender_sig=%s geoprobe_sig=%s\n", sigMark(reply0ProbeSigValid), sigMark(reply0SigValid))
+	fmt.Fprintf(&sb, "  Reply 1: sender_sig=%s geoprobe_sig=%s\n", sigMark(reply1ProbeSigValid), sigMark(reply1SigValid))
 
 	if len(offsets) > 0 {
 		sb.WriteString("\n  DZD Reference Chain:\n")
@@ -367,14 +374,12 @@ func formatCoordinate(lat, lng float64) string {
 	latDir := "N"
 	if lat < 0 {
 		latDir = "S"
-		lat = -lat
 	}
 	lngDir := "E"
 	if lng < 0 {
 		lngDir = "W"
-		lng = -lng
 	}
-	return fmt.Sprintf("%.4f\u00b0%s, %.4f\u00b0%s", lat, latDir, lng, lngDir)
+	return fmt.Sprintf("%.4f\u00b0%s, %.4f\u00b0%s", math.Abs(lat), latDir, math.Abs(lng), lngDir)
 }
 
 func sigMark(valid bool) string {

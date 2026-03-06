@@ -111,8 +111,11 @@ impl ClosePaymentEscrowAccounts {
         client_seat_key: &Pubkey,
         withdraw_authority: &Pubkey,
         usdc_mint: &Pubkey,
-        refund_usdc_token_account: &Pubkey,
+        refund_usdc_token_account: Option<&Pubkey>,
     ) -> Self {
+        let refund_key = refund_usdc_token_account
+            .copied()
+            .unwrap_or_else(|| get_associated_token_address(withdraw_authority, usdc_mint));
         Self {
             program_config_key: state::find_program_config_address().0,
             execution_controller_key: state::find_execution_controller_address().0,
@@ -128,19 +131,8 @@ impl ClosePaymentEscrowAccounts {
                 usdc_mint,
             )
             .0,
-            refund_usdc_token_account_key: *refund_usdc_token_account,
+            refund_usdc_token_account_key: refund_key,
         }
-    }
-
-    /// Convenience: derive the refund destination as the withdraw authority's
-    /// USDC ATA.
-    pub fn new_with_ata_refund(
-        client_seat_key: &Pubkey,
-        withdraw_authority: &Pubkey,
-        usdc_mint: &Pubkey,
-    ) -> Self {
-        let refund_ata = get_associated_token_address(withdraw_authority, usdc_mint);
-        Self::new(client_seat_key, withdraw_authority, usdc_mint, &refund_ata)
     }
 }
 

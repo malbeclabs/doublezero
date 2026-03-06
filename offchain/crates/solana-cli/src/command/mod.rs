@@ -1,4 +1,6 @@
 mod passport;
+#[cfg(feature = "experimental")]
+mod reservation;
 mod revenue_distribution;
 
 //
@@ -13,6 +15,10 @@ pub enum DoubleZeroSolanaCommand {
 
     /// Revenue distribution program commands.
     RevenueDistribution(revenue_distribution::RevenueDistributionCommand),
+
+    /// Reservation program commands (experimental).
+    #[cfg(feature = "experimental")]
+    Reservation(reservation::ReservationCommand),
 }
 
 impl DoubleZeroSolanaCommand {
@@ -22,6 +28,8 @@ impl DoubleZeroSolanaCommand {
             Self::RevenueDistribution(revenue_distribution) => {
                 revenue_distribution.command.try_into_execute().await
             }
+            #[cfg(feature = "experimental")]
+            Self::Reservation(reservation) => reservation.command.try_into_execute().await,
         }
     }
 }

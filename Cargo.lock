@@ -1653,6 +1653,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-geolocation-cli"
+version = "0.10.0"
+dependencies = [
+ "clap",
+ "doublezero-config",
+ "doublezero-geolocation",
+ "doublezero-serviceability",
+ "doublezero_cli",
+ "doublezero_sdk",
+ "eyre",
+ "solana-sdk",
+]
+
+[[package]]
 name = "doublezero-program-common"
 version = "0.10.0"
 dependencies = [
@@ -1732,6 +1746,7 @@ dependencies = [
  "clap",
  "console",
  "doublezero-config",
+ "doublezero-geolocation",
  "doublezero-program-common",
  "doublezero-serviceability",
  "doublezero_sdk",
@@ -1749,6 +1764,7 @@ dependencies = [
  "solana-client",
  "solana-program",
  "solana-pubsub-client",
+ "solana-rpc-client-api",
  "solana-sdk",
  "tabled",
  "temp-env",

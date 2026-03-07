@@ -5,6 +5,12 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
+)
+
+const (
+	// UnresponsiveProbeExpiry is how long a probe stays blacklisted before being retried.
+	UnresponsiveProbeExpiry = 24 * time.Hour
 )
 
 type MeasurementState struct {
@@ -14,8 +20,13 @@ type MeasurementState struct {
 }
 
 type MetadataTracker struct {
-	Metadata           map[int]MeasurementMeta `json:"metadata"`
-	UnresponsiveProbes []int                   `json:"unresponsive_probes,omitempty"`
+	Metadata           map[int]MeasurementMeta  `json:"metadata"`
+	UnresponsiveProbes []UnresponsiveProbeEntry `json:"unresponsive_probes,omitempty"`
+}
+
+type UnresponsiveProbeEntry struct {
+	ProbeID  int   `json:"probe_id"`
+	MarkedAt int64 `json:"marked_at"`
 }
 
 type MeasurementMeta struct {
@@ -55,10 +66,34 @@ func (ms *MeasurementState) Load() error {
 	}
 	defer file.Close()
 
-	var tracker MetadataTracker
+	// Decode into intermediate struct with raw unresponsive_probes for backwards compatibility
+	var intermediate struct {
+		Metadata           map[int]MeasurementMeta `json:"metadata"`
+		UnresponsiveProbes json.RawMessage         `json:"unresponsive_probes,omitempty"`
+	}
 	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&tracker); err != nil {
+	if err := decoder.Decode(&intermediate); err != nil {
 		return fmt.Errorf("failed to decode timestamp file: %w", err)
+	}
+
+	var tracker MetadataTracker
+	tracker.Metadata = intermediate.Metadata
+
+	// Try new format first: [{probe_id: N, marked_at: T}, ...]
+	if len(intermediate.UnresponsiveProbes) > 0 {
+		if err := json.Unmarshal(intermediate.UnresponsiveProbes, &tracker.UnresponsiveProbes); err != nil {
+			// Fall back to legacy format: [N, N, ...]
+			var legacyProbes []int
+			if err := json.Unmarshal(intermediate.UnresponsiveProbes, &legacyProbes); err == nil {
+				tracker.UnresponsiveProbes = make([]UnresponsiveProbeEntry, len(legacyProbes))
+				for i, probeID := range legacyProbes {
+					tracker.UnresponsiveProbes[i] = UnresponsiveProbeEntry{
+						ProbeID:  probeID,
+						MarkedAt: time.Now().Unix(), // Treat legacy entries as freshly marked
+					}
+				}
+			}
+		}
 	}
 
 	if tracker.Metadata == nil {
@@ -191,20 +226,24 @@ func (ms *MeasurementState) AddUnresponsiveProbe(probeID int) {
 	defer ms.mu.Unlock()
 
 	// Check if probe is already in the list
-	for _, id := range ms.tracker.UnresponsiveProbes {
-		if id == probeID {
+	for _, entry := range ms.tracker.UnresponsiveProbes {
+		if entry.ProbeID == probeID {
 			return
 		}
 	}
-	ms.tracker.UnresponsiveProbes = append(ms.tracker.UnresponsiveProbes, probeID)
+	ms.tracker.UnresponsiveProbes = append(ms.tracker.UnresponsiveProbes, UnresponsiveProbeEntry{
+		ProbeID:  probeID,
+		MarkedAt: time.Now().Unix(),
+	})
 }
 
 func (ms *MeasurementState) IsProbeUnresponsive(probeID int) bool {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	for _, id := range ms.tracker.UnresponsiveProbes {
-		if id == probeID {
+	expiry := time.Now().Add(-UnresponsiveProbeExpiry).Unix()
+	for _, entry := range ms.tracker.UnresponsiveProbes {
+		if entry.ProbeID == probeID && entry.MarkedAt > expiry {
 			return true
 		}
 	}
@@ -218,8 +257,34 @@ func (ms *MeasurementState) GetUnresponsiveProbes() []int {
 	if ms.tracker.UnresponsiveProbes == nil {
 		return []int{}
 	}
-	// Return a copy to avoid races on the slice
-	result := make([]int, len(ms.tracker.UnresponsiveProbes))
-	copy(result, ms.tracker.UnresponsiveProbes)
+	expiry := time.Now().Add(-UnresponsiveProbeExpiry).Unix()
+	var result []int
+	for _, entry := range ms.tracker.UnresponsiveProbes {
+		if entry.MarkedAt > expiry {
+			result = append(result, entry.ProbeID)
+		}
+	}
+	if result == nil {
+		return []int{}
+	}
 	return result
+}
+
+// PruneExpiredUnresponsiveProbes removes entries older than UnresponsiveProbeExpiry.
+func (ms *MeasurementState) PruneExpiredUnresponsiveProbes() int {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	expiry := time.Now().Add(-UnresponsiveProbeExpiry).Unix()
+	var kept []UnresponsiveProbeEntry
+	pruned := 0
+	for _, entry := range ms.tracker.UnresponsiveProbes {
+		if entry.MarkedAt > expiry {
+			kept = append(kept, entry)
+		} else {
+			pruned++
+		}
+	}
+	ms.tracker.UnresponsiveProbes = kept
+	return pruned
 }

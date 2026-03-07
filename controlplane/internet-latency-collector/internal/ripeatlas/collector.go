@@ -746,9 +746,15 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		}
 	}
 
-	// Step 4: Detect unresponsive probes (no exports after 1 hour)
+	// Step 4: Prune expired unresponsive probes so they get retried
+	if pruned := measurementState.PruneExpiredUnresponsiveProbes(); pruned > 0 {
+		c.log.Info("Pruned expired unresponsive probes",
+			slog.Int("pruned_count", pruned))
+	}
+
+	// Detect unresponsive probes (no exports after 1 hour)
 	currentTime := time.Now().Unix()
-	probeTimeout := currentTime - 3600 // 1 hours (3660 seconds)
+	probeTimeout := currentTime - 3600 // 1 hour
 	newUnresponsiveProbes := 0
 	for _, measurement := range doubleZeroMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {

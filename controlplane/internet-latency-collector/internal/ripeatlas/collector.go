@@ -60,8 +60,9 @@ type Collector struct {
 	exporter         exporter.Exporter
 	getLocationsFunc func(ctx context.Context) []collector.LocationMatch
 	env              string
-	probeToLocation  map[int]string // Maps probe IDs to location codes
-	mu               sync.RWMutex   // Protects probeToLocation map
+	probeToLocation  map[int]string    // Maps probe IDs to location codes
+	mu               sync.RWMutex      // Protects probeToLocation map
+	measurementState *MeasurementState // Shared state; initialized in Run()
 }
 
 type MeasurementSpec struct {
@@ -119,7 +120,7 @@ func (c *Collector) InitializeMeasurementMetrics(stateDir string) error {
 	// Count total measurements and determine probes per location
 	totalMeasurements := 0
 	probesPerLocation := 0
-	for _, meta := range measurementState.tracker.Metadata {
+	for _, meta := range measurementState.GetAllMetadata() {
 		if len(meta.Sources) > 0 {
 			totalMeasurements++
 			// All measurements should have the same number of sources (n-1 where n is number of exchanges)
@@ -368,11 +369,14 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 		return fmt.Errorf("failed to create state directory: %w", err)
 	}
 
-	timestampFile := filepath.Join(stateDir, TimestampFileName)
-
-	measurementState := NewMeasurementState(timestampFile)
-	if err := measurementState.Load(); err != nil {
-		return err
+	measurementState := c.measurementState
+	if measurementState == nil {
+		// Fallback for standalone/test usage without Run()
+		timestampFile := filepath.Join(stateDir, TimestampFileName)
+		measurementState = NewMeasurementState(timestampFile)
+		if err := measurementState.Load(); err != nil {
+			return err
+		}
 	}
 
 	measurements, err := c.client.GetAllMeasurements(ctx, c.env)
@@ -482,7 +486,7 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 		c.log.Warn("Failed to save timestamps", slog.String("error", err.Error()))
 		return err
 	}
-	c.log.Debug("Updated timestamp tracking file", slog.String("file", timestampFile))
+	c.log.Debug("Updated timestamp tracking file", slog.String("state_dir", stateDir))
 
 	// Track actual samples metric per circuit
 	for circuit, count := range circuitActualSamples {
@@ -696,11 +700,14 @@ func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun 
 }
 
 func (c *Collector) configureMeasurements(ctx context.Context, locationMatches []LocationProbeMatch, dryRun bool, probesPerLocation int, stateDir string, samplingInterval time.Duration) error {
-	// Step 1: Load state first to get unresponsive probes list
-	timestampFile := filepath.Join(stateDir, TimestampFileName)
-	measurementState := NewMeasurementState(timestampFile)
-	if err := measurementState.Load(); err != nil {
-		c.log.Warn("Failed to load measurement state", slog.String("error", err.Error()))
+	// Step 1: Get measurement state (shared instance from Run(), or fallback for tests)
+	measurementState := c.measurementState
+	if measurementState == nil {
+		timestampFile := filepath.Join(stateDir, TimestampFileName)
+		measurementState = NewMeasurementState(timestampFile)
+		if err := measurementState.Load(); err != nil {
+			c.log.Warn("Failed to load measurement state", slog.String("error", err.Error()))
+		}
 	}
 
 	// Step 2: Generate the list of measurements we want, skipping unresponsive probes
@@ -976,7 +983,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	}
 
 	orphanedIDs := []int{}
-	for id := range measurementState.tracker.Metadata {
+	for id := range measurementState.GetAllMetadata() {
 		if !activeIDs[id] {
 			orphanedIDs = append(orphanedIDs, id)
 		}
@@ -1108,34 +1115,33 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		measurementAPIData[m.ID] = m
 	}
 
-	for id := range measurementState.tracker.Metadata {
-		if meta, exists := measurementState.tracker.Metadata[id]; exists {
-			probeCount := len(meta.Sources)
-			totalProbeCount += probeCount
+	allMetadata := measurementState.GetAllMetadata()
+	for id, meta := range allMetadata {
+		probeCount := len(meta.Sources)
+		totalProbeCount += probeCount
 
-			// Use API-provided estimates if available
-			if apiData, ok := measurementAPIData[id]; ok {
-				if apiData.EstimatedResultsPerDay > 0 {
-					expectedDailyResults += apiData.EstimatedResultsPerDay
-				} else {
-					// Fallback calculation if API doesn't provide estimate
-					samplesPerDay := (24 * time.Hour) / samplingInterval
-					expectedDailyResults += float64(probeCount) * float64(samplesPerDay)
-				}
-
-				if apiData.CreditsPerResult > 0 && apiData.EstimatedResultsPerDay > 0 {
-					expectedDailyCredits += apiData.CreditsPerResult * apiData.EstimatedResultsPerDay
-				} else {
-					// Fallback: assume 2 credits per result
-					samplesPerDay := (24 * time.Hour) / samplingInterval
-					expectedDailyCredits += 2.0 * float64(probeCount) * float64(samplesPerDay)
-				}
+		// Use API-provided estimates if available
+		if apiData, ok := measurementAPIData[id]; ok {
+			if apiData.EstimatedResultsPerDay > 0 {
+				expectedDailyResults += apiData.EstimatedResultsPerDay
 			} else {
-				// No API data available, use fallback calculation
+				// Fallback calculation if API doesn't provide estimate
 				samplesPerDay := (24 * time.Hour) / samplingInterval
 				expectedDailyResults += float64(probeCount) * float64(samplesPerDay)
+			}
+
+			if apiData.CreditsPerResult > 0 && apiData.EstimatedResultsPerDay > 0 {
+				expectedDailyCredits += apiData.CreditsPerResult * apiData.EstimatedResultsPerDay
+			} else {
+				// Fallback: assume 2 credits per result
+				samplesPerDay := (24 * time.Hour) / samplingInterval
 				expectedDailyCredits += 2.0 * float64(probeCount) * float64(samplesPerDay)
 			}
+		} else {
+			// No API data available, use fallback calculation
+			samplesPerDay := (24 * time.Hour) / samplingInterval
+			expectedDailyResults += float64(probeCount) * float64(samplesPerDay)
+			expectedDailyCredits += 2.0 * float64(probeCount) * float64(samplesPerDay)
 		}
 	}
 
@@ -1146,7 +1152,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		slog.Float64("expected_daily_results", expectedDailyResults),
 		slog.Float64("expected_daily_credits", expectedDailyCredits),
 		slog.Int("total_probe_count", totalProbeCount),
-		slog.Int("measurement_count", len(measurementState.tracker.Metadata)),
+		slog.Int("measurement_count", len(allMetadata)),
 		slog.String("source", "api_estimates_with_fallback"))
 
 	return nil
@@ -1246,6 +1252,13 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 	}
 	if exportInterval <= 0 {
 		return fmt.Errorf("RIPE Atlas export interval must be positive, got %v", exportInterval)
+	}
+
+	// Initialize shared measurement state once, used by both goroutines
+	timestampFile := filepath.Join(stateDir, TimestampFileName)
+	c.measurementState = NewMeasurementState(timestampFile)
+	if err := c.measurementState.Load(); err != nil {
+		c.log.Warn("Failed to load measurement state at startup", slog.String("error", err.Error()))
 	}
 
 	var wg sync.WaitGroup

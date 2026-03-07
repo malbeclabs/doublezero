@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 )
 
 type MeasurementState struct {
 	filename string
 	tracker  *MetadataTracker
+	mu       sync.Mutex
 }
 
 type MetadataTracker struct {
@@ -39,6 +41,9 @@ func NewMeasurementState(filename string) *MeasurementState {
 }
 
 func (ms *MeasurementState) Load() error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
 	file, err := os.Open(ms.filename)
 	if os.IsNotExist(err) {
 		// File doesn't exist yet, keep empty tracker
@@ -64,6 +69,9 @@ func (ms *MeasurementState) Load() error {
 }
 
 func (ms *MeasurementState) Save() error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
 	file, err := os.Create(ms.filename)
 	if err != nil {
 		return fmt.Errorf("failed to create timestamp file: %w", err)
@@ -80,6 +88,9 @@ func (ms *MeasurementState) Save() error {
 }
 
 func (ms *MeasurementState) GetLastTimestamp(measurementID int) (int64, bool) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
 	if meta, exists := ms.tracker.Metadata[measurementID]; exists {
 		return meta.LastExportAt, meta.LastExportAt > 0
 	}
@@ -87,6 +98,9 @@ func (ms *MeasurementState) GetLastTimestamp(measurementID int) (int64, bool) {
 }
 
 func (ms *MeasurementState) UpdateTimestamp(measurementID int, timestamp int64) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
 	if meta, exists := ms.tracker.Metadata[measurementID]; exists {
 		meta.LastExportAt = timestamp
 		ms.tracker.Metadata[measurementID] = meta
@@ -99,19 +113,31 @@ func (ms *MeasurementState) UpdateTimestamp(measurementID int, timestamp int64) 
 }
 
 func (ms *MeasurementState) SetMetadata(measurementID int, meta MeasurementMeta) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
 	ms.tracker.Metadata[measurementID] = meta
 }
 
 func (ms *MeasurementState) GetMetadata(measurementID int) (MeasurementMeta, bool) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
 	meta, exists := ms.tracker.Metadata[measurementID]
 	return meta, exists
 }
 
 func (ms *MeasurementState) RemoveMetadata(measurementID int) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
 	delete(ms.tracker.Metadata, measurementID)
 }
 
 func (ms *MeasurementState) GetAllTimestamps() map[int]int64 {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
 	result := make(map[int]int64)
 	for id, meta := range ms.tracker.Metadata {
 		if meta.LastExportAt > 0 {
@@ -121,7 +147,28 @@ func (ms *MeasurementState) GetAllTimestamps() map[int]int64 {
 	return result
 }
 
+func (ms *MeasurementState) GetAllMetadata() map[int]MeasurementMeta {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	result := make(map[int]MeasurementMeta, len(ms.tracker.Metadata))
+	for id, meta := range ms.tracker.Metadata {
+		result[id] = meta
+	}
+	return result
+}
+
+func (ms *MeasurementState) MetadataCount() int {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	return len(ms.tracker.Metadata)
+}
+
 func (ms *MeasurementState) AddUnresponsiveProbe(probeID int) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
 	// Check if probe is already in the list
 	for _, id := range ms.tracker.UnresponsiveProbes {
 		if id == probeID {
@@ -132,6 +179,9 @@ func (ms *MeasurementState) AddUnresponsiveProbe(probeID int) {
 }
 
 func (ms *MeasurementState) IsProbeUnresponsive(probeID int) bool {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
 	for _, id := range ms.tracker.UnresponsiveProbes {
 		if id == probeID {
 			return true
@@ -141,8 +191,14 @@ func (ms *MeasurementState) IsProbeUnresponsive(probeID int) bool {
 }
 
 func (ms *MeasurementState) GetUnresponsiveProbes() []int {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
 	if ms.tracker.UnresponsiveProbes == nil {
 		return []int{}
 	}
-	return ms.tracker.UnresponsiveProbes
+	// Return a copy to avoid races on the slice
+	result := make([]int, len(ms.tracker.UnresponsiveProbes))
+	copy(result, ms.tracker.UnresponsiveProbes)
+	return result
 }

@@ -124,6 +124,22 @@ pub struct ErrorResponse {
     pub description: String,
 }
 
+/// Parse a daemon response, falling back to ErrorResponse if the primary type fails.
+fn parse_daemon_response<T: serde::de::DeserializeOwned>(
+    data: &[u8],
+    endpoint: &str,
+) -> eyre::Result<T> {
+    match serde_json::from_slice::<T>(data) {
+        Ok(response) => Ok(response),
+        Err(parse_err) => match serde_json::from_slice::<ErrorResponse>(data) {
+            Ok(err_resp) if err_resp.status == "error" => Err(eyre!(err_resp.description)),
+            _ => Err(eyre!(
+                "Failed to parse daemon {endpoint} response: {parse_err}"
+            )),
+        },
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct V2ServiceStatus {
     #[serde(flatten)]
@@ -206,19 +222,7 @@ impl ServiceController for ServiceControllerImpl {
             .map_err(|e| eyre!("Unable to read response body: {e}"))?
             .to_bytes();
 
-        match serde_json::from_slice::<GetConfigResponse>(&data) {
-            Ok(response) => Ok(response),
-            Err(e) => match serde_json::from_slice::<ErrorResponse>(&data) {
-                Ok(response) => {
-                    if response.status == "error" {
-                        Err(eyre!(response.description))
-                    } else {
-                        Err(eyre!("Unable to parse LatencyRecord: {e}"))
-                    }
-                }
-                Err(e) => Err(eyre!("Unable to parse ErrorResponse: {e}")),
-            },
-        }
+        parse_daemon_response::<GetConfigResponse>(&data, "/config")
     }
 
     async fn get_env(&self) -> eyre::Result<Environment> {
@@ -242,19 +246,7 @@ impl ServiceController for ServiceControllerImpl {
             .map_err(|e| eyre!("Unable to read response body: {e}"))?
             .to_bytes();
 
-        match serde_json::from_slice::<Vec<LatencyRecord>>(&data) {
-            Ok(response) => Ok(response),
-            Err(e) => match serde_json::from_slice::<ErrorResponse>(&data) {
-                Ok(response) => {
-                    if response.status == "error" {
-                        Err(eyre!(response.description))
-                    } else {
-                        Err(eyre!("Unable to parse LatencyRecord: {e}"))
-                    }
-                }
-                Err(e) => Err(eyre!("Unable to parse ErrorResponse: {e}")),
-            },
-        }
+        parse_daemon_response::<Vec<LatencyRecord>>(&data, "/latency")
     }
 
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>> {
@@ -278,27 +270,11 @@ impl ServiceController for ServiceControllerImpl {
                     .map_err(|e| eyre!("Unable to read response body: {e}"))?
                     .to_bytes();
 
-                match serde_json::from_slice::<Vec<StatusResponse>>(&data) {
-                    Ok(response) => Ok(response),
-                    Err(e) => {
-                        println!("Data: {data:?}");
-
-                        if data.is_empty() {
-                            eyre::bail!("No data returned");
-                        }
-
-                        match serde_json::from_slice::<ErrorResponse>(&data) {
-                            Ok(response) => {
-                                if response.status == "error" {
-                                    Err(eyre!(response.description))
-                                } else {
-                                    Err(eyre!("Unable to parse StatusResponse: {e}"))
-                                }
-                            }
-                            Err(e) => Err(eyre!("Unable to parse ErrorResponse: {e}")),
-                        }
-                    }
+                if data.is_empty() {
+                    eyre::bail!("No data returned from daemon /status");
                 }
+
+                parse_daemon_response::<Vec<StatusResponse>>(&data, "/status")
             }
             Err(e) => Err(eyre!("Unable to connect to doublezero daemon: {e}")),
         }

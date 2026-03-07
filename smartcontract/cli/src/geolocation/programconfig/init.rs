@@ -4,13 +4,27 @@ use doublezero_sdk::geolocation::programconfig::init::InitProgramConfigCommand;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct InitProgramConfigCliCommand {}
+pub struct InitProgramConfigCliCommand {
+    /// Skip confirmation prompt
+    #[arg(long, default_value_t = false)]
+    pub yes: bool,
+}
 
 impl InitProgramConfigCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+        if !self.yes {
+            eprint!("Initialize geolocation program config? This is a one-time operation. [y/N]: ");
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            if !input.trim().eq_ignore_ascii_case("y") {
+                writeln!(out, "Aborted.")?;
+                return Ok(());
+            }
+        }
+
         let (sig, pda) = client.init_program_config(InitProgramConfigCommand {})?;
 
-        writeln!(out, "Signature: {sig}\r\nAccount: {pda}")?;
+        writeln!(out, "Signature: {sig}\nAccount: {pda}")?;
 
         Ok(())
     }
@@ -41,7 +55,7 @@ mod tests {
             .returning(move |_| Ok((signature, config_pda)));
 
         let mut output = Vec::new();
-        let res = InitProgramConfigCliCommand {}.execute(&client, &mut output);
+        let res = InitProgramConfigCliCommand { yes: true }.execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));

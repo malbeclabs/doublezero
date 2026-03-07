@@ -10,10 +10,10 @@ use tabled::{settings::Style, Table, Tabled};
 #[derive(Args, Debug)]
 pub struct ListGeoProbeCliCommand {
     /// Output as pretty JSON
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, conflicts_with = "json_compact")]
     pub json: bool,
     /// Output as compact JSON
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, conflicts_with = "json")]
     pub json_compact: bool,
 }
 

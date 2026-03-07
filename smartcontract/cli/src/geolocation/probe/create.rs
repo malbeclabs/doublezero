@@ -28,8 +28,16 @@ pub struct CreateGeoProbeCliCommand {
 
 impl CreateGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let exchange_pk = Pubkey::try_from(self.exchange.as_str()).unwrap();
-        let metrics_publisher_pk = Pubkey::try_from(self.metrics_publisher.as_str()).unwrap();
+        let exchange_pk: Pubkey = self
+            .exchange
+            .parse()
+            .map_err(|_| eyre::eyre!("invalid exchange pubkey: {}", self.exchange))?;
+        let metrics_publisher_pk: Pubkey = self.metrics_publisher.parse().map_err(|_| {
+            eyre::eyre!(
+                "invalid metrics publisher pubkey: {}",
+                self.metrics_publisher
+            )
+        })?;
 
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
@@ -42,7 +50,7 @@ impl CreateGeoProbeCliCommand {
             metrics_publisher_pk,
         })?;
 
-        writeln!(out, "Signature: {sig}\r\nAccount: {pda}")?;
+        writeln!(out, "Signature: {sig}\nAccount: {pda}")?;
 
         Ok(())
     }

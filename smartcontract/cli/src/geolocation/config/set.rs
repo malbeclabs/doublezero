@@ -102,3 +102,135 @@ impl SetGeoConfigCliCommand {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use serial_test::serial;
+    use tempfile::TempDir;
+
+    use doublezero_config::Environment;
+    use doublezero_sdk::{
+        create_new_pubkey_user, read_doublezero_config, write_doublezero_config, ClientConfig,
+    };
+
+    use super::*;
+
+    const CONFIG_ENV_VAR: &str = "DOUBLEZERO_CONFIG_FILE";
+
+    fn new_test_config(mutator: impl Fn(&mut ClientConfig)) -> (TempDir, PathBuf, ClientConfig) {
+        let tmp = TempDir::new().unwrap();
+        let keypair_path = tmp.path().join("id.json");
+        let config_path = tmp.path().join("config.yml");
+
+        let devnet_config = Environment::Devnet.config().unwrap();
+
+        let mut cfg = ClientConfig {
+            json_rpc_url: devnet_config.ledger_public_rpc_url.clone(),
+            websocket_url: Some(devnet_config.ledger_public_ws_rpc_url.clone()),
+            keypair_path,
+            program_id: Some(devnet_config.serviceability_program_id.to_string()),
+            geo_program_id: Some(devnet_config.geolocation_program_id.to_string()),
+            tenant: None,
+            address_labels: Default::default(),
+        };
+
+        mutator(&mut cfg);
+        (tmp, config_path, cfg)
+    }
+
+    #[test]
+    #[serial]
+    fn test_geo_config_set_env() {
+        let (_tmp, config_path, cfg) = new_test_config(|_cfg| {});
+
+        temp_env::with_var(CONFIG_ENV_VAR, Some(config_path.to_str().unwrap()), || {
+            write_doublezero_config(&cfg).unwrap();
+            create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
+
+            let mut output = Vec::new();
+            SetGeoConfigCliCommand {
+                env: Some(Environment::Devnet.to_string()),
+                url: None,
+                ws: None,
+                keypair: None,
+                program_id: None,
+                geo_program_id: None,
+            }
+            .execute(&mut output)
+            .unwrap();
+            let output_str = String::from_utf8(output).unwrap();
+
+            let devnet_config = Environment::Devnet.config().unwrap();
+            assert!(output_str.contains(&devnet_config.ledger_public_rpc_url));
+            assert!(output_str.contains(&devnet_config.serviceability_program_id.to_string()));
+            assert!(output_str.contains(&devnet_config.geolocation_program_id.to_string()));
+
+            let (_, saved) = read_doublezero_config().unwrap();
+            assert_eq!(
+                saved.geo_program_id,
+                Some(devnet_config.geolocation_program_id.to_string())
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_geo_config_set_individual_flags() {
+        let (_tmp, config_path, cfg) = new_test_config(|_cfg| {});
+
+        temp_env::with_var(CONFIG_ENV_VAR, Some(config_path.to_str().unwrap()), || {
+            write_doublezero_config(&cfg).unwrap();
+            create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
+
+            let mut output = Vec::new();
+            SetGeoConfigCliCommand {
+                env: None,
+                url: Some("https://example.com".to_string()),
+                ws: None,
+                keypair: None,
+                program_id: None,
+                geo_program_id: Some("MyGeoProgram123".to_string()),
+            }
+            .execute(&mut output)
+            .unwrap();
+            let output_str = String::from_utf8(output).unwrap();
+
+            assert!(output_str.contains("https://example.com"));
+            assert!(output_str.contains("MyGeoProgram123"));
+
+            let (_, saved) = read_doublezero_config().unwrap();
+            assert_eq!(saved.json_rpc_url, "https://example.com");
+            assert_eq!(saved.geo_program_id, Some("MyGeoProgram123".to_string()));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_geo_config_set_env_with_url_errors() {
+        let (_tmp, config_path, cfg) = new_test_config(|_cfg| {});
+
+        temp_env::with_var(CONFIG_ENV_VAR, Some(config_path.to_str().unwrap()), || {
+            write_doublezero_config(&cfg).unwrap();
+            create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
+
+            let mut output = Vec::new();
+            let result = SetGeoConfigCliCommand {
+                env: Some(Environment::Devnet.to_string()),
+                url: Some("https://example.com".to_string()),
+                ws: None,
+                keypair: None,
+                program_id: None,
+                geo_program_id: None,
+            }
+            .execute(&mut output);
+
+            assert!(result.is_err());
+            assert!(result
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid flag combination"));
+        });
+    }
+}

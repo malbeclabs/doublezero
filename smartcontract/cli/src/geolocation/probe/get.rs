@@ -7,25 +7,25 @@ use std::io::Write;
 pub struct GetGeoProbeCliCommand {
     /// Probe pubkey or code to retrieve
     #[arg(long, value_parser = validate_pubkey_or_code)]
-    pub code: String,
+    pub probe: String,
 }
 
 impl GetGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let (pubkey, probe) = client.get_geo_probe(GetGeoProbeCommand {
-            pubkey_or_code: self.code,
+            pubkey_or_code: self.probe,
         })?;
 
         writeln!(
             out,
-            "account: {}\r\n\
-code: {}\r\n\
-owner: {}\r\n\
-exchange: {}\r\n\
-public_ip: {}\r\n\
-port: {}\r\n\
-parent_devices: {:?}\r\n\
-metrics_publisher: {}\r\n\
+            "account: {}\n\
+code: {}\n\
+owner: {}\n\
+exchange: {}\n\
+public_ip: {}\n\
+port: {}\n\
+parent_devices: {:?}\n\
+metrics_publisher: {}\n\
 reference_count: {}",
             pubkey,
             probe.code,
@@ -85,14 +85,14 @@ mod tests {
 
         let mut output = Vec::new();
         let res = GetGeoProbeCliCommand {
-            code: Pubkey::new_unique().to_string(),
+            probe: Pubkey::new_unique().to_string(),
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
 
         let mut output = Vec::new();
         let res = GetGeoProbeCliCommand {
-            code: probe_pk.to_string(),
+            probe: probe_pk.to_string(),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

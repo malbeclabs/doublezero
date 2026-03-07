@@ -12,16 +12,28 @@ pub struct BanUserCommand {
 
 impl BanUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
+        self.execute_inner(client, false)
+    }
+
+    pub fn execute_quiet(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
+        self.execute_inner(client, true)
+    }
+
+    fn execute_inner(&self, client: &dyn DoubleZeroClient, quiet: bool) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        client.execute_transaction(
-            DoubleZeroInstruction::BanUser(UserBanArgs {}),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-        )
+        let instruction = DoubleZeroInstruction::BanUser(UserBanArgs {});
+        let accounts = vec![
+            AccountMeta::new(self.pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ];
+
+        if quiet {
+            client.execute_transaction_quiet(instruction, accounts)
+        } else {
+            client.execute_transaction(instruction, accounts)
+        }
     }
 }

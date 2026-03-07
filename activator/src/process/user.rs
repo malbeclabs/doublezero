@@ -196,7 +196,7 @@ pub fn process_user_event(
                 use_onchain_allocation: false,
                 tunnel_endpoint,
             }
-            .execute(client);
+            .execute_quiet(client);
 
             match res {
                 Ok(signature) => {
@@ -335,7 +335,7 @@ pub fn process_user_event(
                 use_onchain_allocation: false,
                 tunnel_endpoint,
             }
-            .execute(client);
+            .execute_quiet(client);
             match res {
                 Ok(signature) => {
                     write!(&mut log_msg, "Reactivated   {signature}").unwrap();
@@ -381,7 +381,7 @@ pub fn process_user_event(
                         pubkey: *pubkey,
                         use_onchain_deallocation: false,
                     }
-                    .execute(client);
+                    .execute_quiet(client);
 
                     match res {
                         Ok(signature) => {
@@ -410,7 +410,7 @@ pub fn process_user_event(
                         Err(e) => warn!("Error: {e}"),
                     }
                 } else if user.status == UserStatus::PendingBan {
-                    let res = BanUserCommand { pubkey: *pubkey }.execute(client);
+                    let res = BanUserCommand { pubkey: *pubkey }.execute_quiet(client);
 
                     match res {
                         Ok(signature) => {
@@ -576,7 +576,7 @@ pub fn process_user_event_stateless(
                 use_onchain_allocation: true,
                 tunnel_endpoint: user.tunnel_endpoint,
             }
-            .execute(client);
+            .execute_quiet(client);
 
             match res {
                 Ok(signature) => {
@@ -626,7 +626,7 @@ pub fn process_user_event_stateless(
                 use_onchain_allocation: true,
                 tunnel_endpoint: user.tunnel_endpoint,
             }
-            .execute(client);
+            .execute_quiet(client);
 
             match res {
                 Ok(signature) => {
@@ -668,7 +668,7 @@ pub fn process_user_event_stateless(
                         pubkey: *pubkey,
                         use_onchain_deallocation: true,
                     }
-                    .execute(client);
+                    .execute_quiet(client);
 
                     match res {
                         Ok(signature) => {
@@ -685,7 +685,7 @@ pub fn process_user_event_stateless(
                         Err(e) => warn!("Error: {e}"),
                     }
                 } else if user.status == UserStatus::PendingBan {
-                    let res = BanUserCommand { pubkey: *pubkey }.execute(client);
+                    let res = BanUserCommand { pubkey: *pubkey }.execute_quiet(client);
 
                     match res {
                         Ok(signature) => {
@@ -935,7 +935,7 @@ mod tests {
                 .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
 
             client
-                .expect_execute_transaction()
+                .expect_execute_transaction_quiet()
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(
@@ -1140,7 +1140,7 @@ mod tests {
                 .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
 
             client
-                .expect_execute_transaction()
+                .expect_execute_transaction_quiet()
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(
@@ -1661,7 +1661,7 @@ mod tests {
             UserStatus::Deleting,
             |user_service, _, seq| {
                 user_service
-                    .expect_execute_transaction()
+                    .expect_execute_transaction_quiet()
                     .times(1)
                     .in_sequence(seq)
                     .with(
@@ -1685,7 +1685,7 @@ mod tests {
             UserStatus::PendingBan,
             |user_service, _, seq| {
                 user_service
-                    .expect_execute_transaction()
+                    .expect_execute_transaction_quiet()
                     .times(1)
                     .in_sequence(seq)
                     .with(
@@ -1949,7 +1949,7 @@ mod tests {
 
             // The activator should use the demanded endpoint (5.5.5.5), not pick one itself
             client
-                .expect_execute_transaction()
+                .expect_execute_transaction_quiet()
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(
@@ -2190,7 +2190,7 @@ mod tests {
 
             // With 0.0.0.0, the activator should fall back to first-available = 5.5.5.5
             client
-                .expect_execute_transaction()
+                .expect_execute_transaction_quiet()
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(
@@ -2343,7 +2343,7 @@ mod tests {
 
             // Should use the demanded endpoint 6.6.6.6
             client
-                .expect_execute_transaction()
+                .expect_execute_transaction_quiet()
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(
@@ -2615,7 +2615,7 @@ mod tests {
 
             // Stateless mode: tunnel_id=0, tunnel_net=default, dz_ip=UNSPECIFIED
             client
-                .expect_execute_transaction()
+                .expect_execute_transaction_quiet()
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(
@@ -2733,7 +2733,7 @@ mod tests {
 
             // Stateless mode: use_onchain_deallocation=true
             client
-                .expect_execute_transaction()
+                .expect_execute_transaction_quiet()
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(
@@ -2837,7 +2837,7 @@ mod tests {
                 .returning(move |_| Ok(AccountData::User(user2.clone())));
 
             client
-                .expect_execute_transaction()
+                .expect_execute_transaction_quiet()
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(

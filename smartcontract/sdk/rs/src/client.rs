@@ -119,6 +119,62 @@ impl DZClient {
             .with_max_delay(Duration::from_secs(5))
     }
 
+    fn execute_transaction_inner(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+        quiet: bool,
+    ) -> eyre::Result<Signature> {
+        let payer = self
+            .payer
+            .as_ref()
+            .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
+        let data = instruction.pack();
+
+        let mut transaction = Transaction::new_with_payer(
+            &[Instruction::new_with_bytes(
+                self.program_id,
+                &data,
+                [
+                    accounts,
+                    vec![
+                        AccountMeta::new(payer.pubkey(), true),
+                        AccountMeta::new(program::id(), false),
+                    ],
+                ]
+                .concat(),
+            )],
+            Some(&payer.pubkey()),
+        );
+
+        let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
+        transaction.sign(&[&payer], blockhash);
+
+        debug!("Simulating transaction: {transaction:?}");
+
+        let result = self.client.simulate_transaction(&transaction)?;
+        if result.value.err.is_some() && !quiet {
+            eprintln!("Program Logs:");
+            if let Some(logs) = result.value.logs {
+                for log in logs {
+                    eprintln!("{log}");
+                }
+            }
+        }
+
+        if let Some(TransactionError::InstructionError(_index, InstructionError::Custom(number))) =
+            result.value.err
+        {
+            return Err(eyre!(DoubleZeroError::from(number)));
+        } else if let Some(err) = result.value.err {
+            return Err(eyre!(err));
+        }
+
+        self.client
+            .send_and_confirm_transaction(&transaction)
+            .map_err(|e| eyre!(e))
+    }
+
     /// Returns true for transient network errors that are worth retrying.
     /// Returns false for permanent errors like AccountNotFound or RPC response errors.
     fn is_retryable_rpc_error(err: &ClientError) -> bool {
@@ -368,54 +424,15 @@ impl DoubleZeroClient for DZClient {
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature> {
-        let payer = self
-            .payer
-            .as_ref()
-            .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
-        let data = instruction.pack();
+        self.execute_transaction_inner(instruction, accounts, false)
+    }
 
-        let mut transaction = Transaction::new_with_payer(
-            &[Instruction::new_with_bytes(
-                self.program_id,
-                &data,
-                [
-                    accounts,
-                    vec![
-                        AccountMeta::new(payer.pubkey(), true),
-                        AccountMeta::new(program::id(), false),
-                    ],
-                ]
-                .concat(),
-            )],
-            Some(&payer.pubkey()),
-        );
-
-        let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
-        transaction.sign(&[&payer], blockhash);
-
-        debug!("Simulating transaction: {transaction:?}");
-
-        let result = self.client.simulate_transaction(&transaction)?;
-        if result.value.err.is_some() {
-            eprintln!("Program Logs:");
-            if let Some(logs) = result.value.logs {
-                for log in logs {
-                    eprintln!("{log}");
-                }
-            }
-        }
-
-        if let Some(TransactionError::InstructionError(_index, InstructionError::Custom(number))) =
-            result.value.err
-        {
-            return Err(eyre!(DoubleZeroError::from(number)));
-        } else if let Some(err) = result.value.err {
-            return Err(eyre!(err));
-        }
-
-        self.client
-            .send_and_confirm_transaction(&transaction)
-            .map_err(|e| eyre!(e))
+    fn execute_transaction_quiet(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+    ) -> eyre::Result<Signature> {
+        self.execute_transaction_inner(instruction, accounts, true)
     }
 
     fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>> {

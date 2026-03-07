@@ -28,6 +28,14 @@ pub struct ActivateUserCommand {
 
 impl ActivateUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
+        self.execute_inner(client, false)
+    }
+
+    pub fn execute_quiet(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
+        self.execute_inner(client, true)
+    }
+
+    fn execute_inner(&self, client: &dyn DoubleZeroClient, quiet: bool) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
@@ -106,16 +114,19 @@ impl ActivateUserCommand {
             0
         };
 
-        client.execute_transaction(
-            DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-                tunnel_id: self.tunnel_id,
-                tunnel_net: self.tunnel_net,
-                dz_ip: self.dz_ip,
-                dz_prefix_count,
-                tunnel_endpoint: self.tunnel_endpoint,
-            }),
-            accounts,
-        )
+        let instruction = DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: self.tunnel_id,
+            tunnel_net: self.tunnel_net,
+            dz_ip: self.dz_ip,
+            dz_prefix_count,
+            tunnel_endpoint: self.tunnel_endpoint,
+        });
+
+        if quiet {
+            client.execute_transaction_quiet(instruction, accounts)
+        } else {
+            client.execute_transaction(instruction, accounts)
+        }
     }
 }
 

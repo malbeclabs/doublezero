@@ -303,6 +303,46 @@ func TestInternetLatency_RIPEAtlas_State_LargeNumberOfMeasurements(t *testing.T)
 	}
 }
 
+func TestInternetLatency_RIPEAtlas_State_UpdateSourceProbeResponse(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMeasurementState("test.json")
+
+	// Set up a measurement with source probes
+	ms.SetMetadata(100, MeasurementMeta{
+		TargetLocation: "xams",
+		TargetProbeID:  6626,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "xsin", ProbeID: 6726},
+			{LocationCode: "xtyo", ProbeID: 7080},
+		},
+		CreatedAt: 1640995200,
+	})
+
+	// Update source probe response
+	ms.UpdateSourceProbeResponse(100, 6726, 1640995300)
+	meta, exists := ms.GetMetadata(100)
+	require.True(t, exists)
+	require.Equal(t, int64(1640995300), meta.Sources[0].LastResponseAt)
+	require.Equal(t, int64(0), meta.Sources[1].LastResponseAt)
+
+	// Update with newer timestamp
+	ms.UpdateSourceProbeResponse(100, 6726, 1640995400)
+	meta, _ = ms.GetMetadata(100)
+	require.Equal(t, int64(1640995400), meta.Sources[0].LastResponseAt)
+
+	// Update with older timestamp (should not regress)
+	ms.UpdateSourceProbeResponse(100, 6726, 1640995200)
+	meta, _ = ms.GetMetadata(100)
+	require.Equal(t, int64(1640995400), meta.Sources[0].LastResponseAt)
+
+	// Update for non-existent measurement (should not panic)
+	ms.UpdateSourceProbeResponse(999, 6726, 1640995500)
+
+	// Update for non-existent probe (should not panic)
+	ms.UpdateSourceProbeResponse(100, 9999, 1640995500)
+}
+
 func TestInternetLatency_RIPEAtlas_State_TimestampTracker_Structure(t *testing.T) {
 	t.Parallel()
 

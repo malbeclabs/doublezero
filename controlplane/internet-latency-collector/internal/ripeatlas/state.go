@@ -27,8 +27,9 @@ type MeasurementMeta struct {
 }
 
 type SourceProbeMeta struct {
-	LocationCode string `json:"location_code"`
-	ProbeID      int    `json:"probe_id"`
+	LocationCode   string `json:"location_code"`
+	ProbeID        int    `json:"probe_id"`
+	LastResponseAt int64  `json:"last_response_at,omitempty"`
 }
 
 func NewMeasurementState(filename string) *MeasurementState {
@@ -163,6 +164,26 @@ func (ms *MeasurementState) MetadataCount() int {
 	defer ms.mu.Unlock()
 
 	return len(ms.tracker.Metadata)
+}
+
+func (ms *MeasurementState) UpdateSourceProbeResponse(measurementID int, probeID int, timestamp int64) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	meta, exists := ms.tracker.Metadata[measurementID]
+	if !exists {
+		return
+	}
+
+	for i, source := range meta.Sources {
+		if source.ProbeID == probeID {
+			if timestamp > source.LastResponseAt {
+				meta.Sources[i].LastResponseAt = timestamp
+			}
+			break
+		}
+	}
+	ms.tracker.Metadata[measurementID] = meta
 }
 
 func (ms *MeasurementState) AddUnresponsiveProbe(probeID int) {

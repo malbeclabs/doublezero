@@ -18,7 +18,7 @@ struct App {
     command: Command,
     /// DZ env (testnet, devnet, or mainnet-beta)
     #[arg(short, long, value_name = "ENV", global = true)]
-    env: Option<String>,
+    env: Option<Environment>,
     /// DZ ledger RPC URL
     #[arg(long, value_name = "RPC_URL", global = true)]
     url: Option<String>,
@@ -48,7 +48,7 @@ fn main() -> eyre::Result<()> {
     }
 
     let (url, geo_program_id, svc_program_id) = if let Some(env) = app.env {
-        let config = env.parse::<Environment>()?.config()?;
+        let config = env.config()?;
         (
             Some(config.ledger_public_rpc_url),
             Some(config.geolocation_program_id.to_string()),
@@ -68,6 +68,25 @@ fn main() -> eyre::Result<()> {
         (app.url, app.geo_program_id, svc_pid)
     };
 
+    // Write commands require a valid keypair; check early for a clear error.
+    let needs_keypair = matches!(
+        &app.command,
+        Command::Probe(cmd) if !matches!(cmd.command, ProbeCommands::Get(_) | ProbeCommands::List(_))
+    ) || matches!(&app.command, Command::InitConfig(_));
+
+    if needs_keypair {
+        let keypair_path = match &app.keypair {
+            Some(p) => p.clone(),
+            None => {
+                let (_, cfg) = doublezero_sdk::read_doublezero_config()?;
+                cfg.keypair_path
+            }
+        };
+        if !keypair_path.exists() {
+            eyre::bail!("keypair file not found: {}", keypair_path.display());
+        }
+    }
+
     let geoclient = GeoClient::new(url, geo_program_id, app.keypair)?;
     let (globalstate_pk, _) = get_globalstate_pda(&svc_program_id);
     let client = GeoCliCommandImpl::new(&geoclient, globalstate_pk);
@@ -83,6 +102,7 @@ fn main() -> eyre::Result<()> {
             ProbeCommands::RemoveParent(args) => args.execute(&client, &mut handle),
         },
         Command::InitConfig(args) => args.execute(&client, &mut handle),
-        Command::Config(_) => unreachable!(),
+        // Config commands are handled by the early return above.
+        Command::Config(_) => eyre::bail!("unexpected: config commands should be handled earlier"),
     }
 }

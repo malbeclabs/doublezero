@@ -8,10 +8,23 @@ pub struct DeleteGeoProbeCliCommand {
     /// Probe code to delete
     #[arg(long, value_parser = validate_code)]
     pub code: String,
+    /// Skip confirmation prompt
+    #[arg(long, default_value_t = false)]
+    pub yes: bool,
 }
 
 impl DeleteGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+        if !self.yes {
+            eprint!("Delete probe '{}'? [y/N]: ", self.code);
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            if !input.trim().eq_ignore_ascii_case("y") {
+                writeln!(out, "Aborted.")?;
+                return Ok(());
+            }
+        }
+
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
         let sig = client.delete_geo_probe(DeleteGeoProbeCommand {
@@ -59,6 +72,7 @@ mod tests {
         let mut output = Vec::new();
         let res = DeleteGeoProbeCliCommand {
             code: "ams-probe-01".to_string(),
+            yes: true,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

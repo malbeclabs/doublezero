@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - Add `doublezero-geolocation` CLI for managing geolocation program entities: GeoProbe CRUD (create, get, list, update, delete), parent device management (add/remove), program config initialization, and geolocation-specific config get/set
-  - Extend `config set` in main CLI to support `--geo-program-id` for setting the default geolocation program ID
+  - Persist geolocation program ID in config when using `config set --env` in the main CLI
 - SDK
   - Add read-only Go SDK for `doublezero-geolocation` program with state deserialization, PDA derivation, and RPC client for querying geoprobe configuration
 - Telemetry

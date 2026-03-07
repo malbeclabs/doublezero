@@ -33,7 +33,11 @@ impl UpdateGeoProbeCliCommand {
 
         let metrics_publisher_pk = self
             .metrics_publisher
-            .map(|mp| Pubkey::try_from(mp.as_str()).unwrap());
+            .map(|mp| {
+                mp.parse::<Pubkey>()
+                    .map_err(|_| eyre::eyre!("invalid metrics publisher pubkey: {mp}"))
+            })
+            .transpose()?;
 
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 

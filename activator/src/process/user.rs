@@ -11,13 +11,13 @@ use doublezero_sdk::{
         device::get::GetDeviceCommand,
         user::{
             activate::ActivateUserCommand, ban::BanUserCommand,
-            closeaccount::CloseAccountUserCommand, reject::RejectUserCommand,
+            closeaccount::CloseAccountUserCommand, get::GetUserCommand, reject::RejectUserCommand,
         },
     },
-    DoubleZeroClient, Exchange, Location, User, UserStatus, UserType,
+    DoubleZeroClient, Exchange, Location, SimulationError, User, UserStatus, UserType,
 };
 use doublezero_serviceability::error::DoubleZeroError;
-use log::{info, warn};
+use log::{debug, info};
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::{
     collections::hash_map::{Entry, HashMap},
@@ -212,7 +212,13 @@ pub fn process_user_event(
                     record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
                 }
                 Err(e) => {
-                    log_error_ignore_invalid_status(&mut log_msg, e);
+                    handle_simulation_error(
+                        &mut log_msg,
+                        e,
+                        client,
+                        pubkey,
+                        ExpectedPostTransition::Activated,
+                    );
                 }
             }
 
@@ -350,7 +356,13 @@ pub fn process_user_event(
                     record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
                 }
                 Err(e) => {
-                    log_error_ignore_invalid_status(&mut log_msg, e);
+                    handle_simulation_error(
+                        &mut log_msg,
+                        e,
+                        client,
+                        pubkey,
+                        ExpectedPostTransition::Activated,
+                    );
                 }
             }
 
@@ -407,7 +419,15 @@ pub fn process_user_event(
                             )
                             .increment(1);
                         }
-                        Err(e) => warn!("Error: {e}"),
+                        Err(e) => {
+                            handle_simulation_error(
+                                &mut log_msg,
+                                e,
+                                client,
+                                pubkey,
+                                ExpectedPostTransition::Closed,
+                            );
+                        }
                     }
                 } else if user.status == UserStatus::PendingBan {
                     let res = BanUserCommand { pubkey: *pubkey }.execute_quiet(client);
@@ -438,7 +458,13 @@ pub fn process_user_event(
                             .increment(1);
                         }
                         Err(e) => {
-                            write!(&mut log_msg, "Error {e}").unwrap();
+                            handle_simulation_error(
+                                &mut log_msg,
+                                e,
+                                client,
+                                pubkey,
+                                ExpectedPostTransition::Banned,
+                            );
                         }
                     }
                 }
@@ -589,7 +615,13 @@ pub fn process_user_event_stateless(
                     .increment(1);
                 }
                 Err(e) => {
-                    log_error_ignore_invalid_status(&mut log_msg, e);
+                    handle_simulation_error(
+                        &mut log_msg,
+                        e,
+                        client,
+                        pubkey,
+                        ExpectedPostTransition::Activated,
+                    );
                 }
             }
 
@@ -639,7 +671,13 @@ pub fn process_user_event_stateless(
                     .increment(1);
                 }
                 Err(e) => {
-                    log_error_ignore_invalid_status(&mut log_msg, e);
+                    handle_simulation_error(
+                        &mut log_msg,
+                        e,
+                        client,
+                        pubkey,
+                        ExpectedPostTransition::Activated,
+                    );
                 }
             }
 
@@ -682,7 +720,15 @@ pub fn process_user_event_stateless(
                             )
                             .increment(1);
                         }
-                        Err(e) => warn!("Error: {e}"),
+                        Err(e) => {
+                            handle_simulation_error(
+                                &mut log_msg,
+                                e,
+                                client,
+                                pubkey,
+                                ExpectedPostTransition::Closed,
+                            );
+                        }
                     }
                 } else if user.status == UserStatus::PendingBan {
                     let res = BanUserCommand { pubkey: *pubkey }.execute_quiet(client);
@@ -700,7 +746,13 @@ pub fn process_user_event_stateless(
                             .increment(1);
                         }
                         Err(e) => {
-                            write!(&mut log_msg, "Error {e}").unwrap();
+                            handle_simulation_error(
+                                &mut log_msg,
+                                e,
+                                client,
+                                pubkey,
+                                ExpectedPostTransition::Banned,
+                            );
                         }
                     }
                 }
@@ -739,16 +791,68 @@ fn get_or_insert_device_state_stateless<'a>(
     }
 }
 
-fn log_error_ignore_invalid_status(log_msg: &mut String, e: eyre::ErrReport) {
-    // Ignore DoubleZeroError::InvalidStatus errors since this only happens when the user is already activated
-    if let Some(dz_err) = e.downcast_ref::<DoubleZeroError>() {
-        if matches!(dz_err, DoubleZeroError::InvalidStatus) {
-            // Do nothing
-        } else {
-            write!(log_msg, "Error: {e}").unwrap();
+/// Checks whether a simulation error is a confirmed race condition by re-fetching the user's
+/// onchain state. For race errors (InvalidStatus/0x7, Custom(1)/0x1), verifies the user has
+/// already transitioned to the expected state. Logs a debug message for confirmed races and
+/// dumps program logs for unexpected failures.
+fn handle_simulation_error(
+    log_msg: &mut String,
+    e: eyre::ErrReport,
+    client: &dyn DoubleZeroClient,
+    pubkey: &Pubkey,
+    expected_status: ExpectedPostTransition,
+) {
+    if let Some(sim_err) = e.downcast_ref::<SimulationError>() {
+        let is_race_code = matches!(
+            sim_err.source,
+            DoubleZeroError::InvalidStatus | DoubleZeroError::InvalidOwnerPubkey
+        );
+
+        if is_race_code && verify_transition(client, pubkey, expected_status) {
+            debug!(
+                "Confirmed race for {pubkey}: user already transitioned ({})",
+                sim_err.source
+            );
+            return;
+        }
+
+        // Not a confirmed race — dump program logs
+        write!(log_msg, "Error: {}", sim_err.source).unwrap();
+        eprintln!("Program Logs:");
+        for log in &sim_err.program_logs {
+            eprintln!("{log}");
         }
     } else {
         write!(log_msg, "Error: {e}").unwrap();
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ExpectedPostTransition {
+    Activated,
+    Closed,
+    Banned,
+}
+
+/// Re-fetches the user account to verify it has reached the expected post-transition state.
+fn verify_transition(
+    client: &dyn DoubleZeroClient,
+    pubkey: &Pubkey,
+    expected: ExpectedPostTransition,
+) -> bool {
+    let cmd = GetUserCommand { pubkey: *pubkey };
+    let result = cmd.execute(client);
+    match expected {
+        ExpectedPostTransition::Closed => {
+            // If the account is gone or no longer a User, the close already happened
+            result.is_err()
+        }
+        ExpectedPostTransition::Activated => {
+            result.is_ok_and(|(_, user)| user.status == UserStatus::Activated)
+        }
+        ExpectedPostTransition::Banned => {
+            result.is_ok_and(|(_, user)| user.status == UserStatus::Banned)
+        }
     }
 }
 

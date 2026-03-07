@@ -43,8 +43,13 @@ use std::{
 };
 
 use crate::{
-    config::*, doublezeroclient::DoubleZeroClient, dztransaction::DZTransaction,
-    keypair::load_keypair, rpckeyedaccount_decode::rpckeyedaccount_decode, AccountData,
+    config::*,
+    doublezeroclient::DoubleZeroClient,
+    dztransaction::DZTransaction,
+    errors::{SimulationError, SimulationTransactionError},
+    keypair::load_keypair,
+    rpckeyedaccount_decode::rpckeyedaccount_decode,
+    AccountData,
 };
 
 pub struct DZClient {
@@ -153,21 +158,42 @@ impl DZClient {
         debug!("Simulating transaction: {transaction:?}");
 
         let result = self.client.simulate_transaction(&transaction)?;
-        if result.value.err.is_some() && !quiet {
-            eprintln!("Program Logs:");
-            if let Some(logs) = result.value.logs {
-                for log in logs {
+        let program_logs = result.value.logs.unwrap_or_default();
+
+        if let Some(ref err) = result.value.err {
+            if quiet {
+                // Return structured errors with logs attached for the caller to handle
+                if let TransactionError::InstructionError(
+                    _index,
+                    InstructionError::Custom(number),
+                ) = err
+                {
+                    return Err(eyre!(SimulationError {
+                        source: DoubleZeroError::from(*number),
+                        program_logs,
+                    }));
+                } else {
+                    return Err(eyre!(SimulationTransactionError {
+                        source: err.clone(),
+                        program_logs,
+                    }));
+                }
+            } else {
+                eprintln!("Program Logs:");
+                for log in &program_logs {
                     eprintln!("{log}");
                 }
-            }
-        }
 
-        if let Some(TransactionError::InstructionError(_index, InstructionError::Custom(number))) =
-            result.value.err
-        {
-            return Err(eyre!(DoubleZeroError::from(number)));
-        } else if let Some(err) = result.value.err {
-            return Err(eyre!(err));
+                if let TransactionError::InstructionError(
+                    _index,
+                    InstructionError::Custom(number),
+                ) = err
+                {
+                    return Err(eyre!(DoubleZeroError::from(*number)));
+                } else {
+                    return Err(eyre!(err.clone()));
+                }
+            }
         }
 
         self.client

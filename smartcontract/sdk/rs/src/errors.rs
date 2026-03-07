@@ -92,3 +92,22 @@ impl From<Error> for TransportError {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Error returned by `execute_transaction_quiet` on simulation failure.
+/// Carries the program logs so callers can inspect them and decide whether to print.
+#[derive(ThisError, Debug)]
+#[error("{source}")]
+pub struct SimulationError {
+    #[source]
+    pub source: doublezero_serviceability::error::DoubleZeroError,
+    pub program_logs: Vec<String>,
+}
+
+/// Non-custom simulation failure (e.g. InsufficientFunds, AccountNotFound).
+/// Carries program logs like `SimulationError` but wraps a generic `TransactionError`.
+#[derive(ThisError, Debug)]
+#[error("{source}")]
+pub struct SimulationTransactionError {
+    pub source: TransactionError,
+    pub program_logs: Vec<String>,
+}

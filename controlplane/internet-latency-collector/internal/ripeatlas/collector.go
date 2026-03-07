@@ -799,14 +799,15 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				if meta.CreatedAt == 0 || meta.CreatedAt >= probeTimeout {
 					continue
 				}
-				// Source probe has never responded, or last response was > 1 hour ago
-				if source.LastResponseAt == 0 || source.LastResponseAt < probeTimeout {
-					var reason string
-					if source.LastResponseAt == 0 {
-						reason = "never_responded"
-					} else {
-						reason = "no_recent_responses"
-					}
+				// Skip probes where LastResponseAt hasn't been populated yet —
+			// on first deploy, all existing source probes have 0 and need
+			// at least one export cycle to populate the field
+			if source.LastResponseAt == 0 {
+				continue
+			}
+			// Last response was > 1 hour ago
+			if source.LastResponseAt < probeTimeout {
+				reason := "no_recent_responses"
 					c.log.Warn("Marking source probe as unresponsive - no results after 1 hour",
 						slog.Int("measurement_id", measurement.ID),
 						slog.Int("probe_id", source.ProbeID),

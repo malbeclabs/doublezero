@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Activator
+  - Suppress noisy program log output from race conditions caused by dual event processing (websocket + snapshot poll). The SDK's new `execute_transaction_quiet` returns a `SimulationError` with program logs; the activator verifies suspected races by re-fetching user state before deciding whether to print logs ([#3197](https://github.com/malbeclabs/doublezero/pull/3197))
 - Telemetry
   - Fix race condition in internet-latency-collector where export and management goroutines independently loaded/saved the same state file, causing newly created RIPE Atlas measurement metadata to be overwritten and measurements to be stuck in a create-destroy-create loop ([#3195](https://github.com/malbeclabs/doublezero/pull/3195))
 - SDK

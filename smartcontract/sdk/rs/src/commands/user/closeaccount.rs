@@ -22,6 +22,14 @@ pub struct CloseAccountUserCommand {
 
 impl CloseAccountUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
+        self.execute_inner(client, false)
+    }
+
+    pub fn execute_quiet(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
+        self.execute_inner(client, true)
+    }
+
+    fn execute_inner(&self, client: &dyn DoubleZeroClient, quiet: bool) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
@@ -105,13 +113,16 @@ impl CloseAccountUserCommand {
             accounts.push(AccountMeta::new(user.tenant_pk, false));
         }
 
-        client.execute_transaction(
-            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-                dz_prefix_count,
-                multicast_publisher_count,
-            }),
-            accounts,
-        )
+        let instruction = DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+            dz_prefix_count,
+            multicast_publisher_count,
+        });
+
+        if quiet {
+            client.execute_transaction_quiet(instruction, accounts)
+        } else {
+            client.execute_transaction(instruction, accounts)
+        }
     }
 }
 

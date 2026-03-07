@@ -42,6 +42,14 @@ pub trait DoubleZeroClient {
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature>;
 
+    /// Like `execute_transaction`, but suppresses program log output on simulation failure.
+    /// Use this for transactions where simulation failures are expected (e.g., race conditions).
+    fn execute_transaction_quiet(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+    ) -> eyre::Result<Signature>;
+
     fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>>;
 }
 

@@ -43,8 +43,13 @@ use std::{
 };
 
 use crate::{
-    config::*, doublezeroclient::DoubleZeroClient, dztransaction::DZTransaction,
-    keypair::load_keypair, rpckeyedaccount_decode::rpckeyedaccount_decode, AccountData,
+    config::*,
+    doublezeroclient::DoubleZeroClient,
+    dztransaction::DZTransaction,
+    errors::{SimulationError, SimulationTransactionError},
+    keypair::load_keypair,
+    rpckeyedaccount_decode::rpckeyedaccount_decode,
+    AccountData,
 };
 
 pub struct DZClient {
@@ -117,6 +122,83 @@ impl DZClient {
             .with_max_times(3)
             .with_min_delay(Duration::from_millis(500))
             .with_max_delay(Duration::from_secs(5))
+    }
+
+    fn execute_transaction_inner(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+        quiet: bool,
+    ) -> eyre::Result<Signature> {
+        let payer = self
+            .payer
+            .as_ref()
+            .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
+        let data = instruction.pack();
+
+        let mut transaction = Transaction::new_with_payer(
+            &[Instruction::new_with_bytes(
+                self.program_id,
+                &data,
+                [
+                    accounts,
+                    vec![
+                        AccountMeta::new(payer.pubkey(), true),
+                        AccountMeta::new(program::id(), false),
+                    ],
+                ]
+                .concat(),
+            )],
+            Some(&payer.pubkey()),
+        );
+
+        let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
+        transaction.sign(&[&payer], blockhash);
+
+        debug!("Simulating transaction: {transaction:?}");
+
+        let result = self.client.simulate_transaction(&transaction)?;
+        let program_logs = result.value.logs.unwrap_or_default();
+
+        if let Some(ref err) = result.value.err {
+            if quiet {
+                // Return structured errors with logs attached for the caller to handle
+                if let TransactionError::InstructionError(
+                    _index,
+                    InstructionError::Custom(number),
+                ) = err
+                {
+                    return Err(eyre!(SimulationError {
+                        source: DoubleZeroError::from(*number),
+                        program_logs,
+                    }));
+                } else {
+                    return Err(eyre!(SimulationTransactionError {
+                        source: err.clone(),
+                        program_logs,
+                    }));
+                }
+            } else {
+                eprintln!("Program Logs:");
+                for log in &program_logs {
+                    eprintln!("{log}");
+                }
+
+                if let TransactionError::InstructionError(
+                    _index,
+                    InstructionError::Custom(number),
+                ) = err
+                {
+                    return Err(eyre!(DoubleZeroError::from(*number)));
+                } else {
+                    return Err(eyre!(err.clone()));
+                }
+            }
+        }
+
+        self.client
+            .send_and_confirm_transaction(&transaction)
+            .map_err(|e| eyre!(e))
     }
 
     /// Returns true for transient network errors that are worth retrying.
@@ -368,54 +450,15 @@ impl DoubleZeroClient for DZClient {
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature> {
-        let payer = self
-            .payer
-            .as_ref()
-            .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
-        let data = instruction.pack();
+        self.execute_transaction_inner(instruction, accounts, false)
+    }
 
-        let mut transaction = Transaction::new_with_payer(
-            &[Instruction::new_with_bytes(
-                self.program_id,
-                &data,
-                [
-                    accounts,
-                    vec![
-                        AccountMeta::new(payer.pubkey(), true),
-                        AccountMeta::new(program::id(), false),
-                    ],
-                ]
-                .concat(),
-            )],
-            Some(&payer.pubkey()),
-        );
-
-        let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
-        transaction.sign(&[&payer], blockhash);
-
-        debug!("Simulating transaction: {transaction:?}");
-
-        let result = self.client.simulate_transaction(&transaction)?;
-        if result.value.err.is_some() {
-            eprintln!("Program Logs:");
-            if let Some(logs) = result.value.logs {
-                for log in logs {
-                    eprintln!("{log}");
-                }
-            }
-        }
-
-        if let Some(TransactionError::InstructionError(_index, InstructionError::Custom(number))) =
-            result.value.err
-        {
-            return Err(eyre!(DoubleZeroError::from(number)));
-        } else if let Some(err) = result.value.err {
-            return Err(eyre!(err));
-        }
-
-        self.client
-            .send_and_confirm_transaction(&transaction)
-            .map_err(|e| eyre!(e))
+    fn execute_transaction_quiet(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+    ) -> eyre::Result<Signature> {
+        self.execute_transaction_inner(instruction, accounts, true)
     }
 
     fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>> {

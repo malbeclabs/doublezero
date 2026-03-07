@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Telemetry
+  - Fix race condition in internet-latency-collector where export and management goroutines independently loaded/saved the same state file, causing newly created RIPE Atlas measurement metadata to be overwritten and measurements to be stuck in a create-destroy-create loop ([#3195](https://github.com/malbeclabs/doublezero/pull/3195))
 - SDK
   - Add read-only Go SDK for `doublezero-geolocation` program with state deserialization, PDA derivation, and RPC client for querying geoprobe configuration
 - Telemetry

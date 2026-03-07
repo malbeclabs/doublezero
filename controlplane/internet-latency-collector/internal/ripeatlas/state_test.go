@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -223,24 +224,52 @@ func TestInternetLatency_RIPEAtlas_State_PersistenceAcrossInstances(t *testing.T
 func TestInternetLatency_RIPEAtlas_State_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
 
-	ms := NewMeasurementState("test.json")
+	tempDir := t.TempDir()
+	filename := filepath.Join(tempDir, "concurrent_test.json")
+	ms := NewMeasurementState(filename)
 
-	// Note: This test demonstrates that the current implementation
-	// is NOT thread-safe. In a real concurrent environment, you would
-	// need to add mutex protection.
+	// Simulate the race that caused the create-destroy-create loop:
+	// one goroutine sets metadata + saves (management), while another
+	// reads timestamps + saves (export). With a shared instance, the
+	// export goroutine's Save must not lose the management goroutine's
+	// metadata.
+	var wg sync.WaitGroup
 
-	// Add initial timestamp
-	ms.UpdateTimestamp(100, 1000)
+	// Management goroutine: creates measurements with metadata
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			ms.SetMetadata(i, MeasurementMeta{
+				TargetLocation: "test",
+				TargetProbeID:  i,
+				CreatedAt:      int64(1000 + i),
+			})
+			_ = ms.Save()
+		}
+	}()
 
-	// Simulate concurrent updates (not truly concurrent in this test)
-	for i := 0; i < 10; i++ {
-		ms.UpdateTimestamp(100, int64(1000+i))
+	// Export goroutine: reads and updates timestamps, then saves
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			ms.UpdateTimestamp(i, int64(2000+i))
+			_ = ms.Save()
+		}
+	}()
+
+	wg.Wait()
+
+	// All 100 measurements must still have metadata — none should be lost
+	allMeta := ms.GetAllMetadata()
+	require.Len(t, allMeta, 100, "all metadata entries should be present after concurrent access")
+	for i := 0; i < 100; i++ {
+		meta, exists := ms.GetMetadata(i)
+		require.True(t, exists, "metadata for measurement %d should exist", i)
+		require.Equal(t, "test", meta.TargetLocation)
+		require.Equal(t, i, meta.TargetProbeID)
 	}
-
-	// Verify final value
-	ts, exists := ms.GetLastTimestamp(100)
-	require.True(t, exists)
-	require.Equal(t, int64(1009), ts)
 }
 
 func TestInternetLatency_RIPEAtlas_State_LargeNumberOfMeasurements(t *testing.T) {

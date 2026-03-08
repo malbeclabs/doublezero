@@ -68,6 +68,7 @@ func (n *NetlinkManager) ServeProvision(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	n.updateConnectionInfoMetric()
 	_, _ = w.Write([]byte(`{"status": "ok"}`))
 }
 
@@ -97,6 +98,7 @@ func (n *NetlinkManager) ServeRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	n.updateConnectionInfoMetric()
 	_, _ = w.Write([]byte(`{"status": "ok"}`))
 }
 
@@ -165,6 +167,38 @@ func (n *NetlinkManager) ServeV2Status(w http.ResponseWriter, _ *http.Request) {
 		Network:           n.network,
 		Services:          enriched,
 	})
+}
+
+// updateConnectionInfoMetric resets and repopulates the doublezero_connection_info
+// gauge with current service metadata.
+func (n *NetlinkManager) updateConnectionInfoMetric() {
+	metricConnectionInfo.Reset()
+
+	statuses, err := n.Status()
+	if err != nil || len(statuses) == 0 {
+		return
+	}
+
+	enriched := n.enrichStatuses(statuses)
+	for _, svc := range enriched {
+		metricConnectionInfo.WithLabelValues(
+			svc.UserType.String(),
+			n.network,
+			svc.CurrentDevice,
+			svc.Metro,
+			svc.TunnelName,
+			ipString(svc.TunnelSrc),
+			ipString(svc.TunnelDst),
+		).Set(1)
+	}
+}
+
+// ipString returns the string representation of an IP, or empty string if nil.
+func ipString(ip net.IP) string {
+	if ip == nil {
+		return ""
+	}
+	return ip.String()
 }
 
 // latencyToleranceNS matches the CLI's LATENCY_TOLERANCE_NS (5ms).

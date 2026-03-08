@@ -18,6 +18,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 // --- test mocks ---
@@ -1385,6 +1386,67 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConnectionInfoMetric(t *testing.T) {
+	devicePK := [32]byte{1}
+	exchangePK := [32]byte{2}
+	clientIP := net.IPv4(1, 2, 3, 4).To4()
+
+	device := testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})
+	device.ExchangePubKey = exchangePK
+	device.Code = "dz1"
+	device.Status = serviceability.DeviceStatusActivated
+
+	user := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)
+
+	fetcher := &mockFetcher{
+		data: &serviceability.ProgramData{
+			Config:  testConfig(),
+			Devices: []serviceability.Device{device},
+			Users:   []serviceability.User{user},
+			Exchanges: []serviceability.Exchange{
+				{PubKey: exchangePK, Name: "Amsterdam"},
+			},
+		},
+	}
+
+	dir := t.TempDir()
+	n := newTestNLM(fetcher,
+		WithClientIP(clientIP),
+		WithPollInterval(time.Hour),
+		WithStateDir(dir),
+		WithEnabled(true),
+		WithNetwork("testnet"),
+	)
+
+	// Reset metric to avoid cross-test pollution from promauto global state.
+	metricConnectionInfo.Reset()
+
+	t.Run("populated_after_reconcile", func(t *testing.T) {
+		n.reconcile(context.Background())
+
+		count := testutil.CollectAndCount(metricConnectionInfo)
+		if count != 1 {
+			t.Fatalf("expected 1 metric series, got %d", count)
+		}
+
+		val := testutil.ToFloat64(metricConnectionInfo.WithLabelValues(
+			"IBRL", "testnet", "dz1", "Amsterdam", "doublezero0", "1.2.3.4", "5.6.7.8",
+		))
+		if val != 1 {
+			t.Fatalf("expected metric value 1, got %f", val)
+		}
+	})
+
+	t.Run("cleared_after_teardown", func(t *testing.T) {
+		n.reconcilerTeardown()
+
+		count := testutil.CollectAndCount(metricConnectionInfo)
+		if count != 0 {
+			t.Fatalf("expected 0 metric series after teardown, got %d", count)
+		}
+	})
 }
 
 func TestServeV2Status_NoFetcher(t *testing.T) {

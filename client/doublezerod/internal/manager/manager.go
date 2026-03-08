@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
-	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	bgppkg "github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/services"
@@ -43,9 +43,9 @@ type GroupUpdater interface {
 // service bgp sessions.
 type BGPServer interface {
 	Serve([]net.Listener) error
-	AddPeer(*bgp.PeerConfig, []bgp.NLRI) error
+	AddPeer(*bgppkg.PeerConfig, []bgppkg.NLRI) error
 	DeletePeer(net.IP) error
-	GetPeerStatus(net.IP) bgp.Session
+	GetPeerStatus(net.IP) bgppkg.Session
 }
 
 // Fetcher is the interface for fetching onchain program data.
@@ -146,16 +146,16 @@ type NetlinkManager struct {
 
 // CreateService creates the appropriate service based on the provisioned
 // user type.
-func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netlinker, pim services.PIMWriter, heartbeat services.HeartbeatWriter) (Provisioner, error) {
+func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netlinker, pim services.PIMWriter, heartbeat services.HeartbeatWriter, sessionMetric bgppkg.SessionMetric) (Provisioner, error) {
 	switch u {
 	case api.UserTypeIBRL:
-		return services.NewIBRLService(bgp, nl), nil
+		return services.NewIBRLService(bgp, nl, sessionMetric), nil
 	case api.UserTypeIBRLWithAllocatedIP:
-		return services.NewIBRLServiceWithAllocatedAddress(bgp, nl), nil
+		return services.NewIBRLServiceWithAllocatedAddress(bgp, nl, sessionMetric), nil
 	case api.UserTypeEdgeFiltering:
-		return services.NewEdgeFilteringService(bgp, nl), nil
+		return services.NewEdgeFilteringService(bgp, nl, sessionMetric), nil
 	case api.UserTypeMulticast:
-		return services.NewMulticastService(bgp, nl, pim, heartbeat), nil
+		return services.NewMulticastService(bgp, nl, pim, heartbeat, sessionMetric), nil
 	default:
 		return nil, fmt.Errorf("unsupported user type: %s", u)
 	}
@@ -181,15 +181,20 @@ func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, pim services.PI
 // Provision is the entry point for all user tunnel provisioning. This currently
 // contains logic for IBRL, edge filtering and multicast use cases.
 func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
+	return n.provisionWithSessionMetric(pr, n.sessionMetric(pr, "", ""))
+}
+
+// provisionWithSessionMetric provisions with an explicit session metric.
+func (n *NetlinkManager) provisionWithSessionMetric(pr api.ProvisionRequest, sessionMetric bgppkg.SessionMetric) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	return n.provisionLocked(pr)
+	return n.provisionLocked(pr, sessionMetric)
 }
 
 // provisionLocked creates and sets up a service for the given provision request.
 // Caller must hold n.mu.
-func (n *NetlinkManager) provisionLocked(pr api.ProvisionRequest) error {
-	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.pim, n.heartbeat)
+func (n *NetlinkManager) provisionLocked(pr api.ProvisionRequest, sessionMetric bgppkg.SessionMetric) error {
+	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.pim, n.heartbeat, sessionMetric)
 	if err != nil {
 		return fmt.Errorf("error creating service: %v", err)
 	}
@@ -254,14 +259,14 @@ func (n *NetlinkManager) removeLocked(u api.UserType) error {
 // Reprovision atomically tears down the existing service and provisions a new
 // one, holding the lock across both operations so that Status() never observes
 // a nil-service window.
-func (n *NetlinkManager) Reprovision(u api.UserType, pr api.ProvisionRequest) error {
+func (n *NetlinkManager) Reprovision(u api.UserType, pr api.ProvisionRequest, sessionMetric bgppkg.SessionMetric) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
 	if err := n.removeLocked(u); err != nil {
 		return fmt.Errorf("error removing service: %v", err)
 	}
-	return n.provisionLocked(pr)
+	return n.provisionLocked(pr, sessionMetric)
 }
 
 // Close tears down any active services. This is typically called when
@@ -532,9 +537,15 @@ func (n *NetlinkManager) reconcile(ctx context.Context) {
 	metricMatchedUsers.WithLabelValues(serviceUnicast).Set(float64(len(wantUnicast)))
 	metricMatchedUsers.WithLabelValues(serviceMulticast).Set(float64(len(wantMulticast)))
 
+	// Build exchange lookup for metro resolution.
+	exchangesByPK := make(map[[32]byte]serviceability.Exchange, len(data.Exchanges))
+	for _, e := range data.Exchanges {
+		exchangesByPK[e.PubKey] = e
+	}
+
 	// Reconcile unicast and multicast services
-	n.reconcileService(wantUnicast, n.HasUnicastService(), serviceUnicast, api.UserTypeIBRL, devicesByPK, mcastGroupsByPK, allPrefixes, data.Config)
-	n.reconcileService(wantMulticast, n.HasMulticastService(), serviceMulticast, api.UserTypeMulticast, devicesByPK, mcastGroupsByPK, allPrefixes, data.Config)
+	n.reconcileService(wantUnicast, n.HasUnicastService(), serviceUnicast, api.UserTypeIBRL, devicesByPK, exchangesByPK, mcastGroupsByPK, allPrefixes, data.Config)
+	n.reconcileService(wantMulticast, n.HasMulticastService(), serviceMulticast, api.UserTypeMulticast, devicesByPK, exchangesByPK, mcastGroupsByPK, allPrefixes, data.Config)
 }
 
 func (n *NetlinkManager) reconcileService(
@@ -543,6 +554,7 @@ func (n *NetlinkManager) reconcileService(
 	serviceType string,
 	removeAsType api.UserType,
 	devicesByPK map[[32]byte]serviceability.Device,
+	exchangesByPK map[[32]byte]serviceability.Exchange,
 	mcastGroupsByPK map[[32]byte]serviceability.MulticastGroup,
 	allPrefixes []*net.IPNet,
 	cfg serviceability.Config,
@@ -555,6 +567,18 @@ func (n *NetlinkManager) reconcileService(
 			metricProvisionsTotal.WithLabelValues(serviceType, statusError).Inc()
 			return
 		}
+
+		// Resolve device code and metro for metric labels.
+		var deviceCode, metro string
+		devPK := [32]byte(u.DevicePubKey)
+		if d, ok := devicesByPK[devPK]; ok {
+			deviceCode = d.Code
+			exchPK := [32]byte(d.ExchangePubKey)
+			if e, ok := exchangesByPK[exchPK]; ok {
+				metro = e.Name
+			}
+		}
+		sm := n.sessionMetric(pr, deviceCode, metro)
 
 		if hasService {
 			// Service already provisioned — check if onchain state has drifted
@@ -586,7 +610,7 @@ func (n *NetlinkManager) reconcileService(
 
 			slog.Info("reconciler: onchain state changed, re-provisioning service", "service", serviceType, "diff", diff)
 			// Reprovision atomically so Status() never sees a nil-service window.
-			if err := n.Reprovision(removeAsType, pr); err != nil {
+			if err := n.Reprovision(removeAsType, pr, sm); err != nil {
 				slog.Error("reconciler: error re-provisioning service", "service", serviceType, "error", err)
 				metricRemovalsTotal.WithLabelValues(serviceType, statusError).Inc()
 				return
@@ -597,7 +621,7 @@ func (n *NetlinkManager) reconcileService(
 		}
 
 		slog.Info("reconciler: provisioning service", "service", serviceType, "user_type", pr.UserType)
-		if err := n.Provision(pr); err != nil {
+		if err := n.provisionWithSessionMetric(pr, sm); err != nil {
 			slog.Error("reconciler: error provisioning service", "service", serviceType, "error", err)
 			metricProvisionsTotal.WithLabelValues(serviceType, statusError).Inc()
 		} else {
@@ -725,6 +749,35 @@ func mapUserType(ut serviceability.UserUserType) api.UserType {
 		return api.UserTypeMulticast
 	default:
 		return api.UserTypeUnknown
+	}
+}
+
+// sessionMetric returns a SessionMetric that sets the
+// doublezero_session_is_up metric with connection metadata labels.
+func (n *NetlinkManager) sessionMetric(pr api.ProvisionRequest, deviceCode, metro string) bgppkg.SessionMetric {
+	tunnelSrc := ""
+	if pr.TunnelSrc != nil {
+		tunnelSrc = pr.TunnelSrc.String()
+	}
+	tunnelDst := ""
+	if pr.TunnelDst != nil {
+		tunnelDst = pr.TunnelDst.String()
+	}
+	tunnelName := "doublezero0"
+	if services.IsMulticastUser(pr.UserType) {
+		tunnelName = "doublezero1"
+	}
+	gauge := bgppkg.MetricSessionStatus.WithLabelValues(
+		pr.UserType.String(),
+		n.network,
+		deviceCode,
+		metro,
+		tunnelName,
+		tunnelSrc,
+		tunnelDst,
+	)
+	return func(value float64) {
+		gauge.Set(value)
 	}
 }
 

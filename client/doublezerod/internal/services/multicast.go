@@ -26,17 +26,19 @@ type MulticastService struct {
 	MulticastPubGroups []net.IP
 	MulticastSubGroups []net.IP
 	provisionReq       *api.ProvisionRequest
+	sessionMetric      bgp.SessionMetric
 }
 
 func (s *MulticastService) UserType() api.UserType   { return api.UserTypeMulticast }
 func (s *MulticastService) ServiceType() ServiceType { return ServiceTypeMulticast }
 
-func NewMulticastService(bgp BGPReaderWriter, nl routing.Netlinker, pim PIMWriter, heartbeat HeartbeatWriter) *MulticastService {
+func NewMulticastService(b BGPReaderWriter, nl routing.Netlinker, pim PIMWriter, heartbeat HeartbeatWriter, sessionMetric bgp.SessionMetric) *MulticastService {
 	return &MulticastService{
-		bgp:       bgp,
-		nl:        nl,
-		pim:       pim,
-		heartbeat: heartbeat,
+		bgp:           b,
+		nl:            nl,
+		pim:           pim,
+		heartbeat:     heartbeat,
+		sessionMetric: sessionMetric,
 	}
 }
 
@@ -140,6 +142,7 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 		LocalAs:       p.BgpLocalAsn,
 		RemoteAs:      p.BgpRemoteAsn,
 		NoInstall:     true,
+		SessionMetric: s.sessionMetric,
 	}
 	err = s.bgp.AddPeer(peer, nlri)
 	if err != nil {

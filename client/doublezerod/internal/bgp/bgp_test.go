@@ -2,12 +2,10 @@ package bgp_test
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"log/slog"
 	"net"
 	"net/netip"
-	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -19,7 +17,6 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	gobgp "github.com/osrg/gobgp/pkg/packet/bgp"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
@@ -246,13 +243,6 @@ func TestBgpServer(t *testing.T) {
 		}
 	})
 
-	t.Run("validate_session_status_metric_is_one", func(t *testing.T) {
-		expectedMetric := fmt.Sprintf(bgp.MetricSessionStatusDesc, 1)
-		if err := testutil.CollectAndCompare(bgp.MetricSessionStatus, strings.NewReader(expectedMetric)); err != nil {
-			t.Fatalf("unexpected metric value: %v", err)
-		}
-	})
-
 	t.Run("validate_route_withdraw", func(t *testing.T) {
 		want := []*routing.Route{
 			{
@@ -313,13 +303,6 @@ func TestBgpServer(t *testing.T) {
 		}
 		if diff := checkRoutes(nlr.getRoutesFlushed(), want); diff != "" {
 			t.Fatalf("bgp flush mismatch: -(got); +(want): %s", diff)
-		}
-	})
-
-	t.Run("validate_session_status_metric_is_zero", func(t *testing.T) {
-		expectedMetric := fmt.Sprintf(bgp.MetricSessionStatusDesc, 0)
-		if err := testutil.CollectAndCompare(bgp.MetricSessionStatus, strings.NewReader(expectedMetric)); err != nil {
-			t.Fatalf("unexpected metric value: %v", err)
 		}
 	})
 }

@@ -5,18 +5,27 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+// SessionMetric abstracts setting the session-up metric so that
+// callers (e.g. the manager) can bind labels without the BGP layer
+// knowing about connection metadata.
+type SessionMetric func(value float64)
+
 var (
-	MetricSessionStatus = promauto.NewGauge(
+	MetricSessionStatus = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "doublezero_session_is_up",
 			Help: "Status of BGP session to DoubleZero",
 		},
+		[]string{
+			"user_type",
+			"network",
+			"current_device",
+			"metro",
+			"tunnel_name",
+			"tunnel_src",
+			"tunnel_dst",
+		},
 	)
-	MetricSessionStatusDesc = `
-# HELP doublezero_session_is_up Status of BGP session to DoubleZero
-# TYPE doublezero_session_is_up gauge
-doublezero_session_is_up %d
-`
 
 	MetricSessionEstablishedDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{

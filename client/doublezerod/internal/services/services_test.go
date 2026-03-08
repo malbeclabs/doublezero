@@ -612,7 +612,7 @@ func TestServices(t *testing.T) {
 			mockPim := &MockPIMServer{}
 			mockHeartbeat := &MockHeartbeatSender{}
 
-			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockPim, mockHeartbeat)
+			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockPim, mockHeartbeat, nil)
 			if err != nil {
 				t.Fatalf("failed to create service: %v", err)
 			}
@@ -694,7 +694,7 @@ func TestMulticastService_UpdateGroups_AddPubGroup(t *testing.T) {
 	mockPim := &MockPIMServer{}
 	mockHeartbeat := &MockHeartbeatSender{}
 
-	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
+	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -784,7 +784,7 @@ func TestMulticastService_UpdateGroups_RemovePubGroup(t *testing.T) {
 	mockPim := &MockPIMServer{}
 	mockHeartbeat := &MockHeartbeatSender{}
 
-	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
+	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -850,7 +850,7 @@ func TestMulticastService_UpdateGroups_PublisherRoleTransition(t *testing.T) {
 	mockPim := &MockPIMServer{}
 	mockHeartbeat := &MockHeartbeatSender{}
 
-	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
+	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -909,7 +909,7 @@ func TestMulticastService_DoubleTeardown(t *testing.T) {
 	mockPim := &MockPIMServer{}
 	mockHeartbeat := &MockHeartbeatSender{}
 
-	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
+	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}

@@ -23,6 +23,11 @@ type Plugin struct {
 	NoInstall         bool
 	RouteReaderWriter RouteReaderWriter
 
+	// sessionMetric sets the doublezero_session_is_up metric. The manager
+	// binds connection metadata labels when constructing this function so the
+	// BGP layer stays decoupled from that metadata.
+	sessionMetric SessionMetric
+
 	// These fields are used to track the initial establishment of the BGP session.
 	startedAt              time.Time
 	initialallyEstablished atomic.Bool
@@ -54,7 +59,12 @@ func NewBgpPlugin(
 	routeTable int,
 	peerStatus chan SessionEvent,
 	noInstall bool,
-	routeReaderWriter RouteReaderWriter) *Plugin {
+	routeReaderWriter RouteReaderWriter,
+	sessionMetric SessionMetric,
+) *Plugin {
+	if sessionMetric == nil {
+		sessionMetric = func(float64) {}
+	}
 	return &Plugin{
 		AdvertisedNLRI:    advertised,
 		RouteSrc:          routeSrc,
@@ -62,6 +72,7 @@ func NewBgpPlugin(
 		PeerStatusChan:    peerStatus,
 		NoInstall:         noInstall,
 		RouteReaderWriter: routeReaderWriter,
+		sessionMetric:     sessionMetric,
 		startedAt:         time.Now(),
 	}
 }
@@ -121,7 +132,7 @@ func (p *Plugin) emitTimeoutStatus() bool {
 		PeerAddr: p.peerAddr,
 		Session:  Session{SessionStatus: status, LastSessionUpdate: time.Now().Unix()},
 	}
-	MetricSessionStatus.Set(0)
+	p.sessionMetric(0)
 	return true
 }
 
@@ -131,7 +142,7 @@ func (p *Plugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, cap
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
 		Session:  Session{SessionStatus: SessionStatusInitializing, LastSessionUpdate: time.Now().Unix()},
 	}
-	MetricSessionStatus.Set(0)
+	p.sessionMetric(0)
 	return nil
 }
 
@@ -172,7 +183,7 @@ func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMes
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
 		Session:  Session{SessionStatus: SessionStatusUp, LastSessionUpdate: time.Now().Unix()},
 	}
-	MetricSessionStatus.Set(1)
+	p.sessionMetric(1)
 	return p.handleUpdate
 }
 
@@ -210,7 +221,7 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 		}
 	}
 
-	MetricSessionStatus.Set(0)
+	p.sessionMetric(0)
 
 	// Only start a new timeout if the peer was not intentionally deleted.
 	// If deleted, corebgp won't retry and we don't need timeout tracking.

@@ -19,15 +19,17 @@ type EdgeFilteringService struct {
 	Routes         []*routing.Route
 	Rules          []*routing.IPRule
 	provisionReq   *api.ProvisionRequest
+	sessionMetric  bgp.SessionMetric
 }
 
 func (s *EdgeFilteringService) UserType() api.UserType   { return api.UserTypeEdgeFiltering }
 func (s *EdgeFilteringService) ServiceType() ServiceType { return ServiceTypeUnicast }
 
-func NewEdgeFilteringService(bgp BGPReaderWriter, nl routing.Netlinker) *EdgeFilteringService {
+func NewEdgeFilteringService(b BGPReaderWriter, nl routing.Netlinker, sessionMetric bgp.SessionMetric) *EdgeFilteringService {
 	return &EdgeFilteringService{
-		bgp: bgp,
-		nl:  nl,
+		bgp:           b,
+		nl:            nl,
+		sessionMetric: sessionMetric,
 	}
 }
 
@@ -64,6 +66,7 @@ func (s *EdgeFilteringService) Setup(p *api.ProvisionRequest) error {
 		RemoteAs:      p.BgpRemoteAsn,
 		RouteTable:    routing.RouteTableSpecific, // TODO: this needs to go
 		RouteSrc:      p.DoubleZeroIP,
+		SessionMetric: s.sessionMetric,
 	}
 	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, s.Tunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
 	if err != nil {

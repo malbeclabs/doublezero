@@ -18,15 +18,17 @@ type IBRLService struct {
 	Tunnel         *routing.Tunnel
 	DoubleZeroAddr net.IP
 	provisionReq   *api.ProvisionRequest
+	sessionMetric  bgp.SessionMetric
 }
 
 func (s *IBRLService) UserType() api.UserType   { return api.UserTypeIBRL }
 func (s *IBRLService) ServiceType() ServiceType { return ServiceTypeUnicast }
 
-func NewIBRLService(bgp BGPReaderWriter, nl routing.Netlinker) *IBRLService {
+func NewIBRLService(b BGPReaderWriter, nl routing.Netlinker, sessionMetric bgp.SessionMetric) *IBRLService {
 	return &IBRLService{
-		bgp: bgp,
-		nl:  nl,
+		bgp:           b,
+		nl:            nl,
+		sessionMetric: sessionMetric,
 	}
 }
 
@@ -69,6 +71,7 @@ func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
 		// This does not override the global setting, but just indicates that the service _can_ be
 		// in enabled mode if globally configured.
 		AllowLivenessEnabled: true,
+		SessionMetric:        s.sessionMetric,
 	}
 	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, s.Tunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
 	if err != nil {
@@ -133,11 +136,12 @@ type IBRLServiceWithAllocatedAddress struct {
 	IBRLService
 }
 
-func NewIBRLServiceWithAllocatedAddress(bgp BGPReaderWriter, nl routing.Netlinker) *IBRLServiceWithAllocatedAddress {
+func NewIBRLServiceWithAllocatedAddress(b BGPReaderWriter, nl routing.Netlinker, sessionMetric bgp.SessionMetric) *IBRLServiceWithAllocatedAddress {
 	return &IBRLServiceWithAllocatedAddress{
 		IBRLService{
-			bgp: bgp,
-			nl:  nl,
+			bgp:           b,
+			nl:            nl,
+			sessionMetric: sessionMetric,
 		},
 	}
 }

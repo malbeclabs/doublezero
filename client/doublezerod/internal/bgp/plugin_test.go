@@ -476,6 +476,7 @@ func TestPlugin_MarkDeleted_PreventsTimeoutEmission(t *testing.T) {
 				statusChan,
 				true,
 				mockRW,
+				nil,
 			)
 			plugin.peerAddr = net.ParseIP("192.0.2.1")
 
@@ -553,6 +554,7 @@ func TestPlugin_OnClose_NoTimeoutAfterMarkDeleted(t *testing.T) {
 				statusChan,
 				true,
 				mockRW,
+				nil,
 			)
 			plugin.peerAddr = net.ParseIP("192.0.2.1")
 			plugin.currentlyEstablished.Store(true)
@@ -593,6 +595,7 @@ func TestPlugin_MarkDeleted_CancelsInFlightTimeout(t *testing.T) {
 		statusChan,
 		true,
 		mockRW,
+		nil,
 	)
 	plugin.peerAddr = net.ParseIP("192.0.2.1")
 	plugin.tcpConnected.Store(true)
@@ -641,6 +644,7 @@ func TestPlugin_OnEstablished_TOCTOURace_MutexPreventsStatusOverwrite(t *testing
 		statusChan,
 		true,
 		mockRW,
+		nil,
 	)
 	plugin.peerAddr = net.ParseIP("192.0.2.1")
 	plugin.tcpConnected.Store(true)
@@ -717,6 +721,7 @@ func TestPlugin_emitTimeoutStatus_RespectsEstablishedFlag(t *testing.T) {
 		statusChan,
 		true,
 		mockRW,
+		nil,
 	)
 	plugin.peerAddr = net.ParseIP("192.0.2.1")
 	plugin.tcpConnected.Store(true)

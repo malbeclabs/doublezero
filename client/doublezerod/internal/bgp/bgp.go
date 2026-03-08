@@ -106,6 +106,7 @@ type PeerConfig struct {
 	Interface            string
 	AllowLivenessEnabled bool
 	LivenessPort         int
+	SessionMetric        SessionMetric
 }
 
 type BgpServer struct {
@@ -157,7 +158,7 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 	if p.AllowLivenessEnabled && b.livenessManager != nil {
 		rrw = liveness.NewRouteReaderWriter(b.livenessManager, b.routeReaderWriter, p.Interface, p.NoUninstall)
 	}
-	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.NoInstall, rrw)
+	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.NoInstall, rrw, p.SessionMetric)
 	plugin.peerAddr = p.RemoteAddress
 
 	// Emit Pending status immediately to clear any stale status from previous connections.

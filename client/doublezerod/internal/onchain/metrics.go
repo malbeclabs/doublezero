@@ -8,9 +8,9 @@ import (
 const (
 	labelResult = "result"
 
-	resultSuccess       = "success"
-	resultErrorStale    = "error_stale"
-	resultErrorNoCache  = "error_no_cache"
+	resultSuccess      = "success"
+	resultErrorStale   = "error_stale"
+	resultErrorNoCache = "error_no_cache"
 )
 
 var (

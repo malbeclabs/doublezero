@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	defaultPollInterval  = 10 * time.Second
-	defaultFetchTimeout  = 60 * time.Second
+	defaultPollInterval = 10 * time.Second
+	defaultFetchTimeout = 60 * time.Second
 )
 
 // Provisioner is an interface for all services that can be provisioned by the

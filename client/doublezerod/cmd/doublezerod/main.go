@@ -39,6 +39,7 @@ var (
 	routeConfigPath             = flag.String("route-config", "/var/lib/doublezerod/route-config.json", "path to route config file (unstable)")
 	clientIP                    = flag.String("client-ip", "", "public IP of this client, used to match onchain user accounts; auto-discovered if not set")
 	reconcilerPollInterval      = flag.Int("reconciler-poll-interval", 10, "reconciler poll interval in seconds")
+	reconcilerFetchTimeout      = flag.Int("reconciler-fetch-timeout", 60, "timeout in seconds for onchain data fetches during reconciliation")
 	stateDir                    = flag.String("state-dir", "/var/lib/doublezerod", "directory for persistent state files")
 
 	// Route liveness configuration flags.
@@ -184,7 +185,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, networkConfig, *probeInterval, *cacheUpdateInterval, lmc, *clientIP, *reconcilerPollInterval, *stateDir); err != nil {
+	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, networkConfig, *probeInterval, *cacheUpdateInterval, lmc, *clientIP, *reconcilerPollInterval, *reconcilerFetchTimeout, *stateDir); err != nil {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}

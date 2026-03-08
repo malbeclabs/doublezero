@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	defaultPollInterval = 10 * time.Second
-	fetchTimeout        = 20 * time.Second
+	defaultPollInterval  = 10 * time.Second
+	defaultFetchTimeout  = 60 * time.Second
 )
 
 // Provisioner is an interface for all services that can be provisioned by the
@@ -110,6 +110,13 @@ func WithNetwork(network string) Option {
 	}
 }
 
+// WithFetchTimeout sets the timeout for onchain data fetches during reconciliation.
+func WithFetchTimeout(d time.Duration) Option {
+	return func(n *NetlinkManager) {
+		n.fetchTimeout = d
+	}
+}
+
 type NetlinkManager struct {
 	netlink          routing.Netlinker
 	Routes           []*routing.Route
@@ -126,6 +133,7 @@ type NetlinkManager struct {
 	clientIP       net.IP
 	fetcher        Fetcher
 	pollInterval   time.Duration
+	fetchTimeout   time.Duration
 	enabled        atomic.Bool
 	enableCh       chan bool
 	stateDir       string
@@ -160,6 +168,7 @@ func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, pim services.PI
 		pim:            pim,
 		heartbeat:      heartbeat,
 		pollInterval:   defaultPollInterval,
+		fetchTimeout:   defaultFetchTimeout,
 		enableCh:       make(chan bool, 1),
 		tunnelSrcCache: make(map[string]net.IP),
 	}
@@ -455,7 +464,7 @@ func (n *NetlinkManager) reconcilerTeardown() {
 }
 
 func (n *NetlinkManager) reconcile(ctx context.Context) {
-	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
+	ctx, cancel := context.WithTimeout(ctx, n.fetchTimeout)
 	defer cancel()
 
 	data, err := n.fetcher.GetProgramData(ctx)

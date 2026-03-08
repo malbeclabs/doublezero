@@ -30,7 +30,7 @@ const (
 	updateInstalledRoutesGaugeInterval = 10 * time.Second
 )
 
-func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig, clientIP string, reconcilerPollInterval int, stateDir string) error {
+func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig, clientIP string, reconcilerPollInterval int, reconcilerFetchTimeout int, stateDir string) error {
 	nlr := routing.Netlink{}
 	var crw bgp.RouteReaderWriter
 	var cr *routing.ConfiguredRoutes
@@ -109,10 +109,12 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		)
 	}
 
+	fetchTimeout := time.Duration(reconcilerFetchTimeout) * time.Second
 	nlmOpts := []manager.Option{
 		manager.WithClientIP(ip),
 		manager.WithFetcher(cachingFetcher),
 		manager.WithPollInterval(pollInterval),
+		manager.WithFetchTimeout(fetchTimeout),
 		manager.WithEnabled(reconcilerEnabled),
 		manager.WithStateDir(stateDir),
 		manager.WithNetwork(networkConfig.Moniker),

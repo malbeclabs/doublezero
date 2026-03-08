@@ -175,7 +175,7 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 	// Fetch onchain data (best effort — empty strings on failure).
 	var data *serviceability.ProgramData
 	if n.fetcher != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), n.fetchTimeout)
 		defer cancel()
 		var err error
 		data, err = n.fetcher.GetProgramData(ctx)

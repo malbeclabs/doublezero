@@ -65,14 +65,23 @@ func (f *CachingFetcher) GetProgramData(ctx context.Context) (*serviceability.Pr
 		cachedAge := time.Since(f.fetchedAt)
 		f.mu.RUnlock()
 
+		start := time.Now()
 		data, err := f.provider.GetProgramData(ctx)
+		metricFetchDuration.Observe(time.Since(start).Seconds())
+
 		if err != nil {
 			if cachedData != nil {
+				metricFetchTotal.WithLabelValues(resultErrorStale).Inc()
+				metricStaleCacheAge.Set(cachedAge.Seconds())
 				slog.Warn("onchain: fetch failed, returning stale cached data", "age", cachedAge, "error", err)
 				return cachedData, nil
 			}
+			metricFetchTotal.WithLabelValues(resultErrorNoCache).Inc()
 			return nil, err
 		}
+
+		metricFetchTotal.WithLabelValues(resultSuccess).Inc()
+		metricStaleCacheAge.Set(0)
 
 		f.mu.Lock()
 		f.cached = data

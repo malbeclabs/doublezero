@@ -461,6 +461,7 @@ func (n *NetlinkManager) reconcilerTeardown() {
 	}
 	// Clear cached tunnel src so a fresh lookup is done on next enable.
 	n.tunnelSrcCache = make(map[string]net.IP)
+	metricConnectionInfo.Reset()
 }
 
 func (n *NetlinkManager) reconcile(ctx context.Context) {
@@ -535,6 +536,8 @@ func (n *NetlinkManager) reconcile(ctx context.Context) {
 	// Reconcile unicast and multicast services
 	n.reconcileService(wantUnicast, n.HasUnicastService(), serviceUnicast, api.UserTypeIBRL, devicesByPK, mcastGroupsByPK, allPrefixes, data.Config)
 	n.reconcileService(wantMulticast, n.HasMulticastService(), serviceMulticast, api.UserTypeMulticast, devicesByPK, mcastGroupsByPK, allPrefixes, data.Config)
+
+	n.updateConnectionInfoMetric()
 }
 
 func (n *NetlinkManager) reconcileService(

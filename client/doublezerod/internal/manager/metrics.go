@@ -56,4 +56,12 @@ var (
 		},
 		[]string{labelServiceType},
 	)
+
+	metricConnectionInfo = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "doublezero_connection_info",
+			Help: "Connection metadata for active DoubleZero services",
+		},
+		[]string{"user_type", "network", "current_device", "metro", "tunnel_name", "tunnel_src", "tunnel_dst"},
+	)
 )

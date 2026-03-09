@@ -39,6 +39,13 @@ All notable changes to this project will be documented in this file.
   - Add `access-pass fund` command to top up underfunded user payers, with `--dry-run`, `--force` (skip confirmation), `--min-balance`, and a pre-transfer sender balance check; required balance floor includes a gas-fee reserve (50 × 5,000 lamports) and the wallet rent-exempt minimum to prevent on-chain transfer failures
   - Add `--user-payer` filter to `user list` command
   - Serviceability: onchain activation - atomic close for DeleteDevice ([#3188](https://github.com/malbeclabs/doublezero/pull/3188))
+- Onchain Programs
+  - Serviceability: DeleteUser instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
+  - Serviceability: CreateLink instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
+  - Serviceability: DeleteLink instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
+  - Serviceability: CreateMulticastGroup instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
+  - Serviceability: DeleteMulticastGroup instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
+  - Serviceability: CreateSubscribeUser instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
 
 ## [v0.10.0](https://github.com/malbeclabs/doublezero/compare/client/v0.9.0...client/v0.10.0) - 2026-03-04
 
@@ -71,12 +78,6 @@ All notable changes to this project will be documented in this file.
   - Publish `TestQA_AllDevices_UnicastConnectivity` results to ClickHouse (`qa_alldevices_results` and `qa_alldevices_metadata` tables) in addition to InfluxDB; configured via `CLICKHOUSE_ADDR` env var, skipped gracefully when not set
 - Onchain Programs
   - Serviceability: CreateUser instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
-  - Serviceability: DeleteUser instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
-  - Serviceability: CreateLink instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
-  - Serviceability: DeleteLink instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
-  - Serviceability: CreateMulticastGroup instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
-  - Serviceability: DeleteMulticastGroup instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
-  - Serviceability: CreateSubscribeUser instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
 
 ## [v0.9.0](https://github.com/malbeclabs/doublezero/compare/client/v0.8.11...client/v0.9.0) - 2026-02-27
 

@@ -1170,6 +1170,7 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
             client_ip: client_ip.into(),
             publisher: true,
             subscriber: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -1476,6 +1477,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             client_ip: client_ip.into(),
             publisher: true,
             subscriber: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -1565,6 +1567,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             client_ip: client_ip.into(),
             publisher: false,
             subscriber: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -1750,6 +1753,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             client_ip: client_ip.into(),
             publisher: true,
             subscriber: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),

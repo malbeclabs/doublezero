@@ -56,8 +56,8 @@ func TestNewCoordinator_WithInitialProbes(t *testing.T) {
 
 	cfg := newTestCoordinatorConfig()
 	cfg.InitialProbes = []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345},
-		{Host: "192.0.2.1", Port: 12346},
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
 	}
 
 	coordinator, err := NewCoordinator(cfg)
@@ -112,15 +112,15 @@ func TestCoordinator_HandleProbeUpdate_Add(t *testing.T) {
 
 	ctx := context.Background()
 	newProbes := []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345},
-		{Host: "192.0.2.1", Port: 12346},
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
 	}
 
 	coordinator.handleProbeUpdate(ctx, newProbes)
 
 	assert.Len(t, coordinator.probes, 2)
-	assert.Contains(t, coordinator.probes, "127.0.0.1:12345")
-	assert.Contains(t, coordinator.probes, "192.0.2.1:12346")
+	assert.Contains(t, coordinator.probes, "127.0.0.1:12345:8925")
+	assert.Contains(t, coordinator.probes, "192.0.2.1:12346:8925")
 }
 
 func TestCoordinator_HandleProbeUpdate_Remove(t *testing.T) {
@@ -128,8 +128,8 @@ func TestCoordinator_HandleProbeUpdate_Remove(t *testing.T) {
 
 	cfg := newTestCoordinatorConfig()
 	cfg.InitialProbes = []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345},
-		{Host: "192.0.2.1", Port: 12346},
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
 	}
 	coordinator, err := NewCoordinator(cfg)
 	require.NoError(t, err)
@@ -138,14 +138,14 @@ func TestCoordinator_HandleProbeUpdate_Remove(t *testing.T) {
 
 	ctx := context.Background()
 	newProbes := []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345},
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
 	}
 
 	coordinator.handleProbeUpdate(ctx, newProbes)
 
 	assert.Len(t, coordinator.probes, 1)
-	assert.Contains(t, coordinator.probes, "127.0.0.1:12345")
-	assert.NotContains(t, coordinator.probes, "192.0.2.1:12346")
+	assert.Contains(t, coordinator.probes, "127.0.0.1:12345:8925")
+	assert.NotContains(t, coordinator.probes, "192.0.2.1:12346:8925")
 }
 
 func TestCoordinator_HandleProbeUpdate_Mixed(t *testing.T) {
@@ -153,8 +153,8 @@ func TestCoordinator_HandleProbeUpdate_Mixed(t *testing.T) {
 
 	cfg := newTestCoordinatorConfig()
 	cfg.InitialProbes = []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345},
-		{Host: "192.0.2.1", Port: 12346},
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
 	}
 	coordinator, err := NewCoordinator(cfg)
 	require.NoError(t, err)
@@ -163,16 +163,16 @@ func TestCoordinator_HandleProbeUpdate_Mixed(t *testing.T) {
 
 	ctx := context.Background()
 	newProbes := []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345},
-		{Host: "198.51.100.1", Port: 12347},
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+		{Host: "198.51.100.1", Port: 12347, TWAMPPort: 8925},
 	}
 
 	coordinator.handleProbeUpdate(ctx, newProbes)
 
 	assert.Len(t, coordinator.probes, 2)
-	assert.Contains(t, coordinator.probes, "127.0.0.1:12345")
-	assert.Contains(t, coordinator.probes, "198.51.100.1:12347")
-	assert.NotContains(t, coordinator.probes, "192.0.2.1:12346")
+	assert.Contains(t, coordinator.probes, "127.0.0.1:12345:8925")
+	assert.Contains(t, coordinator.probes, "198.51.100.1:12347:8925")
+	assert.NotContains(t, coordinator.probes, "192.0.2.1:12346:8925")
 }
 
 func TestCoordinator_HandleProbeUpdate_Empty(t *testing.T) {
@@ -180,8 +180,8 @@ func TestCoordinator_HandleProbeUpdate_Empty(t *testing.T) {
 
 	cfg := newTestCoordinatorConfig()
 	cfg.InitialProbes = []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345},
-		{Host: "192.0.2.1", Port: 12346},
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
 	}
 	coordinator, err := NewCoordinator(cfg)
 	require.NoError(t, err)
@@ -214,7 +214,7 @@ func TestCoordinator_RunMeasurementCycle_WithProbes(t *testing.T) {
 
 	cfg := newTestCoordinatorConfig()
 	cfg.InitialProbes = []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345},
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
 	}
 	coordinator, err := NewCoordinator(cfg)
 	require.NoError(t, err)
@@ -253,7 +253,7 @@ func TestCoordinator_Run_ProbeUpdates(t *testing.T) {
 	defer cancel()
 
 	newProbes := []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345},
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
 	}
 	cfg.ProbeUpdateCh <- newProbes
 
@@ -266,7 +266,7 @@ func TestCoordinator_Run_ProbeUpdates(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Len(t, coordinator.probes, 1)
-	assert.Contains(t, coordinator.probes, "127.0.0.1:12345")
+	assert.Contains(t, coordinator.probes, "127.0.0.1:12345:8925")
 }
 
 func TestCoordinator_Run_ProbeUpdateChannelClosed(t *testing.T) {
@@ -293,7 +293,7 @@ func TestCoordinator_Run_MeasurementCycles(t *testing.T) {
 	cfg := newTestCoordinatorConfig()
 	cfg.Interval = 20 * time.Millisecond
 	cfg.InitialProbes = []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345},
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
 	}
 	coordinator, err := NewCoordinator(cfg)
 	require.NoError(t, err)
@@ -311,8 +311,8 @@ func TestCoordinator_Close(t *testing.T) {
 
 	cfg := newTestCoordinatorConfig()
 	cfg.InitialProbes = []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345},
-		{Host: "192.0.2.1", Port: 12346},
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
 	}
 	coordinator, err := NewCoordinator(cfg)
 	require.NoError(t, err)
@@ -348,7 +348,7 @@ func TestCoordinator_Concurrent_HandleProbeUpdate(t *testing.T) {
 	go func() {
 		for i := 0; i < 10; i++ {
 			newProbes := []ProbeAddress{
-				{Host: "127.0.0.1", Port: uint16(12345 + i)},
+				{Host: "127.0.0.1", Port: uint16(12345 + i), TWAMPPort: 8925},
 			}
 			coordinator.handleProbeUpdate(ctx, newProbes)
 			time.Sleep(5 * time.Millisecond)
@@ -386,18 +386,18 @@ func TestCoordinator_Run_MultipleProbeUpdates(t *testing.T) {
 	go func() {
 		time.Sleep(20 * time.Millisecond)
 		cfg.ProbeUpdateCh <- []ProbeAddress{
-			{Host: "127.0.0.1", Port: 12345},
+			{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
 		}
 
 		time.Sleep(20 * time.Millisecond)
 		cfg.ProbeUpdateCh <- []ProbeAddress{
-			{Host: "127.0.0.1", Port: 12345},
-			{Host: "192.0.2.1", Port: 12346},
+			{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+			{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
 		}
 
 		time.Sleep(20 * time.Millisecond)
 		cfg.ProbeUpdateCh <- []ProbeAddress{
-			{Host: "192.0.2.1", Port: 12346},
+			{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
 		}
 	}()
 
@@ -405,5 +405,5 @@ func TestCoordinator_Run_MultipleProbeUpdates(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Len(t, coordinator.probes, 1)
-	assert.Contains(t, coordinator.probes, "192.0.2.1:12346")
+	assert.Contains(t, coordinator.probes, "192.0.2.1:12346:8925")
 }

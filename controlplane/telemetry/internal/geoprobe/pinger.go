@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
 
@@ -61,7 +60,7 @@ func (p *Pinger) AddProbe(ctx context.Context, addr ProbeAddress) error {
 		return fmt.Errorf("invalid probe address %s: %w", key, err)
 	}
 
-	resolvedAddr := &net.UDPAddr{IP: net.ParseIP(addr.Host), Port: telemetryconfig.TWAMPListenPort}
+	resolvedAddr := &net.UDPAddr{IP: net.ParseIP(addr.Host), Port: int(addr.TWAMPPort)}
 
 	sourceAddr := &net.UDPAddr{
 		IP:   net.IPv4zero,

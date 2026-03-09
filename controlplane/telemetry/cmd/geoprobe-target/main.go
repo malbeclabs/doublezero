@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	defaultTWAMPPort         = 862
+	defaultTWAMPPort         = 8925
 	defaultUDPPort           = 8923
 	defaultTWAMPTimeout      = 1 * time.Second
 	defaultRateLimit         = 10

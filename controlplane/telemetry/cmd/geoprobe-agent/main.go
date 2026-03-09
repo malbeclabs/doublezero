@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	defaultTWAMPListenPort       = 862
+	defaultTWAMPListenPort       = 8925
 	defaultSignedTWAMPListenPort = 8924
 	defaultUDPListenPort         = 8923
 	defaultProbeInterval         = 5 * time.Minute
@@ -42,7 +42,7 @@ var (
 	keypairPath           = flag.String("keypair", "", "The path to the probe's Ed25519 keypair file for signing messages.")
 	geoProbePubkeyStr     = flag.String("geoprobe-pubkey", "", "The geoprobe device's public key (base58). Identifies this specific probe in offsets. Should Match DZ Ledger")
 	additionalParent      = flag.String("additional-parent", "", "Trusted parent DZD in the format devicekey,metricskey (base58 pubkeys).")
-	additionalTargets     = flag.String("additional-targets", "", "Comma-separated list of target addresses (host:port) to measure and send composite offsets.")
+	additionalTargets     = flag.String("additional-targets", "", "Comma-separated list of target addresses (host or host:offset_port:twamp_port) to measure and send composite offsets.")
 	twampListenPort       = flag.Uint("twamp-listen-port", defaultTWAMPListenPort, "Port for TWAMP reflector.")
 	signedTWAMPListenPort = flag.Uint("signed-twamp-port", defaultSignedTWAMPListenPort, "Port for Signed TWAMP reflector for inbound probing.")
 	allowedPubkeysFlag    = flag.String("allowed-pubkeys", "", "Comma-separated base58 Ed25519 pubkeys always authorized for signed TWAMP probes in inbound probing.")

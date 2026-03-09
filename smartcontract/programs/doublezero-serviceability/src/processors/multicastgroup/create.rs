@@ -1,9 +1,16 @@
 use crate::{
     error::DoubleZeroError,
-    pda::get_multicastgroup_pda,
+    pda::{get_multicastgroup_pda, get_resource_extension_pda},
+    processors::{resource::allocate_ip, validation::validate_program_account},
+    resource::ResourceType,
     seeds::{SEED_MULTICAST_GROUP, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
-    state::{accounttype::AccountType, globalstate::GlobalState, multicastgroup::*},
+    state::{
+        accounttype::AccountType,
+        feature_flags::{is_feature_enabled, FeatureFlag},
+        globalstate::GlobalState,
+        multicastgroup::*,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -24,14 +31,18 @@ pub struct MulticastGroupCreateArgs {
     pub code: String,
     pub max_bandwidth: u64,
     pub owner: Pubkey,
+    /// When true, onchain allocation is used (ResourceExtension accounts required).
+    /// Performs atomic create+allocate+activate in a single transaction.
+    #[incremental(default = false)]
+    pub use_onchain_allocation: bool,
 }
 
 impl fmt::Debug for MulticastGroupCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, max_bandwidth: {}, owner: {}",
-            self.code, self.max_bandwidth, self.owner
+            "code: {}, max_bandwidth: {}, owner: {}, use_onchain_allocation: {}",
+            self.code, self.max_bandwidth, self.owner, self.use_onchain_allocation
         )
     }
 }
@@ -45,6 +56,18 @@ pub fn process_create_multicastgroup(
 
     let mgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+
+    // Optional: ResourceExtension account for onchain allocation (before payer)
+    // Account layout WITH ResourceExtension (use_onchain_allocation = true):
+    //   [mgroup, globalstate, multicast_group_block, payer, system]
+    // Account layout WITHOUT (legacy, use_onchain_allocation = false):
+    //   [mgroup, globalstate, payer, system]
+    let resource_extension_account = if value.use_onchain_allocation {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -91,7 +114,7 @@ pub fn process_create_multicastgroup(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    let multicastgroup = MulticastGroup {
+    let mut multicastgroup = MulticastGroup {
         account_type: AccountType::MulticastGroup,
         owner: value.owner,
         index: globalstate.account_index,
@@ -104,6 +127,26 @@ pub fn process_create_multicastgroup(
         publisher_count: 0,
         subscriber_count: 0,
     };
+
+    // Atomic create+allocate+activate if onchain allocation is enabled
+    if let Some(multicast_group_block_ext) = resource_extension_account {
+        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
+            return Err(DoubleZeroError::FeatureNotEnabled.into());
+        }
+
+        let (expected_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
+        validate_program_account!(
+            multicast_group_block_ext,
+            program_id,
+            writable = true,
+            pda = Some(&expected_pda),
+            "MulticastGroupBlock"
+        );
+
+        multicastgroup.multicast_ip = allocate_ip(multicast_group_block_ext, 1)?.ip();
+        multicastgroup.status = MulticastGroupStatus::Activated;
+    }
 
     try_acc_create(
         &multicastgroup,

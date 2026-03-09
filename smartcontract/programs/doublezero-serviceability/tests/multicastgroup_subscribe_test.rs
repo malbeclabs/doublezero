@@ -261,6 +261,7 @@ async fn setup_fixture() -> TestFixture {
             code: "group1".to_string(),
             max_bandwidth: 1000,
             owner: payer.pubkey(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -295,6 +296,7 @@ async fn setup_fixture() -> TestFixture {
             code: "group2".to_string(),
             max_bandwidth: 1000,
             owner: payer.pubkey(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(mgroup2_pubkey, false),

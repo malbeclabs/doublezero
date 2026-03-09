@@ -903,6 +903,7 @@ mod tests {
                 max_bandwidth: 1000,
                 code: "test".to_string(),
                 owner: Pubkey::new_unique(),
+                use_onchain_allocation: false,
             }),
             "CreateMulticastGroup",
         );
@@ -943,7 +944,9 @@ mod tests {
         );
 
         test_instruction(
-            DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {}),
+            DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
+                use_onchain_deallocation: false,
+            }),
             "DeleteMulticastGroup",
         );
 

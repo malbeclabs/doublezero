@@ -1104,6 +1104,7 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
             code: "test-mgroup".to_string(),
             max_bandwidth: 1000,
             owner: payer.pubkey(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -1418,6 +1419,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             code: "test-mgroup".to_string(),
             max_bandwidth: 1000,
             owner: payer.pubkey(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),

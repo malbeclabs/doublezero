@@ -9,6 +9,7 @@ pub mod link;
 pub mod location;
 pub mod migrate;
 pub mod multicastgroup;
+pub mod permission;
 pub mod programconfig;
 pub mod resource;
 pub mod tenant;

@@ -81,6 +81,12 @@ use doublezero_sdk::{
             subscribe::SubscribeMulticastGroupCommand,
             update::UpdateMulticastGroupCommand,
         },
+        permission::{
+            create::CreatePermissionCommand, delete::DeletePermissionCommand,
+            get::GetPermissionCommand, list::ListPermissionCommand,
+            resume::ResumePermissionCommand, suspend::SuspendPermissionCommand,
+            update::UpdatePermissionCommand,
+        },
         programconfig::get::GetProgramConfigCommand,
         resource::{
             allocate::AllocateResourceCommand, closeaccount::CloseResourceCommand,
@@ -105,7 +111,7 @@ use doublezero_sdk::{
 };
 use doublezero_serviceability::state::{
     accesspass::AccessPass, accountdata::AccountData, contributor::Contributor,
-    programconfig::ProgramConfig, tenant::Tenant,
+    permission::Permission, programconfig::ProgramConfig, tenant::Tenant,
 };
 use mockall::automock;
 use solana_client::rpc_config::RpcProgramAccountsConfig;
@@ -176,6 +182,16 @@ pub trait CliCommand {
     fn update_contributor(&self, cmd: UpdateContributorCommand) -> eyre::Result<Signature>;
     fn delete_contributor(&self, cmd: DeleteContributorCommand) -> eyre::Result<Signature>;
 
+    fn create_permission(&self, cmd: CreatePermissionCommand) -> eyre::Result<(Signature, Pubkey)>;
+    fn get_permission(&self, cmd: GetPermissionCommand) -> eyre::Result<(Pubkey, Permission)>;
+    fn list_permission(
+        &self,
+        cmd: ListPermissionCommand,
+    ) -> eyre::Result<HashMap<Pubkey, Permission>>;
+    fn update_permission(&self, cmd: UpdatePermissionCommand) -> eyre::Result<Signature>;
+    fn suspend_permission(&self, cmd: SuspendPermissionCommand) -> eyre::Result<Signature>;
+    fn resume_permission(&self, cmd: ResumePermissionCommand) -> eyre::Result<Signature>;
+    fn delete_permission(&self, cmd: DeletePermissionCommand) -> eyre::Result<Signature>;
     fn create_tenant(&self, cmd: CreateTenantCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn get_tenant(&self, cmd: GetTenantCommand) -> eyre::Result<(Pubkey, Tenant)>;
     fn list_tenant(&self, cmd: ListTenantCommand) -> eyre::Result<HashMap<Pubkey, Tenant>>;
@@ -479,6 +495,30 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
 
+    fn create_permission(&self, cmd: CreatePermissionCommand) -> eyre::Result<(Signature, Pubkey)> {
+        cmd.execute(self.client)
+    }
+    fn get_permission(&self, cmd: GetPermissionCommand) -> eyre::Result<(Pubkey, Permission)> {
+        cmd.execute(self.client)
+    }
+    fn list_permission(
+        &self,
+        cmd: ListPermissionCommand,
+    ) -> eyre::Result<HashMap<Pubkey, Permission>> {
+        cmd.execute(self.client)
+    }
+    fn update_permission(&self, cmd: UpdatePermissionCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn suspend_permission(&self, cmd: SuspendPermissionCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn resume_permission(&self, cmd: ResumePermissionCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn delete_permission(&self, cmd: DeletePermissionCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
     fn create_tenant(&self, cmd: CreateTenantCommand) -> eyre::Result<(Signature, Pubkey)> {
         cmd.execute(self.client)
     }

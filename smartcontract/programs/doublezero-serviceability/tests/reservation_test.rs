@@ -205,6 +205,7 @@ async fn setup_device_for_reservations(
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

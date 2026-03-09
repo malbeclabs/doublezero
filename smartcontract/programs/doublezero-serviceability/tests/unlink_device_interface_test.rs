@@ -132,6 +132,7 @@ async fn setup_two_devices_with_link() -> (
             metrics_publisher_pk: Default::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -216,6 +217,7 @@ async fn setup_two_devices_with_link() -> (
             metrics_publisher_pk: Default::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
@@ -480,6 +482,7 @@ async fn test_unlink_from_pending() {
             metrics_publisher_pk: Default::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

@@ -227,6 +227,7 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

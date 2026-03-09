@@ -179,6 +179,8 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	t := time.NewTimer(time.Hour)
 	defer t.Stop()
 
+	var lastServiceQueueUpdate time.Time
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -214,7 +216,11 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		peer := *ev.session.peer
 		ev.session.mu.Unlock()
 
-		s.metrics.schedulerServiceQueueLength(s.eq, peer)
+		// Periodically update per-service queue length metric (O(n) scan, throttled).
+		if now.Sub(lastServiceQueueUpdate) >= 10*time.Second {
+			lastServiceQueueUpdate = now
+			s.metrics.schedulerServiceQueueLength(s.eq, peer)
+		}
 
 		prevState := ev.session.GetState()
 
@@ -303,12 +309,10 @@ func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
 		return
 	}
 	sess.nextTxScheduled = next
-	peer := *sess.peer
 	sess.mu.Unlock()
 
 	s.eq.Push(&event{when: next, eventType: eventTypeTX, session: sess})
 	s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
-	s.metrics.schedulerServiceQueueLength(s.eq, peer)
 }
 
 // scheduleDetect arms or re-arms a session’s detection timer and enqueues a detect event.
@@ -340,7 +344,6 @@ func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 
 	s.eq.Push(&event{when: ddl, eventType: eventTypeDetect, session: sess})
 	s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
-	s.metrics.schedulerServiceQueueLength(s.eq, peer)
 }
 
 // doTX builds and transmits a ControlPacket representing the session’s current state.
@@ -423,7 +426,6 @@ func (s *Scheduler) tryExpire(sess *Session) bool {
 		)
 		s.eq.Push(&event{when: now, eventType: eventTypeTX, session: sess})
 		s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
-		s.metrics.schedulerServiceQueueLength(s.eq, peer)
 		return true
 	}
 	return false

@@ -425,7 +425,7 @@ func TestPublisher_AddProbe(t *testing.T) {
 	pub, err := NewPublisher(cfg)
 	require.NoError(t, err)
 
-	addr := ProbeAddress{Host: "127.0.0.1", Port: 9999}
+	addr := ProbeAddress{Host: "127.0.0.1", Port: 9999, TWAMPPort: 8925}
 
 	t.Run("adds probe successfully", func(t *testing.T) {
 		err := pub.AddProbe(context.Background(), addr)
@@ -464,7 +464,7 @@ func TestPublisher_RemoveProbe(t *testing.T) {
 	pub, err := NewPublisher(cfg)
 	require.NoError(t, err)
 
-	addr := ProbeAddress{Host: "127.0.0.1", Port: 9999}
+	addr := ProbeAddress{Host: "127.0.0.1", Port: 9999, TWAMPPort: 8925}
 
 	t.Run("removes existing probe", func(t *testing.T) {
 		err := pub.AddProbe(context.Background(), addr)
@@ -506,8 +506,8 @@ func TestPublisher_Close(t *testing.T) {
 	pub, err := NewPublisher(cfg)
 	require.NoError(t, err)
 
-	addr1 := ProbeAddress{Host: "127.0.0.1", Port: 9999}
-	addr2 := ProbeAddress{Host: "127.0.0.1", Port: 10000}
+	addr1 := ProbeAddress{Host: "127.0.0.1", Port: 9999, TWAMPPort: 8925}
+	addr2 := ProbeAddress{Host: "127.0.0.1", Port: 10000, TWAMPPort: 8925}
 
 	err = pub.AddProbe(context.Background(), addr1)
 	require.NoError(t, err)
@@ -551,7 +551,7 @@ func TestPublisher_Publish(t *testing.T) {
 	defer listener.Close()
 
 	localAddr := listener.LocalAddr().(*net.UDPAddr)
-	probeAddr := ProbeAddress{Host: "127.0.0.1", Port: uint16(localAddr.Port)}
+	probeAddr := ProbeAddress{Host: "127.0.0.1", Port: uint16(localAddr.Port), TWAMPPort: 8925}
 
 	err = pub.AddProbe(context.Background(), probeAddr)
 	require.NoError(t, err)
@@ -644,7 +644,7 @@ func TestPublisher_Publish_LatLngError(t *testing.T) {
 	ctx := context.Background()
 
 	rttData := map[ProbeAddress]uint64{
-		{Host: "127.0.0.1", Port: 9999}: 800000,
+		{Host: "127.0.0.1", Port: 9999, TWAMPPort: 8925}: 800000,
 	}
 
 	err = pub.Publish(ctx, rttData)
@@ -681,7 +681,7 @@ func TestPublisher_Publish_SlotError(t *testing.T) {
 	ctx := context.Background()
 
 	rttData := map[ProbeAddress]uint64{
-		{Host: "127.0.0.1", Port: 9999}: 800000,
+		{Host: "127.0.0.1", Port: 9999, TWAMPPort: 8925}: 800000,
 	}
 
 	err = pub.Publish(ctx, rttData)
@@ -716,7 +716,7 @@ func TestPublisher_Publish_ProbeNotInPool(t *testing.T) {
 	ctx := context.Background()
 
 	rttData := map[ProbeAddress]uint64{
-		{Host: "127.0.0.1", Port: 9999}: 800000,
+		{Host: "127.0.0.1", Port: 9999, TWAMPPort: 8925}: 800000,
 	}
 
 	err = pub.Publish(ctx, rttData)

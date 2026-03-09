@@ -87,7 +87,7 @@ func TestConfig_Validate_GeoprobeFields(t *testing.T) {
 		{
 			name: "valid config with geoprobe",
 			modify: func(c *Config) {
-				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080}}
+				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080, TWAMPPort: 8925}}
 				c.ServiceabilityProgramClient = serviceabilityClient
 				c.RPCClient = rpcClient
 			},
@@ -96,7 +96,7 @@ func TestConfig_Validate_GeoprobeFields(t *testing.T) {
 		{
 			name: "geoprobe enabled but missing serviceability client",
 			modify: func(c *Config) {
-				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080}}
+				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080, TWAMPPort: 8925}}
 				c.RPCClient = rpcClient
 			},
 			expectError: "serviceability client is required when geoprobe is enabled",
@@ -104,7 +104,7 @@ func TestConfig_Validate_GeoprobeFields(t *testing.T) {
 		{
 			name: "geoprobe enabled but missing rpc client",
 			modify: func(c *Config) {
-				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080}}
+				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080, TWAMPPort: 8925}}
 				c.ServiceabilityProgramClient = serviceabilityClient
 			},
 			expectError: "rpc client is required when geoprobe is enabled",
@@ -112,7 +112,7 @@ func TestConfig_Validate_GeoprobeFields(t *testing.T) {
 		{
 			name: "geoprobe enabled but missing keypair",
 			modify: func(c *Config) {
-				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080}}
+				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080, TWAMPPort: 8925}}
 				c.ServiceabilityProgramClient = serviceabilityClient
 				c.RPCClient = rpcClient
 				c.Keypair = nil

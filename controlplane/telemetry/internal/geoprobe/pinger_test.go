@@ -47,8 +47,9 @@ func TestPinger_AddProbe(t *testing.T) {
 	ctx := context.Background()
 
 	addr := ProbeAddress{
-		Host: "127.0.0.1",
-		Port: 12345,
+		Host:      "127.0.0.1",
+		Port:      12345,
+		TWAMPPort: 8925,
 	}
 
 	err := pinger.AddProbe(ctx, addr)
@@ -76,8 +77,9 @@ func TestPinger_AddProbe_Duplicate(t *testing.T) {
 	ctx := context.Background()
 
 	addr := ProbeAddress{
-		Host: "127.0.0.1",
-		Port: 12346,
+		Host:      "127.0.0.1",
+		Port:      12346,
+		TWAMPPort: 8925,
 	}
 
 	err := pinger.AddProbe(ctx, addr)
@@ -114,8 +116,9 @@ func TestPinger_AddProbe_InvalidHost(t *testing.T) {
 	ctx := context.Background()
 
 	addr := ProbeAddress{
-		Host: "not-an-ip",
-		Port: 12347,
+		Host:      "not-an-ip",
+		Port:      12347,
+		TWAMPPort: 8925,
 	}
 
 	err := pinger.AddProbe(ctx, addr)
@@ -143,8 +146,9 @@ func TestPinger_RemoveProbe(t *testing.T) {
 	ctx := context.Background()
 
 	addr := ProbeAddress{
-		Host: "127.0.0.1",
-		Port: 12348,
+		Host:      "127.0.0.1",
+		Port:      12348,
+		TWAMPPort: 8925,
 	}
 
 	err := pinger.AddProbe(ctx, addr)
@@ -174,8 +178,9 @@ func TestPinger_RemoveProbe_NotFound(t *testing.T) {
 	pinger := NewPinger(cfg)
 
 	addr := ProbeAddress{
-		Host: "192.0.2.1",
-		Port: 12345,
+		Host:      "192.0.2.1",
+		Port:      12345,
+		TWAMPPort: 8925,
 	}
 
 	err := pinger.RemoveProbe(addr)
@@ -215,8 +220,9 @@ func TestPinger_MeasureAll_WithContext(t *testing.T) {
 	pinger := NewPinger(cfg)
 
 	addr := ProbeAddress{
-		Host: "127.0.0.1",
-		Port: 12349,
+		Host:      "127.0.0.1",
+		Port:      12349,
+		TWAMPPort: 8925,
 	}
 	err := pinger.AddProbe(context.Background(), addr)
 	require.NoError(t, err)
@@ -243,8 +249,8 @@ func TestPinger_Close(t *testing.T) {
 	pinger := NewPinger(cfg)
 	ctx := context.Background()
 
-	addr1 := ProbeAddress{Host: "127.0.0.1", Port: 12352}
-	addr2 := ProbeAddress{Host: "127.0.0.1", Port: 12353}
+	addr1 := ProbeAddress{Host: "127.0.0.1", Port: 12352, TWAMPPort: 8925}
+	addr2 := ProbeAddress{Host: "127.0.0.1", Port: 12353, TWAMPPort: 8925}
 
 	err := pinger.AddProbe(ctx, addr1)
 	require.NoError(t, err)
@@ -284,8 +290,9 @@ func TestPinger_Concurrent(t *testing.T) {
 			defer wg.Done()
 
 			addr := ProbeAddress{
-				Host: "127.0.0.1",
-				Port: uint16(13000 + id),
+				Host:      "127.0.0.1",
+				Port:      uint16(13000 + id),
+				TWAMPPort: 8925,
 			}
 
 			err := pinger.AddProbe(ctx, addr)
@@ -323,8 +330,9 @@ func TestPinger_AddRemoveSequential(t *testing.T) {
 	ctx := context.Background()
 
 	addr := ProbeAddress{
-		Host: "127.0.0.1",
-		Port: 12354,
+		Host:      "127.0.0.1",
+		Port:      12354,
+		TWAMPPort: 8925,
 	}
 
 	err := pinger.AddProbe(ctx, addr)
@@ -371,8 +379,9 @@ func TestPinger_MeasureAll_ConcurrencyLimit(t *testing.T) {
 	numProbes := 2000
 	for i := 0; i < numProbes; i++ {
 		addr := ProbeAddress{
-			Host: "127.0.0.1",
-			Port: uint16(15000 + i),
+			Host:      "127.0.0.1",
+			Port:      uint16(15000 + i),
+			TWAMPPort: 8925,
 		}
 		err := pinger.AddProbe(ctx, addr)
 		require.NoError(t, err)
@@ -403,9 +412,9 @@ func TestPinger_MeasureAll_AllFailed(t *testing.T) {
 	pinger := NewPinger(cfg)
 	ctx := context.Background()
 
-	addr1 := ProbeAddress{Host: "192.0.2.254", Port: 12345}
-	addr2 := ProbeAddress{Host: "192.0.2.253", Port: 12346}
-	addr3 := ProbeAddress{Host: "192.0.2.252", Port: 12347}
+	addr1 := ProbeAddress{Host: "192.0.2.254", Port: 12345, TWAMPPort: 8925}
+	addr2 := ProbeAddress{Host: "192.0.2.253", Port: 12346, TWAMPPort: 8925}
+	addr3 := ProbeAddress{Host: "192.0.2.252", Port: 12347, TWAMPPort: 8925}
 
 	err := pinger.AddProbe(ctx, addr1)
 	require.NoError(t, err)
@@ -440,8 +449,9 @@ func TestPinger_MeasureAll_LargeScale(t *testing.T) {
 
 	for i := 0; i < numProbes; i++ {
 		addr := ProbeAddress{
-			Host: "127.0.0.1",
-			Port: uint16(20000 + i),
+			Host:      "127.0.0.1",
+			Port:      uint16(20000 + i),
+			TWAMPPort: 8925,
 		}
 		err := pinger.AddProbe(ctx, addr)
 		require.NoError(t, err)
@@ -475,8 +485,9 @@ func TestPinger_MeasureAll_Staggering(t *testing.T) {
 	numProbes := 10
 	for i := 0; i < numProbes; i++ {
 		addr := ProbeAddress{
-			Host: "127.0.0.1",
-			Port: uint16(25000 + i),
+			Host:      "127.0.0.1",
+			Port:      uint16(25000 + i),
+			TWAMPPort: 8925,
 		}
 		err := pinger.AddProbe(ctx, addr)
 		require.NoError(t, err)
@@ -513,8 +524,9 @@ func TestPinger_MeasureAll_ContextCancellation(t *testing.T) {
 	numProbes := 100
 	for i := 0; i < numProbes; i++ {
 		addr := ProbeAddress{
-			Host: "127.0.0.1",
-			Port: uint16(30000 + i),
+			Host:      "127.0.0.1",
+			Port:      uint16(30000 + i),
+			TWAMPPort: 8925,
 		}
 		err := pinger.AddProbe(ctx, addr)
 		require.NoError(t, err)

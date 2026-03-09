@@ -3,6 +3,7 @@ pub mod ban;
 pub mod check_access_pass;
 pub mod closeaccount;
 pub mod create;
+pub mod create_core;
 pub mod create_subscribe;
 pub mod delete;
 pub mod reject;

@@ -29,7 +29,11 @@ impl CloseAccountUserCommand {
         self.execute_inner(client, true)
     }
 
-    fn execute_inner(&self, client: &dyn DoubleZeroClient, quiet: bool) -> eyre::Result<Signature> {
+    fn execute_inner(
+        &self,
+        client: &dyn DoubleZeroClient,
+        _quiet: bool,
+    ) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
@@ -113,16 +117,13 @@ impl CloseAccountUserCommand {
             accounts.push(AccountMeta::new(user.tenant_pk, false));
         }
 
-        let instruction = DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-            dz_prefix_count,
-            multicast_publisher_count,
-        });
-
-        if quiet {
-            client.execute_transaction_quiet(instruction, accounts)
-        } else {
-            client.execute_transaction(instruction, accounts)
-        }
+        client.execute_authorized_transaction(
+            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+                dz_prefix_count,
+                multicast_publisher_count,
+            }),
+            accounts,
+        )
     }
 }
 
@@ -185,7 +186,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::User(user.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {
@@ -289,7 +290,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::GlobalConfig(globalconfig.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {
@@ -354,7 +355,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::User(user.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {
@@ -457,7 +458,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::GlobalConfig(globalconfig.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {

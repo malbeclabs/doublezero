@@ -1061,7 +1061,6 @@ mod tests {
                 publisher: false,
                 subscriber: true,
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-                dz_prefix_count: 0,
             }),
             "CreateSubscribeUser",
         );

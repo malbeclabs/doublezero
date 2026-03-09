@@ -140,7 +140,7 @@ impl RequestBanUserCommand {
             (0u8, 0u8)
         };
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
                 dz_prefix_count,
                 multicast_publisher_count,

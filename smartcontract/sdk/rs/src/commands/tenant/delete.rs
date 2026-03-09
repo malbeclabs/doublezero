@@ -286,9 +286,9 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(|_| Ok(HashMap::new()));
 
-        // 4. DeleteUserCommand internally: execute_transaction(DeleteUser)
+        // 4. DeleteUserCommand internally: execute_authorized_transaction(DeleteUser)
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs::default())),
                 predicate::always(),
@@ -313,9 +313,9 @@ mod tests {
                 Ok(map)
             });
 
-        // 6. SetAccessPassCommand: execute_transaction(SetAccessPass) to reset tenant
+        // 6. SetAccessPassCommand: execute_authorized_transaction(SetAccessPass) to reset tenant
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
                     accesspass_type: AccessPassType::Prepaid,
@@ -415,9 +415,9 @@ mod tests {
                 Ok(map)
             });
 
-        // 2. SetAccessPassCommand: execute_transaction(SetAccessPass) to reset tenant
+        // 2. SetAccessPassCommand: execute_authorized_transaction(SetAccessPass) to reset tenant
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
                     accesspass_type: AccessPassType::Prepaid,

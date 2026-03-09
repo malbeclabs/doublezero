@@ -168,7 +168,7 @@ impl DeleteUserCommand {
             (0u8, 0u8)
         };
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
                 dz_prefix_count,
                 multicast_publisher_count,
@@ -394,7 +394,7 @@ mod tests {
 
         // Execute transaction for DeleteUser
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs::default())),
                 predicate::eq(vec![
@@ -595,7 +595,7 @@ mod tests {
 
         // DeleteUser transaction
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs::default())),
                 predicate::eq(vec![
@@ -728,7 +728,7 @@ mod tests {
             get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
                     dz_prefix_count: 1,

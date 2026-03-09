@@ -1,7 +1,11 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     serializer::try_acc_close,
-    state::{accesspass::AccessPass, accounttype::AccountType, globalstate::GlobalState},
+    state::{
+        accesspass::AccessPass, accounttype::AccountType, globalstate::GlobalState,
+        permission::permission_flags,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -70,13 +74,15 @@ pub fn process_close_access_pass(
         "Invalid System Program Account Owner"
     );
 
-    // Parse the global state account & check if the payer is in the allowlist
+    // Parse the global state account & check authorization
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key)
-        && globalstate.reservation_authority_pk != *payer_account.key
-    {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::ACCESS_PASS_ADMIN,
+    )?;
 
     if let Ok(data) = accesspass_account.try_borrow_data() {
         let account_type: AccountType = data[0].into();

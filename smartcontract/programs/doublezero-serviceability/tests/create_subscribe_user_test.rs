@@ -1,11 +1,8 @@
 //! Integration tests for CreateSubscribeUser instruction.
 //!
 //! Tests cover:
-//! - Legacy path (dz_prefix_count=0): user created in Pending status with subscription
-//! - Atomic path (dz_prefix_count>0): user created + allocated + activated with subscription
+//! - User created in Pending status with publisher/subscriber subscription
 //! - Publisher and subscriber count correctness
-//! - Backward compatibility (old args without dz_prefix_count)
-//! - Feature flag enforcement for atomic path
 //! - Invalid multicast group status rejection (graceful error, not panic)
 
 use doublezero_serviceability::{
@@ -24,7 +21,6 @@ use doublezero_serviceability::{
         },
         exchange::create::ExchangeCreateArgs,
         globalconfig::set::SetGlobalConfigArgs,
-        globalstate::setfeatureflags::SetFeatureFlagsArgs,
         location::create::LocationCreateArgs,
         multicastgroup::{
             activate::MulticastGroupActivateArgs,
@@ -40,7 +36,6 @@ use doublezero_serviceability::{
     state::{
         accesspass::AccessPassType,
         device::DeviceType,
-        feature_flags::FeatureFlag,
         user::{UserCYOA, UserStatus, UserType},
     },
 };
@@ -64,11 +59,6 @@ struct CreateSubscribeFixture {
     accesspass_pubkey: Pubkey,
     mgroup_pubkey: Pubkey,
     user_ip: Ipv4Addr,
-    // Resource extension PDAs
-    user_tunnel_block: Pubkey,
-    multicast_publisher_block: Pubkey,
-    tunnel_ids: Pubkey,
-    dz_prefix_block: Pubkey,
 }
 
 /// Setup a complete test environment for CreateSubscribeUser:
@@ -384,20 +374,16 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
         accesspass_pubkey,
         mgroup_pubkey,
         user_ip,
-        user_tunnel_block,
-        multicast_publisher_block,
-        tunnel_ids,
-        dz_prefix_block,
     }
 }
 
 // ============================================================================
-// Legacy Path Tests (dz_prefix_count=0)
+// CreateSubscribeUser Tests
 // ============================================================================
 
-/// Legacy CreateSubscribeUser: user created in Pending status with publisher subscription.
+/// CreateSubscribeUser: user created in Pending status with publisher subscription.
 #[tokio::test]
-async fn test_create_subscribe_user_legacy_publisher() {
+async fn test_create_subscribe_user_publisher() {
     let client_ip = [100, 0, 0, 1];
     let f = setup_create_subscribe_fixture(client_ip).await;
     let CreateSubscribeFixture {
@@ -426,7 +412,6 @@ async fn test_create_subscribe_user_legacy_publisher() {
             publisher: true,
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -449,7 +434,7 @@ async fn test_create_subscribe_user_legacy_publisher() {
     assert!(user.subscribers.is_empty());
     assert_eq!(
         user.tunnel_id, 0,
-        "Legacy path should not allocate tunnel_id"
+        "user should not have tunnel_id before activation"
     );
 
     let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
@@ -461,9 +446,9 @@ async fn test_create_subscribe_user_legacy_publisher() {
     assert_eq!(mgroup.subscriber_count, 0);
 }
 
-/// Legacy CreateSubscribeUser: user created in Pending status with subscriber subscription.
+/// CreateSubscribeUser: user created in Pending status with subscriber subscription.
 #[tokio::test]
-async fn test_create_subscribe_user_legacy_subscriber() {
+async fn test_create_subscribe_user_subscriber() {
     let client_ip = [100, 0, 0, 2];
     let f = setup_create_subscribe_fixture(client_ip).await;
     let CreateSubscribeFixture {
@@ -492,7 +477,6 @@ async fn test_create_subscribe_user_legacy_subscriber() {
             publisher: false,
             subscriber: true,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -523,9 +507,9 @@ async fn test_create_subscribe_user_legacy_subscriber() {
     assert_eq!(mgroup.subscriber_count, 1);
 }
 
-/// Legacy CreateSubscribeUser: user created with both publisher and subscriber.
+/// CreateSubscribeUser: user created with both publisher and subscriber.
 #[tokio::test]
-async fn test_create_subscribe_user_legacy_publisher_and_subscriber() {
+async fn test_create_subscribe_user_publisher_and_subscriber() {
     let client_ip = [100, 0, 0, 3];
     let f = setup_create_subscribe_fixture(client_ip).await;
     let CreateSubscribeFixture {
@@ -554,7 +538,6 @@ async fn test_create_subscribe_user_legacy_publisher_and_subscriber() {
             publisher: true,
             subscriber: true,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -586,262 +569,8 @@ async fn test_create_subscribe_user_legacy_publisher_and_subscriber() {
 }
 
 // ============================================================================
-// Atomic Path Tests (dz_prefix_count > 0)
-// ============================================================================
-
-/// Atomic CreateSubscribeUser with publisher: user created + allocated + activated.
-#[tokio::test]
-async fn test_create_subscribe_user_atomic_publisher() {
-    let client_ip = [100, 0, 0, 4];
-    let f = setup_create_subscribe_fixture(client_ip).await;
-    let CreateSubscribeFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        accesspass_pubkey,
-        mgroup_pubkey,
-        user_ip,
-        user_tunnel_block,
-        multicast_publisher_block,
-        tunnel_ids,
-        dz_prefix_block,
-        ..
-    } = f;
-
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // Enable feature flag
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
-        }),
-        vec![AccountMeta::new(globalstate_pubkey, false)],
-        &payer,
-    )
-    .await;
-
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
-
-    // Atomic CreateSubscribeUser with resource extensions
-    // Account layout: [user, device, mgroup, accesspass, globalstate, user_tunnel_block, multicast_publisher_block, tunnel_ids, dz_prefix_0, payer, system]
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: user_ip,
-            publisher: true,
-            subscriber: false,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 1,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("User should exist")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Activated);
-    assert_eq!(user.publishers, vec![mgroup_pubkey]);
-    assert!(user.subscribers.is_empty());
-    assert_ne!(user.tunnel_id, 0, "tunnel_id should be allocated");
-    assert_ne!(
-        user.tunnel_net,
-        doublezero_program_common::types::NetworkV4::default(),
-        "tunnel_net should be allocated"
-    );
-    // Multicast publisher gets dz_ip from MulticastPublisherBlock
-    assert_ne!(
-        user.dz_ip,
-        Ipv4Addr::from(client_ip),
-        "Multicast publisher dz_ip should be allocated, not client_ip"
-    );
-
-    let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
-        .await
-        .expect("MulticastGroup should exist")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(mgroup.publisher_count, 1);
-    assert_eq!(mgroup.subscriber_count, 0);
-}
-
-/// Atomic CreateSubscribeUser with subscriber only: dz_ip = client_ip (no publisher allocation).
-#[tokio::test]
-async fn test_create_subscribe_user_atomic_subscriber() {
-    let client_ip = [100, 0, 0, 5];
-    let f = setup_create_subscribe_fixture(client_ip).await;
-    let CreateSubscribeFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        accesspass_pubkey,
-        mgroup_pubkey,
-        user_ip,
-        user_tunnel_block,
-        multicast_publisher_block,
-        tunnel_ids,
-        dz_prefix_block,
-        ..
-    } = f;
-
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // Enable feature flag
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
-        }),
-        vec![AccountMeta::new(globalstate_pubkey, false)],
-        &payer,
-    )
-    .await;
-
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: user_ip,
-            publisher: false,
-            subscriber: true,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 1,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("User should exist")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Activated);
-    assert!(user.publishers.is_empty());
-    assert_eq!(user.subscribers, vec![mgroup_pubkey]);
-    assert_ne!(user.tunnel_id, 0, "tunnel_id should be allocated");
-    // Multicast subscriber (no publishers) gets dz_ip = client_ip
-    assert_eq!(
-        user.dz_ip,
-        Ipv4Addr::from(client_ip),
-        "Subscriber-only multicast user should get dz_ip = client_ip"
-    );
-
-    let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
-        .await
-        .expect("MulticastGroup should exist")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(mgroup.publisher_count, 0);
-    assert_eq!(mgroup.subscriber_count, 1);
-}
-
-// ============================================================================
 // Error Path Tests
 // ============================================================================
-
-/// Atomic CreateSubscribeUser fails when feature flag is disabled.
-#[tokio::test]
-async fn test_create_subscribe_user_atomic_feature_flag_disabled() {
-    let client_ip = [100, 0, 0, 6];
-    let f = setup_create_subscribe_fixture(client_ip).await;
-    let CreateSubscribeFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        accesspass_pubkey,
-        mgroup_pubkey,
-        user_ip,
-        user_tunnel_block,
-        multicast_publisher_block,
-        tunnel_ids,
-        dz_prefix_block,
-        ..
-    } = f;
-
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
-
-    // Feature flag NOT enabled — atomic create should fail
-    let result = execute_transaction_expect_failure(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: user_ip,
-            publisher: true,
-            subscriber: false,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 1,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    assert!(result.is_err(), "Should fail when feature flag is disabled");
-
-    // Verify user account was NOT created
-    let user_data = get_account_data(&mut banks_client, user_pubkey).await;
-    assert!(user_data.is_none(), "User account should not exist");
-}
 
 /// CreateSubscribeUser fails when multicast group is not activated (graceful error, not panic).
 #[tokio::test]
@@ -914,7 +643,6 @@ async fn test_create_subscribe_user_inactive_mgroup_fails() {
             publisher: false,
             subscriber: true,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

@@ -15,7 +15,7 @@ impl CloseAccessPassCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::CloseAccessPass(CloseAccessPassArgs {}),
             vec![
                 AccountMeta::new(self.pubkey, false),
@@ -50,7 +50,7 @@ mod tests {
         let (pda_pubkey, _) = get_accesspass_pda(&client.get_program_id(), &client_ip, &payer);
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccessPass(
                     CloseAccessPassArgs {},

@@ -14,7 +14,7 @@ impl SuspendPermissionCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::SuspendPermission(PermissionSuspendArgs {}),
             vec![
                 AccountMeta::new(self.permission_pda, false),
@@ -47,7 +47,7 @@ mod tests {
         let (permission_pda, _) = get_permission_pda(&client.get_program_id(), &user_payer);
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SuspendPermission(
                     PermissionSuspendArgs {},

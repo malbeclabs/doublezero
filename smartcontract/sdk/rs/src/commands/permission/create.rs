@@ -20,7 +20,7 @@ impl CreatePermissionCommand {
         let (permission_pda, _) = get_permission_pda(&client.get_program_id(), &self.user_payer);
 
         client
-            .execute_transaction(
+            .execute_authorized_transaction(
                 DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
                     user_payer: self.user_payer,
                     permissions: self.permissions,
@@ -58,7 +58,7 @@ mod tests {
         let (permission_pda, _) = get_permission_pda(&client.get_program_id(), &user_payer);
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreatePermission(
                     PermissionCreateArgs {

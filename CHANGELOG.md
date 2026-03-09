@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - Telemetry
   - Embed LocationOffsets from parent DZDs in signed TWAMP replies so inbound probes carry geolocation context, and make signed TWAMP replies more like LocationOffsets to couple with a new double-probe system for inbound probing.
 - Client
+  - Add `doublezero_connection_info` Prometheus metric exposing connection metadata (user_type, network, current_device, metro, tunnel_name, tunnel_src, tunnel_dst) ([#3201](https://github.com/malbeclabs/doublezero/pull/3201))
   - Increase default onchain fetch timeout from 20s to 60s to improve resilience on high-latency RPC paths; add `-reconciler-fetch-timeout` flag to allow operators to override
   - Add prometheus metrics for onchain RPC fetches: fetch duration histogram, result counter (success/error with stale cache/error with no cache), and stale cache age gauge
   - Increase default route liveness probe interval (TxMin/RxMin) from 300ms to 1s and raise MaxTxCeil from 1s to 3s to preserve backoff headroom

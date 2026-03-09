@@ -2,10 +2,18 @@ use crate::geoclicommand::GeoCliCommand;
 use clap::Args;
 use doublezero_program_common::serializer;
 use doublezero_sdk::geolocation::geo_probe::list::ListGeoProbeCommand;
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
 use tabled::{settings::Style, Table, Tabled};
+
+fn serialize_pubkey_vec_as_string_array<S>(pks: &[Pubkey], s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let strs: Vec<String> = pks.iter().map(|pk| pk.to_string()).collect();
+    strs.serialize(s)
+}
 
 #[derive(Args, Debug)]
 pub struct ListGeoProbeCliCommand {
@@ -26,6 +34,9 @@ pub struct GeoProbeDisplay {
     pub port: u16,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub exchange: Pubkey,
+    #[serde(serialize_with = "serialize_pubkey_vec_as_string_array")]
+    #[tabled(skip)]
+    pub parent_devices: Vec<Pubkey>,
     pub parent_count: usize,
     pub reference_count: u32,
 }
@@ -36,14 +47,18 @@ impl ListGeoProbeCliCommand {
 
         let mut displays: Vec<GeoProbeDisplay> = probes
             .into_iter()
-            .map(|(pubkey, probe)| GeoProbeDisplay {
-                account: pubkey,
-                code: probe.code,
-                public_ip: probe.public_ip,
-                port: probe.location_offset_port,
-                exchange: probe.exchange_pk,
-                parent_count: probe.parent_devices.len(),
-                reference_count: probe.reference_count,
+            .map(|(pubkey, probe)| {
+                let parent_count = probe.parent_devices.len();
+                GeoProbeDisplay {
+                    account: pubkey,
+                    code: probe.code,
+                    public_ip: probe.public_ip,
+                    port: probe.location_offset_port,
+                    exchange: probe.exchange_pk,
+                    parent_devices: probe.parent_devices,
+                    parent_count,
+                    reference_count: probe.reference_count,
+                }
             })
             .collect();
 
@@ -117,6 +132,7 @@ mod tests {
 
         let probe1_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
         let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let parent_pk = Pubkey::from_str_const("AQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
 
         let probe1 = GeoProbe {
             account_type: AccountType::GeoProbe,
@@ -125,7 +141,7 @@ mod tests {
             public_ip: Ipv4Addr::new(10, 0, 0, 1),
             location_offset_port: 8923,
             code: "ams-probe-01".to_string(),
-            parent_devices: vec![Pubkey::new_unique()],
+            parent_devices: vec![parent_pk],
             metrics_publisher_pk: Pubkey::new_unique(),
             reference_count: 2,
         };
@@ -148,7 +164,9 @@ mod tests {
         let parsed: Vec<serde_json::Value> = serde_json::from_str(output_str.trim()).unwrap();
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0]["code"], "ams-probe-01");
-        assert_eq!(parsed[0]["parent_count"], 1);
+        let parents = parsed[0]["parent_devices"].as_array().unwrap();
+        assert_eq!(parents.len(), 1);
+        assert_eq!(parents[0].as_str().unwrap(), parent_pk.to_string());
         assert_eq!(parsed[0]["reference_count"], 2);
     }
 

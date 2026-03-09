@@ -19,10 +19,7 @@ pub struct RemoveParentGeoProbeCliCommand {
 
 impl RemoveParentGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let device_pk: Pubkey = self
-            .device
-            .parse()
-            .map_err(|_| eyre::eyre!("invalid device pubkey: {}", self.device))?;
+        let device_pk: Pubkey = self.device.parse().expect("validated by clap");
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
         let sig = client.remove_parent_device(RemoveParentDeviceCommand {

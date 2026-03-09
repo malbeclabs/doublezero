@@ -57,6 +57,7 @@ pub enum PermissionStatus {
     None = 0,
     Activated = 1,
     Suspended = 2,
+    Deleting = 3,
 }
 
 impl From<u8> for PermissionStatus {
@@ -65,6 +66,7 @@ impl From<u8> for PermissionStatus {
             0 => PermissionStatus::None,
             1 => PermissionStatus::Activated,
             2 => PermissionStatus::Suspended,
+            3 => PermissionStatus::Deleting,
             _ => PermissionStatus::None,
         }
     }
@@ -76,6 +78,7 @@ impl fmt::Display for PermissionStatus {
             PermissionStatus::None => write!(f, "none"),
             PermissionStatus::Activated => write!(f, "activated"),
             PermissionStatus::Suspended => write!(f, "suspended"),
+            PermissionStatus::Deleting => write!(f, "deleting"),
         }
     }
 }

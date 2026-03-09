@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
   - Increase default onchain fetch timeout from 20s to 60s to improve resilience on high-latency RPC paths; add `-reconciler-fetch-timeout` flag to allow operators to override
   - Add prometheus metrics for onchain RPC fetches: fetch duration histogram, result counter (success/error with stale cache/error with no cache), and stale cache age gauge
   - Increase default route liveness probe interval (TxMin/RxMin) from 300ms to 1s and raise MaxTxCeil from 1s to 3s to preserve backoff headroom
+  - Throttle O(n) per-service scheduler queue length metric from every event to once per 10s to fix excessive CPU usage on nodes with many liveness sessions
 - Smartcontract
   - Serviceability: fix `validate_account_code` forcing lowercase on all entity types — restrict lowercase normalization to device and link codes only, preserving original case for locations, exchanges, contributors, and other entities
 - CLI

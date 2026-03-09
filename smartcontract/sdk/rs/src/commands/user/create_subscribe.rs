@@ -15,8 +15,7 @@ use std::net::Ipv4Addr;
 use crate::{
     commands::{
         accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
-        globalstate::get::GetGlobalStateCommand,
-        multicastgroup::get::GetMulticastGroupCommand,
+        globalstate::get::GetGlobalStateCommand, multicastgroup::get::GetMulticastGroupCommand,
     },
     DoubleZeroClient,
 };
@@ -137,8 +136,8 @@ impl CreateSubscribeUserCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::user::create_subscribe::CreateSubscribeUserCommand, tests::utils::create_test_client,
-        DoubleZeroClient, MockDoubleZeroClient,
+        commands::user::create_subscribe::CreateSubscribeUserCommand,
+        tests::utils::create_test_client, DoubleZeroClient, MockDoubleZeroClient,
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,

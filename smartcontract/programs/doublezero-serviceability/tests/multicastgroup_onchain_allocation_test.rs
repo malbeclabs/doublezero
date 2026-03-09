@@ -6,6 +6,7 @@
 use std::net::Ipv4Addr;
 
 use doublezero_serviceability::{
+    error::DoubleZeroError,
     instructions::*,
     pda::*,
     processors::{
@@ -15,8 +16,9 @@ use doublezero_serviceability::{
     resource::ResourceType,
     state::{feature_flags::FeatureFlag, multicastgroup::*},
 };
+use solana_program::instruction::InstructionError;
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, transaction::TransactionError};
 
 mod test_helpers;
 use test_helpers::*;
@@ -163,7 +165,16 @@ async fn test_create_multicastgroup_atomic_feature_flag_disabled() {
     )
     .await;
 
-    assert!(result.is_err(), "Expected FeatureNotEnabled error");
+    let err = result.expect_err("Expected error with feature flag disabled");
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(code),
+        )) => {
+            assert_eq!(DoubleZeroError::FeatureNotEnabled, code.into());
+        }
+        _ => panic!("Unexpected error type: {:?}", err),
+    }
     println!("test_create_multicastgroup_atomic_feature_flag_disabled PASSED");
 }
 

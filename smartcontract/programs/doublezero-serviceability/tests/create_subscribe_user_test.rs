@@ -292,6 +292,7 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             code: "group1".to_string(),
             max_bandwidth: 1000,
             owner: payer.pubkey(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -870,6 +871,7 @@ async fn test_create_subscribe_user_inactive_mgroup_fails() {
             code: "pending".to_string(),
             max_bandwidth: 1000,
             owner: payer.pubkey(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(pending_mgroup_pubkey, false),

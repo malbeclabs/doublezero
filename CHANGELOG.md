@@ -66,6 +66,7 @@ All notable changes to this project will be documented in this file.
   - Fix `access-pass fund` and `access-pass user-balances` slot counting to track remaining slots per `(payer, client_ip)` pair, preventing a connected user on IP_B from consuming open slots for IP_A; also fix required balance formula to always add `wallet_rent_min` on top of `needs_rent` rather than taking the max
   - Add `--user-payer` filter to `user list` command
   - Serviceability: onchain activation - atomic close for DeleteDevice ([#3188](https://github.com/malbeclabs/doublezero/pull/3188))
+  - Fix `access-pass user-balances` and `access-pass fund` underestimating the required wallet balance: the wallet's own rent-exempt minimum was used as a floor rather than being added, causing `missing: 0` to be reported even when provisioning would fail with insufficient funds ([#3213](https://github.com/malbeclabs/doublezero/pull/3213))
 - Onchain Programs
   - Serviceability: DeleteUser instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
   - Serviceability: CreateLink instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled

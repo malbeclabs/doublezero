@@ -4,11 +4,17 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FeatureFlag {
     OnChainAllocation = 0,
+    /// When set, all instructions require a Permission account for authorization.
+    /// The legacy GlobalState allowlist/authority fallback is disabled.
+    RequirePermissionAccounts = 1,
 }
 
 impl FeatureFlag {
     pub fn all_variants() -> &'static [FeatureFlag] {
-        &[FeatureFlag::OnChainAllocation]
+        &[
+            FeatureFlag::OnChainAllocation,
+            FeatureFlag::RequirePermissionAccounts,
+        ]
     }
 
     pub fn to_mask(self) -> u128 {
@@ -20,6 +26,7 @@ impl fmt::Display for FeatureFlag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FeatureFlag::OnChainAllocation => write!(f, "onchain-allocation"),
+            FeatureFlag::RequirePermissionAccounts => write!(f, "require-permission-accounts"),
         }
     }
 }
@@ -30,6 +37,7 @@ impl std::str::FromStr for FeatureFlag {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "onchain-allocation" => Ok(FeatureFlag::OnChainAllocation),
+            "require-permission-accounts" => Ok(FeatureFlag::RequirePermissionAccounts),
             _ => Err(format!("unknown feature flag: {s}")),
         }
     }

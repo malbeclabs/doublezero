@@ -23,6 +23,7 @@ pub mod location;
 pub mod logcommand;
 pub mod migrate;
 pub mod multicastgroup;
+pub mod permission;
 pub mod poll_for_activation;
 pub mod requirements;
 pub mod resource;

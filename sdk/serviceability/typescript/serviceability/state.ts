@@ -31,6 +31,7 @@ export const ACCOUNT_TYPE_PROGRAM_CONFIG = 9;
 export const ACCOUNT_TYPE_CONTRIBUTOR = 10;
 export const ACCOUNT_TYPE_ACCESS_PASS = 11;
 export const ACCOUNT_TYPE_TENANT = 13;
+export const ACCOUNT_TYPE_PERMISSION = 15;
 
 // ---------------------------------------------------------------------------
 // Enum string mappings
@@ -955,5 +956,66 @@ export function deserializeAccessPass(data: Uint8Array): AccessPass {
     mGroupSubAllowlist,
     flags,
     tenantAllowlist,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Permission
+// ---------------------------------------------------------------------------
+
+// Permission flag bitmask constants (bit positions in the u128 permissions field).
+export const PERMISSION_FLAG_FOUNDATION = 1n << 0n;
+export const PERMISSION_FLAG_PERMISSION_ADMIN = 1n << 1n;
+export const PERMISSION_FLAG_GLOBALSTATE_ADMIN = 1n << 13n;
+export const PERMISSION_FLAG_CONTRIBUTOR_ADMIN = 1n << 14n;
+export const PERMISSION_FLAG_INFRA_ADMIN = 1n << 2n;
+export const PERMISSION_FLAG_NETWORK_ADMIN = 1n << 3n;
+export const PERMISSION_FLAG_TENANT_ADMIN = 1n << 4n;
+export const PERMISSION_FLAG_MULTICAST_ADMIN = 1n << 5n;
+export const PERMISSION_FLAG_RESERVATION = 1n << 6n;
+export const PERMISSION_FLAG_ACTIVATOR = 1n << 7n;
+export const PERMISSION_FLAG_SENTINEL = 1n << 8n;
+export const PERMISSION_FLAG_USER_ADMIN = 1n << 9n;
+export const PERMISSION_FLAG_ACCESS_PASS_ADMIN = 1n << 10n;
+export const PERMISSION_FLAG_HEALTH_ORACLE = 1n << 11n;
+export const PERMISSION_FLAG_QA = 1n << 12n;
+
+const PERMISSION_STATUS_NAMES: Record<number, string> = {
+  0: "none",
+  1: "activated",
+  2: "suspended",
+  3: "deleting",
+};
+export function permissionStatusString(v: number): string {
+  return PERMISSION_STATUS_NAMES[v] ?? "unknown";
+}
+
+export interface Permission {
+  accountType: number;
+  owner: PublicKey;
+  bumpSeed: number;
+  status: number;
+  userPayer: PublicKey;
+  permissions: bigint;
+}
+
+export function deserializePermission(data: Uint8Array): Permission {
+  const r = new DefensiveReader(data);
+  const accountType = r.readU8();
+  const owner = readPubkey(r);
+  const bumpSeed = r.readU8();
+  const status = r.readU8();
+  const userPayer = readPubkey(r);
+  // u128 stored as two u64 little-endian: lo then hi
+  const lo = r.readU64();
+  const hi = r.readU64();
+  const permissions = lo | (hi << 64n);
+  return {
+    accountType,
+    owner,
+    bumpSeed,
+    status,
+    userPayer,
+    permissions,
   };
 }

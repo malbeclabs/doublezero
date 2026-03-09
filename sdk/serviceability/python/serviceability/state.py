@@ -41,6 +41,7 @@ class AccountTypeEnum(IntEnum):
     CONTRIBUTOR = 10
     ACCESS_PASS = 11
     TENANT = 13
+    PERMISSION = 15
 
 
 # ---------------------------------------------------------------------------
@@ -915,3 +916,62 @@ class AccessPass:
         ap.mgroup_sub_allowlist = _read_pubkey_vec(r)
         ap.flags = r.read_u8()
         return ap
+
+
+# ---------------------------------------------------------------------------
+# Permission
+# ---------------------------------------------------------------------------
+
+
+class PermissionStatus(IntEnum):
+    NONE = 0
+    ACTIVATED = 1
+    SUSPENDED = 2
+    DELETING = 3
+
+    def __str__(self) -> str:
+        _names = {0: "none", 1: "activated", 2: "suspended", 3: "deleting"}
+        return _names.get(self.value, "unknown")
+
+
+# Permission flag bitmask constants (bit positions in the u128 permissions field).
+PERMISSION_FLAG_FOUNDATION = 1 << 0
+PERMISSION_FLAG_PERMISSION_ADMIN = 1 << 1
+PERMISSION_FLAG_GLOBALSTATE_ADMIN = 1 << 13
+PERMISSION_FLAG_CONTRIBUTOR_ADMIN = 1 << 14
+PERMISSION_FLAG_INFRA_ADMIN = 1 << 2
+PERMISSION_FLAG_NETWORK_ADMIN = 1 << 3
+PERMISSION_FLAG_TENANT_ADMIN = 1 << 4
+PERMISSION_FLAG_MULTICAST_ADMIN = 1 << 5
+PERMISSION_FLAG_RESERVATION = 1 << 6
+PERMISSION_FLAG_ACTIVATOR = 1 << 7
+PERMISSION_FLAG_SENTINEL = 1 << 8
+PERMISSION_FLAG_USER_ADMIN = 1 << 9
+PERMISSION_FLAG_ACCESS_PASS_ADMIN = 1 << 10
+PERMISSION_FLAG_HEALTH_ORACLE = 1 << 11
+PERMISSION_FLAG_QA = 1 << 12
+
+
+@dataclass
+class Permission:
+    account_type: int = 0
+    owner: Pubkey = Pubkey.default()
+    bump_seed: int = 0
+    status: PermissionStatus = PermissionStatus.NONE
+    user_payer: Pubkey = Pubkey.default()
+    permissions: int = 0
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> Permission:
+        r = DefensiveReader(data)
+        p = cls()
+        p.account_type = r.read_u8()
+        p.owner = _read_pubkey(r)
+        p.bump_seed = r.read_u8()
+        p.status = PermissionStatus(r.read_u8())
+        p.user_payer = _read_pubkey(r)
+        # u128 stored as two u64 little-endian: lo then hi
+        lo = r.read_u64()
+        hi = r.read_u64()
+        p.permissions = lo | (hi << 64)
+        return p

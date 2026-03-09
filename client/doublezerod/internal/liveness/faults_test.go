@@ -21,9 +21,9 @@ var (
 	txMinFlag      = flag.Duration("tx-min", 1*time.Second, "tx min")
 	rxMinFlag      = flag.Duration("rx-min", 1*time.Second, "rx min")
 	detectMultFlag = flag.Uint("detect-mult", 3, "detect mult")
-	backoffMaxFlag = flag.Duration("backoff-max", 1*time.Second, "backoff max")
+	backoffMaxFlag = flag.Duration("backoff-max", 3*time.Second, "backoff max")
 
-	stableDurationFlag  = flag.Duration("stable-duration", 2*time.Second, "stable duration")
+	stableDurationFlag  = flag.Duration("stable-duration", 7*time.Second, "stable duration")
 	bgpFlapCyclesFlag   = flag.Uint("bgp-flap-cycles", 3, "number of BGP flap cycles")
 	softLossPctFlag     = flag.Float64("soft-loss-pct", 0.01, "soft loss percentage")
 	softLossCyclesFlag  = flag.Int("soft-loss-cycles", 3, "number of soft-loss windows to run")

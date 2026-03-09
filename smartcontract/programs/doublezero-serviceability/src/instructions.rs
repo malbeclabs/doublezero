@@ -66,6 +66,10 @@ use crate::processors::{
         suspend::MulticastGroupSuspendArgs,
         update::MulticastGroupUpdateArgs,
     },
+    permission::{
+        create::PermissionCreateArgs, delete::PermissionDeleteArgs, resume::PermissionResumeArgs,
+        suspend::PermissionSuspendArgs, update::PermissionUpdateArgs,
+    },
     reservation::{close::CloseReservationArgs, reserve::ReserveConnectionArgs},
     resource::{
         allocate::ResourceAllocateArgs, closeaccount::ResourceExtensionCloseAccountArgs,
@@ -206,6 +210,12 @@ pub enum DoubleZeroInstruction {
 
     ReserveConnection(ReserveConnectionArgs), // variant 95
     CloseReservation(CloseReservationArgs),   // variant 96
+
+    CreatePermission(PermissionCreateArgs),   // variant 97
+    UpdatePermission(PermissionUpdateArgs),   // variant 98
+    SuspendPermission(PermissionSuspendArgs), // variant 99
+    ResumePermission(PermissionResumeArgs),   // variant 100
+    DeletePermission(PermissionDeleteArgs),   // variant 101
 }
 
 impl DoubleZeroInstruction {
@@ -334,6 +344,12 @@ impl DoubleZeroInstruction {
             95 => Ok(Self::ReserveConnection(ReserveConnectionArgs::try_from(rest).unwrap())),
             96 => Ok(Self::CloseReservation(CloseReservationArgs::try_from(rest).unwrap())),
 
+            97 => Ok(Self::CreatePermission(PermissionCreateArgs::try_from(rest).unwrap())),
+            98 => Ok(Self::UpdatePermission(PermissionUpdateArgs::try_from(rest).unwrap())),
+            99 => Ok(Self::SuspendPermission(PermissionSuspendArgs::try_from(rest).unwrap())),
+            100 => Ok(Self::ResumePermission(PermissionResumeArgs::try_from(rest).unwrap())),
+            101 => Ok(Self::DeletePermission(PermissionDeleteArgs::try_from(rest).unwrap())),
+
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -458,6 +474,12 @@ impl DoubleZeroInstruction {
 
             Self::ReserveConnection(_) => "ReserveConnection".to_string(), // variant 95
             Self::CloseReservation(_) => "CloseReservation".to_string(),   // variant 96
+
+            Self::CreatePermission(_) => "CreatePermission".to_string(), // variant 97
+            Self::UpdatePermission(_) => "UpdatePermission".to_string(), // variant 98
+            Self::SuspendPermission(_) => "SuspendPermission".to_string(), // variant 99
+            Self::ResumePermission(_) => "ResumePermission".to_string(), // variant 100
+            Self::DeletePermission(_) => "DeletePermission".to_string(), // variant 101
         }
     }
 
@@ -575,6 +597,12 @@ impl DoubleZeroInstruction {
 
             Self::ReserveConnection(args) => format!("{args:?}"), // variant 95
             Self::CloseReservation(args) => format!("{args:?}"),  // variant 96
+
+            Self::CreatePermission(args) => format!("{args:?}"), // variant 97
+            Self::UpdatePermission(args) => format!("{args:?}"), // variant 98
+            Self::SuspendPermission(args) => format!("{args:?}"), // variant 99
+            Self::ResumePermission(args) => format!("{args:?}"), // variant 100
+            Self::DeletePermission(args) => format!("{args:?}"), // variant 101
         }
     }
 }
@@ -588,6 +616,7 @@ mod tests {
             device::{DeviceHealth, DeviceType},
             interface::{LoopbackType, RoutingMode},
             link::{LinkHealth, LinkLinkType},
+            permission::permission_flags,
             user::{UserCYOA, UserType},
         },
     };
@@ -1227,6 +1256,31 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::CloseReservation(CloseReservationArgs {}),
             "CloseReservation",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+                user_payer: Pubkey::new_unique(),
+                permissions: permission_flags::USER_ADMIN | permission_flags::NETWORK_ADMIN,
+            }),
+            "CreatePermission",
+        );
+        test_instruction(
+            DoubleZeroInstruction::UpdatePermission(PermissionUpdateArgs {
+                permissions: permission_flags::FOUNDATION,
+            }),
+            "UpdatePermission",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SuspendPermission(PermissionSuspendArgs {}),
+            "SuspendPermission",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ResumePermission(PermissionResumeArgs {}),
+            "ResumePermission",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeletePermission(PermissionDeleteArgs {}),
+            "DeletePermission",
         );
     }
 }

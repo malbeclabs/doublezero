@@ -212,6 +212,7 @@ async fn test_user() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -673,6 +674,7 @@ async fn test_user_ban_requires_pendingban() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -941,6 +943,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1320,6 +1323,7 @@ async fn setup_activated_user() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

@@ -697,6 +697,7 @@ mod tests {
                 metrics_publisher_pk: Pubkey::new_unique(),
                 mgmt_vrf: "mgmt".to_string(),
                 desired_status: None,
+                resource_count: 0,
             }),
             "CreateDevice",
         );

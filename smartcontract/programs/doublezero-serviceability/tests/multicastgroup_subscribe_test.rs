@@ -203,6 +203,7 @@ async fn setup_fixture() -> TestFixture {
             desired_status: Some(
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             ),
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

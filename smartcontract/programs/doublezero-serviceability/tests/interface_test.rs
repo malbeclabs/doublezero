@@ -213,6 +213,7 @@ async fn test_device_interfaces() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1096,6 +1097,7 @@ async fn test_device_interfaces() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device2_pubkey, false),

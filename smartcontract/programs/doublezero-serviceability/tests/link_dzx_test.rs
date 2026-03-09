@@ -241,6 +241,7 @@ async fn test_dzx_link() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -331,6 +332,7 @@ async fn test_dzx_link() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),

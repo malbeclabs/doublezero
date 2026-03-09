@@ -330,6 +330,7 @@ async fn test_doublezero_program() {
         metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
         mgmt_vrf: "mgmt".to_string(),
         desired_status: Some(DeviceDesiredStatus::Activated),
+        resource_count: 0,
     };
 
     println!("Testing Device LA initialization...");
@@ -455,6 +456,7 @@ async fn test_doublezero_program() {
         metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
         mgmt_vrf: "mgmt".to_string(),
         desired_status: Some(DeviceDesiredStatus::Activated),
+        resource_count: 0,
     };
 
     execute_transaction(

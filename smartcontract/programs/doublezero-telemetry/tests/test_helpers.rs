@@ -129,6 +129,7 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: String::default(),
             desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
         }
     }
 }
@@ -937,6 +938,7 @@ impl ServiceabilityProgramHelper {
                 metrics_publisher_pk: device.metrics_publisher_pk,
                 mgmt_vrf: device.mgmt_vrf,
                 desired_status: Some(DeviceDesiredStatus::Activated),
+                resource_count: 0,
             }),
             vec![
                 AccountMeta::new(device_pk, false),

@@ -232,6 +232,7 @@ async fn setup_user_onchain_allocation_test(
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -2084,6 +2085,7 @@ async fn setup_user_infra_without_user(
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

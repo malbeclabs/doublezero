@@ -22,6 +22,7 @@ jobs:
           - internet-latency-collector
           - agent
           - device-telemetry-agent
+          - geoprobe-agent
           - funder
           - monitor
           - client

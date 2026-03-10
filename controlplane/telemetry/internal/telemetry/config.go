@@ -64,6 +64,14 @@ type Config struct {
 
 	// Keypair is the metrics publisher keypair (for signing offsets).
 	Keypair solana.PrivateKey
+
+	// GeolocationClient is the client for querying onchain GeoProbe accounts.
+	// When non-nil, enables periodic probe discovery from the Geolocation program.
+	GeolocationClient geoprobe.GeolocationClient
+
+	// ProbeDiscoveryInterval is the interval at which to query onchain GeoProbe accounts.
+	// Defaults to 60s when GeolocationClient is set.
+	ProbeDiscoveryInterval time.Duration
 }
 
 func (c *Config) Validate() error {
@@ -106,7 +114,8 @@ func (c *Config) Validate() error {
 		c.MaxConsecutiveSenderLosses = 30
 	}
 
-	if len(c.InitialChildGeoProbes) > 0 {
+	geoprobeEnabled := len(c.InitialChildGeoProbes) > 0 || c.GeolocationClient != nil
+	if geoprobeEnabled {
 		if c.ServiceabilityProgramClient == nil {
 			return errors.New("serviceability client is required when geoprobe is enabled")
 		}
@@ -116,6 +125,10 @@ func (c *Config) Validate() error {
 		if c.Keypair == nil {
 			return errors.New("keypair is required when geoprobe is enabled")
 		}
+	}
+
+	if c.GeolocationClient != nil && c.ProbeDiscoveryInterval <= 0 {
+		c.ProbeDiscoveryInterval = 60 * time.Second
 	}
 
 	return nil

@@ -167,6 +167,7 @@ pub fn process_create_reserved_subscribe_user(
 
     // Load globalstate to check authorization
     let globalstate = GlobalState::try_from(globalstate_account)?;
+    let is_qa = globalstate.qa_allowlist.contains(payer_account.key);
     if globalstate.reservation_authority_pk != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
@@ -176,9 +177,10 @@ pub fn process_create_reserved_subscribe_user(
     // Load and validate device
     let mut device = Device::try_from(device_account)?;
 
-    // Only activated devices can have users (or foundation allowlist)
+    // Only activated devices can have users (or foundation/QA allowlist)
     if device.status != DeviceStatus::Activated
         && !globalstate.foundation_allowlist.contains(payer_account.key)
+        && !is_qa
     {
         msg!("{:?}", device);
         return Err(DoubleZeroError::InvalidStatus.into());
@@ -225,8 +227,10 @@ pub fn process_create_reserved_subscribe_user(
         return Err(DoubleZeroError::InvalidArgument.into());
     }
 
-    // Check multicast limit
-    if device.max_multicast_users > 0 && device.multicast_users_count >= device.max_multicast_users
+    // Check multicast limit (QA bypass skips this)
+    if !is_qa
+        && device.max_multicast_users > 0
+        && device.multicast_users_count >= device.max_multicast_users
     {
         msg!(
             "Max multicast users exceeded: count={}, max={}",

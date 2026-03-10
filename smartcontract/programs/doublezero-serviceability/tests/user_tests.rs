@@ -807,7 +807,7 @@ async fn test_user_ban_requires_pendingban() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {}),
+        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs::default()),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -1472,7 +1472,7 @@ async fn test_user_delete_from_pending_ban() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {}),
+        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs::default()),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -1526,7 +1526,7 @@ async fn test_user_delete_from_banned() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {}),
+        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs::default()),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),

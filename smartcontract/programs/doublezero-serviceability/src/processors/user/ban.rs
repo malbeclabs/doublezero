@@ -13,6 +13,7 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
+use std::net::Ipv4Addr;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct UserBanArgs {}
@@ -65,6 +66,7 @@ pub fn process_ban_user(
         return Err(DoubleZeroError::NotAllowed.into());
     }
     user.status = UserStatus::Banned;
+    user.dz_ip = Ipv4Addr::UNSPECIFIED;
 
     try_acc_write(&user, user_account, payer_account, accounts)?;
 

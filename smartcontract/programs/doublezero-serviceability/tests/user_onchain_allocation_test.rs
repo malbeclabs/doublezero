@@ -34,7 +34,7 @@ use doublezero_serviceability::{
         },
         user::{
             activate::UserActivateArgs, closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
-            delete::UserDeleteArgs,
+            delete::UserDeleteArgs, requestban::UserRequestBanArgs,
         },
     },
     resource::ResourceType,
@@ -2804,4 +2804,358 @@ async fn test_delete_user_atomic_feature_flag_disabled() {
     );
 
     println!("[PASS] test_delete_user_atomic_feature_flag_disabled");
+}
+
+// ============================================================================
+// RequestBanUser Atomic Deallocation Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_request_ban_user_onchain_deallocation() {
+    println!("[TEST] test_request_ban_user_onchain_deallocation");
+
+    let client_ip = [100, 0, 0, 20];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
+    ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    // Enable OnChainAllocation feature flag
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    // Activate user with onchain allocation
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify user is activated with allocated resources
+    let user_before = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_before.status, UserStatus::Activated);
+    assert_ne!(user_before.tunnel_id, 0);
+    assert_ne!(
+        user_before.tunnel_net,
+        doublezero_program_common::types::NetworkV4::default()
+    );
+    assert_ne!(user_before.dz_ip, Ipv4Addr::UNSPECIFIED);
+
+    // Verify allocations exist in bitmaps
+    let user_tunnel_before =
+        get_resource_extension_data(&mut banks_client, user_tunnel_block_pubkey)
+            .await
+            .expect("UserTunnelBlock should exist");
+    let tunnel_ids_before = get_resource_extension_data(&mut banks_client, tunnel_ids_pubkey)
+        .await
+        .expect("TunnelIds should exist");
+    let dz_prefix_before = get_resource_extension_data(&mut banks_client, dz_prefix_block_pubkey)
+        .await
+        .expect("DzPrefixBlock should exist");
+
+    assert_eq!(user_tunnel_before.iter_allocated().len(), 2);
+    assert_eq!(tunnel_ids_before.iter_allocated().len(), 1);
+    assert_eq!(dz_prefix_before.iter_allocated().len(), 2); // reserved first IP + user
+
+    // Verify device counters before ban
+    let device_before = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_before.users_count, 1);
+    assert_eq!(device_before.unicast_users_count, 1);
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    // Atomic RequestBanUser: should deallocate resources and set status to Banned
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
+            dz_prefix_count: 1,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // User should still exist but with Banned status and zeroed fields
+    let user_after = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should still exist after atomic ban (not closed)")
+        .get_user()
+        .unwrap();
+    assert_eq!(
+        user_after.status,
+        UserStatus::Banned,
+        "User should be in Banned status after atomic request ban"
+    );
+    assert_eq!(user_after.tunnel_id, 0, "tunnel_id should be zeroed");
+    assert_eq!(
+        user_after.tunnel_net,
+        doublezero_program_common::types::NetworkV4::default(),
+        "tunnel_net should be zeroed"
+    );
+    assert_eq!(
+        user_after.dz_ip,
+        Ipv4Addr::UNSPECIFIED,
+        "dz_ip should be zeroed"
+    );
+
+    // Verify bitmap bits were deallocated
+    let user_tunnel_after =
+        get_resource_extension_data(&mut banks_client, user_tunnel_block_pubkey)
+            .await
+            .expect("UserTunnelBlock should exist");
+    let tunnel_ids_after = get_resource_extension_data(&mut banks_client, tunnel_ids_pubkey)
+        .await
+        .expect("TunnelIds should exist");
+    let dz_prefix_after = get_resource_extension_data(&mut banks_client, dz_prefix_block_pubkey)
+        .await
+        .expect("DzPrefixBlock should exist");
+
+    assert!(
+        user_tunnel_after.iter_allocated().is_empty(),
+        "UserTunnelBlock should have no allocations after atomic ban"
+    );
+    assert!(
+        tunnel_ids_after.iter_allocated().is_empty(),
+        "TunnelIds should have no allocations after atomic ban"
+    );
+    assert_eq!(
+        dz_prefix_after.iter_allocated().len(),
+        1,
+        "DzPrefixBlock should have only reserved first IP after atomic ban"
+    );
+
+    // Device counters should NOT be decremented (ban doesn't touch device counts)
+    let device_after = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(
+        device_after.users_count, 1,
+        "Device users_count should not change after ban"
+    );
+    assert_eq!(
+        device_after.unicast_users_count, 1,
+        "Device unicast_users_count should not change after ban"
+    );
+
+    println!("[PASS] test_request_ban_user_onchain_deallocation");
+}
+
+#[tokio::test]
+async fn test_request_ban_user_legacy_backward_compat() {
+    println!("[TEST] test_request_ban_user_legacy_backward_compat");
+
+    let client_ip = [100, 0, 0, 21];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        _device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        _resource_pubkeys,
+    ) = setup_user_onchain_allocation_test(UserType::IBRL, client_ip).await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    // Activate user with legacy path
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 501,
+            tunnel_net: "169.254.0.0/25".parse().unwrap(),
+            dz_ip: [200, 0, 0, 1].into(),
+            dz_prefix_count: 0,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    // Legacy RequestBanUser (dz_prefix_count=0) should set status to PendingBan
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // User should still exist with PendingBan status
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should still exist after legacy request ban")
+        .get_user()
+        .unwrap();
+    assert_eq!(
+        user.status,
+        UserStatus::PendingBan,
+        "User should be in PendingBan status after legacy request ban"
+    );
+
+    println!("[PASS] test_request_ban_user_legacy_backward_compat");
+}
+
+#[tokio::test]
+async fn test_request_ban_user_onchain_feature_flag_disabled() {
+    println!("[TEST] test_request_ban_user_onchain_feature_flag_disabled");
+
+    let client_ip = [100, 0, 0, 22];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        _device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        (
+            user_tunnel_block_pubkey,
+            _multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
+    ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    // Activate user with legacy path (no feature flag needed for legacy activate)
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 501,
+            tunnel_net: "169.254.0.0/25".parse().unwrap(),
+            dz_ip: [200, 0, 0, 1].into(),
+            dz_prefix_count: 0,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    // Atomic request ban WITHOUT feature flag enabled should fail
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
+            dz_prefix_count: 1,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "Atomic request ban should fail when OnChainAllocation feature flag is disabled"
+    );
+
+    // User should still exist with Activated status
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should still exist after failed atomic request ban")
+        .get_user()
+        .unwrap();
+    assert_eq!(
+        user.status,
+        UserStatus::Activated,
+        "User status should be unchanged after failed atomic request ban"
+    );
+
+    println!("[PASS] test_request_ban_user_onchain_feature_flag_disabled");
 }

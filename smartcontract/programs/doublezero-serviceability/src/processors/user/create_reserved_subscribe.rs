@@ -216,45 +216,30 @@ pub fn process_create_reserved_subscribe_user(
 
     try_acc_write(&reservation, reservation_account, payer_account, accounts)?;
 
-    // Check per-type limits
-    match value.user_type {
-        UserType::Multicast => {
-            if device.max_multicast_users > 0
-                && device.multicast_users_count >= device.max_multicast_users
-            {
-                msg!(
-                    "Max multicast users exceeded: count={}, max={}",
-                    device.multicast_users_count,
-                    device.max_multicast_users
-                );
-                return Err(DoubleZeroError::MaxMulticastUsersExceeded.into());
-            }
-        }
-        _ => {
-            if device.max_unicast_users > 0
-                && device.unicast_users_count >= device.max_unicast_users
-            {
-                msg!(
-                    "Max unicast users exceeded: count={}, max={}",
-                    device.unicast_users_count,
-                    device.max_unicast_users
-                );
-                return Err(DoubleZeroError::MaxUnicastUsersExceeded.into());
-            }
-        }
+    // This instruction is for multicast subscribers only
+    if value.user_type != UserType::Multicast {
+        msg!(
+            "CreateReservedSubscribeUser requires Multicast user type, got: {}",
+            value.user_type
+        );
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
+    // Check multicast limit
+    if device.max_multicast_users > 0 && device.multicast_users_count >= device.max_multicast_users
+    {
+        msg!(
+            "Max multicast users exceeded: count={}, max={}",
+            device.multicast_users_count,
+            device.max_multicast_users
+        );
+        return Err(DoubleZeroError::MaxMulticastUsersExceeded.into());
     }
 
     // Update device counters
     device.reference_count += 1;
     device.users_count += 1;
-    match value.user_type {
-        UserType::Multicast => {
-            device.multicast_users_count += 1;
-        }
-        _ => {
-            device.unicast_users_count += 1;
-        }
-    }
+    device.multicast_users_count += 1;
 
     // Update tenant reference count
     let mut tenant = Tenant::try_from(tenant_account)?;

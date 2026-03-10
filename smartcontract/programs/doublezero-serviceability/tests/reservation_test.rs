@@ -1592,3 +1592,76 @@ async fn test_create_reserved_subscribe_user_multiple_from_same_reservation() {
         .expect("MulticastGroup should exist");
     assert_eq!(mgroup.subscriber_count, 3);
 }
+
+#[tokio::test]
+async fn test_create_reserved_subscribe_user_rejects_non_multicast() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
+        setup_device_for_reservations(128).await;
+
+    let tenant_pubkey = setup_tenant(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        "acme",
+    )
+    .await;
+
+    let mgroup_pubkey =
+        setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let (reservation_pubkey, _) = get_reservation_pda(&program_id, &device_pubkey, &payer.pubkey());
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs { count: 1 }),
+        vec![
+            AccountMeta::new(reservation_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_ip: std::net::Ipv4Addr = [100, 1, 0, 1].into();
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::IBRL);
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs {
+            client_ip: user_ip,
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            publisher: false,
+            subscriber: true,
+            dz_prefix_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(reservation_pubkey, false),
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // InvalidArgument = Custom(65)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(65),
+        ))) => {}
+        _ => panic!("Expected InvalidArgument (Custom(65)), got {:?}", result),
+    }
+}

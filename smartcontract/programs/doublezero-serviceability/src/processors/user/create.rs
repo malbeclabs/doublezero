@@ -64,25 +64,10 @@ pub fn process_create_user(
     //   [user, device, accesspass, globalstate, user_tunnel_block, multicast_publisher_block, device_tunnel_ids, dz_prefix_0..N, optional_tenant, payer, system]
     // Account layout WITHOUT (legacy, dz_prefix_count == 0):
     //   [user, device, accesspass, globalstate, optional_tenant, payer, system]
-    let resource_extension_accounts = if value.dz_prefix_count > 0 {
-        let user_tunnel_block_ext = next_account_info(accounts_iter)?;
-        let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
-        let device_tunnel_ids_ext = next_account_info(accounts_iter)?;
-
-        let mut dz_prefix_accounts = Vec::with_capacity(value.dz_prefix_count as usize);
-        for _ in 0..value.dz_prefix_count {
-            dz_prefix_accounts.push(next_account_info(accounts_iter)?);
-        }
-
-        Some((
-            user_tunnel_block_ext,
-            multicast_publisher_block_ext,
-            device_tunnel_ids_ext,
-            dz_prefix_accounts,
-        ))
-    } else {
-        None
-    };
+    let resource_extension_accounts = resource_onchain_helpers::parse_resource_extension_accounts(
+        accounts_iter,
+        value.dz_prefix_count,
+    )?;
 
     // Parse optional tenant account
     let resource_ext_accounts = if value.dz_prefix_count > 0 {

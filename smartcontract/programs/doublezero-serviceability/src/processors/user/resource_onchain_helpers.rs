@@ -16,8 +16,48 @@ use crate::{
 use doublezero_program_common::types::NetworkV4;
 #[cfg(test)]
 use solana_program::msg;
-use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, pubkey::Pubkey};
+use solana_program::{
+    account_info::{next_account_info, AccountInfo},
+    entrypoint::ProgramResult,
+    pubkey::Pubkey,
+};
 use std::net::Ipv4Addr;
+
+/// Type alias for parsed resource extension accounts.
+pub type ResourceExtensionAccounts<'a, 'b> = (
+    &'b AccountInfo<'a>,
+    &'b AccountInfo<'a>,
+    &'b AccountInfo<'a>,
+    Vec<&'b AccountInfo<'a>>,
+);
+
+/// Parse optional ResourceExtension accounts from the accounts iterator.
+/// Returns `Some(...)` when `dz_prefix_count > 0`, `None` otherwise.
+pub fn parse_resource_extension_accounts<'a, 'b>(
+    accounts_iter: &mut std::slice::Iter<'b, AccountInfo<'a>>,
+    dz_prefix_count: u8,
+) -> Result<Option<ResourceExtensionAccounts<'a, 'b>>, solana_program::program_error::ProgramError>
+{
+    if dz_prefix_count > 0 {
+        let user_tunnel_block_ext = next_account_info(accounts_iter)?;
+        let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
+        let device_tunnel_ids_ext = next_account_info(accounts_iter)?;
+
+        let mut dz_prefix_accounts = Vec::with_capacity(dz_prefix_count as usize);
+        for _ in 0..dz_prefix_count {
+            dz_prefix_accounts.push(next_account_info(accounts_iter)?);
+        }
+
+        Ok(Some((
+            user_tunnel_block_ext,
+            multicast_publisher_block_ext,
+            device_tunnel_ids_ext,
+            dz_prefix_accounts,
+        )))
+    } else {
+        Ok(None)
+    }
+}
 
 /// Validate and allocate user resources from ResourceExtension accounts.
 /// Allocates tunnel_net from UserTunnelBlock, tunnel_id from TunnelIds,

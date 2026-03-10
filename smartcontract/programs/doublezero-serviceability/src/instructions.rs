@@ -923,7 +923,7 @@ mod tests {
             "RemoveUserAllowlist",
         );
         test_instruction(
-            DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {}),
+            DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs::default()),
             "RequestBanUser",
         );
         test_instruction(DoubleZeroInstruction::BanUser(UserBanArgs {}), "BanUser");

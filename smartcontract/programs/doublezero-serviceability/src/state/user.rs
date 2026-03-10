@@ -275,8 +275,11 @@ impl TryFrom<&AccountInfo<'_>> for User {
 
 impl Validate for User {
     fn validate(&self) -> Result<(), DoubleZeroError> {
-        // If the user is in the process of being deleted, we can skip validation to allow it to be cleaned up without issues. This is necessary to prevent a scenario where a user gets stuck in the deleting state because some aspect of their data becomes invalid (e.g. due to changes in validation rules over time).
-        if self.status == UserStatus::Deleting {
+        // If the user is in the process of being deleted or banned with deallocated resources,
+        // we can skip validation to allow it to be cleaned up without issues. This is necessary
+        // to prevent a scenario where a user gets stuck because some aspect of their data becomes
+        // invalid (e.g. zeroed dz_ip/tunnel_net after onchain deallocation).
+        if self.status == UserStatus::Deleting || self.status == UserStatus::Banned {
             return Ok(());
         }
 

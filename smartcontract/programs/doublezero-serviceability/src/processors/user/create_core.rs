@@ -6,7 +6,6 @@ use crate::{
         accounttype::AccountType,
         device::{Device, DeviceStatus},
         globalstate::GlobalState,
-        reservation::Reservation,
         tenant::Tenant,
         user::*,
     },
@@ -32,7 +31,6 @@ pub struct CreateUserCoreAccounts<'a, 'b> {
     pub device_account: &'a AccountInfo<'b>,
     pub accesspass_account: &'a AccountInfo<'b>,
     pub globalstate_account: &'a AccountInfo<'b>,
-    pub reservation_account: Option<&'a AccountInfo<'b>>,
     pub tenant_account: Option<&'a AccountInfo<'b>>,
     pub payer_account: &'a AccountInfo<'b>,
 }
@@ -226,49 +224,7 @@ pub fn create_user_core(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    // If a reservation account is provided, consume a seat from it instead of the general capacity check.
-    if let Some(reservation_account) = core.reservation_account {
-        validate_program_account!(
-            reservation_account,
-            program_id,
-            writable = true,
-            pda = None::<&Pubkey>,
-            "Reservation"
-        );
-
-        let mut reservation = Reservation::try_from(reservation_account)?;
-        if reservation.device_pk != *core.device_account.key {
-            msg!(
-                "Reservation device_pk {} does not match device {}",
-                reservation.device_pk,
-                core.device_account.key
-            );
-            return Err(DoubleZeroError::InvalidDevicePubkey.into());
-        }
-        if reservation.owner != *core.payer_account.key {
-            msg!(
-                "Reservation owner {} does not match payer {}",
-                reservation.owner,
-                core.payer_account.key
-            );
-            return Err(DoubleZeroError::NotAllowed.into());
-        }
-        if reservation.reserved_count == 0 {
-            msg!("Reservation has no remaining seats");
-            return Err(DoubleZeroError::MaxUsersExceeded.into());
-        }
-
-        // Consume one seat from the reservation (net zero on device capacity)
-        reservation.reserved_count -= 1;
-        device.reserved_seats = device.reserved_seats.saturating_sub(1);
-
-        try_acc_write(
-            &reservation,
-            reservation_account,
-            core.payer_account,
-            accounts,
-        )?;
-    } else if device.users_count + device.reserved_seats >= device.max_users && !is_qa {
+    if device.users_count + device.reserved_seats >= device.max_users && !is_qa {
         msg!("{:?}", device);
         return Err(DoubleZeroError::MaxUsersExceeded.into());
     }

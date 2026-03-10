@@ -83,6 +83,7 @@ use crate::processors::{
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
         closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
+        create_reserved_subscribe::CreateReservedSubscribeUserArgs,
         create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs, reject::UserRejectArgs,
         requestban::UserRequestBanArgs, update::UserUpdateArgs,
     },
@@ -216,6 +217,8 @@ pub enum DoubleZeroInstruction {
     SuspendPermission(PermissionSuspendArgs), // variant 99
     ResumePermission(PermissionResumeArgs),   // variant 100
     DeletePermission(PermissionDeleteArgs),   // variant 101
+
+    CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs), // variant 102
 }
 
 impl DoubleZeroInstruction {
@@ -350,6 +353,8 @@ impl DoubleZeroInstruction {
             100 => Ok(Self::ResumePermission(PermissionResumeArgs::try_from(rest).unwrap())),
             101 => Ok(Self::DeletePermission(PermissionDeleteArgs::try_from(rest).unwrap())),
 
+            102 => Ok(Self::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs::try_from(rest).unwrap())),
+
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -480,6 +485,8 @@ impl DoubleZeroInstruction {
             Self::SuspendPermission(_) => "SuspendPermission".to_string(), // variant 99
             Self::ResumePermission(_) => "ResumePermission".to_string(), // variant 100
             Self::DeletePermission(_) => "DeletePermission".to_string(), // variant 101
+
+            Self::CreateReservedSubscribeUser(_) => "CreateReservedSubscribeUser".to_string(), // variant 102
         }
     }
 
@@ -603,6 +610,8 @@ impl DoubleZeroInstruction {
             Self::SuspendPermission(args) => format!("{args:?}"), // variant 99
             Self::ResumePermission(args) => format!("{args:?}"), // variant 100
             Self::DeletePermission(args) => format!("{args:?}"), // variant 101
+
+            Self::CreateReservedSubscribeUser(args) => format!("{args:?}"), // variant 102
         }
     }
 }
@@ -817,7 +826,6 @@ mod tests {
                 client_ip: [1, 2, 3, 4].into(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 dz_prefix_count: 0,
-                has_reservation: false,
             }),
             "CreateUser",
         );
@@ -1046,7 +1054,6 @@ mod tests {
                 subscriber: true,
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 dz_prefix_count: 0,
-                has_reservation: false,
             }),
             "CreateSubscribeUser",
         );
@@ -1292,6 +1299,18 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::DeletePermission(PermissionDeleteArgs {}),
             "DeletePermission",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs {
+                user_type: UserType::Multicast,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: [1, 2, 3, 4].into(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                publisher: false,
+                subscriber: true,
+                dz_prefix_count: 0,
+            }),
+            "CreateReservedSubscribeUser",
         );
     }
 }

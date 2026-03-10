@@ -101,6 +101,7 @@ use crate::{
             activate::process_activate_user, ban::process_ban_user,
             check_access_pass::process_check_access_pass_user,
             closeaccount::process_closeaccount_user, create::process_create_user,
+            create_reserved_subscribe::process_create_reserved_subscribe_user,
             create_subscribe::process_create_subscribe_user, delete::process_delete_user,
             reject::process_reject_user, requestban::process_request_ban_user,
             update::process_update_user,
@@ -418,6 +419,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::DeletePermission(value) => {
             process_delete_permission(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CreateReservedSubscribeUser(value) => {
+            process_create_reserved_subscribe_user(program_id, accounts, &value)?
         }
     };
     Ok(())

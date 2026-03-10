@@ -3,21 +3,22 @@ use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::{
-        accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
         device::{activate::DeviceActivateArgs, create::*, update::*},
         globalstate::setauthority::SetAuthorityArgs,
+        multicastgroup::{activate::MulticastGroupActivateArgs, create::MulticastGroupCreateArgs},
         reservation::{close::CloseReservationArgs, reserve::ReserveConnectionArgs},
-        user::create::UserCreateArgs,
+        tenant::create::TenantCreateArgs,
+        user::create_reserved_subscribe::CreateReservedSubscribeUserArgs,
         *,
     },
     resource::ResourceType,
     state::{
-        accesspass::AccessPassType,
         accounttype::AccountType,
         device::*,
+        multicastgroup::MulticastGroup,
         reservation::Reservation,
-        user::{UserCYOA, UserType},
+        user::{User, UserCYOA, UserStatus, UserType},
     },
 };
 use globalconfig::set::SetGlobalConfigArgs;
@@ -712,43 +713,130 @@ async fn test_reserve_connection_max_users_zero() {
 
 // --- User creation with reservation integration tests ---
 
-/// Helper: set up an access pass for `user_ip` and return the access pass PDA.
-async fn setup_accesspass(
+// --- CreateReservedSubscribeUser instruction tests ---
+
+async fn get_user(banks_client: &mut BanksClient, pubkey: Pubkey) -> Option<User> {
+    match banks_client.get_account(pubkey).await {
+        Ok(account) => match account {
+            Some(account_data) => User::try_from(&account_data.data[..]).ok(),
+            None => None,
+        },
+        Err(err) => panic!("Failed to get account: {err:?}"),
+    }
+}
+
+async fn get_multicast_group(
+    banks_client: &mut BanksClient,
+    pubkey: Pubkey,
+) -> Option<MulticastGroup> {
+    match banks_client.get_account(pubkey).await {
+        Ok(account) => match account {
+            Some(account_data) => MulticastGroup::try_from(&account_data.data[..]).ok(),
+            None => None,
+        },
+        Err(err) => panic!("Failed to get account: {err:?}"),
+    }
+}
+
+/// Setup a tenant and return its pubkey.
+async fn setup_tenant(
     banks_client: &mut BanksClient,
     payer: &solana_sdk::signature::Keypair,
     program_id: Pubkey,
     globalstate_pubkey: Pubkey,
-    user_ip: std::net::Ipv4Addr,
+    code: &str,
 ) -> Pubkey {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user_ip, &payer.pubkey());
+    let (tenant_pubkey, _) = get_tenant_pda(&program_id, code);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     execute_transaction(
         banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-            accesspass_type: AccessPassType::Prepaid,
-            client_ip: user_ip,
-            last_access_epoch: 9999,
-            allow_multiple_ip: false,
+        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: code.to_string(),
+            administrator: payer.pubkey(),
+            token_account: None,
+            metro_routing: true,
+            route_liveness: false,
         }),
         vec![
-            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         payer,
     )
     .await;
 
-    accesspass_pubkey
+    tenant_pubkey
+}
+
+/// Create and activate a multicast group. Returns its pubkey.
+async fn setup_multicast_group(
+    banks_client: &mut BanksClient,
+    payer: &solana_sdk::signature::Keypair,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+) -> Pubkey {
+    let gs = get_globalstate(banks_client, globalstate_pubkey).await;
+    let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "group1".to_string(),
+            max_bandwidth: 1000,
+            owner: payer.pubkey(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
+            multicast_ip: "224.0.0.1".parse().unwrap(),
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    mgroup_pubkey
 }
 
 #[tokio::test]
-async fn test_create_user_with_reservation() {
+async fn test_create_reserved_subscribe_user() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
         setup_device_for_reservations(128).await;
+
+    let tenant_pubkey = setup_tenant(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        "acme",
+    )
+    .await;
+
+    let mgroup_pubkey =
+        setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
 
     // Reserve 3 seats
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
@@ -768,37 +856,30 @@ async fn test_create_user_with_reservation() {
     )
     .await;
 
-    // Set up access pass and create user with reservation
     let user_ip: std::net::Ipv4Addr = [100, 1, 0, 1].into();
-    let accesspass_pubkey = setup_accesspass(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        user_ip,
-    )
-    .await;
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::IBRL);
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+        DoubleZeroInstruction::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs {
             client_ip: user_ip,
-            user_type: UserType::IBRL,
+            user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            publisher: false,
+            subscriber: true,
             dz_prefix_count: 0,
-            has_reservation: true,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(reservation_pubkey, false),
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -810,20 +891,129 @@ async fn test_create_user_with_reservation() {
         .expect("Reservation should still exist");
     assert_eq!(reservation.reserved_count, 2);
 
-    // Verify device: reserved_seats decreased by 1, users_count increased by 1
+    // Verify device counters
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device should exist");
     assert_eq!(device.reserved_seats, 2);
     assert_eq!(device.users_count, 1);
+    assert_eq!(device.reference_count, 1);
+    assert_eq!(device.multicast_users_count, 1);
+
+    // Verify user
+    let user = get_user(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist");
+    assert_eq!(user.client_ip, user_ip);
+    assert_eq!(user.user_type, UserType::Multicast);
+    assert_eq!(user.device_pk, device_pubkey);
+    assert_eq!(user.tenant_pk, tenant_pubkey);
+    assert_eq!(user.status, UserStatus::Pending);
+    assert_eq!(user.owner, payer.pubkey());
+    assert_eq!(user.subscribers, vec![mgroup_pubkey]);
+    assert!(user.publishers.is_empty());
+
+    // Verify multicast group subscriber count
+    let mgroup = get_multicast_group(&mut banks_client, mgroup_pubkey)
+        .await
+        .expect("MulticastGroup should exist");
+    assert_eq!(mgroup.subscriber_count, 1);
+    assert_eq!(mgroup.publisher_count, 0);
 }
 
 #[tokio::test]
-async fn test_create_user_with_reservation_exhausted() {
+async fn test_create_reserved_subscribe_user_as_publisher() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
         setup_device_for_reservations(128).await;
 
-    // Reserve only 1 seat
+    let tenant_pubkey = setup_tenant(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        "acme",
+    )
+    .await;
+
+    let mgroup_pubkey =
+        setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let (reservation_pubkey, _) = get_reservation_pda(&program_id, &device_pubkey, &payer.pubkey());
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs { count: 1 }),
+        vec![
+            AccountMeta::new(reservation_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_ip: std::net::Ipv4Addr = [100, 1, 0, 1].into();
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs {
+            client_ip: user_ip,
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            publisher: true,
+            subscriber: true,
+            dz_prefix_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(reservation_pubkey, false),
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_user(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist");
+    assert_eq!(user.publishers, vec![mgroup_pubkey]);
+    assert_eq!(user.subscribers, vec![mgroup_pubkey]);
+
+    let mgroup = get_multicast_group(&mut banks_client, mgroup_pubkey)
+        .await
+        .expect("MulticastGroup should exist");
+    assert_eq!(mgroup.publisher_count, 1);
+    assert_eq!(mgroup.subscriber_count, 1);
+}
+
+#[tokio::test]
+async fn test_create_reserved_subscribe_user_exhausted() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
+        setup_device_for_reservations(128).await;
+
+    let tenant_pubkey = setup_tenant(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        "acme",
+    )
+    .await;
+
+    let mgroup_pubkey =
+        setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     let (reservation_pubkey, _) = get_reservation_pda(&program_id, &device_pubkey, &payer.pubkey());
 
@@ -843,83 +1033,72 @@ async fn test_create_user_with_reservation_exhausted() {
 
     // Create first user — consumes the only reserved seat
     let user_ip_1: std::net::Ipv4Addr = [100, 1, 0, 1].into();
-    let accesspass_1 = setup_accesspass(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        user_ip_1,
-    )
-    .await;
-    let (user_pubkey_1, _) = get_user_pda(&program_id, &user_ip_1, UserType::IBRL);
+    let (user_pubkey_1, _) = get_user_pda(&program_id, &user_ip_1, UserType::Multicast);
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+        DoubleZeroInstruction::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs {
             client_ip: user_ip_1,
-            user_type: UserType::IBRL,
+            user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            publisher: false,
+            subscriber: true,
             dz_prefix_count: 0,
-            has_reservation: true,
         }),
         vec![
             AccountMeta::new(user_pubkey_1, false),
             AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(accesspass_1, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(reservation_pubkey, false),
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
         ],
         &payer,
     )
     .await;
 
-    // Verify reservation is now at 0
-    let reservation = get_reservation(&mut banks_client, reservation_pubkey)
-        .await
-        .expect("Reservation should still exist");
-    assert_eq!(reservation.reserved_count, 0);
+    assert_eq!(
+        get_reservation(&mut banks_client, reservation_pubkey)
+            .await
+            .unwrap()
+            .reserved_count,
+        0
+    );
 
-    // Second user with same exhausted reservation should fail
+    // Second user should fail — reservation exhausted
     let user_ip_2: std::net::Ipv4Addr = [100, 1, 0, 2].into();
-    let accesspass_2 = setup_accesspass(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        user_ip_2,
-    )
-    .await;
-    let (user_pubkey_2, _) = get_user_pda(&program_id, &user_ip_2, UserType::IBRL);
+    let (user_pubkey_2, _) = get_user_pda(&program_id, &user_ip_2, UserType::Multicast);
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+        DoubleZeroInstruction::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs {
             client_ip: user_ip_2,
-            user_type: UserType::IBRL,
+            user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            publisher: false,
+            subscriber: true,
             dz_prefix_count: 0,
-            has_reservation: true,
         }),
         vec![
             AccountMeta::new(user_pubkey_2, false),
             AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(accesspass_2, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(reservation_pubkey, false),
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
         ],
         &payer,
     )
     .await;
 
-    // MaxUsersExceeded = Custom(20)
     match result {
         Err(BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
@@ -930,11 +1109,22 @@ async fn test_create_user_with_reservation_exhausted() {
 }
 
 #[tokio::test]
-async fn test_create_user_with_reservation_wrong_owner() {
+async fn test_create_reserved_subscribe_user_wrong_owner() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
         setup_device_for_reservations(128).await;
 
-    // Reserve 3 seats as the payer (reservation authority)
+    let tenant_pubkey = setup_tenant(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        "acme",
+    )
+    .await;
+
+    let mgroup_pubkey =
+        setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     let (reservation_pubkey, _) = get_reservation_pda(&program_id, &device_pubkey, &payer.pubkey());
 
@@ -952,11 +1142,10 @@ async fn test_create_user_with_reservation_wrong_owner() {
     )
     .await;
 
-    // Create a different user who tries to use the payer's reservation
+    // Another authority tries to use payer's reservation
     let other_user = solana_sdk::signature::Keypair::new();
     transfer(&mut banks_client, &payer, &other_user.pubkey(), 10_000_000).await;
 
-    // Add other_user to foundation allowlist so they can create users
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -972,61 +1161,336 @@ async fn test_create_user_with_reservation_wrong_owner() {
     .await;
 
     let user_ip: std::net::Ipv4Addr = [100, 1, 0, 1].into();
-    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user_ip, &other_user.pubkey());
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
 
-    // Set up access pass for other_user
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-            accesspass_type: AccessPassType::Prepaid,
-            client_ip: user_ip,
-            last_access_epoch: 9999,
-            allow_multiple_ip: false,
-        }),
-        vec![
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(other_user.pubkey(), false),
-        ],
-        &other_user,
-    )
-    .await;
-
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::IBRL);
-
-    // Try to create user with payer's reservation — should fail because reservation.owner != other_user
     let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+        DoubleZeroInstruction::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs {
             client_ip: user_ip,
-            user_type: UserType::IBRL,
+            user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            publisher: false,
+            subscriber: true,
             dz_prefix_count: 0,
-            has_reservation: true,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(reservation_pubkey, false),
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
         ],
         &other_user,
     )
     .await;
 
-    // NotAllowed = Custom(8)
     match result {
         Err(BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
             InstructionError::Custom(8),
         ))) => {}
-        _ => panic!("Expected NotAllowed error (Custom(8)), got {:?}", result),
+        _ => panic!("Expected NotAllowed (Custom(8)), got {:?}", result),
     }
+}
+
+#[tokio::test]
+async fn test_create_reserved_subscribe_user_wrong_device() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
+        setup_device_for_reservations(128).await;
+
+    let tenant_pubkey = setup_tenant(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        "acme",
+    )
+    .await;
+
+    let mgroup_pubkey =
+        setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let (reservation_pubkey, _) = get_reservation_pda(&program_id, &device_pubkey, &payer.pubkey());
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs { count: 3 }),
+        vec![
+            AccountMeta::new(reservation_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create a second device
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (location_pubkey, _) = get_location_pda(&program_id, 1);
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, 2);
+    let (contributor_pubkey, _) = get_contributor_pda(&program_id, 3);
+    let (device2_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
+            code: "dev2".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [100, 0, 0, 2].into(),
+            dz_prefixes: "100.2.0.0/23".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Activate device2
+    let (tunnel_ids_pda2, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device2_pubkey, 0));
+    let (dz_prefix_pda2, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device2_pubkey, 0));
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_pda2, false),
+            AccountMeta::new(dz_prefix_pda2, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Try to create user on device2 using reservation for device1
+    let user_ip: std::net::Ipv4Addr = [100, 1, 0, 1].into();
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs {
+            client_ip: user_ip,
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            publisher: false,
+            subscriber: true,
+            dz_prefix_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(reservation_pubkey, false),
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // InvalidDevicePubkey = Custom(6)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(6),
+        ))) => {}
+        _ => panic!("Expected InvalidDevicePubkey (Custom(6)), got {:?}", result),
+    }
+}
+
+#[tokio::test]
+async fn test_create_reserved_subscribe_user_unauthorized() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
+        setup_device_for_reservations(128).await;
+
+    let tenant_pubkey = setup_tenant(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        "acme",
+    )
+    .await;
+
+    let mgroup_pubkey =
+        setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let (reservation_pubkey, _) = get_reservation_pda(&program_id, &device_pubkey, &payer.pubkey());
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs { count: 3 }),
+        vec![
+            AccountMeta::new(reservation_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Unauthorized user (not reservation authority, not in foundation allowlist)
+    let unauthorized = solana_sdk::signature::Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &unauthorized.pubkey(),
+        10_000_000,
+    )
+    .await;
+
+    let user_ip: std::net::Ipv4Addr = [100, 1, 0, 1].into();
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs {
+            client_ip: user_ip,
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            publisher: false,
+            subscriber: true,
+            dz_prefix_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(reservation_pubkey, false),
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &unauthorized,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(8),
+        ))) => {}
+        _ => panic!("Expected NotAllowed (Custom(8)), got {:?}", result),
+    }
+}
+
+#[tokio::test]
+async fn test_create_reserved_subscribe_user_multiple_from_same_reservation() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
+        setup_device_for_reservations(128).await;
+
+    let tenant_pubkey = setup_tenant(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        "acme",
+    )
+    .await;
+
+    let mgroup_pubkey =
+        setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let (reservation_pubkey, _) = get_reservation_pda(&program_id, &device_pubkey, &payer.pubkey());
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs { count: 3 }),
+        vec![
+            AccountMeta::new(reservation_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create 3 users from the same reservation
+    for i in 1..=3u8 {
+        let user_ip: std::net::Ipv4Addr = [100, 1, 0, i].into();
+        let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+
+        let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs {
+                client_ip: user_ip,
+                user_type: UserType::Multicast,
+                cyoa_type: UserCYOA::GREOverDIA,
+                tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+                publisher: false,
+                subscriber: true,
+                dz_prefix_count: 0,
+            }),
+            vec![
+                AccountMeta::new(user_pubkey, false),
+                AccountMeta::new(device_pubkey, false),
+                AccountMeta::new(mgroup_pubkey, false),
+                AccountMeta::new(reservation_pubkey, false),
+                AccountMeta::new(tenant_pubkey, false),
+                AccountMeta::new_readonly(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+    }
+
+    let reservation = get_reservation(&mut banks_client, reservation_pubkey)
+        .await
+        .expect("Reservation should still exist");
+    assert_eq!(reservation.reserved_count, 0);
+
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist");
+    assert_eq!(device.reserved_seats, 0);
+    assert_eq!(device.users_count, 3);
+    assert_eq!(device.reference_count, 3);
+    assert_eq!(device.multicast_users_count, 3);
+
+    let mgroup = get_multicast_group(&mut banks_client, mgroup_pubkey)
+        .await
+        .expect("MulticastGroup should exist");
+    assert_eq!(mgroup.subscriber_count, 3);
 }

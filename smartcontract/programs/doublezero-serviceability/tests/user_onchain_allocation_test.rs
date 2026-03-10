@@ -325,7 +325,6 @@ async fn setup_user_onchain_allocation_test(
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
-            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1705,7 +1704,6 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
-            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey2, false),
@@ -2232,7 +2230,6 @@ async fn atomic_create_user_with_resources(
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
-            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2411,7 +2408,6 @@ async fn test_create_user_atomic_backward_compat() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
-            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2465,7 +2461,6 @@ async fn test_create_user_atomic_feature_flag_disabled() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
-            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

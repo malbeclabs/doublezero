@@ -34,22 +34,18 @@ pub struct UserCreateSubscribeArgs {
     /// When 0, legacy behavior is used (Pending status). When > 0, atomic create+allocate+activate.
     #[incremental(default = 0)]
     pub dz_prefix_count: u8,
-    /// When true, a reservation account is expected after globalstate in the account list.
-    #[incremental(default = false)]
-    pub has_reservation: bool,
 }
 
 impl fmt::Debug for UserCreateSubscribeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}, has_reservation: {}",
+            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}",
             self.user_type,
             self.cyoa_type,
             &self.client_ip,
             &self.tunnel_endpoint,
             self.dz_prefix_count,
-            self.has_reservation,
         )
     }
 }
@@ -67,16 +63,9 @@ pub fn process_create_subscribe_user(
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: reservation account (when has_reservation is true)
-    let reservation_account = if value.has_reservation {
-        Some(next_account_info(accounts_iter)?)
-    } else {
-        None
-    };
-
     // Optional: ResourceExtension accounts for on-chain allocation
     // Account layout (all optional parts shown):
-    //   [user, device, mgroup, accesspass, globalstate, [reservation], [resource_ext...], payer, system]
+    //   [user, device, mgroup, accesspass, globalstate, [resource_ext...], payer, system]
     let resource_extension_accounts = if value.dz_prefix_count > 0 {
         let user_tunnel_block_ext = next_account_info(accounts_iter)?;
         let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
@@ -107,7 +96,6 @@ pub fn process_create_subscribe_user(
         device_account,
         accesspass_account,
         globalstate_account,
-        reservation_account,
         tenant_account: None, // No tenant support for multicast group users
         payer_account,
     };

@@ -64,8 +64,8 @@ impl fmt::Debug for CreateReservedSubscribeUserArgs {
 /// Account layout:
 ///   [user, device, mgroup, reservation, tenant, globalstate, [resource_ext...], payer, system]
 ///
-/// No access pass is required — the reservation authority is the payer.
-/// Multicast group allowlist checks are skipped since the reservation authority is trusted.
+/// No access pass is required — the payer must be the reservation authority or on the foundation allowlist.
+/// Multicast group allowlist checks are skipped since the payer is already authorized.
 pub fn process_create_reserved_subscribe_user(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -278,7 +278,7 @@ pub fn process_create_reserved_subscribe_user(
         tunnel_endpoint: value.tunnel_endpoint,
     };
 
-    // Subscribe user to multicast group (no access pass allowlist checks — reservation authority is trusted)
+    // Subscribe user to multicast group (no access pass allowlist checks — payer is already authorized above)
     let mut mgroup = MulticastGroup::try_from(mgroup_account)?;
     if mgroup.status != MulticastGroupStatus::Activated {
         msg!("MulticastGroupStatus: {:?}", mgroup.status);

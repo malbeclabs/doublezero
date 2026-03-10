@@ -790,6 +790,12 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	// This catches probes that are still "Connected" per RIPE Atlas but stopped sending pings
 	for _, measurement := range doubleZeroMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
+			// Skip measurements whose target is already marked unresponsive —
+			// source probes in these measurements will have stale LastResponseAt
+			// because the target isn't replying, not because the sources are broken
+			if measurementState.IsProbeUnresponsive(meta.TargetProbeID) {
+				continue
+			}
 			for _, source := range meta.Sources {
 				if measurementState.IsProbeUnresponsive(source.ProbeID) {
 					continue // Already marked

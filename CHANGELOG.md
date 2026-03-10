@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Controller
+  - Downgrade transient ClickHouse write errors from ERROR to WARN, escalating to ERROR only after 3 consecutive flush failures to reduce alert noise ([#3220](https://github.com/malbeclabs/doublezero/issues/3220))
 - Telemetry
   - Detect and replace unresponsive RIPE Atlas source probes that stop returning ping results, with a 24-hour TTL on the unresponsive probe blacklist so probes are retried after expiry
   - Compare source probe IDs (not just location codes) during measurement reconciliation so that probe replacements trigger measurement recreation

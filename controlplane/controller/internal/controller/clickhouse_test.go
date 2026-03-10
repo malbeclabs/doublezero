@@ -1,10 +1,71 @@
 package controller
 
 import (
+	"context"
+	"errors"
+	"log/slog"
 	"testing"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
+
+// logEntry captures a single log call for test assertions.
+type logEntry struct {
+	Level   slog.Level
+	Message string
+}
+
+// capturingHandler is a slog.Handler that records log entries.
+type capturingHandler struct {
+	entries []logEntry
+}
+
+func (h *capturingHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+func (h *capturingHandler) Handle(_ context.Context, r slog.Record) error {
+	h.entries = append(h.entries, logEntry{Level: r.Level, Message: r.Message})
+	return nil
+}
+func (h *capturingHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *capturingHandler) WithGroup(_ string) slog.Handler      { return h }
+
+func TestClickhouseWriterLogEscalation(t *testing.T) {
+	h := &capturingHandler{}
+	logger := slog.New(h)
+	cw := &ClickhouseWriter{log: logger}
+
+	testErr := errors.New("connection reset")
+
+	// First few errors should be WARN
+	for range consecutiveErrorThreshold {
+		cw.recordFlushError("error sending clickhouse batch", testErr)
+	}
+
+	// Verify first errors are WARN, last one crosses threshold and is ERROR
+	for i, entry := range h.entries {
+		if i < consecutiveErrorThreshold-1 {
+			if entry.Level != slog.LevelWarn {
+				t.Errorf("entry[%d]: got level %v, want WARN", i, entry.Level)
+			}
+		} else {
+			if entry.Level != slog.LevelError {
+				t.Errorf("entry[%d]: got level %v, want ERROR", i, entry.Level)
+			}
+		}
+	}
+
+	// Reset counter (simulating a successful flush)
+	cw.consecutiveErrors = 0
+	h.entries = nil
+
+	// Next error after reset should be WARN again
+	cw.recordFlushError("error sending clickhouse batch", testErr)
+	if len(h.entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(h.entries))
+	}
+	if h.entries[0].Level != slog.LevelWarn {
+		t.Errorf("after reset: got level %v, want WARN", h.entries[0].Level)
+	}
+}
 
 func TestBuildClickhouseOptions(t *testing.T) {
 	tests := []struct {

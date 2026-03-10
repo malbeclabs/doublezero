@@ -18,12 +18,17 @@ type getConfigEvent struct {
 }
 
 type ClickhouseWriter struct {
-	conn   clickhouse.Conn
-	log    *slog.Logger
-	db     string
-	mu     sync.Mutex
-	events []getConfigEvent
+	conn              clickhouse.Conn
+	log               *slog.Logger
+	db                string
+	mu                sync.Mutex
+	events            []getConfigEvent
+	consecutiveErrors int
 }
+
+// consecutiveErrorThreshold is the number of consecutive flush failures
+// before escalating from WARN to ERROR level logging.
+const consecutiveErrorThreshold = 3
 
 // buildClickhouseOptions constructs clickhouse.Options for the HTTP protocol.
 // When disableTLS is false (default), TLS is enabled (HTTPS).
@@ -113,24 +118,41 @@ func (cw *ClickhouseWriter) flush(ctx context.Context) {
 		`INSERT INTO "%s".controller_grpc_getconfig_success (timestamp, device_pubkey)`, cw.db,
 	))
 	if err != nil {
-		cw.log.Error("error preparing clickhouse batch", "error", err)
+		cw.recordFlushError("error preparing clickhouse batch", err)
 		return
 	}
 	for _, e := range events {
 		if err := batch.Append(e.Timestamp, e.DevicePubkey); err != nil {
-			cw.log.Error("error appending to clickhouse batch", "error", err)
+			cw.logFlushError("error appending to clickhouse batch", err)
 		}
 	}
 	if err := batch.Send(); err != nil {
 		_ = batch.Close()
-		cw.log.Error("error sending clickhouse batch", "error", err)
+		cw.recordFlushError("error sending clickhouse batch", err)
 		return
 	}
 	if err := batch.Close(); err != nil {
-		cw.log.Error("error closing clickhouse batch", "error", err)
+		cw.recordFlushError("error closing clickhouse batch", err)
 		return
 	}
+	cw.consecutiveErrors = 0
 	cw.log.Debug("flushed getconfig events to clickhouse", "count", len(events))
+}
+
+// recordFlushError increments the consecutive error counter and logs at the
+// appropriate level. Transient errors are logged as WARN; persistent errors
+// (exceeding consecutiveErrorThreshold) are logged as ERROR.
+func (cw *ClickhouseWriter) recordFlushError(msg string, err error) {
+	cw.consecutiveErrors++
+	cw.logFlushError(msg, err)
+}
+
+func (cw *ClickhouseWriter) logFlushError(msg string, err error) {
+	if cw.consecutiveErrors >= consecutiveErrorThreshold {
+		cw.log.Error(msg, "error", err, "consecutive_errors", cw.consecutiveErrors)
+	} else {
+		cw.log.Warn(msg, "error", err)
+	}
 }
 
 func (cw *ClickhouseWriter) Close() {

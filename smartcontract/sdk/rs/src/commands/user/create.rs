@@ -116,6 +116,7 @@ impl CreateUserCommand {
                     client_ip: self.client_ip,
                     tunnel_endpoint: self.tunnel_endpoint,
                     dz_prefix_count,
+                    has_reservation: false,
                 }),
                 accounts,
             )
@@ -190,6 +191,7 @@ mod tests {
                     client_ip,
                     tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                     dz_prefix_count: 0,
+                    has_reservation: false,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -300,6 +302,7 @@ mod tests {
                     client_ip,
                     tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                     dz_prefix_count: 1,
+                    has_reservation: false,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),

@@ -711,7 +711,105 @@ async fn test_reserve_connection_max_users_zero() {
     }
 }
 
-// --- User creation with reservation integration tests ---
+#[tokio::test]
+async fn test_reserve_connection_respects_max_multicast_users() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
+        setup_device_for_reservations(128).await;
+
+    // Set max_multicast_users=2 (lower than max_users=128)
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist");
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            max_multicast_users: Some(2),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(device.contributor_pk, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let (reservation_pubkey, _) = get_reservation_pda(&program_id, &device_pubkey, &payer.pubkey());
+
+    // Reserve 2 seats — should succeed (at multicast limit)
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs { count: 2 }),
+        vec![
+            AccountMeta::new(reservation_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Another reservation should fail — multicast capacity reached
+    let other_authority = solana_sdk::signature::Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &other_authority.pubkey(),
+        10_000_000,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddFoundationAllowlist(
+            allowlist::foundation::add::AddFoundationAllowlistArgs {
+                pubkey: other_authority.pubkey(),
+            },
+        ),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    let (reservation_pubkey_2, _) =
+        get_reservation_pda(&program_id, &device_pubkey, &other_authority.pubkey());
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs { count: 1 }),
+        vec![
+            AccountMeta::new(reservation_pubkey_2, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &other_authority,
+    )
+    .await;
+
+    // MaxMulticastUsersExceeded = Custom(82)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(82),
+        ))) => {}
+        _ => panic!(
+            "Expected MaxMulticastUsersExceeded (Custom(82)), got {:?}",
+            result
+        ),
+    }
+}
 
 // --- CreateReservedSubscribeUser instruction tests ---
 

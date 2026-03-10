@@ -84,7 +84,8 @@ use crate::processors::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
         closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
         create_reserved_subscribe::CreateReservedSubscribeUserArgs,
-        create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs, reject::UserRejectArgs,
+        create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs,
+        delete_reserved_subscribe::DeleteReservedSubscribeUserArgs, reject::UserRejectArgs,
         requestban::UserRequestBanArgs, update::UserUpdateArgs,
     },
 };
@@ -219,6 +220,7 @@ pub enum DoubleZeroInstruction {
     DeletePermission(PermissionDeleteArgs),   // variant 101
 
     CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs), // variant 102
+    DeleteReservedSubscribeUser(DeleteReservedSubscribeUserArgs), // variant 103
 }
 
 impl DoubleZeroInstruction {
@@ -354,6 +356,7 @@ impl DoubleZeroInstruction {
             101 => Ok(Self::DeletePermission(PermissionDeleteArgs::try_from(rest).unwrap())),
 
             102 => Ok(Self::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs::try_from(rest).unwrap())),
+            103 => Ok(Self::DeleteReservedSubscribeUser(DeleteReservedSubscribeUserArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -487,6 +490,7 @@ impl DoubleZeroInstruction {
             Self::DeletePermission(_) => "DeletePermission".to_string(), // variant 101
 
             Self::CreateReservedSubscribeUser(_) => "CreateReservedSubscribeUser".to_string(), // variant 102
+            Self::DeleteReservedSubscribeUser(_) => "DeleteReservedSubscribeUser".to_string(), // variant 103
         }
     }
 
@@ -612,6 +616,7 @@ impl DoubleZeroInstruction {
             Self::DeletePermission(args) => format!("{args:?}"), // variant 101
 
             Self::CreateReservedSubscribeUser(args) => format!("{args:?}"), // variant 102
+            Self::DeleteReservedSubscribeUser(args) => format!("{args:?}"), // variant 103
         }
     }
 }
@@ -1311,6 +1316,13 @@ mod tests {
                 dz_prefix_count: 0,
             }),
             "CreateReservedSubscribeUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteReservedSubscribeUser(DeleteReservedSubscribeUserArgs {
+                dz_prefix_count: 0,
+                multicast_publisher_count: 0,
+            }),
+            "DeleteReservedSubscribeUser",
         );
     }
 }

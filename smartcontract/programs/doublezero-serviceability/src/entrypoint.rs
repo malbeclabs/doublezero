@@ -103,6 +103,7 @@ use crate::{
             closeaccount::process_closeaccount_user, create::process_create_user,
             create_reserved_subscribe::process_create_reserved_subscribe_user,
             create_subscribe::process_create_subscribe_user, delete::process_delete_user,
+            delete_reserved_subscribe::process_delete_reserved_subscribe_user,
             reject::process_reject_user, requestban::process_request_ban_user,
             update::process_update_user,
         },
@@ -422,6 +423,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::CreateReservedSubscribeUser(value) => {
             process_create_reserved_subscribe_user(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeleteReservedSubscribeUser(value) => {
+            process_delete_reserved_subscribe_user(program_id, accounts, &value)?
         }
     };
     Ok(())

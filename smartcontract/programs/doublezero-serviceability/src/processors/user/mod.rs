@@ -7,6 +7,7 @@ pub mod create_core;
 pub mod create_reserved_subscribe;
 pub mod create_subscribe;
 pub mod delete;
+pub mod delete_reserved_subscribe;
 pub mod reject;
 pub mod requestban;
 pub mod resource_onchain_helpers;

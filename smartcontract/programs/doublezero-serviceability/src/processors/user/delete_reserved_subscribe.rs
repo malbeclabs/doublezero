@@ -2,12 +2,7 @@ use crate::{
     error::DoubleZeroError,
     processors::validation::validate_program_account,
     serializer::{try_acc_close, try_acc_write},
-    state::{
-        device::Device,
-        globalstate::GlobalState,
-        multicastgroup::MulticastGroup,
-        user::*,
-    },
+    state::{device::Device, globalstate::GlobalState, multicastgroup::MulticastGroup, user::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;

@@ -4,7 +4,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
-use std::{fmt, net::Ipv4Addr};
+use std::fmt;
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -27,7 +27,7 @@ pub struct Reservation {
         )
     )]
     pub device_pk: Pubkey, // 32
-    pub client_ip: Ipv4Addr,       // 4
+    pub reserved_count: u16,       // 2
 }
 
 impl Default for Reservation {
@@ -37,7 +37,7 @@ impl Default for Reservation {
             owner: Pubkey::default(),
             bump_seed: 0,
             device_pk: Pubkey::default(),
-            client_ip: Ipv4Addr::UNSPECIFIED,
+            reserved_count: 0,
         }
     }
 }
@@ -46,8 +46,8 @@ impl fmt::Display for Reservation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, device_pk: {}, client_ip: {}",
-            self.account_type, self.owner, self.device_pk, self.client_ip,
+            "account_type: {}, owner: {}, device_pk: {}, reserved_count: {}",
+            self.account_type, self.owner, self.device_pk, self.reserved_count,
         )
     }
 }
@@ -61,7 +61,7 @@ impl TryFrom<&[u8]> for Reservation {
             owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             device_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            client_ip: BorshDeserialize::deserialize(&mut data).unwrap_or(Ipv4Addr::UNSPECIFIED),
+            reserved_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Reservation {
@@ -114,7 +114,7 @@ mod tests {
         assert_eq!(val.owner, Pubkey::default());
         assert_eq!(val.bump_seed, 0);
         assert_eq!(val.device_pk, Pubkey::default());
-        assert_eq!(val.client_ip, Ipv4Addr::UNSPECIFIED);
+        assert_eq!(val.reserved_count, 0);
     }
 
     #[test]
@@ -124,7 +124,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             bump_seed: 1,
             device_pk: Pubkey::new_unique(),
-            client_ip: [10, 0, 0, 1].into(),
+            reserved_count: 5,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -133,14 +133,7 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(
-            borsh::object_length(&val).unwrap(),
-            borsh::object_length(&val2).unwrap()
-        );
-        assert_eq!(val.owner, val2.owner);
-        assert_eq!(val.bump_seed, val2.bump_seed);
-        assert_eq!(val.device_pk, val2.device_pk);
-        assert_eq!(val.client_ip, val2.client_ip);
+        assert_eq!(val, val2);
         assert_eq!(
             data.len(),
             borsh::object_length(&val).unwrap(),
@@ -155,7 +148,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             bump_seed: 1,
             device_pk: Pubkey::new_unique(),
-            client_ip: [10, 0, 0, 1].into(),
+            reserved_count: 5,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
@@ -168,7 +161,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             bump_seed: 1,
             device_pk: Pubkey::default(),
-            client_ip: [10, 0, 0, 1].into(),
+            reserved_count: 5,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDevicePubkey);

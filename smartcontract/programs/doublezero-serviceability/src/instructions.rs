@@ -1259,9 +1259,7 @@ mod tests {
             "SetFeatureFlags",
         );
         test_instruction(
-            DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs {
-                client_ip: [10, 0, 0, 1].into(),
-            }),
+            DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs { count: 5 }),
             "ReserveConnection",
         );
         test_instruction(

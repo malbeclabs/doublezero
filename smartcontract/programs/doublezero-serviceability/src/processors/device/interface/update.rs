@@ -2,11 +2,18 @@ use crate::{
     error::{DoubleZeroError, Validate},
     format_option,
     helper::format_option_displayable,
+    pda::get_resource_extension_pda,
+    processors::{
+        resource::{allocate_specific_id, deallocate_id},
+        validation::validate_program_account,
+    },
+    resource::ResourceType,
     serializer::try_acc_write,
     state::{
         accounttype::AccountType,
         contributor::Contributor,
         device::*,
+        feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         interface::{
             InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
@@ -76,6 +83,19 @@ pub fn process_update_device_interface(
     let device_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+
+    // Optional: SegmentRoutingIds resource extension account (when node_segment_idx
+    // is being updated with onchain allocation enabled).
+    // Account layout WITH onchain allocation (node_segment_idx is Some):
+    //   [device, contributor, globalstate, segment_routing_ids_ext, payer, system]
+    // Account layout WITHOUT (legacy):
+    //   [device, contributor, globalstate, payer, system]
+    let segment_routing_ids_ext = if accounts.len() > 5 {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
 
@@ -178,6 +198,31 @@ pub fn process_update_device_interface(
         if !globalstate.foundation_allowlist.contains(payer_account.key) {
             return Err(DoubleZeroError::NotAllowed.into());
         }
+
+        if is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
+            let seg_ext = segment_routing_ids_ext.ok_or(DoubleZeroError::InvalidArgument)?;
+
+            let (expected_seg_pda, _, _) =
+                get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
+            validate_program_account!(
+                seg_ext,
+                program_id,
+                writable = true,
+                pda = Some(&expected_seg_pda),
+                "SegmentRoutingIds"
+            );
+
+            // Deallocate old value if non-zero
+            if iface.node_segment_idx != 0 {
+                deallocate_id(seg_ext, iface.node_segment_idx);
+            }
+
+            // Allocate new value if non-zero
+            if node_segment_idx != 0 {
+                allocate_specific_id(seg_ext, node_segment_idx)?;
+            }
+        }
+
         iface.node_segment_idx = node_segment_idx;
     }
 

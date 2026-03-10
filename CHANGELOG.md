@@ -30,6 +30,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: fix `validate_account_code` forcing lowercase on all entity types — restrict lowercase normalization to device and link codes only, preserving original case for locations, exchanges, contributors, and other entities
   - feat(smartcontract): atomic onchain allocation for CreateDevice ([#3216](https://github.com/malbeclabs/doublezero/pull/3216))
   - Serviceability: RequestBanUser instruction supports atomic deallocate when OnchainAllocation feature is enabled
+  - Serviceability: DeviceInterfaceUpdate instruction supports onchain allocation of node_segment_idx
 - CLI
   - Add `access-pass user-balances` command to show per-payer SOL balance, required amount (rent + gas reserve), and missing amount, with filters (`--user-payer`, `--min-balance`, `--max-balance`, `--min-missing`, `--max-missing`), sorting, and `--top N`
   - Add `access-pass fund` command to top up underfunded user payers, with `--dry-run`, `--force` (skip confirmation), `--min-balance`, and a pre-transfer sender balance check; required balance floor includes a gas-fee reserve (50 × 5,000 lamports) and the wallet rent-exempt minimum to prevent on-chain transfer failures

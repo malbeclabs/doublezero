@@ -59,9 +59,11 @@ pub fn process_create_user(
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for on-chain allocation
-    // Account layout (all optional parts shown):
-    //   [user, device, accesspass, globalstate, [resource_ext...], [tenant], payer, system]
+    // Optional: ResourceExtension accounts for on-chain allocation (between globalstate and optional_tenant)
+    // Account layout WITH ResourceExtension (dz_prefix_count > 0):
+    //   [user, device, accesspass, globalstate, user_tunnel_block, multicast_publisher_block, device_tunnel_ids, dz_prefix_0..N, optional_tenant, payer, system]
+    // Account layout WITHOUT (legacy, dz_prefix_count == 0):
+    //   [user, device, accesspass, globalstate, optional_tenant, payer, system]
     let resource_extension_accounts = if value.dz_prefix_count > 0 {
         let user_tunnel_block_ext = next_account_info(accounts_iter)?;
         let multicast_publisher_block_ext = next_account_info(accounts_iter)?;

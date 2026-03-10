@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 - E2E Tests
   - Add geoprobe E2E test (`TestE2E_GeoprobeDiscovery`) that exercises the full geolocation flow: deploy geolocation program, create probe onchain, start geoprobe-agent container, and verify the telemetry-agent discovers and measures the probe via TWAMP
   - Add geoprobe Docker image, geolocation program build/deploy support, and manager geolocation CLI configuration to the E2E devnet infrastructure
+- Tools
+  - Fix epoch finder returning wrong epoch for ~51 minutes after epoch boundaries by using `GetEpochInfo` (authoritative epoch) instead of approximating from `GetSlot` which was vulnerable to stale finalized slot responses ([#3227](https://github.com/malbeclabs/doublezero/pull/3227))
 
 ## [v0.11.0](https://github.com/malbeclabs/doublezero/compare/client/v0.10.0...client/v0.11.0) - 2026-03-12
 

@@ -83,13 +83,19 @@ pub fn process_reserve_connection(
     // Load and validate device
     let mut device = Device::try_from(device_account)?;
 
-    // Check device capacity. Reservations are for multicast users, so check
-    // max_multicast_users when the per-type limit is enabled (> 0), otherwise
-    // fall back to the overall max_users limit.
+    // Check device capacity: always check overall max_users, and additionally
+    // check max_multicast_users when the per-type limit is configured (> 0).
     let new_reserved = device
         .reserved_seats
         .checked_add(value.count)
         .ok_or(DoubleZeroError::MaxUsersExceeded)?;
+    let total_occupied = device
+        .users_count
+        .checked_add(new_reserved)
+        .ok_or(DoubleZeroError::MaxUsersExceeded)?;
+    if total_occupied > device.max_users {
+        return Err(DoubleZeroError::MaxUsersExceeded.into());
+    }
     if device.max_multicast_users > 0 {
         let total_multicast = device
             .multicast_users_count
@@ -97,14 +103,6 @@ pub fn process_reserve_connection(
             .ok_or(DoubleZeroError::MaxMulticastUsersExceeded)?;
         if total_multicast > device.max_multicast_users {
             return Err(DoubleZeroError::MaxMulticastUsersExceeded.into());
-        }
-    } else {
-        let total_occupied = device
-            .users_count
-            .checked_add(new_reserved)
-            .ok_or(DoubleZeroError::MaxUsersExceeded)?;
-        if total_occupied > device.max_users {
-            return Err(DoubleZeroError::MaxUsersExceeded.into());
         }
     }
 

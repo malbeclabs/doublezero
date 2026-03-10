@@ -89,7 +89,11 @@ pub fn process_reserve_connection(
         .reserved_seats
         .checked_add(value.count)
         .ok_or(DoubleZeroError::MaxUsersExceeded)?;
-    if device.users_count + new_reserved > device.max_users || device.max_users == 0 {
+    let total_occupied = device
+        .users_count
+        .checked_add(new_reserved)
+        .ok_or(DoubleZeroError::MaxUsersExceeded)?;
+    if total_occupied > device.max_users || device.max_users == 0 {
         return Err(DoubleZeroError::MaxUsersExceeded.into());
     }
 

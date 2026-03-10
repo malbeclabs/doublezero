@@ -1103,6 +1103,246 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_RemoveUnwanted(t *testi
 	require.Empty(t, finalExported, "No measurements should be exported without metadata")
 }
 
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveSourceProbe(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	// Track created and stopped measurements
+	var createdMeasurements []MeasurementRequest
+	var stoppedMeasurements []int
+	var mu sync.Mutex
+
+	twoHoursAgo := time.Now().Unix() - 7200
+
+	// Existing measurement targeting "xams" with xsin and xtyo as sources
+	existingMeasurements := []Measurement{
+		{
+			ID:          1001,
+			Description: "DoubleZero [testnet] to xams probe 6626",
+			Target:      "84.38.236.1",
+			Status: struct {
+				Name string `json:"name"`
+				ID   int    `json:"id"`
+			}{Name: "Ongoing"},
+			Type: "ping",
+		},
+	}
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
+			return existingMeasurements, nil
+		},
+		CreateMeasurementFunc: func(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error) {
+			mu.Lock()
+			createdMeasurements = append(createdMeasurements, request)
+			measurementID := 2000 + len(createdMeasurements)
+			mu.Unlock()
+			return &MeasurementResponse{Measurements: []int{measurementID}}, nil
+		},
+		StopMeasurementFunc: func(ctx context.Context, measurementID int) error {
+			mu.Lock()
+			stoppedMeasurements = append(stoppedMeasurements, measurementID)
+			mu.Unlock()
+			return nil
+		},
+		GetMeasurementResultsIncrementalFunc: func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error) {
+			return []any{}, nil
+		},
+	}
+
+	stateDir := filepath.Join(t.TempDir(), "state")
+
+	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
+
+	// Pre-populate measurement state with metadata showing xsin source probe is stale
+	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+	c.measurementState.SetMetadata(1001, MeasurementMeta{
+		TargetLocation: "xams",
+		TargetProbeID:  6626,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "xsin", ProbeID: 6726, LastResponseAt: twoHoursAgo},       // Stale
+			{LocationCode: "xtyo", ProbeID: 7080, LastResponseAt: time.Now().Unix()}, // Fresh
+		},
+		CreatedAt:    twoHoursAgo - 3600, // Created 3 hours ago
+		LastExportAt: time.Now().Unix(),
+	})
+
+	// Locations with probes: xams has one probe, xsin has two (6726 stale, another available), xtyo has one
+	locationMatches := []LocationProbeMatch{
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "xams", Latitude: 52.3, Longitude: 4.7},
+			NearbyProbes:  []Probe{{ID: 6626, Address: "84.38.236.1", Latitude: 52.3, Longitude: 4.7}},
+			ProbeCount:    1,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "xsin", Latitude: 1.3, Longitude: 103.8},
+			NearbyProbes: []Probe{
+				{ID: 6726, Address: "139.99.78.22", Latitude: 1.3, Longitude: 103.8},  // Will be marked unresponsive
+				{ID: 1033, Address: "138.75.38.177", Latitude: 1.3, Longitude: 103.9}, // Replacement
+			},
+			ProbeCount: 2,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "xtyo", Latitude: 35.6, Longitude: 139.6},
+			NearbyProbes:  []Probe{{ID: 7080, Address: "63.222.190.5", Latitude: 35.6, Longitude: 139.6}},
+			ProbeCount:    1,
+		},
+	}
+
+	err := c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 1*time.Minute)
+	require.NoError(t, err)
+
+	// Probe 6726 should be marked unresponsive
+	require.True(t, c.measurementState.IsProbeUnresponsive(6726), "Stale source probe 6726 should be marked unresponsive")
+	require.False(t, c.measurementState.IsProbeUnresponsive(7080), "Fresh source probe 7080 should NOT be marked unresponsive")
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// The old measurement should be stopped (sources changed since 6726 is now unresponsive)
+	require.Contains(t, stoppedMeasurements, 1001, "Old measurement with stale source should be stopped")
+
+	// A new measurement should be created with probe 1033 instead of 6726
+	require.NotEmpty(t, createdMeasurements, "New measurement should be created with replacement probe")
+
+	// Verify the new measurement uses the replacement probe (1033) not the stale one (6726)
+	for _, m := range createdMeasurements {
+		for _, probe := range m.Probes {
+			require.NotEqual(t, 6726, probe.Value, "Stale probe 6726 should not be used in new measurements")
+		}
+	}
+}
+
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveTargetDoesNotBlacklistSources(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	var createdMeasurements []MeasurementRequest
+	var stoppedMeasurements []int
+	var mu sync.Mutex
+
+	twoHoursAgo := time.Now().Unix() - 7200
+
+	// Two measurements: one targeting xams (healthy), one targeting xsin (unresponsive target)
+	existingMeasurements := []Measurement{
+		{
+			ID:          1001,
+			Description: "DoubleZero [testnet] to xams probe 6626",
+			Target:      "84.38.236.1",
+			Status: struct {
+				Name string `json:"name"`
+				ID   int    `json:"id"`
+			}{Name: "Ongoing"},
+			Type: "ping",
+		},
+		{
+			ID:          1002,
+			Description: "DoubleZero [testnet] to xsin probe 6726",
+			Target:      "139.99.78.22",
+			Status: struct {
+				Name string `json:"name"`
+				ID   int    `json:"id"`
+			}{Name: "Ongoing"},
+			Type: "ping",
+		},
+	}
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
+			return existingMeasurements, nil
+		},
+		CreateMeasurementFunc: func(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error) {
+			mu.Lock()
+			createdMeasurements = append(createdMeasurements, request)
+			measurementID := 2000 + len(createdMeasurements)
+			mu.Unlock()
+			return &MeasurementResponse{Measurements: []int{measurementID}}, nil
+		},
+		StopMeasurementFunc: func(ctx context.Context, measurementID int) error {
+			mu.Lock()
+			stoppedMeasurements = append(stoppedMeasurements, measurementID)
+			mu.Unlock()
+			return nil
+		},
+		GetMeasurementResultsIncrementalFunc: func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error) {
+			return []any{}, nil
+		},
+	}
+
+	stateDir := filepath.Join(t.TempDir(), "state")
+
+	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
+
+	// Measurement 1001 (target xams/6626): healthy, source probes have fresh LastResponseAt
+	// Measurement 1002 (target xsin/6726): target is unresponsive, so source probes have stale LastResponseAt
+	// (because latency=0 when target doesn't reply, UpdateSourceProbeResponse doesn't fire)
+	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+	c.measurementState.SetMetadata(1001, MeasurementMeta{
+		TargetLocation: "xams",
+		TargetProbeID:  6626,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "xsin", ProbeID: 6726, LastResponseAt: time.Now().Unix()}, // Fresh
+			{LocationCode: "xtyo", ProbeID: 7080, LastResponseAt: time.Now().Unix()}, // Fresh
+		},
+		CreatedAt:    twoHoursAgo - 3600,
+		LastExportAt: time.Now().Unix(), // Healthy measurement
+	})
+	c.measurementState.SetMetadata(1002, MeasurementMeta{
+		TargetLocation: "xsin",
+		TargetProbeID:  6726,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "xams", ProbeID: 6626, LastResponseAt: twoHoursAgo}, // Stale because target is dead
+			{LocationCode: "xtyo", ProbeID: 7080, LastResponseAt: twoHoursAgo}, // Stale because target is dead
+		},
+		CreatedAt:    twoHoursAgo - 3600,
+		LastExportAt: twoHoursAgo, // Stale — target not responding
+	})
+
+	locationMatches := []LocationProbeMatch{
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "xams", Latitude: 52.3, Longitude: 4.7},
+			NearbyProbes:  []Probe{{ID: 6626, Address: "84.38.236.1", Latitude: 52.3, Longitude: 4.7}},
+			ProbeCount:    1,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "xsin", Latitude: 1.3, Longitude: 103.8},
+			NearbyProbes: []Probe{
+				{ID: 6726, Address: "139.99.78.22", Latitude: 1.3, Longitude: 103.8},  // Will be marked unresponsive (target)
+				{ID: 1033, Address: "138.75.38.177", Latitude: 1.3, Longitude: 103.9}, // Replacement
+			},
+			ProbeCount: 2,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "xtyo", Latitude: 35.6, Longitude: 139.6},
+			NearbyProbes:  []Probe{{ID: 7080, Address: "63.222.190.5", Latitude: 35.6, Longitude: 139.6}},
+			ProbeCount:    1,
+		},
+	}
+
+	err := c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 1*time.Minute)
+	require.NoError(t, err)
+
+	// Probe 6726 should be marked unresponsive (target staleness via Phase 1)
+	require.True(t, c.measurementState.IsProbeUnresponsive(6726), "Target probe 6726 should be marked unresponsive")
+
+	// Source probes 6626 and 7080 should NOT be marked unresponsive — their stale LastResponseAt
+	// in measurement 1002 is because the target (6726) stopped responding, not because they're broken
+	require.False(t, c.measurementState.IsProbeUnresponsive(6626), "Healthy source probe 6626 should NOT be marked unresponsive due to dead target")
+	require.False(t, c.measurementState.IsProbeUnresponsive(7080), "Healthy source probe 7080 should NOT be marked unresponsive due to dead target")
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// The measurement with the dead target should be stopped
+	require.Contains(t, stoppedMeasurements, 1002, "Measurement with unresponsive target should be stopped")
+}
+
 func TestInternetLatency_RIPEAtlas_Run_ErrorHandling(t *testing.T) {
 	t.Parallel()
 

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -301,6 +302,108 @@ func TestInternetLatency_RIPEAtlas_State_LargeNumberOfMeasurements(t *testing.T)
 	for i := 0; i < numMeasurements; i++ {
 		require.Equal(t, int64(1640995200+i), timestamps[i])
 	}
+}
+
+func TestInternetLatency_RIPEAtlas_State_UpdateSourceProbeResponse(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMeasurementState("test.json")
+
+	// Set up a measurement with source probes
+	ms.SetMetadata(100, MeasurementMeta{
+		TargetLocation: "xams",
+		TargetProbeID:  6626,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "xsin", ProbeID: 6726},
+			{LocationCode: "xtyo", ProbeID: 7080},
+		},
+		CreatedAt: 1640995200,
+	})
+
+	// Update source probe response
+	ms.UpdateSourceProbeResponse(100, 6726, 1640995300)
+	meta, exists := ms.GetMetadata(100)
+	require.True(t, exists)
+	require.Equal(t, int64(1640995300), meta.Sources[0].LastResponseAt)
+	require.Equal(t, int64(0), meta.Sources[1].LastResponseAt)
+
+	// Update with newer timestamp
+	ms.UpdateSourceProbeResponse(100, 6726, 1640995400)
+	meta, _ = ms.GetMetadata(100)
+	require.Equal(t, int64(1640995400), meta.Sources[0].LastResponseAt)
+
+	// Update with older timestamp (should not regress)
+	ms.UpdateSourceProbeResponse(100, 6726, 1640995200)
+	meta, _ = ms.GetMetadata(100)
+	require.Equal(t, int64(1640995400), meta.Sources[0].LastResponseAt)
+
+	// Update for non-existent measurement (should not panic)
+	ms.UpdateSourceProbeResponse(999, 6726, 1640995500)
+
+	// Update for non-existent probe (should not panic)
+	ms.UpdateSourceProbeResponse(100, 9999, 1640995500)
+}
+
+func TestInternetLatency_RIPEAtlas_State_UnresponsiveProbeExpiry(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMeasurementState("test.json")
+
+	// Add a probe marked now — should be unresponsive
+	ms.AddUnresponsiveProbe(100)
+	require.True(t, ms.IsProbeUnresponsive(100))
+	require.Equal(t, []int{100}, ms.GetUnresponsiveProbes())
+
+	// Manually backdate the entry to 25 hours ago (past the 24h expiry)
+	ms.mu.Lock()
+	ms.tracker.UnresponsiveProbes[0].MarkedAt = time.Now().Add(-25 * time.Hour).Unix()
+	ms.mu.Unlock()
+
+	// Should no longer be considered unresponsive
+	require.False(t, ms.IsProbeUnresponsive(100))
+	require.Empty(t, ms.GetUnresponsiveProbes())
+
+	// Prune should remove it
+	pruned := ms.PruneExpiredUnresponsiveProbes()
+	require.Equal(t, 1, pruned)
+
+	ms.mu.Lock()
+	require.Empty(t, ms.tracker.UnresponsiveProbes)
+	ms.mu.Unlock()
+}
+
+func TestInternetLatency_RIPEAtlas_State_UnresponsiveProbeBackwardsCompat(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	filename := filepath.Join(tempDir, "legacy_state.json")
+
+	// Write legacy format with bare int array
+	legacyJSON := `{
+		"metadata": {},
+		"unresponsive_probes": [7466, 1234]
+	}`
+	err := os.WriteFile(filename, []byte(legacyJSON), 0644)
+	require.NoError(t, err)
+
+	ms := NewMeasurementState(filename)
+	err = ms.Load()
+	require.NoError(t, err)
+
+	// Legacy probes should be migrated and treated as freshly marked (not expired)
+	require.True(t, ms.IsProbeUnresponsive(7466))
+	require.True(t, ms.IsProbeUnresponsive(1234))
+	require.ElementsMatch(t, []int{7466, 1234}, ms.GetUnresponsiveProbes())
+
+	// Save in new format and reload
+	err = ms.Save()
+	require.NoError(t, err)
+
+	ms2 := NewMeasurementState(filename)
+	err = ms2.Load()
+	require.NoError(t, err)
+	require.True(t, ms2.IsProbeUnresponsive(7466))
+	require.True(t, ms2.IsProbeUnresponsive(1234))
 }
 
 func TestInternetLatency_RIPEAtlas_State_TimestampTracker_Structure(t *testing.T) {

@@ -588,6 +588,9 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 				sourceLocation = loc
 			}
 
+			// Track source probe response time for staleness detection
+			measurementState.UpdateSourceProbeResponse(measurement.ID, probeID, timestamp.Unix())
+
 			records = append(records, exporter.Record{
 				DataProvider: exporter.DataProviderNameRIPEAtlas,
 				// Source and target are swapped here to match alphabetical ordering expected by downstream systems.
@@ -743,9 +746,15 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		}
 	}
 
-	// Step 4: Detect unresponsive probes (no exports after 1 hour)
+	// Step 4: Prune expired unresponsive probes so they get retried
+	if pruned := measurementState.PruneExpiredUnresponsiveProbes(); pruned > 0 {
+		c.log.Info("Pruned expired unresponsive probes",
+			slog.Int("pruned_count", pruned))
+	}
+
+	// Detect unresponsive probes (no exports after 1 hour)
 	currentTime := time.Now().Unix()
-	probeTimeout := currentTime - 3600 // 1 hours (3660 seconds)
+	probeTimeout := currentTime - 3600 // 1 hour
 	newUnresponsiveProbes := 0
 	for _, measurement := range doubleZeroMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
@@ -777,6 +786,48 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		}
 	}
 
+	// Step 4b: Detect unresponsive source probes (no results after 1 hour)
+	// This catches probes that are still "Connected" per RIPE Atlas but stopped sending pings
+	for _, measurement := range doubleZeroMeasurements {
+		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
+			// Skip measurements whose target is already marked unresponsive —
+			// source probes in these measurements will have stale LastResponseAt
+			// because the target isn't replying, not because the sources are broken
+			if measurementState.IsProbeUnresponsive(meta.TargetProbeID) {
+				continue
+			}
+			for _, source := range meta.Sources {
+				if measurementState.IsProbeUnresponsive(source.ProbeID) {
+					continue // Already marked
+				}
+				// Only check probes that have had enough time to respond
+				// (measurement must have been created > 1 hour ago)
+				if meta.CreatedAt == 0 || meta.CreatedAt >= probeTimeout {
+					continue
+				}
+				// Skip probes where LastResponseAt hasn't been populated yet —
+				// on first deploy, all existing source probes have 0 and need
+				// at least one export cycle to populate the field
+				if source.LastResponseAt == 0 {
+					continue
+				}
+				// Last response was > 1 hour ago
+				if source.LastResponseAt < probeTimeout {
+					reason := "no_recent_responses"
+					c.log.Warn("Marking source probe as unresponsive - no results after 1 hour",
+						slog.Int("measurement_id", measurement.ID),
+						slog.Int("probe_id", source.ProbeID),
+						slog.String("source_location", source.LocationCode),
+						slog.String("target_location", meta.TargetLocation),
+						slog.String("reason", reason),
+						slog.Time("last_response_at", time.Unix(source.LastResponseAt, 0)))
+					measurementState.AddUnresponsiveProbe(source.ProbeID)
+					newUnresponsiveProbes++
+				}
+			}
+		}
+	}
+
 	// Save state if we detected any new unresponsive probes
 	if newUnresponsiveProbes > 0 {
 		if err := measurementState.Save(); err != nil {
@@ -785,6 +836,10 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			c.log.Info("Saved unresponsive probe state",
 				slog.Int("new_unresponsive_probes", newUnresponsiveProbes))
 		}
+
+		// Regenerate wanted measurements now that new probes are marked unresponsive,
+		// so the reconciliation below uses updated probe selections
+		wantedMeasurements = c.generateWantedMeasurements(locationMatches, probesPerLocation, measurementState)
 	}
 
 	// Step 5: Determine what to create and what to remove
@@ -825,22 +880,22 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				continue
 			}
 
-			// Compare source probe locations
-			existingSources := make(map[string]bool)
+			// Compare source probes (both location and probe ID)
+			existingSources := make(map[string]int)
 			for _, source := range meta.Sources {
-				existingSources[source.LocationCode] = true
+				existingSources[source.LocationCode] = source.ProbeID
 			}
 
-			wantedSources := make(map[string]bool)
+			wantedSources := make(map[string]int)
 			for _, source := range wanted.SourceSpecs {
-				wantedSources[source.LocationCode] = true
+				wantedSources[source.LocationCode] = source.Probe.ID
 			}
 
-			// Check if source sets match
+			// Check if source sets match (location codes and probe IDs)
 			sourcesMatch := len(existingSources) == len(wantedSources)
 			if sourcesMatch {
-				for loc := range wantedSources {
-					if !existingSources[loc] {
+				for loc, wantedProbeID := range wantedSources {
+					if existingProbeID, ok := existingSources[loc]; !ok || existingProbeID != wantedProbeID {
 						sourcesMatch = false
 						break
 					}
@@ -874,21 +929,21 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					continue
 				}
 
-				// Check if sources match
-				existingSources := make(map[string]bool)
+				// Check if sources match (both location and probe ID)
+				existingSources := make(map[string]int)
 				for _, source := range meta.Sources {
-					existingSources[source.LocationCode] = true
+					existingSources[source.LocationCode] = source.ProbeID
 				}
 
-				wantedSources := make(map[string]bool)
+				wantedSources := make(map[string]int)
 				for _, source := range wanted.SourceSpecs {
-					wantedSources[source.LocationCode] = true
+					wantedSources[source.LocationCode] = source.Probe.ID
 				}
 
 				sourcesMatch := len(existingSources) == len(wantedSources)
 				if sourcesMatch {
-					for loc := range wantedSources {
-						if !existingSources[loc] {
+					for loc, wantedProbeID := range wantedSources {
+						if existingProbeID, ok := existingSources[loc]; !ok || existingProbeID != wantedProbeID {
 							sourcesMatch = false
 							break
 						}

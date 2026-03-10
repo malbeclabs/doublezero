@@ -90,7 +90,7 @@ type ReplyPacket struct {
 	MeasurementSlot uint64   // DoubleZero slot from reference offset
 	Lat             float64  // Reference point latitude (WGS84 decimal degrees)
 	Lng             float64  // Reference point longitude (WGS84 decimal degrees)
-	SinceLastRxNs   uint64   // Nanoseconds since previous probe arrival (≡ MeasuredRttNs)
+	SinceLastRxNs   uint64   // Nanoseconds between reflector Tx (reply N-1) and Rx (probe N); approximates network RTT
 	RttNs           uint64   // Accumulated RTT from Lat/Lng in nanoseconds
 	Offsets         [][]byte // 0-5 opaque offset blobs, each exactly LocationOffsetSize bytes
 	Signature       [64]byte

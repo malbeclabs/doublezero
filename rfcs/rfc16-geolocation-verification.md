@@ -159,9 +159,9 @@ _Inbound Measurement Flow_
 4. **Probe Caches Offset:** Probe verifies DZD signature, caches Offset, and updates the signed TWAMP reflector's embedded offsets with the best cached offset
 5. **Target Sends Probe 0:** Target sends a signed probe packet (containing its Pubkey and Ed25519 signature). Paired probing is needed because TEEs cannot perform time measurements; the probe-side inter-arrival time serves as a proxy RTT.
 6. **Probe Sends Reply 0:** Reflector checks that the sender's Pubkey is registered (it does not verify the probe's Ed25519 signature — the pubkey allowlist is sufficient). Reply 0 embeds the original probe, the reflector's signing key, geoprobe identity, location data derived from its best cached DZD offset (`Lat`, `Lng`, `MeasurementSlot`, `RttNs`), the opaque DZD offset blobs, and an Ed25519 signature over the whole packet. Reply 0's `SinceLastRxNs` is 0 (no previous arrival from this sender).
-7. **Target Sends Probe 1:** Immediately after receiving reply 0 (before verifying it), target sends probe 1.
-8. **Probe Sends Reply 1:** Same structure as reply 0, but `SinceLastRxNs` now contains the time between probe 0 and probe 1 arrivals — this is the useful measurement. `RttNs` = DZD offset's `RttNs` + `SinceLastRxNs`. The reflector allows 2 probes per rate-limit window per sender, then drops until the window resets.
-9. **Target Verifies Replies:** Target verifies both replies, then derives two RTT measurements: "Probe-Measured RTT" = `reply1.SinceLastRxNs` (inter-arrival time at the reflector), and "Target-Measured RTT" = `min(rtt0, rtt1)` (lower of the two sender-side RTTs). Forwards to Client Oracle.
+7. **Target Sends Probe 1:** Both probe packets are pre-signed before any network I/O. After receiving reply 0, target immediately sends the pre-signed probe 1 with no signing delay.
+8. **Probe Sends Reply 1:** Same structure as reply 0, but `SinceLastRxNs` now contains the time between the reflector's reply 0 Tx and probe 1 Rx — this approximates the network RTT by excluding processing overhead on both sides. `RttNs` = DZD offset's `RttNs` + `SinceLastRxNs`. The reflector allows 2 probes per rate-limit window per sender, then drops until the window resets.
+9. **Target Verifies Replies:** Target verifies both replies, then derives two RTT measurements: "Probe-Measured RTT" = `reply1.SinceLastRxNs` (Tx-to-Rx interval at the reflector), and "Target-Measured RTT" = `min(rtt0, rtt1)` (lower of the two sender-side RTTs). Forwards to Client Oracle.
 10. **Client Oracle Computes Location:** Client Oracle uses the reply's location fields (`Lat`/`Lng` + `RttNs`) along with the Target's reported probe RTT to compute location. The embedded offset blobs can be cross-checked against the DZ ledger for additional assurance.
 
 ### Smart Contract Changes
@@ -366,7 +366,7 @@ type SignedReplyPacket struct {
     MeasurementSlot uint64            // Bytes 172-179: DoubleZero slot from reference offset
     Lat             float64           // Bytes 180-187: Reference point latitude (WGS84)
     Lng             float64           // Bytes 188-195: Reference point longitude (WGS84)
-    SinceLastRxNs   uint64            // Bytes 196-203: Nanoseconds since previous probe arrival
+    SinceLastRxNs   uint64            // Bytes 196-203: Nanoseconds between reflector Tx (reply N-1) and Rx (probe N)
     RttNs           uint64            // Bytes 204-211: Accumulated RTT from Lat/Lng in nanoseconds
     NumOffsets      uint8             // Byte 212: Number of LocationOffset blobs (0-5)
     Offsets         [][]byte          // Bytes 213-...: N × LocationOffset blobs (each 169 bytes)
@@ -374,7 +374,7 @@ type SignedReplyPacket struct {
 }
 ```
 
-`AuthorityPubkey` is the key used to sign and verify the reply. `GeoprobePubkey` identifies the specific geoprobe. `MeasurementSlot`, `Lat`, `Lng`, and `RttNs` are derived from the probe's best cached DZD offset. `SinceLastRxNs` is the inter-arrival time between consecutive probes — the target sends paired probes and uses `SinceLastRxNs` from the second reply as the probe-measured RTT (analogous to `MeasuredRttNs` in a LocationOffset). `RttNs` = DZD offset's `RttNs` + `SinceLastRxNs`. `Offsets` carries 0–5 Borsh-encoded `LocationOffset` structs from the probe's parent DZDs (each with no references).
+`AuthorityPubkey` is the key used to sign and verify the reply. `GeoprobePubkey` identifies the specific geoprobe. `MeasurementSlot`, `Lat`, `Lng`, and `RttNs` are derived from the probe's best cached DZD offset. `SinceLastRxNs` measures from the reflector's reply Tx to the next probe's Rx, approximating the network RTT by excluding processing overhead. The target pre-signs both probes before any I/O and uses `SinceLastRxNs` from the second reply as the probe-measured RTT (analogous to `MeasuredRttNs` in a LocationOffset). `RttNs` = DZD offset's `RttNs` + `SinceLastRxNs`. `Offsets` carries 0–5 Borsh-encoded `LocationOffset` structs from the probe's parent DZDs (each with no references).
 The probe's signature covers all preceding bytes.
 
 #### Interfaces

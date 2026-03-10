@@ -2,6 +2,7 @@ package signed
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"runtime"
@@ -14,6 +15,10 @@ import (
 )
 
 const defaultProbeTimeout = 1 * time.Second
+
+// busyPollWindow keeps the thread warm via EpollWait(timeout=0) so that
+// scheduler wakeup latency doesn't dominate short-RTT measurements.
+const busyPollWindow = 15 * time.Millisecond
 
 type LinuxSender struct {
 	fd           int
@@ -101,14 +106,198 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, *ReplyPacket, e
 	defer s.mu.Unlock()
 
 	s.seq++
-
 	probe := NewProbePacket(s.seq, s.signer)
-	if err := probe.Marshal(s.buf); err != nil {
-		return 0, nil, fmt.Errorf("marshal packet: %w", err)
+	var buf [ProbePacketSize]byte
+	if err := probe.Marshal(buf[:]); err != nil {
+		return 0, nil, fmt.Errorf("marshal probe: %w", err)
 	}
 
+	return s.sendAndRecv(ctx, buf[:], probe, true, 0)
+}
+
+// ProbePair sends two probes in quick succession. Both probe packets are
+// pre-created and pre-signed before any network I/O. When reply 0 arrives,
+// probe 1 is fired immediately after a 4-byte seq check — before any
+// parsing — to minimize the target turnaround that inflates the reflector's
+// Tx-to-Rx measurement.
+func (s *LinuxSender) ProbePair(ctx context.Context) (ProbePairResult, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Pre-sign both probes before any network I/O.
+	s.seq++
+	probe0 := NewProbePacket(s.seq, s.signer)
+	var buf0 [ProbePacketSize]byte
+	if err := probe0.Marshal(buf0[:]); err != nil {
+		return ProbePairResult{}, fmt.Errorf("marshal probe 0: %w", err)
+	}
+
+	s.seq++
+	probe1 := NewProbePacket(s.seq, s.signer)
+	var buf1 [ProbePacketSize]byte
+	if err := probe1.Marshal(buf1[:]); err != nil {
+		return ProbePairResult{}, fmt.Errorf("marshal probe 1: %w", err)
+	}
+
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(defaultProbeTimeout)
+	}
+
+	// --- Send probe 0 and wait for reply 0 ---
+	send0Time := time.Now()
+	if err := unix.Sendto(s.fd, buf0[:], 0, s.remote); err != nil {
+		return ProbePairResult{}, fmt.Errorf("sendto probe 0: %w", err)
+	}
+
+	events := make([]unix.EpollEvent, 1)
+	var (
+		reply0N    int
+		reply0Oobn int
+		reply0Oob  [512]byte // stack copy so Recvmsg for reply 1 doesn't overwrite
+		probe1Sent bool
+		send1Time  time.Time
+	)
+
+	// recvAndFireProbe1 does Recvmsg, checks size+seq, and immediately fires
+	// probe 1 if the packet looks like reply 0. Returns true if a packet was
+	// consumed (caller should stop polling), false on EAGAIN/mismatch.
+	recvAndFireProbe1 := func() (bool, error) {
+		n, oobn, _, _, err := unix.Recvmsg(s.fd, s.buf, s.oob, 0)
+		if err != nil {
+			if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
+				return false, nil
+			}
+			return false, fmt.Errorf("recvmsg: %w", err)
+		}
+		if n < MinReplyPacketSize || n > MaxReplyPacketSize {
+			return false, nil
+		}
+		if binary.BigEndian.Uint32(s.buf[0:4]) != probe0.Seq {
+			return false, nil
+		}
+
+		// Seq matches — fire probe 1 immediately before any parsing.
+		reply0N = n
+		reply0Oobn = oobn
+		copy(reply0Oob[:oobn], s.oob[:oobn])
+		send1Time = time.Now()
+		if err := unix.Sendto(s.fd, buf1[:], 0, s.remote); err != nil {
+			return false, fmt.Errorf("sendto probe 1: %w", err)
+		}
+		probe1Sent = true
+		return true, nil
+	}
+
+	// Busy-poll phase for reply 0.
+	busyPollDeadline := send0Time.Add(busyPollWindow)
+	for time.Now().Before(busyPollDeadline) {
+		n, err := unix.EpollWait(s.epfd, events, 0)
+		if err != nil && err != syscall.EINTR {
+			return ProbePairResult{}, fmt.Errorf("epoll_wait: %w", err)
+		}
+		if n > 0 {
+			done, err := recvAndFireProbe1()
+			if err != nil {
+				return ProbePairResult{}, fmt.Errorf("probe 0: %w", err)
+			}
+			if done {
+				break
+			}
+		}
+	}
+
+	// Blocking phase for reply 0 (if busy-poll didn't catch it).
+	for !probe1Sent {
+		select {
+		case <-ctx.Done():
+			return ProbePairResult{}, ctx.Err()
+		default:
+		}
+		remaining := int(time.Until(deadline).Milliseconds())
+		if remaining <= 0 {
+			return ProbePairResult{}, context.DeadlineExceeded
+		}
+		n, err := unix.EpollWait(s.epfd, events, remaining)
+		if err != nil && err != syscall.EINTR {
+			return ProbePairResult{}, fmt.Errorf("epoll_wait: %w", err)
+		}
+		if n == 0 {
+			return ProbePairResult{}, context.DeadlineExceeded
+		}
+		done, err := recvAndFireProbe1()
+		if err != nil {
+			return ProbePairResult{}, fmt.Errorf("probe 0: %w", err)
+		}
+		_ = done
+	}
+
+	// --- Parse reply 0 (deferred until after probe 1 was sent) ---
+	fallback0Time := time.Now()
+	reply0, err := UnmarshalReplyPacket(s.buf[:reply0N])
+	if err != nil {
+		return ProbePairResult{}, fmt.Errorf("unmarshal reply 0: %w", err)
+	}
+	if reply0.Probe.Sec != probe0.Sec || reply0.Probe.Frac != probe0.Frac {
+		return ProbePairResult{}, fmt.Errorf("reply 0: timestamp mismatch")
+	}
+
+	cmsgs0, err := syscall.ParseSocketControlMessage(reply0Oob[:reply0Oobn])
+	if err != nil {
+		return ProbePairResult{}, fmt.Errorf("reply 0: parse cmsg: %w", err)
+	}
+	var rtt0 time.Duration
+	for _, cmsg := range cmsgs0 {
+		if cmsg.Header.Level == syscall.SOL_SOCKET && cmsg.Header.Type == syscall.SO_TIMESTAMPNS {
+			if len(cmsg.Data) >= int(unsafe.Sizeof(syscall.Timespec{})) {
+				ts := *(*syscall.Timespec)(unsafe.Pointer(&cmsg.Data[0]))
+				kernelRecvTime := time.Unix(int64(ts.Sec), int64(ts.Nsec))
+				rtt0 = decideRTT(send0Time, kernelRecvTime, fallback0Time)
+				break
+			}
+		}
+	}
+
+	// --- Wait for reply 1 (already sent, just receive) ---
+	for {
+		select {
+		case <-ctx.Done():
+			return ProbePairResult{}, ctx.Err()
+		default:
+		}
+		remaining := int(time.Until(deadline).Milliseconds())
+		if remaining <= 0 {
+			return ProbePairResult{}, context.DeadlineExceeded
+		}
+		n, err := unix.EpollWait(s.epfd, events, remaining)
+		if err != nil && err != syscall.EINTR {
+			return ProbePairResult{}, fmt.Errorf("epoll_wait: %w", err)
+		}
+		if n == 0 {
+			return ProbePairResult{}, context.DeadlineExceeded
+		}
+		if rtt1, reply1, err, ok := s.tryRecv(send1Time, probe1, true); ok {
+			if err != nil {
+				return ProbePairResult{}, fmt.Errorf("probe 1: %w", err)
+			}
+			return ProbePairResult{
+				RTT0:   rtt0,
+				RTT1:   rtt1,
+				Reply0: reply0,
+				Reply1: reply1,
+			}, nil
+		}
+	}
+}
+
+// sendAndRecv sends a probe and waits for the matching reply.
+// Caller must hold s.mu and have called runtime.LockOSThread().
+func (s *LinuxSender) sendAndRecv(ctx context.Context, probeBuf []byte, probe *ProbePacket, verify bool, busyPollDuration time.Duration) (time.Duration, *ReplyPacket, error) {
 	sendTime := time.Now()
-	if err := unix.Sendto(s.fd, s.buf[:ProbePacketSize], 0, s.remote); err != nil {
+	if err := unix.Sendto(s.fd, probeBuf, 0, s.remote); err != nil {
 		return 0, nil, fmt.Errorf("sendto: %w", err)
 	}
 
@@ -119,6 +308,23 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, *ReplyPacket, e
 
 	events := make([]unix.EpollEvent, 1)
 
+	// Busy-poll phase: EpollWait(timeout=0) to avoid scheduler wakeup latency.
+	if busyPollDuration > 0 {
+		busyPollDeadline := sendTime.Add(busyPollDuration)
+		for time.Now().Before(busyPollDeadline) {
+			n, err := unix.EpollWait(s.epfd, events, 0)
+			if err != nil && err != syscall.EINTR {
+				return 0, nil, fmt.Errorf("epoll_wait: %w", err)
+			}
+			if n > 0 {
+				if rtt, reply, err, ok := s.tryRecv(sendTime, probe, verify); ok {
+					return rtt, reply, err
+				}
+			}
+		}
+	}
+
+	// Blocking phase: standard EpollWait with full timeout.
 	for {
 		select {
 		case <-ctx.Done():
@@ -139,54 +345,64 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, *ReplyPacket, e
 			return 0, nil, context.DeadlineExceeded
 		}
 
-		n, oobn, _, _, err := unix.Recvmsg(s.fd, s.buf, s.oob, 0)
-		if err != nil {
-			if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
-				continue
-			}
-			return 0, nil, fmt.Errorf("recvmsg: %w", err)
+		if rtt, reply, err, ok := s.tryRecv(sendTime, probe, verify); ok {
+			return rtt, reply, err
 		}
-		fallbackRecvTime := time.Now()
+	}
+}
 
-		if n < MinReplyPacketSize || n > MaxReplyPacketSize {
-			continue
+// tryRecv reads one reply. Returns ok=true on a definitive result (match or
+// fatal error), ok=false if the caller should keep polling.
+func (s *LinuxSender) tryRecv(sendTime time.Time, probe *ProbePacket, verify bool) (time.Duration, *ReplyPacket, error, bool) {
+	n, oobn, _, _, err := unix.Recvmsg(s.fd, s.buf, s.oob, 0)
+	if err != nil {
+		if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
+			return 0, nil, nil, false
 		}
+		return 0, nil, fmt.Errorf("recvmsg: %w", err), true
+	}
+	fallbackRecvTime := time.Now()
 
-		reply, err := UnmarshalReplyPacket(s.buf[:n])
-		if err != nil {
-			continue
-		}
+	if n < MinReplyPacketSize || n > MaxReplyPacketSize {
+		return 0, nil, nil, false
+	}
 
-		if reply.Probe.Seq != probe.Seq || reply.Probe.Sec != probe.Sec || reply.Probe.Frac != probe.Frac {
-			continue
-		}
+	reply, err := UnmarshalReplyPacket(s.buf[:n])
+	if err != nil {
+		return 0, nil, nil, false
+	}
+
+	if reply.Probe.Seq != probe.Seq || reply.Probe.Sec != probe.Sec || reply.Probe.Frac != probe.Frac {
+		return 0, nil, nil, false
+	}
+	if verify {
 		if !reply.Probe.Verify() {
-			continue
+			return 0, nil, nil, false
 		}
 		if reply.AuthorityPubkey != s.remotePubkey {
-			continue
+			return 0, nil, nil, false
 		}
 		if !reply.Verify() {
-			continue
+			return 0, nil, nil, false
 		}
-
-		cmsgs, err := syscall.ParseSocketControlMessage(s.oob[:oobn])
-		if err != nil {
-			return 0, nil, fmt.Errorf("parse cmsg: %w", err)
-		}
-		for _, cmsg := range cmsgs {
-			if cmsg.Header.Level == syscall.SOL_SOCKET && cmsg.Header.Type == syscall.SO_TIMESTAMPNS {
-				if len(cmsg.Data) < int(unsafe.Sizeof(syscall.Timespec{})) {
-					continue
-				}
-				ts := *(*syscall.Timespec)(unsafe.Pointer(&cmsg.Data[0]))
-				kernelRecvTime := time.Unix(int64(ts.Sec), int64(ts.Nsec))
-				rtt := decideRTT(sendTime, kernelRecvTime, fallbackRecvTime)
-				return rtt, reply, nil
-			}
-		}
-		return 0, nil, fmt.Errorf("no timestamp in control message")
 	}
+
+	cmsgs, err := syscall.ParseSocketControlMessage(s.oob[:oobn])
+	if err != nil {
+		return 0, nil, fmt.Errorf("parse cmsg: %w", err), true
+	}
+	for _, cmsg := range cmsgs {
+		if cmsg.Header.Level == syscall.SOL_SOCKET && cmsg.Header.Type == syscall.SO_TIMESTAMPNS {
+			if len(cmsg.Data) < int(unsafe.Sizeof(syscall.Timespec{})) {
+				continue
+			}
+			ts := *(*syscall.Timespec)(unsafe.Pointer(&cmsg.Data[0]))
+			kernelRecvTime := time.Unix(int64(ts.Sec), int64(ts.Nsec))
+			rtt := decideRTT(sendTime, kernelRecvTime, fallbackRecvTime)
+			return rtt, reply, nil, true
+		}
+	}
+	return 0, nil, fmt.Errorf("no timestamp in control message"), true
 }
 
 func (s *LinuxSender) Close() error {

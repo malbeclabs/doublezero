@@ -7,12 +7,12 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
-
 - E2E Tests
   - Add geoprobe E2E test (`TestE2E_GeoprobeDiscovery`) that exercises the full geolocation flow: deploy geolocation program, create probe onchain, start geoprobe-agent container, and verify the telemetry-agent discovers and measures the probe via TWAMP
   - Add geoprobe Docker image, geolocation program build/deploy support, and manager geolocation CLI configuration to the E2E devnet infrastructure
 - Telemetry
   - Add onchain parent DZD discovery to geoprobe-agent: periodically queries the Geolocation program for this probe's parent devices and resolves their metrics publisher keys from Serviceability, replacing the need for static `--parent-dzd` CLI flags. Static parents from CLI are merged with onchain parents, with onchain taking precedence for duplicate keys.
+  - Optimize inbound probe-measured RTT accuracy: pre-sign both TWAMP probes before network I/O so probe 1 fires immediately after reply 0 with no signing delay, measure Tx-to-Rx interval (reply 0 Tx → probe 1 Rx) instead of Rx-to-Rx to exclude processing overhead on both sides, use kernel `SO_TIMESTAMPNS` receive timestamps on the reflector, and add a 15ms busy-poll window on the sender to avoid scheduler wakeup latency
 
 ## [v0.11.0](https://github.com/malbeclabs/doublezero/compare/client/v0.10.0...client/v0.11.0) - 2026-03-12
 
@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.
   - Fix race condition in internet-latency-collector where export and management goroutines independently loaded/saved the same state file, causing newly created RIPE Atlas measurement metadata to be overwritten and measurements to be stuck in a create-destroy-create loop ([#3195](https://github.com/malbeclabs/doublezero/pull/3195))
   - Add wheresitup job backlog observability: `pending_jobs` Prometheus gauge, `in_progress_count`/`pending_jobs` in export summary logs, and API response duration histogram ([#3203](https://github.com/malbeclabs/doublezero/pull/3203))
   - Change geoprobe-agent and geoprobe-target default TWAMP reflector port from 862 to 8925 to avoid DZD ACL blocks, use per-probe TWAMP port instead of hardcoded constant, and update `--additional-child-probes`/`--additional-targets` format to `host` or `host:offset_port:twamp_port` (two-field `host:port` rejected as ambiguous)
+
 - Activator
   - Suppress noisy program log output from race conditions caused by dual event processing (websocket + snapshot poll). The SDK's new `execute_transaction_quiet` returns a `SimulationError` with program logs; the activator verifies suspected races by re-fetching user state before deciding whether to print logs ([#3197](https://github.com/malbeclabs/doublezero/pull/3197))
 - CLI

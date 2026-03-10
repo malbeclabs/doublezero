@@ -8,6 +8,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -17,10 +18,10 @@ const defaultReadTimeout = 1 * time.Second
 // senderState fields are only accessed from the single-goroutine epoll
 // loop in Run(). No mutex needed.
 type senderState struct {
-	lastRxTime   time.Time
+	lastTxTime   time.Time // captured just before Sendto of reply N-1
 	pairCount    int
 	pairStart    time.Time
-	pairSourceIP [4]byte // source IP of the first probe in this pair
+	pairSourceIP [4]byte
 }
 
 type LinuxReflector struct {
@@ -78,6 +79,12 @@ func NewLinuxReflector(addr string, timeout time.Duration, signer Signer, geopro
 		unix.Close(fd)
 		unix.Close(epfd)
 		return nil, fmt.Errorf("epoll_ctl: %w", err)
+	}
+
+	if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPNS, 1); err != nil {
+		unix.Close(fd)
+		unix.Close(epfd)
+		return nil, fmt.Errorf("SO_TIMESTAMPNS: %w", err)
 	}
 
 	r := &LinuxReflector{
@@ -142,6 +149,7 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 
 	events := make([]unix.EpollEvent, 1)
 	buf := make([]byte, 1500)
+	oob := make([]byte, 512)
 
 	for {
 		select {
@@ -170,12 +178,12 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 		}
 
 		for {
-			n, from, err := unix.Recvfrom(r.fd, buf, 0)
+			n, oobn, _, from, err := unix.Recvmsg(r.fd, buf, oob, 0)
 			if err != nil {
 				if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
 					break
 				}
-				return fmt.Errorf("recvfrom: %w", err)
+				return fmt.Errorf("recvmsg: %w", err)
 			}
 
 			if n != ProbePacketSize {
@@ -191,7 +199,7 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 				continue
 			}
 
-			now := time.Now()
+			now := kernelTimestamp(oob[:oobn])
 
 			// Load or create per-sender state.
 			raw, _ := r.senderStates.LoadOrStore(probe.SenderPubkey, &senderState{})
@@ -207,37 +215,25 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 				}
 			}
 
-			// Pair authentication: the measurement loop runs from Probe 0 Rx to
-			// Probe 1 Rx, so we skip verification on probe 0 to keep the reply
-			// fast and the inter-arrival gap accurate. Probe 1 is verified after
-			// capturing `now` — its latency only affects reply 1, which doesn't
-			// impact the measurement (TEE targets can't measure time). Both
-			// probes in a pair must come from the same source IP.
+			// Pair integrity: both probes must come from the same source IP.
+			// The pubkey allowlist (checked above) provides authentication;
+			// per-probe signature verification is left to the target.
 			fromAddr, ok := from.(*unix.SockaddrInet4)
 			if !ok {
 				continue
 			}
 			if state.pairCount == 0 {
 				state.pairSourceIP = fromAddr.Addr
-			} else {
-				if fromAddr.Addr != state.pairSourceIP {
-					continue
-				}
-				// Verify the probe signature. Comment out these two lines to
-				// rely solely on IP-binding for pair authentication.
-				// if !probe.Verify() {
-				// 	continue
-				// }
+			} else if fromAddr.Addr != state.pairSourceIP {
+				continue
 			}
 
-			// SinceLastRxNs is only meaningful for the second probe in a pair.
-			// Reset to zero at the start of each new pair so reply 0 always
-			// carries SinceLastRxNs=0 and RttNs=dzdRttNs.
+			// SinceLastRxNs: Tx-to-Rx interval (reply 0 Tx → probe 1 Rx).
+			// Zero for the first probe in a pair.
 			var sinceLastRxNs uint64
-			if !state.lastRxTime.IsZero() && state.pairCount > 0 {
-				sinceLastRxNs = uint64(now.Sub(state.lastRxTime).Nanoseconds())
+			if !state.lastTxTime.IsZero() && state.pairCount > 0 {
+				sinceLastRxNs = uint64(now.Sub(state.lastTxTime).Nanoseconds())
 			}
-			state.lastRxTime = now
 			if state.pairCount == 0 {
 				state.pairStart = now
 			}
@@ -267,6 +263,7 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			var replyBuf [MaxReplyPacketSize]byte
 			replyLen, _ := reply.Marshal(replyBuf[:])
 
+			state.lastTxTime = time.Now()
 			_ = unix.Sendto(r.fd, replyBuf[:replyLen], 0, from)
 		}
 	}
@@ -281,4 +278,22 @@ func (r *LinuxReflector) Close() error {
 		<-r.closed
 		return nil
 	}
+}
+
+// kernelTimestamp extracts the SO_TIMESTAMPNS kernel receive timestamp from
+// the ancillary data returned by Recvmsg. Falls back to time.Now() if the
+// timestamp is missing or unparseable.
+func kernelTimestamp(oob []byte) time.Time {
+	cmsgs, err := syscall.ParseSocketControlMessage(oob)
+	if err == nil {
+		for _, cmsg := range cmsgs {
+			if cmsg.Header.Level == syscall.SOL_SOCKET && cmsg.Header.Type == syscall.SO_TIMESTAMPNS {
+				if len(cmsg.Data) >= int(unsafe.Sizeof(syscall.Timespec{})) {
+					ts := *(*syscall.Timespec)(unsafe.Pointer(&cmsg.Data[0]))
+					return time.Unix(int64(ts.Sec), int64(ts.Nsec))
+				}
+			}
+		}
+	}
+	return time.Now()
 }

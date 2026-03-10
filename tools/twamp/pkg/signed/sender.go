@@ -6,9 +6,18 @@ import (
 	"time"
 )
 
+// ProbePairResult holds the results of a paired probe exchange.
+type ProbePairResult struct {
+	RTT0   time.Duration
+	RTT1   time.Duration
+	Reply0 *ReplyPacket
+	Reply1 *ReplyPacket
+}
+
 // Sender is used by the Target to initiate passive probing.
 type Sender interface {
 	Probe(ctx context.Context) (time.Duration, *ReplyPacket, error)
+	ProbePair(ctx context.Context) (ProbePairResult, error)
 	Close() error
 }
 

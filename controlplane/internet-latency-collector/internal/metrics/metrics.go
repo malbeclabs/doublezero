@@ -136,6 +136,17 @@ var (
 		Name: "doublezero_internet_latency_collector_wheresitup_credit_balance",
 		Help: "Current Wheresitup credit balance",
 	})
+
+	WheresitupPendingJobs = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_wheresitup_pending_jobs",
+		Help: "Number of wheresitup jobs still pending (not yet completed or failed)",
+	})
+
+	WheresitupAPIResponseDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "doublezero_internet_latency_collector_wheresitup_api_response_duration_seconds",
+		Help:    "Duration of wheresitup GetJobResults API calls in seconds",
+		Buckets: []float64{0.1, 0.25, 0.5, 1, 2, 5, 10, 30},
+	})
 )
 
 func init() {

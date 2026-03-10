@@ -486,13 +486,16 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 
 	processedCount := 0
 	failedCount := 0
+	inProgressCount := 0
 	var completedJobIDs []string
 
 	records := make([]exporter.Record, 0, len(jobIDs))
 	for _, jobID := range jobIDs {
 		c.log.Debug("Processing job", slog.String("job_id", jobID))
 
+		apiStart := time.Now()
 		results, err := c.client.GetJobResults(ctx, jobID)
+		metrics.WheresitupAPIResponseDuration.Observe(time.Since(apiStart).Seconds())
 		if err != nil {
 			// Handle the fact that the wheresitup response section, "complete", "error", and "in_progress"
 			// are arrays when empty and maps when populated. In the example below, once the job is complete,
@@ -509,6 +512,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			if strings.Contains(err.Error(), "cannot unmarshal array into Go struct field .response.complete") {
 				c.log.Debug("Job appears to be in progress (complete field is array), skipping",
 					slog.String("job_id", jobID))
+				inProgressCount++
 				continue
 			}
 			c.log.Info("Wheresitup failed to get results for job",
@@ -522,6 +526,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			c.log.Debug("Wheresitup job still in progress, skipping",
 				slog.String("job_id", jobID),
 				slog.Int("in_progress_count", len(results.Response.InProgress)))
+			inProgressCount++
 			continue
 		}
 
@@ -624,13 +629,19 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 
 	// Calculate failure rate and log appropriately
 	totalJobs := len(jobIDs)
+	pendingJobs := totalJobs - len(completedJobIDs) - failedCount
 	failureRate := float64(failedCount) / float64(totalJobs)
+
+	// Update pending jobs gauge for Prometheus
+	metrics.WheresitupPendingJobs.Set(float64(pendingJobs))
 
 	if failureRate > 0.10 && totalJobs > 0 {
 		// Log error if more than 10% of jobs failed
 		c.log.Error("High failure rate for Wheresitup job results",
 			slog.Int("processed_count", processedCount),
 			slog.Int("failed_count", failedCount),
+			slog.Int("in_progress_count", inProgressCount),
+			slog.Int("pending_jobs", pendingJobs),
 			slog.Int("total_jobs", totalJobs),
 			slog.Int("removed_job_count", len(completedJobIDs)),
 			slog.Float64("failure_rate", failureRate))
@@ -639,6 +650,8 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 		c.log.Info("Operation completed: Wheresitup export_job_results",
 			slog.Int("processed_count", processedCount),
 			slog.Int("failed_count", failedCount),
+			slog.Int("in_progress_count", inProgressCount),
+			slog.Int("pending_jobs", pendingJobs),
 			slog.Int("removed_job_count", len(completedJobIDs)),
 			slog.Int("total_jobs", totalJobs),
 			slog.Float64("failure_rate", failureRate))

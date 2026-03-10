@@ -86,8 +86,8 @@ var (
 	gnmiTunnelServerAddr = flag.String("gnmi-tunnel-server-addr", "", "Address of the gNMI tunnel server (defaults to env config, e.g., gnmic-devnet.doublezero.xyz:443).")
 
 	// geoprobe flags
-	additionalChildProbes  = flag.String("additional-child-probes", "", "Comma-separated list of child geoProbe addresses (host or host:offset_port:twamp_port) to measure RTT and send location offsets.")
-	geolocationProgramID   = flag.String("geolocation-program-id", "", "The ID of the geolocation program for onchain GeoProbe discovery. If env is provided, this flag is ignored.")
+	additionalChildProbes = flag.String("additional-child-probes", "", "Comma-separated list of child geoProbe addresses (host or host:offset_port:twamp_port) to measure RTT and send location offsets.")
+	geolocationProgramID  = flag.String("geolocation-program-id", "", "The ID of the geolocation program for onchain GeoProbe discovery. If env is provided, this flag is ignored.")
 
 	// Set by LDFLAGS
 	version = "dev"

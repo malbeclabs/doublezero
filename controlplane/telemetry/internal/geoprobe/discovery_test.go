@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,12 +16,22 @@ import (
 )
 
 type mockGeolocationClient struct {
-	probes []geolocation.GeoProbe
-	err    error
+	probes     []geolocation.GeoProbe
+	err        error
+	keys       []solana.PublicKey
+	keysErr    error
+	probeCalls atomic.Int32
+	keysCalls  atomic.Int32
 }
 
 func (m *mockGeolocationClient) GetGeoProbes(_ context.Context) ([]geolocation.GeoProbe, error) {
+	m.probeCalls.Add(1)
 	return m.probes, m.err
+}
+
+func (m *mockGeolocationClient) GetGeoProbeKeys(_ context.Context) ([]solana.PublicKey, error) {
+	m.keysCalls.Add(1)
+	return m.keys, m.keysErr
 }
 
 func newTestDiscoveryConfig() *DiscoveryConfig {
@@ -378,4 +389,268 @@ func TestMergeProbes_Empty(t *testing.T) {
 
 	merged = mergeProbes([]ProbeAddress{{Host: "10.0.0.1", Port: 8923, TWAMPPort: 8925}}, nil)
 	assert.Len(t, merged, 1)
+}
+
+// --- Caching tests ---
+
+func TestDiscovery_CachingSkipsFullFetch(t *testing.T) {
+	t.Parallel()
+
+	localDevice := solana.NewWallet().PublicKey()
+	probeKey := solana.NewWallet().PublicKey()
+
+	mock := &mockGeolocationClient{
+		probes: []geolocation.GeoProbe{
+			{
+				PublicIP:           [4]uint8{10, 0, 0, 1},
+				LocationOffsetPort: 8923,
+				ParentDevices:      []solana.PublicKey{localDevice},
+				Code:               "probe1",
+			},
+		},
+		keys: []solana.PublicKey{probeKey},
+	}
+
+	ch := make(chan []ProbeAddress, 1)
+	d, err := NewDiscovery(&DiscoveryConfig{
+		Logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		Client:        mock,
+		LocalDevicePK: localDevice,
+		ProbeUpdateCh: ch,
+		Interval:      time.Second,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// First tick: always full fetch (cachedKeys is nil).
+	d.discover(ctx)
+	assert.Equal(t, int32(1), mock.probeCalls.Load())
+	// GetGeoProbeKeys called once after the full fetch to populate cache.
+	assert.Equal(t, int32(1), mock.keysCalls.Load())
+	<-ch // drain
+
+	// Second tick: key set unchanged → skip full fetch.
+	d.discover(ctx)
+	assert.Equal(t, int32(1), mock.probeCalls.Load(), "should not call GetGeoProbes again")
+	assert.Equal(t, int32(2), mock.keysCalls.Load(), "should call GetGeoProbeKeys for comparison")
+
+	// No update sent on channel since we skipped.
+	select {
+	case <-ch:
+		t.Fatal("should not send update when key set unchanged")
+	default:
+	}
+}
+
+func TestDiscovery_CachingDetectsKeyChange(t *testing.T) {
+	t.Parallel()
+
+	localDevice := solana.NewWallet().PublicKey()
+	probeKey1 := solana.NewWallet().PublicKey()
+	probeKey2 := solana.NewWallet().PublicKey()
+
+	mock := &mockGeolocationClient{
+		probes: []geolocation.GeoProbe{
+			{
+				PublicIP:           [4]uint8{10, 0, 0, 1},
+				LocationOffsetPort: 8923,
+				ParentDevices:      []solana.PublicKey{localDevice},
+				Code:               "probe1",
+			},
+		},
+		keys: []solana.PublicKey{probeKey1},
+	}
+
+	ch := make(chan []ProbeAddress, 1)
+	d, err := NewDiscovery(&DiscoveryConfig{
+		Logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		Client:        mock,
+		LocalDevicePK: localDevice,
+		ProbeUpdateCh: ch,
+		Interval:      time.Second,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// First tick: full fetch.
+	d.discover(ctx)
+	assert.Equal(t, int32(1), mock.probeCalls.Load())
+	<-ch // drain
+
+	// Change the key set to simulate a new probe appearing.
+	mock.keys = []solana.PublicKey{probeKey1, probeKey2}
+
+	// Second tick: key set changed → triggers full fetch.
+	d.discover(ctx)
+	assert.Equal(t, int32(2), mock.probeCalls.Load(), "should call GetGeoProbes on key change")
+	<-ch // drain
+}
+
+func TestDiscovery_ForcedFullRefresh(t *testing.T) {
+	t.Parallel()
+
+	localDevice := solana.NewWallet().PublicKey()
+	probeKey := solana.NewWallet().PublicKey()
+
+	mock := &mockGeolocationClient{
+		probes: []geolocation.GeoProbe{
+			{
+				PublicIP:           [4]uint8{10, 0, 0, 1},
+				LocationOffsetPort: 8923,
+				ParentDevices:      []solana.PublicKey{localDevice},
+				Code:               "probe1",
+			},
+		},
+		keys: []solana.PublicKey{probeKey},
+	}
+
+	ch := make(chan []ProbeAddress, 1)
+	d, err := NewDiscovery(&DiscoveryConfig{
+		Logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		Client:        mock,
+		LocalDevicePK: localDevice,
+		ProbeUpdateCh: ch,
+		Interval:      time.Second,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Tick 1: full fetch (cachedKeys nil).
+	d.discover(ctx)
+	<-ch
+	assert.Equal(t, int32(1), mock.probeCalls.Load())
+
+	// Ticks 2 through fullRefreshEvery-1: should skip (unchanged keys).
+	for i := 2; i < fullRefreshEvery; i++ {
+		d.discover(ctx)
+	}
+	assert.Equal(t, int32(1), mock.probeCalls.Load(), "should not call GetGeoProbes on cached ticks")
+
+	// Tick fullRefreshEvery: forced full refresh.
+	d.discover(ctx)
+	<-ch
+	assert.Equal(t, int32(2), mock.probeCalls.Load(), "should force full fetch on Nth tick")
+}
+
+func TestDiscovery_KeyFetchErrorFallsBackToFullFetch(t *testing.T) {
+	t.Parallel()
+
+	localDevice := solana.NewWallet().PublicKey()
+	probeKey := solana.NewWallet().PublicKey()
+
+	mock := &mockGeolocationClient{
+		probes: []geolocation.GeoProbe{
+			{
+				PublicIP:           [4]uint8{10, 0, 0, 1},
+				LocationOffsetPort: 8923,
+				ParentDevices:      []solana.PublicKey{localDevice},
+				Code:               "probe1",
+			},
+		},
+		keys: []solana.PublicKey{probeKey},
+	}
+
+	ch := make(chan []ProbeAddress, 1)
+	d, err := NewDiscovery(&DiscoveryConfig{
+		Logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		Client:        mock,
+		LocalDevicePK: localDevice,
+		ProbeUpdateCh: ch,
+		Interval:      time.Second,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// First tick: full fetch.
+	d.discover(ctx)
+	<-ch
+	assert.Equal(t, int32(1), mock.probeCalls.Load())
+
+	// Make key fetch fail on the next tick.
+	mock.keysErr = errors.New("RPC timeout")
+
+	// Second tick: key fetch fails → falls back to full fetch.
+	d.discover(ctx)
+	assert.Equal(t, int32(2), mock.probeCalls.Load(), "should fall back to full fetch on key error")
+	<-ch
+}
+
+func TestDiscovery_KeyCacheClearedOnPostFetchKeyError(t *testing.T) {
+	t.Parallel()
+
+	localDevice := solana.NewWallet().PublicKey()
+	probeKey := solana.NewWallet().PublicKey()
+
+	mock := &mockGeolocationClient{
+		probes: []geolocation.GeoProbe{
+			{
+				PublicIP:           [4]uint8{10, 0, 0, 1},
+				LocationOffsetPort: 8923,
+				ParentDevices:      []solana.PublicKey{localDevice},
+				Code:               "probe1",
+			},
+		},
+		keys: []solana.PublicKey{probeKey},
+	}
+
+	ch := make(chan []ProbeAddress, 1)
+	d, err := NewDiscovery(&DiscoveryConfig{
+		Logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		Client:        mock,
+		LocalDevicePK: localDevice,
+		ProbeUpdateCh: ch,
+		Interval:      time.Second,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// First tick: full fetch succeeds, cache populated.
+	d.discover(ctx)
+	<-ch
+	require.NotNil(t, d.cachedKeys)
+
+	// Make the post-fetch key call fail.
+	mock.keysErr = errors.New("network error")
+
+	// Tick at fullRefreshEvery: forced full fetch, but post-fetch key call fails.
+	// Advance tick counter to trigger forced refresh.
+	d.tickCount = fullRefreshEvery - 1
+	d.discover(ctx)
+	<-ch
+
+	// Cache should be cleared so next tick does full fetch.
+	assert.Nil(t, d.cachedKeys, "cache should be nil after post-fetch key error")
+}
+
+func TestPubkeySetsEqual(t *testing.T) {
+	t.Parallel()
+
+	k1 := solana.NewWallet().PublicKey()
+	k2 := solana.NewWallet().PublicKey()
+	k3 := solana.NewWallet().PublicKey()
+
+	tests := []struct {
+		name string
+		a, b map[solana.PublicKey]struct{}
+		want bool
+	}{
+		{"both empty", map[solana.PublicKey]struct{}{}, map[solana.PublicKey]struct{}{}, true},
+		{"both nil", nil, nil, true},
+		{"nil vs empty", nil, map[solana.PublicKey]struct{}{}, true},
+		{"same single key", pubkeySet([]solana.PublicKey{k1}), pubkeySet([]solana.PublicKey{k1}), true},
+		{"same multiple keys", pubkeySet([]solana.PublicKey{k1, k2}), pubkeySet([]solana.PublicKey{k2, k1}), true},
+		{"different count", pubkeySet([]solana.PublicKey{k1}), pubkeySet([]solana.PublicKey{k1, k2}), false},
+		{"same count different keys", pubkeySet([]solana.PublicKey{k1, k2}), pubkeySet([]solana.PublicKey{k1, k3}), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, pubkeySetsEqual(tt.a, tt.b))
+		})
+	}
 }

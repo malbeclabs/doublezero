@@ -11,10 +11,17 @@ import (
 	geolocation "github.com/malbeclabs/doublezero/sdk/geolocation/go"
 )
 
+// fullRefreshEvery controls how often a full fetch is forced regardless of
+// whether the key set has changed. This catches in-place modifications (e.g.,
+// IP change on an existing probe) that wouldn't alter the pubkey set.
+// At the default 60s interval, 5 means a full refresh every ~5 minutes.
+const fullRefreshEvery = 5
+
 // GeolocationClient is the interface for querying GeoProbe accounts from the
 // onchain Geolocation program.
 type GeolocationClient interface {
 	GetGeoProbes(ctx context.Context) ([]geolocation.GeoProbe, error)
+	GetGeoProbeKeys(ctx context.Context) ([]solana.PublicKey, error)
 }
 
 // DiscoveryConfig holds configuration for the probe discovery loop.
@@ -28,7 +35,8 @@ type DiscoveryConfig struct {
 }
 
 // Discovery periodically queries onchain GeoProbe accounts and sends updated
-// probe lists to the Coordinator via ProbeUpdateCh.
+// probe lists to the Coordinator via ProbeUpdateCh. It uses a lightweight
+// key-set comparison to avoid expensive full fetches when probes haven't changed.
 type Discovery struct {
 	log           *slog.Logger
 	client        GeolocationClient
@@ -36,6 +44,9 @@ type Discovery struct {
 	initialProbes []ProbeAddress
 	probeUpdateCh chan<- []ProbeAddress
 	interval      time.Duration
+
+	cachedKeys map[solana.PublicKey]struct{}
+	tickCount  uint64
 }
 
 // NewDiscovery creates a new Discovery instance.
@@ -92,6 +103,23 @@ func (d *Discovery) Run(ctx context.Context) error {
 }
 
 func (d *Discovery) discover(ctx context.Context) {
+	d.tickCount++
+	forceFullRefresh := d.cachedKeys == nil || d.tickCount%fullRefreshEvery == 0
+
+	// On non-forced ticks, do a lightweight key-set check first.
+	if !forceFullRefresh {
+		keys, err := d.client.GetGeoProbeKeys(ctx)
+		if err != nil {
+			d.log.Warn("Failed to fetch GeoProbe keys, falling back to full fetch", "error", err)
+			// Fall through to full fetch below.
+		} else if pubkeySetsEqual(d.cachedKeys, pubkeySet(keys)) {
+			d.log.Debug("Geoprobe key set unchanged, skipping full fetch",
+				"keyCount", len(keys),
+			)
+			return
+		}
+	}
+
 	onchainProbes, err := d.client.GetGeoProbes(ctx)
 	if err != nil {
 		d.log.Warn("Failed to fetch onchain GeoProbe accounts", "error", err)
@@ -126,6 +154,16 @@ func (d *Discovery) discover(ctx context.Context) {
 	default:
 		d.log.Debug("Probe update channel full, skipping update")
 	}
+
+	// Update key cache after a successful full fetch.
+	keys, err := d.client.GetGeoProbeKeys(ctx)
+	if err != nil {
+		d.log.Warn("Failed to update key cache after full fetch", "error", err)
+		// Clear cache so the next tick does a full fetch again.
+		d.cachedKeys = nil
+		return
+	}
+	d.cachedKeys = pubkeySet(keys)
 }
 
 // GeoProbeToAddress converts a GeoProbe account to a ProbeAddress.
@@ -169,4 +207,24 @@ func mergeProbes(a, b []ProbeAddress) []ProbeAddress {
 		}
 	}
 	return merged
+}
+
+func pubkeySet(keys []solana.PublicKey) map[solana.PublicKey]struct{} {
+	s := make(map[solana.PublicKey]struct{}, len(keys))
+	for _, k := range keys {
+		s[k] = struct{}{}
+	}
+	return s
+}
+
+func pubkeySetsEqual(a, b map[solana.PublicKey]struct{}) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k := range a {
+		if _, ok := b[k]; !ok {
+			return false
+		}
+	}
+	return true
 }

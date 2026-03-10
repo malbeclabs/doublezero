@@ -111,3 +111,36 @@ func (c *Client) GetGeoProbes(ctx context.Context) ([]GeoProbe, error) {
 	}
 	return probes, nil
 }
+
+// GetGeoProbeKeys returns the public keys of all GeoProbe accounts without
+// fetching full account data. Uses DataSlice to minimize bandwidth, making it
+// suitable for polling-based change detection.
+func (c *Client) GetGeoProbeKeys(ctx context.Context) ([]solana.PublicKey, error) {
+	zero := uint64(0)
+	one := uint64(1)
+	opts := &solanarpc.GetProgramAccountsOpts{
+		Filters: []solanarpc.RPCFilter{
+			{
+				Memcmp: &solanarpc.RPCFilterMemcmp{
+					Offset: 0,
+					Bytes:  solana.Base58([]byte{byte(AccountTypeGeoProbe)}),
+				},
+			},
+		},
+		DataSlice: &solanarpc.DataSlice{
+			Offset: &zero,
+			Length: &one,
+		},
+	}
+
+	accounts, err := c.rpc.GetProgramAccountsWithOpts(ctx, c.programID, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get program account keys: %w", err)
+	}
+
+	keys := make([]solana.PublicKey, len(accounts))
+	for i, acct := range accounts {
+		keys[i] = acct.Pubkey
+	}
+	return keys, nil
+}

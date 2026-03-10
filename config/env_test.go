@@ -31,6 +31,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				TelemetryFlowIngestURL:        config.MainnetTelemetryFlowIngestURL,
 				TelemetryStateIngestURL:       config.MainnetTelemetryStateIngestURL,
 				TelemetryGNMITunnelServerAddr: config.MainnetTelemetryGNMITunnelServerAddr,
+				GeolocationProgramID:          solana.MustPublicKeyFromBase58(config.MainnetGeolocationProgramID),
 			},
 		},
 		{
@@ -48,6 +49,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				TelemetryFlowIngestURL:        config.MainnetTelemetryFlowIngestURL,
 				TelemetryStateIngestURL:       config.MainnetTelemetryStateIngestURL,
 				TelemetryGNMITunnelServerAddr: config.MainnetTelemetryGNMITunnelServerAddr,
+				GeolocationProgramID:          solana.MustPublicKeyFromBase58(config.MainnetGeolocationProgramID),
 			},
 		},
 		{
@@ -64,6 +66,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				TelemetryFlowIngestURL:        config.TestnetTelemetryFlowIngestURL,
 				TelemetryStateIngestURL:       config.TestnetTelemetryStateIngestURL,
 				TelemetryGNMITunnelServerAddr: config.TestnetTelemetryGNMITunnelServerAddr,
+				GeolocationProgramID:          solana.MustPublicKeyFromBase58(config.TestnetGeolocationProgramID),
 			},
 		},
 		{
@@ -80,6 +83,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				TelemetryFlowIngestURL:        config.DevnetTelemetryFlowIngestURL,
 				TelemetryStateIngestURL:       config.DevnetTelemetryStateIngestURL,
 				TelemetryGNMITunnelServerAddr: config.DevnetTelemetryGNMITunnelServerAddr,
+				GeolocationProgramID:          solana.MustPublicKeyFromBase58(config.DevnetGeolocationProgramID),
 			},
 		},
 		{

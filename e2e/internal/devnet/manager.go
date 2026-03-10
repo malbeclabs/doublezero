@@ -20,6 +20,7 @@ import (
 const (
 	serviceabilityProgramContainerKeypairPath = "/etc/doublezero/manager/dz-program-keypair.json"
 	telemetryProgramContainerKeypairPath      = "/etc/doublezero/manager/dz-telemetry-program-keypair.json"
+	geolocationProgramContainerKeypairPath    = "/etc/doublezero/manager/dz-geolocation-program-keypair.json"
 )
 
 type ManagerSpec struct {
@@ -27,6 +28,7 @@ type ManagerSpec struct {
 	ManagerKeypairPath               string
 	ServiceabilityProgramKeypairPath string
 	TelemetryProgramKeypairPath      string
+	GeolocationProgramKeypairPath    string
 
 	// ServiceabilityProgramID, when set, overrides the program ID that would
 	// normally be derived from the ServiceabilityProgramKeypairPath. This is
@@ -78,6 +80,16 @@ func (s *ManagerSpec) Validate() error {
 		return fmt.Errorf("telemetry program keypair path must be an absolute path: %s", s.TelemetryProgramKeypairPath)
 	}
 
+	// Check that the geolocation program keypair file exists and is an absolute path (if provided).
+	if s.GeolocationProgramKeypairPath != "" {
+		if _, err := os.Stat(s.GeolocationProgramKeypairPath); os.IsNotExist(err) {
+			return fmt.Errorf("geolocation program keypair path does not exist: %s", s.GeolocationProgramKeypairPath)
+		}
+		if !filepath.IsAbs(s.GeolocationProgramKeypairPath) {
+			return fmt.Errorf("geolocation program keypair path must be an absolute path: %s", s.GeolocationProgramKeypairPath)
+		}
+	}
+
 	return nil
 }
 
@@ -89,6 +101,7 @@ type Manager struct {
 	Pubkey                  string
 	ServiceabilityProgramID string
 	TelemetryProgramID      string
+	GeolocationProgramID    string
 }
 
 // dockerContainerName returns the name of the deterministic manager container based on the
@@ -210,6 +223,15 @@ func (m *Manager) Start(ctx context.Context) error {
 		},
 		Labels: m.dn.labels,
 	}
+
+	if m.dn.Spec.Manager.GeolocationProgramKeypairPath != "" {
+		req.Env["DZ_GEOLOCATION_PROGRAM_KEYPAIR_PATH"] = geolocationProgramContainerKeypairPath
+		req.Files = append(req.Files, testcontainers.ContainerFile{
+			HostFilePath:      m.dn.Spec.Manager.GeolocationProgramKeypairPath,
+			ContainerFilePath: geolocationProgramContainerKeypairPath,
+		})
+	}
+
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,
@@ -257,6 +279,15 @@ func (m *Manager) setState(ctx context.Context, containerID string) error {
 		return fmt.Errorf("failed to get telemetry program pubkey: %v", err)
 	}
 	m.TelemetryProgramID = strings.TrimSpace(string(output))
+
+	// Get the geolocation program ID from the geolocation program keypair (if configured).
+	if m.dn.Spec.Manager.GeolocationProgramKeypairPath != "" {
+		output, err = m.Exec(ctx, []string{"solana", "address", "-k", geolocationProgramContainerKeypairPath}, docker.NoPrintOnError())
+		if err != nil {
+			return fmt.Errorf("failed to get geolocation program pubkey: %v", err)
+		}
+		m.GeolocationProgramID = strings.TrimSpace(string(output))
+	}
 
 	return nil
 }

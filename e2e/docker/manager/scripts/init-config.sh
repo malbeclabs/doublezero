@@ -20,6 +20,13 @@ serviceability_program_id="$(solana address -k $DZ_SERVICEABILITY_PROGRAM_KEYPAI
 echo "==> Serviceability program ID: $serviceability_program_id"
 echo
 
+# Get the geolocation program ID from the geolocation program keypair if it exists.
+if [ -n "${DZ_GEOLOCATION_PROGRAM_KEYPAIR_PATH:-}" ]; then
+  geolocation_program_id="$(solana address -k $DZ_GEOLOCATION_PROGRAM_KEYPAIR_PATH)"
+  echo "==> Geolocation program ID: $geolocation_program_id"
+  echo
+fi
+
 # Initialize doublezero CLI config.
 doublezero config set \
   --keypair /root/.config/doublezero/id.json \
@@ -29,6 +36,11 @@ doublezero config set \
 echo "==> Config:"
 cat /root/.config/doublezero/cli/config.yml
 echo
+
+# Configure geolocation program ID if available.
+if [ -n "${geolocation_program_id:-}" ]; then
+  doublezero-geolocation config set --geo-program-id $geolocation_program_id
+fi
 
 # Configure the solana CLI.
 echo "==> Configuring solana CLI"

@@ -93,6 +93,7 @@ RUN --mount=type=cache,id=cargo-${CARGO_LOCK_HASH},target=/cargo \
     cp /target/release/doublezero ${BIN_DIR}/ && \
     cp /target/release/doublezero-activator ${BIN_DIR}/ && \
     cp /target/release/doublezero-admin ${BIN_DIR}/ && \
+    cp /target/release/doublezero-geolocation ${BIN_DIR}/ && \
     cp /target/release/fork-accounts ${BIN_DIR}/
 
 # Force COPY in later stages to always copy the binaries, even if they appear to be the same.
@@ -169,6 +170,13 @@ RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=
     cd smartcontract/programs/doublezero-telemetry && \
     cargo build-sbf --features localnet && \
     cp /target-sbf/deploy/doublezero_telemetry.so ${BIN_DIR}/doublezero_telemetry.so
+
+RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
+    --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
+    --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
+    cd smartcontract/programs/doublezero-geolocation && \
+    cargo build-sbf && \
+    cp /target-sbf/deploy/doublezero_geolocation.so ${BIN_DIR}/doublezero_geolocation.so
 
 # Force COPY in later stages to always copy the programs, even if they appear to be the same.
 ARG CACHE_BUSTER=1

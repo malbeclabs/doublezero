@@ -16,7 +16,7 @@ func NewDeployProgramsCmd() *DeployProgramsCmd {
 func (c *DeployProgramsCmd) Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "deploy-programs",
-		Short: "Deploy the Serviceability and Telemetry programs to the ledger",
+		Short: "Deploy the Serviceability, Telemetry, and Geolocation programs to the ledger",
 		RunE: withDevnet(func(ctx context.Context, dn *LocalDevnet, cmd *cobra.Command, args []string) error {
 			_, err := dn.DefaultNetwork.CreateIfNotExists(ctx)
 			if err != nil {
@@ -33,12 +33,19 @@ func (c *DeployProgramsCmd) Command() *cobra.Command {
 				return fmt.Errorf("failed to start manager: %w", err)
 			}
 
-			err = dn.DeployServiceabilityProgram(ctx)
-			if err != nil {
+			if err := dn.DeployServiceabilityProgram(ctx); err != nil {
 				return fmt.Errorf("failed to deploy serviceability program: %w", err)
 			}
 
-			return err
+			if err := dn.DeployTelemetryProgram(ctx); err != nil {
+				return fmt.Errorf("failed to deploy telemetry program: %w", err)
+			}
+
+			if err := dn.DeployGeolocationProgram(ctx); err != nil {
+				return fmt.Errorf("failed to deploy geolocation program: %w", err)
+			}
+
+			return nil
 		}),
 	}
 

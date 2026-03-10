@@ -623,6 +623,9 @@ func (d *Device) Start(ctx context.Context) error {
 	if spec.Telemetry.Verbose {
 		telemetryCommandArgs = append(telemetryCommandArgs, "-verbose")
 	}
+	if d.dn.Manager.GeolocationProgramID != "" {
+		telemetryCommandArgs = append(telemetryCommandArgs, "-geolocation-program-id", d.dn.Manager.GeolocationProgramID)
+	}
 
 	// Render the device config from go template.
 	var configContents bytes.Buffer
@@ -767,6 +770,19 @@ write memory
 			return fmt.Errorf("failed to configure InfluxDB telemetry: %w", err)
 		}
 		d.log.Debug("--> InfluxDB telemetry configured")
+	}
+
+	// Open firewall ports for geoprobe TWAMP and offset delivery if geolocation is enabled.
+	if d.dn.Manager.GeolocationProgramID != "" {
+		for _, port := range []string{"8923", "8924", "8925"} {
+			_, err = docker.Exec(ctx, d.dn.dockerClient, containerID, []string{
+				"iptables", "-I", "EOS_INPUT", "1", "-p", "udp", "--dport", port, "-j", "ACCEPT",
+			})
+			if err != nil {
+				return fmt.Errorf("failed to add iptables rule for geoprobe port %s: %w", port, err)
+			}
+		}
+		d.log.Debug("--> Geoprobe firewall ports opened (8923-8925/udp)")
 	}
 
 	// Set the component's state.

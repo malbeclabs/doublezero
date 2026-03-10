@@ -14,7 +14,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     make -C ./controlplane/agent build && \
     cp controlplane/agent/bin/doublezero-agent /doublezero/bin/doublezero-agent && \
     make -C ./controlplane/telemetry build && \
-    cp controlplane/telemetry/bin/doublezero-telemetry /doublezero/bin/doublezero-telemetry
+    cp controlplane/telemetry/bin/doublezero-telemetry /doublezero/bin/doublezero-telemetry && \
+    cp controlplane/telemetry/bin/doublezero-geoprobe-agent /doublezero/bin/doublezero-geoprobe-agent
 
 # Build twamp binaries (golang)
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -33,6 +34,7 @@ ARG DOCKERFILE_DIR
 # Copy the control plane agent binary from the builder stage
 COPY --from=builder /doublezero/bin/doublezero-agent /mnt/flash/.
 COPY --from=builder /doublezero/bin/doublezero-telemetry /mnt/flash/.
+COPY --from=builder /doublezero/bin/doublezero-geoprobe-agent /mnt/flash/.
 
 # Copy the twamp reflector/sender binaries from the builder stage
 COPY --from=builder /doublezero/bin/twamp-reflector /usr/local/bin/.

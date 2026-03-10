@@ -29,7 +29,12 @@ use doublezero_serviceability::{
     },
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
+use solana_sdk::{
+    instruction::{AccountMeta, InstructionError},
+    pubkey::Pubkey,
+    signer::Signer,
+    transaction::TransactionError,
+};
 use std::net::Ipv4Addr;
 
 mod test_helpers;
@@ -1169,10 +1174,17 @@ async fn test_subscribe_onchain_feature_flag_disabled_fails() {
     )
     .await;
 
-    assert!(
-        result.is_err(),
-        "Should fail with FeatureNotEnabled when flag is not set"
-    );
+    // FeatureNotEnabled = Custom(84)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(84),
+        ))) => {}
+        _ => panic!(
+            "Expected FeatureNotEnabled error (Custom(84)), got {:?}",
+            result
+        ),
+    }
 }
 
 /// Second publisher subscribe with onchain allocation should not reallocate dz_ip.

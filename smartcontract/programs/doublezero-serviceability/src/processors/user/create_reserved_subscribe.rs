@@ -10,7 +10,6 @@ use crate::{
         globalstate::GlobalState,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         reservation::Reservation,
-        tenant::Tenant,
         user::*,
     },
 };
@@ -62,7 +61,7 @@ impl fmt::Debug for CreateReservedSubscribeUserArgs {
 /// and subscribe them to a multicast group.
 ///
 /// Account layout:
-///   [user, device, mgroup, reservation, tenant, globalstate, [resource_ext...], payer, system]
+///   [user, device, mgroup, reservation, globalstate, [resource_ext...], payer, system]
 ///
 /// No access pass is required — the payer must be the reservation authority or on the foundation allowlist.
 /// Multicast group allowlist checks are skipped since the payer is already authorized.
@@ -77,7 +76,6 @@ pub fn process_create_reserved_subscribe_user(
     let device_account = next_account_info(accounts_iter)?;
     let mgroup_account = next_account_info(accounts_iter)?;
     let reservation_account = next_account_info(accounts_iter)?;
-    let tenant_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
     // Optional: ResourceExtension accounts for on-chain allocation
@@ -143,18 +141,6 @@ pub fn process_create_reserved_subscribe_user(
         pda = None::<&Pubkey>,
         "Reservation"
     );
-
-    // Validate tenant
-    validate_program_account!(
-        tenant_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "Tenant"
-    );
-    if tenant_account.data.borrow()[0] != AccountType::Tenant as u8 {
-        return Err(DoubleZeroError::InvalidAccountType.into());
-    }
 
     // Validate globalstate
     validate_program_account!(
@@ -245,14 +231,6 @@ pub fn process_create_reserved_subscribe_user(
     device.users_count += 1;
     device.multicast_users_count += 1;
 
-    // Update tenant reference count
-    let mut tenant = Tenant::try_from(tenant_account)?;
-    tenant.reference_count = tenant
-        .reference_count
-        .checked_add(1)
-        .ok_or(DoubleZeroError::InvalidIndex)?;
-    try_acc_write(&tenant, tenant_account, payer_account, accounts)?;
-
     // Validate user PDA
     let (expected_pda, bump_seed) = get_user_pda(program_id, &value.client_ip, value.user_type);
     assert_eq!(user_account.key, &expected_pda, "Invalid User PDA");
@@ -263,7 +241,7 @@ pub fn process_create_reserved_subscribe_user(
         owner: *payer_account.key,
         bump_seed,
         index: 0,
-        tenant_pk: *tenant_account.key,
+        tenant_pk: Pubkey::default(),
         user_type: value.user_type,
         device_pk: *device_account.key,
         cyoa_type: value.cyoa_type,

@@ -8,7 +8,6 @@ use doublezero_serviceability::{
         globalstate::setauthority::SetAuthorityArgs,
         multicastgroup::{activate::MulticastGroupActivateArgs, create::MulticastGroupCreateArgs},
         reservation::{close::CloseReservationArgs, reserve::ReserveConnectionArgs},
-        tenant::create::TenantCreateArgs,
         user::create_reserved_subscribe::CreateReservedSubscribeUserArgs,
         *,
     },
@@ -836,41 +835,6 @@ async fn get_multicast_group(
     }
 }
 
-/// Setup a tenant and return its pubkey.
-async fn setup_tenant(
-    banks_client: &mut BanksClient,
-    payer: &solana_sdk::signature::Keypair,
-    program_id: Pubkey,
-    globalstate_pubkey: Pubkey,
-    code: &str,
-) -> Pubkey {
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    let (tenant_pubkey, _) = get_tenant_pda(&program_id, code);
-    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
-            code: code.to_string(),
-            administrator: payer.pubkey(),
-            token_account: None,
-            metro_routing: true,
-            route_liveness: false,
-        }),
-        vec![
-            AccountMeta::new(tenant_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(vrf_ids_pda, false),
-        ],
-        payer,
-    )
-    .await;
-
-    tenant_pubkey
-}
-
 /// Create and activate a multicast group. Returns its pubkey.
 async fn setup_multicast_group(
     banks_client: &mut BanksClient,
@@ -924,15 +888,6 @@ async fn test_create_reserved_subscribe_user() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
         setup_device_for_reservations(128).await;
 
-    let tenant_pubkey = setup_tenant(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        "acme",
-    )
-    .await;
-
     let mgroup_pubkey =
         setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
 
@@ -976,7 +931,6 @@ async fn test_create_reserved_subscribe_user() {
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(reservation_pubkey, false),
-            AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
         ],
         &payer,
@@ -1005,7 +959,7 @@ async fn test_create_reserved_subscribe_user() {
     assert_eq!(user.client_ip, user_ip);
     assert_eq!(user.user_type, UserType::Multicast);
     assert_eq!(user.device_pk, device_pubkey);
-    assert_eq!(user.tenant_pk, tenant_pubkey);
+    assert_eq!(user.tenant_pk, Pubkey::default());
     assert_eq!(user.status, UserStatus::Pending);
     assert_eq!(user.owner, payer.pubkey());
     assert_eq!(user.subscribers, vec![mgroup_pubkey]);
@@ -1023,15 +977,6 @@ async fn test_create_reserved_subscribe_user() {
 async fn test_create_reserved_subscribe_user_as_publisher() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
         setup_device_for_reservations(128).await;
-
-    let tenant_pubkey = setup_tenant(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        "acme",
-    )
-    .await;
 
     let mgroup_pubkey =
         setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
@@ -1075,7 +1020,6 @@ async fn test_create_reserved_subscribe_user_as_publisher() {
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(reservation_pubkey, false),
-            AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
         ],
         &payer,
@@ -1099,15 +1043,6 @@ async fn test_create_reserved_subscribe_user_as_publisher() {
 async fn test_create_reserved_subscribe_user_exhausted() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
         setup_device_for_reservations(128).await;
-
-    let tenant_pubkey = setup_tenant(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        "acme",
-    )
-    .await;
 
     let mgroup_pubkey =
         setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
@@ -1152,7 +1087,6 @@ async fn test_create_reserved_subscribe_user_exhausted() {
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(reservation_pubkey, false),
-            AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
         ],
         &payer,
@@ -1190,7 +1124,6 @@ async fn test_create_reserved_subscribe_user_exhausted() {
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(reservation_pubkey, false),
-            AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
         ],
         &payer,
@@ -1210,15 +1143,6 @@ async fn test_create_reserved_subscribe_user_exhausted() {
 async fn test_create_reserved_subscribe_user_wrong_owner() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
         setup_device_for_reservations(128).await;
-
-    let tenant_pubkey = setup_tenant(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        "acme",
-    )
-    .await;
 
     let mgroup_pubkey =
         setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
@@ -1280,7 +1204,6 @@ async fn test_create_reserved_subscribe_user_wrong_owner() {
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(reservation_pubkey, false),
-            AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
         ],
         &other_user,
@@ -1300,15 +1223,6 @@ async fn test_create_reserved_subscribe_user_wrong_owner() {
 async fn test_create_reserved_subscribe_user_wrong_device() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
         setup_device_for_reservations(128).await;
-
-    let tenant_pubkey = setup_tenant(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        "acme",
-    )
-    .await;
 
     let mgroup_pubkey =
         setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
@@ -1409,7 +1323,6 @@ async fn test_create_reserved_subscribe_user_wrong_device() {
             AccountMeta::new(device2_pubkey, false),
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(reservation_pubkey, false),
-            AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
         ],
         &payer,
@@ -1430,15 +1343,6 @@ async fn test_create_reserved_subscribe_user_wrong_device() {
 async fn test_create_reserved_subscribe_user_unauthorized() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
         setup_device_for_reservations(128).await;
-
-    let tenant_pubkey = setup_tenant(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        "acme",
-    )
-    .await;
 
     let mgroup_pubkey =
         setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
@@ -1492,7 +1396,6 @@ async fn test_create_reserved_subscribe_user_unauthorized() {
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(reservation_pubkey, false),
-            AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
         ],
         &unauthorized,
@@ -1512,15 +1415,6 @@ async fn test_create_reserved_subscribe_user_unauthorized() {
 async fn test_create_reserved_subscribe_user_multiple_from_same_reservation() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
         setup_device_for_reservations(128).await;
-
-    let tenant_pubkey = setup_tenant(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        "acme",
-    )
-    .await;
 
     let mgroup_pubkey =
         setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
@@ -1566,7 +1460,6 @@ async fn test_create_reserved_subscribe_user_multiple_from_same_reservation() {
                 AccountMeta::new(device_pubkey, false),
                 AccountMeta::new(mgroup_pubkey, false),
                 AccountMeta::new(reservation_pubkey, false),
-                AccountMeta::new(tenant_pubkey, false),
                 AccountMeta::new_readonly(globalstate_pubkey, false),
             ],
             &payer,
@@ -1597,15 +1490,6 @@ async fn test_create_reserved_subscribe_user_multiple_from_same_reservation() {
 async fn test_create_reserved_subscribe_user_rejects_non_multicast() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
         setup_device_for_reservations(128).await;
-
-    let tenant_pubkey = setup_tenant(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        "acme",
-    )
-    .await;
 
     let mgroup_pubkey =
         setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
@@ -1649,7 +1533,6 @@ async fn test_create_reserved_subscribe_user_rejects_non_multicast() {
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(reservation_pubkey, false),
-            AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
         ],
         &payer,

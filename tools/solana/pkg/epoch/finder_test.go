@@ -264,6 +264,143 @@ func TestEpochFinder(t *testing.T) {
 
 }
 
+func TestEpochFinder_StaleGetSlotCausesWrongEpoch(t *testing.T) {
+	// Reproduces the issue observed on 2026-03-10 where the epoch finder returned
+	// epoch 192 for ~51 minutes after epoch 193 started, because GetSlot(finalized)
+	// was returning a stale slot still in epoch 192.
+	//
+	// The epoch finder computes: approxSlot = currentSlot - (now-target)/400ms
+	// If currentSlot is stale (still in the old epoch), approxSlot will also be
+	// in the old epoch, even for post-boundary target timestamps.
+
+	sched := &solanarpc.GetEpochScheduleResult{
+		FirstNormalEpoch: 14,
+		FirstNormalSlot:  524_256,
+		SlotsPerEpoch:    432_000,
+		Warmup:           true,
+	}
+
+	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	// Epoch 193 starts at slot: (193-14)*432000 + 524256 = 77,852,256
+	epoch193StartSlot := uint64((193-14)*432_000 + 524_256)
+
+	t.Run("stale GetSlot returns wrong epoch for post-boundary records", func(t *testing.T) {
+		t.Parallel()
+
+		// Simulate: real time is 10 minutes after epoch boundary, but GetSlot
+		// returns a slot from 1 minute BEFORE the boundary (stale by 11 minutes).
+		staleSlot := epoch193StartSlot - 150 // ~1 minute before boundary at 400ms/slot
+
+		mockNow := time.Unix(2_000_000_000, 0)
+		// Target is a record from 2 minutes ago (well after the epoch boundary)
+		target := mockNow.Add(-2 * time.Minute)
+
+		client := &mockSolanaRPCClient{
+			GetSlotFunc: func(context.Context, solanarpc.CommitmentType) (uint64, error) {
+				return staleSlot, nil // stale!
+			},
+			GetEpochScheduleFunc: func(context.Context) (*solanarpc.GetEpochScheduleResult, error) {
+				return sched, nil
+			},
+		}
+
+		f, err := epoch.NewFinderWithNowFn(log, client, func() time.Time { return mockNow })
+		require.NoError(t, err)
+
+		got, err := f.ApproximateAtTime(context.Background(), target)
+		require.NoError(t, err)
+
+		// BUG: With a stale slot, the epoch finder computes:
+		//   slotsAgo = 2min / 400ms = 300
+		//   approxSlot = (epoch193Start - 150) - 300 = epoch193Start - 450
+		//   epoch = 192 (WRONG — should be 193 for a post-boundary record)
+		//
+		// This is the root cause: if GetSlot returns a stale finalized slot,
+		// the epoch finder returns the wrong epoch for all records.
+		//
+		// We assert the CURRENT (buggy) behavior to document it.
+		// The real fix is to use GetEpochInfo instead of approximating from GetSlot.
+		require.Equal(t, uint64(192), got, "stale GetSlot causes epoch finder to return old epoch")
+	})
+
+	t.Run("fresh GetSlot returns correct epoch for post-boundary records", func(t *testing.T) {
+		t.Parallel()
+
+		// Same scenario but GetSlot returns the real current slot (10 min into epoch 193)
+		freshSlot := epoch193StartSlot + 1500 // ~10 minutes into epoch 193
+
+		mockNow := time.Unix(2_000_000_000, 0)
+		target := mockNow.Add(-2 * time.Minute)
+
+		client := &mockSolanaRPCClient{
+			GetSlotFunc: func(context.Context, solanarpc.CommitmentType) (uint64, error) {
+				return freshSlot, nil
+			},
+			GetEpochScheduleFunc: func(context.Context) (*solanarpc.GetEpochScheduleResult, error) {
+				return sched, nil
+			},
+		}
+
+		f, err := epoch.NewFinderWithNowFn(log, client, func() time.Time { return mockNow })
+		require.NoError(t, err)
+
+		got, err := f.ApproximateAtTime(context.Background(), target)
+		require.NoError(t, err)
+
+		require.Equal(t, uint64(193), got, "fresh GetSlot gives correct epoch")
+	})
+
+	t.Run("cache amplifies stale GetSlot across minutes", func(t *testing.T) {
+		t.Parallel()
+
+		// The epoch finder caches results with 30-minute TTL per minute-bucket.
+		// If GetSlot is briefly stale (say, for 1 minute), the cached wrong epoch
+		// persists for 30 minutes for that minute-bucket.
+
+		callCount := 0
+		staleSlot := epoch193StartSlot - 150
+		freshSlot := epoch193StartSlot + 1500
+
+		mockNow := time.Unix(2_000_000_000, 0)
+
+		client := &mockSolanaRPCClient{
+			GetSlotFunc: func(context.Context, solanarpc.CommitmentType) (uint64, error) {
+				callCount++
+				if callCount == 1 {
+					return staleSlot, nil // first call is stale
+				}
+				return freshSlot, nil // subsequent calls are fresh
+			},
+			GetEpochScheduleFunc: func(context.Context) (*solanarpc.GetEpochScheduleResult, error) {
+				return sched, nil
+			},
+		}
+
+		f, err := epoch.NewFinderWithNowFn(log, client, func() time.Time { return mockNow })
+		require.NoError(t, err)
+
+		// First call: stale GetSlot → caches epoch 192 for this minute
+		target1 := mockNow.Add(-2 * time.Minute)
+		got1, err := f.ApproximateAtTime(context.Background(), target1)
+		require.NoError(t, err)
+		require.Equal(t, uint64(192), got1, "first call with stale slot returns 192")
+
+		// Second call with same minute-bucket: cache hit, still returns 192
+		// even though GetSlot would now return a fresh slot
+		target2 := mockNow.Add(-2*time.Minute - 10*time.Second)
+		got2, err := f.ApproximateAtTime(context.Background(), target2)
+		require.NoError(t, err)
+		require.Equal(t, uint64(192), got2, "cached value persists even after GetSlot is fresh")
+
+		// Third call with a DIFFERENT minute-bucket: cache miss, fresh GetSlot
+		target3 := mockNow.Add(-3 * time.Minute)
+		got3, err := f.ApproximateAtTime(context.Background(), target3)
+		require.NoError(t, err)
+		require.Equal(t, uint64(193), got3, "different minute gets fresh computation")
+	})
+}
+
 func TestSlotTimeFinder(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 

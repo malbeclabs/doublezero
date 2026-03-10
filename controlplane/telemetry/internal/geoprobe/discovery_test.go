@@ -423,7 +423,7 @@ func TestDiscovery_CachingSkipsFullFetch(t *testing.T) {
 
 	ctx := context.Background()
 
-	// First tick: always full fetch (cachedKeys is nil).
+	// First tick (tickCount=0): 0 % fullRefreshEvery == 0, so full fetch.
 	d.discover(ctx)
 	assert.Equal(t, int32(1), mock.probeCalls.Load())
 	// GetGeoProbeKeys called once after the full fetch to populate cache.
@@ -518,18 +518,18 @@ func TestDiscovery_ForcedFullRefresh(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Tick 1: full fetch (cachedKeys nil).
+	// Tick 0: full fetch (0 % fullRefreshEvery == 0).
 	d.discover(ctx)
 	<-ch
 	assert.Equal(t, int32(1), mock.probeCalls.Load())
 
-	// Ticks 2 through fullRefreshEvery-1: should skip (unchanged keys).
-	for i := 2; i < fullRefreshEvery; i++ {
+	// Ticks 1 through fullRefreshEvery-1: should skip (unchanged keys).
+	for i := 1; i < fullRefreshEvery; i++ {
 		d.discover(ctx)
 	}
 	assert.Equal(t, int32(1), mock.probeCalls.Load(), "should not call GetGeoProbes on cached ticks")
 
-	// Tick fullRefreshEvery: forced full refresh.
+	// Tick fullRefreshEvery: forced full refresh (tickCount % fullRefreshEvery == 0 again).
 	d.discover(ctx)
 	<-ch
 	assert.Equal(t, int32(2), mock.probeCalls.Load(), "should force full fetch on Nth tick")
@@ -617,9 +617,9 @@ func TestDiscovery_KeyCacheClearedOnPostFetchKeyError(t *testing.T) {
 	// Make the post-fetch key call fail.
 	mock.keysErr = errors.New("network error")
 
-	// Tick at fullRefreshEvery: forced full fetch, but post-fetch key call fails.
-	// Advance tick counter to trigger forced refresh.
-	d.tickCount = fullRefreshEvery - 1
+	// Force a full-refresh tick by setting tickCount to a multiple of fullRefreshEvery
+	// (modulo check happens before increment).
+	d.tickCount = fullRefreshEvery
 	d.discover(ctx)
 	<-ch
 

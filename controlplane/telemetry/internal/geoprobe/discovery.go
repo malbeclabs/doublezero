@@ -103,8 +103,8 @@ func (d *Discovery) Run(ctx context.Context) error {
 }
 
 func (d *Discovery) discover(ctx context.Context) {
+	forceFullRefresh := d.tickCount%fullRefreshEvery == 0
 	d.tickCount++
-	forceFullRefresh := d.cachedKeys == nil || d.tickCount%fullRefreshEvery == 0
 
 	// On non-forced ticks, do a lightweight key-set check first.
 	if !forceFullRefresh {

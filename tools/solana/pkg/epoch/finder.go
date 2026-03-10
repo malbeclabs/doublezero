@@ -19,6 +19,7 @@ const (
 
 type SolanaRPCClient interface {
 	GetSlot(ctx context.Context, commitment solanarpc.CommitmentType) (out uint64, err error)
+	GetEpochInfo(ctx context.Context, commitment solanarpc.CommitmentType) (out *solanarpc.GetEpochInfoResult, err error)
 	GetEpochSchedule(ctx context.Context) (out *solanarpc.GetEpochScheduleResult, err error)
 	GetSignaturesForAddressWithOpts(ctx context.Context, account solana.PublicKey, opts *solanarpc.GetSignaturesForAddressOpts) ([]*solanarpc.TransactionSignature, error)
 }
@@ -73,34 +74,42 @@ func (e *epochFinder) ApproximateAtTime(ctx context.Context, target time.Time) (
 		return val.(uint64), nil
 	}
 
-	sched := e.sched.Load()
-	if sched == nil {
-		val, err := e.getEpochScheduleWithRetry(ctx)
-		if err != nil {
-			return 0, fmt.Errorf("failed to get epoch schedule: %w", err)
-		}
-		e.sched.Store(val)
-		sched = val
-	}
-
-	currentSlot, err := e.getSlotWithRetry(ctx)
+	// Use GetEpochInfo for the authoritative current epoch and slot. This avoids
+	// the failure mode where GetSlot returns a stale finalized slot from the previous
+	// epoch, causing all records to be assigned the wrong epoch.
+	epochInfo, err := e.getEpochInfoWithRetry(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get current slot: %w", err)
+		return 0, fmt.Errorf("failed to get epoch info: %w", err)
 	}
 
-	slotsAgo := now.Sub(target) / ApproximateSlotDuration
+	slotsAgo := uint64(now.Sub(target) / ApproximateSlotDuration)
 
-	if uint64(slotsAgo) > currentSlot {
-		return 0, fmt.Errorf("target time %v is too far in the past", target)
+	var ep uint64
+	if slotsAgo <= epochInfo.SlotIndex {
+		// Target is within the current epoch — use the authoritative epoch directly.
+		ep = epochInfo.Epoch
+	} else {
+		// Target is before the current epoch — fall back to slot math.
+		sched := e.sched.Load()
+		if sched == nil {
+			val, err := e.getEpochScheduleWithRetry(ctx)
+			if err != nil {
+				return 0, fmt.Errorf("failed to get epoch schedule: %w", err)
+			}
+			e.sched.Store(val)
+			sched = val
+		}
+		if slotsAgo > epochInfo.AbsoluteSlot {
+			return 0, fmt.Errorf("target time %v is too far in the past", target)
+		}
+		approxSlot := epochInfo.AbsoluteSlot - slotsAgo
+		ep = e.getEpochForSlot(approxSlot, sched)
 	}
-	approxSlot := currentSlot - uint64(slotsAgo)
 
-	epoch := e.getEpochForSlot(approxSlot, sched)
-
-	e.cache.SetWithTTL(cacheKey, epoch, 0, 30*time.Minute)
+	e.cache.SetWithTTL(cacheKey, ep, 0, 30*time.Minute)
 	e.cache.Wait()
 
-	return epoch, nil
+	return ep, nil
 }
 
 func (e *epochFinder) getEpochForSlot(slot uint64, sched *solanarpc.GetEpochScheduleResult) uint64 {
@@ -128,23 +137,19 @@ func (e *epochFinder) getEpochForSlot(slot uint64, sched *solanarpc.GetEpochSche
 	return epoch
 }
 
-func (e *epochFinder) getSlotWithRetry(ctx context.Context) (uint64, error) {
+func (e *epochFinder) getEpochInfoWithRetry(ctx context.Context) (*solanarpc.GetEpochInfoResult, error) {
 	attempt := 0
-	slot, err := backoff.Retry(ctx, func() (uint64, error) {
+	info, err := backoff.Retry(ctx, func() (*solanarpc.GetEpochInfoResult, error) {
 		if attempt > 1 {
-			e.log.Warn("Failed to get current slot, retrying", "attempt", attempt)
+			e.log.Warn("Failed to get epoch info, retrying", "attempt", attempt)
 		}
 		attempt++
-		slot, err := e.client.GetSlot(ctx, solanarpc.CommitmentFinalized)
-		if err != nil {
-			return 0, err
-		}
-		return slot, nil
+		return e.client.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
 	}, backoff.WithBackOff(backoff.NewExponentialBackOff()))
 	if err != nil {
-		return 0, fmt.Errorf("failed to get current slot: %w", err)
+		return nil, fmt.Errorf("failed to get epoch info: %w", err)
 	}
-	return slot, nil
+	return info, nil
 }
 
 func (e *epochFinder) getEpochScheduleWithRetry(ctx context.Context) (*solanarpc.GetEpochScheduleResult, error) {

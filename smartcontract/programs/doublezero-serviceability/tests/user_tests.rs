@@ -342,6 +342,7 @@ async fn test_user() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -764,6 +765,7 @@ async fn test_user_ban_requires_pendingban() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1090,6 +1092,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_1_pubkey, false),
@@ -1156,6 +1159,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_2_pubkey, false),
@@ -1412,6 +1416,7 @@ async fn setup_activated_user() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

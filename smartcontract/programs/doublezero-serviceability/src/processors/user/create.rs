@@ -31,18 +31,24 @@ pub struct UserCreateArgs {
     /// When 0, legacy behavior is used (Pending status). When > 0, atomic create+allocate+activate.
     #[incremental(default = 0)]
     pub dz_prefix_count: u8,
+    /// When true, a reservation account is expected after globalstate in the account list.
+    /// The reservation's reserved_count is decremented and device.reserved_seats is adjusted,
+    /// bypassing the normal capacity check.
+    #[incremental(default = false)]
+    pub has_reservation: bool,
 }
 
 impl fmt::Debug for UserCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}",
+            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}, has_reservation: {}",
             self.user_type,
             self.cyoa_type,
             &self.client_ip,
             &self.tunnel_endpoint,
             self.dz_prefix_count,
+            self.has_reservation,
         )
     }
 }
@@ -59,11 +65,16 @@ pub fn process_create_user(
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for on-chain allocation (between globalstate and optional_tenant)
-    // Account layout WITH ResourceExtension (dz_prefix_count > 0):
-    //   [user, device, accesspass, globalstate, user_tunnel_block, multicast_publisher_block, device_tunnel_ids, dz_prefix_0..N, optional_tenant, payer, system]
-    // Account layout WITHOUT (legacy, dz_prefix_count == 0):
-    //   [user, device, accesspass, globalstate, optional_tenant, payer, system]
+    // Optional: reservation account (when has_reservation is true)
+    let reservation_account = if value.has_reservation {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
+
+    // Optional: ResourceExtension accounts for on-chain allocation
+    // Account layout (all optional parts shown):
+    //   [user, device, accesspass, globalstate, [reservation], [resource_ext...], [tenant], payer, system]
     let resource_extension_accounts = if value.dz_prefix_count > 0 {
         let user_tunnel_block_ext = next_account_info(accounts_iter)?;
         let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
@@ -90,7 +101,8 @@ pub fn process_create_user(
     } else {
         0
     };
-    let tenant_account = if accounts.len() >= 7 + resource_ext_accounts {
+    let reservation_accounts = if value.has_reservation { 1 } else { 0 };
+    let tenant_account = if accounts.len() >= 7 + resource_ext_accounts + reservation_accounts {
         Some(next_account_info(accounts_iter)?)
     } else {
         None
@@ -106,6 +118,7 @@ pub fn process_create_user(
         device_account,
         accesspass_account,
         globalstate_account,
+        reservation_account,
         tenant_account,
         payer_account,
     };

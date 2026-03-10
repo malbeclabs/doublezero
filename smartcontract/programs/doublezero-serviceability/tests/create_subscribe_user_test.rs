@@ -427,6 +427,7 @@ async fn test_create_subscribe_user_legacy_publisher() {
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -493,6 +494,7 @@ async fn test_create_subscribe_user_legacy_subscriber() {
             subscriber: true,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -555,6 +557,7 @@ async fn test_create_subscribe_user_legacy_publisher_and_subscriber() {
             subscriber: true,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -641,6 +644,7 @@ async fn test_create_subscribe_user_atomic_publisher() {
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -737,6 +741,7 @@ async fn test_create_subscribe_user_atomic_subscriber() {
             subscriber: true,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -820,6 +825,7 @@ async fn test_create_subscribe_user_atomic_feature_flag_disabled() {
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -915,6 +921,7 @@ async fn test_create_subscribe_user_inactive_mgroup_fails() {
             subscriber: true,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

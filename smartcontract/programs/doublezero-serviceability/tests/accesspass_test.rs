@@ -1050,6 +1050,7 @@ async fn test_user_create_with_matching_tenant_in_allowlist() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1121,6 +1122,7 @@ async fn test_user_create_with_wrong_tenant_in_allowlist() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1182,6 +1184,7 @@ async fn test_user_create_with_empty_tenant_allowlist_rejects_tenant() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
+            has_reservation: false,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

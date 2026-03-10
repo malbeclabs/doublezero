@@ -772,19 +772,6 @@ write memory
 		d.log.Debug("--> InfluxDB telemetry configured")
 	}
 
-	// Open firewall ports for geoprobe TWAMP and offset delivery if geolocation is enabled.
-	if d.dn.Manager.GeolocationProgramID != "" {
-		for _, port := range []string{"8923", "8924", "8925"} {
-			_, err = docker.Exec(ctx, d.dn.dockerClient, containerID, []string{
-				"iptables", "-I", "EOS_INPUT", "1", "-p", "udp", "--dport", port, "-j", "ACCEPT",
-			})
-			if err != nil {
-				return fmt.Errorf("failed to add iptables rule for geoprobe port %s: %w", port, err)
-			}
-		}
-		d.log.Debug("--> Geoprobe firewall ports opened (8923-8925/udp)")
-	}
-
 	// Set the component's state.
 	err = d.setState(ctx, container.GetContainerID())
 	if err != nil {

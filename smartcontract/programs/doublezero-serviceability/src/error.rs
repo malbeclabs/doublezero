@@ -168,12 +168,14 @@ pub enum DoubleZeroError {
     InvalidTunnelEndpoint, // variant 80
     #[error("Max unicast users exceeded")]
     MaxUnicastUsersExceeded, // variant 81
-    #[error("Max multicast users exceeded")]
-    MaxMulticastUsersExceeded, // variant 82
+    #[error("Max multicast subscribers exceeded")]
+    MaxMulticastSubscribersExceeded, // variant 82
     #[error("Interface cannot have both a link and a CYOA or DIA assignment")]
     InterfaceHasEdgeAssignment, // variant 83
     #[error("Feature not enabled")]
     FeatureNotEnabled, // variant 84
+    #[error("Max multicast publishers exceeded")]
+    MaxMulticastPublishersExceeded, // variant 85
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -261,9 +263,10 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::TenantNotInAccessPassAllowlist => ProgramError::Custom(79),
             DoubleZeroError::InvalidTunnelEndpoint => ProgramError::Custom(80),
             DoubleZeroError::MaxUnicastUsersExceeded => ProgramError::Custom(81),
-            DoubleZeroError::MaxMulticastUsersExceeded => ProgramError::Custom(82),
+            DoubleZeroError::MaxMulticastSubscribersExceeded => ProgramError::Custom(82),
             DoubleZeroError::InterfaceHasEdgeAssignment => ProgramError::Custom(83),
             DoubleZeroError::FeatureNotEnabled => ProgramError::Custom(84),
+            DoubleZeroError::MaxMulticastPublishersExceeded => ProgramError::Custom(85),
         }
     }
 }
@@ -352,9 +355,10 @@ impl From<u32> for DoubleZeroError {
             79 => DoubleZeroError::TenantNotInAccessPassAllowlist,
             80 => DoubleZeroError::InvalidTunnelEndpoint,
             81 => DoubleZeroError::MaxUnicastUsersExceeded,
-            82 => DoubleZeroError::MaxMulticastUsersExceeded,
+            82 => DoubleZeroError::MaxMulticastSubscribersExceeded,
             83 => DoubleZeroError::InterfaceHasEdgeAssignment,
             84 => DoubleZeroError::FeatureNotEnabled,
+            85 => DoubleZeroError::MaxMulticastPublishersExceeded,
             _ => DoubleZeroError::Custom(e),
         }
     }

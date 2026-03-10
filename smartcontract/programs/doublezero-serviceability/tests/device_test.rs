@@ -424,9 +424,10 @@ async fn test_device() {
             resource_count: 2,
             reference_count: None,
             max_unicast_users: None,
-            max_multicast_users: None,
+            max_multicast_subscribers: None,
             unicast_users_count: None,
             multicast_users_count: None,
+            max_multicast_publishers: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -715,9 +716,10 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
             resource_count: 0,
             reference_count: None,
             max_unicast_users: None,
-            max_multicast_users: None,
+            max_multicast_subscribers: None,
             unicast_users_count: None,
             multicast_users_count: None,
+            max_multicast_publishers: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

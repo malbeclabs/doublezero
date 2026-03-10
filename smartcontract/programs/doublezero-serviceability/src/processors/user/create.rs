@@ -120,6 +120,7 @@ pub fn process_create_user(
         value.tunnel_endpoint,
     )?;
 
+
     // Atomic create+allocate+activate if on-chain allocation is requested
     if let Some((
         user_tunnel_block_ext,

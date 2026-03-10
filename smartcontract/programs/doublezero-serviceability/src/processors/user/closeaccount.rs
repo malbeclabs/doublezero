@@ -351,7 +351,13 @@ pub fn process_closeaccount_user(
     // Decrement per-type counter based on user type
     match user.user_type {
         UserType::Multicast => {
-            device.multicast_users_count = device.multicast_users_count.saturating_sub(1);
+            if !user.publishers.is_empty() {
+                device.multicast_publishers_count =
+                    device.multicast_publishers_count.saturating_sub(1);
+            } else {
+                device.multicast_subscribers_count =
+                    device.multicast_subscribers_count.saturating_sub(1);
+            }
         }
         _ => {
             device.unicast_users_count = device.unicast_users_count.saturating_sub(1);

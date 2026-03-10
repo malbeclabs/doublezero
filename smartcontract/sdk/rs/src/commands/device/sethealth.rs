@@ -78,10 +78,12 @@ mod tests {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
 
         client
@@ -126,9 +128,10 @@ mod tests {
                     resource_count: 2,
                     reference_count: None,
                     max_unicast_users: None,
-                    max_multicast_users: None,
+                    max_multicast_subscribers: None,
                     unicast_users_count: None,
                     multicast_users_count: None,
+                    max_multicast_publishers: None,
                 })),
                 predicate::always(),
             )
@@ -151,9 +154,10 @@ mod tests {
             desired_status: None,
             reference_count: None,
             max_unicast_users: None,
-            max_multicast_users: None,
+            max_multicast_subscribers: None,
             unicast_users_count: None,
             multicast_users_count: None,
+            max_multicast_publishers: None,
         };
 
         let update_invalid = UpdateDeviceCommand {

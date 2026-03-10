@@ -966,10 +966,12 @@ mod tests {
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
                 unicast_users_count: 0,
-                multicast_users_count: 0,
+                multicast_subscribers_count: 0,
                 max_unicast_users: 0,
-                max_multicast_users: 0,
+                max_multicast_subscribers: 0,
                 reserved_seats: 0,
+                multicast_publishers_count: 0,
+                max_multicast_publishers: 0,
             };
 
             let user_pubkey = Pubkey::new_unique();
@@ -1170,10 +1172,12 @@ mod tests {
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
                 unicast_users_count: 0,
-                multicast_users_count: 0,
+                multicast_subscribers_count: 0,
                 max_unicast_users: 0,
-                max_multicast_users: 0,
+                max_multicast_subscribers: 0,
                 reserved_seats: 0,
+                multicast_publishers_count: 0,
+                max_multicast_publishers: 0,
             };
 
             let user_pubkey = Pubkey::new_unique();
@@ -1436,10 +1440,12 @@ mod tests {
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
                 unicast_users_count: 0,
-                multicast_users_count: 0,
+                multicast_subscribers_count: 0,
                 max_unicast_users: 0,
-                max_multicast_users: 0,
+                max_multicast_subscribers: 0,
                 reserved_seats: 0,
+                multicast_publishers_count: 0,
+                max_multicast_publishers: 0,
             };
 
             let user_pubkey = Pubkey::new_unique();
@@ -1554,10 +1560,12 @@ mod tests {
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
                 unicast_users_count: 0,
-                multicast_users_count: 0,
+                multicast_subscribers_count: 0,
                 max_unicast_users: 0,
-                max_multicast_users: 0,
+                max_multicast_subscribers: 0,
                 reserved_seats: 0,
+                multicast_publishers_count: 0,
+                max_multicast_publishers: 0,
             };
 
             let user_pubkey = Pubkey::new_unique();
@@ -1698,10 +1706,12 @@ mod tests {
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
                 unicast_users_count: 0,
-                multicast_users_count: 0,
+                multicast_subscribers_count: 0,
                 max_unicast_users: 0,
-                max_multicast_users: 0,
+                max_multicast_subscribers: 0,
                 reserved_seats: 0,
+                multicast_publishers_count: 0,
+                max_multicast_publishers: 0,
             };
 
             devices.insert(device_pubkey, DeviceState::new(&device));
@@ -1956,13 +1966,15 @@ mod tests {
             max_users: 255,
             users_count: 0,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         }
     }
 
@@ -2633,10 +2645,12 @@ mod tests {
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
                 unicast_users_count: 0,
-                multicast_users_count: 0,
+                multicast_subscribers_count: 0,
                 max_unicast_users: 0,
-                max_multicast_users: 0,
+                max_multicast_subscribers: 0,
                 reserved_seats: 0,
+                multicast_publishers_count: 0,
+                max_multicast_publishers: 0,
             };
 
             let user_pubkey = Pubkey::new_unique();
@@ -2790,10 +2804,12 @@ mod tests {
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
                 unicast_users_count: 0,
-                multicast_users_count: 0,
+                multicast_subscribers_count: 0,
                 max_unicast_users: 0,
-                max_multicast_users: 0,
+                max_multicast_subscribers: 0,
                 reserved_seats: 0,
+                multicast_publishers_count: 0,
+                max_multicast_publishers: 0,
             };
 
             let user_pubkey = Pubkey::new_unique();
@@ -2907,10 +2923,12 @@ mod tests {
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
                 unicast_users_count: 0,
-                multicast_users_count: 0,
+                multicast_subscribers_count: 0,
                 max_unicast_users: 0,
-                max_multicast_users: 0,
+                max_multicast_subscribers: 0,
                 reserved_seats: 0,
+                multicast_publishers_count: 0,
+                max_multicast_publishers: 0,
             };
 
             let user_pubkey = Pubkey::new_unique();

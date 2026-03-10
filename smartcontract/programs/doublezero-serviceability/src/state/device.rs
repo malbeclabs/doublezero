@@ -276,10 +276,12 @@ pub struct Device {
     pub device_health: DeviceHealth, // 1
     pub desired_status: DeviceDesiredStatus, // 1
     pub unicast_users_count: u16,  // 2
-    pub multicast_users_count: u16, // 2
+    pub multicast_subscribers_count: u16, // 2
     pub max_unicast_users: u16,    // 2
-    pub max_multicast_users: u16,  // 2
+    pub max_multicast_subscribers: u16, // 2
     pub reserved_seats: u16,       // 2
+    pub multicast_publishers_count: u16, // 2
+    pub max_multicast_publishers: u16, // 2
 }
 
 impl Default for Device {
@@ -306,10 +308,12 @@ impl Default for Device {
             device_health: DeviceHealth::Pending,
             desired_status: DeviceDesiredStatus::Pending,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         }
     }
 }
@@ -338,15 +342,32 @@ impl Device {
 
     /// Checks if the device has capacity for a specific user type.
     /// Returns None if eligible, or Some(error_message) if at capacity.
-    pub fn check_user_type_capacity(&self, user_type: UserType) -> Option<String> {
+    pub fn check_user_type_capacity(
+        &self,
+        user_type: UserType,
+        is_publisher: bool,
+    ) -> Option<String> {
         match user_type {
             UserType::Multicast => {
-                if self.max_multicast_users > 0
-                    && self.multicast_users_count >= self.max_multicast_users
+                if is_publisher {
+                    if self.max_multicast_publishers > 0
+                        && self.multicast_publishers_count >= self.max_multicast_publishers
+                    {
+                        Some(format!(
+                            "Device {} has reached its multicast publisher limit ({}/{})",
+                            self.code,
+                            self.multicast_publishers_count,
+                            self.max_multicast_publishers
+                        ))
+                    } else {
+                        None
+                    }
+                } else if self.max_multicast_subscribers > 0
+                    && self.multicast_subscribers_count >= self.max_multicast_subscribers
                 {
                     Some(format!(
-                        "Device {} has reached its multicast user limit ({}/{})",
-                        self.code, self.multicast_users_count, self.max_multicast_users
+                        "Device {} has reached its multicast subscriber limit ({}/{})",
+                        self.code, self.multicast_subscribers_count, self.max_multicast_subscribers
                     ))
                 } else {
                     None
@@ -446,11 +467,13 @@ impl fmt::Display for Device {
             "account_type: {}, owner: {}, index: {}, contributor_pk: {}, location_pk: {}, exchange_pk: {}, device_type: {}, \
             public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}, mgmt_vrf: {}, interfaces: {:?}, \
             reference_count: {}, users_count: {}, max_users: {}, device_health: {}, desired_status: {}, \
-            unicast_users_count: {}, multicast_users_count: {}, max_unicast_users: {}, max_multicast_users: {}, reserved_seats: {}",
+            unicast_users_count: {}, multicast_subscribers_count: {}, max_unicast_users: {}, max_multicast_subscribers: {}, reserved_seats: {}, \
+            multicast_publishers_count: {}, max_multicast_publishers: {}",
             self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type,
             &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.mgmt_vrf, self.interfaces,
             self.reference_count, self.users_count, self.max_users, self.device_health, self.desired_status,
-            self.unicast_users_count, self.multicast_users_count, self.max_unicast_users, self.max_multicast_users, self.reserved_seats
+            self.unicast_users_count, self.multicast_subscribers_count, self.max_unicast_users, self.max_multicast_subscribers, self.reserved_seats,
+            self.multicast_publishers_count, self.max_multicast_publishers
         )
     }
 }
@@ -481,10 +504,14 @@ impl TryFrom<&[u8]> for Device {
             device_health: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             desired_status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             unicast_users_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            multicast_users_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            multicast_subscribers_count: BorshDeserialize::deserialize(&mut data)
+                .unwrap_or_default(),
             max_unicast_users: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            max_multicast_users: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            max_multicast_subscribers: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             reserved_seats: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            multicast_publishers_count: BorshDeserialize::deserialize(&mut data)
+                .unwrap_or_default(),
+            max_multicast_publishers: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Device {
@@ -564,14 +591,27 @@ impl Validate for Device {
             );
             return Err(DoubleZeroError::MaxUnicastUsersExceeded);
         }
-        // multicast_users_count must be <= max_multicast_users when max_multicast_users > 0
-        if self.max_multicast_users > 0 && self.multicast_users_count > self.max_multicast_users {
+        // multicast_subscribers_count must be <= max_multicast_subscribers when max_multicast_subscribers > 0
+        if self.max_multicast_subscribers > 0
+            && self.multicast_subscribers_count > self.max_multicast_subscribers
+        {
             msg!(
-                "Max multicast users exceeded: multicast_users_count = {}, max_multicast_users = {}",
-                self.multicast_users_count,
-                self.max_multicast_users
+                "Max multicast subscribers exceeded: multicast_subscribers_count = {}, max_multicast_subscribers = {}",
+                self.multicast_subscribers_count,
+                self.max_multicast_subscribers
             );
-            return Err(DoubleZeroError::MaxMulticastUsersExceeded);
+            return Err(DoubleZeroError::MaxMulticastSubscribersExceeded);
+        }
+        // multicast_publishers_count must be <= max_multicast_publishers when max_multicast_publishers > 0
+        if self.max_multicast_publishers > 0
+            && self.multicast_publishers_count > self.max_multicast_publishers
+        {
+            msg!(
+                "Max multicast publishers exceeded: multicast_publishers_count = {}, max_multicast_publishers = {}",
+                self.multicast_publishers_count,
+                self.max_multicast_publishers
+            );
+            return Err(DoubleZeroError::MaxMulticastPublishersExceeded);
         }
         // validate Interfaces
         for interface in &self.interfaces {
@@ -698,10 +738,12 @@ mod tests {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
@@ -731,10 +773,12 @@ mod tests {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::CodeTooLong);
@@ -764,10 +808,12 @@ mod tests {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidLocation);
@@ -797,10 +843,12 @@ mod tests {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -831,10 +879,12 @@ mod tests {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
@@ -864,10 +914,12 @@ mod tests {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDzPrefix);
@@ -897,10 +949,12 @@ mod tests {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         // max_users == 0 means "locked", so validation should still succeed
         val.validate().unwrap();
@@ -930,10 +984,12 @@ mod tests {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
 
         let err = val.validate();
@@ -964,10 +1020,12 @@ mod tests {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -1015,10 +1073,12 @@ mod tests {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -1084,10 +1144,12 @@ mod tests {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -1152,10 +1214,12 @@ mod tests {
             device_health: DeviceHealth::Pending,
             desired_status: DeviceDesiredStatus::Pending,
             unicast_users_count: 0,
-            multicast_users_count: 0,
-            max_unicast_users: 0,   // defaults to 0 for old accounts
-            max_multicast_users: 0, // defaults to 0 for old accounts
+            multicast_subscribers_count: 0,
+            max_unicast_users: 0,         // defaults to 0 for old accounts
+            max_multicast_subscribers: 0, // defaults to 0 for old accounts
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
 
         let oldsize = size_of_pre_dzd_metadata_device(val.code.len(), val.dz_prefixes.len());
@@ -1200,10 +1264,12 @@ mod test_device_validate {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         assert!(device.validate().is_ok());
     }
@@ -1236,10 +1302,12 @@ mod test_device_validate_errors {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         }
     }
 
@@ -1335,66 +1403,119 @@ mod test_device_validate_errors {
         let device = Device {
             code: "test-device".to_string(),
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
+            max_multicast_publishers: 0,
             unicast_users_count: 100,
-            multicast_users_count: 100,
+            multicast_subscribers_count: 100,
+            multicast_publishers_count: 100,
             ..Device::default()
         };
-        assert!(device.check_user_type_capacity(UserType::IBRL).is_none());
         assert!(device
-            .check_user_type_capacity(UserType::Multicast)
+            .check_user_type_capacity(UserType::IBRL, false)
+            .is_none());
+        assert!(device
+            .check_user_type_capacity(UserType::Multicast, false)
+            .is_none());
+        assert!(device
+            .check_user_type_capacity(UserType::Multicast, true)
             .is_none());
 
         // Device with unicast limit reached
         let device = Device {
             code: "test-device".to_string(),
             max_unicast_users: 10,
-            max_multicast_users: 5,
+            max_multicast_subscribers: 5,
+            max_multicast_publishers: 3,
             unicast_users_count: 10,
-            multicast_users_count: 2,
+            multicast_subscribers_count: 2,
+            multicast_publishers_count: 1,
             ..Device::default()
         };
-        assert!(device.check_user_type_capacity(UserType::IBRL).is_some());
         assert!(device
-            .check_user_type_capacity(UserType::IBRLWithAllocatedIP)
+            .check_user_type_capacity(UserType::IBRL, false)
             .is_some());
         assert!(device
-            .check_user_type_capacity(UserType::Multicast)
+            .check_user_type_capacity(UserType::IBRLWithAllocatedIP, false)
+            .is_some());
+        assert!(device
+            .check_user_type_capacity(UserType::Multicast, false)
+            .is_none());
+        assert!(device
+            .check_user_type_capacity(UserType::Multicast, true)
             .is_none());
 
-        // Device with multicast limit reached
+        // Device with multicast subscriber limit reached
         let device = Device {
             code: "test-device".to_string(),
             max_unicast_users: 10,
-            max_multicast_users: 5,
+            max_multicast_subscribers: 5,
+            max_multicast_publishers: 3,
             unicast_users_count: 2,
-            multicast_users_count: 5,
+            multicast_subscribers_count: 5,
+            multicast_publishers_count: 1,
             ..Device::default()
         };
-        assert!(device.check_user_type_capacity(UserType::IBRL).is_none());
         assert!(device
-            .check_user_type_capacity(UserType::Multicast)
+            .check_user_type_capacity(UserType::IBRL, false)
+            .is_none());
+        assert!(device
+            .check_user_type_capacity(UserType::Multicast, false)
             .is_some());
+        assert!(device
+            .check_user_type_capacity(UserType::Multicast, true)
+            .is_none());
 
-        // Device with both limits reached
+        // Device with multicast publisher limit reached
         let device = Device {
             code: "test-device".to_string(),
             max_unicast_users: 10,
-            max_multicast_users: 5,
-            unicast_users_count: 10,
-            multicast_users_count: 5,
+            max_multicast_subscribers: 5,
+            max_multicast_publishers: 3,
+            unicast_users_count: 2,
+            multicast_subscribers_count: 2,
+            multicast_publishers_count: 3,
             ..Device::default()
         };
-        assert!(device.check_user_type_capacity(UserType::IBRL).is_some());
         assert!(device
-            .check_user_type_capacity(UserType::Multicast)
+            .check_user_type_capacity(UserType::Multicast, false)
+            .is_none());
+        assert!(device
+            .check_user_type_capacity(UserType::Multicast, true)
             .is_some());
 
-        // Verify error message format
+        // Device with all limits reached
+        let device = Device {
+            code: "test-device".to_string(),
+            max_unicast_users: 10,
+            max_multicast_subscribers: 5,
+            max_multicast_publishers: 3,
+            unicast_users_count: 10,
+            multicast_subscribers_count: 5,
+            multicast_publishers_count: 3,
+            ..Device::default()
+        };
+        assert!(device
+            .check_user_type_capacity(UserType::IBRL, false)
+            .is_some());
+        assert!(device
+            .check_user_type_capacity(UserType::Multicast, false)
+            .is_some());
+        assert!(device
+            .check_user_type_capacity(UserType::Multicast, true)
+            .is_some());
+
+        // Verify error message format for subscribers
         let err = device
-            .check_user_type_capacity(UserType::Multicast)
+            .check_user_type_capacity(UserType::Multicast, false)
             .unwrap();
-        assert!(err.contains("multicast user limit"));
+        assert!(err.contains("multicast subscriber limit"));
         assert!(err.contains("5/5"));
+
+        // Verify error message format for publishers
+        let err = device
+            .check_user_type_capacity(UserType::Multicast, true)
+            .unwrap();
+        assert!(err.contains("multicast publisher limit"));
+        assert!(err.contains("3/3"));
     }
 }

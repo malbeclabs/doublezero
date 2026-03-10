@@ -520,10 +520,12 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
         device_health: DeviceHealth::Pending,
         desired_status: DeviceDesiredStatus::Pending,
         unicast_users_count: 0,
-        multicast_users_count: 0,
+        multicast_subscribers_count: 0,
         max_unicast_users: 0,
-        max_multicast_users: 0,
+        max_multicast_subscribers: 0,
         reserved_seats: 0,
+        multicast_publishers_count: 0,
+        max_multicast_publishers: 0,
     };
 
     let mut device_data = Vec::new();
@@ -613,10 +615,12 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         device_health: DeviceHealth::Pending,
         desired_status: DeviceDesiredStatus::Pending,
         unicast_users_count: 0,
-        multicast_users_count: 0,
+        multicast_subscribers_count: 0,
         max_unicast_users: 0,
-        max_multicast_users: 0,
+        max_multicast_subscribers: 0,
         reserved_seats: 0,
+        multicast_publishers_count: 0,
+        max_multicast_publishers: 0,
     };
 
     let mut data = Vec::new();

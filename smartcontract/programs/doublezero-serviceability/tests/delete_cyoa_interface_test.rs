@@ -147,10 +147,12 @@ async fn test_delete_cyoa_interface_with_invalid_sibling() {
         device_health: DeviceHealth::ReadyForUsers,
         desired_status: DeviceDesiredStatus::Activated,
         unicast_users_count: 0,
-        multicast_users_count: 0,
+        multicast_subscribers_count: 0,
         max_unicast_users: 0,
-        max_multicast_users: 0,
+        max_multicast_subscribers: 0,
         reserved_seats: 0,
+        multicast_publishers_count: 0,
+        max_multicast_publishers: 0,
     };
     let dev_data = borsh::to_vec(&device).unwrap();
     program_test.add_account(
@@ -377,10 +379,12 @@ async fn test_update_cyoa_interface_with_invalid_sibling() {
         device_health: DeviceHealth::ReadyForUsers,
         desired_status: DeviceDesiredStatus::Activated,
         unicast_users_count: 0,
-        multicast_users_count: 0,
+        multicast_subscribers_count: 0,
         max_unicast_users: 0,
-        max_multicast_users: 0,
+        max_multicast_subscribers: 0,
         reserved_seats: 0,
+        multicast_publishers_count: 0,
+        max_multicast_publishers: 0,
     };
     let dev_data = borsh::to_vec(&device).unwrap();
     program_test.add_account(

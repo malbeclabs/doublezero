@@ -96,10 +96,12 @@ mod tests {
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -124,10 +126,12 @@ mod tests {
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let device3 = Device {
             account_type: AccountType::Device,
@@ -152,10 +156,12 @@ mod tests {
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let device_list = HashMap::from([
             (pda_pubkey, device1.clone()),

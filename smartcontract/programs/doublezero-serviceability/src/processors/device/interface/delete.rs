@@ -1,14 +1,23 @@
 use crate::{
     error::DoubleZeroError,
+    pda::get_resource_extension_pda,
+    processors::validation::validate_program_account,
+    resource::{IdOrIp, ResourceType},
     serializer::try_acc_write,
     state::{
-        accounttype::AccountType, contributor::Contributor, device::*, globalstate::GlobalState,
-        interface::InterfaceStatus,
+        accounttype::AccountType,
+        contributor::Contributor,
+        device::*,
+        feature_flags::{is_feature_enabled, FeatureFlag},
+        globalstate::GlobalState,
+        interface::{InterfaceStatus, InterfaceType, LoopbackType},
+        resource_extension::ResourceExtensionBorrowed,
     },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
+use doublezero_program_common::types::NetworkV4;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -20,11 +29,19 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct DeviceInterfaceDeleteArgs {
     pub name: String,
+    /// When true, atomic delete+deallocate in a single transaction.
+    /// Requires ResourceExtension accounts.
+    #[incremental(default = false)]
+    pub use_onchain_deallocation: bool,
 }
 
 impl fmt::Debug for DeviceInterfaceDeleteArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "name: {}", self.name)
+        write!(
+            f,
+            "name: {}, use_onchain_deallocation: {}",
+            self.name, self.use_onchain_deallocation
+        )
     }
 }
 
@@ -38,6 +55,20 @@ pub fn process_delete_device_interface(
     let device_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+
+    // Optional: ResourceExtension accounts for onchain deallocation (before payer)
+    // Account layout WITH deallocation (use_onchain_deallocation = true):
+    //   [device, contributor, globalstate, device_tunnel_block, segment_routing_ids, payer, system]
+    // Account layout WITHOUT (legacy, use_onchain_deallocation = false):
+    //   [device, contributor, globalstate, payer, system]
+    let deallocation_accounts = if value.use_onchain_deallocation {
+        let device_tunnel_block_ext = next_account_info(accounts_iter)?;
+        let segment_routing_ids_ext = next_account_info(accounts_iter)?;
+        Some((device_tunnel_block_ext, segment_routing_ids_ext))
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -88,19 +119,74 @@ pub fn process_delete_device_interface(
     let (idx, _) = device
         .find_interface(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
-    let mut iface = device.interfaces[idx].into_current_version();
+    let iface = device.interfaces[idx].into_current_version();
 
     if iface.status != InterfaceStatus::Activated && iface.status != InterfaceStatus::Unlinked {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    iface.status = InterfaceStatus::Deleting;
-    device.interfaces[idx] = iface.to_interface();
+    if let Some((device_tunnel_block_ext, segment_routing_ids_ext)) = deallocation_accounts {
+        // Atomic delete+deallocate path
+        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
+            return Err(DoubleZeroError::FeatureNotEnabled.into());
+        }
+
+        let (expected_dtb_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
+        validate_program_account!(
+            device_tunnel_block_ext,
+            program_id,
+            writable = true,
+            pda = Some(&expected_dtb_pda),
+            "DeviceTunnelBlock"
+        );
+
+        let (expected_sr_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
+        validate_program_account!(
+            segment_routing_ids_ext,
+            program_id,
+            writable = true,
+            pda = Some(&expected_sr_pda),
+            "SegmentRoutingIds"
+        );
+
+        // Deallocate resources if this is a loopback interface
+        if iface.interface_type == InterfaceType::Loopback {
+            // Deallocate ip_net if it was allocated
+            if iface.ip_net != NetworkV4::default() {
+                let mut buffer = device_tunnel_block_ext.data.borrow_mut();
+                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+                resource.deallocate(&IdOrIp::Ip(iface.ip_net));
+            }
+
+            // Deallocate node_segment_idx if it was allocated (only for Vpnv4 loopbacks)
+            if iface.loopback_type == LoopbackType::Vpnv4 && iface.node_segment_idx != 0 {
+                let mut buffer = segment_routing_ids_ext.data.borrow_mut();
+                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+                resource.deallocate(&IdOrIp::Id(iface.node_segment_idx));
+            }
+        }
+
+        // Atomic close: remove interface immediately
+        device.interfaces.remove(idx);
+
+        #[cfg(test)]
+        msg!(
+            "DeleteDeviceInterface (atomic): deallocated and removed {}",
+            value.name
+        );
+    } else {
+        // Legacy path: just mark as Deleting
+        let mut iface = iface;
+        iface.status = InterfaceStatus::Deleting;
+        device.interfaces[idx] = iface.to_interface();
+
+        #[cfg(test)]
+        msg!("Deleting interface: {} from {:?}", value.name, device);
+    }
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
-
-    #[cfg(test)]
-    msg!("Deleting interface: {} from {:?}", value.name, device);
 
     Ok(())
 }

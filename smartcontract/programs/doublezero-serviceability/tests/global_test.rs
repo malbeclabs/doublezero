@@ -407,6 +407,7 @@ async fn test_doublezero_program() {
         routing_mode: RoutingMode::Static,
         vlan_id: 0,
         user_tunnel_endpoint: false,
+        use_onchain_allocation: false,
     };
 
     execute_transaction(
@@ -595,6 +596,7 @@ async fn test_doublezero_program() {
         routing_mode: RoutingMode::Static,
         vlan_id: 0,
         user_tunnel_endpoint: false,
+        use_onchain_allocation: false,
     };
 
     execute_transaction(

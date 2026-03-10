@@ -1465,6 +1465,7 @@ async fn create_loopback_interface(
             vlan_id: 0,
             ip_net: None,
             user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
             interface_cyoa: InterfaceCYOA::None,
             interface_dia: InterfaceDIA::None,
             bandwidth: 0,
@@ -1539,6 +1540,7 @@ async fn delete_device_interface(
         program_id,
         DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
             name: name.to_string(),
+            use_onchain_deallocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

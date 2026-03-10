@@ -271,6 +271,7 @@ async fn test_dzx_link() {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -362,6 +363,7 @@ async fn test_dzx_link() {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![

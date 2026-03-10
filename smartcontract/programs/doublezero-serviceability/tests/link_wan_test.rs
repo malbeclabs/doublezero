@@ -232,6 +232,7 @@ async fn test_wan_link() {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -362,6 +363,7 @@ async fn test_wan_link() {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -1025,6 +1027,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -1117,6 +1120,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -1577,6 +1581,7 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -1667,6 +1672,7 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -2027,6 +2033,7 @@ async fn setup_link_env() -> (
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -2114,6 +2121,7 @@ async fn setup_link_env() -> (
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![

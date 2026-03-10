@@ -409,12 +409,14 @@ type Device struct {
 	MaxUsers               uint16
 	DeviceHealth           DeviceHealth
 	DeviceDesiredStatus    DeviceDesiredStatus
-	UnicastUsersCount      uint16
-	MulticastUsersCount    uint16
-	MaxUnicastUsers        uint16
-	MaxMulticastUsers      uint16
-	ReservedSeats          uint16
-	PubKey                 [32]byte
+	UnicastUsersCount         uint16
+	MulticastSubscribersCount uint16
+	MaxUnicastUsers           uint16
+	MaxMulticastSubscribers   uint16
+	ReservedSeats             uint16
+	MulticastPublishersCount  uint16
+	MaxMulticastPublishers    uint16
+	PubKey                    [32]byte
 }
 
 func (d Device) MarshalJSON() ([]byte, error) {

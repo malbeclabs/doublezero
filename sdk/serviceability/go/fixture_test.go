@@ -152,11 +152,13 @@ func TestFixtureDevice(t *testing.T) {
 		"MaxUsers":            dev.MaxUsers,
 		"DeviceHealth":        uint8(dev.DeviceHealth),
 		"DesiredStatus":       uint8(dev.DeviceDesiredStatus),
-		"UnicastUsersCount":   dev.UnicastUsersCount,
-		"MulticastUsersCount": dev.MulticastUsersCount,
-		"MaxUnicastUsers":     dev.MaxUnicastUsers,
-		"MaxMulticastUsers":   dev.MaxMulticastUsers,
-		"ReservedSeats":       dev.ReservedSeats,
+		"UnicastUsersCount":         dev.UnicastUsersCount,
+		"MulticastSubscribersCount": dev.MulticastSubscribersCount,
+		"MaxUnicastUsers":           dev.MaxUnicastUsers,
+		"MaxMulticastSubscribers":   dev.MaxMulticastSubscribers,
+		"ReservedSeats":             dev.ReservedSeats,
+		"MulticastPublishersCount":  dev.MulticastPublishersCount,
+		"MaxMulticastPublishers":    dev.MaxMulticastPublishers,
 	})
 
 	// Verify DzPrefixes

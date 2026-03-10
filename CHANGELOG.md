@@ -23,6 +23,10 @@ All notable changes to this project will be documented in this file.
   - Add `doublezero-geolocation` CLI for managing geolocation program entities: GeoProbe CRUD (create, get, list, update, delete), parent device management (add/remove), program config initialization, and geolocation-specific config get/set
 - SDK
   - Add read-only Go SDK for `doublezero-geolocation` program with state deserialization, PDA derivation, and RPC client for querying geoprobe configuration
+  - Add `GetGeoProbeKeys` to geolocation SDK for lightweight account key fetching using DataSlice to minimize RPC bandwidth
+- Telemetry
+  - Add onchain GeoProbe discovery to the telemetry agent: periodically queries the Geolocation program for child probes parented to the local device, replacing the need for `--additional-child-probes` CLI flag
+  - Embed LocationOffsets from parent DZDs in signed TWAMP replies so inbound probes carry geolocation context, and make signed TWAMP replies more like LocationOffsets to couple with a new double-probe system for inbound probing.
 - Client
   - Increase default onchain fetch timeout from 20s to 60s to improve resilience on high-latency RPC paths; add `-reconciler-fetch-timeout` flag to allow operators to override
   - Add prometheus metrics for onchain RPC fetches: fetch duration histogram, result counter (success/error with stale cache/error with no cache), and stale cache age gauge

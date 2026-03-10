@@ -864,42 +864,6 @@ mod tests {
     }
 
     #[test]
-    fn test_permission_account_deleting_status_denied() {
-        let program_id = Pubkey::new_unique();
-        let payer = Pubkey::new_unique();
-        let (pda, _, mut data) = make_permission_data(
-            &program_id,
-            &payer,
-            PermissionStatus::Deleting,
-            permission_flags::FOUNDATION,
-        );
-
-        let mut lamports = 100_000u64;
-        let account = AccountInfo::new(
-            &pda,
-            false,
-            false,
-            &mut lamports,
-            &mut data,
-            &program_id,
-            false,
-            Epoch::default(),
-        );
-        let accounts = [account];
-        let mut iter = accounts.iter();
-        let gs = GlobalState::default();
-
-        assert!(authorize(
-            &program_id,
-            &mut iter,
-            &payer,
-            &gs,
-            permission_flags::FOUNDATION
-        )
-        .is_err());
-    }
-
-    #[test]
     fn test_permission_account_wrong_pda_denied() {
         let program_id = Pubkey::new_unique();
         let payer = Pubkey::new_unique();

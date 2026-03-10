@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Tools
+  - Fix epoch finder returning wrong epoch for ~51 minutes after epoch boundaries by using `GetEpochInfo` (authoritative epoch) instead of approximating from `GetSlot` which was vulnerable to stale finalized slot responses ([#3227](https://github.com/malbeclabs/doublezero/pull/3227))
 - Telemetry
   - Detect and replace unresponsive RIPE Atlas source probes that stop returning ping results, with a 24-hour TTL on the unresponsive probe blacklist so probes are retried after expiry
   - Compare source probe IDs (not just location codes) during measurement reconciliation so that probe replacements trigger measurement recreation

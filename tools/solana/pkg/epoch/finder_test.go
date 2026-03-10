@@ -15,12 +15,23 @@ import (
 
 type mockSolanaRPCClient struct {
 	GetSlotFunc                         func(ctx context.Context, commitment solanarpc.CommitmentType) (uint64, error)
+	GetEpochInfoFunc                    func(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error)
 	GetEpochScheduleFunc                func(ctx context.Context) (out *solanarpc.GetEpochScheduleResult, err error)
 	GetSignaturesForAddressWithOptsFunc func(ctx context.Context, account solana.PublicKey, opts *solanarpc.GetSignaturesForAddressOpts) ([]*solanarpc.TransactionSignature, error)
 }
 
 func (m *mockSolanaRPCClient) GetSlot(ctx context.Context, commitment solanarpc.CommitmentType) (uint64, error) {
-	return m.GetSlotFunc(ctx, commitment)
+	if m.GetSlotFunc != nil {
+		return m.GetSlotFunc(ctx, commitment)
+	}
+	return 0, nil
+}
+
+func (m *mockSolanaRPCClient) GetEpochInfo(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+	if m.GetEpochInfoFunc != nil {
+		return m.GetEpochInfoFunc(ctx, commitment)
+	}
+	return nil, nil
 }
 
 func (m *mockSolanaRPCClient) GetEpochSchedule(ctx context.Context) (out *solanarpc.GetEpochScheduleResult, err error) {
@@ -49,8 +60,13 @@ func TestEpochFinder(t *testing.T) {
 		log := log.With("test", t.Name())
 
 		client := &mockSolanaRPCClient{
-			GetSlotFunc: func(ctx context.Context, _ solanarpc.CommitmentType) (uint64, error) {
-				return 1_296_000, nil // epoch 3
+			GetEpochInfoFunc: func(ctx context.Context, _ solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{
+					AbsoluteSlot: 1_296_000, // epoch 3 start
+					Epoch:        3,
+					SlotIndex:    0,
+					SlotsInEpoch: 432_000,
+				}, nil
 			},
 			GetEpochScheduleFunc: func(ctx context.Context) (*solanarpc.GetEpochScheduleResult, error) {
 				return sched, nil
@@ -71,9 +87,6 @@ func TestEpochFinder(t *testing.T) {
 		log := log.With("test", t.Name())
 
 		client := &mockSolanaRPCClient{
-			GetSlotFunc: func(ctx context.Context, _ solanarpc.CommitmentType) (uint64, error) {
-				return 1000, nil
-			},
 			GetEpochScheduleFunc: func(ctx context.Context) (*solanarpc.GetEpochScheduleResult, error) {
 				return sched, nil
 			},
@@ -91,8 +104,13 @@ func TestEpochFinder(t *testing.T) {
 		log := log.With("test", t.Name())
 
 		client := &mockSolanaRPCClient{
-			GetSlotFunc: func(ctx context.Context, _ solanarpc.CommitmentType) (uint64, error) {
-				return 10_000, nil // small currentEpoch
+			GetEpochInfoFunc: func(ctx context.Context, _ solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{
+					AbsoluteSlot: 10_000,
+					Epoch:        0,
+					SlotIndex:    10_000,
+					SlotsInEpoch: 432_000,
+				}, nil
 			},
 			GetEpochScheduleFunc: func(ctx context.Context) (*solanarpc.GetEpochScheduleResult, error) {
 				return sched, nil
@@ -110,14 +128,18 @@ func TestEpochFinder(t *testing.T) {
 		t.Parallel()
 		log := log.With("test", t.Name())
 
-		var getSlotCalls, getEpochScheduleCalls int
+		var getEpochInfoCalls int
 		client := &mockSolanaRPCClient{
-			GetSlotFunc: func(ctx context.Context, _ solanarpc.CommitmentType) (uint64, error) {
-				getSlotCalls++
-				return 432_000, nil // epoch 1
+			GetEpochInfoFunc: func(ctx context.Context, _ solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				getEpochInfoCalls++
+				return &solanarpc.GetEpochInfoResult{
+					AbsoluteSlot: 432_000,
+					Epoch:        1,
+					SlotIndex:    0,
+					SlotsInEpoch: 432_000,
+				}, nil
 			},
 			GetEpochScheduleFunc: func(ctx context.Context) (*solanarpc.GetEpochScheduleResult, error) {
-				getEpochScheduleCalls++
 				return sched, nil
 			},
 		}
@@ -133,34 +155,40 @@ func TestEpochFinder(t *testing.T) {
 		_, err = f.ApproximateAtTime(context.Background(), target)
 		require.NoError(t, err)
 
-		require.Equal(t, 1, getSlotCalls)
-		require.Equal(t, 1, getEpochScheduleCalls)
+		require.Equal(t, 1, getEpochInfoCalls)
 	})
 
 	t.Run("warmup epoch calculation", func(t *testing.T) {
 		t.Parallel()
 		log := log.With("test", t.Name())
 
-		sched := &solanarpc.GetEpochScheduleResult{
+		warmupSched := &solanarpc.GetEpochScheduleResult{
 			FirstNormalEpoch: 3,
 			FirstNormalSlot:  28,
 			SlotsPerEpoch:    8,
 			Warmup:           true,
 		}
 
+		// Warmup: epoch 0 = 2 slots (0-1), epoch 1 = 4 slots (2-5), epoch 2 = 8 slots (6-13)
+		// Slot 10 is in epoch 2, slotIndex = 4
 		client := &mockSolanaRPCClient{
-			GetSlotFunc: func(ctx context.Context, _ solanarpc.CommitmentType) (uint64, error) {
-				return 10, nil // Slot 10 falls in epoch 2
+			GetEpochInfoFunc: func(ctx context.Context, _ solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{
+					AbsoluteSlot: 10,
+					Epoch:        2,
+					SlotIndex:    4,
+					SlotsInEpoch: 8,
+				}, nil
 			},
 			GetEpochScheduleFunc: func(ctx context.Context) (*solanarpc.GetEpochScheduleResult, error) {
-				return sched, nil
+				return warmupSched, nil
 			},
 		}
 
 		f, err := epoch.NewFinder(log, client)
 		require.NoError(t, err)
 
-		target := time.Now().Add(-400 * time.Millisecond)
+		target := time.Now().Add(-400 * time.Millisecond) // 1 slot ago, within epoch 2
 		got, err := f.ApproximateAtTime(context.Background(), target)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), got)
@@ -170,23 +198,22 @@ func TestEpochFinder(t *testing.T) {
 		t.Parallel()
 
 		epochVal := uint64(3)
-		epochStartSlot := sched.SlotsPerEpoch * epochVal
 		slotOffset := uint64(5) // 5 slots into epoch = 2s
 
 		mockNow := time.Unix(1_000_000_000, 0) // fixed "now"
 		target := mockNow.Add(-epoch.ApproximateSlotDuration * time.Duration(slotOffset))
 
 		client := &mockSolanaRPCClient{
-			GetSlotFunc: func(context.Context, solanarpc.CommitmentType) (uint64, error) {
-				return epochStartSlot + slotOffset, nil
+			GetEpochInfoFunc: func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{
+					AbsoluteSlot: sched.SlotsPerEpoch*epochVal + slotOffset,
+					Epoch:        epochVal,
+					SlotIndex:    slotOffset,
+					SlotsInEpoch: sched.SlotsPerEpoch,
+				}, nil
 			},
 			GetEpochScheduleFunc: func(context.Context) (*solanarpc.GetEpochScheduleResult, error) {
-				return &solanarpc.GetEpochScheduleResult{
-					FirstNormalEpoch: 0,
-					FirstNormalSlot:  0,
-					SlotsPerEpoch:    sched.SlotsPerEpoch,
-					Warmup:           false,
-				}, nil
+				return sched, nil
 			},
 		}
 
@@ -202,24 +229,22 @@ func TestEpochFinder(t *testing.T) {
 		t.Parallel()
 
 		epochVal := uint64(3)
-		epochStartSlot := sched.SlotsPerEpoch * epochVal
 		slotOffset := sched.SlotsPerEpoch - 10 // 10 slots before next epoch
-		mockSlot := epochStartSlot + slotOffset
 
 		mockNow := time.Unix(1_000_000_000, 0)
 		target := mockNow.Add(-epoch.ApproximateSlotDuration * 5) // ~5 slots ago
 
 		client := &mockSolanaRPCClient{
-			GetSlotFunc: func(context.Context, solanarpc.CommitmentType) (uint64, error) {
-				return mockSlot, nil
+			GetEpochInfoFunc: func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{
+					AbsoluteSlot: sched.SlotsPerEpoch*epochVal + slotOffset,
+					Epoch:        epochVal,
+					SlotIndex:    slotOffset,
+					SlotsInEpoch: sched.SlotsPerEpoch,
+				}, nil
 			},
 			GetEpochScheduleFunc: func(context.Context) (*solanarpc.GetEpochScheduleResult, error) {
-				return &solanarpc.GetEpochScheduleResult{
-					FirstNormalEpoch: 0,
-					FirstNormalSlot:  0,
-					SlotsPerEpoch:    sched.SlotsPerEpoch,
-					Warmup:           false,
-				}, nil
+				return sched, nil
 			},
 		}
 
@@ -235,22 +260,21 @@ func TestEpochFinder(t *testing.T) {
 		t.Parallel()
 
 		epochVal := uint64(4)
-		epochStartSlot := sched.SlotsPerEpoch * epochVal
 
 		mockNow := time.Unix(1_000_000_000, 0)
 		target := mockNow // no offset
 
 		client := &mockSolanaRPCClient{
-			GetSlotFunc: func(context.Context, solanarpc.CommitmentType) (uint64, error) {
-				return epochStartSlot, nil
+			GetEpochInfoFunc: func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{
+					AbsoluteSlot: sched.SlotsPerEpoch * epochVal,
+					Epoch:        epochVal,
+					SlotIndex:    0,
+					SlotsInEpoch: sched.SlotsPerEpoch,
+				}, nil
 			},
 			GetEpochScheduleFunc: func(context.Context) (*solanarpc.GetEpochScheduleResult, error) {
-				return &solanarpc.GetEpochScheduleResult{
-					FirstNormalEpoch: 0,
-					FirstNormalSlot:  0,
-					SlotsPerEpoch:    sched.SlotsPerEpoch,
-					Warmup:           false,
-				}, nil
+				return sched, nil
 			},
 		}
 
@@ -264,14 +288,13 @@ func TestEpochFinder(t *testing.T) {
 
 }
 
-func TestEpochFinder_StaleGetSlotCausesWrongEpoch(t *testing.T) {
-	// Reproduces the issue observed on 2026-03-10 where the epoch finder returned
-	// epoch 192 for ~51 minutes after epoch 193 started, because GetSlot(finalized)
-	// was returning a stale slot still in epoch 192.
+func TestEpochFinder_GetEpochInfoFixesStaleSlotBug(t *testing.T) {
+	// Verifies the fix for the 2026-03-10 incident where the old implementation
+	// used GetSlot to approximate epochs, and a stale finalized slot caused the
+	// epoch finder to return epoch 192 for ~51 minutes after epoch 193 started.
 	//
-	// The epoch finder computes: approxSlot = currentSlot - (now-target)/400ms
-	// If currentSlot is stale (still in the old epoch), approxSlot will also be
-	// in the old epoch, even for post-boundary target timestamps.
+	// The fix uses GetEpochInfo which returns the authoritative epoch directly,
+	// eliminating the slot→epoch approximation that was vulnerable to stale slots.
 
 	sched := &solanarpc.GetEpochScheduleResult{
 		FirstNormalEpoch: 14,
@@ -285,20 +308,22 @@ func TestEpochFinder_StaleGetSlotCausesWrongEpoch(t *testing.T) {
 	// Epoch 193 starts at slot: (193-14)*432000 + 524256 = 77,852,256
 	epoch193StartSlot := uint64((193-14)*432_000 + 524_256)
 
-	t.Run("stale GetSlot returns wrong epoch for post-boundary records", func(t *testing.T) {
+	t.Run("returns authoritative epoch for recent records", func(t *testing.T) {
 		t.Parallel()
 
-		// Simulate: real time is 10 minutes after epoch boundary, but GetSlot
-		// returns a slot from 1 minute BEFORE the boundary (stale by 11 minutes).
-		staleSlot := epoch193StartSlot - 150 // ~1 minute before boundary at 400ms/slot
-
+		// GetEpochInfo returns epoch 193 (the truth), even if the underlying
+		// slot is only slightly past the boundary. The epoch is authoritative.
 		mockNow := time.Unix(2_000_000_000, 0)
-		// Target is a record from 2 minutes ago (well after the epoch boundary)
-		target := mockNow.Add(-2 * time.Minute)
+		target := mockNow.Add(-2 * time.Minute) // 2 min ago = 300 slots
 
 		client := &mockSolanaRPCClient{
-			GetSlotFunc: func(context.Context, solanarpc.CommitmentType) (uint64, error) {
-				return staleSlot, nil // stale!
+			GetEpochInfoFunc: func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{
+					AbsoluteSlot: epoch193StartSlot + 1500, // 10 min into epoch 193
+					Epoch:        193,
+					SlotIndex:    1500,
+					SlotsInEpoch: 432_000,
+				}, nil
 			},
 			GetEpochScheduleFunc: func(context.Context) (*solanarpc.GetEpochScheduleResult, error) {
 				return sched, nil
@@ -310,32 +335,26 @@ func TestEpochFinder_StaleGetSlotCausesWrongEpoch(t *testing.T) {
 
 		got, err := f.ApproximateAtTime(context.Background(), target)
 		require.NoError(t, err)
-
-		// BUG: With a stale slot, the epoch finder computes:
-		//   slotsAgo = 2min / 400ms = 300
-		//   approxSlot = (epoch193Start - 150) - 300 = epoch193Start - 450
-		//   epoch = 192 (WRONG — should be 193 for a post-boundary record)
-		//
-		// This is the root cause: if GetSlot returns a stale finalized slot,
-		// the epoch finder returns the wrong epoch for all records.
-		//
-		// We assert the CURRENT (buggy) behavior to document it.
-		// The real fix is to use GetEpochInfo instead of approximating from GetSlot.
-		require.Equal(t, uint64(192), got, "stale GetSlot causes epoch finder to return old epoch")
+		// slotsAgo=300 <= slotIndex=1500 → uses authoritative epoch 193
+		require.Equal(t, uint64(193), got, "uses authoritative epoch from GetEpochInfo")
 	})
 
-	t.Run("fresh GetSlot returns correct epoch for post-boundary records", func(t *testing.T) {
+	t.Run("falls back to slot math for targets in prior epochs", func(t *testing.T) {
 		t.Parallel()
 
-		// Same scenario but GetSlot returns the real current slot (10 min into epoch 193)
-		freshSlot := epoch193StartSlot + 1500 // ~10 minutes into epoch 193
-
+		// Target is 50 minutes ago (7500 slots), but we're only 1500 slots
+		// into epoch 193. slotsAgo > slotIndex, so falls to slot math.
 		mockNow := time.Unix(2_000_000_000, 0)
-		target := mockNow.Add(-2 * time.Minute)
+		target := mockNow.Add(-50 * time.Minute) // 7500 slots ago
 
 		client := &mockSolanaRPCClient{
-			GetSlotFunc: func(context.Context, solanarpc.CommitmentType) (uint64, error) {
-				return freshSlot, nil
+			GetEpochInfoFunc: func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{
+					AbsoluteSlot: epoch193StartSlot + 1500,
+					Epoch:        193,
+					SlotIndex:    1500,
+					SlotsInEpoch: 432_000,
+				}, nil
 			},
 			GetEpochScheduleFunc: func(context.Context) (*solanarpc.GetEpochScheduleResult, error) {
 				return sched, nil
@@ -347,30 +366,27 @@ func TestEpochFinder_StaleGetSlotCausesWrongEpoch(t *testing.T) {
 
 		got, err := f.ApproximateAtTime(context.Background(), target)
 		require.NoError(t, err)
-
-		require.Equal(t, uint64(193), got, "fresh GetSlot gives correct epoch")
+		// slotsAgo=7500 > slotIndex=1500, approxSlot = epoch193Start+1500-7500 = epoch193Start-6000
+		// That's in epoch 192.
+		require.Equal(t, uint64(192), got, "correctly falls back to prior epoch via slot math")
 	})
 
-	t.Run("cache amplifies stale GetSlot across minutes", func(t *testing.T) {
+	t.Run("recent target at epoch boundary uses authoritative epoch", func(t *testing.T) {
 		t.Parallel()
 
-		// The epoch finder caches results with 30-minute TTL per minute-bucket.
-		// If GetSlot is briefly stale (say, for 1 minute), the cached wrong epoch
-		// persists for 30 minutes for that minute-bucket.
-
-		callCount := 0
-		staleSlot := epoch193StartSlot - 150
-		freshSlot := epoch193StartSlot + 1500
-
+		// Even with very few slots into the new epoch (slotIndex=10),
+		// a recent target (slotsAgo=5) still uses the authoritative epoch.
 		mockNow := time.Unix(2_000_000_000, 0)
+		target := mockNow.Add(-2 * time.Second) // 5 slots ago
 
 		client := &mockSolanaRPCClient{
-			GetSlotFunc: func(context.Context, solanarpc.CommitmentType) (uint64, error) {
-				callCount++
-				if callCount == 1 {
-					return staleSlot, nil // first call is stale
-				}
-				return freshSlot, nil // subsequent calls are fresh
+			GetEpochInfoFunc: func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{
+					AbsoluteSlot: epoch193StartSlot + 10, // just 10 slots into epoch 193
+					Epoch:        193,
+					SlotIndex:    10,
+					SlotsInEpoch: 432_000,
+				}, nil
 			},
 			GetEpochScheduleFunc: func(context.Context) (*solanarpc.GetEpochScheduleResult, error) {
 				return sched, nil
@@ -380,24 +396,10 @@ func TestEpochFinder_StaleGetSlotCausesWrongEpoch(t *testing.T) {
 		f, err := epoch.NewFinderWithNowFn(log, client, func() time.Time { return mockNow })
 		require.NoError(t, err)
 
-		// First call: stale GetSlot → caches epoch 192 for this minute
-		target1 := mockNow.Add(-2 * time.Minute)
-		got1, err := f.ApproximateAtTime(context.Background(), target1)
+		got, err := f.ApproximateAtTime(context.Background(), target)
 		require.NoError(t, err)
-		require.Equal(t, uint64(192), got1, "first call with stale slot returns 192")
-
-		// Second call with same minute-bucket: cache hit, still returns 192
-		// even though GetSlot would now return a fresh slot
-		target2 := mockNow.Add(-2*time.Minute - 10*time.Second)
-		got2, err := f.ApproximateAtTime(context.Background(), target2)
-		require.NoError(t, err)
-		require.Equal(t, uint64(192), got2, "cached value persists even after GetSlot is fresh")
-
-		// Third call with a DIFFERENT minute-bucket: cache miss, fresh GetSlot
-		target3 := mockNow.Add(-3 * time.Minute)
-		got3, err := f.ApproximateAtTime(context.Background(), target3)
-		require.NoError(t, err)
-		require.Equal(t, uint64(193), got3, "different minute gets fresh computation")
+		// slotsAgo=5 <= slotIndex=10 → epoch 193
+		require.Equal(t, uint64(193), got, "boundary case still returns authoritative epoch")
 	})
 }
 

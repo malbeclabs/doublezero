@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: doublezero-geolocation
+
+monorepo:
+  tag_prefix: geolocation-cli/
+
+builds:
+  - id: doublezero-geolocation
+    binary: doublezero-geolocation
+    builder: rust
+    tool: cargo
+    command: build
+    flags:
+      - --package=doublezero-geolocation-cli
+      - --release
+    targets:
+      - x86_64-unknown-linux-gnu
+    env:
+      - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc
+      - BUILD_VERSION={{.Version}}
+      - BUILD_COMMIT={{.ShortCommit}}
+      - BUILD_DATE={{.Date}}
+
+archives:
+  - id: geolocation_cli_archive
+    formats: ['tar.gz']
+    ids: [doublezero-geolocation]
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+nfpms:
+  - id: doublezero-geolocation
+    package_name: doublezero-geolocation
+    ids: [doublezero-geolocation]
+    vendor: doublezero
+    homepage: doublezero.xyz
+    maintainer: steve <steve@malbeclabs.com>
+    description: |-
+      DoubleZero geolocation CLI
+    license: Apache 2.0
+    formats:
+      - deb
+    bindir: /usr/bin
+    release: 1
+    section: default
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: malbeclabs
+    name: doublezero
+  draft: false
+  replace_existing_artifacts: true
+
+announce:
+  slack:
+    enabled: true
+    message_template: "DoubleZero Geolocation CLI {{.Tag}} has been released! Check it out at {{ .ReleaseURL }}"
+    channel: "#bots"
+
+git:
+  ignore_tags:
+    - geolocation-cli/daily
+
+nightly:
+  publish_release: true
+  keep_single_release: true
+  version_template: '{{ incpatch .Version }}~git{{ .Env.BUILD_DATE }}.{{ .ShortCommit }}'
+  tag_name: 'geolocation-cli/daily'

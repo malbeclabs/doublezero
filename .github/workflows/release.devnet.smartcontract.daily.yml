@@ -20,6 +20,7 @@ jobs:
           echo "${{ secrets.DEVNET_KEYPAIR }}" > id.json
           echo "${{ secrets.DEVNET_SERVICEABILITY_PROGRAM_KEYPAIR }}" > serviceability-program-keypair.json
           echo "${{ secrets.DEVNET_TELEMETRY_PROGRAM_KEYPAIR }}" > telemetry-program-keypair.json
+          echo "${{ secrets.DEVNET_GEOLOCATION_PROGRAM_KEYPAIR }}" > geolocation-program-keypair.json
       - name: Set solana devnet configuration
         run: |
           solana config set \
@@ -46,3 +47,13 @@ jobs:
             --program-id telemetry-program-keypair.json \
             -k id.json \
             target/deploy/doublezero_telemetry.so
+      - name: Build geolocation program
+        run: |
+          cargo build-sbf --features devnet
+        working-directory: smartcontract/programs/doublezero-geolocation
+      - name: Deploy geolocation program to DevNet
+        run: |
+          solana program deploy \
+            --program-id geolocation-program-keypair.json \
+            -k id.json \
+            target/deploy/doublezero_geolocation.so

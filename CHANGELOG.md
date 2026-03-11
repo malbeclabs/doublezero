@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain Programs
+  - Serviceability: split per-device multicast user tracking into separate subscriber and publisher counters (`multicast_subscribers_count`/`max_multicast_subscribers` and `multicast_publishers_count`/`max_multicast_publishers`); publisher and subscriber limits are now enforced independently
 - Controller
   - Downgrade transient ClickHouse write errors from ERROR to WARN, escalating to ERROR only after 3 consecutive flush failures to reduce alert noise ([#3220](https://github.com/malbeclabs/doublezero/issues/3220))
 - Telemetry
@@ -19,8 +21,10 @@ All notable changes to this project will be documented in this file.
   - Change geoprobe-agent and geoprobe-target default TWAMP reflector port from 862 to 8925 to avoid DZD ACL blocks, use per-probe TWAMP port instead of hardcoded constant, and update `--additional-child-probes`/`--additional-targets` format to `host` or `host:offset_port:twamp_port` (two-field `host:port` rejected as ambiguous)
 - Activator
   - Suppress noisy program log output from race conditions caused by dual event processing (websocket + snapshot poll). The SDK's new `execute_transaction_quiet` returns a `SimulationError` with program logs; the activator verifies suspected races by re-fetching user state before deciding whether to print logs ([#3197](https://github.com/malbeclabs/doublezero/pull/3197))
+  - Run a one-time migration at startup to correct stale per-device multicast subscriber/publisher counts on existing deployments where all multicast users were previously counted as subscribers
 - CLI
   - Add `doublezero-geolocation` CLI for managing geolocation program entities: GeoProbe CRUD (create, get, list, update, delete), parent device management (add/remove), program config initialization, and geolocation-specific config get/set
+  - Add `--multicast-publishers-count` and `--multicast-subscribers-count` flags to `device update` for foundation-gated count correction; rename `--max-multicast-users` to `--max-multicast-subscribers` and add `--max-multicast-publishers`
 - SDK
   - Add read-only Go SDK for `doublezero-geolocation` program with state deserialization, PDA derivation, and RPC client for querying geoprobe configuration
 - Client

@@ -39,7 +39,6 @@ pub struct UpdateDeviceCommand {
     pub max_unicast_users: Option<u16>,
     pub max_multicast_subscribers: Option<u16>,
     pub unicast_users_count: Option<u16>,
-    pub multicast_users_count: Option<u16>,
     pub max_multicast_publishers: Option<u16>,
     pub multicast_subscribers_count: Option<u16>,
     pub multicast_publishers_count: Option<u16>,
@@ -109,7 +108,7 @@ impl UpdateDeviceCommand {
                 max_unicast_users: self.max_unicast_users,
                 max_multicast_subscribers: self.max_multicast_subscribers,
                 unicast_users_count: self.unicast_users_count,
-                multicast_users_count: self.multicast_users_count,
+
                 max_multicast_publishers: self.max_multicast_publishers,
                 multicast_subscribers_count: self.multicast_subscribers_count,
                 multicast_publishers_count: self.multicast_publishers_count,
@@ -229,7 +228,7 @@ mod tests {
                     max_unicast_users: None,
                     max_multicast_subscribers: None,
                     unicast_users_count: None,
-                    multicast_users_count: None,
+
                     max_multicast_publishers: None,
                     multicast_subscribers_count: None,
                     multicast_publishers_count: None,
@@ -259,7 +258,6 @@ mod tests {
             max_unicast_users: None,
             max_multicast_subscribers: None,
             unicast_users_count: None,
-            multicast_users_count: None,
             max_multicast_publishers: None,
             multicast_subscribers_count: None,
             multicast_publishers_count: None,

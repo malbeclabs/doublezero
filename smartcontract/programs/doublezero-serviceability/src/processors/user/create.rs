@@ -121,7 +121,6 @@ pub fn process_create_user(
         false, // create.rs always creates subscribers
     )?;
 
-
     // Atomic create+allocate+activate if on-chain allocation is requested
     if let Some((
         user_tunnel_block_ext,

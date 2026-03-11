@@ -426,7 +426,7 @@ async fn test_device() {
             max_unicast_users: None,
             max_multicast_subscribers: None,
             unicast_users_count: None,
-            multicast_users_count: None,
+
             max_multicast_publishers: None,
             multicast_subscribers_count: None,
             multicast_publishers_count: None,
@@ -720,7 +720,7 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
             max_unicast_users: None,
             max_multicast_subscribers: None,
             unicast_users_count: None,
-            multicast_users_count: None,
+
             max_multicast_publishers: None,
             multicast_subscribers_count: None,
             multicast_publishers_count: None,
@@ -796,16 +796,14 @@ async fn test_device_update_user_counts_by_foundation() {
         .get_device()
         .unwrap();
     assert_eq!(device.unicast_users_count, 0);
-    assert_eq!(device.multicast_users_count, 0);
 
-    // Update unicast and multicast user counts via foundation
+    // Update unicast user count via foundation
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
             unicast_users_count: Some(10),
-            multicast_users_count: Some(5),
             ..DeviceUpdateArgs::default()
         }),
         vec![
@@ -825,7 +823,6 @@ async fn test_device_update_user_counts_by_foundation() {
         .get_device()
         .unwrap();
     assert_eq!(device.unicast_users_count, 10);
-    assert_eq!(device.multicast_users_count, 5);
 }
 
 #[tokio::test]
@@ -963,6 +960,7 @@ async fn test_device_update_multicast_counts_ignored_for_non_foundation_payer() 
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1016,7 +1014,6 @@ async fn test_device_update_multicast_counts_ignored_for_non_foundation_payer() 
         device.multicast_publishers_count, 0,
         "multicast_publishers_count must be unchanged for non-foundation payer"
     );
->>>>>>> 64b55bbb (smartcontract: add foundation-gated multicast count fields to DeviceUpdateArgs)
 }
 
 async fn setup_program_with_location_and_exchange(

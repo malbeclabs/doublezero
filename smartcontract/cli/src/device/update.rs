@@ -69,9 +69,6 @@ pub struct UpdateDeviceCliCommand {
     /// Unicast users count for the device (foundation only)
     #[arg(long)]
     pub unicast_users_count: Option<u16>,
-    /// Multicast users count for the device (foundation only)
-    #[arg(long)]
-    pub multicast_users_count: Option<u16>,
     /// Maximum number of multicast publishers for the device (optional)
     #[arg(long)]
     pub max_multicast_publishers: Option<u16>,
@@ -198,7 +195,6 @@ impl UpdateDeviceCliCommand {
             max_unicast_users: self.max_unicast_users,
             max_multicast_subscribers: self.max_multicast_subscribers,
             unicast_users_count: self.unicast_users_count,
-            multicast_users_count: self.multicast_users_count,
             max_multicast_publishers: self.max_multicast_publishers,
             multicast_subscribers_count: self.multicast_subscribers_count,
             multicast_publishers_count: self.multicast_publishers_count,
@@ -386,7 +382,7 @@ mod tests {
                 max_unicast_users: None,
                 max_multicast_subscribers: None,
                 unicast_users_count: None,
-                multicast_users_count: None,
+
                 max_multicast_publishers: None,
                 multicast_subscribers_count: None,
                 multicast_publishers_count: None,
@@ -414,7 +410,7 @@ mod tests {
             max_unicast_users: None,
             max_multicast_subscribers: None,
             unicast_users_count: None,
-            multicast_users_count: None,
+
             max_multicast_publishers: None,
             multicast_subscribers_count: None,
             multicast_publishers_count: None,
@@ -536,7 +532,7 @@ mod tests {
             max_unicast_users: None,
             max_multicast_subscribers: None,
             unicast_users_count: None,
-            multicast_users_count: None,
+
             max_multicast_publishers: None,
             multicast_subscribers_count: None,
             multicast_publishers_count: None,
@@ -657,7 +653,7 @@ mod tests {
             max_unicast_users: None,
             max_multicast_subscribers: None,
             unicast_users_count: None,
-            multicast_users_count: None,
+
             max_multicast_publishers: None,
             multicast_subscribers_count: None,
             multicast_publishers_count: None,

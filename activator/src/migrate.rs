@@ -82,6 +82,7 @@ pub fn migrate_multicast_counts(client: &dyn DoubleZeroClient) -> eyre::Result<(
                 desired_status: None,
                 reference_count: None,
                 max_unicast_users: None,
+                unicast_users_count: None,
                 max_multicast_subscribers: None,
                 max_multicast_publishers: None,
                 multicast_subscribers_count: Some(actual_sub),

@@ -57,6 +57,7 @@ pub struct CreateUserCoreResult {
 /// - Onchain allocation + try_activate
 /// - Account creation (try_acc_create) and write-back
 /// - Multicast subscription logic (CreateSubscribeUser only)
+#[allow(clippy::too_many_arguments)]
 pub fn create_user_core(
     program_id: &Pubkey,
     accounts: &[AccountInfo],

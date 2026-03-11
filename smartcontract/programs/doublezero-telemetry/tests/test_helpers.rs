@@ -1061,6 +1061,7 @@ impl ServiceabilityProgramHelper {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             }),
             vec![
                 AccountMeta::new(device_pk, false),

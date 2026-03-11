@@ -192,6 +192,7 @@ async fn setup_two_devices_with_link() -> (
             vlan_id: 0,
             ip_net: None,
             user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -267,6 +268,7 @@ async fn setup_two_devices_with_link() -> (
             vlan_id: 0,
             ip_net: None,
             user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
@@ -532,6 +534,7 @@ async fn test_unlink_from_pending() {
             vlan_id: 0,
             ip_net: None,
             user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

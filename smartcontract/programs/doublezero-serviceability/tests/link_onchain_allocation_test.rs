@@ -183,6 +183,7 @@ async fn test_activate_link_with_onchain_allocation() {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -241,6 +242,7 @@ async fn test_activate_link_with_onchain_allocation() {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -555,6 +557,7 @@ async fn test_activate_link_legacy_path() {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -612,6 +615,7 @@ async fn test_activate_link_legacy_path() {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -871,6 +875,7 @@ async fn test_closeaccount_link_with_deallocation() {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -928,6 +933,7 @@ async fn test_closeaccount_link_with_deallocation() {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -1259,6 +1265,7 @@ async fn setup_wan_link_infra(
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![
@@ -1317,6 +1324,7 @@ async fn setup_wan_link_infra(
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             },
         ),
         vec![

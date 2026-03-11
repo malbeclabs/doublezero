@@ -1,10 +1,17 @@
 use crate::{
     error::DoubleZeroError,
+    pda::get_resource_extension_pda,
+    processors::{
+        resource::{allocate_id, allocate_ip},
+        validation::validate_program_account,
+    },
+    resource::ResourceType,
     serializer::try_acc_write,
     state::{
         accounttype::AccountType,
         contributor::Contributor,
         device::*,
+        feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         interface::{
             CurrentInterfaceVersion, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType,
@@ -37,6 +44,10 @@ pub struct DeviceInterfaceCreateArgs {
     pub cir: u64,
     pub mtu: u16,
     pub routing_mode: RoutingMode,
+    /// When true, onchain allocation is used (ResourceExtension accounts required).
+    /// Performs atomic create+allocate+activate in a single transaction.
+    #[incremental(default = false)]
+    pub use_onchain_allocation: bool,
 }
 
 impl fmt::Debug for DeviceInterfaceCreateArgs {
@@ -44,7 +55,8 @@ impl fmt::Debug for DeviceInterfaceCreateArgs {
         write!(
             f,
             "name: {}, loopback_type: {}, vlan_id: {}, ip_net: {:?}, user_tunnel_endpoint: {}, \
-interface_cyoa: {:?}, interface_dia: {:?}, bandwidth: {}, cir: {}, mtu: {}, routing_mode: {:?}",
+interface_cyoa: {:?}, interface_dia: {:?}, bandwidth: {}, cir: {}, mtu: {}, routing_mode: {:?}, \
+use_onchain_allocation: {}",
             self.name,
             self.loopback_type,
             self.vlan_id,
@@ -56,6 +68,7 @@ interface_cyoa: {:?}, interface_dia: {:?}, bandwidth: {}, cir: {}, mtu: {}, rout
             self.cir,
             self.mtu,
             self.routing_mode,
+            self.use_onchain_allocation,
         )
     }
 }
@@ -70,6 +83,20 @@ pub fn process_create_device_interface(
     let device_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+
+    // Optional: ResourceExtension accounts for onchain allocation (before payer)
+    // Account layout WITH ResourceExtension (use_onchain_allocation = true):
+    //   [device, contributor, globalstate, device_tunnel_block, segment_routing_ids, payer, system]
+    // Account layout WITHOUT (legacy, use_onchain_allocation = false):
+    //   [device, contributor, globalstate, payer, system]
+    let resource_accounts = if value.use_onchain_allocation {
+        let device_tunnel_block_ext = next_account_info(accounts_iter)?;
+        let segment_routing_ids_ext = next_account_info(accounts_iter)?;
+        Some((device_tunnel_block_ext, segment_routing_ids_ext))
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
 
@@ -133,9 +160,55 @@ pub fn process_create_device_interface(
         return Err(DoubleZeroError::InterfaceAlreadyExists.into());
     }
 
+    let mut status = InterfaceStatus::Pending;
+    let mut ip_net = value.ip_net.unwrap_or_default();
+    let mut node_segment_idx: u16 = 0;
+
+    // Atomic create+allocate+activate if onchain allocation is enabled
+    if let Some((device_tunnel_block_ext, segment_routing_ids_ext)) = resource_accounts {
+        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
+            return Err(DoubleZeroError::FeatureNotEnabled.into());
+        }
+
+        let (expected_dtb_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
+        validate_program_account!(
+            device_tunnel_block_ext,
+            program_id,
+            writable = true,
+            pda = Some(&expected_dtb_pda),
+            "DeviceTunnelBlock"
+        );
+
+        let (expected_sr_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
+        validate_program_account!(
+            segment_routing_ids_ext,
+            program_id,
+            writable = true,
+            pda = Some(&expected_sr_pda),
+            "SegmentRoutingIds"
+        );
+
+        if interface_type == InterfaceType::Loopback {
+            // Allocate IP from DeviceTunnelBlock
+            ip_net = allocate_ip(device_tunnel_block_ext, 1)?;
+
+            // Allocate segment routing ID for Vpnv4 loopbacks
+            if value.loopback_type == LoopbackType::Vpnv4 {
+                node_segment_idx = allocate_id(segment_routing_ids_ext)?;
+            }
+
+            status = InterfaceStatus::Activated;
+        } else {
+            // Physical interfaces go directly to Unlinked
+            status = InterfaceStatus::Unlinked;
+        }
+    }
+
     device.interfaces.push(
         CurrentInterfaceVersion {
-            status: InterfaceStatus::Pending,
+            status,
             name,
             interface_type,
             loopback_type: value.loopback_type,
@@ -146,8 +219,8 @@ pub fn process_create_device_interface(
             mtu: value.mtu,
             routing_mode: value.routing_mode,
             vlan_id: value.vlan_id,
-            ip_net: value.ip_net.unwrap_or_default(),
-            node_segment_idx: 0,
+            ip_net,
+            node_segment_idx,
             user_tunnel_endpoint: value.user_tunnel_endpoint,
         }
         .to_interface(),

@@ -311,6 +311,7 @@ async fn test_device_interfaces() {
             routing_mode: RoutingMode::Static,
             vlan_id: 42,
             user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -337,6 +338,7 @@ async fn test_device_interfaces() {
             routing_mode: RoutingMode::Static,
             vlan_id: 43,
             user_tunnel_endpoint: true,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -363,6 +365,7 @@ async fn test_device_interfaces() {
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -388,6 +391,7 @@ async fn test_device_interfaces() {
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -414,6 +418,7 @@ async fn test_device_interfaces() {
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -441,6 +446,7 @@ async fn test_device_interfaces() {
             routing_mode: RoutingMode::Static,
             vlan_id: 1,
             user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -472,6 +478,7 @@ async fn test_device_interfaces() {
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -551,6 +558,7 @@ async fn test_device_interfaces() {
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -847,6 +855,7 @@ async fn test_device_interfaces() {
         program_id,
         DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
             name: "ethernet1/1".to_string(),
+            use_onchain_deallocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -863,6 +872,7 @@ async fn test_device_interfaces() {
         program_id,
         DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
             name: "ethernet2/1".to_string(),
+            use_onchain_deallocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -879,6 +889,7 @@ async fn test_device_interfaces() {
         program_id,
         DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
             name: "ethernet3/1".to_string(),
+            use_onchain_deallocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -895,6 +906,7 @@ async fn test_device_interfaces() {
         program_id,
         DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
             name: "loopback0".to_string(),
+            use_onchain_deallocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -912,6 +924,7 @@ async fn test_device_interfaces() {
         program_id,
         DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
             name: "loopback1".to_string(),
+            use_onchain_deallocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1127,6 +1140,7 @@ async fn test_device_interfaces() {
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(device2_pubkey, false),
@@ -1154,6 +1168,7 @@ async fn test_device_interfaces() {
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(device2_pubkey, false),

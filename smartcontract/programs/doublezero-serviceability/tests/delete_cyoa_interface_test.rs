@@ -178,6 +178,7 @@ async fn test_delete_cyoa_interface_with_invalid_sibling() {
         program_id,
         DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
             name: "ethernet1".to_string(),
+            use_onchain_deallocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -227,6 +228,7 @@ async fn test_delete_cyoa_interface_with_invalid_sibling() {
         program_id,
         DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
             name: "ethernet2".to_string(),
+            use_onchain_deallocation: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

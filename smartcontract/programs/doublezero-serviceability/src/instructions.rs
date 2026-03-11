@@ -1136,12 +1136,14 @@ mod tests {
                 ip_net: None,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
             }),
             "CreateDeviceInterface",
         );
         test_instruction(
             DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
                 name: "name".to_string(),
+                use_onchain_deallocation: false,
             }),
             "DeleteDeviceInterface",
         );

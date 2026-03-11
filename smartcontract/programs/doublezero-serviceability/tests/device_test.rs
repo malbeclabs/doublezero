@@ -998,7 +998,10 @@ async fn test_device_update_multicast_counts_ignored_for_non_foundation_payer() 
         &non_foundation_payer,
     )
     .await;
-    assert!(result.is_ok(), "UpdateDevice must succeed for non-foundation payer");
+    assert!(
+        result.is_ok(),
+        "UpdateDevice must succeed for non-foundation payer"
+    );
 
     let device = get_account_data(&mut banks_client, device_pubkey)
         .await

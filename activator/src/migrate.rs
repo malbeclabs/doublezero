@@ -21,7 +21,7 @@ pub fn migrate_multicast_counts(client: &dyn DoubleZeroClient) -> eyre::Result<(
     // Tally multicast publishers and subscribers per device pubkey.
     let users = client.gets(AccountType::User)?;
     let mut per_device: HashMap<Pubkey, (u16, u16)> = HashMap::new(); // (publishers, subscribers)
-    for (_, account) in &users {
+    for account in users.values() {
         if let AccountData::User(user) = account {
             // Exclude terminal/invalid states that will never trigger a counter decrement.
             // Note: SuspendedDeprecated is intentionally included — legacy accounts in this
@@ -46,8 +46,7 @@ pub fn migrate_multicast_counts(client: &dyn DoubleZeroClient) -> eyre::Result<(
 
     for (device_pubkey, account) in &devices {
         if let AccountData::Device(device) = account {
-            let (actual_pub, actual_sub) =
-                per_device.get(device_pubkey).copied().unwrap_or((0, 0));
+            let (actual_pub, actual_sub) = per_device.get(device_pubkey).copied().unwrap_or((0, 0));
 
             if device.multicast_publishers_count == actual_pub
                 && device.multicast_subscribers_count == actual_sub
@@ -207,10 +206,8 @@ mod tests {
             );
         }
 
-        let devices: HashMap<Pubkey, AccountData> = HashMap::from([(
-            device_pubkey,
-            AccountData::Device(device),
-        )]);
+        let devices: HashMap<Pubkey, AccountData> =
+            HashMap::from([(device_pubkey, AccountData::Device(device))]);
 
         client
             .expect_gets()
@@ -253,10 +250,8 @@ mod tests {
         }
 
         let device_clone = device.clone();
-        let devices: HashMap<Pubkey, AccountData> = HashMap::from([(
-            device_pubkey,
-            AccountData::Device(device),
-        )]);
+        let devices: HashMap<Pubkey, AccountData> =
+            HashMap::from([(device_pubkey, AccountData::Device(device))]);
 
         client
             .expect_gets()

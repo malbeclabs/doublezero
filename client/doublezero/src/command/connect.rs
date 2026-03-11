@@ -617,7 +617,9 @@ impl ProvisioningCliCommand {
                 ));
 
                 // Check per-type user limit before attempting to create
-                if let Some(err_msg) = device.check_user_type_capacity(UserType::Multicast, !pub_group_pks.is_empty()) {
+                if let Some(err_msg) =
+                    device.check_user_type_capacity(UserType::Multicast, !pub_group_pks.is_empty())
+                {
                     return Err(eyre::eyre!(err_msg));
                 }
 
@@ -753,7 +755,9 @@ impl ProvisioningCliCommand {
                 spinner.inc(1);
 
                 // Check per-type user limit before attempting to create
-                if let Some(err_msg) = device.check_user_type_capacity(UserType::Multicast, !pub_group_pks.is_empty()) {
+                if let Some(err_msg) =
+                    device.check_user_type_capacity(UserType::Multicast, !pub_group_pks.is_empty())
+                {
                     return Err(eyre::eyre!(err_msg));
                 }
 

@@ -11,6 +11,7 @@ mod activator;
 mod activator_metrics;
 mod idallocator;
 mod ipblockallocator;
+mod migrate;
 mod process;
 mod processor;
 mod states;

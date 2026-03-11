@@ -84,7 +84,7 @@ use crate::processors::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
         closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
         create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs, reject::UserRejectArgs,
-        requestban::UserRequestBanArgs, update::UserUpdateArgs,
+        requestban::UserRequestBanArgs, setbgpstatus::UserSetBGPStatusArgs, update::UserUpdateArgs,
     },
 };
 use borsh::BorshSerialize;
@@ -216,6 +216,8 @@ pub enum DoubleZeroInstruction {
     SuspendPermission(PermissionSuspendArgs), // variant 99
     ResumePermission(PermissionResumeArgs),   // variant 100
     DeletePermission(PermissionDeleteArgs),   // variant 101
+
+    SetUserBGPStatus(UserSetBGPStatusArgs), // variant 102
 }
 
 impl DoubleZeroInstruction {
@@ -349,6 +351,7 @@ impl DoubleZeroInstruction {
             99 => Ok(Self::SuspendPermission(PermissionSuspendArgs::try_from(rest).unwrap())),
             100 => Ok(Self::ResumePermission(PermissionResumeArgs::try_from(rest).unwrap())),
             101 => Ok(Self::DeletePermission(PermissionDeleteArgs::try_from(rest).unwrap())),
+            102 => Ok(Self::SetUserBGPStatus(UserSetBGPStatusArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -480,6 +483,7 @@ impl DoubleZeroInstruction {
             Self::SuspendPermission(_) => "SuspendPermission".to_string(), // variant 99
             Self::ResumePermission(_) => "ResumePermission".to_string(), // variant 100
             Self::DeletePermission(_) => "DeletePermission".to_string(), // variant 101
+            Self::SetUserBGPStatus(_) => "SetUserBGPStatus".to_string(), // variant 102
         }
     }
 
@@ -603,6 +607,7 @@ impl DoubleZeroInstruction {
             Self::SuspendPermission(args) => format!("{args:?}"), // variant 99
             Self::ResumePermission(args) => format!("{args:?}"), // variant 100
             Self::DeletePermission(args) => format!("{args:?}"), // variant 101
+            Self::SetUserBGPStatus(args) => format!("{args:?}"), // variant 102
         }
     }
 }

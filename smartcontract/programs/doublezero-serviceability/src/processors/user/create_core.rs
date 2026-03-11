@@ -314,6 +314,9 @@ pub fn create_user_core(
         subscribers: vec![],
         validator_pubkey,
         tunnel_endpoint,
+        bgp_status: BGPStatus::Unknown,
+        last_bgp_up_at: 0,
+        last_bgp_reported_at: 0,
     };
 
     Ok(CreateUserCoreResult {

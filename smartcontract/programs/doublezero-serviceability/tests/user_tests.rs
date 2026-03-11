@@ -7,7 +7,8 @@ use doublezero_serviceability::{
         device::update::DeviceUpdateArgs,
         tenant::create::TenantCreateArgs,
         user::{
-            activate::*, ban::*, check_access_pass, create::*, delete::*, requestban::*, update::*,
+            activate::*, ban::*, check_access_pass, create::*, delete::*, requestban::*,
+            setbgpstatus::UserSetBGPStatusArgs, update::*,
         },
         *,
     },
@@ -17,7 +18,7 @@ use doublezero_serviceability::{
         accounttype::AccountType,
         contributor::ContributorStatus,
         device::*,
-        user::{UserCYOA, UserStatus, UserType},
+        user::{BGPStatus, UserCYOA, UserStatus, UserType},
     },
 };
 use globalconfig::set::SetGlobalConfigArgs;
@@ -1655,4 +1656,100 @@ async fn test_user_delete_from_out_of_credits() {
         .get_user()
         .unwrap();
     assert_eq!(user.status, UserStatus::Deleting);
+}
+
+#[tokio::test]
+async fn test_set_user_bgp_status() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, user_pubkey, _) =
+        setup_activated_user().await;
+
+    // Read user to get device_pk
+    // payer is already in foundation_allowlist (added by InitGlobalState), so it can call SetUserBGPStatus
+    // (device has metrics_publisher_pk == Pubkey::default(), so we use foundation allowlist)
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    let device_pubkey = user.device_pk;
+    assert_eq!(user.bgp_status, BGPStatus::Unknown);
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Set BGP status to Up
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetUserBGPStatus(UserSetBGPStatusArgs {
+            bgp_status: BGPStatus::Up,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.bgp_status, BGPStatus::Up);
+    assert!(user.last_bgp_up_at > 0);
+    assert_eq!(user.last_bgp_reported_at, user.last_bgp_up_at);
+
+    let last_bgp_up_at = user.last_bgp_up_at;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Set BGP status to Down
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetUserBGPStatus(UserSetBGPStatusArgs {
+            bgp_status: BGPStatus::Down,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.bgp_status, BGPStatus::Down);
+    assert!(user.last_bgp_reported_at > 0);
+    assert_eq!(user.last_bgp_up_at, last_bgp_up_at);
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Unauthorized signer should fail
+    let unauthorized = Keypair::new();
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetUserBGPStatus(UserSetBGPStatusArgs {
+            bgp_status: BGPStatus::Up,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &unauthorized,
+    )
+    .await;
+    assert!(result.is_err());
 }

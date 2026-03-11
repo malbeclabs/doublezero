@@ -694,6 +694,31 @@ func (c CyoaType) String() string {
 	}
 }
 
+type BGPStatus uint8
+
+const (
+	BGPStatusUnknown BGPStatus = 0
+	BGPStatusUp      BGPStatus = 1
+	BGPStatusDown    BGPStatus = 2
+)
+
+func (b BGPStatus) String() string {
+	switch b {
+	case BGPStatusUnknown:
+		return "unknown"
+	case BGPStatusUp:
+		return "up"
+	case BGPStatusDown:
+		return "down"
+	default:
+		return "unknown"
+	}
+}
+
+func (b BGPStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(b.String())
+}
+
 type UserStatus uint8
 
 const (
@@ -735,23 +760,27 @@ func (u UserStatus) MarshalJSON() ([]byte, error) {
 }
 
 type User struct {
-	AccountType     AccountType
-	Owner           [32]byte
-	Index           Uint128
-	BumpSeed        uint8
-	UserType        UserUserType
-	TenantPubKey    [32]byte
-	DevicePubKey    [32]byte
-	CyoaType        CyoaType
-	ClientIp        [4]uint8
-	DzIp            [4]uint8
-	TunnelId        uint16
-	TunnelNet       [5]uint8
-	Status          UserStatus
-	Publishers      [][32]byte
-	Subscribers     [][32]byte
-	ValidatorPubKey [32]byte
-	PubKey          [32]byte
+	AccountType        AccountType
+	Owner              [32]byte
+	Index              Uint128
+	BumpSeed           uint8
+	UserType           UserUserType
+	TenantPubKey       [32]byte
+	DevicePubKey       [32]byte
+	CyoaType           CyoaType
+	ClientIp           [4]uint8
+	DzIp               [4]uint8
+	TunnelId           uint16
+	TunnelNet          [5]uint8
+	Status             UserStatus
+	Publishers         [][32]byte
+	Subscribers        [][32]byte
+	ValidatorPubKey    [32]byte
+	TunnelEndpoint     [4]uint8
+	BGPStatus          BGPStatus
+	LastBGPUpAt        uint64
+	LastBGPReportedAt  uint64
+	PubKey             [32]byte
 }
 
 type MulticastGroupStatus uint8

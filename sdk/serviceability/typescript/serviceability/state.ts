@@ -231,6 +231,15 @@ export function cyoaTypeString(v: number): string {
   return CYOA_TYPE_NAMES[v] ?? "unknown";
 }
 
+const BGP_STATUS_NAMES: Record<number, string> = {
+  0: "unknown",
+  1: "up",
+  2: "down",
+};
+export function bgpStatusString(v: number): string {
+  return BGP_STATUS_NAMES[v] ?? "unknown";
+}
+
 const USER_STATUS_NAMES: Record<number, string> = {
   0: "pending",
   1: "activated",
@@ -702,6 +711,10 @@ export interface User {
   publishers: PublicKey[];
   subscribers: PublicKey[];
   validatorPubKey: PublicKey;
+  tunnelEndpoint: Uint8Array;
+  bgpStatus: number;
+  lastBGPUpAt: bigint;
+  lastBGPReportedAt: bigint;
 }
 
 export function deserializeUser(data: Uint8Array): User {
@@ -723,6 +736,10 @@ export function deserializeUser(data: Uint8Array): User {
     publishers: readPubkeyVec(r),
     subscribers: readPubkeyVec(r),
     validatorPubKey: readPubkey(r),
+    tunnelEndpoint: r.readIPv4(),
+    bgpStatus: r.readU8(),
+    lastBGPUpAt: r.readU64(),
+    lastBGPReportedAt: r.readU64(),
   };
 }
 

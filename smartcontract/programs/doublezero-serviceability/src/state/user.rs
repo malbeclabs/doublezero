@@ -140,6 +140,27 @@ impl fmt::Display for UserStatus {
     }
 }
 
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum BGPStatus {
+    #[default]
+    Unknown = 0,
+    Up = 1,
+    Down = 2,
+}
+
+impl fmt::Display for BGPStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BGPStatus::Unknown => write!(f, "unknown"),
+            BGPStatus::Up => write!(f, "up"),
+            BGPStatus::Down => write!(f, "down"),
+        }
+    }
+}
+
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct User {
@@ -203,13 +224,16 @@ pub struct User {
     pub validator_pubkey: Pubkey, // 32
     /// Tunnel endpoint IP (device-side GRE endpoint). 0.0.0.0 means use device.public_ip for backwards compatibility.
     pub tunnel_endpoint: Ipv4Addr, // 4
+    pub bgp_status: BGPStatus,     // 1
+    pub last_bgp_up_at: u64,       // 8
+    pub last_bgp_reported_at: u64, // 8
 }
 
 impl fmt::Display for User {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, user_type: {}, device_pk: {}, cyoa_type: {}, client_ip: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}, status: {}, tunnel_endpoint: {}",
+            "account_type: {}, owner: {}, index: {}, user_type: {}, device_pk: {}, cyoa_type: {}, client_ip: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}, status: {}, tunnel_endpoint: {}, bgp_status: {}",
             self.account_type,
             self.owner,
             self.index,
@@ -221,7 +245,8 @@ impl fmt::Display for User {
             self.tunnel_id,
             &self.tunnel_net,
             self.status,
-            &self.tunnel_endpoint
+            &self.tunnel_endpoint,
+            self.bgp_status
         )
     }
 }
@@ -250,6 +275,9 @@ impl TryFrom<&[u8]> for User {
             // Tunnel endpoint - defaults to 0.0.0.0 for backwards compatibility (use device.public_ip)
             tunnel_endpoint: BorshDeserialize::deserialize(&mut data)
                 .unwrap_or([0, 0, 0, 0].into()),
+            bgp_status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            last_bgp_up_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            last_bgp_reported_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::User {
@@ -435,6 +463,9 @@ mod tests {
         assert_eq!(val.publishers, Vec::<Pubkey>::new());
         assert_eq!(val.subscribers, Vec::<Pubkey>::new());
         assert_eq!(val.validator_pubkey, Pubkey::default());
+        assert_eq!(val.bgp_status, BGPStatus::Unknown);
+        assert_eq!(val.last_bgp_up_at, 0);
+        assert_eq!(val.last_bgp_reported_at, 0);
     }
 
     #[test]
@@ -457,6 +488,9 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            bgp_status: BGPStatus::Up,
+            last_bgp_up_at: 12345,
+            last_bgp_reported_at: 12345,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -477,6 +511,9 @@ mod tests {
         assert_eq!(val.subscribers, val2.subscribers);
         assert_eq!(val.publishers, val2.publishers);
         assert_eq!(val.validator_pubkey, val2.validator_pubkey);
+        assert_eq!(val.bgp_status, val2.bgp_status);
+        assert_eq!(val.last_bgp_up_at, val2.last_bgp_up_at);
+        assert_eq!(val.last_bgp_reported_at, val2.last_bgp_reported_at);
         assert_eq!(
             data.len(),
             borsh::object_length(&val).unwrap(),
@@ -504,6 +541,9 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            bgp_status: BGPStatus::Unknown,
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let err = val.validate();
@@ -531,6 +571,9 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            bgp_status: BGPStatus::Unknown,
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -557,6 +600,9 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            bgp_status: BGPStatus::Unknown,
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -583,6 +629,9 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            bgp_status: BGPStatus::Unknown,
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -609,6 +658,9 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            bgp_status: BGPStatus::Unknown,
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -635,6 +687,9 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            bgp_status: BGPStatus::Unknown,
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -662,6 +717,9 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 1), // Private IP - invalid
+            bgp_status: BGPStatus::Unknown,
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -724,6 +782,9 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            bgp_status: BGPStatus::Unknown,
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         }
     }
 
@@ -862,6 +923,9 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 1), // invalid: private IP
+            bgp_status: BGPStatus::Unknown,
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         assert!(val.validate().is_ok());

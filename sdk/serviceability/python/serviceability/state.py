@@ -336,6 +336,16 @@ class UserStatus(IntEnum):
         return _names.get(self.value, "unknown")
 
 
+class BGPStatus(IntEnum):
+    UNKNOWN = 0
+    UP = 1
+    DOWN = 2
+
+    def __str__(self) -> str:
+        _names = {0: "unknown", 1: "up", 2: "down"}
+        return _names.get(self.value, "unknown")
+
+
 class MulticastGroupStatus(IntEnum):
     PENDING = 0
     ACTIVATED = 1
@@ -711,6 +721,10 @@ class User:
     publishers: list[Pubkey] = field(default_factory=list)
     subscribers: list[Pubkey] = field(default_factory=list)
     validator_pub_key: Pubkey = Pubkey.default()
+    tunnel_endpoint: bytes = b"\x00" * 4
+    bgp_status: BGPStatus = BGPStatus.UNKNOWN
+    last_bgp_up_at: int = 0
+    last_bgp_reported_at: int = 0
 
     @classmethod
     def from_bytes(cls, data: bytes) -> User:
@@ -732,6 +746,10 @@ class User:
         u.publishers = _read_pubkey_vec(r)
         u.subscribers = _read_pubkey_vec(r)
         u.validator_pub_key = _read_pubkey(r)
+        u.tunnel_endpoint = r.read_ipv4()
+        u.bgp_status = BGPStatus(r.read_u8())
+        u.last_bgp_up_at = r.read_u64()
+        u.last_bgp_reported_at = r.read_u64()
         return u
 
 

@@ -9,4 +9,5 @@ pub mod delete;
 pub mod reject;
 pub mod requestban;
 pub mod resource_onchain_helpers;
+pub mod setbgpstatus;
 pub mod update;

@@ -991,6 +991,9 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             };
 
             let (accesspass_pk_unspecified, _) = get_accesspass_pda(
@@ -1195,6 +1198,9 @@ mod tests {
                 subscribers: vec![Pubkey::default()],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             };
 
             let (accesspass_pk_unspecified, _) = get_accesspass_pda(
@@ -1347,6 +1353,9 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             };
 
             client
@@ -1461,6 +1470,9 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             };
 
             client
@@ -1579,6 +1591,9 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             };
 
             client
@@ -1666,6 +1681,9 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             };
 
             let user2 = user.clone();
@@ -1840,6 +1858,9 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         // Deallocate — this should free the IP even though publishers is empty
@@ -1892,6 +1913,9 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         deallocate_publisher_dz_ip(&ibrl_user, &mut publisher_dz_ips);
@@ -2004,6 +2028,9 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: demanded_endpoint,
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             };
 
             let (accesspass_pk_unspecified, _) = get_accesspass_pda(
@@ -2157,6 +2184,9 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::new(9, 9, 9, 9),
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             };
 
             // Expect a reject transaction, NOT an activate
@@ -2245,6 +2275,9 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED, // no demand
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             };
 
             let (accesspass_pk_unspecified, _) = get_accesspass_pda(
@@ -2397,6 +2430,9 @@ mod tests {
                 subscribers: vec![Pubkey::default()],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: demanded_endpoint,
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             };
 
             let (accesspass_pk_unspecified, _) = get_accesspass_pda(
@@ -2550,6 +2586,9 @@ mod tests {
                 subscribers: vec![Pubkey::default()],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::new(9, 9, 9, 9),
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             };
 
             // Expect a reject transaction
@@ -2658,6 +2697,9 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             };
 
             let (accesspass_pk_unspecified, _) = get_accesspass_pda(
@@ -2815,6 +2857,9 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             };
 
             // SDK's CloseAccountUserCommand fetches the user
@@ -2932,6 +2977,9 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             };
 
             let user2 = user.clone();

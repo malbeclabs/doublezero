@@ -20,7 +20,7 @@ use doublezero_solana_sdk::{
             RevenueDistributionInstructionData, account::InitializeSolanaValidatorDepositAccounts,
         },
         state::{Distribution, ProgramConfig, SolanaValidatorDeposit},
-        types::SolanaValidatorDebt,
+        types::{SolanaValidatorDebt, UnitShare16},
     },
     try_build_instruction,
 };
@@ -175,6 +175,15 @@ pub async fn calculate_distribution(
     let distribution = transaction
         .read_distribution(dz_epoch, solana_debt_calculator.solana_rpc_client())
         .await?;
+
+    if distribution
+        .solana_validator_fee_parameters
+        .base_block_rewards_pct
+        == UnitShare16::default()
+    {
+        tracing::warn!("No fees collected - aborting distribution calculation");
+        return Ok(WriteSummary::default());
+    }
 
     if distribution.is_debt_calculation_finalized() {
         bail!("distribution has already been finalized for dz epoch {dz_epoch}");

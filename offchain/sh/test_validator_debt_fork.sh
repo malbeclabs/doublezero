@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 MAINNET_BETA_DEBT_ACCOUNTANT_KEY=acLisxTpNkoctPZoqssyo58pcdnHzJyRFhod7Wxkz5a

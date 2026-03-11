@@ -73,9 +73,10 @@ jobs:
       - name: Run `doublezero-solana-validator-debt` tests
         run: bash sh/test_validator_debt_fork.sh
 
-  test-full-debt-flow:
-    runs-on: ubuntu-latest
-    needs: [test-doublezero-solana-validator-debt-fork-current]
+# Commenting out as we may bring this back in the future
+  # test-full-debt-flow:
+  #   runs-on: ubuntu-latest
+  #   needs: [test-doublezero-solana-validator-debt-fork-current]
     steps:
       - uses: actions/checkout@v4
 

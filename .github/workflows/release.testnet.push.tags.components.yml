@@ -23,6 +23,7 @@ jobs:
           - agent
           - device-telemetry-agent
           - geoprobe-agent
+          - geoprobe-target
           - funder
           - monitor
           - client

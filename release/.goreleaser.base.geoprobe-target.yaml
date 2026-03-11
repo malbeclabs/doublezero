@@ -1,0 +1,93 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: doublezero-geoprobe-target
+
+monorepo:
+  tag_prefix: geoprobe-target/
+  dir: controlplane/telemetry
+
+builds:
+  - id: doublezero-geoprobe-target
+    main: cmd/geoprobe-target/main.go
+    binary: doublezero-geoprobe-target
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
+    goos:
+      - linux
+    goarch:
+      - amd64
+
+archives:
+  - id: geoprobe_target_archive
+    formats: ['tar.gz']
+    ids: [doublezero-geoprobe-target]
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+nfpms:
+  - id: doublezero-geoprobe-target
+    package_name: doublezero-geoprobe-target
+    ids: [doublezero-geoprobe-target]
+    vendor: doublezero
+    homepage: doublezero.xyz
+    maintainer: nik <nik@malbeclabs.com>
+    description: |-
+      DoubleZero geoprobe target for network geolocation measurements
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/local/bin
+    release: "1"
+    section: default
+    contents:
+      - src: release/packaging/systemd/doublezero-geoprobe-target.service
+        dst: /lib/systemd/system/doublezero-geoprobe-target.service
+        type: config
+    overrides:
+      rpm:
+        contents:
+          - src: release/packaging/systemd/doublezero-geoprobe-target.service
+            dst: /usr/lib/systemd/system/doublezero-geoprobe-target.service
+            type: config
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: malbeclabs
+    name: doublezero
+  draft: false
+  replace_existing_artifacts: true
+
+announce:
+  slack:
+    enabled: true
+    message_template: "DoubleZero Geoprobe Target {{.Tag}} has been released! Check it out at {{ .ReleaseURL }}"
+    channel: "#bots"
+
+git:
+  ignore_tags:
+    - geoprobe-target/daily
+
+nightly:
+  publish_release: true
+  keep_single_release: true
+  version_template: '{{ incpatch .Version }}~git{{ .Env.BUILD_DATE }}.{{ .ShortCommit }}'
+  tag_name: 'geoprobe-target/daily'

@@ -10,6 +10,8 @@ import {
   deserializeDeviceLatencySamples,
   deserializeInternetLatencySamples,
   deserializeTimestampIndex,
+  reconstructTimestamp,
+  reconstructTimestamps,
 } from "../state.js";
 
 const FIXTURES_DIR = join(
@@ -125,5 +127,36 @@ describe("TimestampIndex fixture", () => {
       got.Entry2Timestamp = d.entries[2].timestampMicroseconds;
     }
     assertFields(meta.fields, got);
+  });
+});
+
+describe("reconstructTimestamp", () => {
+  const interval = 5_000_000n;
+  const entries = [
+    { sampleIndex: 0, timestampMicroseconds: 1_700_000_000_000_000n },
+    { sampleIndex: 12, timestampMicroseconds: 1_700_000_000_120_000n },
+    { sampleIndex: 24, timestampMicroseconds: 1_700_000_000_240_000n },
+  ];
+
+  test("uses correct entry for each sample", () => {
+    expect(reconstructTimestamp(entries, 0, 0n, interval)).toBe(1_700_000_000_000_000n);
+    expect(reconstructTimestamp(entries, 5, 0n, interval)).toBe(1_700_000_000_000_000n + 5n * interval);
+    expect(reconstructTimestamp(entries, 12, 0n, interval)).toBe(1_700_000_000_120_000n);
+    expect(reconstructTimestamp(entries, 15, 0n, interval)).toBe(1_700_000_000_120_000n + 3n * interval);
+    expect(reconstructTimestamp(entries, 30, 0n, interval)).toBe(1_700_000_000_240_000n + 6n * interval);
+  });
+
+  test("falls back to implicit model with no entries", () => {
+    const ts = reconstructTimestamp([], 10, 1_700_000_000_000_000n, 5_000_000n);
+    expect(ts).toBe(1_700_000_000_000_000n + 10n * 5_000_000n);
+  });
+
+  test("reconstructTimestamps returns all timestamps", () => {
+    const e = [
+      { sampleIndex: 0, timestampMicroseconds: 1000n },
+      { sampleIndex: 3, timestampMicroseconds: 5000n },
+    ];
+    const ts = reconstructTimestamps(5, e, 0n, 100n);
+    expect(ts).toEqual([1000n, 1100n, 1200n, 5000n, 5100n]);
   });
 });

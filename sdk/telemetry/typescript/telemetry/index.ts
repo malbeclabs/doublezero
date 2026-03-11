@@ -7,6 +7,8 @@ export {
   deserializeDeviceLatencySamples,
   deserializeInternetLatencySamples,
   deserializeTimestampIndex,
+  reconstructTimestamp,
+  reconstructTimestamps,
 } from "./state.js";
 export {
   deriveDeviceLatencySamplesPda,

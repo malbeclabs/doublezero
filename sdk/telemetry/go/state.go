@@ -184,3 +184,46 @@ func DeserializeTimestampIndex(data []byte) (*TimestampIndex, error) {
 
 	return d, nil
 }
+
+// ReconstructTimestamp returns the wall-clock timestamp (in microseconds) for
+// the sample at the given index, using the timestamp index entries and the
+// sampling interval from the samples account header.
+//
+// If the timestamp index has no entries, it falls back to the implicit model:
+// startTimestamp + sampleIndex * samplingInterval.
+func ReconstructTimestamp(
+	entries []TimestampIndexEntry,
+	sampleIndex uint32,
+	startTimestampMicroseconds uint64,
+	samplingIntervalMicroseconds uint64,
+) uint64 {
+	if len(entries) == 0 {
+		return startTimestampMicroseconds + uint64(sampleIndex)*samplingIntervalMicroseconds
+	}
+
+	// Find the last entry whose SampleIndex <= sampleIndex.
+	entry := entries[0]
+	for _, e := range entries {
+		if e.SampleIndex > sampleIndex {
+			break
+		}
+		entry = e
+	}
+
+	return entry.TimestampMicroseconds + uint64(sampleIndex-entry.SampleIndex)*samplingIntervalMicroseconds
+}
+
+// ReconstructTimestamps returns wall-clock timestamps (in microseconds) for all
+// samples, using the timestamp index to correct for gaps.
+func ReconstructTimestamps(
+	sampleCount uint32,
+	entries []TimestampIndexEntry,
+	startTimestampMicroseconds uint64,
+	samplingIntervalMicroseconds uint64,
+) []uint64 {
+	timestamps := make([]uint64, sampleCount)
+	for i := range sampleCount {
+		timestamps[i] = ReconstructTimestamp(entries, i, startTimestampMicroseconds, samplingIntervalMicroseconds)
+	}
+	return timestamps
+}

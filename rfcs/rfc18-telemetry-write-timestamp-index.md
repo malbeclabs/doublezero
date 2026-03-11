@@ -2,7 +2,7 @@
 
 ## Summary
 
-**Status: Draft**
+**Status: Implemented**
 
 Add a companion timestamp index account to telemetry latency sample accounts so that the actual wall-clock time of each sample can be reliably determined, even when the writing agent experiences downtime mid-epoch.
 
@@ -189,7 +189,7 @@ The agent requires minimal changes:
 1. Call `InitializeTimestampIndex` after initializing each samples account at the start of an epoch.
 2. Pass the timestamp index account as an additional account in write instructions.
 
-No behavioral changes are needed — the agent already provides `start_timestamp_microseconds` on every write call. The program now records it in the companion account rather than ignoring it after the first write.
+No behavioral changes are needed — the agent already provides `start_timestamp_microseconds` on every write call. Previously, the program only used this value to set the header field on the first write (when it was zero) and discarded it on subsequent writes. Now, it also records each batch's timestamp in the companion account.
 
 ### SDK Changes
 

@@ -13,17 +13,22 @@ const (
 	AccountTypeInternetLatencySamplesV0 AccountType = 2
 	AccountTypeDeviceLatencySamples     AccountType = 3
 	AccountTypeInternetLatencySamples   AccountType = 4
+	AccountTypeTimestampIndex           AccountType = 5
 )
 
 const (
 	TelemetrySeedPrefix        = "telemetry"
 	DeviceLatencySamplesSeed   = "dzlatency"
 	InternetLatencySamplesSeed = "inetlatency"
+	TimestampIndexSeed         = "tsindex"
 
 	MaxDeviceLatencySamplesPerAccount   = 35_000
 	MaxInternetLatencySamplesPerAccount = 3_000
+	MaxTimestampIndexEntries            = 10_000
 
-	deviceLatencyHeaderSize = 1 + 8 + 32*6 + 8 + 8 + 4 + 128
+	deviceLatencyHeaderSize    = 1 + 8 + 32*6 + 8 + 8 + 4 + 128
+	timestampIndexHeaderSize   = 1 + 32 + 4 + 64
+	timestampIndexEntrySize    = 4 + 8
 )
 
 type DeviceLatencySamples struct {
@@ -131,6 +136,50 @@ func DeserializeInternetLatencySamples(data []byte) (*InternetLatencySamples, er
 			break
 		}
 		d.Samples[i], _ = r.ReadU32()
+	}
+
+	return d, nil
+}
+
+type TimestampIndexEntry struct {
+	SampleIndex           uint32
+	TimestampMicroseconds uint64
+}
+
+type TimestampIndex struct {
+	AccountType      AccountType
+	SamplesAccountPK [32]byte
+	NextEntryIndex   uint32
+	Entries          []TimestampIndexEntry
+}
+
+func DeserializeTimestampIndex(data []byte) (*TimestampIndex, error) {
+	if len(data) < timestampIndexHeaderSize {
+		return nil, fmt.Errorf("data too short for timestamp index header: %d < %d", len(data), timestampIndexHeaderSize)
+	}
+
+	r := borsh.NewReader(data)
+	d := &TimestampIndex{}
+
+	v, _ := r.ReadU8()
+	d.AccountType = AccountType(v)
+	d.SamplesAccountPK, _ = r.ReadPubkey()
+	d.NextEntryIndex, _ = r.ReadU32()
+
+	_, _ = r.ReadBytes(64) // _unused
+
+	count := int(d.NextEntryIndex)
+	if count > MaxTimestampIndexEntries {
+		return nil, fmt.Errorf("next_entry_index %d exceeds max %d", count, MaxTimestampIndexEntries)
+	}
+
+	d.Entries = make([]TimestampIndexEntry, count)
+	for i := range count {
+		if r.Remaining() < timestampIndexEntrySize {
+			break
+		}
+		d.Entries[i].SampleIndex, _ = r.ReadU32()
+		d.Entries[i].TimestampMicroseconds, _ = r.ReadU64()
 	}
 
 	return d, nil

@@ -19,8 +19,11 @@ INTERNET_LATENCY_SAMPLES_SEED = b"inetlatency"
 
 MAX_DEVICE_LATENCY_SAMPLES_PER_ACCOUNT = 35_000
 MAX_INTERNET_LATENCY_SAMPLES_PER_ACCOUNT = 3_000
+MAX_TIMESTAMP_INDEX_ENTRIES = 10_000
 
 DEVICE_LATENCY_HEADER_SIZE = 1 + 8 + 32 * 6 + 8 + 8 + 4 + 128
+TIMESTAMP_INDEX_HEADER_SIZE = 1 + 32 + 4 + 64
+TIMESTAMP_INDEX_ENTRY_SIZE = 4 + 8
 
 
 def _read_pubkey(r: DefensiveReader) -> Pubkey:
@@ -138,4 +141,49 @@ class InternetLatencySamples:
             start_timestamp_microseconds=start_timestamp,
             next_sample_index=next_sample_index,
             samples=samples,
+        )
+
+
+@dataclass
+class TimestampIndexEntry:
+    sample_index: int
+    timestamp_microseconds: int
+
+
+@dataclass
+class TimestampIndex:
+    account_type: int
+    samples_account_pk: Pubkey
+    next_entry_index: int
+    entries: list[TimestampIndexEntry] = field(default_factory=list)
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> TimestampIndex:
+        if len(data) < TIMESTAMP_INDEX_HEADER_SIZE:
+            raise ValueError(
+                f"data too short for timestamp index header: {len(data)} < {TIMESTAMP_INDEX_HEADER_SIZE}"
+            )
+
+        r = DefensiveReader(data)
+
+        account_type = r.read_u8()
+        samples_account_pk = _read_pubkey(r)
+        next_entry_index = r.read_u32()
+
+        r.read_bytes(64)  # reserved
+
+        count = min(next_entry_index, MAX_TIMESTAMP_INDEX_ENTRIES)
+        entries: list[TimestampIndexEntry] = []
+        for _ in range(count):
+            if r.remaining < TIMESTAMP_INDEX_ENTRY_SIZE:
+                break
+            sample_index = r.read_u32()
+            timestamp_microseconds = r.read_u64()
+            entries.append(TimestampIndexEntry(sample_index, timestamp_microseconds))
+
+        return cls(
+            account_type=account_type,
+            samples_account_pk=samples_account_pk,
+            next_entry_index=next_entry_index,
+            entries=entries,
         )

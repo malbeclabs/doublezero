@@ -43,6 +43,10 @@ pub struct DeviceUpdateArgs {
     pub multicast_users_count: Option<u16>,
     #[incremental(default = None)]
     pub max_multicast_publishers: Option<u16>,
+    #[incremental(default = None)]
+    pub multicast_subscribers_count: Option<u16>,
+    #[incremental(default = None)]
+    pub multicast_publishers_count: Option<u16>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
@@ -109,6 +113,20 @@ impl fmt::Debug for DeviceUpdateArgs {
                 f,
                 "multicast_users_count: {:?}, ",
                 self.multicast_users_count
+            )?;
+        }
+        if self.multicast_subscribers_count.is_some() {
+            write!(
+                f,
+                "multicast_subscribers_count: {:?}, ",
+                self.multicast_subscribers_count
+            )?;
+        }
+        if self.multicast_publishers_count.is_some() {
+            write!(
+                f,
+                "multicast_publishers_count: {:?}, ",
+                self.multicast_publishers_count
             )?;
         }
         Ok(())
@@ -223,6 +241,12 @@ pub fn process_update_device(
         }
         if let Some(users_count) = value.users_count {
             device.users_count = users_count;
+        }
+        if let Some(multicast_subscribers_count) = value.multicast_subscribers_count {
+            device.multicast_subscribers_count = multicast_subscribers_count;
+        }
+        if let Some(multicast_publishers_count) = value.multicast_publishers_count {
+            device.multicast_publishers_count = multicast_publishers_count;
         }
         if let Some(reference_count) = value.reference_count {
             device.reference_count = reference_count;

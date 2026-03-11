@@ -26,9 +26,9 @@ const (
 	MaxInternetLatencySamplesPerAccount = 3_000
 	MaxTimestampIndexEntries            = 10_000
 
-	deviceLatencyHeaderSize    = 1 + 8 + 32*6 + 8 + 8 + 4 + 128
-	timestampIndexHeaderSize   = 1 + 32 + 4 + 64
-	timestampIndexEntrySize    = 4 + 8
+	deviceLatencyHeaderSize  = 1 + 8 + 32*6 + 8 + 8 + 4 + 128
+	timestampIndexHeaderSize = 1 + 32 + 4 + 64
+	timestampIndexEntrySize  = 4 + 8
 )
 
 type DeviceLatencySamples struct {

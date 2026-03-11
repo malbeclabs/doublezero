@@ -178,3 +178,43 @@ export function deserializeTimestampIndex(
     entries,
   };
 }
+
+/**
+ * Returns the wall-clock timestamp (microseconds) for a sample at the given
+ * index, using timestamp index entries to correct for gaps. Falls back to the
+ * implicit model when no entries are available.
+ */
+export function reconstructTimestamp(
+  entries: TimestampIndexEntry[],
+  sampleIndex: number,
+  startTimestampMicroseconds: bigint,
+  samplingIntervalMicroseconds: bigint,
+): bigint {
+  if (entries.length === 0) {
+    return startTimestampMicroseconds + BigInt(sampleIndex) * samplingIntervalMicroseconds;
+  }
+
+  let entry = entries[0];
+  for (const e of entries) {
+    if (e.sampleIndex > sampleIndex) break;
+    entry = e;
+  }
+
+  return entry.timestampMicroseconds + BigInt(sampleIndex - entry.sampleIndex) * samplingIntervalMicroseconds;
+}
+
+/**
+ * Returns wall-clock timestamps (microseconds) for all samples.
+ */
+export function reconstructTimestamps(
+  sampleCount: number,
+  entries: TimestampIndexEntry[],
+  startTimestampMicroseconds: bigint,
+  samplingIntervalMicroseconds: bigint,
+): bigint[] {
+  const timestamps: bigint[] = [];
+  for (let i = 0; i < sampleCount; i++) {
+    timestamps.push(reconstructTimestamp(entries, i, startTimestampMicroseconds, samplingIntervalMicroseconds));
+  }
+  return timestamps;
+}

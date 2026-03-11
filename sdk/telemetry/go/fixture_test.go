@@ -150,6 +150,53 @@ func TestFixtureTimestampIndex(t *testing.T) {
 	assertFields(t, meta.Fields, got)
 }
 
+func TestReconstructTimestamp(t *testing.T) {
+	interval := uint64(5_000_000) // 5s in µs
+	entries := []TimestampIndexEntry{
+		{SampleIndex: 0, TimestampMicroseconds: 1_700_000_000_000_000},
+		{SampleIndex: 12, TimestampMicroseconds: 1_700_000_000_120_000},
+		{SampleIndex: 24, TimestampMicroseconds: 1_700_000_000_240_000},
+	}
+
+	// Sample 0: first entry, offset 0
+	ts := ReconstructTimestamp(entries, 0, 0, interval)
+	assertEq(t, "sample0", uint64(1_700_000_000_000_000), ts)
+
+	// Sample 5: first entry, offset 5
+	ts = ReconstructTimestamp(entries, 5, 0, interval)
+	assertEq(t, "sample5", uint64(1_700_000_000_000_000+5*5_000_000), ts)
+
+	// Sample 12: second entry, offset 0
+	ts = ReconstructTimestamp(entries, 12, 0, interval)
+	assertEq(t, "sample12", uint64(1_700_000_000_120_000), ts)
+
+	// Sample 15: second entry, offset 3
+	ts = ReconstructTimestamp(entries, 15, 0, interval)
+	assertEq(t, "sample15", uint64(1_700_000_000_120_000+3*5_000_000), ts)
+
+	// Sample 30: third entry, offset 6
+	ts = ReconstructTimestamp(entries, 30, 0, interval)
+	assertEq(t, "sample30", uint64(1_700_000_000_240_000+6*5_000_000), ts)
+}
+
+func TestReconstructTimestampFallback(t *testing.T) {
+	// No entries — falls back to implicit model.
+	ts := ReconstructTimestamp(nil, 10, 1_700_000_000_000_000, 5_000_000)
+	assertEq(t, "fallback", uint64(1_700_000_000_000_000+10*5_000_000), ts)
+}
+
+func TestReconstructTimestamps(t *testing.T) {
+	entries := []TimestampIndexEntry{
+		{SampleIndex: 0, TimestampMicroseconds: 1000},
+		{SampleIndex: 3, TimestampMicroseconds: 5000},
+	}
+	ts := ReconstructTimestamps(5, entries, 0, 100)
+	expected := []uint64{1000, 1100, 1200, 5000, 5100}
+	for i, want := range expected {
+		assertEq(t, "ts_"+strconv.Itoa(i), want, ts[i])
+	}
+}
+
 func assertEq(t *testing.T, name string, want, got any) {
 	t.Helper()
 	if !reflect.DeepEqual(want, got) {

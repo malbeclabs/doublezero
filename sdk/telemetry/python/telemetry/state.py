@@ -187,3 +187,40 @@ class TimestampIndex:
             next_entry_index=next_entry_index,
             entries=entries,
         )
+
+
+def reconstruct_timestamp(
+    entries: list[TimestampIndexEntry],
+    sample_index: int,
+    start_timestamp_microseconds: int,
+    sampling_interval_microseconds: int,
+) -> int:
+    """Return the wall-clock timestamp (microseconds) for a sample at the given index.
+
+    Uses timestamp index entries to correct for gaps. Falls back to the implicit
+    model (start_timestamp + index * interval) when no entries are available.
+    """
+    if not entries:
+        return start_timestamp_microseconds + sample_index * sampling_interval_microseconds
+
+    # Find the last entry whose sample_index <= the target.
+    entry = entries[0]
+    for e in entries:
+        if e.sample_index > sample_index:
+            break
+        entry = e
+
+    return entry.timestamp_microseconds + (sample_index - entry.sample_index) * sampling_interval_microseconds
+
+
+def reconstruct_timestamps(
+    sample_count: int,
+    entries: list[TimestampIndexEntry],
+    start_timestamp_microseconds: int,
+    sampling_interval_microseconds: int,
+) -> list[int]:
+    """Return wall-clock timestamps (microseconds) for all samples."""
+    return [
+        reconstruct_timestamp(entries, i, start_timestamp_microseconds, sampling_interval_microseconds)
+        for i in range(sample_count)
+    ]

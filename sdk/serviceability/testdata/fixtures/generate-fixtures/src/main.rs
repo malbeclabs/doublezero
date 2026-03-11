@@ -335,8 +335,8 @@ fn generate_device(dir: &Path) {
         max_unicast_users: 50,
         max_multicast_subscribers: 50,
         reserved_seats: 3,
-        multicast_publishers_count: 0,
-        max_multicast_publishers: 0,
+        multicast_publishers_count: 1,
+        max_multicast_publishers: 10,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -397,8 +397,8 @@ fn generate_device(dir: &Path) {
             FieldValue { name: "MaxUnicastUsers".into(), value: "50".into(), typ: "u16".into() },
             FieldValue { name: "MaxMulticastSubscribers".into(), value: "50".into(), typ: "u16".into() },
             FieldValue { name: "ReservedSeats".into(), value: "3".into(), typ: "u16".into() },
-            FieldValue { name: "MulticastPublishersCount".into(), value: "0".into(), typ: "u16".into() },
-            FieldValue { name: "MaxMulticastPublishers".into(), value: "0".into(), typ: "u16".into() },
+            FieldValue { name: "MulticastPublishersCount".into(), value: "1".into(), typ: "u16".into() },
+            FieldValue { name: "MaxMulticastPublishers".into(), value: "10".into(), typ: "u16".into() },
         ],
     };
 

@@ -41,7 +41,7 @@ All notable changes to this project will be documented in this file.
   - Add onchain GeoProbe discovery to the telemetry agent: periodically queries the Geolocation program for child probes parented to the local device, replacing the need for `--additional-child-probes` CLI flag
   - Embed LocationOffsets from parent DZDs in signed TWAMP replies so inbound probes carry geolocation context, and make signed TWAMP replies more like LocationOffsets to couple with a new double-probe system for inbound probing.
 - Client
-  - Fix mainnet-beta Cloudsmith package containing the testnet binary by giving the mainnet-beta Rust build a separate `CARGO_TARGET_DIR` to prevent GoReleaser artifact collision
+  - Fix mainnet-beta Cloudsmith package containing the testnet binary by giving the mainnet-beta Rust build a separate `CARGO_TARGET_DIR` to prevent GoReleaser artifact collision ([#3239](https://github.com/malbeclabs/doublezero/issues/3239))
   - Increase default onchain fetch timeout from 20s to 60s to improve resilience on high-latency RPC paths; add `-reconciler-fetch-timeout` flag to allow operators to override
   - Add prometheus metrics for onchain RPC fetches: fetch duration histogram, result counter (success/error with stale cache/error with no cache), and stale cache age gauge
   - Increase default route liveness probe interval (TxMin/RxMin) from 300ms to 1s and raise MaxTxCeil from 1s to 3s to preserve backoff headroom

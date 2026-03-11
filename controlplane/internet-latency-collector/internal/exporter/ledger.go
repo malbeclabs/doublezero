@@ -37,7 +37,9 @@ type ServiceabilityProgramClient interface {
 }
 
 type TelemetryProgramClient interface {
+	ProgramID() solana.PublicKey
 	InitializeInternetLatencySamples(ctx context.Context, config telemetry.InitializeInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
+	InitializeTimestampIndex(ctx context.Context, samplesAccountPK solana.PublicKey) (solana.Signature, *solanarpc.GetTransactionResult, error)
 	WriteInternetLatencySamples(ctx context.Context, config telemetry.WriteInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
 }
 

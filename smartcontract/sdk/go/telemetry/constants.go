@@ -12,6 +12,8 @@ const (
 	InitializeInternetLatencySamplesInstructionIndex TelemetryInstructionType = 2
 	// Represents the write internet latency samples instruction
 	WriteInternetLatencySamplesInstructionIndex TelemetryInstructionType = 3
+	// Represents the initialize timestamp index instruction
+	InitializeTimestampIndexInstructionIndex TelemetryInstructionType = 4
 
 	// InstructionErrorAccountSamplesAccountFull is the error code that the telemetry program returns
 	// when the given PDA has reached maximum capacity for samples.
@@ -58,4 +60,6 @@ const (
 	DeviceLatencySamplesSeed = "dzlatency"
 	// Seed for internet latency samples PDAs
 	InternetLatencySamplesSeed = "inetlatency"
+	// Seed for timestamp index PDAs
+	TimestampIndexSeed = "tsindex"
 )

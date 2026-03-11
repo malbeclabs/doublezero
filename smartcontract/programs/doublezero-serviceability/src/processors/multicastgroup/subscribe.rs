@@ -1,15 +1,21 @@
 use crate::{
     error::DoubleZeroError,
-    pda::get_accesspass_pda,
+    pda::{get_accesspass_pda, get_globalstate_pda, get_resource_extension_pda},
+    processors::{resource::allocate_ip, validation::validate_program_account},
+    resource::{IdOrIp, ResourceType},
     serializer::try_acc_write,
     state::{
         accesspass::AccessPass,
+        feature_flags::{is_feature_enabled, FeatureFlag},
+        globalstate::GlobalState,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
+        resource_extension::ResourceExtensionBorrowed,
         user::{User, UserStatus},
     },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
+use doublezero_program_common::types::NetworkV4;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -24,14 +30,16 @@ pub struct MulticastGroupSubscribeArgs {
     pub client_ip: Ipv4Addr,
     pub publisher: bool,
     pub subscriber: bool,
+    #[incremental(default = false)]
+    pub use_onchain_allocation: bool,
 }
 
 impl fmt::Debug for MulticastGroupSubscribeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "client_ip: {}, publisher: {:?}, subscriber: {:?}",
-            self.client_ip, self.publisher, self.subscriber
+            "client_ip: {}, publisher: {:?}, subscriber: {:?}, use_onchain_allocation: {:?}",
+            self.client_ip, self.publisher, self.subscriber, self.use_onchain_allocation
         )
     }
 }
@@ -130,6 +138,20 @@ pub fn process_subscribe_multicastgroup(
     let mgroup_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let user_account = next_account_info(accounts_iter)?;
+
+    // Optional: ResourceExtension accounts for onchain allocation
+    // Account layout WITH onchain allocation (use_onchain_allocation=true):
+    //   [mgroup, accesspass, user, globalstate, multicast_publisher_block, payer, system]
+    // Account layout WITHOUT (legacy, use_onchain_allocation=false):
+    //   [mgroup, accesspass, user, payer, system]
+    let onchain_accounts = if value.use_onchain_allocation {
+        let globalstate_account = next_account_info(accounts_iter)?;
+        let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
+        Some((globalstate_account, multicast_publisher_block_ext))
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -201,10 +223,64 @@ pub fn process_subscribe_multicastgroup(
         value.subscriber,
     )?;
 
-    // Trigger activator reprocessing when publisher list transitions
-    // (gaining first publisher requires dz_ip allocation, losing last means it's no longer needed)
-    if result.publisher_list_transitioned {
-        user.status = UserStatus::Updating;
+    if let Some((globalstate_account, multicast_publisher_block_ext)) = onchain_accounts {
+        // Onchain allocation path: allocate dz_ip directly, skip Updating status
+        let globalstate = GlobalState::try_from(globalstate_account)?;
+        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
+            return Err(DoubleZeroError::FeatureNotEnabled.into());
+        }
+
+        let (expected_globalstate_pda, _) = get_globalstate_pda(program_id);
+        assert_eq!(
+            globalstate_account.key, &expected_globalstate_pda,
+            "Invalid GlobalState PDA",
+        );
+
+        // Allocate dz_ip when gaining first publisher
+        if result.publisher_list_transitioned
+            && value.publisher
+            && (user.dz_ip == Ipv4Addr::UNSPECIFIED || user.dz_ip == user.client_ip)
+        {
+            let (expected_multicast_publisher_pda, _, _) =
+                get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
+            validate_program_account!(
+                multicast_publisher_block_ext,
+                program_id,
+                writable = true,
+                pda = Some(&expected_multicast_publisher_pda),
+                "MulticastPublisherBlock"
+            );
+
+            user.dz_ip = allocate_ip(multicast_publisher_block_ext, 1)?.ip();
+        } else if result.publisher_list_transitioned
+            && !value.publisher
+            && user.dz_ip != Ipv4Addr::UNSPECIFIED
+            && user.dz_ip != user.client_ip
+        {
+            // Deallocate dz_ip back to MulticastPublisherBlock
+            let (expected_multicast_publisher_pda, _, _) =
+                get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
+            validate_program_account!(
+                multicast_publisher_block_ext,
+                program_id,
+                writable = true,
+                pda = Some(&expected_multicast_publisher_pda),
+                "MulticastPublisherBlock"
+            );
+
+            if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
+                let mut buffer = multicast_publisher_block_ext.data.borrow_mut();
+                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+                resource.deallocate(&IdOrIp::Ip(dz_ip_net));
+            }
+            user.dz_ip = user.client_ip;
+        }
+    } else {
+        // Legacy path: trigger activator reprocessing when publisher list transitions
+        // (gaining first publisher requires dz_ip allocation, losing last means it's no longer needed)
+        if result.publisher_list_transitioned {
+            user.status = UserStatus::Updating;
+        }
     }
 
     try_acc_write(&result.mgroup, mgroup_account, payer_account, accounts)?;

@@ -352,6 +352,7 @@ mod tests {
                         publisher: false,
                         subscriber: false,
                         client_ip,
+                        use_onchain_allocation: false,
                     },
                 )),
                 predicate::eq(vec![
@@ -553,6 +554,7 @@ mod tests {
                         publisher: false,
                         subscriber: false,
                         client_ip,
+                        use_onchain_allocation: false,
                     },
                 )),
                 predicate::eq(vec![

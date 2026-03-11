@@ -1030,6 +1030,7 @@ mod tests {
                 client_ip: [1, 2, 3, 4].into(),
                 publisher: false,
                 subscriber: true,
+                use_onchain_allocation: false,
             }),
             "SubscribeMulticastGroup",
         );

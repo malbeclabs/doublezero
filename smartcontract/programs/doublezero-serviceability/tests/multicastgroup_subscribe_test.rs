@@ -8,6 +8,7 @@ use doublezero_serviceability::{
             activate::DeviceActivateArgs, create::DeviceCreateArgs, update::DeviceUpdateArgs,
         },
         globalconfig::set::SetGlobalConfigArgs,
+        globalstate::setfeatureflags::SetFeatureFlagsArgs,
         multicastgroup::{
             activate::MulticastGroupActivateArgs,
             allowlist::{
@@ -23,11 +24,17 @@ use doublezero_serviceability::{
     state::{
         accesspass::AccessPassType,
         device::DeviceType,
+        feature_flags::FeatureFlag,
         user::{UserCYOA, UserStatus, UserType},
     },
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
+use solana_sdk::{
+    instruction::{AccountMeta, InstructionError},
+    pubkey::Pubkey,
+    signer::Signer,
+    transaction::TransactionError,
+};
 use std::net::Ipv4Addr;
 
 mod test_helpers;
@@ -479,6 +486,7 @@ async fn test_subscribe_first_publisher_sets_updating() {
             client_ip: [100, 0, 0, 1].into(),
             publisher: true,
             subscriber: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -535,6 +543,7 @@ async fn test_subscribe_second_publisher_does_not_set_updating() {
             client_ip: [100, 0, 0, 1].into(),
             publisher: true,
             subscriber: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -582,6 +591,7 @@ async fn test_subscribe_second_publisher_does_not_set_updating() {
             client_ip: [100, 0, 0, 1].into(),
             publisher: true,
             subscriber: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(mgroup2_pubkey, false),
@@ -643,6 +653,7 @@ async fn test_subscribe_subscriber_does_not_set_updating() {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: true,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -674,6 +685,7 @@ async fn test_subscribe_subscriber_does_not_set_updating() {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: true,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(mgroup2_pubkey, false),
@@ -737,6 +749,7 @@ async fn test_unsubscribe_last_publisher_sets_updating() {
                 client_ip: [100, 0, 0, 1].into(),
                 publisher: true,
                 subscriber: false,
+                use_onchain_allocation: false,
             }),
             vec![
                 AccountMeta::new(mgroup_pk, false),
@@ -786,6 +799,7 @@ async fn test_unsubscribe_last_publisher_sets_updating() {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -817,6 +831,7 @@ async fn test_unsubscribe_last_publisher_sets_updating() {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(mgroup2_pubkey, false),
@@ -865,6 +880,7 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
             client_ip: [100, 0, 0, 1].into(),
             publisher: true,
             subscriber: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -905,6 +921,7 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
             client_ip: [100, 0, 0, 1].into(),
             publisher: true,
             subscriber: false,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -935,5 +952,331 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
     assert_eq!(
         mgroup.publisher_count, 1,
         "Should not double-count publisher"
+    );
+}
+
+// --- Onchain allocation tests ---
+
+/// Helper to enable the OnChainAllocation feature flag on an existing fixture.
+async fn enable_onchain_allocation(
+    banks_client: &mut BanksClient,
+    recent_blockhash: solana_program::hash::Hash,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    payer: &solana_sdk::signature::Keypair,
+) {
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        payer,
+    )
+    .await;
+}
+
+/// First publisher subscribe with onchain allocation allocates dz_ip directly,
+/// user stays Activated (no Updating round-trip).
+#[tokio::test]
+async fn test_subscribe_onchain_first_publisher_allocates_dz_ip() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        recent_blockhash,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    enable_onchain_allocation(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+    )
+    .await;
+
+    let user_before = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    let dz_ip_before = user_before.dz_ip;
+
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+
+    // Subscribe as publisher with onchain allocation
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: true,
+            subscriber: false,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(
+        user.status,
+        UserStatus::Activated,
+        "Onchain allocation should keep user Activated (no Updating)"
+    );
+    assert_eq!(user.publishers.len(), 1);
+    assert_ne!(
+        user.dz_ip, dz_ip_before,
+        "dz_ip should have been allocated from MulticastPublisherBlock"
+    );
+    assert_ne!(
+        user.dz_ip,
+        Ipv4Addr::UNSPECIFIED,
+        "dz_ip should not be UNSPECIFIED"
+    );
+    assert_ne!(
+        user.dz_ip, user.client_ip,
+        "dz_ip should differ from client_ip"
+    );
+}
+
+/// Subscriber subscribe with onchain allocation should not allocate dz_ip.
+#[tokio::test]
+async fn test_subscribe_onchain_subscriber_no_allocation() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        recent_blockhash,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    enable_onchain_allocation(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+    )
+    .await;
+
+    let user_before = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+
+    // Subscribe as subscriber only with onchain allocation
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Activated);
+    assert_eq!(user.subscribers.len(), 1);
+    assert_eq!(
+        user.dz_ip, user_before.dz_ip,
+        "dz_ip should not change for subscriber-only subscription"
+    );
+}
+
+/// Onchain allocation with feature flag disabled should fail with FeatureNotEnabled.
+#[tokio::test]
+async fn test_subscribe_onchain_feature_flag_disabled_fails() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        recent_blockhash,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    // Do NOT enable feature flag
+
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+
+    // Try subscribe with onchain allocation — should fail
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: true,
+            subscriber: false,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // FeatureNotEnabled = Custom(84)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(84),
+        ))) => {}
+        _ => panic!(
+            "Expected FeatureNotEnabled error (Custom(84)), got {:?}",
+            result
+        ),
+    }
+}
+
+/// Second publisher subscribe with onchain allocation should not reallocate dz_ip.
+#[tokio::test]
+async fn test_subscribe_onchain_second_publisher_no_reallocation() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        recent_blockhash,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        mgroup2_pubkey,
+        ..
+    } = f;
+
+    enable_onchain_allocation(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+    )
+    .await;
+
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+
+    // Subscribe as publisher to first group with onchain allocation
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: true,
+            subscriber: false,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_after_first = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    let dz_ip_after_first = user_after_first.dz_ip;
+    assert_ne!(dz_ip_after_first, Ipv4Addr::UNSPECIFIED);
+
+    // Subscribe as publisher to second group with onchain allocation
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: true,
+            subscriber: false,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup2_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Activated);
+    assert_eq!(user.publishers.len(), 2);
+    assert_eq!(
+        user.dz_ip, dz_ip_after_first,
+        "dz_ip should not change on second publisher subscription"
     );
 }

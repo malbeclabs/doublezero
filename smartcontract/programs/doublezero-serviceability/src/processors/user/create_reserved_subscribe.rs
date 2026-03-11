@@ -39,13 +39,17 @@ pub struct CreateReservedSubscribeUserArgs {
     pub subscriber: bool,
     #[incremental(default = 0)]
     pub dz_prefix_count: u8,
+    /// The pubkey to set as the user's owner. When omitted (default Pubkey),
+    /// falls back to the payer account for backwards compatibility.
+    #[incremental(default = Pubkey::default())]
+    pub owner: Pubkey,
 }
 
 impl fmt::Debug for CreateReservedSubscribeUserArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, publisher: {}, subscriber: {}, dz_prefix_count: {}",
+            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, publisher: {}, subscriber: {}, dz_prefix_count: {}, owner: {}",
             self.user_type,
             self.cyoa_type,
             &self.client_ip,
@@ -53,6 +57,7 @@ impl fmt::Debug for CreateReservedSubscribeUserArgs {
             self.publisher,
             self.subscriber,
             self.dz_prefix_count,
+            self.owner,
         )
     }
 }
@@ -216,10 +221,15 @@ pub fn process_create_reserved_subscribe_user(
     let (expected_pda, bump_seed) = get_user_pda(program_id, &value.client_ip, value.user_type);
     assert_eq!(user_account.key, &expected_pda, "Invalid User PDA");
 
-    // Build user
+    // Build user — use explicit owner if provided, otherwise fall back to payer.
+    let user_owner = if value.owner != Pubkey::default() {
+        value.owner
+    } else {
+        *payer_account.key
+    };
     let mut user = User {
         account_type: AccountType::User,
-        owner: *payer_account.key,
+        owner: user_owner,
         bump_seed,
         index: 0,
         tenant_pk: Pubkey::default(),

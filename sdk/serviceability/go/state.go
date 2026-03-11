@@ -389,26 +389,26 @@ type Exchange struct {
 }
 
 type Device struct {
-	AccountType            AccountType
-	Owner                  [32]byte
-	Index                  Uint128
-	BumpSeed               uint8
-	LocationPubKey         [32]byte
-	ExchangePubKey         [32]byte
-	DeviceType             DeviceDeviceType
-	PublicIp               [4]uint8
-	Status                 DeviceStatus
-	Code                   string
-	DzPrefixes             [][5]uint8
-	MetricsPublisherPubKey [32]byte
-	ContributorPubKey      [32]byte
-	MgmtVrf                string
-	Interfaces             []Interface
-	ReferenceCount         uint32
-	UsersCount             uint16
-	MaxUsers               uint16
-	DeviceHealth           DeviceHealth
-	DeviceDesiredStatus    DeviceDesiredStatus
+	AccountType               AccountType
+	Owner                     [32]byte
+	Index                     Uint128
+	BumpSeed                  uint8
+	LocationPubKey            [32]byte
+	ExchangePubKey            [32]byte
+	DeviceType                DeviceDeviceType
+	PublicIp                  [4]uint8
+	Status                    DeviceStatus
+	Code                      string
+	DzPrefixes                [][5]uint8
+	MetricsPublisherPubKey    [32]byte
+	ContributorPubKey         [32]byte
+	MgmtVrf                   string
+	Interfaces                []Interface
+	ReferenceCount            uint32
+	UsersCount                uint16
+	MaxUsers                  uint16
+	DeviceHealth              DeviceHealth
+	DeviceDesiredStatus       DeviceDesiredStatus
 	UnicastUsersCount         uint16
 	MulticastSubscribersCount uint16
 	MaxUnicastUsers           uint16

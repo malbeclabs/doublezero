@@ -197,19 +197,22 @@ def reconstruct_timestamp(
 ) -> int:
     """Return the wall-clock timestamp (microseconds) for a sample at the given index.
 
-    Uses timestamp index entries to correct for gaps. Falls back to the implicit
-    model (start_timestamp + index * interval) when no entries are available.
+    Uses binary search over entries. O(log m) where m is the number of entries.
+    Falls back to the implicit model when no entries are available.
     """
     if not entries:
         return start_timestamp_microseconds + sample_index * sampling_interval_microseconds
 
-    # Find the last entry whose sample_index <= the target.
-    entry = entries[0]
-    for e in entries:
-        if e.sample_index > sample_index:
-            break
-        entry = e
+    # Binary search: find the last entry where sample_index <= target.
+    lo, hi = 0, len(entries) - 1
+    while lo < hi:
+        mid = lo + (hi - lo + 1) // 2
+        if entries[mid].sample_index <= sample_index:
+            lo = mid
+        else:
+            hi = mid - 1
 
+    entry = entries[lo]
     return entry.timestamp_microseconds + (sample_index - entry.sample_index) * sampling_interval_microseconds
 
 
@@ -219,8 +222,21 @@ def reconstruct_timestamps(
     start_timestamp_microseconds: int,
     sampling_interval_microseconds: int,
 ) -> list[int]:
-    """Return wall-clock timestamps (microseconds) for all samples."""
-    return [
-        reconstruct_timestamp(entries, i, start_timestamp_microseconds, sampling_interval_microseconds)
-        for i in range(sample_count)
-    ]
+    """Return wall-clock timestamps (microseconds) for all samples.
+
+    Single-pass O(n + m) where n is sample_count and m is the number of entries.
+    """
+    if not entries:
+        return [
+            start_timestamp_microseconds + i * sampling_interval_microseconds
+            for i in range(sample_count)
+        ]
+
+    timestamps: list[int] = []
+    entry_idx = 0
+    for i in range(sample_count):
+        while entry_idx + 1 < len(entries) and entries[entry_idx + 1].sample_index <= i:
+            entry_idx += 1
+        e = entries[entry_idx]
+        timestamps.append(e.timestamp_microseconds + (i - e.sample_index) * sampling_interval_microseconds)
+    return timestamps

@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.
   - Increase default route liveness probe interval (TxMin/RxMin) from 300ms to 1s and raise MaxTxCeil from 1s to 3s to preserve backoff headroom
   - Throttle O(n) per-service scheduler queue length metric from every event to once per 10s to fix excessive CPU usage on nodes with many liveness sessions
 - Smartcontract
+  - Serviceability: add foundation-only `unicast_users_count` and `multicast_users_count` fields to `UpdateDevice` instruction for backfilling out-of-sync device user counts, with corresponding `--unicast-users-count` and `--multicast-users-count` CLI flags
   - Serviceability: fix `validate_account_code` forcing lowercase on all entity types — restrict lowercase normalization to device and link codes only, preserving original case for locations, exchanges, contributors, and other entities
   - feat(smartcontract): atomic onchain allocation for CreateDevice ([#3216](https://github.com/malbeclabs/doublezero/pull/3216))
   - Serviceability: RequestBanUser instruction supports atomic deallocate when OnchainAllocation feature is enabled

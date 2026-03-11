@@ -1,7 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     pda::{get_globalconfig_pda, get_resource_extension_pda},
-    resource::ResourceType,
+    resource::{IdOrIp, ResourceType},
     seeds::SEED_PREFIX,
     state::{
         device::Device,
@@ -192,6 +192,22 @@ pub fn allocate_id(account: &AccountInfo) -> Result<u16, ProgramError> {
         .allocate(1)?
         .as_id()
         .ok_or(DoubleZeroError::InvalidArgument.into())
+}
+
+/// Borrow a ResourceExtension account, deserialize it, and allocate a specific ID.
+pub fn allocate_specific_id(account: &AccountInfo, id: u16) -> Result<(), ProgramError> {
+    let mut buffer = account.data.borrow_mut();
+    let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+    resource.allocate_specific(&IdOrIp::Id(id))?;
+    Ok(())
+}
+
+/// Borrow a ResourceExtension account, deserialize it, and deallocate a single ID.
+pub fn deallocate_id(account: &AccountInfo, id: u16) {
+    let mut buffer = account.data.borrow_mut();
+    if let Ok(mut resource) = ResourceExtensionBorrowed::inplace_from(&mut buffer[..]) {
+        resource.deallocate(&IdOrIp::Id(id));
+    }
 }
 
 /// Try each account in order and return the first successful single-IP allocation.

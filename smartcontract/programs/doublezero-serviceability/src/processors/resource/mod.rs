@@ -202,6 +202,24 @@ pub fn allocate_specific_id(account: &AccountInfo, id: u16) -> Result<(), Progra
     Ok(())
 }
 
+/// Borrow a ResourceExtension account, deserialize it, and allocate a specific IP.
+pub fn allocate_specific_ip(account: &AccountInfo, ip: NetworkV4) -> Result<(), ProgramError> {
+    let mut buffer = account.data.borrow_mut();
+    let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+    resource.allocate_specific(&IdOrIp::Ip(ip))?;
+    Ok(())
+}
+
+/// Borrow a ResourceExtension account, deserialize it, and deallocate an IP.
+pub fn deallocate_ip(account: &AccountInfo, ip: Ipv4Addr) {
+    let mut buffer = account.data.borrow_mut();
+    if let Ok(mut resource) = ResourceExtensionBorrowed::inplace_from(&mut buffer[..]) {
+        if let Ok(net) = NetworkV4::new(ip, 32) {
+            let _ = resource.deallocate(&IdOrIp::Ip(net));
+        }
+    }
+}
+
 /// Borrow a ResourceExtension account, deserialize it, and deallocate a single ID.
 pub fn deallocate_id(account: &AccountInfo, id: u16) {
     let mut buffer = account.data.borrow_mut();

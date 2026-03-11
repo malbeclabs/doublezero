@@ -961,6 +961,7 @@ mod tests {
                 code: Some("test".to_string()),
                 publisher_count: None,
                 subscriber_count: None,
+                use_onchain_allocation: false,
             }),
             "UpdateMulticastGroup",
         );

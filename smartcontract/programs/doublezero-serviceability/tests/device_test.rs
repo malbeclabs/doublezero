@@ -425,6 +425,8 @@ async fn test_device() {
             reference_count: None,
             max_unicast_users: None,
             max_multicast_users: None,
+            unicast_users_count: None,
+            multicast_users_count: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -714,6 +716,8 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
             reference_count: None,
             max_unicast_users: None,
             max_multicast_users: None,
+            unicast_users_count: None,
+            multicast_users_count: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -734,6 +738,88 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
     assert_eq!(device.code, "la".to_string());
     assert_eq!(device.public_ip.to_string(), "100.0.0.1");
     assert_eq!(device.metrics_publisher_pk, metrics_publisher_pk);
+}
+
+#[tokio::test]
+async fn test_device_update_user_counts_by_foundation() {
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        _globalstate_pubkey,
+        location_pubkey,
+        exchange_pubkey,
+        contributor_pubkey,
+    ) = setup_program_with_location_and_exchange().await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+
+    // Create device
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
+            code: "la".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [100, 0, 0, 1].into(),
+            dz_prefixes: "110.1.0.0/23".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .unwrap()
+        .get_device()
+        .unwrap();
+    assert_eq!(device.unicast_users_count, 0);
+    assert_eq!(device.multicast_users_count, 0);
+
+    // Update unicast and multicast user counts via foundation
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            unicast_users_count: Some(10),
+            multicast_users_count: Some(5),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .unwrap()
+        .get_device()
+        .unwrap();
+    assert_eq!(device.unicast_users_count, 10);
+    assert_eq!(device.multicast_users_count, 5);
 }
 
 async fn setup_program_with_location_and_exchange(

@@ -39,6 +39,8 @@ pub struct DeviceUpdateArgs {
     pub max_unicast_users: Option<u16>,
     #[incremental(default = None)]
     pub max_multicast_users: Option<u16>,
+    pub unicast_users_count: Option<u16>,
+    pub multicast_users_count: Option<u16>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
@@ -85,6 +87,16 @@ impl fmt::Debug for DeviceUpdateArgs {
         }
         if self.max_multicast_users.is_some() {
             write!(f, "max_multicast_users: {:?}, ", self.max_multicast_users)?;
+        }
+        if self.unicast_users_count.is_some() {
+            write!(f, "unicast_users_count: {:?}, ", self.unicast_users_count)?;
+        }
+        if self.multicast_users_count.is_some() {
+            write!(
+                f,
+                "multicast_users_count: {:?}, ",
+                self.multicast_users_count
+            )?;
         }
         Ok(())
     }
@@ -201,6 +213,12 @@ pub fn process_update_device(
         }
         if let Some(reference_count) = value.reference_count {
             device.reference_count = reference_count;
+        }
+        if let Some(unicast_users_count) = value.unicast_users_count {
+            device.unicast_users_count = unicast_users_count;
+        }
+        if let Some(multicast_users_count) = value.multicast_users_count {
+            device.multicast_users_count = multicast_users_count;
         }
     }
 

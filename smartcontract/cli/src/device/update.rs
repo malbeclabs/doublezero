@@ -66,6 +66,12 @@ pub struct UpdateDeviceCliCommand {
     /// Maximum number of multicast users for the device (optional)
     #[arg(long)]
     pub max_multicast_users: Option<u16>,
+    /// Unicast users count for the device (foundation only)
+    #[arg(long)]
+    pub unicast_users_count: Option<u16>,
+    /// Multicast users count for the device (foundation only)
+    #[arg(long)]
+    pub multicast_users_count: Option<u16>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -182,6 +188,8 @@ impl UpdateDeviceCliCommand {
             reference_count: self.reference_count,
             max_unicast_users: self.max_unicast_users,
             max_multicast_users: self.max_multicast_users,
+            unicast_users_count: self.unicast_users_count,
+            multicast_users_count: self.multicast_users_count,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -359,6 +367,8 @@ mod tests {
                 reference_count: None,
                 max_unicast_users: None,
                 max_multicast_users: None,
+                unicast_users_count: None,
+                multicast_users_count: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -382,6 +392,8 @@ mod tests {
             reference_count: None,
             max_unicast_users: None,
             max_multicast_users: None,
+            unicast_users_count: None,
+            multicast_users_count: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -495,6 +507,8 @@ mod tests {
             reference_count: None,
             max_unicast_users: None,
             max_multicast_users: None,
+            unicast_users_count: None,
+            multicast_users_count: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -607,6 +621,8 @@ mod tests {
             reference_count: None,
             max_unicast_users: None,
             max_multicast_users: None,
+            unicast_users_count: None,
+            multicast_users_count: None,
             wait: false,
         }
         .execute(&client, &mut output);

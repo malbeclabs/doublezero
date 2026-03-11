@@ -34,10 +34,6 @@ pub async fn run_activator(
 
     let use_onchain_allocation = read_onchain_allocation_flag(client.as_ref())?;
 
-    if let Err(e) = crate::migrate::migrate_multicast_counts(client.as_ref()) {
-        log::warn!("migrate_multicast_counts failed (non-fatal): {e}");
-    }
-
     run_activator_with_client(client, async_client_factory, use_onchain_allocation).await
 }
 

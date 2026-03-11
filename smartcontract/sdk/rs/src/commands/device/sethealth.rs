@@ -132,6 +132,8 @@ mod tests {
                     unicast_users_count: None,
                     multicast_users_count: None,
                     max_multicast_publishers: None,
+                    multicast_subscribers_count: None,
+                    multicast_publishers_count: None,
                 })),
                 predicate::always(),
             )
@@ -158,6 +160,8 @@ mod tests {
             unicast_users_count: None,
             multicast_users_count: None,
             max_multicast_publishers: None,
+            multicast_subscribers_count: None,
+            multicast_publishers_count: None,
         };
 
         let update_invalid = UpdateDeviceCommand {

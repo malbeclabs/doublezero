@@ -75,6 +75,12 @@ pub struct UpdateDeviceCliCommand {
     /// Maximum number of multicast publishers for the device (optional)
     #[arg(long)]
     pub max_multicast_publishers: Option<u16>,
+    /// Number of active multicast subscribers on the device (optional, foundation only)
+    #[arg(long)]
+    pub multicast_subscribers_count: Option<u16>,
+    /// Number of active multicast publishers on the device (optional, foundation only)
+    #[arg(long)]
+    pub multicast_publishers_count: Option<u16>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -194,6 +200,8 @@ impl UpdateDeviceCliCommand {
             unicast_users_count: self.unicast_users_count,
             multicast_users_count: self.multicast_users_count,
             max_multicast_publishers: self.max_multicast_publishers,
+            multicast_subscribers_count: self.multicast_subscribers_count,
+            multicast_publishers_count: self.multicast_publishers_count,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -380,6 +388,8 @@ mod tests {
                 unicast_users_count: None,
                 multicast_users_count: None,
                 max_multicast_publishers: None,
+                multicast_subscribers_count: None,
+                multicast_publishers_count: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -406,6 +416,8 @@ mod tests {
             unicast_users_count: None,
             multicast_users_count: None,
             max_multicast_publishers: None,
+            multicast_subscribers_count: None,
+            multicast_publishers_count: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -526,6 +538,8 @@ mod tests {
             unicast_users_count: None,
             multicast_users_count: None,
             max_multicast_publishers: None,
+            multicast_subscribers_count: None,
+            multicast_publishers_count: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -645,6 +659,8 @@ mod tests {
             unicast_users_count: None,
             multicast_users_count: None,
             max_multicast_publishers: None,
+            multicast_subscribers_count: None,
+            multicast_publishers_count: None,
             wait: false,
         }
         .execute(&client, &mut output);

@@ -189,8 +189,8 @@ func DeserializeTimestampIndex(data []byte) (*TimestampIndex, error) {
 // the sample at the given index, using the timestamp index entries and the
 // sampling interval from the samples account header.
 //
-// If the timestamp index has no entries, it falls back to the implicit model:
-// startTimestamp + sampleIndex * samplingInterval.
+// Uses binary search over entries. O(log m) where m is the number of entries.
+// If the timestamp index has no entries, falls back to the implicit model.
 func ReconstructTimestamp(
 	entries []TimestampIndexEntry,
 	sampleIndex uint32,
@@ -201,20 +201,25 @@ func ReconstructTimestamp(
 		return startTimestampMicroseconds + uint64(sampleIndex)*samplingIntervalMicroseconds
 	}
 
-	// Find the last entry whose SampleIndex <= sampleIndex.
-	entry := entries[0]
-	for _, e := range entries {
-		if e.SampleIndex > sampleIndex {
-			break
+	// Binary search: find the last entry where SampleIndex <= sampleIndex.
+	lo, hi := 0, len(entries)-1
+	for lo < hi {
+		mid := lo + (hi-lo+1)/2
+		if entries[mid].SampleIndex <= sampleIndex {
+			lo = mid
+		} else {
+			hi = mid - 1
 		}
-		entry = e
 	}
 
+	entry := entries[lo]
 	return entry.TimestampMicroseconds + uint64(sampleIndex-entry.SampleIndex)*samplingIntervalMicroseconds
 }
 
 // ReconstructTimestamps returns wall-clock timestamps (in microseconds) for all
 // samples, using the timestamp index to correct for gaps.
+//
+// Single-pass O(n + m) where n is sampleCount and m is the number of entries.
 func ReconstructTimestamps(
 	sampleCount uint32,
 	entries []TimestampIndexEntry,
@@ -222,8 +227,23 @@ func ReconstructTimestamps(
 	samplingIntervalMicroseconds uint64,
 ) []uint64 {
 	timestamps := make([]uint64, sampleCount)
+	if sampleCount == 0 {
+		return timestamps
+	}
+
+	entryIdx := 0
 	for i := range sampleCount {
-		timestamps[i] = ReconstructTimestamp(entries, i, startTimestampMicroseconds, samplingIntervalMicroseconds)
+		// Advance to the last entry that covers this sample index.
+		for entryIdx+1 < len(entries) && entries[entryIdx+1].SampleIndex <= i {
+			entryIdx++
+		}
+
+		if len(entries) == 0 {
+			timestamps[i] = startTimestampMicroseconds + uint64(i)*samplingIntervalMicroseconds
+		} else {
+			e := entries[entryIdx]
+			timestamps[i] = e.TimestampMicroseconds + uint64(i-e.SampleIndex)*samplingIntervalMicroseconds
+		}
 	}
 	return timestamps
 }

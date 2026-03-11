@@ -181,7 +181,7 @@ export function deserializeTimestampIndex(
 
 /**
  * Returns the wall-clock timestamp (microseconds) for a sample at the given
- * index, using timestamp index entries to correct for gaps. Falls back to the
+ * index. Uses binary search over entries — O(log m). Falls back to the
  * implicit model when no entries are available.
  */
 export function reconstructTimestamp(
@@ -194,17 +194,25 @@ export function reconstructTimestamp(
     return startTimestampMicroseconds + BigInt(sampleIndex) * samplingIntervalMicroseconds;
   }
 
-  let entry = entries[0];
-  for (const e of entries) {
-    if (e.sampleIndex > sampleIndex) break;
-    entry = e;
+  // Binary search: find the last entry where sampleIndex <= target.
+  let lo = 0;
+  let hi = entries.length - 1;
+  while (lo < hi) {
+    const mid = lo + Math.ceil((hi - lo) / 2);
+    if (entries[mid].sampleIndex <= sampleIndex) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
   }
 
+  const entry = entries[lo];
   return entry.timestampMicroseconds + BigInt(sampleIndex - entry.sampleIndex) * samplingIntervalMicroseconds;
 }
 
 /**
  * Returns wall-clock timestamps (microseconds) for all samples.
+ * Single-pass O(n + m) where n is sampleCount and m is the number of entries.
  */
 export function reconstructTimestamps(
   sampleCount: number,
@@ -213,8 +221,20 @@ export function reconstructTimestamps(
   samplingIntervalMicroseconds: bigint,
 ): bigint[] {
   const timestamps: bigint[] = [];
+  if (entries.length === 0) {
+    for (let i = 0; i < sampleCount; i++) {
+      timestamps.push(startTimestampMicroseconds + BigInt(i) * samplingIntervalMicroseconds);
+    }
+    return timestamps;
+  }
+
+  let entryIdx = 0;
   for (let i = 0; i < sampleCount; i++) {
-    timestamps.push(reconstructTimestamp(entries, i, startTimestampMicroseconds, samplingIntervalMicroseconds));
+    while (entryIdx + 1 < entries.length && entries[entryIdx + 1].sampleIndex <= i) {
+      entryIdx++;
+    }
+    const e = entries[entryIdx];
+    timestamps.push(e.timestampMicroseconds + BigInt(i - e.sampleIndex) * samplingIntervalMicroseconds);
   }
   return timestamps;
 }

@@ -11,7 +11,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/doublezero-geoprobe-agent
+ExecStart=/usr/bin/doublezero-geoprobe-agent
 Restart=on-failure
 
 [Install]

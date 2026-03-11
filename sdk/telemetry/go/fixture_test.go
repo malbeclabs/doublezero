@@ -121,6 +121,35 @@ func assertFields(t *testing.T, expected []fieldValue, got map[string]any) {
 	}
 }
 
+func TestFixtureTimestampIndex(t *testing.T) {
+	data, meta := loadFixture(t, "timestamp_index")
+	d, err := DeserializeTimestampIndex(data)
+	if err != nil {
+		t.Fatalf("DeserializeTimestampIndex: %v", err)
+	}
+
+	got := map[string]any{
+		"AccountType":      uint8(d.AccountType),
+		"SamplesAccountPK": solana.PublicKey(d.SamplesAccountPK),
+		"NextEntryIndex":   d.NextEntryIndex,
+		"EntriesCount":     uint32(len(d.Entries)),
+	}
+	if len(d.Entries) > 0 {
+		got["Entry0SampleIndex"] = d.Entries[0].SampleIndex
+		got["Entry0Timestamp"] = d.Entries[0].TimestampMicroseconds
+	}
+	if len(d.Entries) > 1 {
+		got["Entry1SampleIndex"] = d.Entries[1].SampleIndex
+		got["Entry1Timestamp"] = d.Entries[1].TimestampMicroseconds
+	}
+	if len(d.Entries) > 2 {
+		got["Entry2SampleIndex"] = d.Entries[2].SampleIndex
+		got["Entry2Timestamp"] = d.Entries[2].TimestampMicroseconds
+	}
+
+	assertFields(t, meta.Fields, got)
+}
+
 func assertEq(t *testing.T, name string, want, got any) {
 	t.Helper()
 	if !reflect.DeepEqual(want, got) {

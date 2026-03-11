@@ -9,6 +9,7 @@ import { PublicKey } from "@solana/web3.js";
 import {
   deserializeDeviceLatencySamples,
   deserializeInternetLatencySamples,
+  deserializeTimestampIndex,
 } from "../state.js";
 
 const FIXTURES_DIR = join(
@@ -98,5 +99,31 @@ describe("InternetLatencySamples fixture", () => {
       NextSampleIndex: d.nextSampleIndex,
       SamplesCount: d.samples.length,
     });
+  });
+});
+
+describe("TimestampIndex fixture", () => {
+  test("deserialize", () => {
+    const [data, meta] = loadFixture("timestamp_index");
+    const d = deserializeTimestampIndex(data);
+    const got: Record<string, unknown> = {
+      AccountType: d.accountType,
+      SamplesAccountPK: d.samplesAccountPK,
+      NextEntryIndex: d.nextEntryIndex,
+      EntriesCount: d.entries.length,
+    };
+    if (d.entries.length > 0) {
+      got.Entry0SampleIndex = d.entries[0].sampleIndex;
+      got.Entry0Timestamp = d.entries[0].timestampMicroseconds;
+    }
+    if (d.entries.length > 1) {
+      got.Entry1SampleIndex = d.entries[1].sampleIndex;
+      got.Entry1Timestamp = d.entries[1].timestampMicroseconds;
+    }
+    if (d.entries.length > 2) {
+      got.Entry2SampleIndex = d.entries[2].sampleIndex;
+      got.Entry2Timestamp = d.entries[2].timestampMicroseconds;
+    }
+    assertFields(meta.fields, got);
   });
 });

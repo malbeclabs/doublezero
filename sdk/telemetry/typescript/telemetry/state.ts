@@ -6,6 +6,9 @@ import { DefensiveReader } from "borsh-incremental";
 const DEVICE_LATENCY_HEADER_SIZE = 1 + 8 + 32 * 6 + 8 + 8 + 4 + 128;
 const MAX_DEVICE_LATENCY_SAMPLES = 35_000;
 const MAX_INTERNET_LATENCY_SAMPLES = 3_000;
+const TIMESTAMP_INDEX_HEADER_SIZE = 1 + 32 + 4 + 64;
+const TIMESTAMP_INDEX_ENTRY_SIZE = 4 + 8;
+const MAX_TIMESTAMP_INDEX_ENTRIES = 10_000;
 
 export interface DeviceLatencySamples {
   accountType: number;
@@ -126,5 +129,52 @@ export function deserializeInternetLatencySamples(
     startTimestampMicroseconds,
     nextSampleIndex,
     samples,
+  };
+}
+
+export interface TimestampIndexEntry {
+  sampleIndex: number;
+  timestampMicroseconds: bigint;
+}
+
+export interface TimestampIndex {
+  accountType: number;
+  samplesAccountPK: PublicKey;
+  nextEntryIndex: number;
+  entries: TimestampIndexEntry[];
+}
+
+export function deserializeTimestampIndex(
+  data: Uint8Array,
+): TimestampIndex {
+  if (data.length < TIMESTAMP_INDEX_HEADER_SIZE) {
+    throw new Error(
+      `data too short for timestamp index header: ${data.length} < ${TIMESTAMP_INDEX_HEADER_SIZE}`,
+    );
+  }
+
+  const r = new DefensiveReader(data);
+
+  const accountType = r.readU8();
+  const samplesAccountPK = readPubkey(r);
+  const nextEntryIndex = r.readU32();
+
+  r.readBytes(64); // _unused
+
+  const count = Math.min(nextEntryIndex, MAX_TIMESTAMP_INDEX_ENTRIES);
+  const entries: TimestampIndexEntry[] = [];
+  for (let i = 0; i < count; i++) {
+    if (r.remaining < TIMESTAMP_INDEX_ENTRY_SIZE) break;
+    entries.push({
+      sampleIndex: r.readU32(),
+      timestampMicroseconds: r.readU64(),
+    });
+  }
+
+  return {
+    accountType,
+    samplesAccountPK,
+    nextEntryIndex,
+    entries,
   };
 }

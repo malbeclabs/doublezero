@@ -5,7 +5,7 @@ from pathlib import Path
 
 from solders.pubkey import Pubkey  # type: ignore[import-untyped]
 
-from telemetry.state import DeviceLatencySamples, InternetLatencySamples
+from telemetry.state import DeviceLatencySamples, InternetLatencySamples, TimestampIndex
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "testdata" / "fixtures"
 
@@ -75,3 +75,25 @@ class TestFixtureInternetLatencySamples:
                 "SamplesCount": len(d.samples),
             },
         )
+
+
+class TestFixtureTimestampIndex:
+    def test_deserialize(self):
+        data, meta = _load_fixture("timestamp_index")
+        d = TimestampIndex.from_bytes(data)
+        got = {
+            "AccountType": d.account_type,
+            "SamplesAccountPK": d.samples_account_pk,
+            "NextEntryIndex": d.next_entry_index,
+            "EntriesCount": len(d.entries),
+        }
+        if len(d.entries) > 0:
+            got["Entry0SampleIndex"] = d.entries[0].sample_index
+            got["Entry0Timestamp"] = d.entries[0].timestamp_microseconds
+        if len(d.entries) > 1:
+            got["Entry1SampleIndex"] = d.entries[1].sample_index
+            got["Entry1Timestamp"] = d.entries[1].timestamp_microseconds
+        if len(d.entries) > 2:
+            got["Entry2SampleIndex"] = d.entries[2].sample_index
+            got["Entry2Timestamp"] = d.entries[2].timestamp_microseconds
+        _assert_fields(meta["fields"], got)

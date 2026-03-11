@@ -38,6 +38,8 @@ pub struct UpdateDeviceCommand {
     pub reference_count: Option<u32>,
     pub max_unicast_users: Option<u16>,
     pub max_multicast_users: Option<u16>,
+    pub unicast_users_count: Option<u16>,
+    pub multicast_users_count: Option<u16>,
 }
 
 impl UpdateDeviceCommand {
@@ -103,6 +105,8 @@ impl UpdateDeviceCommand {
                 reference_count: self.reference_count,
                 max_unicast_users: self.max_unicast_users,
                 max_multicast_users: self.max_multicast_users,
+                unicast_users_count: self.unicast_users_count,
+                multicast_users_count: self.multicast_users_count,
             }),
             [
                 vec![
@@ -216,6 +220,8 @@ mod tests {
                     reference_count: None,
                     max_unicast_users: None,
                     max_multicast_users: None,
+                    unicast_users_count: None,
+                    multicast_users_count: None,
                 })),
                 predicate::always(),
             )
@@ -241,6 +247,8 @@ mod tests {
             reference_count: None,
             max_unicast_users: None,
             max_multicast_users: None,
+            unicast_users_count: None,
+            multicast_users_count: None,
         };
 
         let update_invalid = UpdateDeviceCommand {

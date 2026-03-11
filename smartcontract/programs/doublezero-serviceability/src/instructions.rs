@@ -751,6 +751,8 @@ mod tests {
                 resource_count: 0,
                 max_unicast_users: None,
                 max_multicast_users: None,
+                unicast_users_count: None,
+                multicast_users_count: None,
             }),
             "UpdateDevice",
         );

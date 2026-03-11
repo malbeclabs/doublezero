@@ -118,6 +118,7 @@ pub fn process_create_user(
         value.cyoa_type,
         value.client_ip,
         value.tunnel_endpoint,
+        false, // create.rs always creates subscribers
     )?;
 
 

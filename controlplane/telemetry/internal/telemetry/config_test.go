@@ -41,6 +41,14 @@ func (m *mockPeerDiscovery) GetPeers() []*Peer {
 
 type mockTelemetryProgramClient struct{}
 
+func (m *mockTelemetryProgramClient) ProgramID() solana.PublicKey {
+	return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+}
+
+func (m *mockTelemetryProgramClient) InitializeTimestampIndex(_ context.Context, _ solana.PublicKey) (solana.Signature, *rpc.GetTransactionResult, error) {
+	return solana.Signature{}, nil, nil
+}
+
 func (m *mockTelemetryProgramClient) InitializeDeviceLatencySamples(ctx context.Context, config telemetryprog.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *rpc.GetTransactionResult, error) {
 	return solana.Signature{}, nil, nil
 }

@@ -711,11 +711,11 @@ async fn test_reserve_connection_max_users_zero() {
 }
 
 #[tokio::test]
-async fn test_reserve_connection_respects_max_multicast_users() {
+async fn test_reserve_connection_respects_max_multicast_subscribers() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
         setup_device_for_reservations(128).await;
 
-    // Set max_multicast_users=2 (lower than max_users=128)
+    // Set max_multicast_subscribers=2 (lower than max_users=128)
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device should exist");
@@ -725,7 +725,7 @@ async fn test_reserve_connection_respects_max_multicast_users() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            max_multicast_users: Some(2),
+            max_multicast_subscribers: Some(2),
             ..DeviceUpdateArgs::default()
         }),
         vec![
@@ -797,14 +797,14 @@ async fn test_reserve_connection_respects_max_multicast_users() {
     )
     .await;
 
-    // MaxMulticastUsersExceeded = Custom(82)
+    // MaxMulticastSubscribersExceeded = Custom(82)
     match result {
         Err(BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
             InstructionError::Custom(82),
         ))) => {}
         _ => panic!(
-            "Expected MaxMulticastUsersExceeded (Custom(82)), got {:?}",
+            "Expected MaxMulticastSubscribersExceeded (Custom(82)), got {:?}",
             result
         ),
     }
@@ -950,7 +950,7 @@ async fn test_create_reserved_subscribe_user() {
     assert_eq!(device.reserved_seats, 2);
     assert_eq!(device.users_count, 1);
     assert_eq!(device.reference_count, 1);
-    assert_eq!(device.multicast_users_count, 1);
+    assert_eq!(device.multicast_subscribers_count, 1);
 
     // Verify user
     let user = get_user(&mut banks_client, user_pubkey)
@@ -1478,7 +1478,7 @@ async fn test_create_reserved_subscribe_user_multiple_from_same_reservation() {
     assert_eq!(device.reserved_seats, 0);
     assert_eq!(device.users_count, 3);
     assert_eq!(device.reference_count, 3);
-    assert_eq!(device.multicast_users_count, 3);
+    assert_eq!(device.multicast_subscribers_count, 3);
 
     let mgroup = get_multicast_group(&mut banks_client, mgroup_pubkey)
         .await

@@ -196,21 +196,37 @@ pub fn process_create_reserved_subscribe_user(
         return Err(DoubleZeroError::InvalidArgument.into());
     }
 
-    // Check multicast limit
-    if device.max_multicast_users > 0 && device.multicast_users_count >= device.max_multicast_users
+    // Check per-type multicast limits
+    if value.publisher {
+        if device.max_multicast_publishers > 0
+            && device.multicast_publishers_count >= device.max_multicast_publishers
+        {
+            msg!(
+                "Max multicast publishers exceeded: count={}, max={}",
+                device.multicast_publishers_count,
+                device.max_multicast_publishers
+            );
+            return Err(DoubleZeroError::MaxMulticastPublishersExceeded.into());
+        }
+    } else if device.max_multicast_subscribers > 0
+        && device.multicast_subscribers_count >= device.max_multicast_subscribers
     {
         msg!(
-            "Max multicast users exceeded: count={}, max={}",
-            device.multicast_users_count,
-            device.max_multicast_users
+            "Max multicast subscribers exceeded: count={}, max={}",
+            device.multicast_subscribers_count,
+            device.max_multicast_subscribers
         );
-        return Err(DoubleZeroError::MaxMulticastUsersExceeded.into());
+        return Err(DoubleZeroError::MaxMulticastSubscribersExceeded.into());
     }
 
     // Update device counters
     device.reference_count += 1;
     device.users_count += 1;
-    device.multicast_users_count += 1;
+    if value.publisher {
+        device.multicast_publishers_count += 1;
+    } else {
+        device.multicast_subscribers_count += 1;
+    }
 
     // Validate user PDA
     let (expected_pda, bump_seed) = get_user_pda(program_id, &value.client_ip, value.user_type);

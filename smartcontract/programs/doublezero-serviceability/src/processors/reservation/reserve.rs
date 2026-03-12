@@ -84,7 +84,7 @@ pub fn process_reserve_connection(
     let mut device = Device::try_from(device_account)?;
 
     // Check device capacity: always check overall max_users, and additionally
-    // check max_multicast_users when the per-type limit is configured (> 0).
+    // check per-type multicast limits when configured (> 0).
     let new_reserved = device
         .reserved_seats
         .checked_add(value.count)
@@ -96,13 +96,13 @@ pub fn process_reserve_connection(
     if total_occupied > device.max_users {
         return Err(DoubleZeroError::MaxUsersExceeded.into());
     }
-    if device.max_multicast_users > 0 {
-        let total_multicast = device
-            .multicast_users_count
+    if device.max_multicast_subscribers > 0 {
+        let total_subscribers = device
+            .multicast_subscribers_count
             .checked_add(new_reserved)
-            .ok_or(DoubleZeroError::MaxMulticastUsersExceeded)?;
-        if total_multicast > device.max_multicast_users {
-            return Err(DoubleZeroError::MaxMulticastUsersExceeded.into());
+            .ok_or(DoubleZeroError::MaxMulticastSubscribersExceeded)?;
+        if total_subscribers > device.max_multicast_subscribers {
+            return Err(DoubleZeroError::MaxMulticastSubscribersExceeded.into());
         }
     }
 

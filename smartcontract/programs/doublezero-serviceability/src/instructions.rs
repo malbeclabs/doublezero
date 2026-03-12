@@ -1292,7 +1292,8 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::UpdatePermission(PermissionUpdateArgs {
-                permissions: permission_flags::FOUNDATION,
+                add: permission_flags::FOUNDATION,
+                remove: 0,
             }),
             "UpdatePermission",
         );

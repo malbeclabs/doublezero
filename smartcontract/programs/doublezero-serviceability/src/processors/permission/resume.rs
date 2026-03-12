@@ -2,6 +2,7 @@ use crate::{
     authorize::authorize,
     error::DoubleZeroError,
     pda::get_permission_pda,
+    processors::validation::validate_program_account,
     serializer::try_acc_write,
     state::{
         globalstate::GlobalState,
@@ -40,17 +41,19 @@ pub fn process_resume_permission(
     let _system_program = next_account_info(accounts_iter)?;
 
     assert!(payer_account.is_signer, "Payer must be a signer");
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "GlobalState"
     );
-    assert_eq!(
-        permission_account.owner, program_id,
-        "Invalid Permission Account Owner"
-    );
-    assert!(
-        permission_account.is_writable,
-        "Permission Account is not writable"
+    validate_program_account!(
+        permission_account,
+        program_id,
+        writable = true,
+        pda = None::<&Pubkey>,
+        "Permission"
     );
 
     let mut permission = Permission::try_from(permission_account)?;

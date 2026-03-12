@@ -1,6 +1,8 @@
 use crate::{
     authorize::authorize,
+    error::DoubleZeroError,
     pda::get_permission_pda,
+    processors::validation::validate_program_account,
     serializer::try_acc_close,
     state::{
         globalstate::GlobalState,
@@ -39,17 +41,19 @@ pub fn process_delete_permission(
     let _system_program = next_account_info(accounts_iter)?;
 
     assert!(payer_account.is_signer, "Payer must be a signer");
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "GlobalState"
     );
-    assert_eq!(
-        permission_account.owner, program_id,
-        "Invalid Permission Account Owner"
-    );
-    assert!(
-        permission_account.is_writable,
-        "Permission Account is not writable"
+    validate_program_account!(
+        permission_account,
+        program_id,
+        writable = true,
+        pda = None::<&Pubkey>,
+        "Permission"
     );
 
     let permission = Permission::try_from(permission_account)?;
@@ -57,6 +61,12 @@ pub fn process_delete_permission(
     let (expected_pda, _) = get_permission_pda(program_id, &permission.user_payer);
     if permission_account.key != &expected_pda {
         return Err(ProgramError::InvalidArgument);
+    }
+
+    // Prevent self-removal: a caller with PERMISSION_ADMIN cannot delete their own
+    // permission, as that would lock them out.
+    if &permission.user_payer == payer_account.key {
+        return Err(DoubleZeroError::InvalidArgument.into());
     }
 
     let globalstate = GlobalState::try_from(globalstate_account)?;

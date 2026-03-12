@@ -199,10 +199,12 @@ mod tests {
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 1000,
-            max_multicast_users: 1000,
+            max_multicast_subscribers: 1000,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
 
         let mgroup_pubkey = Pubkey::new_unique();

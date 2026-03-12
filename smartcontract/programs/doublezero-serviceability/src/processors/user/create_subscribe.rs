@@ -110,6 +110,7 @@ pub fn process_create_subscribe_user(
         value.cyoa_type,
         value.client_ip,
         value.tunnel_endpoint,
+        value.publisher,
     )?;
 
     // Subscribe user to multicast group

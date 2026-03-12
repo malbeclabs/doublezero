@@ -389,32 +389,34 @@ type Exchange struct {
 }
 
 type Device struct {
-	AccountType            AccountType
-	Owner                  [32]byte
-	Index                  Uint128
-	BumpSeed               uint8
-	LocationPubKey         [32]byte
-	ExchangePubKey         [32]byte
-	DeviceType             DeviceDeviceType
-	PublicIp               [4]uint8
-	Status                 DeviceStatus
-	Code                   string
-	DzPrefixes             [][5]uint8
-	MetricsPublisherPubKey [32]byte
-	ContributorPubKey      [32]byte
-	MgmtVrf                string
-	Interfaces             []Interface
-	ReferenceCount         uint32
-	UsersCount             uint16
-	MaxUsers               uint16
-	DeviceHealth           DeviceHealth
-	DeviceDesiredStatus    DeviceDesiredStatus
-	UnicastUsersCount      uint16
-	MulticastUsersCount    uint16
-	MaxUnicastUsers        uint16
-	MaxMulticastUsers      uint16
-	ReservedSeats          uint16
-	PubKey                 [32]byte
+	AccountType               AccountType
+	Owner                     [32]byte
+	Index                     Uint128
+	BumpSeed                  uint8
+	LocationPubKey            [32]byte
+	ExchangePubKey            [32]byte
+	DeviceType                DeviceDeviceType
+	PublicIp                  [4]uint8
+	Status                    DeviceStatus
+	Code                      string
+	DzPrefixes                [][5]uint8
+	MetricsPublisherPubKey    [32]byte
+	ContributorPubKey         [32]byte
+	MgmtVrf                   string
+	Interfaces                []Interface
+	ReferenceCount            uint32
+	UsersCount                uint16
+	MaxUsers                  uint16
+	DeviceHealth              DeviceHealth
+	DeviceDesiredStatus       DeviceDesiredStatus
+	UnicastUsersCount         uint16
+	MulticastSubscribersCount uint16
+	MaxUnicastUsers           uint16
+	MaxMulticastSubscribers   uint16
+	ReservedSeats             uint16
+	MulticastPublishersCount  uint16
+	MaxMulticastPublishers    uint16
+	PubKey                    [32]byte
 }
 
 func (d Device) MarshalJSON() ([]byte, error) {

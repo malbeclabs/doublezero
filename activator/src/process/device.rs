@@ -352,10 +352,12 @@ mod tests {
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
                 unicast_users_count: 0,
-                multicast_users_count: 0,
+                multicast_subscribers_count: 0,
                 max_unicast_users: 0,
-                max_multicast_users: 0,
+                max_multicast_subscribers: 0,
                 reserved_seats: 0,
+                multicast_publishers_count: 0,
+                max_multicast_publishers: 0,
             };
 
             let mut expected_interfaces = [
@@ -616,10 +618,12 @@ mod tests {
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
 
         let mut ip_block_allocator = IPBlockAllocator::new("1.1.1.0/24".parse().unwrap());
@@ -737,10 +741,12 @@ mod tests {
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
                 unicast_users_count: 0,
-                multicast_users_count: 0,
+                multicast_subscribers_count: 0,
                 max_unicast_users: 0,
-                max_multicast_users: 0,
+                max_multicast_subscribers: 0,
                 reserved_seats: 0,
+                multicast_publishers_count: 0,
+                max_multicast_publishers: 0,
             };
 
             let device_clone = device.clone();
@@ -817,10 +823,12 @@ mod tests {
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
                 unicast_users_count: 0,
-                multicast_users_count: 0,
+                multicast_subscribers_count: 0,
                 max_unicast_users: 0,
-                max_multicast_users: 0,
+                max_multicast_subscribers: 0,
                 reserved_seats: 0,
+                multicast_publishers_count: 0,
+                max_multicast_publishers: 0,
             };
 
             // Insert device first so it can be removed

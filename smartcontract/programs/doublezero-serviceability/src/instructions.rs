@@ -750,9 +750,11 @@ mod tests {
                 reference_count: None,
                 resource_count: 0,
                 max_unicast_users: None,
-                max_multicast_users: None,
+                max_multicast_subscribers: None,
                 unicast_users_count: None,
-                multicast_users_count: None,
+                max_multicast_publishers: None,
+                multicast_subscribers_count: None,
+                multicast_publishers_count: None,
             }),
             "UpdateDevice",
         );

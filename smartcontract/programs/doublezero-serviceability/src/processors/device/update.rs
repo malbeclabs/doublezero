@@ -38,9 +38,14 @@ pub struct DeviceUpdateArgs {
     #[incremental(default = None)]
     pub max_unicast_users: Option<u16>,
     #[incremental(default = None)]
-    pub max_multicast_users: Option<u16>,
+    pub max_multicast_subscribers: Option<u16>,
     pub unicast_users_count: Option<u16>,
-    pub multicast_users_count: Option<u16>,
+    #[incremental(default = None)]
+    pub max_multicast_publishers: Option<u16>,
+    #[incremental(default = None)]
+    pub multicast_subscribers_count: Option<u16>,
+    #[incremental(default = None)]
+    pub multicast_publishers_count: Option<u16>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
@@ -85,17 +90,35 @@ impl fmt::Debug for DeviceUpdateArgs {
         if self.max_unicast_users.is_some() {
             write!(f, "max_unicast_users: {:?}, ", self.max_unicast_users)?;
         }
-        if self.max_multicast_users.is_some() {
-            write!(f, "max_multicast_users: {:?}, ", self.max_multicast_users)?;
+        if self.max_multicast_subscribers.is_some() {
+            write!(
+                f,
+                "max_multicast_subscribers: {:?}, ",
+                self.max_multicast_subscribers
+            )?;
+        }
+        if self.max_multicast_publishers.is_some() {
+            write!(
+                f,
+                "max_multicast_publishers: {:?}, ",
+                self.max_multicast_publishers
+            )?;
         }
         if self.unicast_users_count.is_some() {
             write!(f, "unicast_users_count: {:?}, ", self.unicast_users_count)?;
         }
-        if self.multicast_users_count.is_some() {
+        if self.multicast_subscribers_count.is_some() {
             write!(
                 f,
-                "multicast_users_count: {:?}, ",
-                self.multicast_users_count
+                "multicast_subscribers_count: {:?}, ",
+                self.multicast_subscribers_count
+            )?;
+        }
+        if self.multicast_publishers_count.is_some() {
+            write!(
+                f,
+                "multicast_publishers_count: {:?}, ",
+                self.multicast_publishers_count
             )?;
         }
         Ok(())
@@ -211,14 +234,17 @@ pub fn process_update_device(
         if let Some(users_count) = value.users_count {
             device.users_count = users_count;
         }
+        if let Some(multicast_subscribers_count) = value.multicast_subscribers_count {
+            device.multicast_subscribers_count = multicast_subscribers_count;
+        }
+        if let Some(multicast_publishers_count) = value.multicast_publishers_count {
+            device.multicast_publishers_count = multicast_publishers_count;
+        }
         if let Some(reference_count) = value.reference_count {
             device.reference_count = reference_count;
         }
         if let Some(unicast_users_count) = value.unicast_users_count {
             device.unicast_users_count = unicast_users_count;
-        }
-        if let Some(multicast_users_count) = value.multicast_users_count {
-            device.multicast_users_count = multicast_users_count;
         }
     }
 
@@ -287,8 +313,11 @@ pub fn process_update_device(
     if let Some(max_unicast_users) = value.max_unicast_users {
         device.max_unicast_users = max_unicast_users;
     }
-    if let Some(max_multicast_users) = value.max_multicast_users {
-        device.max_multicast_users = max_multicast_users;
+    if let Some(max_multicast_subscribers) = value.max_multicast_subscribers {
+        device.max_multicast_subscribers = max_multicast_subscribers;
+    }
+    if let Some(max_multicast_publishers) = value.max_multicast_publishers {
+        device.max_multicast_publishers = max_multicast_publishers;
     }
 
     // Handle location update if both old and new location accounts are provided

@@ -152,6 +152,13 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.MaxUsers = reader.ReadU16()
 	dev.DeviceHealth = DeviceHealth(reader.ReadU8())
 	dev.DeviceDesiredStatus = DeviceDesiredStatus(reader.ReadU8())
+	dev.UnicastUsersCount = reader.ReadU16()
+	dev.MulticastSubscribersCount = reader.ReadU16()
+	dev.MaxUnicastUsers = reader.ReadU16()
+	dev.MaxMulticastSubscribers = reader.ReadU16()
+	dev.ReservedSeats = reader.ReadU16()
+	dev.MulticastPublishersCount = reader.ReadU16()
+	dev.MaxMulticastPublishers = reader.ReadU16()
 	// Note: dev.PubKey is set separately in client.go after deserialization
 }
 

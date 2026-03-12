@@ -63,15 +63,21 @@ pub struct UpdateDeviceCliCommand {
     /// Maximum number of unicast users for the device (optional)
     #[arg(long)]
     pub max_unicast_users: Option<u16>,
-    /// Maximum number of multicast users for the device (optional)
+    /// Maximum number of multicast subscribers for the device (optional)
     #[arg(long)]
-    pub max_multicast_users: Option<u16>,
+    pub max_multicast_subscribers: Option<u16>,
     /// Unicast users count for the device (foundation only)
     #[arg(long)]
     pub unicast_users_count: Option<u16>,
-    /// Multicast users count for the device (foundation only)
+    /// Maximum number of multicast publishers for the device (optional)
     #[arg(long)]
-    pub multicast_users_count: Option<u16>,
+    pub max_multicast_publishers: Option<u16>,
+    /// Number of active multicast subscribers on the device (optional, foundation only)
+    #[arg(long)]
+    pub multicast_subscribers_count: Option<u16>,
+    /// Number of active multicast publishers on the device (optional, foundation only)
+    #[arg(long)]
+    pub multicast_publishers_count: Option<u16>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -187,9 +193,11 @@ impl UpdateDeviceCliCommand {
             desired_status: self.desired_status,
             reference_count: self.reference_count,
             max_unicast_users: self.max_unicast_users,
-            max_multicast_users: self.max_multicast_users,
+            max_multicast_subscribers: self.max_multicast_subscribers,
             unicast_users_count: self.unicast_users_count,
-            multicast_users_count: self.multicast_users_count,
+            max_multicast_publishers: self.max_multicast_publishers,
+            multicast_subscribers_count: self.multicast_subscribers_count,
+            multicast_publishers_count: self.multicast_publishers_count,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -259,10 +267,12 @@ mod tests {
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -287,10 +297,12 @@ mod tests {
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let device3 = Device {
             account_type: AccountType::Device,
@@ -315,10 +327,12 @@ mod tests {
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let device_list = HashMap::from([
             (pda_pubkey, device1.clone()),
@@ -366,9 +380,12 @@ mod tests {
                 desired_status: None,
                 reference_count: None,
                 max_unicast_users: None,
-                max_multicast_users: None,
+                max_multicast_subscribers: None,
                 unicast_users_count: None,
-                multicast_users_count: None,
+
+                max_multicast_publishers: None,
+                multicast_subscribers_count: None,
+                multicast_publishers_count: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -391,9 +408,12 @@ mod tests {
             desired_status: None,
             reference_count: None,
             max_unicast_users: None,
-            max_multicast_users: None,
+            max_multicast_subscribers: None,
             unicast_users_count: None,
-            multicast_users_count: None,
+
+            max_multicast_publishers: None,
+            multicast_subscribers_count: None,
+            multicast_publishers_count: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -437,10 +457,12 @@ mod tests {
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -465,10 +487,12 @@ mod tests {
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 
@@ -506,9 +530,12 @@ mod tests {
             desired_status: None,
             reference_count: None,
             max_unicast_users: None,
-            max_multicast_users: None,
+            max_multicast_subscribers: None,
             unicast_users_count: None,
-            multicast_users_count: None,
+
+            max_multicast_publishers: None,
+            multicast_subscribers_count: None,
+            multicast_publishers_count: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -552,10 +579,12 @@ mod tests {
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -580,10 +609,12 @@ mod tests {
             desired_status:
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             unicast_users_count: 0,
-            multicast_users_count: 0,
+            multicast_subscribers_count: 0,
             max_unicast_users: 0,
-            max_multicast_users: 0,
+            max_multicast_subscribers: 0,
             reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 
@@ -620,9 +651,12 @@ mod tests {
             desired_status: None,
             reference_count: None,
             max_unicast_users: None,
-            max_multicast_users: None,
+            max_multicast_subscribers: None,
             unicast_users_count: None,
-            multicast_users_count: None,
+
+            max_multicast_publishers: None,
+            multicast_subscribers_count: None,
+            multicast_publishers_count: None,
             wait: false,
         }
         .execute(&client, &mut output);

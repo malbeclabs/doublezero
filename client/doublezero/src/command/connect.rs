@@ -466,7 +466,7 @@ impl ProvisioningCliCommand {
                 spinner.inc(1);
 
                 // Check per-type user limit before attempting to create
-                if let Some(err_msg) = device.check_user_type_capacity(user_type) {
+                if let Some(err_msg) = device.check_user_type_capacity(user_type, false) {
                     return Err(eyre::eyre!(err_msg));
                 }
 
@@ -617,7 +617,9 @@ impl ProvisioningCliCommand {
                 ));
 
                 // Check per-type user limit before attempting to create
-                if let Some(err_msg) = device.check_user_type_capacity(UserType::Multicast) {
+                if let Some(err_msg) =
+                    device.check_user_type_capacity(UserType::Multicast, !pub_group_pks.is_empty())
+                {
                     return Err(eyre::eyre!(err_msg));
                 }
 
@@ -753,7 +755,9 @@ impl ProvisioningCliCommand {
                 spinner.inc(1);
 
                 // Check per-type user limit before attempting to create
-                if let Some(err_msg) = device.check_user_type_capacity(UserType::Multicast) {
+                if let Some(err_msg) =
+                    device.check_user_type_capacity(UserType::Multicast, !pub_group_pks.is_empty())
+                {
                     return Err(eyre::eyre!(err_msg));
                 }
 
@@ -1367,10 +1371,12 @@ mod tests {
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
                 unicast_users_count: 0,
-                multicast_users_count: 0,
+                multicast_subscribers_count: 0,
                 max_unicast_users: 0,
-                max_multicast_users: 0,
+                max_multicast_subscribers: 0,
                 reserved_seats: 0,
+                multicast_publishers_count: 0,
+                max_multicast_publishers: 0,
             };
             devices.insert(pk, device.clone());
             (pk, device)

@@ -233,7 +233,7 @@
       "typ": "u16"
     },
     {
-      "name": "MulticastUsersCount",
+      "name": "MulticastSubscribersCount",
       "value": "2",
       "typ": "u16"
     },
@@ -243,13 +243,23 @@
       "typ": "u16"
     },
     {
-      "name": "MaxMulticastUsers",
+      "name": "MaxMulticastSubscribers",
       "value": "50",
       "typ": "u16"
     },
     {
       "name": "ReservedSeats",
       "value": "3",
+      "typ": "u16"
+    },
+    {
+      "name": "MulticastPublishersCount",
+      "value": "1",
+      "typ": "u16"
+    },
+    {
+      "name": "MaxMulticastPublishers",
+      "value": "10",
       "typ": "u16"
     }
   ]

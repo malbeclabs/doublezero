@@ -141,6 +141,8 @@ async fn main() -> eyre::Result<()> {
             DeviceCommands::List(args) => args.execute(&client, &mut handle),
             DeviceCommands::Get(args) => args.execute(&client, &mut handle),
             DeviceCommands::Delete(args) => args.execute(&client, &mut handle),
+            DeviceCommands::MigrateMulticastCounts(args) => args.execute(&client, &mut handle),
+            DeviceCommands::MigrateUnicastCounts(args) => args.execute(&client, &mut handle),
             DeviceCommands::Interface(command) => match command.command {
                 InterfaceCommands::Create(args) => args.execute(&client, &mut handle),
                 InterfaceCommands::Update(args) => args.execute(&client, &mut handle),

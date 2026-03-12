@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain Programs
+  - Serviceability: split per-device multicast user tracking into separate subscriber and publisher counters (`multicast_subscribers_count`/`max_multicast_subscribers` and `multicast_publishers_count`/`max_multicast_publishers`); publisher and subscriber limits are now enforced independently
 - Controller
   - Downgrade transient ClickHouse write errors from ERROR to WARN, escalating to ERROR only after 3 consecutive flush failures to reduce alert noise ([#3220](https://github.com/malbeclabs/doublezero/issues/3220))
 - Telemetry
@@ -21,6 +23,9 @@ All notable changes to this project will be documented in this file.
   - Suppress noisy program log output from race conditions caused by dual event processing (websocket + snapshot poll). The SDK's new `execute_transaction_quiet` returns a `SimulationError` with program logs; the activator verifies suspected races by re-fetching user state before deciding whether to print logs ([#3197](https://github.com/malbeclabs/doublezero/pull/3197))
 - CLI
   - Add `doublezero-geolocation` CLI for managing geolocation program entities: GeoProbe CRUD (create, get, list, update, delete), parent device management (add/remove), program config initialization, and geolocation-specific config get/set
+  - Add `--multicast-publishers-count` and `--multicast-subscribers-count` flags to `device update` for foundation-gated count correction; rename `--max-multicast-users` to `--max-multicast-subscribers` and add `--max-multicast-publishers`
+  - Add `doublezero-admin device migrate-multicast-counts [--dry-run]` to correct stale `multicast_subscribers_count`/`multicast_publishers_count` on existing deployments where all multicast users were previously counted as subscribers; supports dry-run preview and continues past per-device failures
+  - Add `doublezero-admin device migrate-unicast-counts [--dry-run]` to correct stale `unicast_users_count` on all devices; same behaviour as the multicast counts command
 - SDK
   - Add read-only Go SDK for `doublezero-geolocation` program with state deserialization, PDA derivation, and RPC client for querying geoprobe configuration
 - Client
@@ -29,7 +34,7 @@ All notable changes to this project will be documented in this file.
   - Increase default route liveness probe interval (TxMin/RxMin) from 300ms to 1s and raise MaxTxCeil from 1s to 3s to preserve backoff headroom
   - Throttle O(n) per-service scheduler queue length metric from every event to once per 10s to fix excessive CPU usage on nodes with many liveness sessions
 - Smartcontract
-  - Serviceability: add foundation-only `unicast_users_count` and `multicast_users_count` fields to `UpdateDevice` instruction for backfilling out-of-sync device user counts, with corresponding `--unicast-users-count` and `--multicast-users-count` CLI flags
+  - Serviceability: add foundation-only `unicast_users_count`, `multicast_subscribers_count`, and `multicast_publishers_count` fields to `UpdateDevice` instruction for direct count correction, with corresponding `--unicast-users-count`, `--multicast-subscribers-count`, and `--multicast-publishers-count` CLI flags
   - Serviceability: fix `validate_account_code` forcing lowercase on all entity types — restrict lowercase normalization to device and link codes only, preserving original case for locations, exchanges, contributors, and other entities
   - feat(smartcontract): atomic onchain allocation for CreateDevice ([#3216](https://github.com/malbeclabs/doublezero/pull/3216))
   - Serviceability: RequestBanUser instruction supports atomic deallocate when OnchainAllocation feature is enabled

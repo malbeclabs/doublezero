@@ -603,10 +603,12 @@ class Device:
     device_health: DeviceHealth = DeviceHealth.UNKNOWN
     device_desired_status: DeviceDesiredStatus = DeviceDesiredStatus.PENDING
     unicast_users_count: int = 0
-    multicast_users_count: int = 0
+    multicast_subscribers_count: int = 0
     max_unicast_users: int = 0
-    max_multicast_users: int = 0
+    max_multicast_subscribers: int = 0
     reserved_seats: int = 0
+    multicast_publishers_count: int = 0
+    max_multicast_publishers: int = 0
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Device:
@@ -634,10 +636,12 @@ class Device:
         dev.device_health = DeviceHealth(r.read_u8())
         dev.device_desired_status = DeviceDesiredStatus(r.read_u8())
         dev.unicast_users_count = r.read_u16()
-        dev.multicast_users_count = r.read_u16()
+        dev.multicast_subscribers_count = r.read_u16()
         dev.max_unicast_users = r.read_u16()
-        dev.max_multicast_users = r.read_u16()
+        dev.max_multicast_subscribers = r.read_u16()
         dev.reserved_seats = r.read_u16()
+        dev.multicast_publishers_count = r.read_u16()
+        dev.max_multicast_publishers = r.read_u16()
         return dev
 
 

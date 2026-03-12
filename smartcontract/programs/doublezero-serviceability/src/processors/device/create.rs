@@ -195,10 +195,12 @@ pub fn process_create_device(
             .desired_status
             .unwrap_or(DeviceDesiredStatus::Activated),
         unicast_users_count: 0,
-        multicast_users_count: 0,
+        multicast_subscribers_count: 0,
         max_unicast_users: 0, // Initially locked, must be set via device update
-        max_multicast_users: 0, // Initially locked, must be set via device update
+        max_multicast_subscribers: 0, // Initially locked, must be set via device update
         reserved_seats: 0,
+        multicast_publishers_count: 0,
+        max_multicast_publishers: 0, // Initially locked, must be set via device update
     };
 
     // Atomic create+activate with onchain resource allocation

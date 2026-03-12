@@ -57,6 +57,7 @@ pub struct CreateUserCoreResult {
 /// - Onchain allocation + try_activate
 /// - Account creation (try_acc_create) and write-back
 /// - Multicast subscription logic (CreateSubscribeUser only)
+#[allow(clippy::too_many_arguments)]
 pub fn create_user_core(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -65,6 +66,7 @@ pub fn create_user_core(
     cyoa_type: UserCYOA,
     client_ip: Ipv4Addr,
     tunnel_endpoint: Ipv4Addr,
+    is_publisher: bool,
 ) -> Result<CreateUserCoreResult, ProgramError> {
     // Check if the payer is a signer
     assert!(core.payer_account.is_signer, "Payer must be a signer");
@@ -230,16 +232,28 @@ pub fn create_user_core(
     // Check per-type limits (when max > 0, the limit is enforced)
     match user_type {
         UserType::Multicast => {
-            if device.max_multicast_users > 0
-                && device.multicast_users_count >= device.max_multicast_users
+            if is_publisher {
+                if device.max_multicast_publishers > 0
+                    && device.multicast_publishers_count >= device.max_multicast_publishers
+                    && !is_qa
+                {
+                    msg!(
+                        "Max multicast publishers exceeded: count={}, max={}",
+                        device.multicast_publishers_count,
+                        device.max_multicast_publishers
+                    );
+                    return Err(DoubleZeroError::MaxMulticastPublishersExceeded.into());
+                }
+            } else if device.max_multicast_subscribers > 0
+                && device.multicast_subscribers_count >= device.max_multicast_subscribers
                 && !is_qa
             {
                 msg!(
-                    "Max multicast users exceeded: count={}, max={}",
-                    device.multicast_users_count,
-                    device.max_multicast_users
+                    "Max multicast subscribers exceeded: count={}, max={}",
+                    device.multicast_subscribers_count,
+                    device.max_multicast_subscribers
                 );
-                return Err(DoubleZeroError::MaxMulticastUsersExceeded.into());
+                return Err(DoubleZeroError::MaxMulticastSubscribersExceeded.into());
             }
         }
         _ => {
@@ -265,7 +279,11 @@ pub fn create_user_core(
     device.users_count += 1;
     match user_type {
         UserType::Multicast => {
-            device.multicast_users_count += 1;
+            if is_publisher {
+                device.multicast_publishers_count += 1;
+            } else {
+                device.multicast_subscribers_count += 1;
+            }
         }
         _ => {
             device.unicast_users_count += 1;

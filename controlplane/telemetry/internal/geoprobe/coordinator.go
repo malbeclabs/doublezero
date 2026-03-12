@@ -207,12 +207,11 @@ func (c *Coordinator) runMeasurementCycle(ctx context.Context) {
 	probeCount := len(c.probes)
 	c.probesMu.RUnlock()
 
-	c.log.Debug("Starting geoprobe measurement cycle", "probeCount", probeCount)
-
 	if probeCount == 0 {
-		c.log.Debug("No probes to measure, skipping cycle")
 		return
 	}
+
+	c.log.Debug("Starting geoprobe measurement cycle", "probeCount", probeCount)
 
 	rttData, err := c.pinger.MeasureAll(ctx)
 	if err != nil {

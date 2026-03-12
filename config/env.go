@@ -28,6 +28,7 @@ type NetworkConfig struct {
 	TelemetryFlowIngestURL        string
 	TelemetryStateIngestURL       string
 	TelemetryGNMITunnelServerAddr string
+	GeolocationProgramID          solana.PublicKey
 }
 
 func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
@@ -50,6 +51,10 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse revenue distribution program ID: %w", err)
 		}
+		geolocationProgramID, err := solana.PublicKeyFromBase58(MainnetGeolocationProgramID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse geolocation program ID: %w", err)
+		}
 		config = &NetworkConfig{
 			Moniker:                       EnvMainnetBeta,
 			LedgerPublicRPCURL:            MainnetLedgerPublicRPCURL,
@@ -57,6 +62,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TelemetryProgramID:            telemetryProgramID,
 			RevenueDistributionProgramID:  revenueDistributionProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
+			GeolocationProgramID:          geolocationProgramID,
 			DeviceLocalASN:                MainnetDeviceLocalASN,
 			TwoZOracleURL:                 MainnetTwoZOracleURL,
 			SolanaRPCURL:                  MainnetSolanaRPC,
@@ -77,12 +83,17 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
+		geolocationProgramID, err := solana.PublicKeyFromBase58(TestnetGeolocationProgramID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse geolocation program ID: %w", err)
+		}
 		config = &NetworkConfig{
 			Moniker:                       EnvTestnet,
 			LedgerPublicRPCURL:            TestnetLedgerPublicRPCURL,
 			ServiceabilityProgramID:       serviceabilityProgramID,
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
+			GeolocationProgramID:          geolocationProgramID,
 			DeviceLocalASN:                TestnetDeviceLocalASN,
 			TwoZOracleURL:                 TestnetTwoZOracleURL,
 			SolanaRPCURL:                  TestnetSolanaRPC,
@@ -103,12 +114,17 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
+		geolocationProgramID, err := solana.PublicKeyFromBase58(DevnetGeolocationProgramID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse geolocation program ID: %w", err)
+		}
 		config = &NetworkConfig{
 			Moniker:                       EnvDevnet,
 			LedgerPublicRPCURL:            DevnetLedgerPublicRPCURL,
 			ServiceabilityProgramID:       serviceabilityProgramID,
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
+			GeolocationProgramID:          geolocationProgramID,
 			DeviceLocalASN:                DevnetDeviceLocalASN,
 			TwoZOracleURL:                 DevnetTwoZOracleURL,
 			SolanaRPCURL:                  TestnetSolanaRPC,
@@ -129,12 +145,17 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
+		geolocationProgramID, err := solana.PublicKeyFromBase58(LocalnetGeolocationProgramID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse geolocation program ID: %w", err)
+		}
 		config = &NetworkConfig{
 			Moniker:                       EnvLocalnet,
 			LedgerPublicRPCURL:            LocalnetLedgerPublicRPCURL,
 			ServiceabilityProgramID:       serviceabilityProgramID,
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
+			GeolocationProgramID:          geolocationProgramID,
 			DeviceLocalASN:                LocalnetDeviceLocalASN,
 			TwoZOracleURL:                 LocalnetTwoZOracleURL,
 			SolanaRPCURL:                  LocalnetSolanaRPC,

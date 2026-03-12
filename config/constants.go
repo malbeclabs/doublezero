@@ -14,6 +14,7 @@ const (
 	MainnetTelemetryGNMITunnelServerAddr = "gnmic-mainnet-beta.doublezero.xyz:443"
 
 	MainnetRevenueDistributionProgramID = "dzrevZC94tBLwuHw1dyynZxaXTWyp7yocsinyEVPtt4"
+	MainnetGeolocationProgramID         = "8H7nS6eZiuf7rGQtz3PPz2q9m4eJRL37PPM678KHnspG"
 
 	// Testnet constants.
 	TestnetLedgerPublicRPCURL            = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
@@ -25,6 +26,7 @@ const (
 	TestnetSolanaRPC                     = "https://api.testnet.solana.com"
 	TestnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.testnet.doublezero.xyz"
 	TestnetTelemetryStateIngestURL       = "http://telemetry-state-in.testnet.doublezero.xyz"
+	TestnetGeolocationProgramID          = "3AG2BCA7gAm47Q6xZzPQcUUYvnBjxAvPKnPz919cxHF4"
 	TestnetTelemetryGNMITunnelServerAddr = "gnmic-testnet.doublezero.xyz:443"
 
 	// Devnet constants.
@@ -36,6 +38,7 @@ const (
 	DevnetTwoZOracleURL                 = ""
 	DevnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.devnet.doublezero.xyz"
 	DevnetTelemetryStateIngestURL       = "http://telemetry-state-in.devnet.doublezero.xyz"
+	DevnetGeolocationProgramID          = "EXUUFfAjjuXnaBtsAMLsJX18ynnNHPwtkmk33bLVVoCm"
 	DevnetTelemetryGNMITunnelServerAddr = "gnmic-devnet.doublezero.xyz:443"
 
 	// Localnet constants.
@@ -48,5 +51,6 @@ const (
 	LocalnetSolanaRPC                     = "http://localhost:8899"
 	LocalnetTelemetryFlowIngestURL        = "http://localhost:8911"
 	LocalnetTelemetryStateIngestURL       = "http://localhost:8911"
+	LocalnetGeolocationProgramID          = "36WA9nUCsJaAQL5h44WYoLezDpocy8Q71NZbtrUN8DyC"
 	LocalnetTelemetryGNMITunnelServerAddr = "localhost:50051"
 )

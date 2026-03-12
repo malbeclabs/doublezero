@@ -57,6 +57,11 @@ func (g *GeolocationProgramConfig) Deserialize(data []byte) error {
 	return nil
 }
 
+type KeyedGeoProbe struct {
+	Pubkey solana.PublicKey
+	GeoProbe
+}
+
 type GeoProbe struct {
 	AccountType        AccountType        // 1 byte
 	Owner              solana.PublicKey   // 32 bytes

@@ -16,7 +16,6 @@ All notable changes to this project will be documented in this file.
   - Detect and replace unresponsive RIPE Atlas source probes that stop returning ping results, with a 24-hour TTL on the unresponsive probe blacklist so probes are retried after expiry
   - Compare source probe IDs (not just location codes) during measurement reconciliation so that probe replacements trigger measurement recreation
   - Fix race condition in internet-latency-collector where export and management goroutines independently loaded/saved the same state file, causing newly created RIPE Atlas measurement metadata to be overwritten and measurements to be stuck in a create-destroy-create loop ([#3195](https://github.com/malbeclabs/doublezero/pull/3195))
-  - Embed LocationOffsets from parent DZDs in signed TWAMP replies so inbound probes carry geolocation context, and make signed TWAMP replies more like LocationOffsets to couple with a new double-probe system for inbound probing.
   - Add wheresitup job backlog observability: `pending_jobs` Prometheus gauge, `in_progress_count`/`pending_jobs` in export summary logs, and API response duration histogram ([#3203](https://github.com/malbeclabs/doublezero/pull/3203))
   - Change geoprobe-agent and geoprobe-target default TWAMP reflector port from 862 to 8925 to avoid DZD ACL blocks, use per-probe TWAMP port instead of hardcoded constant, and update `--additional-child-probes`/`--additional-targets` format to `host` or `host:offset_port:twamp_port` (two-field `host:port` rejected as ambiguous)
 - Activator
@@ -28,6 +27,10 @@ All notable changes to this project will be documented in this file.
   - Add `doublezero-admin device migrate-unicast-counts [--dry-run]` to correct stale `unicast_users_count` on all devices; same behaviour as the multicast counts command
 - SDK
   - Add read-only Go SDK for `doublezero-geolocation` program with state deserialization, PDA derivation, and RPC client for querying geoprobe configuration
+  - Add `GetGeoProbeKeys` to geolocation SDK for lightweight account key fetching using DataSlice to minimize RPC bandwidth
+- Telemetry
+  - Add onchain GeoProbe discovery to the telemetry agent: periodically queries the Geolocation program for child probes parented to the local device, replacing the need for `--additional-child-probes` CLI flag
+  - Embed LocationOffsets from parent DZDs in signed TWAMP replies so inbound probes carry geolocation context, and make signed TWAMP replies more like LocationOffsets to couple with a new double-probe system for inbound probing.
 - Client
   - Increase default onchain fetch timeout from 20s to 60s to improve resilience on high-latency RPC paths; add `-reconciler-fetch-timeout` flag to allow operators to override
   - Add prometheus metrics for onchain RPC fetches: fetch duration histogram, result counter (success/error with stale cache/error with no cache), and stale cache age gauge

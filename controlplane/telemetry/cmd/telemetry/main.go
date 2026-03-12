@@ -25,6 +25,7 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/state"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
+	geolocation "github.com/malbeclabs/doublezero/sdk/geolocation/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	stateingest "github.com/malbeclabs/doublezero/telemetry/state-ingest/pkg/client"
@@ -86,6 +87,7 @@ var (
 
 	// geoprobe flags
 	additionalChildProbes = flag.String("additional-child-probes", "", "Comma-separated list of child geoProbe addresses (host or host:offset_port:twamp_port) to measure RTT and send location offsets.")
+	geolocationProgramID  = flag.String("geolocation-program-id", "", "The ID of the geolocation program for onchain GeoProbe discovery. If env is provided, this flag is ignored.")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -150,6 +152,9 @@ func main() {
 		*stateIngestURL = networkConfig.TelemetryStateIngestURL
 		if *gnmiTunnelServerAddr == "" {
 			*gnmiTunnelServerAddr = networkConfig.TelemetryGNMITunnelServerAddr
+		}
+		if *geolocationProgramID == "" && !networkConfig.GeolocationProgramID.IsZero() {
+			*geolocationProgramID = networkConfig.GeolocationProgramID.String()
 		}
 	}
 
@@ -290,6 +295,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create geolocation client if program ID is provided.
+	var geolocationClient geoprobe.GeolocationClient
+	if *geolocationProgramID != "" {
+		geolocationPK, err := solana.PublicKeyFromBase58(*geolocationProgramID)
+		if err != nil {
+			log.Error("Failed to parse geolocation program ID", "error", err)
+			os.Exit(1)
+		}
+		geolocationClient = geolocation.New(log, rpcClient, geolocationPK)
+		log.Info("Geolocation probe discovery enabled", "programID", *geolocationProgramID)
+	}
+
 	// Initialize telemetry program client.
 	telemetryProgramID, err := solana.PublicKeyFromBase58(*telemetryProgramID)
 	if err != nil {
@@ -321,6 +338,7 @@ func main() {
 		SubmitterMaxConcurrency:    *submitterMaxConcurrency,
 		InitialChildGeoProbes:      childProbes,
 		MaxConsecutiveSenderLosses: *maxConsecutiveSenderLosses,
+		GeolocationClient:          geolocationClient,
 	})
 	if err != nil {
 		log.Error("failed to create telemetry collector", "error", err)

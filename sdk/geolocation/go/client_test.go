@@ -119,6 +119,8 @@ func TestSDK_Geolocation_Client_GetGeoProbes_HappyPath(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
+	acctKey1 := solana.NewWallet().PublicKey()
+	acctKey2 := solana.NewWallet().PublicKey()
 
 	probe1 := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
@@ -154,13 +156,13 @@ func TestSDK_Geolocation_Client_GetGeoProbes_HappyPath(t *testing.T) {
 			}
 			return solanarpc.GetProgramAccountsResult{
 				{
-					Pubkey: solana.NewWallet().PublicKey(),
+					Pubkey: acctKey1,
 					Account: &solanarpc.Account{
 						Data: solanarpc.DataBytesOrJSONFromBytes(buf1.Bytes()),
 					},
 				},
 				{
-					Pubkey: solana.NewWallet().PublicKey(),
+					Pubkey: acctKey2,
 					Account: &solanarpc.Account{
 						Data: solanarpc.DataBytesOrJSONFromBytes(buf2.Bytes()),
 					},
@@ -173,7 +175,9 @@ func TestSDK_Geolocation_Client_GetGeoProbes_HappyPath(t *testing.T) {
 	probes, err := client.GetGeoProbes(context.Background())
 	require.NoError(t, err)
 	require.Len(t, probes, 2)
+	require.Equal(t, acctKey1, probes[0].Pubkey)
 	require.Equal(t, "ams-probe-01", probes[0].Code)
+	require.Equal(t, acctKey2, probes[1].Pubkey)
 	require.Equal(t, "fra-probe-01", probes[1].Code)
 }
 

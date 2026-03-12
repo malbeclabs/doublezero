@@ -31,6 +31,7 @@ type Collector struct {
 
 	// Geoprobe coordinator for measuring RTT to child probes
 	geoprobeCoordinator *geoprobe.Coordinator
+	geoprobeDiscovery   *geoprobe.Discovery
 
 	senders   map[string]*senderEntry
 	sendersMu sync.Mutex
@@ -79,8 +80,8 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		RecordProbeResult: c.recordProbeResult,
 	})
 
-	// Initialize geoprobe coordinator if child probes are configured
-	if len(cfg.InitialChildGeoProbes) > 0 {
+	// Initialize geoprobe coordinator if child probes or discovery are configured.
+	if len(cfg.InitialChildGeoProbes) > 0 || cfg.GeolocationClient != nil {
 		probeUpdateCh := make(chan []geoprobe.ProbeAddress, 1)
 		c.geoprobeCoordinator, err = geoprobe.NewCoordinator(&geoprobe.CoordinatorConfig{
 			Logger:               log,
@@ -97,6 +98,21 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 			return nil, fmt.Errorf("failed to create geoprobe coordinator: %w", err)
 		}
 		log.Info("Initialized geoprobe coordinator", "probeCount", len(cfg.InitialChildGeoProbes))
+
+		if cfg.GeolocationClient != nil {
+			c.geoprobeDiscovery, err = geoprobe.NewDiscovery(&geoprobe.DiscoveryConfig{
+				Logger:        log,
+				Client:        cfg.GeolocationClient,
+				LocalDevicePK: cfg.LocalDevicePK,
+				InitialProbes: cfg.InitialChildGeoProbes,
+				ProbeUpdateCh: probeUpdateCh,
+				Interval:      cfg.ProbeDiscoveryInterval,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create geoprobe discovery: %w", err)
+			}
+			log.Info("Initialized geoprobe discovery", "interval", cfg.ProbeDiscoveryInterval)
+		}
 	}
 
 	return c, nil
@@ -180,6 +196,17 @@ func (c *Collector) Run(ctx context.Context) error {
 			defer wg.Done()
 			if err := c.geoprobeCoordinator.Run(runCtx); err != nil {
 				errCh <- fmt.Errorf("failed to run geoprobe coordinator: %w", err)
+			}
+		}()
+	}
+
+	// Start the geoprobe discovery if configured.
+	if c.geoprobeDiscovery != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := c.geoprobeDiscovery.Run(runCtx); err != nil {
+				errCh <- fmt.Errorf("failed to run geoprobe discovery: %w", err)
 			}
 		}()
 	}

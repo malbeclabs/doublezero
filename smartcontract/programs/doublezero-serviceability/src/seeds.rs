@@ -22,3 +22,4 @@ pub const SEED_SEGMENT_ROUTING_IDS: &[u8] = b"segmentroutingids";
 pub const SEED_VRF_IDS: &[u8] = b"vrfids";
 pub const SEED_RESERVATION: &[u8] = b"reservation";
 pub const SEED_PERMISSION: &[u8] = b"permission";
+pub const SEED_INDEX: &[u8] = b"index";

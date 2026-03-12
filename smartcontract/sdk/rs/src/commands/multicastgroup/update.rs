@@ -2,10 +2,14 @@ use crate::{DoubleZeroClient, GetGlobalStateCommand};
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::get_resource_extension_pda,
+    pda::{get_index_pda, get_resource_extension_pda},
     processors::multicastgroup::update::MulticastGroupUpdateArgs,
     resource::ResourceType,
-    state::feature_flags::{is_feature_enabled, FeatureFlag},
+    seeds::SEED_MULTICAST_GROUP,
+    state::{
+        accountdata::AccountData,
+        feature_flags::{is_feature_enabled, FeatureFlag},
+    },
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
@@ -48,6 +52,23 @@ impl UpdateMulticastGroupCommand {
             accounts.push(AccountMeta::new(multicast_group_block_ext, false));
         }
 
+        // If code is changing, add old and new index accounts
+        if let Some(ref new_code) = code {
+            // Fetch current multicast group to get old code
+            let old_code = match client.get(self.pubkey)? {
+                AccountData::MulticastGroup(mgroup) => mgroup.code,
+                _ => return Err(eyre::eyre!("Invalid Account Type")),
+            };
+
+            let (old_index_pda, _) =
+                get_index_pda(&client.get_program_id(), SEED_MULTICAST_GROUP, &old_code);
+            let (new_index_pda, _) =
+                get_index_pda(&client.get_program_id(), SEED_MULTICAST_GROUP, new_code);
+
+            accounts.push(AccountMeta::new(old_index_pda, false));
+            accounts.push(AccountMeta::new(new_index_pda, false));
+        }
+
         client.execute_transaction(
             DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
                 code,
@@ -66,16 +87,17 @@ impl UpdateMulticastGroupCommand {
 mod tests {
     use crate::{
         commands::multicastgroup::update::UpdateMulticastGroupCommand,
-        tests::utils::create_test_client, DoubleZeroClient, MockDoubleZeroClient,
+        tests::utils::create_test_client, MockDoubleZeroClient,
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_location_pda, get_resource_extension_pda},
+        pda::{get_globalstate_pda, get_index_pda, get_location_pda, get_resource_extension_pda},
         processors::multicastgroup::update::MulticastGroupUpdateArgs,
         resource::ResourceType,
+        seeds::SEED_MULTICAST_GROUP,
         state::{
             accountdata::AccountData, accounttype::AccountType, feature_flags::FeatureFlag,
-            globalstate::GlobalState,
+            globalstate::GlobalState, multicastgroup::MulticastGroup,
         },
     };
     use mockall::predicate;
@@ -83,10 +105,51 @@ mod tests {
 
     #[test]
     fn test_commands_multicastgroup_update_command() {
-        let mut client = create_test_client();
+        let mut client = MockDoubleZeroClient::new();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
+        let payer = Pubkey::new_unique();
+        client.expect_get_payer().returning(move || payer);
+        let program_id = Pubkey::new_unique();
+        client.expect_get_program_id().returning(move || program_id);
+
+        let (globalstate_pubkey, bump_seed) = get_globalstate_pda(&program_id);
+        let globalstate = GlobalState {
+            account_type: AccountType::GlobalState,
+            bump_seed,
+            account_index: 0,
+            foundation_allowlist: vec![],
+            _device_allowlist: vec![],
+            _user_allowlist: vec![],
+            activator_authority_pk: Pubkey::new_unique(),
+            sentinel_authority_pk: Pubkey::new_unique(),
+            contributor_airdrop_lamports: 1_000_000_000,
+            user_airdrop_lamports: 40_000,
+            health_oracle_pk: Pubkey::new_unique(),
+            qa_allowlist: vec![],
+            feature_flags: 0,
+            reservation_authority_pk: Pubkey::default(),
+        };
+
+        let (pda_pubkey, _) = get_location_pda(&program_id, 1);
+
+        // Mock get for globalstate and multicast group
+        let globalstate_clone = globalstate.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(globalstate_pubkey))
+            .returning(move |_| Ok(AccountData::GlobalState(globalstate_clone.clone())));
+        client
+            .expect_get()
+            .with(predicate::eq(pda_pubkey))
+            .returning(move |_| {
+                Ok(AccountData::MulticastGroup(MulticastGroup {
+                    code: "old_code".to_string(),
+                    ..Default::default()
+                }))
+            });
+
+        let (old_index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "old_code");
+        let (new_index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "test_group");
 
         client
             .expect_execute_transaction()
@@ -104,6 +167,8 @@ mod tests {
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(old_index_pda, false),
+                    AccountMeta::new(new_index_pda, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
@@ -117,15 +182,24 @@ mod tests {
             subscriber_count: Some(100),
         };
 
-        let update_invalid_command = UpdateMulticastGroupCommand {
+        let res = update_command.execute(&client);
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_commands_multicastgroup_update_invalid_code() {
+        let client = create_test_client();
+
+        let update_command = UpdateMulticastGroupCommand {
+            pubkey: Pubkey::new_unique(),
             code: Some("test/group".to_string()),
-            ..update_command.clone()
+            multicast_ip: None,
+            max_bandwidth: None,
+            publisher_count: None,
+            subscriber_count: None,
         };
 
         let res = update_command.execute(&client);
-        assert!(res.is_ok());
-
-        let res = update_invalid_command.execute(&client);
         assert!(res.is_err());
     }
 

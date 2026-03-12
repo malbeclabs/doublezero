@@ -12,6 +12,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt,
     io::Write,
+    net::Ipv4Addr,
 };
 
 use tabled::{
@@ -102,26 +103,50 @@ impl UserBalancesAccessPassCliCommand {
 
         // Each access pass contributes +1 per active IBRL (last_access_epoch > 0)
         // and +1 per access pass with at least one multicast group.
-        let mut ap_count_by_payer: HashMap<Pubkey, usize> = HashMap::new();
+        // Track slots per (payer, client_ip) so remaining_slots is computed per-IP:
+        // a multicast user created for IP_B doesn't fill an open slot for IP_A.
+        let mut ap_count_by_payer_ip: HashMap<(Pubkey, Ipv4Addr), usize> = HashMap::new();
         for ap in access_passes.values() {
             let count = (ap.last_access_epoch > 0) as usize
                 + (!ap.mgroup_pub_allowlist.is_empty() || !ap.mgroup_sub_allowlist.is_empty())
                     as usize;
-            *ap_count_by_payer.entry(ap.user_payer).or_default() += count;
+            *ap_count_by_payer_ip
+                .entry((ap.user_payer, ap.client_ip))
+                .or_default() += count;
         }
 
         let mut unicast_by_payer: HashMap<Pubkey, u32> = HashMap::new();
         let mut multicast_by_payer: HashMap<Pubkey, u32> = HashMap::new();
+        let mut connected_by_payer_ip: HashMap<(Pubkey, Ipv4Addr), usize> = HashMap::new();
         for user in users.values() {
             match user.user_type {
                 UserType::IBRL | UserType::IBRLWithAllocatedIP => {
                     *unicast_by_payer.entry(user.owner).or_default() += 1;
+                    *connected_by_payer_ip
+                        .entry((user.owner, user.client_ip))
+                        .or_default() += 1;
                 }
                 UserType::Multicast => {
                     *multicast_by_payer.entry(user.owner).or_default() += 1;
+                    *connected_by_payer_ip
+                        .entry((user.owner, user.client_ip))
+                        .or_default() += 1;
                 }
                 UserType::EdgeFiltering => {}
             }
+        }
+
+        // Derive per-payer totals: total slots (for display) and remaining slots (for rent).
+        let mut ap_count_by_payer: HashMap<Pubkey, usize> = HashMap::new();
+        let mut remaining_slots_by_payer: HashMap<Pubkey, usize> = HashMap::new();
+        for ((payer, ip), ap_slots) in &ap_count_by_payer_ip {
+            *ap_count_by_payer.entry(*payer).or_default() += ap_slots;
+            let connected = connected_by_payer_ip
+                .get(&(*payer, *ip))
+                .copied()
+                .unwrap_or(0);
+            *remaining_slots_by_payer.entry(*payer).or_default() +=
+                ap_slots.saturating_sub(connected);
         }
 
         let mut seen = HashSet::new();
@@ -152,11 +177,13 @@ impl UserBalancesAccessPassCliCommand {
                 let access_passes = ap_count_by_payer.get(&user_payer).copied().unwrap_or(0);
                 let unicast = unicast_by_payer.get(&user_payer).copied().unwrap_or(0);
                 let multicast = multicast_by_payer.get(&user_payer).copied().unwrap_or(0);
-                let connected = unicast as usize + multicast as usize;
-                let remaining_slots = access_passes.saturating_sub(connected);
+                let remaining_slots = remaining_slots_by_payer
+                    .get(&user_payer)
+                    .copied()
+                    .unwrap_or(0);
                 let needs_rent =
                     rent_per_ip.saturating_mul(remaining_slots as u64) + GAS_FEE_RESERVE;
-                let required = needs_rent.max(wallet_rent_min);
+                let required = needs_rent + wallet_rent_min;
                 let deficit = required.saturating_sub(lamports);
                 (
                     lamports,

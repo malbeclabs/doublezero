@@ -75,6 +75,9 @@ pub enum DeviceCommands {
     /// Correct stale multicast subscriber/publisher counts on all devices (one-time migration)
     #[clap()]
     MigrateMulticastCounts(MigrateMulticastCountsCommand),
+    /// Correct stale unicast user counts on all devices
+    #[clap()]
+    MigrateUnicastCounts(MigrateUnicastCountsCommand),
     /// Interface commands
     #[clap()]
     Interface(InterfaceCliCommand),
@@ -185,6 +188,103 @@ impl MigrateMulticastCountsCommand {
     }
 }
 
+#[derive(Args, Debug)]
+pub struct MigrateUnicastCountsCommand {
+    /// Print what would be corrected without submitting transactions
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+}
+
+impl MigrateUnicastCountsCommand {
+    pub fn execute<C: CliCommand, W: Write>(&self, client: &C, out: &mut W) -> eyre::Result<()> {
+        // Tally live unicast users per device.
+        let users = client.list_user(ListUserCommand)?;
+        let mut per_device: HashMap<Pubkey, u16> = HashMap::new();
+        for user in users.values() {
+            let is_live = !matches!(
+                user.status,
+                UserStatus::Rejected | UserStatus::Banned | UserStatus::PendingBan
+            );
+            if user.user_type != UserType::Multicast && is_live {
+                let count = per_device.entry(user.device_pk).or_default();
+                *count = count.saturating_add(1);
+            }
+        }
+
+        // Find devices with stale counts.
+        let devices = client.list_device(ListDeviceCommand)?;
+        let mut corrections_needed: Vec<(Pubkey, String, u16, u16)> = vec![];
+        for (device_pubkey, device) in &devices {
+            let actual = per_device.get(device_pubkey).copied().unwrap_or(0);
+            if device.unicast_users_count != actual {
+                corrections_needed.push((
+                    *device_pubkey,
+                    device.code.clone(),
+                    device.unicast_users_count,
+                    actual,
+                ));
+            }
+        }
+
+        if corrections_needed.is_empty() {
+            writeln!(out, "0 device(s) require correction")?;
+            return Ok(());
+        }
+
+        // Print what needs correcting (always, even in dry-run).
+        for (pubkey, code, old, new) in &corrections_needed {
+            writeln!(
+                out,
+                "device {code} ({pubkey}): unicast_users_count {old} -> {new}"
+            )?;
+        }
+
+        if self.dry_run {
+            writeln!(out, "[dry-run] no transactions sent.")?;
+            return Ok(());
+        }
+
+        // Submit corrections.
+        let mut corrected = 0u32;
+        for (pubkey, code, _, actual) in &corrections_needed {
+            let result = client.update_device(UpdateDeviceCommand {
+                pubkey: *pubkey,
+                code: None,
+                device_type: None,
+                public_ip: None,
+                dz_prefixes: None,
+                metrics_publisher: None,
+                contributor_pk: None,
+                location_pk: None,
+                mgmt_vrf: None,
+                interfaces: None,
+                max_users: None,
+                users_count: None,
+                status: None,
+                desired_status: None,
+                reference_count: None,
+                max_unicast_users: None,
+                unicast_users_count: Some(*actual),
+                max_multicast_subscribers: None,
+                max_multicast_publishers: None,
+                multicast_subscribers_count: None,
+                multicast_publishers_count: None,
+            });
+            match result {
+                Ok(sig) => {
+                    corrected += 1;
+                    writeln!(out, "corrected {code} ({pubkey}): {sig}")?;
+                }
+                Err(e) => {
+                    writeln!(out, "WARNING: failed to correct {code} ({pubkey}): {e}")?;
+                }
+            }
+        }
+        writeln!(out, "{corrected} device(s) corrected")?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,6 +323,24 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: pub_count,
             max_multicast_publishers: 0,
+        }
+    }
+
+    fn make_device_unicast(unicast_count: u16) -> Device {
+        Device {
+            unicast_users_count: unicast_count,
+            multicast_subscribers_count: 0,
+            multicast_publishers_count: 0,
+            ..make_device(0, 0)
+        }
+    }
+
+    fn make_unicast_user(device_pk: Pubkey) -> User {
+        User {
+            user_type: UserType::IBRL,
+            publishers: vec![],
+            subscribers: vec![],
+            ..make_multicast_user(device_pk, false)
         }
     }
 
@@ -407,6 +525,127 @@ mod tests {
         assert!(output.contains("subscribers"));
         assert!(output.contains("publishers"));
         // Should NOT submit
+        assert!(output.contains("[dry-run]"));
+    }
+
+    #[test]
+    fn test_migrate_unicast_no_op_when_counts_correct() {
+        let mut client = create_test_client();
+        let device_pubkey = Pubkey::new_unique();
+        let device = make_device_unicast(3);
+
+        let mut users: HashMap<Pubkey, User> = HashMap::new();
+        for _ in 0..3 {
+            users.insert(Pubkey::new_unique(), make_unicast_user(device_pubkey));
+        }
+        let devices: HashMap<Pubkey, Device> = HashMap::from([(device_pubkey, device)]);
+
+        client
+            .expect_list_user()
+            .returning(move |_| Ok(users.clone()));
+        client
+            .expect_list_device()
+            .returning(move |_| Ok(devices.clone()));
+        client.expect_update_device().times(0);
+
+        let mut out = Vec::new();
+        let res = MigrateUnicastCountsCommand { dry_run: false }.execute(&client, &mut out);
+        assert!(res.is_ok());
+        assert!(String::from_utf8(out).unwrap().contains("0 device(s)"));
+    }
+
+    #[test]
+    fn test_migrate_unicast_corrects_stale_counts() {
+        let mut client = create_test_client();
+        let device_pubkey = Pubkey::new_unique();
+        let device = make_device_unicast(5); // stale: stored=5, actual=3
+
+        let mut users: HashMap<Pubkey, User> = HashMap::new();
+        for _ in 0..3 {
+            users.insert(Pubkey::new_unique(), make_unicast_user(device_pubkey));
+        }
+        let devices: HashMap<Pubkey, Device> = HashMap::from([(device_pubkey, device)]);
+
+        client
+            .expect_list_user()
+            .returning(move |_| Ok(users.clone()));
+        client
+            .expect_list_device()
+            .returning(move |_| Ok(devices.clone()));
+        client
+            .expect_update_device()
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+
+        let mut out = Vec::new();
+        let res = MigrateUnicastCountsCommand { dry_run: false }.execute(&client, &mut out);
+        assert!(res.is_ok());
+        assert!(String::from_utf8(out)
+            .unwrap()
+            .contains("1 device(s) corrected"));
+    }
+
+    #[test]
+    fn test_migrate_unicast_failure_on_one_device_does_not_prevent_others() {
+        let mut client = create_test_client();
+        let device_pk_a = Pubkey::new_unique();
+        let device_pk_b = Pubkey::new_unique();
+
+        let mut users: HashMap<Pubkey, User> = HashMap::new();
+        users.insert(Pubkey::new_unique(), make_unicast_user(device_pk_a));
+        users.insert(Pubkey::new_unique(), make_unicast_user(device_pk_b));
+
+        let devices: HashMap<Pubkey, Device> = HashMap::from([
+            (device_pk_a, make_device_unicast(5)),
+            (device_pk_b, make_device_unicast(5)),
+        ]);
+
+        client
+            .expect_list_user()
+            .returning(move |_| Ok(users.clone()));
+        client
+            .expect_list_device()
+            .returning(move |_| Ok(devices.clone()));
+        client
+            .expect_update_device()
+            .times(1)
+            .returning(|_| Err(eyre::eyre!("simulated failure")));
+        client
+            .expect_update_device()
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+
+        let mut out = Vec::new();
+        let res = MigrateUnicastCountsCommand { dry_run: false }.execute(&client, &mut out);
+        assert!(res.is_ok());
+        assert!(String::from_utf8(out)
+            .unwrap()
+            .contains("1 device(s) corrected"));
+    }
+
+    #[test]
+    fn test_migrate_unicast_dry_run() {
+        let mut client = create_test_client();
+        let device_pubkey = Pubkey::new_unique();
+        let device = make_device_unicast(5); // stale
+
+        let mut users: HashMap<Pubkey, User> = HashMap::new();
+        users.insert(Pubkey::new_unique(), make_unicast_user(device_pubkey));
+        let devices: HashMap<Pubkey, Device> = HashMap::from([(device_pubkey, device)]);
+
+        client
+            .expect_list_user()
+            .returning(move |_| Ok(users.clone()));
+        client
+            .expect_list_device()
+            .returning(move |_| Ok(devices.clone()));
+        client.expect_update_device().times(0);
+
+        let mut out = Vec::new();
+        let res = MigrateUnicastCountsCommand { dry_run: true }.execute(&client, &mut out);
+        assert!(res.is_ok());
+        let output = String::from_utf8(out).unwrap();
+        assert!(output.contains("unicast_users_count"));
         assert!(output.contains("[dry-run]"));
     }
 }

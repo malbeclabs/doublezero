@@ -176,6 +176,7 @@ async fn test_multicastgroup() {
             // can successfully close the account once it reaches Deleting status.
             publisher_count: None,
             subscriber_count: None,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -322,6 +323,7 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
             max_bandwidth: None,
             publisher_count: Some(1),
             subscriber_count: Some(1),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -793,6 +795,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             max_bandwidth: None,
             publisher_count: Some(1),
             subscriber_count: None,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -838,6 +841,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             max_bandwidth: None,
             publisher_count: Some(0),
             subscriber_count: Some(1),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -883,6 +887,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             max_bandwidth: None,
             publisher_count: Some(0),
             subscriber_count: Some(0),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),

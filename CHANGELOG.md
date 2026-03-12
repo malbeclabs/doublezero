@@ -58,6 +58,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: CreateMulticastGroup instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
   - Serviceability: DeleteMulticastGroup instruction supports atomic deallocate+closeaccount when OnchainAllocation feature is enabled
   - Serviceability: CreateSubscribeUser instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
+  - Serviceability: MulitcastGroupUpdate instruction supports atomic ip allocation when OnchainAllocation feature is enabled
 
 ## [v0.10.0](https://github.com/malbeclabs/doublezero/compare/client/v0.9.0...client/v0.10.0) - 2026-03-04
 

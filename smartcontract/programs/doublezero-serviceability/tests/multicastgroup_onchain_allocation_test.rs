@@ -1,7 +1,8 @@
-//! Integration tests for onchain allocation for CreateMulticastGroup / DeleteMulticastGroup
+//! Integration tests for onchain allocation for CreateMulticastGroup / UpdateMulticastGroup / DeleteMulticastGroup
 //!
-//! These tests verify that MulticastGroups can be atomically created+activated and
-//! deleted+deallocated+closed using ResourceExtension accounts (MulticastGroupBlock).
+//! These tests verify that MulticastGroups can be atomically created+activated,
+//! updated with IP reallocation, and deleted+deallocated+closed using
+//! ResourceExtension accounts (MulticastGroupBlock).
 
 use std::net::Ipv4Addr;
 
@@ -11,7 +12,10 @@ use doublezero_serviceability::{
     pda::*,
     processors::{
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
-        multicastgroup::{create::MulticastGroupCreateArgs, delete::MulticastGroupDeleteArgs},
+        multicastgroup::{
+            create::MulticastGroupCreateArgs, delete::MulticastGroupDeleteArgs,
+            update::MulticastGroupUpdateArgs,
+        },
     },
     resource::ResourceType,
     state::{feature_flags::FeatureFlag, multicastgroup::*},
@@ -335,4 +339,243 @@ async fn test_delete_multicastgroup_atomic_backward_compat() {
     assert_eq!(mgroup.status, MulticastGroupStatus::Deleting);
 
     println!("test_delete_multicastgroup_atomic_backward_compat PASSED");
+}
+
+/// Test update with onchain reallocation: change multicast_ip atomically
+#[tokio::test]
+async fn test_update_multicastgroup_with_onchain_reallocation() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Enable OnChainAllocation feature flag
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    let (multicast_group_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+
+    let owner = Pubkey::new_unique();
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (mgroup_pubkey, _) =
+        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+
+    // Create with atomic onchain allocation
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "mg1".to_string(),
+            max_bandwidth: 1000,
+            owner,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_group_block_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
+        .await
+        .expect("MulticastGroup not found")
+        .get_multicastgroup()
+        .unwrap();
+    let original_ip = mgroup.multicast_ip;
+    assert_ne!(original_ip, Ipv4Addr::UNSPECIFIED);
+
+    // Update multicast_ip with onchain reallocation
+    let new_ip: Ipv4Addr = "239.0.0.100".parse().unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
+            code: None,
+            multicast_ip: Some(new_ip),
+            max_bandwidth: None,
+            publisher_count: None,
+            subscriber_count: None,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_group_block_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let mgroup_updated = get_account_data(&mut banks_client, mgroup_pubkey)
+        .await
+        .expect("MulticastGroup not found")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(mgroup_updated.multicast_ip, new_ip);
+
+    println!("test_update_multicastgroup_with_onchain_reallocation PASSED");
+}
+
+/// Test backward compatibility: update without onchain allocation flag
+#[tokio::test]
+async fn test_update_multicastgroup_backward_compat() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Enable OnChainAllocation feature flag for create
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    let (multicast_group_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+
+    let owner = Pubkey::new_unique();
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (mgroup_pubkey, _) =
+        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+
+    // Create with atomic onchain allocation
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "mg1".to_string(),
+            max_bandwidth: 1000,
+            owner,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_group_block_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Legacy update without onchain allocation
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
+            code: Some("mg1_updated".to_string()),
+            multicast_ip: None,
+            max_bandwidth: Some(2000),
+            publisher_count: None,
+            subscriber_count: None,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
+        .await
+        .expect("MulticastGroup not found")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(mgroup.code, "mg1_updated");
+    assert_eq!(mgroup.max_bandwidth, 2000);
+
+    println!("test_update_multicastgroup_backward_compat PASSED");
+}
+
+/// Test that update with onchain allocation fails when feature flag is disabled
+#[tokio::test]
+async fn test_update_multicastgroup_feature_flag_disabled() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Create a group without onchain allocation (legacy)
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (mgroup_pubkey, _) =
+        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "mg1".to_string(),
+            max_bandwidth: 1000,
+            owner: Pubkey::new_unique(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Do NOT enable OnChainAllocation feature flag
+
+    let (multicast_group_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+
+    // Try to update with onchain allocation — should fail
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
+            code: None,
+            multicast_ip: Some("239.0.0.50".parse().unwrap()),
+            max_bandwidth: None,
+            publisher_count: None,
+            subscriber_count: None,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_group_block_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let err = result.expect_err("Expected error with feature flag disabled");
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(code),
+        )) => {
+            assert_eq!(DoubleZeroError::FeatureNotEnabled, code.into());
+        }
+        _ => panic!("Unexpected error type: {:?}", err),
+    }
+    println!("test_update_multicastgroup_feature_flag_disabled PASSED");
 }

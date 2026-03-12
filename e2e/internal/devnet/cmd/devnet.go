@@ -73,6 +73,7 @@ func NewLocalDevnet(log *slog.Logger, deployID string) (*LocalDevnet, error) {
 	// is built with it as an expectation, and the initialize instruction will fail if the owner
 	// of the devices/links is not the matching serviceability program ID.
 	serviceabilityProgramKeypairPath := filepath.Join(workspaceDir, "e2e", "data", "serviceability-program-keypair.json")
+	geolocationProgramKeypairPath := filepath.Join(workspaceDir, "e2e", "data", "geolocation-program-keypair.json")
 
 	dn, err := devnet.New(devnet.DevnetSpec{
 		DeployID:  deployID,
@@ -83,6 +84,7 @@ func NewLocalDevnet(log *slog.Logger, deployID string) (*LocalDevnet, error) {
 		},
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
+			GeolocationProgramKeypairPath:    geolocationProgramKeypairPath,
 		},
 		Funder: devnet.FunderSpec{
 			Verbose:  true,

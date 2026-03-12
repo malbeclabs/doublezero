@@ -250,7 +250,22 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		} else {
 			log.Debug("--> Using existing telemetry program keypair", "path", telemetryProgramKeypairPath)
 		}
+	}
 
+	// If the geolocation program keypair path is not provided, generate a new keypair or use an
+	// existing one in the deploy directory if it exists.
+	if spec.Manager.GeolocationProgramKeypairPath == "" {
+		geolocationProgramKeypairPath := filepath.Join(spec.DeployDir, "geolocation-program-keypair.json")
+		generated, err := generateKeypairIfNotExists(geolocationProgramKeypairPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate geolocation program keypair: %w", err)
+		}
+		spec.Manager.GeolocationProgramKeypairPath = geolocationProgramKeypairPath
+		if generated {
+			log.Debug("--> Generated geolocation program keypair", "path", geolocationProgramKeypairPath)
+		} else {
+			log.Debug("--> Using existing geolocation program keypair", "path", geolocationProgramKeypairPath)
+		}
 	}
 
 	// Validate the spec.
@@ -397,9 +412,9 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 
 	if !d.Spec.SkipProgramDeploy {
 		var wg sync.WaitGroup
-		errChan := make(chan error, 2)
+		errChan := make(chan error, 3)
 
-		wg.Add(2)
+		wg.Add(3)
 		go func() {
 			defer wg.Done()
 
@@ -423,12 +438,27 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 			}
 		}()
 
+		go func() {
+			defer wg.Done()
+
+			// Deploy the geolocation program if it's not already deployed.
+			if _, err := d.DeployGeolocationProgramIfNotDeployed(ctx); err != nil {
+				errChan <- fmt.Errorf("failed to deploy geolocation program: %w", err)
+			}
+		}()
+
 		wg.Wait()
 		close(errChan)
 		for err := range errChan {
 			if err != nil {
 				return fmt.Errorf("failed to deploy programs: %w", err)
 			}
+		}
+
+		// Initialize geolocation program config after serviceability init
+		// (geolocation operations require the foundation allowlist from serviceability).
+		if _, err := d.InitGeolocationProgramConfigIfNotInitialized(ctx); err != nil {
+			return fmt.Errorf("failed to initialize geolocation program config: %w", err)
 		}
 	}
 

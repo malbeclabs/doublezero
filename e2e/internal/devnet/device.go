@@ -623,6 +623,9 @@ func (d *Device) Start(ctx context.Context) error {
 	if spec.Telemetry.Verbose {
 		telemetryCommandArgs = append(telemetryCommandArgs, "-verbose")
 	}
+	if d.dn.Manager.GeolocationProgramID != "" {
+		telemetryCommandArgs = append(telemetryCommandArgs, "-geolocation-program-id", d.dn.Manager.GeolocationProgramID)
+	}
 
 	// Render the device config from go template.
 	var configContents bytes.Buffer

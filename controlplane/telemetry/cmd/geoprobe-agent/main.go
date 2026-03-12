@@ -34,6 +34,7 @@ const (
 	defaultEvictionInterval      = 30 * time.Minute
 	defaultVerifyInterval        = 29 * time.Second
 	discoveryInterval            = 60 * time.Second
+	parentDiscoveryInterval      = 60 * time.Second
 )
 
 var (
@@ -51,8 +52,10 @@ var (
 	twampSenderTimeout    = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "Timeout for TWAMP probes to targets.")
 	maxOffsetAge          = flag.Duration("max-offset-age", defaultMaxOffsetAge, "TTL for cached DZD offsets.")
 	verifyInterval        = flag.Duration("verify-interval", defaultVerifyInterval, "Minimum time between signature verifications per sender for the signed TWAMP reflector in inbound probing.")
-	verbose               = flag.Bool("verbose", false, "Enable verbose logging.")
-	showVersion           = flag.Bool("version", false, "Print the version and exit.")
+	geolocationProgramIDStr  = flag.String("geolocation-program-id", "", "Geolocation program ID (base58). If env is provided, this is derived automatically.")
+	serviceabilityProgramIDStr = flag.String("serviceability-program-id", "", "Serviceability program ID (base58). If env is provided, this is derived automatically.")
+	verbose                  = flag.Bool("verbose", false, "Enable verbose logging.")
+	showVersion              = flag.Bool("version", false, "Print the version and exit.")
 	// Set by LDFLAGS
 	version = "dev"
 	commit  = "none"
@@ -63,6 +66,25 @@ var (
 type parentDZD struct {
 	pubkey          [32]byte // Parent pubkey (appears as SenderPubkey in received offsets)
 	authorityPubkey [32]byte // Authority pubkey (used to sign offsets)
+}
+
+// parentState holds the current parent authorities with thread-safe access.
+type parentState struct {
+	mu          sync.RWMutex
+	authorities map[[32]byte][32]byte // parent pubkey → authority pubkey
+}
+
+func (s *parentState) getAuthority(senderPubkey [32]byte) ([32]byte, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	auth, ok := s.authorities[senderPubkey]
+	return auth, ok
+}
+
+func (s *parentState) update(authorities map[[32]byte][32]byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.authorities = authorities
 }
 
 // parseParentDZD parses the --additional-parent flag value.
@@ -246,8 +268,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	var networkConfig *config.NetworkConfig
 	if *env != "" {
-		networkConfig, err := config.NetworkConfigForEnv(*env)
+		var err error
+		networkConfig, err = config.NetworkConfigForEnv(*env)
 		if err != nil {
 			log.Error("Failed to get network config", "error", err)
 			flag.Usage()
@@ -287,14 +311,46 @@ func main() {
 		}
 	}
 
-	// Build parent authority map: parent pubkey (SenderPubkey) → expected authority pubkey.
-	parentAuthorities := make(map[[32]byte][32]byte, len(parents))
+	// Build initial parent authority map from CLI args.
+	cliParentAuthorities := make(map[[32]byte][32]byte, len(parents))
 	for _, p := range parents {
-		parentAuthorities[p.pubkey] = p.authorityPubkey
+		cliParentAuthorities[p.pubkey] = p.authorityPubkey
 	}
 
-	if len(parentAuthorities) == 0 {
-		log.Warn("No trusted parents configured -- will not accept offsets until parents are added")
+	pState := &parentState{
+		authorities: make(map[[32]byte][32]byte, len(cliParentAuthorities)),
+	}
+	for k, v := range cliParentAuthorities {
+		pState.authorities[k] = v
+	}
+
+	// Derive geolocation and serviceability program IDs from --env if not explicit.
+	var geolocationProgramID, serviceabilityProgramID solana.PublicKey
+	if *geolocationProgramIDStr != "" {
+		pk, err := solana.PublicKeyFromBase58(*geolocationProgramIDStr)
+		if err != nil {
+			log.Error("Failed to parse geolocation-program-id", "error", err)
+			os.Exit(1)
+		}
+		geolocationProgramID = pk
+	} else if networkConfig != nil {
+		geolocationProgramID = networkConfig.GeolocationProgramID
+	}
+	if *serviceabilityProgramIDStr != "" {
+		pk, err := solana.PublicKeyFromBase58(*serviceabilityProgramIDStr)
+		if err != nil {
+			log.Error("Failed to parse serviceability-program-id", "error", err)
+			os.Exit(1)
+		}
+		serviceabilityProgramID = pk
+	} else if networkConfig != nil {
+		serviceabilityProgramID = networkConfig.ServiceabilityProgramID
+	}
+
+	parentDiscoveryEnabled := !geolocationProgramID.IsZero() && !serviceabilityProgramID.IsZero()
+
+	if len(cliParentAuthorities) == 0 && !parentDiscoveryEnabled {
+		log.Warn("No trusted parents configured and parent discovery disabled -- will not accept offsets until parents are added")
 	}
 
 	// Parse targets.
@@ -313,7 +369,8 @@ func main() {
 
 	log.Info("Starting geoprobe agent",
 		"version", version,
-		"parents", len(parents),
+		"cliParents", len(parents),
+		"parentDiscovery", parentDiscoveryEnabled,
 		"targets", len(targets),
 		"probeInterval", *probeInterval,
 		"maxOffsetAge", *maxOffsetAge,
@@ -452,7 +509,7 @@ func main() {
 
 	// Run UDP offset listener.
 	go func() {
-		runOffsetListener(ctx, log, offsetListener, cache, parentAuthorities, signedReflector)
+		runOffsetListener(ctx, log, offsetListener, cache, pState, signedReflector)
 	}()
 
 	// Run eviction goroutine.
@@ -471,6 +528,57 @@ func main() {
 			}
 		}
 	}()
+
+	// Run parent DZD discovery if program IDs are configured.
+	if parentDiscoveryEnabled {
+		parentUpdateCh := make(chan geoprobe.ParentUpdate, 1)
+		geoProbeClient := geoprobe.NewRPCGeoProbeClient(rpcClient, geolocationProgramID)
+		deviceResolver := geoprobe.NewRPCDeviceResolver(rpcClient, serviceabilityProgramID)
+
+		pd, err := geoprobe.NewParentDiscovery(&geoprobe.ParentDiscoveryConfig{
+			GeoProbePubkey: geoProbePubkey,
+			Client:         geoProbeClient,
+			Resolver:       deviceResolver,
+			CLIParents:     cliParentAuthorities,
+			Interval:       parentDiscoveryInterval,
+			Logger:         log,
+		})
+		if err != nil {
+			log.Error("Failed to create parent discovery", "error", err)
+			os.Exit(1)
+		}
+
+		go pd.Run(ctx, parentUpdateCh)
+
+		// Consume parent updates: update parentState and signed TWAMP authorized keys.
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case update := <-parentUpdateCh:
+					pState.update(update.Authorities)
+					// Merge CLI allowed keys with discovered keys.
+					mergedKeys := make([][32]byte, 0, len(allowedKeys)+len(update.AllowedKeys))
+					mergedKeys = append(mergedKeys, allowedKeys...)
+					seen := make(map[[32]byte]struct{}, len(allowedKeys))
+					for _, k := range allowedKeys {
+						seen[k] = struct{}{}
+					}
+					for _, k := range update.AllowedKeys {
+						if _, exists := seen[k]; !exists {
+							mergedKeys = append(mergedKeys, k)
+							seen[k] = struct{}{}
+						}
+					}
+					signedReflector.SetAuthorizedKeys(mergedKeys)
+					log.Info("Updated parent authorities from discovery",
+						"totalParents", len(update.Authorities),
+						"totalAllowedKeys", len(mergedKeys))
+				}
+			}
+		}()
+	}
 
 	// Run main measurement loop. This runs regardless of whether trusted parents
 	// are configured at startup, since they may be added dynamically at runtime.
@@ -495,7 +603,7 @@ func runOffsetListener(
 	log *slog.Logger,
 	conn *net.UDPConn,
 	cache *offsetCache,
-	parentAuthorities map[[32]byte][32]byte, // parent pubkey → expected authority pubkey
+	parents *parentState,
 	signedReflector signed.Reflector,
 ) {
 	log.Info("Starting offset listener", "addr", conn.LocalAddr().String())
@@ -529,7 +637,7 @@ func runOffsetListener(
 		authorityPK := solana.PublicKeyFromBytes(offset.AuthorityPubkey[:])
 
 		// Verify the sender is a known parent and the authority matches.
-		expectedAuthority, knownParent := parentAuthorities[offset.SenderPubkey]
+		expectedAuthority, knownParent := parents.getAuthority(offset.SenderPubkey)
 		if !knownParent {
 			log.Debug("Rejecting offset from unknown parent", "sender_pubkey", senderPK, "addr", addr)
 			continue

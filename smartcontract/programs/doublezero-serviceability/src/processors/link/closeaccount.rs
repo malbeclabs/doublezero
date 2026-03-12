@@ -1,7 +1,8 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
-    resource::{IdOrIp, ResourceType},
+    processors::resource::{deallocate_id, deallocate_ip},
+    resource::ResourceType,
     serializer::{try_acc_close, try_acc_write},
     state::{
         contributor::Contributor,
@@ -9,7 +10,6 @@ use crate::{
         globalstate::GlobalState,
         interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType},
         link::*,
-        resource_extension::ResourceExtensionBorrowed,
     },
 };
 use borsh::BorshSerialize;
@@ -180,27 +180,10 @@ pub fn process_closeaccount_link(
         );
 
         // Deallocate tunnel_net from global DeviceTunnelBlock
-        {
-            let mut buffer = device_tunnel_block_ext.data.borrow_mut();
-            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-            // Deallocate returns false if not allocated; we proceed regardless (idempotent)
-            let _deallocated = resource.deallocate(&IdOrIp::Ip(link.tunnel_net));
-            #[cfg(test)]
-            msg!(
-                "Deallocated tunnel_net {}: {}",
-                link.tunnel_net,
-                _deallocated
-            );
-        }
+        deallocate_ip(device_tunnel_block_ext, link.tunnel_net);
 
         // Deallocate tunnel_id from global LinkIds
-        {
-            let mut buffer = link_ids_ext.data.borrow_mut();
-            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-            let _deallocated = resource.deallocate(&IdOrIp::Id(link.tunnel_id));
-            #[cfg(test)]
-            msg!("Deallocated tunnel_id {}: {}", link.tunnel_id, _deallocated);
-        }
+        deallocate_id(link_ids_ext, link.tunnel_id);
     }
 
     if let Ok((idx_a, side_a_iface)) = side_a_dev.find_interface(&link.side_a_iface_name) {

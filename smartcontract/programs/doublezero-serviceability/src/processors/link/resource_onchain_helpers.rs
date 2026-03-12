@@ -1,13 +1,15 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
-    processors::validation::validate_program_account,
-    resource::{IdOrIp, ResourceType},
+    processors::{
+        resource::{allocate_id, allocate_ip, deallocate_id, deallocate_ip},
+        validation::validate_program_account,
+    },
+    resource::ResourceType,
     state::{
         feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         link::Link,
-        resource_extension::ResourceExtensionBorrowed,
     },
 };
 use doublezero_program_common::types::NetworkV4;
@@ -51,22 +53,12 @@ pub fn validate_and_allocate_link_resources<'a>(
 
     // Allocate tunnel_net from global DeviceTunnelBlock (skip if already allocated)
     if link.tunnel_net == NetworkV4::default() {
-        let mut buffer = device_tunnel_block_ext.data.borrow_mut();
-        let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-        link.tunnel_net = resource
-            .allocate(2)?
-            .as_ip()
-            .ok_or(DoubleZeroError::InvalidArgument)?;
+        link.tunnel_net = allocate_ip(device_tunnel_block_ext, 2)?;
     }
 
     // Allocate tunnel_id from global LinkIds (skip if already allocated)
     if link.tunnel_id == 0 {
-        let mut buffer = link_ids_ext.data.borrow_mut();
-        let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-        link.tunnel_id = resource
-            .allocate(1)?
-            .as_id()
-            .ok_or(DoubleZeroError::InvalidArgument)?;
+        link.tunnel_id = allocate_id(link_ids_ext)?;
     }
 
     Ok(())
@@ -110,18 +102,10 @@ pub fn validate_and_deallocate_link_resources<'a>(
     );
 
     // Deallocate tunnel_net from global DeviceTunnelBlock
-    {
-        let mut buffer = device_tunnel_block_ext.data.borrow_mut();
-        let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-        let _ = resource.deallocate(&IdOrIp::Ip(link.tunnel_net));
-    }
+    deallocate_ip(device_tunnel_block_ext, link.tunnel_net);
 
     // Deallocate tunnel_id from global LinkIds
-    {
-        let mut buffer = link_ids_ext.data.borrow_mut();
-        let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-        let _ = resource.deallocate(&IdOrIp::Id(link.tunnel_id));
-    }
+    deallocate_id(link_ids_ext, link.tunnel_id);
 
     Ok(())
 }

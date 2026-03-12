@@ -1,13 +1,13 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
-    resource::{IdOrIp, ResourceType},
+    processors::resource::{deallocate_id, deallocate_ip},
+    resource::ResourceType,
     serializer::try_acc_write,
     state::{
         device::*,
         globalstate::GlobalState,
         interface::{InterfaceStatus, InterfaceType, LoopbackType},
-        resource_extension::ResourceExtensionBorrowed,
     },
 };
 use borsh::BorshSerialize;
@@ -129,16 +129,12 @@ pub fn process_remove_device_interface(
         if iface.interface_type == InterfaceType::Loopback {
             // Deallocate ip_net if it was allocated
             if iface.ip_net != NetworkV4::default() {
-                let mut buffer = link_ips_acc.data.borrow_mut();
-                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-                resource.deallocate(&IdOrIp::Ip(iface.ip_net));
+                deallocate_ip(link_ips_acc, iface.ip_net);
             }
 
             // Deallocate node_segment_idx if it was allocated (only for Vpnv4 loopbacks)
             if iface.loopback_type == LoopbackType::Vpnv4 && iface.node_segment_idx != 0 {
-                let mut buffer = segment_routing_ids_acc.data.borrow_mut();
-                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-                resource.deallocate(&IdOrIp::Id(iface.node_segment_idx));
+                deallocate_id(segment_routing_ids_acc, iface.node_segment_idx);
             }
         }
     }

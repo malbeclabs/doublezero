@@ -1,15 +1,17 @@
 use crate::{
     error::DoubleZeroError,
     pda::{get_accesspass_pda, get_globalstate_pda, get_resource_extension_pda},
-    processors::{resource::allocate_ip, validation::validate_program_account},
-    resource::{IdOrIp, ResourceType},
+    processors::{
+        resource::{allocate_ip, deallocate_ip},
+        validation::validate_program_account,
+    },
+    resource::ResourceType,
     serializer::try_acc_write,
     state::{
         accesspass::AccessPass,
         feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
-        resource_extension::ResourceExtensionBorrowed,
         user::{User, UserStatus},
     },
 };
@@ -269,9 +271,7 @@ pub fn process_subscribe_multicastgroup(
             );
 
             if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
-                let mut buffer = multicast_publisher_block_ext.data.borrow_mut();
-                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-                resource.deallocate(&IdOrIp::Ip(dz_ip_net));
+                deallocate_ip(multicast_publisher_block_ext, dz_ip_net);
             }
             user.dz_ip = user.client_ip;
         }

@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
   - Add `doublezero-admin device migrate-unicast-counts [--dry-run]` to correct stale `unicast_users_count` on all devices; same behaviour as the multicast counts command
 - SDK
   - Add read-only Go SDK for `doublezero-geolocation` program with state deserialization, PDA derivation, and RPC client for querying geoprobe configuration
+  - Add write-side geolocation Go SDK: instruction builders for all 7 program instructions, transaction executor with finalization polling, and client write methods
 - Client
   - Increase default onchain fetch timeout from 20s to 60s to improve resilience on high-latency RPC paths; add `-reconciler-fetch-timeout` flag to allow operators to override
   - Add prometheus metrics for onchain RPC fetches: fetch duration histogram, result counter (success/error with stale cache/error with no cache), and stale cache age gauge

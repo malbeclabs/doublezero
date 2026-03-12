@@ -15,6 +15,7 @@ import (
 func TestSDK_Geolocation_Client_GetProgramConfig_HappyPath(t *testing.T) {
 	t.Parallel()
 
+	signer := solana.NewWallet().PrivateKey
 	programID := solana.NewWallet().PublicKey()
 
 	expected := &geolocation.GeolocationProgramConfig{
@@ -38,7 +39,7 @@ func TestSDK_Geolocation_Client_GetProgramConfig_HappyPath(t *testing.T) {
 		},
 	}
 
-	client := geolocation.New(slog.Default(), mockRPC, programID)
+	client := geolocation.New(slog.Default(), mockRPC, &signer, programID)
 	got, err := client.GetProgramConfig(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, expected.AccountType, got.AccountType)
@@ -48,6 +49,7 @@ func TestSDK_Geolocation_Client_GetProgramConfig_HappyPath(t *testing.T) {
 func TestSDK_Geolocation_Client_GetProgramConfig_NotFound(t *testing.T) {
 	t.Parallel()
 
+	signer := solana.NewWallet().PrivateKey
 	programID := solana.NewWallet().PublicKey()
 
 	mockRPC := &mockRPCClient{
@@ -56,7 +58,7 @@ func TestSDK_Geolocation_Client_GetProgramConfig_NotFound(t *testing.T) {
 		},
 	}
 
-	client := geolocation.New(slog.Default(), mockRPC, programID)
+	client := geolocation.New(slog.Default(), mockRPC, &signer, programID)
 	_, err := client.GetProgramConfig(context.Background())
 	require.ErrorIs(t, err, geolocation.ErrAccountNotFound)
 }
@@ -64,6 +66,7 @@ func TestSDK_Geolocation_Client_GetProgramConfig_NotFound(t *testing.T) {
 func TestSDK_Geolocation_Client_GetGeoProbeByCode_HappyPath(t *testing.T) {
 	t.Parallel()
 
+	signer := solana.NewWallet().PrivateKey
 	programID := solana.NewWallet().PublicKey()
 
 	expected := &geolocation.GeoProbe{
@@ -92,7 +95,7 @@ func TestSDK_Geolocation_Client_GetGeoProbeByCode_HappyPath(t *testing.T) {
 		},
 	}
 
-	client := geolocation.New(slog.Default(), mockRPC, programID)
+	client := geolocation.New(slog.Default(), mockRPC, &signer, programID)
 	got, err := client.GetGeoProbeByCode(context.Background(), "ams-probe-01")
 	require.NoError(t, err)
 	require.Equal(t, expected.Code, got.Code)
@@ -102,6 +105,7 @@ func TestSDK_Geolocation_Client_GetGeoProbeByCode_HappyPath(t *testing.T) {
 func TestSDK_Geolocation_Client_GetGeoProbeByCode_NotFound(t *testing.T) {
 	t.Parallel()
 
+	signer := solana.NewWallet().PrivateKey
 	programID := solana.NewWallet().PublicKey()
 
 	mockRPC := &mockRPCClient{
@@ -110,7 +114,7 @@ func TestSDK_Geolocation_Client_GetGeoProbeByCode_NotFound(t *testing.T) {
 		},
 	}
 
-	client := geolocation.New(slog.Default(), mockRPC, programID)
+	client := geolocation.New(slog.Default(), mockRPC, &signer, programID)
 	_, err := client.GetGeoProbeByCode(context.Background(), "nonexistent")
 	require.ErrorIs(t, err, geolocation.ErrAccountNotFound)
 }
@@ -118,6 +122,7 @@ func TestSDK_Geolocation_Client_GetGeoProbeByCode_NotFound(t *testing.T) {
 func TestSDK_Geolocation_Client_GetGeoProbes_HappyPath(t *testing.T) {
 	t.Parallel()
 
+	signer := solana.NewWallet().PrivateKey
 	programID := solana.NewWallet().PublicKey()
 
 	probe1 := &geolocation.GeoProbe{
@@ -169,7 +174,7 @@ func TestSDK_Geolocation_Client_GetGeoProbes_HappyPath(t *testing.T) {
 		},
 	}
 
-	client := geolocation.New(slog.Default(), mockRPC, programID)
+	client := geolocation.New(slog.Default(), mockRPC, &signer, programID)
 	probes, err := client.GetGeoProbes(context.Background())
 	require.NoError(t, err)
 	require.Len(t, probes, 2)
@@ -180,6 +185,7 @@ func TestSDK_Geolocation_Client_GetGeoProbes_HappyPath(t *testing.T) {
 func TestSDK_Geolocation_Client_GetGeoProbes_Empty(t *testing.T) {
 	t.Parallel()
 
+	signer := solana.NewWallet().PrivateKey
 	programID := solana.NewWallet().PublicKey()
 
 	mockRPC := &mockRPCClient{
@@ -188,7 +194,7 @@ func TestSDK_Geolocation_Client_GetGeoProbes_Empty(t *testing.T) {
 		},
 	}
 
-	client := geolocation.New(slog.Default(), mockRPC, programID)
+	client := geolocation.New(slog.Default(), mockRPC, &signer, programID)
 	probes, err := client.GetGeoProbes(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, probes)

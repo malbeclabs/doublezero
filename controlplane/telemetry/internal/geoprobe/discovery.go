@@ -20,7 +20,7 @@ const fullRefreshEvery = 5
 // GeolocationClient is the interface for querying GeoProbe accounts from the
 // onchain Geolocation program.
 type GeolocationClient interface {
-	GetGeoProbes(ctx context.Context) ([]geolocation.GeoProbe, error)
+	GetGeoProbes(ctx context.Context) ([]geolocation.KeyedGeoProbe, error)
 	GetGeoProbeKeys(ctx context.Context) ([]solana.PublicKey, error)
 }
 
@@ -127,14 +127,17 @@ func (d *Discovery) discover(ctx context.Context) {
 	}
 
 	var matched []ProbeAddress
+	newKeys := make(map[solana.PublicKey]struct{}, len(onchainProbes))
 	for i := range onchainProbes {
-		if !hasParentDevice(&onchainProbes[i], d.localDevicePK) {
+		newKeys[onchainProbes[i].Pubkey] = struct{}{}
+		probe := &onchainProbes[i].GeoProbe
+		if !hasParentDevice(probe, d.localDevicePK) {
 			continue
 		}
-		addr := GeoProbeToAddress(&onchainProbes[i])
+		addr := GeoProbeToAddress(probe)
 		if err := addr.Validate(); err != nil {
 			d.log.Warn("Skipping invalid onchain GeoProbe address",
-				"code", onchainProbes[i].Code, "addr", addr, "error", err)
+				"code", probe.Code, "addr", addr, "error", err)
 			continue
 		}
 		matched = append(matched, addr)
@@ -155,15 +158,7 @@ func (d *Discovery) discover(ctx context.Context) {
 		d.log.Debug("Probe update channel full, skipping update")
 	}
 
-	// Update key cache after a successful full fetch.
-	keys, err := d.client.GetGeoProbeKeys(ctx)
-	if err != nil {
-		d.log.Warn("Failed to update key cache after full fetch", "error", err)
-		// Clear cache so the next tick does a full fetch again.
-		d.cachedKeys = nil
-		return
-	}
-	d.cachedKeys = pubkeySet(keys)
+	d.cachedKeys = newKeys
 }
 
 // GeoProbeToAddress converts a GeoProbe account to a ProbeAddress.

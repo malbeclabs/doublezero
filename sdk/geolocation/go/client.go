@@ -82,8 +82,9 @@ func (c *Client) GetGeoProbeByCode(ctx context.Context, code string) (*GeoProbe,
 	return probe, nil
 }
 
-// GetGeoProbes fetches all GeoProbe accounts for the program.
-func (c *Client) GetGeoProbes(ctx context.Context) ([]GeoProbe, error) {
+// GetGeoProbes fetches all GeoProbe accounts for the program, returning each
+// probe paired with its onchain account pubkey.
+func (c *Client) GetGeoProbes(ctx context.Context) ([]KeyedGeoProbe, error) {
 	opts := &solanarpc.GetProgramAccountsOpts{
 		Filters: []solanarpc.RPCFilter{
 			{
@@ -100,14 +101,14 @@ func (c *Client) GetGeoProbes(ctx context.Context) ([]GeoProbe, error) {
 		return nil, fmt.Errorf("failed to get program accounts: %w", err)
 	}
 
-	probes := make([]GeoProbe, 0, len(accounts))
+	probes := make([]KeyedGeoProbe, 0, len(accounts))
 	for _, acct := range accounts {
 		probe, err := DeserializeGeoProbe(acct.Account.Data.GetBinary())
 		if err != nil {
 			c.log.Warn("failed to deserialize geo probe account", "pubkey", acct.Pubkey, "error", err)
 			continue
 		}
-		probes = append(probes, *probe)
+		probes = append(probes, KeyedGeoProbe{Pubkey: acct.Pubkey, GeoProbe: *probe})
 	}
 	return probes, nil
 }

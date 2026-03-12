@@ -8,7 +8,8 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdatePermissionCommand {
     pub permission_pda: Pubkey,
-    pub permissions: u128,
+    pub add: u128,
+    pub remove: u128,
 }
 
 impl UpdatePermissionCommand {
@@ -17,7 +18,8 @@ impl UpdatePermissionCommand {
 
         client.execute_transaction(
             DoubleZeroInstruction::UpdatePermission(PermissionUpdateArgs {
-                permissions: self.permissions,
+                add: self.add,
+                remove: self.remove,
             }),
             vec![
                 AccountMeta::new(self.permission_pda, false),
@@ -46,7 +48,8 @@ mod tests {
         let mut client = create_test_client();
 
         let user_payer = Pubkey::new_unique();
-        let permissions: u128 = 0b111;
+        let add: u128 = 0b110;
+        let remove: u128 = 0b001;
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
         let (permission_pda, _) = get_permission_pda(&client.get_program_id(), &user_payer);
 
@@ -54,7 +57,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdatePermission(
-                    PermissionUpdateArgs { permissions },
+                    PermissionUpdateArgs { add, remove },
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(permission_pda, false),
@@ -65,7 +68,8 @@ mod tests {
 
         let res = UpdatePermissionCommand {
             permission_pda,
-            permissions,
+            add,
+            remove,
         }
         .execute(&client);
 

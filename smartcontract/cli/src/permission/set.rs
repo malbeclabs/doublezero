@@ -61,23 +61,19 @@ impl SetPermissionCliCommand {
                 })?;
                 (sig, permissions)
             }
-            Some((_, current)) => {
-                // Account exists — apply incremental delta.
-                let add_mask = names_to_bitmask(&self.add);
-                let remove_mask = names_to_bitmask(&self.remove);
-                let new_permissions = (current.permissions | add_mask) & !remove_mask;
-
-                if new_permissions == 0 {
-                    return Err(eyre::eyre!(
-                        "resulting permissions bitmask is zero — at least one permission is required"
-                    ));
-                }
-
+            Some(_) => {
+                // Account exists — apply incremental delta atomically via the program.
+                let add = names_to_bitmask(&self.add);
+                let remove = names_to_bitmask(&self.remove);
                 let sig = client.update_permission(UpdatePermissionCommand {
                     permission_pda,
-                    permissions: new_permissions,
+                    add,
+                    remove,
                 })?;
-                (sig, new_permissions)
+                let (_, updated) = client.get_permission(GetPermissionCommand {
+                    pubkey: permission_pda.to_string(),
+                })?;
+                (sig, updated.permissions)
             }
         };
 
@@ -205,7 +201,7 @@ mod tests {
         let (permission_pda, _) = get_permission_pda(&TEST_PROGRAM_ID, &user_payer);
 
         let initial = permission_flags::NETWORK_ADMIN;
-        let expected = initial | permission_flags::SENTINEL;
+        let updated = initial | permission_flags::SENTINEL;
 
         client
             .expect_check_requirements()
@@ -216,14 +212,23 @@ mod tests {
             .with(predicate::eq(GetPermissionCommand {
                 pubkey: permission_pda.to_string(),
             }))
+            .once()
             .returning(move |_| Ok((permission_pda, make_permission(initial))));
         client
             .expect_update_permission()
             .with(predicate::eq(UpdatePermissionCommand {
                 permission_pda,
-                permissions: expected,
+                add: permission_flags::SENTINEL,
+                remove: 0,
             }))
             .returning(|_| Ok(Signature::new_unique()));
+        client
+            .expect_get_permission()
+            .with(predicate::eq(GetPermissionCommand {
+                pubkey: permission_pda.to_string(),
+            }))
+            .once()
+            .returning(move |_| Ok((permission_pda, make_permission(updated))));
 
         let mut output = Vec::new();
         let res = SetPermissionCliCommand {
@@ -246,7 +251,7 @@ mod tests {
         let (permission_pda, _) = get_permission_pda(&TEST_PROGRAM_ID, &user_payer);
 
         let initial = permission_flags::NETWORK_ADMIN | permission_flags::USER_ADMIN;
-        let expected = permission_flags::NETWORK_ADMIN;
+        let updated = permission_flags::NETWORK_ADMIN;
 
         client
             .expect_check_requirements()
@@ -257,14 +262,23 @@ mod tests {
             .with(predicate::eq(GetPermissionCommand {
                 pubkey: permission_pda.to_string(),
             }))
+            .once()
             .returning(move |_| Ok((permission_pda, make_permission(initial))));
         client
             .expect_update_permission()
             .with(predicate::eq(UpdatePermissionCommand {
                 permission_pda,
-                permissions: expected,
+                add: 0,
+                remove: permission_flags::USER_ADMIN,
             }))
             .returning(|_| Ok(Signature::new_unique()));
+        client
+            .expect_get_permission()
+            .with(predicate::eq(GetPermissionCommand {
+                pubkey: permission_pda.to_string(),
+            }))
+            .once()
+            .returning(move |_| Ok((permission_pda, make_permission(updated))));
 
         let mut output = Vec::new();
         let res = SetPermissionCliCommand {
@@ -287,7 +301,7 @@ mod tests {
         let (permission_pda, _) = get_permission_pda(&TEST_PROGRAM_ID, &user_payer);
 
         let initial = permission_flags::NETWORK_ADMIN | permission_flags::USER_ADMIN;
-        let expected = permission_flags::NETWORK_ADMIN | permission_flags::SENTINEL;
+        let updated = permission_flags::NETWORK_ADMIN | permission_flags::SENTINEL;
 
         client
             .expect_check_requirements()
@@ -298,14 +312,23 @@ mod tests {
             .with(predicate::eq(GetPermissionCommand {
                 pubkey: permission_pda.to_string(),
             }))
+            .once()
             .returning(move |_| Ok((permission_pda, make_permission(initial))));
         client
             .expect_update_permission()
             .with(predicate::eq(UpdatePermissionCommand {
                 permission_pda,
-                permissions: expected,
+                add: permission_flags::SENTINEL,
+                remove: permission_flags::USER_ADMIN,
             }))
             .returning(|_| Ok(Signature::new_unique()));
+        client
+            .expect_get_permission()
+            .with(predicate::eq(GetPermissionCommand {
+                pubkey: permission_pda.to_string(),
+            }))
+            .once()
+            .returning(move |_| Ok((permission_pda, make_permission(updated))));
 
         let mut output = Vec::new();
         let res = SetPermissionCliCommand {
@@ -316,43 +339,6 @@ mod tests {
         .execute(&client, &mut output);
 
         assert!(res.is_ok());
-    }
-
-    #[test]
-    fn test_set_remove_all_rejected() {
-        let mut client = create_test_client();
-        let user_payer = Pubkey::new_unique();
-        let (permission_pda, _) = get_permission_pda(&TEST_PROGRAM_ID, &user_payer);
-
-        client
-            .expect_check_requirements()
-            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
-            .returning(|_| Ok(()));
-        client
-            .expect_get_permission()
-            .with(predicate::eq(GetPermissionCommand {
-                pubkey: permission_pda.to_string(),
-            }))
-            .returning(move |_| {
-                Ok((
-                    permission_pda,
-                    make_permission(permission_flags::NETWORK_ADMIN),
-                ))
-            });
-
-        let mut output = Vec::new();
-        let res = SetPermissionCliCommand {
-            user_payer: user_payer.to_string(),
-            add: vec![],
-            remove: vec![PermissionName::NetworkAdmin],
-        }
-        .execute(&client, &mut output);
-
-        assert!(res.is_err());
-        assert!(res
-            .unwrap_err()
-            .to_string()
-            .contains("resulting permissions bitmask is zero"));
     }
 
     #[test]

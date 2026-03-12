@@ -42,7 +42,7 @@ impl PermissionName {
         }
     }
 
-    pub fn as_str(self) -> &'static str {
+    fn as_static_str(self) -> &'static str {
         match self {
             Self::Foundation => "foundation",
             Self::PermissionAdmin => "permission-admin",
@@ -60,6 +60,12 @@ impl PermissionName {
             Self::HealthOracle => "health-oracle",
             Self::Qa => "qa",
         }
+    }
+}
+
+impl std::fmt::Display for PermissionName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_static_str())
     }
 }
 
@@ -85,7 +91,7 @@ impl ValueEnum for PermissionName {
     }
 
     fn to_possible_value(&self) -> Option<PossibleValue> {
-        Some(PossibleValue::new(self.as_str()))
+        Some(PossibleValue::new(self.as_static_str()))
     }
 }
 

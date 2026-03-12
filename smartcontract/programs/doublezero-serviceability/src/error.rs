@@ -176,6 +176,8 @@ pub enum DoubleZeroError {
     FeatureNotEnabled, // variant 84
     #[error("Max multicast publishers exceeded")]
     MaxMulticastPublishersExceeded, // variant 85
+    #[error("Arithmetic overflow")]
+    ArithmeticOverflow, // variant 86
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -267,6 +269,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InterfaceHasEdgeAssignment => ProgramError::Custom(83),
             DoubleZeroError::FeatureNotEnabled => ProgramError::Custom(84),
             DoubleZeroError::MaxMulticastPublishersExceeded => ProgramError::Custom(85),
+            DoubleZeroError::ArithmeticOverflow => ProgramError::Custom(86),
         }
     }
 }
@@ -359,6 +362,7 @@ impl From<u32> for DoubleZeroError {
             83 => DoubleZeroError::InterfaceHasEdgeAssignment,
             84 => DoubleZeroError::FeatureNotEnabled,
             85 => DoubleZeroError::MaxMulticastPublishersExceeded,
+            86 => DoubleZeroError::ArithmeticOverflow,
             _ => DoubleZeroError::Custom(e),
         }
     }

@@ -92,11 +92,11 @@ pub fn process_reserve_connection(
     let new_reserved = device
         .reserved_seats
         .checked_add(value.count)
-        .ok_or(DoubleZeroError::MaxUsersExceeded)?;
+        .ok_or(DoubleZeroError::ArithmeticOverflow)?;
     let total_occupied = device
         .users_count
         .checked_add(new_reserved)
-        .ok_or(DoubleZeroError::MaxUsersExceeded)?;
+        .ok_or(DoubleZeroError::ArithmeticOverflow)?;
     if total_occupied > device.max_users {
         return Err(DoubleZeroError::MaxUsersExceeded.into());
     }
@@ -104,7 +104,7 @@ pub fn process_reserve_connection(
         let total_subscribers = device
             .multicast_subscribers_count
             .checked_add(new_reserved)
-            .ok_or(DoubleZeroError::MaxMulticastSubscribersExceeded)?;
+            .ok_or(DoubleZeroError::ArithmeticOverflow)?;
         if total_subscribers > device.max_multicast_subscribers {
             return Err(DoubleZeroError::MaxMulticastSubscribersExceeded.into());
         }

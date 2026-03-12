@@ -28,6 +28,7 @@ type ProgramData struct {
 	ProgramConfig      *ProgramConfig
 	AccessPasses       []AccessPass
 	ResourceExtensions []ResourceExtension
+	Permissions        []Permission
 }
 
 // ProgramDataProvider is an interface for types that can provide program data.
@@ -138,6 +139,7 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 		MulticastGroups:    []MulticastGroup{},
 		AccessPasses:       []AccessPass{},
 		ResourceExtensions: []ResourceExtension{},
+		Permissions:        []Permission{},
 	}
 
 	for _, element := range out {
@@ -212,6 +214,11 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 			DeserializeTenant(reader, &tenant)
 			tenant.PubKey = element.Pubkey
 			pd.Tenants = append(pd.Tenants, tenant)
+		case PermissionType:
+			var perm Permission
+			DeserializePermission(reader, &perm)
+			perm.PubKey = element.Pubkey
+			pd.Permissions = append(pd.Permissions, perm)
 		}
 	}
 

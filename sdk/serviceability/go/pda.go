@@ -15,6 +15,7 @@ var (
 	seedDeviceTunnelBlock       = []byte("devicetunnelblock")
 	seedMulticastGroupBlock     = []byte("multicastgroupblock")
 	seedMulticastPublisherBlock = []byte("multicastpublisherblock")
+	seedPermission              = []byte("permission")
 )
 
 func DeriveGlobalStatePDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
@@ -57,4 +58,9 @@ func GetMulticastGroupBlockPDA(programID solana.PublicKey) (solana.PublicKey, ui
 // GetMulticastPublisherBlockPDA derives the PDA for the global MulticastPublisherBlock resource extension
 func GetMulticastPublisherBlockPDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
 	return solana.FindProgramAddress([][]byte{seedPrefix, seedMulticastPublisherBlock}, programID)
+}
+
+// GetPermissionPDA derives the PDA for a Permission account given the user_payer pubkey.
+func GetPermissionPDA(programID solana.PublicKey, userPayer solana.PublicKey) (solana.PublicKey, uint8, error) {
+	return solana.FindProgramAddress([][]byte{seedPrefix, seedPermission, userPayer[:]}, programID)
 }

@@ -252,6 +252,16 @@ func DeserializeProgramVersion(reader *ByteReader, programversion *ProgramVersio
 // Bitmap starts at offset 88 (aligned to 8 bytes)
 const resourceExtensionBitmapOffset = 88
 
+func DeserializePermission(reader *ByteReader, perm *Permission) {
+	perm.AccountType = AccountType(reader.ReadU8())
+	perm.Owner = reader.ReadPubkey()
+	perm.BumpSeed = reader.ReadU8()
+	perm.Status = PermissionStatus(reader.ReadU8())
+	perm.UserPayer = reader.ReadPubkey()
+	perm.PermissionsLo = reader.ReadU64() // bits 0-63 (low u64 of u128)
+	perm.PermissionsHi = reader.ReadU64() // bits 64-127 (high u64 of u128)
+}
+
 func DeserializeResourceExtension(reader *ByteReader, ext *ResourceExtension) {
 	ext.AccountType = AccountType(reader.ReadU8())
 	ext.Owner = reader.ReadPubkey()

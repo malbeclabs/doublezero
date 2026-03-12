@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.11.0](https://github.com/malbeclabs/doublezero/compare/client/v0.10.0...client/v0.11.0) - 2026-03-12
+
+### Breaking
+
+### Changes
+
 - Onchain Programs
   - Serviceability: split per-device multicast user tracking into separate subscriber and publisher counters (`multicast_subscribers_count`/`max_multicast_subscribers` and `multicast_publishers_count`/`max_multicast_publishers`); publisher and subscriber limits are now enforced independently
 - Controller

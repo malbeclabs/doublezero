@@ -129,7 +129,10 @@ pub fn process_update_multicastgroup(
 
             // Deallocate the old IP (if it was allocated)
             if multicastgroup.multicast_ip != std::net::Ipv4Addr::UNSPECIFIED {
-                deallocate_ip(multicast_group_block_ext, multicastgroup.multicast_ip);
+                deallocate_ip(
+                    multicast_group_block_ext,
+                    multicastgroup.multicast_ip.into(),
+                );
             }
 
             // Allocate the new specific IP

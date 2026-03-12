@@ -211,21 +211,21 @@ pub fn allocate_specific_ip(account: &AccountInfo, ip: NetworkV4) -> Result<(), 
 }
 
 /// Borrow a ResourceExtension account, deserialize it, and deallocate an IP.
-pub fn deallocate_ip(account: &AccountInfo, ip: Ipv4Addr) {
+pub fn deallocate_ip(account: &AccountInfo, ip: NetworkV4) -> bool {
     let mut buffer = account.data.borrow_mut();
     if let Ok(mut resource) = ResourceExtensionBorrowed::inplace_from(&mut buffer[..]) {
-        if let Ok(net) = NetworkV4::new(ip, 32) {
-            let _ = resource.deallocate(&IdOrIp::Ip(net));
-        }
+        return resource.deallocate(&IdOrIp::Ip(ip));
     }
+    false
 }
 
 /// Borrow a ResourceExtension account, deserialize it, and deallocate a single ID.
-pub fn deallocate_id(account: &AccountInfo, id: u16) {
+pub fn deallocate_id(account: &AccountInfo, id: u16) -> bool {
     let mut buffer = account.data.borrow_mut();
     if let Ok(mut resource) = ResourceExtensionBorrowed::inplace_from(&mut buffer[..]) {
-        resource.deallocate(&IdOrIp::Id(id));
+        return resource.deallocate(&IdOrIp::Id(id));
     }
+    false
 }
 
 /// Try each account in order and return the first successful single-IP allocation.

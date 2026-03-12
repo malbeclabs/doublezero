@@ -50,8 +50,10 @@ func (m *mockDeviceResolver) GetDevice(_ context.Context, pubkey solana.PublicKe
 
 func newTestParentDiscoveryConfig() *ParentDiscoveryConfig {
 	return &ParentDiscoveryConfig{
-		Logger:         slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		Client:         &mockGeoProbeAccountClient{},
+		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		Client: &mockGeoProbeAccountClient{
+			probe: &geolocation.GeoProbe{},
+		},
 		Resolver:       &mockDeviceResolver{},
 		GeoProbePubkey: solana.NewWallet().PublicKey(),
 		Interval:       10 * time.Millisecond,
@@ -104,8 +106,8 @@ func TestParentDiscovery_HappyPath(t *testing.T) {
 	parentDevice1PK := solana.NewWallet().PublicKey()
 	parentDevice2PK := solana.NewWallet().PublicKey()
 	var metricsKey1, metricsKey2 [32]byte
-	copy(metricsKey1[:], solana.NewWallet().PublicKey()[:])
-	copy(metricsKey2[:], solana.NewWallet().PublicKey()[:])
+	metricsKey1 = solana.NewWallet().PublicKey()
+	metricsKey2 = solana.NewWallet().PublicKey()
 
 	client := &mockGeoProbeAccountClient{
 		probe: &geolocation.GeoProbe{
@@ -160,8 +162,8 @@ func TestParentDiscovery_MergeWithCLIParents(t *testing.T) {
 	onchainParentPK := solana.NewWallet().PublicKey()
 	cliParentPK := solana.NewWallet().PublicKey()
 	var onchainMetricsKey, cliMetricsKey [32]byte
-	copy(onchainMetricsKey[:], solana.NewWallet().PublicKey()[:])
-	copy(cliMetricsKey[:], solana.NewWallet().PublicKey()[:])
+	onchainMetricsKey = solana.NewWallet().PublicKey()
+	cliMetricsKey = solana.NewWallet().PublicKey()
 
 	client := &mockGeoProbeAccountClient{
 		probe: &geolocation.GeoProbe{
@@ -246,7 +248,7 @@ func TestParentDiscovery_GeoProbeNotFound_WithCLIParents(t *testing.T) {
 
 	cliParentPK := solana.NewWallet().PublicKey()
 	var cliMetricsKey [32]byte
-	copy(cliMetricsKey[:], solana.NewWallet().PublicKey()[:])
+	cliMetricsKey = solana.NewWallet().PublicKey()
 
 	client := &mockGeoProbeAccountClient{
 		err: geolocation.ErrAccountNotFound,
@@ -289,7 +291,7 @@ func TestParentDiscovery_DeviceResolutionFailure(t *testing.T) {
 	goodParentPK := solana.NewWallet().PublicKey()
 	badParentPK := solana.NewWallet().PublicKey()
 	var goodMetricsKey [32]byte
-	copy(goodMetricsKey[:], solana.NewWallet().PublicKey()[:])
+	goodMetricsKey = solana.NewWallet().PublicKey()
 
 	client := &mockGeoProbeAccountClient{
 		probe: &geolocation.GeoProbe{
@@ -338,7 +340,7 @@ func TestParentDiscovery_Caching(t *testing.T) {
 	geoProbePK := solana.NewWallet().PublicKey()
 	parentPK := solana.NewWallet().PublicKey()
 	var metricsKey [32]byte
-	copy(metricsKey[:], solana.NewWallet().PublicKey()[:])
+	metricsKey = solana.NewWallet().PublicKey()
 
 	client := &mockGeoProbeAccountClient{
 		probe: &geolocation.GeoProbe{
@@ -386,7 +388,7 @@ func TestParentDiscovery_ForcedFullRefresh(t *testing.T) {
 	geoProbePK := solana.NewWallet().PublicKey()
 	parentPK := solana.NewWallet().PublicKey()
 	var metricsKey [32]byte
-	copy(metricsKey[:], solana.NewWallet().PublicKey()[:])
+	metricsKey = solana.NewWallet().PublicKey()
 
 	client := &mockGeoProbeAccountClient{
 		probe: &geolocation.GeoProbe{
@@ -466,7 +468,7 @@ func TestParentDiscovery_EmptyParentDevices(t *testing.T) {
 
 	cliParentPK := solana.NewWallet().PublicKey()
 	var cliMetricsKey [32]byte
-	copy(cliMetricsKey[:], solana.NewWallet().PublicKey()[:])
+	cliMetricsKey = solana.NewWallet().PublicKey()
 
 	client := &mockGeoProbeAccountClient{
 		probe: &geolocation.GeoProbe{
@@ -536,8 +538,8 @@ func TestParentDiscovery_CLIDedupWithOnchain(t *testing.T) {
 	geoProbePK := solana.NewWallet().PublicKey()
 	sharedParentPK := solana.NewWallet().PublicKey()
 	var onchainMetricsKey, cliMetricsKey [32]byte
-	copy(onchainMetricsKey[:], solana.NewWallet().PublicKey()[:])
-	copy(cliMetricsKey[:], solana.NewWallet().PublicKey()[:])
+	onchainMetricsKey = solana.NewWallet().PublicKey()
+	cliMetricsKey = solana.NewWallet().PublicKey()
 
 	client := &mockGeoProbeAccountClient{
 		probe: &geolocation.GeoProbe{

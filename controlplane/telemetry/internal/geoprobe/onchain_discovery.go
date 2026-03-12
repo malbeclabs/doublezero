@@ -148,6 +148,9 @@ func (d *ParentDiscovery) discover(ctx context.Context) (*ParentUpdate, error) {
 		}
 		return nil, fmt.Errorf("failed to fetch GeoProbe account: %w", err)
 	}
+	if probe == nil {
+		return d.cliOnlyUpdate(), nil
+	}
 
 	// Check if parent device set changed since last poll.
 	if !forceFullRefresh && pubkeySlicesEqual(d.cachedParentDevices, probe.ParentDevices) {

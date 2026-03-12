@@ -21,11 +21,10 @@ All notable changes to this project will be documented in this file.
   - Change geoprobe-agent and geoprobe-target default TWAMP reflector port from 862 to 8925 to avoid DZD ACL blocks, use per-probe TWAMP port instead of hardcoded constant, and update `--additional-child-probes`/`--additional-targets` format to `host` or `host:offset_port:twamp_port` (two-field `host:port` rejected as ambiguous)
 - Activator
   - Suppress noisy program log output from race conditions caused by dual event processing (websocket + snapshot poll). The SDK's new `execute_transaction_quiet` returns a `SimulationError` with program logs; the activator verifies suspected races by re-fetching user state before deciding whether to print logs ([#3197](https://github.com/malbeclabs/doublezero/pull/3197))
-  - Remove startup migration for multicast counts; replaced by explicit `doublezero-admin device migrate-multicast-counts` command (see Admin CLI below)
 - CLI
   - Add `doublezero-geolocation` CLI for managing geolocation program entities: GeoProbe CRUD (create, get, list, update, delete), parent device management (add/remove), program config initialization, and geolocation-specific config get/set
   - Add `--multicast-publishers-count` and `--multicast-subscribers-count` flags to `device update` for foundation-gated count correction; rename `--max-multicast-users` to `--max-multicast-subscribers` and add `--max-multicast-publishers`
-  - Add `doublezero-admin device migrate-multicast-counts [--dry-run]` to correct stale `multicast_subscribers_count`/`multicast_publishers_count` on all devices by scanning live User accounts; supports dry-run preview and continues past per-device failures
+  - Add `doublezero-admin device migrate-multicast-counts [--dry-run]` to correct stale `multicast_subscribers_count`/`multicast_publishers_count` on existing deployments where all multicast users were previously counted as subscribers; supports dry-run preview and continues past per-device failures
   - Add `doublezero-admin device migrate-unicast-counts [--dry-run]` to correct stale `unicast_users_count` on all devices; same behaviour as the multicast counts command
 - SDK
   - Add read-only Go SDK for `doublezero-geolocation` program with state deserialization, PDA derivation, and RPC client for querying geoprobe configuration

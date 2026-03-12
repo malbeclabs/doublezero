@@ -34,7 +34,7 @@ use doublezero_serviceability::{
         },
         user::{
             activate::UserActivateArgs, closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
-            delete::UserDeleteArgs, requestban::UserRequestBanArgs,
+            delete::UserDeleteArgs, requestban::UserRequestBanArgs, update::UserUpdateArgs,
         },
     },
     resource::ResourceType,
@@ -3162,4 +3162,416 @@ async fn test_request_ban_user_onchain_feature_flag_disabled() {
     );
 
     println!("[PASS] test_request_ban_user_onchain_feature_flag_disabled");
+}
+
+// ============================================================================
+// UpdateUser Onchain Allocation Tests
+// ============================================================================
+
+/// Helper: set up an activated user with onchain allocation and feature flag enabled.
+/// Returns all the usual pubkeys plus the user's allocated values.
+async fn setup_activated_user_for_update(
+    client_ip: [u8; 4],
+) -> (
+    BanksClient,
+    solana_sdk::signature::Keypair,
+    Pubkey,                           // program_id
+    Pubkey,                           // globalstate_pubkey
+    Pubkey,                           // device_pubkey
+    Pubkey,                           // user_pubkey
+    Pubkey,                           // accesspass_pubkey
+    (Pubkey, Pubkey, Pubkey, Pubkey), // resource pubkeys
+) {
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        resource_pubkeys,
+    ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
+
+    let (user_tunnel_block, multicast_publisher_block, tunnel_ids, dz_prefix_block) =
+        resource_pubkeys;
+
+    // Enable feature flag
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // Activate user with onchain allocation
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    (
+        banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        resource_pubkeys,
+    )
+}
+
+#[tokio::test]
+async fn test_update_user_tunnel_id_with_onchain_allocation() {
+    println!("[TEST] test_update_user_tunnel_id_with_onchain_allocation");
+
+    let client_ip = [100, 0, 0, 50];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        _device_pubkey,
+        user_pubkey,
+        _accesspass_pubkey,
+        (user_tunnel_block, multicast_publisher_block, tunnel_ids, dz_prefix_block),
+    ) = setup_activated_user_for_update(client_ip).await;
+
+    // Read the user to get current allocated tunnel_id
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Activated);
+    let old_tunnel_id = user.tunnel_id;
+    assert!((500..=4596).contains(&old_tunnel_id));
+
+    // Pick a new tunnel_id
+    let new_tunnel_id: u16 = if old_tunnel_id == 501 { 502 } else { 501 };
+
+    // Verify old tunnel_id is allocated in bitmap
+    let tunnel_ids_resource = get_resource_extension_data(&mut banks_client, tunnel_ids)
+        .await
+        .expect("TunnelIds should exist");
+    let allocated_before = tunnel_ids_resource.iter_allocated();
+    assert!(
+        allocated_before
+            .iter()
+            .any(|a| a.as_id() == Some(old_tunnel_id)),
+        "Old tunnel_id should be allocated before update"
+    );
+
+    // Update tunnel_id with onchain allocation
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
+            tunnel_id: Some(new_tunnel_id),
+            dz_prefix_count: 1,
+            multicast_publisher_count: 1,
+            ..UserUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify user has new tunnel_id
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.tunnel_id, new_tunnel_id);
+
+    // Verify bitmap: old deallocated, new allocated
+    let tunnel_ids_resource = get_resource_extension_data(&mut banks_client, tunnel_ids)
+        .await
+        .expect("TunnelIds should exist");
+    let allocated_after = tunnel_ids_resource.iter_allocated();
+    assert!(
+        !allocated_after
+            .iter()
+            .any(|a| a.as_id() == Some(old_tunnel_id)),
+        "Old tunnel_id should be deallocated after update"
+    );
+    assert!(
+        allocated_after
+            .iter()
+            .any(|a| a.as_id() == Some(new_tunnel_id)),
+        "New tunnel_id should be allocated after update"
+    );
+
+    println!("[PASS] test_update_user_tunnel_id_with_onchain_allocation");
+}
+
+#[tokio::test]
+async fn test_update_user_tunnel_net_with_onchain_allocation() {
+    println!("[TEST] test_update_user_tunnel_net_with_onchain_allocation");
+
+    let client_ip = [100, 0, 0, 51];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        _device_pubkey,
+        user_pubkey,
+        _accesspass_pubkey,
+        (user_tunnel_block, multicast_publisher_block, tunnel_ids, dz_prefix_block),
+    ) = setup_activated_user_for_update(client_ip).await;
+
+    // Read user to get current tunnel_net
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    let old_tunnel_net = user.tunnel_net;
+    assert!(old_tunnel_net.ip().is_link_local());
+
+    // Count allocations in UserTunnelBlock before update
+    let utb_resource = get_resource_extension_data(&mut banks_client, user_tunnel_block)
+        .await
+        .expect("UserTunnelBlock should exist");
+    let alloc_count_before = utb_resource.iter_allocated().len();
+
+    // Pick a new tunnel_net in the link-local range with the same prefix (/31)
+    let new_tunnel_net: doublezero_program_common::types::NetworkV4 =
+        "169.254.0.2/31".parse().unwrap();
+
+    // Update tunnel_net with onchain allocation
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
+            tunnel_net: Some(new_tunnel_net),
+            dz_prefix_count: 1,
+            multicast_publisher_count: 1,
+            ..UserUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify user has new tunnel_net
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.tunnel_net, new_tunnel_net);
+
+    // Verify allocation count is the same (one deallocated, one allocated)
+    let utb_resource = get_resource_extension_data(&mut banks_client, user_tunnel_block)
+        .await
+        .expect("UserTunnelBlock should exist");
+    let alloc_count_after = utb_resource.iter_allocated().len();
+    assert_eq!(
+        alloc_count_before, alloc_count_after,
+        "Allocation count should remain the same after tunnel_net swap"
+    );
+
+    println!("[PASS] test_update_user_tunnel_net_with_onchain_allocation");
+}
+
+#[tokio::test]
+async fn test_update_user_dz_ip_with_onchain_allocation() {
+    println!("[TEST] test_update_user_dz_ip_with_onchain_allocation");
+
+    let client_ip = [100, 0, 0, 52];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        _device_pubkey,
+        user_pubkey,
+        _accesspass_pubkey,
+        (user_tunnel_block, multicast_publisher_block, tunnel_ids, dz_prefix_block),
+    ) = setup_activated_user_for_update(client_ip).await;
+
+    // Read user to get current dz_ip
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    let old_dz_ip = user.dz_ip;
+    // IBRLWithAllocatedIP should have dz_ip from DzPrefixBlock (110.1.0.0/24)
+    assert_eq!(old_dz_ip.octets()[0], 110);
+    assert_eq!(old_dz_ip.octets()[1], 1);
+
+    // Count allocations in DzPrefixBlock before (should be 2: reserved index 0 + user's dz_ip)
+    let dpb_resource = get_resource_extension_data(&mut banks_client, dz_prefix_block)
+        .await
+        .expect("DzPrefixBlock should exist");
+    let alloc_count_before = dpb_resource.iter_allocated().len();
+
+    // Pick a new dz_ip in the 110.1.0.0/24 range
+    let new_dz_ip = Ipv4Addr::new(110, 1, 0, 5);
+
+    // Update dz_ip with onchain allocation
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
+            dz_ip: Some(new_dz_ip),
+            dz_prefix_count: 1,
+            multicast_publisher_count: 1,
+            ..UserUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify user has new dz_ip
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.dz_ip, new_dz_ip);
+
+    // Verify allocation count is the same (one deallocated, one allocated)
+    let dpb_resource = get_resource_extension_data(&mut banks_client, dz_prefix_block)
+        .await
+        .expect("DzPrefixBlock should exist");
+    let alloc_count_after = dpb_resource.iter_allocated().len();
+    assert_eq!(
+        alloc_count_before, alloc_count_after,
+        "Allocation count should remain the same after dz_ip swap"
+    );
+
+    println!("[PASS] test_update_user_dz_ip_with_onchain_allocation");
+}
+
+#[tokio::test]
+async fn test_update_user_backward_compat() {
+    println!("[TEST] test_update_user_backward_compat");
+
+    let client_ip = [100, 0, 0, 53];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        _device_pubkey,
+        user_pubkey,
+        _accesspass_pubkey,
+        (_user_tunnel_block, _multicast_publisher_block, tunnel_ids, _dz_prefix_block),
+    ) = setup_activated_user_for_update(client_ip).await;
+
+    // Read user to get current values
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    let old_tunnel_id = user.tunnel_id;
+
+    // Record bitmap state before
+    let tunnel_ids_resource = get_resource_extension_data(&mut banks_client, tunnel_ids)
+        .await
+        .expect("TunnelIds should exist");
+    let alloc_before = tunnel_ids_resource.iter_allocated();
+
+    // Update with dz_prefix_count=0 (legacy path) — should NOT touch bitmaps
+    let new_tunnel_id: u16 = if old_tunnel_id == 600 { 601 } else { 600 };
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
+            tunnel_id: Some(new_tunnel_id),
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+            ..UserUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify user has new tunnel_id
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.tunnel_id, new_tunnel_id);
+
+    // Verify bitmap is UNCHANGED (legacy path doesn't touch bitmaps)
+    let tunnel_ids_resource = get_resource_extension_data(&mut banks_client, tunnel_ids)
+        .await
+        .expect("TunnelIds should exist");
+    let alloc_after = tunnel_ids_resource.iter_allocated();
+    assert_eq!(
+        alloc_before.len(),
+        alloc_after.len(),
+        "Bitmap should be unchanged in legacy path"
+    );
+
+    println!("[PASS] test_update_user_backward_compat");
 }

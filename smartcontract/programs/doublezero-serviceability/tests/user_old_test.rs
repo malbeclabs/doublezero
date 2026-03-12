@@ -410,6 +410,7 @@ async fn test_old_user() {
             tunnel_net: Some("169.254.0.2/25".parse().unwrap()),
             validator_pubkey: None,
             tenant_pk: None,
+            ..UserUpdateArgs::default()
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -444,6 +445,7 @@ async fn test_old_user() {
             tunnel_net: Some("169.254.0.2/25".parse().unwrap()),
             validator_pubkey: None,
             tenant_pk: None,
+            ..UserUpdateArgs::default()
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

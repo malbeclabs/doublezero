@@ -71,6 +71,12 @@ impl From<Ipv4Network> for NetworkV4 {
     }
 }
 
+impl From<Ipv4Addr> for NetworkV4 {
+    fn from(ip: Ipv4Addr) -> Self {
+        NetworkV4::new(ip, 32).unwrap() // Ipv4Addr is valid, so we can safely unwrap this
+    }
+}
+
 impl FromStr for NetworkV4 {
     type Err = String;
 

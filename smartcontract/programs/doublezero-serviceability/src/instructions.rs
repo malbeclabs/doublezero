@@ -839,6 +839,8 @@ mod tests {
                 tunnel_net: Some("1.2.3.4/1".parse().unwrap()),
                 validator_pubkey: Some(Pubkey::new_unique()),
                 tenant_pk: Some(Pubkey::new_unique()),
+                dz_prefix_count: 0,
+                multicast_publisher_count: 0,
             }),
             "UpdateUser",
         );

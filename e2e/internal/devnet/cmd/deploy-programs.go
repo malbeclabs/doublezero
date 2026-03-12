@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 )
 
 type DeployProgramsCmd struct{}
@@ -33,19 +34,17 @@ func (c *DeployProgramsCmd) Command() *cobra.Command {
 				return fmt.Errorf("failed to start manager: %w", err)
 			}
 
-			if err := dn.DeployServiceabilityProgram(ctx); err != nil {
-				return fmt.Errorf("failed to deploy serviceability program: %w", err)
-			}
-
-			if err := dn.DeployTelemetryProgram(ctx); err != nil {
-				return fmt.Errorf("failed to deploy telemetry program: %w", err)
-			}
-
-			if err := dn.DeployGeolocationProgram(ctx); err != nil {
-				return fmt.Errorf("failed to deploy geolocation program: %w", err)
-			}
-
-			return nil
+			g, ctx := errgroup.WithContext(ctx)
+			g.Go(func() error {
+				return dn.DeployServiceabilityProgram(ctx)
+			})
+			g.Go(func() error {
+				return dn.DeployTelemetryProgram(ctx)
+			})
+			g.Go(func() error {
+				return dn.DeployGeolocationProgram(ctx)
+			})
+			return g.Wait()
 		}),
 	}
 

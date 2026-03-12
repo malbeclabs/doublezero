@@ -35,8 +35,6 @@ pub struct CreateReservedSubscribeUserArgs {
     pub client_ip: Ipv4Addr,
     #[incremental(default = Ipv4Addr::UNSPECIFIED)]
     pub tunnel_endpoint: Ipv4Addr,
-    pub publisher: bool,
-    pub subscriber: bool,
     #[incremental(default = 0)]
     pub dz_prefix_count: u8,
 }
@@ -45,20 +43,20 @@ impl fmt::Debug for CreateReservedSubscribeUserArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, publisher: {}, subscriber: {}, dz_prefix_count: {}",
+            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}",
             self.user_type,
             self.cyoa_type,
             &self.client_ip,
             &self.tunnel_endpoint,
-            self.publisher,
-            self.subscriber,
             self.dz_prefix_count,
         )
     }
 }
 
 /// Create a multicast subscriber user using a reservation to bypass the normal capacity check,
-/// and subscribe them to a multicast group.
+/// and subscribe them to a multicast group. This instruction only supports subscribers — if
+/// publisher support is needed in the future, add a `publisher` field to the args and handle
+/// the publisher list, device publisher counters, and dz_ip allocation accordingly.
 ///
 /// Account layout:
 ///   [user, device, mgroup, reservation, globalstate, [resource_ext...], payer, system]
@@ -196,19 +194,8 @@ pub fn process_create_reserved_subscribe_user(
         return Err(DoubleZeroError::InvalidArgument.into());
     }
 
-    // Check per-type multicast limits
-    if value.publisher {
-        if device.max_multicast_publishers > 0
-            && device.multicast_publishers_count >= device.max_multicast_publishers
-        {
-            msg!(
-                "Max multicast publishers exceeded: count={}, max={}",
-                device.multicast_publishers_count,
-                device.max_multicast_publishers
-            );
-            return Err(DoubleZeroError::MaxMulticastPublishersExceeded.into());
-        }
-    } else if device.max_multicast_subscribers > 0
+    // Check multicast subscriber limit
+    if device.max_multicast_subscribers > 0
         && device.multicast_subscribers_count >= device.max_multicast_subscribers
     {
         msg!(
@@ -222,11 +209,7 @@ pub fn process_create_reserved_subscribe_user(
     // Update device counters
     device.reference_count += 1;
     device.users_count += 1;
-    if value.publisher {
-        device.multicast_publishers_count += 1;
-    } else {
-        device.multicast_subscribers_count += 1;
-    }
+    device.multicast_subscribers_count += 1;
 
     // Validate user PDA
     let (expected_pda, bump_seed) = get_user_pda(program_id, &value.client_ip, value.user_type);
@@ -260,11 +243,7 @@ pub fn process_create_reserved_subscribe_user(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    if value.publisher && !user.publishers.contains(mgroup_account.key) {
-        mgroup.publisher_count = mgroup.publisher_count.saturating_add(1);
-        user.publishers.push(*mgroup_account.key);
-    }
-    if value.subscriber && !user.subscribers.contains(mgroup_account.key) {
+    if !user.subscribers.contains(mgroup_account.key) {
         mgroup.subscriber_count = mgroup.subscriber_count.saturating_add(1);
         user.subscribers.push(*mgroup_account.key);
     }

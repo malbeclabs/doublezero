@@ -922,8 +922,6 @@ async fn test_create_reserved_subscribe_user() {
             user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            publisher: false,
-            subscriber: true,
             dz_prefix_count: 0,
         }),
         vec![
@@ -974,72 +972,6 @@ async fn test_create_reserved_subscribe_user() {
 }
 
 #[tokio::test]
-async fn test_create_reserved_subscribe_user_as_publisher() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
-        setup_device_for_reservations(128).await;
-
-    let mgroup_pubkey =
-        setup_multicast_group(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
-
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    let (reservation_pubkey, _) = get_reservation_pda(&program_id, &device_pubkey, &payer.pubkey());
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs { count: 1 }),
-        vec![
-            AccountMeta::new(reservation_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user_ip: std::net::Ipv4Addr = [100, 1, 0, 1].into();
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
-
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs {
-            client_ip: user_ip,
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            publisher: true,
-            subscriber: true,
-            dz_prefix_count: 0,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(reservation_pubkey, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_user(&mut banks_client, user_pubkey)
-        .await
-        .expect("User should exist");
-    assert_eq!(user.publishers, vec![mgroup_pubkey]);
-    assert_eq!(user.subscribers, vec![mgroup_pubkey]);
-
-    let mgroup = get_multicast_group(&mut banks_client, mgroup_pubkey)
-        .await
-        .expect("MulticastGroup should exist");
-    assert_eq!(mgroup.publisher_count, 1);
-    assert_eq!(mgroup.subscriber_count, 1);
-}
-
-#[tokio::test]
 async fn test_create_reserved_subscribe_user_exhausted() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, device_pubkey) =
         setup_device_for_reservations(128).await;
@@ -1078,8 +1010,6 @@ async fn test_create_reserved_subscribe_user_exhausted() {
             user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            publisher: false,
-            subscriber: true,
             dz_prefix_count: 0,
         }),
         vec![
@@ -1115,8 +1045,6 @@ async fn test_create_reserved_subscribe_user_exhausted() {
             user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            publisher: false,
-            subscriber: true,
             dz_prefix_count: 0,
         }),
         vec![
@@ -1195,8 +1123,6 @@ async fn test_create_reserved_subscribe_user_wrong_owner() {
             user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            publisher: false,
-            subscriber: true,
             dz_prefix_count: 0,
         }),
         vec![
@@ -1314,8 +1240,6 @@ async fn test_create_reserved_subscribe_user_wrong_device() {
             user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            publisher: false,
-            subscriber: true,
             dz_prefix_count: 0,
         }),
         vec![
@@ -1387,8 +1311,6 @@ async fn test_create_reserved_subscribe_user_unauthorized() {
             user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            publisher: false,
-            subscriber: true,
             dz_prefix_count: 0,
         }),
         vec![
@@ -1524,8 +1446,6 @@ async fn test_create_reserved_subscribe_user_rejects_non_multicast() {
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            publisher: false,
-            subscriber: true,
             dz_prefix_count: 0,
         }),
         vec![

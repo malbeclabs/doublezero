@@ -46,6 +46,7 @@ All notable changes to this project will be documented in this file.
   - feat(smartcontract): atomic onchain allocation for CreateDevice ([#3216](https://github.com/malbeclabs/doublezero/pull/3216))
   - Serviceability: CreateDeviceInterface instruction supports atomic create+allocate+activate when OnchainAllocation feature is enabled
   - Serviceability: DeleteDeviceInterface instruction supports atomic deallocate+remove when OnchainAllocation feature is enabled
+  - Serviceability: redesign reservations from per-IP accounts to per-(device, owner) reservation blocks with a configurable seat count, and integrate with user creation so creating a user can consume a reserved seat ([#3224](https://github.com/malbeclabs/doublezero/pull/3224))
 - CLI
   - Add `access-pass user-balances` command to show per-payer SOL balance, required amount (rent + gas reserve), and missing amount, with filters (`--user-payer`, `--min-balance`, `--max-balance`, `--min-missing`, `--max-missing`), sorting, and `--top N`
   - Add `access-pass fund` command to top up underfunded user payers, with `--dry-run`, `--force` (skip confirmation), `--min-balance`, and a pre-transfer sender balance check; required balance floor includes a gas-fee reserve (50 × 5,000 lamports) and the wallet rent-exempt minimum to prevent on-chain transfer failures

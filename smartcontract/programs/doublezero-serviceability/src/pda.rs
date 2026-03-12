@@ -83,14 +83,14 @@ pub fn get_tenant_pda(program_id: &Pubkey, code: &str) -> (Pubkey, u8) {
 pub fn get_reservation_pda(
     program_id: &Pubkey,
     device_pk: &Pubkey,
-    client_ip: &Ipv4Addr,
+    owner_pk: &Pubkey,
 ) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[
             SEED_PREFIX,
             SEED_RESERVATION,
             device_pk.as_ref(),
-            &client_ip.octets(),
+            owner_pk.as_ref(),
         ],
         program_id,
     )

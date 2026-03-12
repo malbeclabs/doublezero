@@ -74,11 +74,15 @@ pub fn process_close_reservation(
     }
 
     // Close the reservation account (returns rent to payer)
+    let remaining = reservation.reserved_count;
     try_acc_close(reservation_account, payer_account)?;
 
-    // Decrement reserved seats on device
+    // Decrement reserved seats on device by the remaining reservation count
     let mut device = Device::try_from(device_account)?;
-    device.reserved_seats = device.reserved_seats.saturating_sub(1);
+    device.reserved_seats = device
+        .reserved_seats
+        .checked_sub(remaining)
+        .ok_or(DoubleZeroError::InvalidArgument)?;
     try_acc_write(&device, device_account, payer_account, accounts)?;
 
     Ok(())

@@ -16,17 +16,16 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
-use std::net::Ipv4Addr;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct ReserveConnectionArgs {
-    #[incremental(default = Ipv4Addr::UNSPECIFIED)]
-    pub client_ip: Ipv4Addr,
+    #[incremental(default = 1)]
+    pub count: u16,
 }
 
 impl fmt::Debug for ReserveConnectionArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "client_ip: {}", self.client_ip)
+        write!(f, "count: {}", self.count)
     }
 }
 
@@ -42,6 +41,11 @@ pub fn process_reserve_connection(
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
+
+    // Validate count > 0
+    if value.count == 0 {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
 
     // Validate signer
     assert!(payer_account.is_signer, "Payer must be a signer");
@@ -79,15 +83,36 @@ pub fn process_reserve_connection(
     // Load and validate device
     let mut device = Device::try_from(device_account)?;
 
-    // Check device capacity: users_count + reserved_seats must be less than max_users.
-    // A device with max_users == 0 is locked and cannot accept reservations.
-    if device.users_count + device.reserved_seats >= device.max_users {
+    // Check device capacity. Reservations are currently used exclusively for
+    // multicast subscribers (consumed by CreateReservedSubscribeUser), so we
+    // check both the overall max_users limit and the per-type
+    // max_multicast_subscribers limit. If publishers need reservations in the
+    // future, add a field to ReserveConnectionArgs indicating it and check
+    // max_multicast_publishers accordingly.
+    let new_reserved = device
+        .reserved_seats
+        .checked_add(value.count)
+        .ok_or(DoubleZeroError::ArithmeticOverflow)?;
+    let total_occupied = device
+        .users_count
+        .checked_add(new_reserved)
+        .ok_or(DoubleZeroError::ArithmeticOverflow)?;
+    if total_occupied > device.max_users {
         return Err(DoubleZeroError::MaxUsersExceeded.into());
     }
+    if device.max_multicast_subscribers > 0 {
+        let total_subscribers = device
+            .multicast_subscribers_count
+            .checked_add(new_reserved)
+            .ok_or(DoubleZeroError::ArithmeticOverflow)?;
+        if total_subscribers > device.max_multicast_subscribers {
+            return Err(DoubleZeroError::MaxMulticastSubscribersExceeded.into());
+        }
+    }
 
-    // Validate reservation PDA
+    // Validate reservation PDA (keyed by device + owner)
     let (expected_pda, bump_seed) =
-        get_reservation_pda(program_id, device_account.key, &value.client_ip);
+        get_reservation_pda(program_id, device_account.key, payer_account.key);
     assert_eq!(
         reservation_account.key, &expected_pda,
         "Invalid Reservation PubKey"
@@ -99,7 +124,7 @@ pub fn process_reserve_connection(
         owner: *payer_account.key,
         bump_seed,
         device_pk: *device_account.key,
-        client_ip: value.client_ip,
+        reserved_count: value.count,
     };
 
     try_acc_create(
@@ -112,13 +137,13 @@ pub fn process_reserve_connection(
             SEED_PREFIX,
             SEED_RESERVATION,
             device_account.key.as_ref(),
-            &value.client_ip.octets(),
+            payer_account.key.as_ref(),
             &[bump_seed],
         ],
     )?;
 
     // Increment reserved seats on device
-    device.reserved_seats += 1;
+    device.reserved_seats = new_reserved;
     try_acc_write(&device, device_account, payer_account, accounts)?;
 
     Ok(())

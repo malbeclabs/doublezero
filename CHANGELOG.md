@@ -50,6 +50,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Add `access-pass user-balances` command to show per-payer SOL balance, required amount (rent + gas reserve), and missing amount, with filters (`--user-payer`, `--min-balance`, `--max-balance`, `--min-missing`, `--max-missing`), sorting, and `--top N`
   - Add `access-pass fund` command to top up underfunded user payers, with `--dry-run`, `--force` (skip confirmation), `--min-balance`, and a pre-transfer sender balance check; required balance floor includes a gas-fee reserve (50 × 5,000 lamports) and the wallet rent-exempt minimum to prevent on-chain transfer failures
+  - Fix `access-pass fund` and `access-pass user-balances` slot counting to track remaining slots per `(payer, client_ip)` pair, preventing a connected user on IP_B from consuming open slots for IP_A; also fix required balance formula to always add `wallet_rent_min` on top of `needs_rent` rather than taking the max
   - Add `--user-payer` filter to `user list` command
   - Serviceability: onchain activation - atomic close for DeleteDevice ([#3188](https://github.com/malbeclabs/doublezero/pull/3188))
 - Onchain Programs

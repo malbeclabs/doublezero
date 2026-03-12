@@ -83,8 +83,12 @@ pub fn process_reserve_connection(
     // Load and validate device
     let mut device = Device::try_from(device_account)?;
 
-    // Check device capacity: always check overall max_users, and additionally
-    // check per-type multicast limits when configured (> 0).
+    // Check device capacity. Reservations are currently used exclusively for
+    // multicast subscribers (consumed by CreateReservedSubscribeUser), so we
+    // check both the overall max_users limit and the per-type
+    // max_multicast_subscribers limit. If publishers need reservations in the
+    // future, add a field to ReserveConnectionArgs indicating it and check
+    // max_multicast_publishers accordingly.
     let new_reserved = device
         .reserved_seats
         .checked_add(value.count)

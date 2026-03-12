@@ -39,8 +39,8 @@ impl fmt::Debug for DeleteReservedSubscribeUserArgs {
 
 /// Delete a user that was created via CreateReservedSubscribeUser.
 ///
-/// This instruction unsubscribes the user from all multicast groups, decrements
-/// device counters, and closes the user account — all without requiring an access pass.
+/// This instruction unsubscribes the user from the multicast group, decrements
+/// device counters, and closes the user account.
 ///
 /// Account layout:
 ///   [user, device, mgroup, globalstate, [resource_ext...], owner, payer, system]
@@ -196,24 +196,18 @@ pub fn process_delete_reserved_subscribe_user(
         )?;
     }
 
+    // Reserved subscribe users are always multicast subscribers — reject if
+    // the user has publishers, which should never happen via this path.
+    if !user.publishers.is_empty() {
+        msg!("DeleteReservedSubscribeUser does not support users with publishers");
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     // Decrement device counters
     let mut device = Device::try_from(device_account)?;
     device.reference_count = device.reference_count.saturating_sub(1);
     device.users_count = device.users_count.saturating_sub(1);
-    match user.user_type {
-        UserType::Multicast => {
-            if !user.publishers.is_empty() {
-                device.multicast_publishers_count =
-                    device.multicast_publishers_count.saturating_sub(1);
-            } else {
-                device.multicast_subscribers_count =
-                    device.multicast_subscribers_count.saturating_sub(1);
-            }
-        }
-        _ => {
-            device.unicast_users_count = device.unicast_users_count.saturating_sub(1);
-        }
-    }
+    device.multicast_subscribers_count = device.multicast_subscribers_count.saturating_sub(1);
     try_acc_write(&device, device_account, payer_account, accounts)?;
 
     // Close user account, return rent to owner

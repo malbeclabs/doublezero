@@ -47,6 +47,7 @@ use crate::{
             setauthority::process_set_authority, setfeatureflags::process_set_feature_flags,
             setversion::process_set_version,
         },
+        index::{create::process_create_index, delete::process_delete_index},
         link::{
             accept::process_accept_link, activate::process_activate_link,
             closeaccount::process_closeaccount_link, create::process_create_link,
@@ -426,6 +427,12 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::DeleteReservedSubscribeUser(value) => {
             process_delete_reserved_subscribe_user(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CreateIndex(value) => {
+            process_create_index(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeleteIndex(value) => {
+            process_delete_index(program_id, accounts, &value)?
         }
     };
     Ok(())

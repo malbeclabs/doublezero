@@ -1,15 +1,18 @@
 use crate::{
     error::DoubleZeroError,
-    pda::get_resource_extension_pda,
+    pda::{get_index_pda, get_resource_extension_pda},
     processors::{
         resource::{allocate_specific_ip, deallocate_ip},
         validation::validate_program_account,
     },
     resource::ResourceType,
-    serializer::try_acc_write,
+    seeds::{SEED_INDEX, SEED_MULTICAST_GROUP, SEED_PREFIX},
+    serializer::{try_acc_close, try_acc_create, try_acc_write},
     state::{
+        accounttype::AccountType,
         feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
+        index::Index,
         multicastgroup::*,
     },
 };
@@ -19,6 +22,7 @@ use doublezero_program_common::{types::NetworkV4, validate_account_code};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 use std::fmt;
@@ -73,6 +77,19 @@ pub fn process_update_multicastgroup(
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
+    // Optional: Index accounts for code rename
+    // Account layout when code changes:
+    //   [..., payer, system, old_index_account, new_index_account]
+    // Account layout when code doesn't change:
+    //   [..., payer, system]
+    let index_accounts = if value.code.is_some() {
+        let old_index_account = next_account_info(accounts_iter)?;
+        let new_index_account = next_account_info(accounts_iter)?;
+        Some((old_index_account, new_index_account))
+    } else {
+        None
+    };
+
     #[cfg(test)]
     msg!("process_update_multicastgroup({:?})", value);
 
@@ -107,8 +124,79 @@ pub fn process_update_multicastgroup(
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
 
     if let Some(ref code) = value.code {
-        multicastgroup.code =
+        let new_code =
             validate_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+        let new_lowercase_code = new_code.to_ascii_lowercase();
+
+        let (old_index_account, new_index_account) =
+            index_accounts.expect("Index accounts required for code change");
+
+        // Validate old Index PDA
+        let (expected_old_index_pda, _) =
+            get_index_pda(program_id, SEED_MULTICAST_GROUP, &multicastgroup.code);
+        assert_eq!(
+            old_index_account.key, &expected_old_index_pda,
+            "Invalid old Index Pubkey"
+        );
+        assert_eq!(
+            old_index_account.owner, program_id,
+            "Invalid old Index Account Owner"
+        );
+        assert!(
+            old_index_account.is_writable,
+            "Old Index Account is not writable"
+        );
+
+        // Validate new Index PDA
+        let (expected_new_index_pda, new_index_bump_seed) =
+            get_index_pda(program_id, SEED_MULTICAST_GROUP, &new_code);
+        assert_eq!(
+            new_index_account.key, &expected_new_index_pda,
+            "Invalid new Index Pubkey"
+        );
+        assert!(
+            new_index_account.is_writable,
+            "New Index Account is not writable"
+        );
+
+        // New index must not already exist (uniqueness)
+        if !new_index_account.data_is_empty() {
+            return Err(ProgramError::AccountAlreadyInitialized);
+        }
+
+        // Verify old index points to this multicast group
+        let old_index = Index::try_from(old_index_account)?;
+        assert_eq!(
+            old_index.pk, *multicastgroup_account.key,
+            "Old Index does not point to this MulticastGroup"
+        );
+
+        // Create new Index
+        let new_index = Index {
+            account_type: AccountType::Index,
+            pk: *multicastgroup_account.key,
+            bump_seed: new_index_bump_seed,
+        };
+
+        try_acc_create(
+            &new_index,
+            new_index_account,
+            payer_account,
+            system_program,
+            program_id,
+            &[
+                SEED_PREFIX,
+                SEED_INDEX,
+                SEED_MULTICAST_GROUP,
+                new_lowercase_code.as_bytes(),
+                &[new_index_bump_seed],
+            ],
+        )?;
+
+        // Close old Index
+        try_acc_close(old_index_account, payer_account)?;
+
+        multicastgroup.code = new_code;
     }
     if let Some(ref multicast_ip) = value.multicast_ip {
         // Handle onchain allocation for IP changes

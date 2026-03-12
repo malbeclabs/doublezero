@@ -24,6 +24,7 @@ pub enum AccountType {
     Tenant = 13,
     Reservation = 14,
     Permission = 15,
+    Index = 16,
 }
 
 pub trait AccountTypeInfo {
@@ -52,6 +53,7 @@ impl From<u8> for AccountType {
             13 => AccountType::Tenant,
             14 => AccountType::Reservation,
             15 => AccountType::Permission,
+            16 => AccountType::Index,
             _ => AccountType::None,
         }
     }
@@ -76,6 +78,7 @@ impl fmt::Display for AccountType {
             AccountType::Tenant => write!(f, "tenant"),
             AccountType::Reservation => write!(f, "reservation"),
             AccountType::Permission => write!(f, "permission"),
+            AccountType::Index => write!(f, "index"),
         }
     }
 }

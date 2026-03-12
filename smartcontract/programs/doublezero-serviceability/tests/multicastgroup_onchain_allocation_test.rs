@@ -18,6 +18,7 @@ use doublezero_serviceability::{
         },
     },
     resource::ResourceType,
+    seeds::SEED_MULTICAST_GROUP,
     state::{feature_flags::FeatureFlag, multicastgroup::*},
 };
 use solana_program::instruction::InstructionError;
@@ -55,7 +56,9 @@ async fn test_create_multicastgroup_atomic_with_onchain_allocation() {
     let (mgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
-    execute_transaction(
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "mg1");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -71,6 +74,7 @@ async fn test_create_multicastgroup_atomic_with_onchain_allocation() {
             AccountMeta::new(multicast_group_block_pda, false),
         ],
         &payer,
+        &[AccountMeta::new(index_pda, false)],
     )
     .await;
 
@@ -103,7 +107,9 @@ async fn test_create_multicastgroup_atomic_backward_compat() {
     let (mgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
-    execute_transaction(
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "mg1");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -118,6 +124,7 @@ async fn test_create_multicastgroup_atomic_backward_compat() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+        &[AccountMeta::new(index_pda, false)],
     )
     .await;
 
@@ -150,7 +157,9 @@ async fn test_create_multicastgroup_atomic_feature_flag_disabled() {
     let (mgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
-    let result = execute_transaction_expect_failure(
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "mg1");
+
+    let result = execute_transaction_expect_failure_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -166,6 +175,7 @@ async fn test_create_multicastgroup_atomic_feature_flag_disabled() {
             AccountMeta::new(multicast_group_block_pda, false),
         ],
         &payer,
+        &[AccountMeta::new(index_pda, false)],
     )
     .await;
 
@@ -210,8 +220,10 @@ async fn test_delete_multicastgroup_atomic_with_deallocation() {
     let (mgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "mg1");
+
     // Create with atomic onchain allocation
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -227,6 +239,7 @@ async fn test_delete_multicastgroup_atomic_with_deallocation() {
             AccountMeta::new(multicast_group_block_pda, false),
         ],
         &payer,
+        &[AccountMeta::new(index_pda, false)],
     )
     .await;
 
@@ -239,7 +252,7 @@ async fn test_delete_multicastgroup_atomic_with_deallocation() {
     assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
 
     // Atomic delete+deallocate+close
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -253,6 +266,7 @@ async fn test_delete_multicastgroup_atomic_with_deallocation() {
             AccountMeta::new(owner, false),
         ],
         &payer,
+        &[AccountMeta::new(index_pda, false)],
     )
     .await;
 
@@ -294,8 +308,10 @@ async fn test_delete_multicastgroup_atomic_backward_compat() {
     let (mgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "mg1");
+
     // Create with atomic onchain allocation
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -311,11 +327,12 @@ async fn test_delete_multicastgroup_atomic_backward_compat() {
             AccountMeta::new(multicast_group_block_pda, false),
         ],
         &payer,
+        &[AccountMeta::new(index_pda, false)],
     )
     .await;
 
     // Legacy delete (use_onchain_deallocation=false, default)
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -327,6 +344,7 @@ async fn test_delete_multicastgroup_atomic_backward_compat() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+        &[AccountMeta::new(index_pda, false)],
     )
     .await;
 
@@ -369,8 +387,10 @@ async fn test_update_multicastgroup_with_onchain_reallocation() {
     let (mgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "mg1");
+
     // Create with atomic onchain allocation
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -386,6 +406,7 @@ async fn test_update_multicastgroup_with_onchain_reallocation() {
             AccountMeta::new(multicast_group_block_pda, false),
         ],
         &payer,
+        &[AccountMeta::new(index_pda, false)],
     )
     .await;
 
@@ -458,8 +479,10 @@ async fn test_update_multicastgroup_backward_compat() {
     let (mgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
+    let (index_pda_mg1, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "mg1");
+
     // Create with atomic onchain allocation
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -475,16 +498,20 @@ async fn test_update_multicastgroup_backward_compat() {
             AccountMeta::new(multicast_group_block_pda, false),
         ],
         &payer,
+        &[AccountMeta::new(index_pda_mg1, false)],
     )
     .await;
 
-    // Legacy update without onchain allocation
-    execute_transaction(
+    // Legacy update without onchain allocation (code changes, so needs old+new index accounts)
+    let (old_index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "mg1");
+    let (new_index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "mg2");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
-            code: Some("mg1_updated".to_string()),
+            code: Some("mg2".to_string()),
             multicast_ip: None,
             max_bandwidth: Some(2000),
             publisher_count: None,
@@ -496,6 +523,10 @@ async fn test_update_multicastgroup_backward_compat() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+        &[
+            AccountMeta::new(old_index_pda, false),
+            AccountMeta::new(new_index_pda, false),
+        ],
     )
     .await;
 
@@ -504,7 +535,7 @@ async fn test_update_multicastgroup_backward_compat() {
         .expect("MulticastGroup not found")
         .get_multicastgroup()
         .unwrap();
-    assert_eq!(mgroup.code, "mg1_updated");
+    assert_eq!(mgroup.code, "mg2");
     assert_eq!(mgroup.max_bandwidth, 2000);
 
     println!("test_update_multicastgroup_backward_compat PASSED");
@@ -522,7 +553,9 @@ async fn test_update_multicastgroup_feature_flag_disabled() {
     let (mgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
-    execute_transaction(
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "mg1");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -537,6 +570,7 @@ async fn test_update_multicastgroup_feature_flag_disabled() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+        &[AccountMeta::new(index_pda, false)],
     )
     .await;
 

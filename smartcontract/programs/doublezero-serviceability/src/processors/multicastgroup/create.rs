@@ -1,14 +1,15 @@
 use crate::{
     error::DoubleZeroError,
-    pda::{get_multicastgroup_pda, get_resource_extension_pda},
+    pda::{get_index_pda, get_multicastgroup_pda, get_resource_extension_pda},
     processors::{resource::allocate_ip, validation::validate_program_account},
     resource::ResourceType,
-    seeds::{SEED_MULTICAST_GROUP, SEED_PREFIX},
+    seeds::{SEED_INDEX, SEED_MULTICAST_GROUP, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
         accounttype::AccountType,
         feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
+        index::Index,
         multicastgroup::*,
     },
 };
@@ -70,6 +71,7 @@ pub fn process_create_multicastgroup(
 
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
+    let index_account = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_create_multicastgroup({:?})", value);
@@ -80,6 +82,7 @@ pub fn process_create_multicastgroup(
     // Validate and normalize code
     let code =
         validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+    let lowercase_code = code.to_ascii_lowercase();
 
     // Check the owner of the accounts
     assert_eq!(
@@ -114,6 +117,10 @@ pub fn process_create_multicastgroup(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
+    // Validate Index PDA (before code is moved into multicastgroup)
+    let (expected_index_pda, index_bump_seed) =
+        get_index_pda(program_id, SEED_MULTICAST_GROUP, &code);
+
     let mut multicastgroup = MulticastGroup {
         account_type: AccountType::MulticastGroup,
         owner: value.owner,
@@ -147,6 +154,16 @@ pub fn process_create_multicastgroup(
         multicastgroup.multicast_ip = allocate_ip(multicast_group_block_ext, 1)?.ip();
         multicastgroup.status = MulticastGroupStatus::Activated;
     }
+    assert_eq!(
+        index_account.key, &expected_index_pda,
+        "Invalid Index Pubkey"
+    );
+    assert!(index_account.is_writable, "Index Account is not writable");
+
+    // Uniqueness: index account must not already exist
+    if !index_account.data_is_empty() {
+        return Err(ProgramError::AccountAlreadyInitialized);
+    }
 
     try_acc_create(
         &multicastgroup,
@@ -161,6 +178,29 @@ pub fn process_create_multicastgroup(
             &[bump_seed],
         ],
     )?;
+
+    // Create the Index account pointing to the multicast group
+    let index = Index {
+        account_type: AccountType::Index,
+        pk: *mgroup_account.key,
+        bump_seed: index_bump_seed,
+    };
+
+    try_acc_create(
+        &index,
+        index_account,
+        payer_account,
+        system_program,
+        program_id,
+        &[
+            SEED_PREFIX,
+            SEED_INDEX,
+            SEED_MULTICAST_GROUP,
+            lowercase_code.as_bytes(),
+            &[index_bump_seed],
+        ],
+    )?;
+
     try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
 
     Ok(())

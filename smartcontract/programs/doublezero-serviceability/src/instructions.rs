@@ -35,6 +35,7 @@ use crate::processors::{
         setairdrop::SetAirdropArgs, setauthority::SetAuthorityArgs,
         setfeatureflags::SetFeatureFlagsArgs, setversion::SetVersionArgs,
     },
+    index::{create::IndexCreateArgs, delete::IndexDeleteArgs},
     link::{
         accept::LinkAcceptArgs, activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
         create::LinkCreateArgs, delete::LinkDeleteArgs, reject::LinkRejectArgs,
@@ -221,6 +222,9 @@ pub enum DoubleZeroInstruction {
 
     CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs), // variant 102
     DeleteReservedSubscribeUser(DeleteReservedSubscribeUserArgs), // variant 103
+
+    CreateIndex(IndexCreateArgs), // variant 104
+    DeleteIndex(IndexDeleteArgs), // variant 105
 }
 
 impl DoubleZeroInstruction {
@@ -358,6 +362,9 @@ impl DoubleZeroInstruction {
             102 => Ok(Self::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs::try_from(rest).unwrap())),
             103 => Ok(Self::DeleteReservedSubscribeUser(DeleteReservedSubscribeUserArgs::try_from(rest).unwrap())),
 
+            104 => Ok(Self::CreateIndex(IndexCreateArgs::try_from(rest).unwrap())),
+            105 => Ok(Self::DeleteIndex(IndexDeleteArgs::try_from(rest).unwrap())),
+
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -491,6 +498,9 @@ impl DoubleZeroInstruction {
 
             Self::CreateReservedSubscribeUser(_) => "CreateReservedSubscribeUser".to_string(), // variant 102
             Self::DeleteReservedSubscribeUser(_) => "DeleteReservedSubscribeUser".to_string(), // variant 103
+
+            Self::CreateIndex(_) => "CreateIndex".to_string(), // variant 104
+            Self::DeleteIndex(_) => "DeleteIndex".to_string(), // variant 105
         }
     }
 
@@ -617,6 +627,9 @@ impl DoubleZeroInstruction {
 
             Self::CreateReservedSubscribeUser(args) => format!("{args:?}"), // variant 102
             Self::DeleteReservedSubscribeUser(args) => format!("{args:?}"), // variant 103
+
+            Self::CreateIndex(args) => format!("{args:?}"), // variant 104
+            Self::DeleteIndex(args) => format!("{args:?}"), // variant 105
         }
     }
 }

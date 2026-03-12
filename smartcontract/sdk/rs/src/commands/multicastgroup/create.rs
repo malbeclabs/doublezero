@@ -1,9 +1,10 @@
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::{get_multicastgroup_pda, get_resource_extension_pda},
+    pda::{get_index_pda, get_multicastgroup_pda, get_resource_extension_pda},
     processors::multicastgroup::create::MulticastGroupCreateArgs,
     resource::ResourceType,
+    seeds::SEED_MULTICAST_GROUP,
     state::feature_flags::{is_feature_enabled, FeatureFlag},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
@@ -45,6 +46,10 @@ impl CreateMulticastGroupCommand {
             accounts.push(AccountMeta::new(multicast_group_block_ext, false));
         }
 
+        // Add payer and system program (framework handles these), then index account
+        let (index_pda, _) = get_index_pda(&client.get_program_id(), SEED_MULTICAST_GROUP, &code);
+        accounts.push(AccountMeta::new(index_pda, false));
+
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
@@ -67,9 +72,12 @@ mod tests {
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_multicastgroup_pda, get_resource_extension_pda},
+        pda::{
+            get_globalstate_pda, get_index_pda, get_multicastgroup_pda, get_resource_extension_pda,
+        },
         processors::multicastgroup::create::MulticastGroupCreateArgs,
         resource::ResourceType,
+        seeds::SEED_MULTICAST_GROUP,
         state::{
             accountdata::AccountData, accounttype::AccountType, feature_flags::FeatureFlag,
             globalstate::GlobalState,
@@ -84,6 +92,8 @@ mod tests {
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
         let (pda_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let (index_pda, _) =
+            get_index_pda(&client.get_program_id(), SEED_MULTICAST_GROUP, "test_group");
 
         client
             .expect_execute_transaction()
@@ -99,6 +109,7 @@ mod tests {
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(index_pda, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
@@ -155,6 +166,7 @@ mod tests {
         let (pda_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
         let (multicast_group_block_ext, _, _) =
             get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+        let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "test_group");
 
         let owner = Pubkey::new_unique();
         client
@@ -172,6 +184,7 @@ mod tests {
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
                     AccountMeta::new(multicast_group_block_ext, false),
+                    AccountMeta::new(index_pda, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));

@@ -1373,8 +1373,6 @@ async fn test_create_reserved_subscribe_user_multiple_from_same_reservation() {
                 user_type: UserType::Multicast,
                 cyoa_type: UserCYOA::GREOverDIA,
                 tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-                publisher: false,
-                subscriber: true,
                 dz_prefix_count: 0,
             }),
             vec![

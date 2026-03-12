@@ -24,6 +24,7 @@ env:
   DZ_DEVICE_IMAGE: ghcr.io/malbeclabs/dz-e2e/device:${{ github.sha }}
   DZ_CLIENT_IMAGE: ghcr.io/malbeclabs/dz-e2e/client:${{ github.sha }}
   DZ_DEVICE_HEALTH_ORACLE_IMAGE: ghcr.io/malbeclabs/dz-e2e/device-health-oracle:${{ github.sha }}
+  DZ_GEOPROBE_IMAGE: ghcr.io/malbeclabs/dz-e2e/geoprobe:${{ github.sha }}
 
 jobs:
   setup:
@@ -61,6 +62,7 @@ jobs:
           docker push ${{ env.DZ_IMAGE_REPO }}/device:${{ env.DZ_IMAGE_TAG }}
           docker push ${{ env.DZ_IMAGE_REPO }}/client:${{ env.DZ_IMAGE_TAG }}
           docker push ${{ env.DZ_IMAGE_REPO }}/device-health-oracle:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/geoprobe:${{ env.DZ_IMAGE_TAG }}
       - name: Discover tests and distribute across shards
         id: shard
         working-directory: e2e/
@@ -171,6 +173,7 @@ jobs:
           pull_with_retry ${{ env.DZ_IMAGE_REPO }}/device:${{ env.DZ_IMAGE_TAG }}
           pull_with_retry ${{ env.DZ_IMAGE_REPO }}/client:${{ env.DZ_IMAGE_TAG }}
           pull_with_retry ${{ env.DZ_IMAGE_REPO }}/device-health-oracle:${{ env.DZ_IMAGE_TAG }}
+          pull_with_retry ${{ env.DZ_IMAGE_REPO }}/geoprobe:${{ env.DZ_IMAGE_TAG }}
           pull_with_retry quay.io/prometheus/prometheus:v2.54.1
           pull_with_retry public.ecr.aws/influxdb/influxdb:1.8
       - name: test

@@ -1,11 +1,10 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
-    resource::{IdOrIp, ResourceType},
+    processors::resource::deallocate_id,
+    resource::ResourceType,
     serializer::try_acc_close,
-    state::{
-        globalstate::GlobalState, resource_extension::ResourceExtensionBorrowed, tenant::Tenant,
-    },
+    state::{globalstate::GlobalState, tenant::Tenant},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -95,11 +94,7 @@ pub fn process_delete_tenant(
     }
 
     // Deallocate VRF ID back to the ResourceExtension
-    {
-        let mut buffer = vrf_ids_account.data.borrow_mut();
-        let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-        resource.deallocate(&IdOrIp::Id(tenant.vrf_id));
-    }
+    deallocate_id(vrf_ids_account, tenant.vrf_id);
 
     // Close the tenant account
     try_acc_close(tenant_account, payer_account)?;

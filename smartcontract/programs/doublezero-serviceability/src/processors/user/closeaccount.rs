@@ -1,17 +1,14 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
-    resource::{IdOrIp, ResourceType},
+    processors::resource::{deallocate_id, deallocate_ip},
+    resource::ResourceType,
     serializer::{try_acc_close, try_acc_write},
-    state::{
-        device::Device, globalstate::GlobalState, resource_extension::ResourceExtensionBorrowed,
-        tenant::Tenant, user::*,
-    },
+    state::{device::Device, globalstate::GlobalState, tenant::Tenant, user::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-use doublezero_program_common::types::NetworkV4;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -258,64 +255,27 @@ pub fn process_closeaccount_user(
         }
 
         // Deallocate tunnel_net from global UserTunnelBlock
-        {
-            let mut buffer = global_resource_ext.data.borrow_mut();
-            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-            // Deallocate returns false if not allocated; we proceed regardless (idempotent)
-            let _deallocated = resource.deallocate(&IdOrIp::Ip(user.tunnel_net));
-            #[cfg(test)]
-            msg!(
-                "Deallocated tunnel_net {}: {}",
-                user.tunnel_net,
-                _deallocated
-            );
-        }
+        deallocate_ip(global_resource_ext, user.tunnel_net);
 
         // Deallocate tunnel_id from device TunnelIds
-        {
-            let mut buffer = device_tunnel_ids_ext.data.borrow_mut();
-            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-            let _deallocated = resource.deallocate(&IdOrIp::Id(user.tunnel_id));
-            #[cfg(test)]
-            msg!("Deallocated tunnel_id {}: {}", user.tunnel_id, _deallocated);
-        }
+        deallocate_id(device_tunnel_ids_ext, user.tunnel_id);
 
         // Deallocate dz_ip (try MulticastPublisherBlock first, then DzPrefixBlock)
         // Only deallocate if dz_ip is allocated (not client_ip and not UNSPECIFIED)
         if user.dz_ip != user.client_ip && user.dz_ip != Ipv4Addr::UNSPECIFIED {
-            if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
-                let mut deallocated = false;
+            let mut deallocated = false;
 
-                // Try MulticastPublisherBlock first (for publishers)
-                if let Some(multicast_publisher_ext) = multicast_publisher_block_ext {
-                    let mut buffer = multicast_publisher_ext.data.borrow_mut();
-                    let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-                    deallocated = resource.deallocate(&IdOrIp::Ip(dz_ip_net));
-                    #[cfg(test)]
-                    msg!(
-                        "Deallocated dz_ip {} from MulticastPublisherBlock: {}",
-                        dz_ip_net,
-                        deallocated
-                    );
-                }
+            // Try MulticastPublisherBlock first (for publishers)
+            if let Some(multicast_publisher_ext) = multicast_publisher_block_ext {
+                deallocated = deallocate_ip(multicast_publisher_ext, user.dz_ip.into());
+            }
 
-                // Fall back to DzPrefixBlock if not in MulticastPublisherBlock
-                if !deallocated {
-                    for dz_prefix_account in dz_prefix_accounts.iter() {
-                        let mut buffer = dz_prefix_account.data.borrow_mut();
-                        let mut resource =
-                            ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-                        deallocated = resource.deallocate(&IdOrIp::Ip(dz_ip_net));
-                        #[cfg(test)]
-                        msg!(
-                            "Deallocated dz_ip {} from DzPrefixBlock {:?}: {}",
-                            dz_ip_net,
-                            dz_prefix_account.key,
-                            deallocated
-                        );
-                        if deallocated {
-                            break; // Successfully deallocated
-                        }
+            // Fall back to DzPrefixBlock if not in MulticastPublisherBlock
+            if !deallocated {
+                for dz_prefix_account in dz_prefix_accounts.iter() {
+                    deallocated = deallocate_ip(dz_prefix_account, user.dz_ip.into());
+                    if deallocated {
+                        break;
                     }
                 }
             }

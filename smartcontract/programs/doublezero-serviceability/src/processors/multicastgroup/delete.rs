@@ -1,20 +1,18 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
-    processors::validation::validate_program_account,
-    resource::{IdOrIp, ResourceType},
+    processors::{resource::deallocate_ip, validation::validate_program_account},
+    resource::ResourceType,
     serializer::{try_acc_close, try_acc_write},
     state::{
         feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         multicastgroup::*,
-        resource_extension::ResourceExtensionBorrowed,
     },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-use doublezero_program_common::types::NetworkV4;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -135,13 +133,10 @@ pub fn process_delete_multicastgroup(
         }
 
         // Deallocate multicast_ip from ResourceExtension (idempotent)
-        {
-            let mut buffer = multicast_group_block_ext.data.borrow_mut();
-            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-            let multicast_net = NetworkV4::new(multicastgroup.multicast_ip, 32)
-                .map_err(|_| DoubleZeroError::InvalidArgument)?;
-            let _ = resource.deallocate(&IdOrIp::Ip(multicast_net));
-        }
+        deallocate_ip(
+            multicast_group_block_ext,
+            multicastgroup.multicast_ip.into(),
+        );
 
         try_acc_close(multicastgroup_account, owner_account)?;
 

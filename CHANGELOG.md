@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 - E2E Tests
   - Add geoprobe E2E test (`TestE2E_GeoprobeDiscovery`) that exercises the full geolocation flow: deploy geolocation program, create probe onchain, start geoprobe-agent container, and verify the telemetry-agent discovers and measures the probe via TWAMP
   - Add geoprobe Docker image, geolocation program build/deploy support, and manager geolocation CLI configuration to the E2E devnet infrastructure
+- Telemetry
+  - Add onchain parent DZD discovery to geoprobe-agent: periodically queries the Geolocation program for this probe's parent devices and resolves their metrics publisher keys from Serviceability, replacing the need for static `--parent-dzd` CLI flags. Static parents from CLI are merged with onchain parents, with onchain taking precedence for duplicate keys.
 
 ## [v0.11.0](https://github.com/malbeclabs/doublezero/compare/client/v0.10.0...client/v0.11.0) - 2026-03-12
 

@@ -48,6 +48,9 @@ builds:
       - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc
       - BUILD_VERSION={{.Version}}
       - CARGO_TARGET_DIR=target/mainnet-beta
+    post: |
+      mkdir -p target/x86_64-unknown-linux-gnu/release
+      cp target/mainnet-beta/x86_64-unknown-linux-gnu/release/doublezero target/x86_64-unknown-linux-gnu/release/doublezero
 
 archives:
   - id: doublezero_archive

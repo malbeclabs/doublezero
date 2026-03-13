@@ -155,11 +155,11 @@ func (s *LinuxSender) ProbePair(ctx context.Context) (ProbePairResult, error) {
 
 	events := make([]unix.EpollEvent, 1)
 	var (
-		reply0N    int
-		reply0Oobn int
-		reply0Oob  [512]byte // stack copy so Recvmsg for reply 1 doesn't overwrite
-		probe1Sent bool
-		send1Time  time.Time
+		reply0Len    int
+		reply0CtlLen int
+		reply0Ctl    [512]byte // stack copy so Recvmsg for reply 1 doesn't overwrite
+		probe1Sent   bool
+		send1Time    time.Time
 	)
 
 	// recvAndFireProbe1 does Recvmsg, checks size+seq, and immediately fires
@@ -181,9 +181,9 @@ func (s *LinuxSender) ProbePair(ctx context.Context) (ProbePairResult, error) {
 		}
 
 		// Seq matches — fire probe 1 immediately before any parsing.
-		reply0N = n
-		reply0Oobn = oobn
-		copy(reply0Oob[:oobn], s.oob[:oobn])
+		reply0Len = n
+		reply0CtlLen = oobn
+		copy(reply0Ctl[:oobn], s.oob[:oobn])
 		send1Time = time.Now()
 		if err := unix.Sendto(s.fd, buf1[:], 0, s.remote); err != nil {
 			return false, fmt.Errorf("sendto probe 1: %w", err)
@@ -237,7 +237,7 @@ func (s *LinuxSender) ProbePair(ctx context.Context) (ProbePairResult, error) {
 
 	// --- Parse reply 0 (deferred until after probe 1 was sent) ---
 	fallback0Time := time.Now()
-	reply0, err := UnmarshalReplyPacket(s.buf[:reply0N])
+	reply0, err := UnmarshalReplyPacket(s.buf[:reply0Len])
 	if err != nil {
 		return ProbePairResult{}, fmt.Errorf("unmarshal reply 0: %w", err)
 	}
@@ -245,7 +245,7 @@ func (s *LinuxSender) ProbePair(ctx context.Context) (ProbePairResult, error) {
 		return ProbePairResult{}, fmt.Errorf("reply 0: timestamp mismatch")
 	}
 
-	cmsgs0, err := syscall.ParseSocketControlMessage(reply0Oob[:reply0Oobn])
+	cmsgs0, err := syscall.ParseSocketControlMessage(reply0Ctl[:reply0CtlLen])
 	if err != nil {
 		return ProbePairResult{}, fmt.Errorf("reply 0: parse cmsg: %w", err)
 	}

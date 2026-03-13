@@ -43,7 +43,7 @@ struct GeoProbeGetDisplay {
     #[tabled(rename = "parent_devices")]
     pub parent_devices_display: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
-    pub metrics_publisher: Pubkey,
+    pub signing_keypair: Pubkey,
     pub reference_count: u32,
 }
 
@@ -71,7 +71,7 @@ impl GetGeoProbeCliCommand {
             port: probe.location_offset_port,
             parent_devices: probe.parent_devices,
             parent_devices_display,
-            metrics_publisher: probe.metrics_publisher_pk,
+            signing_keypair: probe.metrics_publisher_pk,
             reference_count: probe.reference_count,
         };
 
@@ -171,7 +171,7 @@ mod tests {
         assert!(has_row("exchange", &exchange_pk.to_string()));
         assert!(has_row("public_ip", "10.0.0.1"));
         assert!(has_row("port", "8923"));
-        assert!(has_row("metrics_publisher", &metrics_pk.to_string()));
+        assert!(has_row("signing_keypair", &metrics_pk.to_string()));
         assert!(has_row("reference_count", "0"));
     }
 
@@ -207,7 +207,7 @@ mod tests {
         assert_eq!(parents.len(), 1);
         assert_eq!(parents[0].as_str().unwrap(), parent_pk.to_string());
         assert_eq!(
-            json["metrics_publisher"].as_str().unwrap(),
+            json["signing_keypair"].as_str().unwrap(),
             metrics_pk.to_string()
         );
         assert_eq!(json["reference_count"].as_u64().unwrap(), 0);

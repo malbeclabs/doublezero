@@ -21,16 +21,15 @@ pub struct CreateGeoProbeCliCommand {
     /// UDP listen port for location offsets
     #[arg(long, default_value_t = 8923)]
     pub port: u16,
-    /// Metrics publisher public key
+    /// Signing keypair public key
     #[arg(long, value_parser = validate_pubkey)]
-    pub metrics_publisher: String,
+    pub signing_keypair: String,
 }
 
 impl CreateGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let exchange_pk: Pubkey = self.exchange.parse().expect("validated by clap");
-        let metrics_publisher_pk: Pubkey =
-            self.metrics_publisher.parse().expect("validated by clap");
+        let metrics_publisher_pk: Pubkey = self.signing_keypair.parse().expect("validated by clap");
 
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
@@ -93,7 +92,7 @@ mod tests {
             exchange: exchange_pk.to_string(),
             public_ip: Ipv4Addr::new(10, 0, 0, 1),
             port: 8923,
-            metrics_publisher: metrics_pk.to_string(),
+            signing_keypair: metrics_pk.to_string(),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

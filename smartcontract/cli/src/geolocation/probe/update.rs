@@ -18,24 +18,24 @@ pub struct UpdateGeoProbeCliCommand {
     /// Updated UDP listen port for location offsets
     #[arg(long)]
     pub port: Option<u16>,
-    /// Updated metrics publisher public key
+    /// Updated signing keypair public key
     #[arg(long, value_parser = validate_pubkey)]
-    pub metrics_publisher: Option<String>,
+    pub signing_keypair: Option<String>,
 }
 
 impl UpdateGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        if self.public_ip.is_none() && self.port.is_none() && self.metrics_publisher.is_none() {
+        if self.public_ip.is_none() && self.port.is_none() && self.signing_keypair.is_none() {
             return Err(eyre::eyre!(
-                "At least one of --public-ip, --port, or --metrics-publisher is required"
+                "At least one of --public-ip, --port, or --signing-keypair is required"
             ));
         }
 
         let metrics_publisher_pk = self
-            .metrics_publisher
+            .signing_keypair
             .map(|mp| {
                 mp.parse::<Pubkey>()
-                    .map_err(|_| eyre::eyre!("invalid metrics publisher pubkey: {mp}"))
+                    .map_err(|_| eyre::eyre!("invalid signing keypair pubkey: {mp}"))
             })
             .transpose()?;
 
@@ -94,7 +94,7 @@ mod tests {
             code: "ams-probe-01".to_string(),
             public_ip: Some(Ipv4Addr::new(192, 168, 1, 1)),
             port: None,
-            metrics_publisher: None,
+            signing_keypair: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

@@ -8,6 +8,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::{
     collections::{HashMap, HashSet},
     io::{BufRead, Write},
+    net::Ipv4Addr,
 };
 
 const USER_RENT_BYTES: usize = 240;
@@ -40,27 +41,39 @@ impl FundAccessPassCliCommand {
         let users = client.list_user(ListUserCommand {})?;
         let rent_per_user = client.get_minimum_balance_for_rent_exemption(USER_RENT_BYTES)?;
 
-        // Count effective slots per payer: +1 per IBRL access pass, +1 per multicast-enabled access pass
-        let mut ap_count_by_payer: HashMap<Pubkey, usize> = HashMap::new();
+        // Count effective slots per (payer, client_ip): +1 per IBRL access pass, +1 per multicast-enabled access pass.
+        // Per-IP tracking ensures a connected user for IP_B doesn't consume an open slot for IP_A.
+        let mut ap_count_by_payer_ip: HashMap<(Pubkey, Ipv4Addr), usize> = HashMap::new();
         for ap in access_passes.values() {
             let count = (ap.last_access_epoch > 0) as usize
                 + (!ap.mgroup_pub_allowlist.is_empty() || !ap.mgroup_sub_allowlist.is_empty())
                     as usize;
-            *ap_count_by_payer.entry(ap.user_payer).or_default() += count;
+            *ap_count_by_payer_ip
+                .entry((ap.user_payer, ap.client_ip))
+                .or_default() += count;
         }
 
-        let mut unicast_by_payer: HashMap<Pubkey, u32> = HashMap::new();
-        let mut multicast_by_payer: HashMap<Pubkey, u32> = HashMap::new();
+        let mut connected_by_payer_ip: HashMap<(Pubkey, Ipv4Addr), usize> = HashMap::new();
         for user in users.values() {
             match user.user_type {
-                UserType::IBRL | UserType::IBRLWithAllocatedIP => {
-                    *unicast_by_payer.entry(user.owner).or_default() += 1;
-                }
-                UserType::Multicast => {
-                    *multicast_by_payer.entry(user.owner).or_default() += 1;
+                UserType::IBRL | UserType::IBRLWithAllocatedIP | UserType::Multicast => {
+                    *connected_by_payer_ip
+                        .entry((user.owner, user.client_ip))
+                        .or_default() += 1;
                 }
                 UserType::EdgeFiltering => {}
             }
+        }
+
+        // Compute remaining slots per payer by summing per-IP remainders.
+        let mut remaining_slots_by_payer: HashMap<Pubkey, usize> = HashMap::new();
+        for ((payer, ip), ap_slots) in &ap_count_by_payer_ip {
+            let connected = connected_by_payer_ip
+                .get(&(*payer, *ip))
+                .copied()
+                .unwrap_or(0);
+            *remaining_slots_by_payer.entry(*payer).or_default() +=
+                ap_slots.saturating_sub(connected);
         }
 
         let mut seen = HashSet::new();
@@ -94,13 +107,13 @@ impl FundAccessPassCliCommand {
             .zip(balances)
             .filter_map(|(user_payer, account)| {
                 let lamports = account.map(|a| a.lamports).unwrap_or(0);
-                let access_passes = ap_count_by_payer.get(&user_payer).copied().unwrap_or(0);
-                let connected = unicast_by_payer.get(&user_payer).copied().unwrap_or(0) as usize
-                    + multicast_by_payer.get(&user_payer).copied().unwrap_or(0) as usize;
-                let remaining_slots = access_passes.saturating_sub(connected);
+                let remaining_slots = remaining_slots_by_payer
+                    .get(&user_payer)
+                    .copied()
+                    .unwrap_or(0);
                 let needs_rent =
                     rent_per_user.saturating_mul(remaining_slots as u64) + GAS_FEE_RESERVE;
-                let required = needs_rent.max(min_balance_lamports).max(wallet_rent_min);
+                let required = wallet_rent_min + needs_rent.max(min_balance_lamports);
                 let deficit = required.saturating_sub(lamports);
                 if deficit > 0 {
                     Some((user_payer, deficit))
@@ -181,6 +194,7 @@ mod tests {
 
     const RENT_PER_USER: u64 = 1_000_000;
     // needs_rent for 1 remaining slot = 1_000_000 + 250_000 = 1_250_000
+    // required = wallet_rent_min (1_000_000) + needs_rent (1_250_000) = 2_250_000
 
     fn make_ibrl_access_pass(user_payer: Pubkey) -> AccessPass {
         AccessPass {
@@ -229,8 +243,8 @@ mod tests {
     #[test]
     fn test_fund_all_sufficiently_funded() {
         let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
-        // balance > needs_rent (1_250_000)
-        let client = setup_client_with_balance(payer, 2_000_000);
+        // balance > required (2_250_000)
+        let client = setup_client_with_balance(payer, 3_000_000);
 
         let mut out = Vec::new();
         let res =
@@ -246,7 +260,7 @@ mod tests {
     #[test]
     fn test_fund_dry_run_shows_summary_without_transferring() {
         let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
-        // balance = 500_000 < needs_rent (1_250_000), deficit = 750_000
+        // balance = 500_000 < required (2_250_000), deficit = 1_750_000
         let client = setup_client_with_balance(payer, 500_000);
 
         let mut out = Vec::new();
@@ -260,7 +274,7 @@ mod tests {
         let output = String::from_utf8(out).unwrap();
         assert!(output.contains("Transfers to execute:"));
         assert!(output.contains(&payer.to_string()));
-        assert!(output.contains("0.000750000 SOL"));
+        assert!(output.contains("0.001750000 SOL"));
         assert!(output.contains("Total:"));
         assert!(output.contains("[dry-run] no transfers sent."));
     }
@@ -302,8 +316,8 @@ mod tests {
     #[test]
     fn test_fund_min_balance_dominates_rent() {
         let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
-        // balance = 1_500_000 > needs_rent (1_250_000) but < min_balance (2_000_000)
-        // required = max(1_250_000, 2_000_000) = 2_000_000, deficit = 500_000
+        // balance = 1_500_000 < required = wallet_rent_min (1_000_000) + max(needs_rent=1_250_000, min_balance=2_000_000) = 3_000_000
+        // deficit = 1_500_000
         let client = setup_client_with_balance(payer, 1_500_000);
 
         let mut out = Vec::new();
@@ -316,7 +330,7 @@ mod tests {
 
         assert!(res.is_ok());
         let output = String::from_utf8(out).unwrap();
-        assert!(output.contains("0.000500000 SOL"));
+        assert!(output.contains("0.001500000 SOL"));
         assert!(output.contains(&payer.to_string()));
     }
 
@@ -324,7 +338,7 @@ mod tests {
     fn test_fund_rent_dominates_min_balance() {
         let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
         // balance = 500_000, min_balance = ~1 lamport
-        // required = max(1_250_000, 1) = 1_250_000, deficit = 750_000
+        // required = wallet_rent_min (1_000_000) + max(needs_rent=1_250_000, 1) = 2_250_000, deficit = 1_750_000
         let client = setup_client_with_balance(payer, 500_000);
 
         let mut out = Vec::new();
@@ -337,7 +351,7 @@ mod tests {
 
         assert!(res.is_ok());
         let output = String::from_utf8(out).unwrap();
-        assert!(output.contains("0.000750000 SOL"));
+        assert!(output.contains("0.001750000 SOL"));
         assert!(output.contains(&payer.to_string()));
     }
 

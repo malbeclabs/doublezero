@@ -184,11 +184,13 @@ func (p *Publisher) Publish(ctx context.Context, rttData map[ProbeAddress]uint64
 			}
 
 			offset := LocationOffset{
+				Version:         LocationOffsetVersion,
 				MeasurementSlot: slot,
 				Lat:             lat,
 				Lng:             lng,
 				MeasuredRttNs:   rttNs,
 				RttNs:           rttNs,
+				TargetIP:        IPToTargetIP(addr.Host),
 				NumReferences:   0,
 				References:      []LocationOffset{},
 			}

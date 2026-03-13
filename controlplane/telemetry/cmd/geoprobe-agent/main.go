@@ -749,11 +749,13 @@ func runMeasurementCycle(
 	sentCount := 0
 	for addr, measuredRttNs := range rttData {
 		compositeOffset := geoprobe.LocationOffset{
+			Version:         geoprobe.LocationOffsetVersion,
 			MeasurementSlot: slot,
 			MeasuredRttNs:   measuredRttNs,
 			Lat:             dzdOffset.Lat,
 			Lng:             dzdOffset.Lng,
 			RttNs:           dzdOffset.RttNs + measuredRttNs,
+			TargetIP:        geoprobe.IPToTargetIP(addr.Host),
 			NumReferences:   1,
 			References:      []geoprobe.LocationOffset{*dzdOffset},
 		}

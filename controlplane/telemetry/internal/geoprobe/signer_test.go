@@ -18,11 +18,13 @@ func TestSignOffset_Success(t *testing.T) {
 
 	// Create an offset
 	offset := &LocationOffset{
+		Version:         LocationOffsetVersion,
 		MeasurementSlot: 12345,
 		Lat:             52.3676,
 		Lng:             4.9041,
 		MeasuredRttNs:   800000,
 		RttNs:           800000,
+		TargetIP:        [4]byte{10, 0, 0, 1},
 		NumReferences:   0,
 		References:      nil,
 	}
@@ -56,11 +58,13 @@ func TestVerifyOffset_InvalidSignature(t *testing.T) {
 	require.NoError(t, err)
 
 	offset := &LocationOffset{
+		Version:         LocationOffsetVersion,
 		MeasurementSlot: 99999,
 		Lat:             50.1109,
 		Lng:             8.6821,
 		MeasuredRttNs:   1000000,
 		RttNs:           1000000,
+		TargetIP:        [4]byte{10, 0, 0, 2},
 		NumReferences:   0,
 		References:      nil,
 	}
@@ -87,11 +91,13 @@ func TestVerifyOffset_WrongPublicKey(t *testing.T) {
 	require.NoError(t, err)
 
 	offset := &LocationOffset{
+		Version:         LocationOffsetVersion,
 		MeasurementSlot: 55555,
 		Lat:             1.0,
 		Lng:             2.0,
 		MeasuredRttNs:   500000,
 		RttNs:           500000,
+		TargetIP:        [4]byte{10, 0, 0, 3},
 		NumReferences:   0,
 		References:      nil,
 	}
@@ -119,11 +125,13 @@ func TestSignOffset_WithReferences(t *testing.T) {
 	require.NoError(t, err)
 
 	dzdOffset := &LocationOffset{
+		Version:         LocationOffsetVersion,
 		MeasurementSlot: 100,
 		Lat:             52.3676,
 		Lng:             4.9041,
 		MeasuredRttNs:   800000,
 		RttNs:           800000,
+		TargetIP:        [4]byte{10, 0, 0, 1},
 		NumReferences:   0,
 		References:      nil,
 	}
@@ -138,11 +146,13 @@ func TestSignOffset_WithReferences(t *testing.T) {
 	require.NoError(t, err)
 
 	probeOffset := &LocationOffset{
+		Version:         LocationOffsetVersion,
 		MeasurementSlot: 101,
 		Lat:             52.3676,
 		Lng:             4.9041,
 		MeasuredRttNs:   12500000,
 		RttNs:           13300000,
+		TargetIP:        [4]byte{10, 0, 0, 2},
 		NumReferences:   1,
 		References:      []LocationOffset{*dzdOffset},
 	}
@@ -169,11 +179,13 @@ func TestVerifyOffsetChain_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	dzdOffset := &LocationOffset{
+		Version:         LocationOffsetVersion,
 		MeasurementSlot: 100,
 		Lat:             50.1109,
 		Lng:             8.6821,
 		MeasuredRttNs:   800000,
 		RttNs:           800000,
+		TargetIP:        [4]byte{10, 0, 0, 1},
 		NumReferences:   0,
 		References:      nil,
 	}
@@ -187,11 +199,13 @@ func TestVerifyOffsetChain_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	probeOffset := &LocationOffset{
+		Version:         LocationOffsetVersion,
 		MeasurementSlot: 101,
 		Lat:             50.1109,
 		Lng:             8.6821,
 		MeasuredRttNs:   10000000,
 		RttNs:           10800000,
+		TargetIP:        [4]byte{10, 0, 0, 2},
 		NumReferences:   1,
 		References:      []LocationOffset{*dzdOffset},
 	}
@@ -214,11 +228,13 @@ func TestVerifyOffsetChain_InvalidReference(t *testing.T) {
 	require.NoError(t, err)
 
 	dzdOffset := &LocationOffset{
+		Version:         LocationOffsetVersion,
 		MeasurementSlot: 100,
 		Lat:             52.3676,
 		Lng:             4.9041,
 		MeasuredRttNs:   800000,
 		RttNs:           800000,
+		TargetIP:        [4]byte{10, 0, 0, 1},
 		NumReferences:   0,
 		References:      nil,
 	}
@@ -236,11 +252,13 @@ func TestVerifyOffsetChain_InvalidReference(t *testing.T) {
 	require.NoError(t, err)
 
 	probeOffset := &LocationOffset{
+		Version:         LocationOffsetVersion,
 		MeasurementSlot: 101,
 		Lat:             52.3676,
 		Lng:             4.9041,
 		MeasuredRttNs:   12500000,
 		RttNs:           13300000,
+		TargetIP:        [4]byte{10, 0, 0, 2},
 		NumReferences:   1,
 		References:      []LocationOffset{*dzdOffset},
 	}
@@ -275,21 +293,25 @@ func TestOffsetSignaturesEqual(t *testing.T) {
 	require.NoError(t, err)
 
 	offset1 := &LocationOffset{
+		Version:         LocationOffsetVersion,
 		MeasurementSlot: 12345,
 		Lat:             1.0,
 		Lng:             2.0,
 		MeasuredRttNs:   1000,
 		RttNs:           1000,
+		TargetIP:        [4]byte{10, 0, 0, 1},
 		NumReferences:   0,
 		References:      nil,
 	}
 
 	offset2 := &LocationOffset{
+		Version:         LocationOffsetVersion,
 		MeasurementSlot: 12345,
 		Lat:             1.0,
 		Lng:             2.0,
 		MeasuredRttNs:   1000,
 		RttNs:           1000,
+		TargetIP:        [4]byte{10, 0, 0, 1},
 		NumReferences:   0,
 		References:      nil,
 	}
@@ -323,11 +345,13 @@ func TestSignOffset_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	original := &LocationOffset{
+		Version:         LocationOffsetVersion,
 		MeasurementSlot: 99999,
 		Lat:             52.3676,
 		Lng:             4.9041,
 		MeasuredRttNs:   800000,
 		RttNs:           800000,
+		TargetIP:        [4]byte{10, 0, 0, 1},
 		NumReferences:   0,
 		References:      nil,
 	}

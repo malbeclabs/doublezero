@@ -11,7 +11,7 @@ import (
 
 const (
 	ProbePacketSize    = 108
-	LocationOffsetSize = 169 // size of a 0-reference LocationOffset, Borsh-encoded
+	LocationOffsetSize = 174 // size of a 0-reference LocationOffset, Borsh-encoded
 	MaxOffsets         = 5
 
 	// Probe(108) + AuthorityPubkey(32) + GeoprobePubkey(32) +
@@ -304,18 +304,25 @@ type OffsetInfo struct {
 	Lat             float64
 	Lng             float64
 	RttNs           uint64
+	TargetIP        [4]byte
 }
 
 // ParseOffsetInfo extracts location and timing fields from a Borsh-encoded
 // LocationOffset blob at known byte positions (little-endian).
+//
+// Byte layout (v1): Signature(64) + Version(1) + AuthorityPubkey(32) +
+// SenderPubkey(32) + MeasurementSlot(8) + Lat(8) + Lng(8) + MeasuredRttNs(8) +
+// RttNs(8) + TargetIP(4) + NumReferences(1) = 174 bytes
 func ParseOffsetInfo(blob []byte) (OffsetInfo, bool) {
 	if len(blob) < LocationOffsetSize {
 		return OffsetInfo{}, false
 	}
+	targetIP := [4]byte(blob[169:173])
 	return OffsetInfo{
-		MeasurementSlot: binary.LittleEndian.Uint64(blob[128:136]),
-		Lat:             math.Float64frombits(binary.LittleEndian.Uint64(blob[136:144])),
-		Lng:             math.Float64frombits(binary.LittleEndian.Uint64(blob[144:152])),
-		RttNs:           binary.LittleEndian.Uint64(blob[160:168]),
+		MeasurementSlot: binary.LittleEndian.Uint64(blob[129:137]),
+		Lat:             math.Float64frombits(binary.LittleEndian.Uint64(blob[137:145])),
+		Lng:             math.Float64frombits(binary.LittleEndian.Uint64(blob[145:153])),
+		RttNs:           binary.LittleEndian.Uint64(blob[161:169]),
+		TargetIP:        targetIP,
 	}, true
 }

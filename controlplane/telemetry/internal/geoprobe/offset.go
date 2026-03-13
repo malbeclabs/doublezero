@@ -3,11 +3,14 @@ package geoprobe
 import (
 	"fmt"
 	"io"
+	"net"
 
 	bin "github.com/gagliardetto/binary"
 )
 
 const (
+	LocationOffsetVersion = 1
+
 	MaxReferenceDepth  = 2
 	MaxTotalReferences = 5
 )
@@ -22,6 +25,7 @@ const (
 // Based on RFC16: Geolocation Verification
 type LocationOffset struct {
 	Signature       [64]byte         // Ed25519 signature over the serialized bytes (excluding this field)
+	Version         uint8            // Wire format version (currently 1)
 	AuthorityPubkey [32]byte         // Signer's public key (metrics publisher key or probe signing key)
 	SenderPubkey    [32]byte         // Device public key (DZD or Probe)
 	MeasurementSlot uint64           // Current DoubleZero Slot when measurement was taken
@@ -29,8 +33,27 @@ type LocationOffset struct {
 	Lat             float64          // Reference point latitude in WGS84 (decimal degrees)
 	Lng             float64          // Reference point longitude in WGS84 (decimal degrees)
 	RttNs           uint64           // Accumulated RTT to target in nanoseconds from lat/lng
+	TargetIP        [4]byte          // IPv4 address of the TWAMP measurement target
 	NumReferences   uint8            // Number of reference offsets in the chain
 	References      []LocationOffset // Reference offsets (recursive chain for verification)
+}
+
+// IPToTargetIP converts an IP address string to a [4]byte for use in TargetIP.
+func IPToTargetIP(host string) [4]byte {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return [4]byte{}
+	}
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return [4]byte{}
+	}
+	return [4]byte{ip4[0], ip4[1], ip4[2], ip4[3]}
+}
+
+// FormatTargetIP formats a [4]byte TargetIP as a dotted-decimal string.
+func FormatTargetIP(ip [4]byte) string {
+	return fmt.Sprintf("%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3])
 }
 
 // Marshal serializes the LocationOffset to bytes using Borsh encoding.
@@ -41,6 +64,9 @@ func (o *LocationOffset) Marshal() ([]byte, error) {
 
 	if err := enc.Encode(o.Signature); err != nil {
 		return nil, fmt.Errorf("failed to encode signature: %w", err)
+	}
+	if err := enc.Encode(o.Version); err != nil {
+		return nil, fmt.Errorf("failed to encode version: %w", err)
 	}
 	if err := enc.Encode(o.AuthorityPubkey); err != nil {
 		return nil, fmt.Errorf("failed to encode authority pubkey: %w", err)
@@ -62,6 +88,9 @@ func (o *LocationOffset) Marshal() ([]byte, error) {
 	}
 	if err := enc.Encode(o.RttNs); err != nil {
 		return nil, fmt.Errorf("failed to encode rtt: %w", err)
+	}
+	if err := enc.Encode(o.TargetIP); err != nil {
+		return nil, fmt.Errorf("failed to encode target ip: %w", err)
 	}
 	if err := enc.Encode(o.NumReferences); err != nil {
 		return nil, fmt.Errorf("failed to encode num references: %w", err)
@@ -108,6 +137,12 @@ func (o *LocationOffset) unmarshalHelper(data []byte, dec *bin.Decoder, depth in
 	if err := dec.Decode(&o.Signature); err != nil {
 		return fmt.Errorf("failed to decode signature: %w", err)
 	}
+	if err := dec.Decode(&o.Version); err != nil {
+		return fmt.Errorf("failed to decode version: %w", err)
+	}
+	if o.Version != LocationOffsetVersion {
+		return fmt.Errorf("unsupported location offset version %d (expected %d)", o.Version, LocationOffsetVersion)
+	}
 	if err := dec.Decode(&o.AuthorityPubkey); err != nil {
 		return fmt.Errorf("failed to decode authority pubkey: %w", err)
 	}
@@ -129,6 +164,9 @@ func (o *LocationOffset) unmarshalHelper(data []byte, dec *bin.Decoder, depth in
 	if err := dec.Decode(&o.RttNs); err != nil {
 		return fmt.Errorf("failed to decode rtt: %w", err)
 	}
+	if err := dec.Decode(&o.TargetIP); err != nil {
+		return fmt.Errorf("failed to decode target ip: %w", err)
+	}
 	if err := dec.Decode(&o.NumReferences); err != nil {
 		return fmt.Errorf("failed to decode num references: %w", err)
 	}
@@ -149,6 +187,9 @@ func (o *LocationOffset) GetSigningBytes() ([]byte, error) {
 	w := &bytesWriter{buf: buf}
 	enc := bin.NewBorshEncoder(w)
 
+	if err := enc.Encode(o.Version); err != nil {
+		return nil, fmt.Errorf("failed to encode version: %w", err)
+	}
 	if err := enc.Encode(o.AuthorityPubkey); err != nil {
 		return nil, fmt.Errorf("failed to encode authority pubkey: %w", err)
 	}
@@ -169,6 +210,9 @@ func (o *LocationOffset) GetSigningBytes() ([]byte, error) {
 	}
 	if err := enc.Encode(o.RttNs); err != nil {
 		return nil, fmt.Errorf("failed to encode rtt: %w", err)
+	}
+	if err := enc.Encode(o.TargetIP); err != nil {
+		return nil, fmt.Errorf("failed to encode target ip: %w", err)
 	}
 	if err := enc.Encode(o.NumReferences); err != nil {
 		return nil, fmt.Errorf("failed to encode num references: %w", err)

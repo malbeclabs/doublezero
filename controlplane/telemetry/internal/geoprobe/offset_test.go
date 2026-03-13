@@ -12,6 +12,7 @@ func TestLocationOffset_MarshalUnmarshal(t *testing.T) {
 	// Create a test offset with Amsterdam coordinates (from RFC16)
 	offset := &LocationOffset{
 		Signature:       [64]byte{1, 2, 3, 4, 5},
+		Version:         LocationOffsetVersion,
 		AuthorityPubkey: [32]byte{10, 11, 12, 13, 14},
 		SenderPubkey:    [32]byte{20, 21, 22, 23, 24},
 		MeasurementSlot: 123456789,
@@ -19,6 +20,7 @@ func TestLocationOffset_MarshalUnmarshal(t *testing.T) {
 		Lat:             52.3676, // Amsterdam
 		Lng:             4.9041,
 		RttNs:           12500000, // 12.5ms
+		TargetIP:        [4]byte{10, 0, 0, 1},
 		NumReferences:   0,
 		References:      nil,
 	}
@@ -35,6 +37,7 @@ func TestLocationOffset_MarshalUnmarshal(t *testing.T) {
 
 	// Verify all fields match
 	require.Equal(t, offset.Signature, decoded.Signature)
+	require.Equal(t, offset.Version, decoded.Version)
 	require.Equal(t, offset.AuthorityPubkey, decoded.AuthorityPubkey)
 	require.Equal(t, offset.SenderPubkey, decoded.SenderPubkey)
 	require.Equal(t, offset.MeasurementSlot, decoded.MeasurementSlot)
@@ -42,6 +45,7 @@ func TestLocationOffset_MarshalUnmarshal(t *testing.T) {
 	require.Equal(t, offset.Lng, decoded.Lng)
 	require.Equal(t, offset.MeasuredRttNs, decoded.MeasuredRttNs)
 	require.Equal(t, offset.RttNs, decoded.RttNs)
+	require.Equal(t, offset.TargetIP, decoded.TargetIP)
 	require.Equal(t, offset.NumReferences, decoded.NumReferences)
 	require.Len(t, decoded.References, 0)
 }
@@ -52,12 +56,14 @@ func TestLocationOffset_WithReferences(t *testing.T) {
 	// Create a DZD offset (no references)
 	dzdOffset := &LocationOffset{
 		Signature:       [64]byte{1, 2, 3},
+		Version:         LocationOffsetVersion,
 		AuthorityPubkey: [32]byte{10, 11, 12},
 		MeasurementSlot: 100,
 		MeasuredRttNs:   800000,
 		Lat:             50.1109, // Frankfurt
 		Lng:             8.6821,
 		RttNs:           800000,
+		TargetIP:        [4]byte{10, 0, 0, 1},
 		NumReferences:   0,
 		References:      nil,
 	}
@@ -65,12 +71,14 @@ func TestLocationOffset_WithReferences(t *testing.T) {
 	// Create a Probe offset that references the DZD offset
 	probeOffset := &LocationOffset{
 		Signature:       [64]byte{4, 5, 6},
+		Version:         LocationOffsetVersion,
 		AuthorityPubkey: [32]byte{20, 21, 22},
 		MeasurementSlot: 101,
 		MeasuredRttNs:   12500000, // 12.5ms probe-to-target
 		Lat:             50.1109,  // Copied from DZD
 		Lng:             8.6821,
 		RttNs:           13300000, // 800000 + 12500000
+		TargetIP:        [4]byte{10, 0, 0, 2},
 		NumReferences:   1,
 		References:      []LocationOffset{*dzdOffset},
 	}
@@ -87,6 +95,7 @@ func TestLocationOffset_WithReferences(t *testing.T) {
 
 	// Verify top-level fields
 	require.Equal(t, probeOffset.Signature, decoded.Signature)
+	require.Equal(t, probeOffset.Version, decoded.Version)
 	require.Equal(t, probeOffset.AuthorityPubkey, decoded.AuthorityPubkey)
 	require.Equal(t, probeOffset.SenderPubkey, decoded.SenderPubkey)
 	require.Equal(t, probeOffset.MeasurementSlot, decoded.MeasurementSlot)
@@ -94,16 +103,19 @@ func TestLocationOffset_WithReferences(t *testing.T) {
 	require.Equal(t, probeOffset.Lng, decoded.Lng)
 	require.Equal(t, probeOffset.MeasuredRttNs, decoded.MeasuredRttNs)
 	require.Equal(t, probeOffset.RttNs, decoded.RttNs)
+	require.Equal(t, probeOffset.TargetIP, decoded.TargetIP)
 	require.Equal(t, probeOffset.NumReferences, decoded.NumReferences)
 
 	// Verify reference chain
 	require.Len(t, decoded.References, 1)
 	require.Equal(t, dzdOffset.Signature, decoded.References[0].Signature)
+	require.Equal(t, dzdOffset.Version, decoded.References[0].Version)
 	require.Equal(t, dzdOffset.AuthorityPubkey, decoded.References[0].AuthorityPubkey)
 	require.Equal(t, dzdOffset.SenderPubkey, decoded.References[0].SenderPubkey)
 	require.Equal(t, dzdOffset.MeasurementSlot, decoded.References[0].MeasurementSlot)
 	require.Equal(t, dzdOffset.Lat, decoded.References[0].Lat)
 	require.Equal(t, dzdOffset.Lng, decoded.References[0].Lng)
+	require.Equal(t, dzdOffset.TargetIP, decoded.References[0].TargetIP)
 	require.Equal(t, dzdOffset.NumReferences, decoded.References[0].NumReferences)
 }
 
@@ -113,6 +125,7 @@ func TestLocationOffset_EmptyReferences(t *testing.T) {
 	// DZD-generated offset with no references
 	offset := &LocationOffset{
 		Signature:       [64]byte{},
+		Version:         LocationOffsetVersion,
 		AuthorityPubkey: [32]byte{},
 		MeasurementSlot: 1,
 		MeasuredRttNs:   1000,
@@ -141,12 +154,14 @@ func TestLocationOffset_GetSigningBytes(t *testing.T) {
 
 	offset := &LocationOffset{
 		Signature:       [64]byte{99, 99, 99}, // Should be excluded from signing bytes
+		Version:         LocationOffsetVersion,
 		AuthorityPubkey: [32]byte{1, 2, 3},
 		MeasurementSlot: 42,
 		MeasuredRttNs:   1000,
 		Lat:             10.5,
 		Lng:             20.5,
 		RttNs:           2000,
+		TargetIP:        [4]byte{10, 0, 0, 1},
 		NumReferences:   0,
 		References:      nil,
 	}
@@ -170,24 +185,28 @@ func TestLocationOffset_GetSigningBytes_WithReferences(t *testing.T) {
 
 	dzdOffset := &LocationOffset{
 		Signature:       [64]byte{1},
+		Version:         LocationOffsetVersion,
 		AuthorityPubkey: [32]byte{1},
 		MeasurementSlot: 100,
 		MeasuredRttNs:   1000,
 		Lat:             1.0,
 		Lng:             2.0,
 		RttNs:           1000,
+		TargetIP:        [4]byte{10, 0, 0, 1},
 		NumReferences:   0,
 		References:      nil,
 	}
 
 	probeOffset := &LocationOffset{
 		Signature:       [64]byte{2},
+		Version:         LocationOffsetVersion,
 		AuthorityPubkey: [32]byte{2},
 		MeasurementSlot: 101,
 		MeasuredRttNs:   2000,
 		Lat:             1.0,
 		Lng:             2.0,
 		RttNs:           3000,
+		TargetIP:        [4]byte{10, 0, 0, 2},
 		NumReferences:   1,
 		References:      []LocationOffset{*dzdOffset},
 	}
@@ -210,6 +229,7 @@ func TestLocationOffset_UnmarshalError_TruncatedData(t *testing.T) {
 
 	offset := &LocationOffset{
 		Signature:       [64]byte{1, 2, 3},
+		Version:         LocationOffsetVersion,
 		AuthorityPubkey: [32]byte{4, 5, 6},
 		MeasurementSlot: 123,
 		MeasuredRttNs:   1000,
@@ -230,12 +250,41 @@ func TestLocationOffset_UnmarshalError_TruncatedData(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestLocationOffset_UnsupportedVersion(t *testing.T) {
+	t.Parallel()
+
+	offset := &LocationOffset{
+		Signature:       [64]byte{1, 2, 3},
+		Version:         LocationOffsetVersion,
+		AuthorityPubkey: [32]byte{4, 5, 6},
+		MeasurementSlot: 123,
+		MeasuredRttNs:   1000,
+		Lat:             1.0,
+		Lng:             2.0,
+		RttNs:           2000,
+		NumReferences:   0,
+		References:      nil,
+	}
+
+	data, err := offset.Marshal()
+	require.NoError(t, err)
+
+	// Corrupt the version byte (byte index 64, right after the 64-byte signature)
+	data[64] = 99
+
+	decoded := &LocationOffset{}
+	err = decoded.Unmarshal(data)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported location offset version")
+}
+
 func TestLocationOffset_Size(t *testing.T) {
 	t.Parallel()
 
 	// Minimal offset
 	offset := &LocationOffset{
 		Signature:       [64]byte{},
+		Version:         LocationOffsetVersion,
 		AuthorityPubkey: [32]byte{},
 		MeasurementSlot: 0,
 		MeasuredRttNs:   0,
@@ -250,8 +299,8 @@ func TestLocationOffset_Size(t *testing.T) {
 	require.NoError(t, err)
 	require.Greater(t, size, 0)
 
-	// Size should be: 64 (sig) + 32 (authority) + 32 (sender) + 8 (slot) + 8 (lat) + 8 (lng) + 8 (measured) + 8 (rtt) + 1 (numref) = 169 bytes
-	require.Equal(t, 169, size)
+	// Size should be: 64 (sig) + 1 (version) + 32 (authority) + 32 (sender) + 8 (slot) + 8 (lat) + 8 (lng) + 8 (measured) + 8 (rtt) + 4 (targetip) + 1 (numref) = 174 bytes
+	require.Equal(t, 174, size)
 }
 
 func TestLocationOffset_ReferenceDepthLimit(t *testing.T) {
@@ -260,6 +309,7 @@ func TestLocationOffset_ReferenceDepthLimit(t *testing.T) {
 	// Create a chain that exceeds MaxReferenceDepth (2)
 	current := &LocationOffset{
 		Signature:       [64]byte{0},
+		Version:         LocationOffsetVersion,
 		AuthorityPubkey: [32]byte{0},
 		MeasurementSlot: 0,
 		MeasuredRttNs:   100,
@@ -274,6 +324,7 @@ func TestLocationOffset_ReferenceDepthLimit(t *testing.T) {
 	for i := 1; i <= 3; i++ {
 		parent := &LocationOffset{
 			Signature:       [64]byte{byte(i)},
+			Version:         LocationOffsetVersion,
 			AuthorityPubkey: [32]byte{byte(i)},
 			MeasurementSlot: uint64(i),
 			MeasuredRttNs:   uint64((i + 1) * 100),
@@ -309,6 +360,7 @@ func TestLocationOffset_TotalReferencesLimit(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		leafOffsets[i] = LocationOffset{
 			Signature:       [64]byte{byte(i)},
+			Version:         LocationOffsetVersion,
 			AuthorityPubkey: [32]byte{byte(i)},
 			MeasurementSlot: uint64(i),
 			MeasuredRttNs:   100,
@@ -325,6 +377,7 @@ func TestLocationOffset_TotalReferencesLimit(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		midOffsets[i] = LocationOffset{
 			Signature:       [64]byte{byte(100 + i)},
+			Version:         LocationOffsetVersion,
 			AuthorityPubkey: [32]byte{byte(100 + i)},
 			MeasurementSlot: uint64(100 + i),
 			MeasuredRttNs:   200,
@@ -339,6 +392,7 @@ func TestLocationOffset_TotalReferencesLimit(t *testing.T) {
 	// Root node referencing all 3 middle nodes (total refs = 3 + 3 = 6, exceeds limit of 5)
 	rootOffset := &LocationOffset{
 		Signature:       [64]byte{200},
+		Version:         LocationOffsetVersion,
 		AuthorityPubkey: [32]byte{200},
 		MeasurementSlot: 200,
 		MeasuredRttNs:   300,
@@ -367,6 +421,7 @@ func TestLocationOffset_ValidReferenceLimits(t *testing.T) {
 	// Create a chain at exactly the depth limit (2)
 	current := &LocationOffset{
 		Signature:       [64]byte{0},
+		Version:         LocationOffsetVersion,
 		AuthorityPubkey: [32]byte{0},
 		MeasurementSlot: 0,
 		MeasuredRttNs:   100,
@@ -381,6 +436,7 @@ func TestLocationOffset_ValidReferenceLimits(t *testing.T) {
 	for i := 1; i <= 2; i++ {
 		parent := &LocationOffset{
 			Signature:       [64]byte{byte(i)},
+			Version:         LocationOffsetVersion,
 			AuthorityPubkey: [32]byte{byte(i)},
 			MeasurementSlot: uint64(i),
 			MeasuredRttNs:   uint64((i + 1) * 100),

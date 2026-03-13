@@ -5,8 +5,8 @@ use crate::{
     resource::ResourceType,
     serializer::{try_acc_close, try_acc_write},
     state::{
-        device::Device, globalstate::GlobalState, permission::permission_flags,
-        resource_extension::ResourceExtensionBorrowed, tenant::Tenant, user::*,
+        device::Device, globalstate::GlobalState, permission::permission_flags, tenant::Tenant,
+        user::*,
     },
 };
 use borsh::BorshSerialize;

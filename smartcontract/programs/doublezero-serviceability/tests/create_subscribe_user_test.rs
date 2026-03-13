@@ -412,6 +412,7 @@ async fn test_create_subscribe_user_publisher() {
             publisher: true,
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -477,6 +478,7 @@ async fn test_create_subscribe_user_subscriber() {
             publisher: false,
             subscriber: true,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -538,6 +540,7 @@ async fn test_create_subscribe_user_publisher_and_subscriber() {
             publisher: true,
             subscriber: true,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -643,6 +646,7 @@ async fn test_create_subscribe_user_inactive_mgroup_fails() {
             publisher: false,
             subscriber: true,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

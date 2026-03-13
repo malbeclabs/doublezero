@@ -13,7 +13,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const defaultReadTimeout = 1 * time.Second
+const (
+	defaultReadTimeout = 1 * time.Second
+	stalePairTimeout   = 5 * time.Second
+)
 
 // senderState fields are only accessed from the single-goroutine epoll
 // loop in Run(). No mutex needed.
@@ -213,6 +216,11 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 					}
 					state.pairCount = 0
 				}
+			}
+
+			// If probe 1 never arrived, reset so the next probe starts a fresh pair.
+			if state.pairCount == 1 && !state.lastTxTime.IsZero() && now.Sub(state.lastTxTime) > stalePairTimeout {
+				state.pairCount = 0
 			}
 
 			// Pair integrity: both probes must come from the same source IP.

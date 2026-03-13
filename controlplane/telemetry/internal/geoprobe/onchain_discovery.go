@@ -130,7 +130,7 @@ func (d *ParentDiscovery) discoverAndSend(ctx context.Context, ch chan<- ParentU
 	select {
 	case ch <- *update:
 	default:
-		d.log.Debug("Parent update channel full, skipping update")
+		d.log.Warn("Parent update channel full, skipping update")
 	}
 }
 

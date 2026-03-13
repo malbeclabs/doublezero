@@ -7,12 +7,13 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
-
 - E2E Tests
   - Add geoprobe E2E test (`TestE2E_GeoprobeDiscovery`) that exercises the full geolocation flow: deploy geolocation program, create probe onchain, start geoprobe-agent container, and verify the telemetry-agent discovers and measures the probe via TWAMP
   - Add geoprobe Docker image, geolocation program build/deploy support, and manager geolocation CLI configuration to the E2E devnet infrastructure
 - Telemetry
   - Add onchain parent DZD discovery to geoprobe-agent: periodically queries the Geolocation program for this probe's parent devices and resolves their metrics publisher keys from Serviceability, replacing the need for static `--parent-dzd` CLI flags. Static parents from CLI are merged with onchain parents, with onchain taking precedence for duplicate keys.
+  - Optimize inbound probe-measured RTT accuracy: pre-sign both TWAMP probes before network I/O so probe 1 fires immediately after reply 0 with no signing delay, measure Tx-to-Rx interval (reply 0 Tx → probe 1 Rx) instead of Rx-to-Rx to exclude processing overhead on both sides, use kernel `SO_TIMESTAMPNS` receive timestamps on the reflector, and add a 15ms busy-poll window on the sender to avoid scheduler wakeup latency
+  - Optimize outbound probe RTT accuracy: send a staggered warmup probe on a separate socket 2ms before the measurement probe to wake the reflector's thread, then take the min RTT of both
 
 ## [v0.11.0](https://github.com/malbeclabs/doublezero/compare/client/v0.10.0...client/v0.11.0) - 2026-03-12
 

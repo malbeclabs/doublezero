@@ -139,42 +139,34 @@ func main() {
 }
 
 // probePair sends two probes in quick succession and logs the combined result.
-// Probe 0 is sent, its reply is received, then probe 1 is sent immediately
-// (before verifying reply 0). Reply 1's SinceLastRxNs gives the probe-measured RTT.
+// Both probes are pre-signed before any network I/O so that probe 1 fires
+// immediately after reply 0 arrives. Reply 1's SinceLastRxNs gives the
+// probe-measured RTT.
 func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq uint32) {
-	// Probe 0.
-	probeCtx0, cancel0 := context.WithTimeout(ctx, *timeout)
-	rtt0, reply0, err0 := sender.Probe(probeCtx0)
-	cancel0()
-	if err0 != nil {
-		logProbeError(log, seq, err0)
-		return
-	}
+	probeCtx, cancel := context.WithTimeout(ctx, *timeout)
+	defer cancel()
 
-	// Probe 1: sent immediately after receiving reply 0 (before verifying it).
-	probeCtx1, cancel1 := context.WithTimeout(ctx, *timeout)
-	rtt1, reply1, err1 := sender.Probe(probeCtx1)
-	cancel1()
-	if err1 != nil {
-		logProbeError(log, seq, err1)
+	result, err := sender.ProbePair(probeCtx)
+	if err != nil {
+		logProbeError(log, seq, err)
 		return
 	}
 
 	// Verify both replies (defense-in-depth: LinuxSender already verifies,
 	// but we check independently for audit logging).
-	reply0ProbeSigValid := reply0.Probe.Verify()
-	reply0SigValid := reply0.Verify()
-	reply1ProbeSigValid := reply1.Probe.Verify()
-	reply1SigValid := reply1.Verify()
+	reply0ProbeSigValid := result.Reply0.Probe.Verify()
+	reply0SigValid := result.Reply0.Verify()
+	reply1ProbeSigValid := result.Reply1.Probe.Verify()
+	reply1SigValid := result.Reply1.Verify()
 
-	// Probe Measured RTT: inter-arrival time at the reflector (from reply 1).
-	probeMeasuredRttNs := reply1.SinceLastRxNs
+	// Probe Measured RTT: Tx-to-Rx interval at the reflector (from reply 1).
+	probeMeasuredRttNs := result.Reply1.SinceLastRxNs
 
 	// Target Measured RTT: lower of the two sender-measured RTTs.
-	targetMeasuredRtt := min(rtt0, rtt1)
+	targetMeasuredRtt := min(result.RTT0, result.RTT1)
 
 	logPairedResult(log, seq, probeMeasuredRttNs, targetMeasuredRtt,
-		reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid, reply1)
+		reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid, result.Reply1)
 }
 
 func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid bool, reply *signed.ReplyPacket) {

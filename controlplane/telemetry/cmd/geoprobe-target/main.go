@@ -396,6 +396,7 @@ func formatTextOutput(output OffsetOutput) string {
 	sb.WriteString(fmt.Sprintf("  Sender:    %s\n", output.SenderPubkey))
 	sb.WriteString(fmt.Sprintf("  Reference Point: %s\n", output.ReferencePoint.Formatted))
 	sb.WriteString(fmt.Sprintf("  RTT to Target: %.2fms\n", output.RttMs))
+	sb.WriteString(fmt.Sprintf("  Measured RTT:  %.2fms\n", output.MeasuredRttMs))
 	sb.WriteString(fmt.Sprintf("  Max Distance: %.0f miles (%.0f km)\n", output.MaxDistanceMiles, output.MaxDistanceKm))
 	sb.WriteString(fmt.Sprintf("  Measurement Slot: %d\n", output.MeasurementSlot))
 	sb.WriteString("\n")

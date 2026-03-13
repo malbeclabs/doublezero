@@ -417,6 +417,78 @@ func TestReflector_Linux(t *testing.T) {
 		assert.Error(t, err, "second probe from different IP should be rejected")
 	})
 
+	t.Run("stale pair recovery after lost probe 1", func(t *testing.T) {
+		t.Parallel()
+
+		senderPub, senderSigner := newTestSigner(t)
+		_, reflectorSigner := newTestSigner(t)
+
+		var senderPubKey [32]byte
+		copy(senderPubKey[:], senderPub)
+
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [32]byte{}, [][32]byte{senderPubKey}, 0)
+		require.NoError(t, err)
+		defer reflector.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		go func() {
+			_ = reflector.Run(ctx)
+		}()
+
+		time.Sleep(10 * time.Millisecond)
+
+		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
+		require.NoError(t, err)
+		defer conn.Close()
+
+		replyBuf := make([]byte, signed.MaxReplyPacketSize)
+		var buf [signed.ProbePacketSize]byte
+
+		// Probe 0: starts a pair (pairCount 0 → 1).
+		probe0 := signed.NewProbePacket(1, senderSigner)
+		require.NoError(t, probe0.Marshal(buf[:]))
+		_, err = conn.Write(buf[:])
+		require.NoError(t, err)
+
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+		n, err := conn.Read(replyBuf)
+		require.NoError(t, err, "probe 0 should receive reply")
+		reply0, err := signed.UnmarshalReplyPacket(replyBuf[:n])
+		require.NoError(t, err)
+		assert.Equal(t, uint64(0), reply0.SinceLastRxNs, "probe 0 should have zero SinceLastRxNs")
+
+		// Simulate probe 1 loss: wait for stalePairTimeout to expire.
+		time.Sleep(6 * time.Second)
+
+		// Next probe 0: should be treated as probe 0 (not misidentified as probe 1).
+		nextProbe0 := signed.NewProbePacket(10, senderSigner)
+		require.NoError(t, nextProbe0.Marshal(buf[:]))
+		_, err = conn.Write(buf[:])
+		require.NoError(t, err)
+
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+		n, err = conn.Read(replyBuf)
+		require.NoError(t, err, "next probe 0 should receive reply")
+		nextReply0, err := signed.UnmarshalReplyPacket(replyBuf[:n])
+		require.NoError(t, err)
+		assert.Equal(t, uint64(0), nextReply0.SinceLastRxNs, "after stale reset, probe 0 should have zero SinceLastRxNs")
+
+		// Probe 1: pair should work correctly after recovery.
+		nextProbe1 := signed.NewProbePacket(11, senderSigner)
+		require.NoError(t, nextProbe1.Marshal(buf[:]))
+		_, err = conn.Write(buf[:])
+		require.NoError(t, err)
+
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+		n, err = conn.Read(replyBuf)
+		require.NoError(t, err, "probe 1 should receive reply")
+		nextReply1, err := signed.UnmarshalReplyPacket(replyBuf[:n])
+		require.NoError(t, err)
+		assert.Greater(t, nextReply1.SinceLastRxNs, uint64(0), "probe 1 should have non-zero SinceLastRxNs after recovery")
+	})
+
 	t.Run("pair-based rate limiting", func(t *testing.T) {
 		t.Parallel()
 

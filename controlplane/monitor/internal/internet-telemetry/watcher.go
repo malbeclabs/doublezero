@@ -99,7 +99,8 @@ func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 	epoch := epochInfo.Epoch
 
 	// prune stats for old epochs if we rolled over
-	if w.epochSet && w.lastEpoch != epoch {
+	epochJustRolledOver := w.epochSet && w.lastEpoch != epoch
+	if epochJustRolledOver {
 		w.mu.Lock()
 		prefix := fmt.Sprintf("epoch=%d, ", epoch)
 		for k := range w.stats {
@@ -158,8 +159,13 @@ func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 				account, err := w.cfg.Telemetry.GetInternetLatencySamples(ctx, dataProvider, originPK, targetPK, w.cfg.InternetLatencyCollectorPK, epoch)
 				if err != nil {
 					if errors.Is(err, telemetry.ErrAccountNotFound) {
-						w.log.Debug("internet latency samples account not found", "error", err, "circuit_code", circuit.Code, "data_provider", dataProvider)
-						w.cfg.Metrics.AccountNotFound.WithLabelValues(dataProvider, circuit.Code).Add(1)
+						// Suppress the metric on the tick where the epoch just rolled over,
+						// since accounts for the new epoch won't exist yet until the
+						// collector creates them.
+						if !epochJustRolledOver {
+							w.cfg.Metrics.AccountNotFound.WithLabelValues(dataProvider, circuit.Code).Add(1)
+						}
+						w.log.Debug("internet latency samples account not found", "error", err, "circuit_code", circuit.Code, "data_provider", dataProvider, "epoch_just_rolled_over", epochJustRolledOver)
 						return
 					}
 					w.cfg.Metrics.Errors.WithLabelValues(MetricErrorTypeGetLatencySamples).Inc()

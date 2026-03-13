@@ -406,6 +406,45 @@ func TestWatcher_Tick_AccountNotFound_IncrementsAccountNotFoundMetric(t *testing
 	require.Equal(t, 1.0, testutil.ToFloat64(cfg.Metrics.AccountNotFound.WithLabelValues("ripeatlas", "A → B")))
 }
 
+func TestWatcher_Tick_AccountNotFound_SuppressedOnEpochRollover(t *testing.T) {
+	t.Parallel()
+
+	cfg, _ := baseCfg(t)
+
+	a := solana.NewWallet().PublicKey()
+	b := solana.NewWallet().PublicKey()
+
+	var epoch uint64 = 5
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: atomic.LoadUint64(&epoch)}, nil
+		}}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
+			return makeProgramData("A", "B", a, b), nil
+		}}
+	cfg.Telemetry = &mockTelemetryProgramClient{
+		GetInternetLatencySamplesFunc: func(ctx context.Context, provider string, _, _, _ solana.PublicKey, _ uint64) (*telemetry.InternetLatencySamples, error) {
+			return nil, telemetry.ErrAccountNotFound
+		}}
+
+	w, err := NewInternetTelemetryWatcher(cfg)
+	require.NoError(t, err)
+
+	// First tick at epoch 5: metric should increment (not a rollover).
+	require.NoError(t, w.Tick(context.Background()))
+	require.Equal(t, 1.0, testutil.ToFloat64(cfg.Metrics.AccountNotFound.WithLabelValues("ripeatlas", "A → B")))
+
+	// Epoch rolls over to 6: metric should NOT increment.
+	atomic.StoreUint64(&epoch, 6)
+	require.NoError(t, w.Tick(context.Background()))
+	require.Equal(t, 1.0, testutil.ToFloat64(cfg.Metrics.AccountNotFound.WithLabelValues("ripeatlas", "A → B")))
+
+	// Second tick at epoch 6 (no longer a rollover): metric should increment again.
+	require.NoError(t, w.Tick(context.Background()))
+	require.Equal(t, 2.0, testutil.ToFloat64(cfg.Metrics.AccountNotFound.WithLabelValues("ripeatlas", "A → B")))
+}
+
 func TestMonitor_InternetTelemetry_Watcher_Tick_DeletesMetrics_WhenCircuitDisappears(t *testing.T) {
 	t.Parallel()
 

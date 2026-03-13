@@ -18,7 +18,7 @@ struct App {
     command: Command,
     /// DZ env (testnet, devnet, or mainnet-beta)
     #[arg(short, long, value_name = "ENV", global = true)]
-    env: Option<Environment>,
+    env: Option<String>,
     /// DZ ledger RPC URL
     #[arg(long, value_name = "RPC_URL", global = true)]
     url: Option<String>,
@@ -48,7 +48,7 @@ fn main() -> eyre::Result<()> {
     }
 
     let (url, geo_program_id, svc_program_id) = if let Some(env) = app.env {
-        let config = env.config()?;
+        let config = env.parse::<Environment>()?.config()?;
         (
             Some(config.ledger_public_rpc_url),
             Some(config.geolocation_program_id.to_string()),

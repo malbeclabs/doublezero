@@ -236,7 +236,7 @@ func getExchangePK(t *testing.T, dn *devnet.Devnet, exchangeCode string) string 
 
 // createGeoprobeOnchain creates a geoprobe account via the geolocation CLI on the manager.
 // Returns the geoprobe account PK (base58).
-func createGeoprobeOnchain(t *testing.T, dn *devnet.Devnet, code, exchangePK, publicIP, metricsPublisherPK string) string {
+func createGeoprobeOnchain(t *testing.T, dn *devnet.Devnet, code, exchangePK, publicIP, signingKeypair string) string {
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
 		"doublezero-geolocation", "probe", "create",
@@ -244,7 +244,7 @@ func createGeoprobeOnchain(t *testing.T, dn *devnet.Devnet, code, exchangePK, pu
 		"--exchange", exchangePK,
 		"--public-ip", publicIP,
 		"--port", "8923",
-		"--metrics-publisher", metricsPublisherPK,
+		"--signing-keypair", signingKeypair,
 	})
 	require.NoError(t, err, "probe create failed: %s", string(output))
 

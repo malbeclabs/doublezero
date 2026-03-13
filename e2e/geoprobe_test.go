@@ -209,7 +209,7 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 
 	// Generate keypair and start agent inside the container.
 	log.Debug("==> Starting geoprobe agent")
-	startGeoprobeAgent(t, dn, geoprobeContainerID, geoprobeAccountPK, dz1DevicePK, dz1TelemetryKeypairPK.String())
+	startGeoprobeAgent(t, dn, geoprobeContainerID, geoprobeAccountPK, dn.Manager.GeolocationProgramID, dn.Manager.ServiceabilityProgramID)
 	log.Debug("==> Geoprobe agent started")
 
 	// Wait for dz1's telemetry agent to discover the geoprobe and successfully probe it.
@@ -349,7 +349,7 @@ func startGeoprobeContainer(t *testing.T, log *slog.Logger, dn *devnet.Devnet, c
 }
 
 // startGeoprobeAgent generates a keypair inside the container and starts the geoprobe-agent.
-func startGeoprobeAgent(t *testing.T, dn *devnet.Devnet, containerID, geoprobeAccountPK, parentDevicePK, metricsPublisherPK string) {
+func startGeoprobeAgent(t *testing.T, dn *devnet.Devnet, containerID, geoprobeAccountPK, geolocationProgramID, serviceabilityProgramID string) {
 	t.Helper()
 
 	// Generate a keypair inside the container.
@@ -364,15 +364,16 @@ func startGeoprobeAgent(t *testing.T, dn *devnet.Devnet, containerID, geoprobeAc
 			"-ledger-rpc-url %s "+
 			"-keypair /tmp/geoprobe-keypair.json "+
 			"-geoprobe-pubkey %s "+
-			"-additional-parent %s,%s "+
+			"-geolocation-program-id %s "+
+			"-serviceability-program-id %s "+
 			"-twamp-listen-port 8925 "+
 			"-udp-listen-port 8923 "+
 			"-verbose "+
 			"> /tmp/geoprobe-agent.log 2>&1 &",
 		dn.Ledger.InternalRPCURL,
 		geoprobeAccountPK,
-		parentDevicePK,
-		metricsPublisherPK,
+		geolocationProgramID,
+		serviceabilityProgramID,
 	)
 	_, err = docker.Exec(t.Context(), dockerClient, containerID, []string{"bash", "-c", cmd})
 	require.NoError(t, err)

@@ -15,6 +15,7 @@ const (
 	MaxWorkers          = 32
 	ProbesPerWorker     = 512
 	DefaultStaggerDelay = 100 * time.Millisecond
+	DefaultWarmupDelay  = 2 * time.Millisecond
 )
 
 type PingerConfig struct {
@@ -33,8 +34,9 @@ type Pinger struct {
 }
 
 type senderEntry struct {
-	addr   ProbeAddress
-	sender twamplight.Sender
+	addr         ProbeAddress
+	sender       twamplight.Sender
+	warmupSender twamplight.Sender
 }
 
 func NewPinger(cfg *PingerConfig) *Pinger {
@@ -77,9 +79,17 @@ func (p *Pinger) AddProbe(ctx context.Context, addr ProbeAddress) error {
 		return fmt.Errorf("failed to create TWAMP sender for %s: %w", addr.String(), err)
 	}
 
+	warmupSourceAddr := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
+	warmupSender, err := twamplight.NewSender(ctx, p.log, iface, warmupSourceAddr, resolvedAddr)
+	if err != nil {
+		sender.Close()
+		return fmt.Errorf("failed to create warmup TWAMP sender for %s: %w", addr.String(), err)
+	}
+
 	p.senders[key] = &senderEntry{
-		addr:   addr,
-		sender: sender,
+		addr:         addr,
+		sender:       sender,
+		warmupSender: warmupSender,
 	}
 
 	p.log.Info("Added probe", "probe", key, "resolved", resolvedAddr.String())
@@ -100,6 +110,9 @@ func (p *Pinger) RemoveProbe(addr ProbeAddress) error {
 
 	if err := entry.sender.Close(); err != nil {
 		p.log.Warn("Failed to close sender", "probe", key, "error", err)
+	}
+	if err := entry.warmupSender.Close(); err != nil {
+		p.log.Warn("Failed to close warmup sender", "probe", key, "error", err)
 	}
 
 	delete(p.senders, key)
@@ -125,17 +138,44 @@ func (p *Pinger) probeWorker(
 		}
 
 		probeCtx, cancel := context.WithTimeout(ctx, p.cfg.ProbeTimeout)
-		rtt, err := entry.sender.Probe(probeCtx)
+
+		// Send a warmup probe first to wake the reflector's thread, then
+		// send the measurement probe after a short delay. Both run on
+		// separate sockets so neither blocks the other. We take the min RTT.
+		type probeResult struct {
+			rtt time.Duration
+			err error
+		}
+		ch := make(chan probeResult, 2)
+		go func() {
+			rtt, err := entry.warmupSender.Probe(probeCtx)
+			ch <- probeResult{rtt, err}
+		}()
+		go func() {
+			time.Sleep(DefaultWarmupDelay)
+			rtt, err := entry.sender.Probe(probeCtx)
+			ch <- probeResult{rtt, err}
+		}()
+
+		var bestRTT time.Duration
+		ok := false
+		for range 2 {
+			r := <-ch
+			if r.err == nil && (!ok || r.rtt < bestRTT) {
+				bestRTT = r.rtt
+				ok = true
+			}
+		}
 		cancel()
 
-		if err == nil {
+		if ok {
 			resultsMu.Lock()
-			results[entry.addr] = uint64(rtt.Nanoseconds())
+			results[entry.addr] = uint64(bestRTT.Nanoseconds())
 			resultsMu.Unlock()
 
-			p.log.Debug("Probe succeeded", "probe", entry.addr.String(), "rtt", rtt)
+			p.log.Debug("Probe succeeded", "probe", entry.addr.String(), "rtt", bestRTT)
 		} else {
-			p.log.Debug("Probe failed", "probe", entry.addr.String(), "error", err)
+			p.log.Debug("Probe failed", "probe", entry.addr.String())
 		}
 
 		if i < len(batch)-1 {
@@ -209,6 +249,10 @@ func (p *Pinger) Close() error {
 	for key, entry := range p.senders {
 		if err := entry.sender.Close(); err != nil {
 			p.log.Warn("Failed to close sender", "probe", key, "error", err)
+			lastErr = err
+		}
+		if err := entry.warmupSender.Close(); err != nil {
+			p.log.Warn("Failed to close warmup sender", "probe", key, "error", err)
 			lastErr = err
 		}
 	}

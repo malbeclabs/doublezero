@@ -3,6 +3,7 @@ package geoprobe
 import (
 	"context"
 	"log/slog"
+	"net"
 	"os"
 	"sync"
 	"testing"
@@ -11,6 +12,21 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type mockSender struct {
+	rtt time.Duration
+	err error
+}
+
+func (m *mockSender) Probe(_ context.Context) (time.Duration, error) {
+	return m.rtt, m.err
+}
+
+func (m *mockSender) Close() error { return nil }
+
+func (m *mockSender) LocalAddr() *net.UDPAddr {
+	return &net.UDPAddr{IP: net.IPv4zero, Port: 0}
+}
 
 func TestNewPinger(t *testing.T) {
 	t.Parallel()
@@ -549,4 +565,84 @@ func TestPinger_MeasureAll_ContextCancellation(t *testing.T) {
 		"should stop promptly after context cancellation")
 	assert.Less(t, len(results), numProbes,
 		"should return partial results when context is cancelled")
+}
+
+func TestPinger_DualProbe_MinRTT(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:       logger,
+		ProbeTimeout: 1 * time.Second,
+		Interval:     1 * time.Second,
+		StaggerDelay: 1 * time.Millisecond,
+	}
+
+	pinger := NewPinger(cfg)
+
+	addr := ProbeAddress{Host: "192.0.2.1", Port: 8923, TWAMPPort: 8925}
+	pinger.senders[addr.String()] = &senderEntry{
+		addr:         addr,
+		sender:       &mockSender{rtt: 10 * time.Millisecond},
+		warmupSender: &mockSender{rtt: 50 * time.Millisecond},
+	}
+
+	results, err := pinger.MeasureAll(context.Background())
+	require.NoError(t, err)
+	require.Contains(t, results, addr)
+	assert.Equal(t, uint64((10 * time.Millisecond).Nanoseconds()), results[addr],
+		"should select the lower RTT from the two probes")
+}
+
+func TestPinger_DualProbe_OneFailsUsesOther(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:       logger,
+		ProbeTimeout: 1 * time.Second,
+		Interval:     1 * time.Second,
+		StaggerDelay: 1 * time.Millisecond,
+	}
+
+	pinger := NewPinger(cfg)
+
+	addr := ProbeAddress{Host: "192.0.2.1", Port: 8923, TWAMPPort: 8925}
+	pinger.senders[addr.String()] = &senderEntry{
+		addr:         addr,
+		sender:       &mockSender{err: context.DeadlineExceeded},
+		warmupSender: &mockSender{rtt: 20 * time.Millisecond},
+	}
+
+	results, err := pinger.MeasureAll(context.Background())
+	require.NoError(t, err)
+	require.Contains(t, results, addr)
+	assert.Equal(t, uint64((20 * time.Millisecond).Nanoseconds()), results[addr],
+		"should use the successful probe when the other fails")
+}
+
+func TestPinger_DualProbe_BothFail(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:       logger,
+		ProbeTimeout: 1 * time.Second,
+		Interval:     1 * time.Second,
+		StaggerDelay: 1 * time.Millisecond,
+	}
+
+	pinger := NewPinger(cfg)
+
+	addr := ProbeAddress{Host: "192.0.2.1", Port: 8923, TWAMPPort: 8925}
+	pinger.senders[addr.String()] = &senderEntry{
+		addr:         addr,
+		sender:       &mockSender{err: context.DeadlineExceeded},
+		warmupSender: &mockSender{err: context.DeadlineExceeded},
+	}
+
+	results, err := pinger.MeasureAll(context.Background())
+	require.NoError(t, err)
+	assert.NotContains(t, results, addr,
+		"should not have result when both probes fail")
 }

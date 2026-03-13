@@ -47,7 +47,6 @@ builds:
     env:
       - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc
       - BUILD_VERSION={{.Version}}
-      - CARGO_TARGET_DIR=target/mainnet-beta
 
 archives:
   - id: doublezero_archive

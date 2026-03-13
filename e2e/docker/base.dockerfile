@@ -231,6 +231,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 go build -o ${BIN_DIR}/doublezero-geoprobe-agent ./controlplane/telemetry/cmd/geoprobe-agent/
 
+# Build the geoprobe-target (golang)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -o ${BIN_DIR}/doublezero-geoprobe-target ./controlplane/telemetry/cmd/geoprobe-target/
+
 # Force COPY in later stages to always copy the binaries, even if they appear to be the same.
 ARG CACHE_BUSTER=1
 RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \

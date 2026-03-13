@@ -7,6 +7,24 @@ on:
 jobs:
   release:
     runs-on: ubuntu-24.04-16c-64gb
+    strategy:
+      matrix:
+        include:
+          - program: serviceability
+            directory: smartcontract/programs/doublezero-serviceability
+            build_features: ""
+            keypair_secret: DEVNET_SERVICEABILITY_PROGRAM_KEYPAIR
+            binary: doublezero_serviceability.so
+          - program: telemetry
+            directory: smartcontract/programs/doublezero-telemetry
+            build_features: "--features devnet"
+            keypair_secret: DEVNET_TELEMETRY_PROGRAM_KEYPAIR
+            binary: doublezero_telemetry.so
+          - program: geolocation
+            directory: smartcontract/programs/doublezero-geolocation
+            build_features: "--features devnet"
+            keypair_secret: DEVNET_GEOLOCATION_PROGRAM_KEYPAIR
+            binary: doublezero_geolocation.so
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.90.0
@@ -18,31 +36,20 @@ jobs:
       - name: Set up keypairs
         run: |
           echo "${{ secrets.DEVNET_KEYPAIR }}" > id.json
-          echo "${{ secrets.DEVNET_SERVICEABILITY_PROGRAM_KEYPAIR }}" > serviceability-program-keypair.json
-          echo "${{ secrets.DEVNET_TELEMETRY_PROGRAM_KEYPAIR }}" > telemetry-program-keypair.json
+          echo "${{ secrets[matrix.keypair_secret] }}" > program-keypair.json
       - name: Set solana devnet configuration
         run: |
           solana config set \
             --url https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16 \
             --ws wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig
           solana balance -k id.json
-      - name: Build serviceability program
+      - name: Build ${{ matrix.program }} program
         run: |
-          cargo build-sbf
-        working-directory: smartcontract/programs/doublezero-serviceability
-      - name: Deploy serviceability program to DevNet
-        run: |
-          solana program deploy \
-            --program-id serviceability-program-keypair.json \
-            -k id.json \
-            target/deploy/doublezero_serviceability.so
-      - name: Build telemetry program
-        run: |
-          cargo build-sbf --features devnet
-        working-directory: smartcontract/programs/doublezero-telemetry
-      - name: Deploy telemetry program to DevNet
+          cargo build-sbf ${{ matrix.build_features }}
+        working-directory: ${{ matrix.directory }}
+      - name: Deploy ${{ matrix.program }} program to DevNet
         run: |
           solana program deploy \
-            --program-id telemetry-program-keypair.json \
+            --program-id program-keypair.json \
             -k id.json \
-            target/deploy/doublezero_telemetry.so
+            target/deploy/${{ matrix.binary }}

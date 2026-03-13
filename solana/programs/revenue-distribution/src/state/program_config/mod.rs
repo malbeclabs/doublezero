@@ -152,14 +152,9 @@ impl ProgramConfig {
             .set_bit(Self::FLAG_IS_MIGRATED_BIT, should_migrate);
     }
 
+    // TODO: Remove this in the next zero-versioned minor release.
     pub fn checked_solana_validator_fee_parameters(&self) -> Option<SolanaValidatorFeeParameters> {
-        let params = self.distribution_parameters.solana_validator_fee_parameters;
-
-        if params == Default::default() {
-            None
-        } else {
-            Some(params)
-        }
+        Some(self.distribution_parameters.solana_validator_fee_parameters)
     }
 
     pub fn checked_distribute_rewards_relay_lamports(&self) -> Option<u32> {
@@ -264,9 +259,12 @@ mod tests {
         const FIXED_SOL_AMOUNT: u32 = 69;
 
         let mut program_config = ProgramConfig::default();
-        assert!(program_config
-            .checked_solana_validator_fee_parameters()
-            .is_none());
+        assert_eq!(
+            program_config
+                .checked_solana_validator_fee_parameters()
+                .unwrap(),
+            SolanaValidatorFeeParameters::default()
+        );
 
         program_config
             .distribution_parameters

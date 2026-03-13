@@ -24,7 +24,7 @@ async fn test_initialize_distribution() {
     let admin_signer = Keypair::new();
 
     let debt_accountant_signer = Keypair::new();
-    let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
+    let solana_validator_base_block_rewards_pct_fee = 0;
     let calculation_grace_period_minutes = 69;
     let initialization_grace_period_minutes = 420;
 

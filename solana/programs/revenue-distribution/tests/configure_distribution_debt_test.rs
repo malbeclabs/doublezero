@@ -2,14 +2,23 @@ mod common;
 
 //
 
+use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
-    instruction::{ProgramConfiguration, ProgramFlagConfiguration},
+    instruction::{
+        account::ConfigureDistributionDebtAccounts, ProgramConfiguration, ProgramFlagConfiguration,
+        RevenueDistributionInstructionData,
+    },
     state::{self, Distribution},
     types::{BurnRate, DoubleZeroEpoch, SolanaValidatorDebt, ValidatorFee},
+    ID,
 };
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
-use solana_sdk::signature::{Keypair, Signer};
+use solana_sdk::{
+    instruction::InstructionError,
+    signature::{Keypair, Signer},
+    transaction::TransactionError,
+};
 use svm_hash::{merkle::merkle_root_from_indexed_pod_leaves, sha2::Hash};
 
 //
@@ -53,14 +62,6 @@ async fn test_configure_distribution_debt() {
             [
                 ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
-                ProgramConfiguration::SolanaValidatorFeeParameters {
-                    base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
-                    priority_block_rewards_pct: 0,
-                    inflation_rewards_pct: 0,
-                    jito_tips_pct: 0,
-                    fixed_sol_amount: 0,
-                    _unused: Default::default(),
-                },
                 ProgramConfiguration::CommunityBurnRateParameters {
                     limit: cbr_limit,
                     dz_epochs_to_increasing: dz_epochs_to_increasing_cbr,
@@ -97,6 +98,56 @@ async fn test_configure_distribution_debt() {
     // Test inputs.
 
     let dz_epoch = DoubleZeroEpoch::new(1);
+
+    // Cannot configure distribution debt with zero fees.
+    let configure_distribution_debt_ix = try_build_instruction(
+        &ID,
+        ConfigureDistributionDebtAccounts::new(&debt_accountant_signer.pubkey(), dz_epoch),
+        &RevenueDistributionInstructionData::ConfigureDistributionDebt {
+            total_validators: 3,
+            total_debt: 69,
+            merkle_root: Hash::new_unique(),
+        },
+    )
+    .unwrap();
+
+    let (tx_err, program_logs) = test_setup
+        .unwrap_simulation_error(
+            &[configure_distribution_debt_ix],
+            &[&debt_accountant_signer],
+        )
+        .await;
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(3).unwrap(),
+        "Program log: Configuring distribution debt disallowed"
+    );
+
+    let dz_epoch = DoubleZeroEpoch::new(2);
+
+    test_setup
+        .configure_program(
+            &admin_signer,
+            [ProgramConfiguration::SolanaValidatorFeeParameters {
+                base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
+                priority_block_rewards_pct: 0,
+                inflation_rewards_pct: 0,
+                jito_tips_pct: 0,
+                fixed_sol_amount: 0,
+                _unused: Default::default(),
+            }],
+        )
+        .await
+        .unwrap()
+        .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(u32::from(calculation_grace_period_minutes) * 60)
+        .await
+        .unwrap();
 
     let debt_data = (0..3)
         .map(|i| SolanaValidatorDebt {

@@ -34,6 +34,7 @@ use crate::{
     state::{
         self, CommunityBurnRateParameters, ContributorRewards, Distribution, Journal,
         ProgramConfig, RecipientShare, RecipientShares, RelayParameters, SolanaValidatorDeposit,
+        SolanaValidatorFeeParameters,
     },
     types::{BurnRate, ByteFlags, RewardShare, SolanaValidatorDebt, ValidatorFee},
     DOUBLEZERO_MINT_KEY, ID,
@@ -727,11 +728,8 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
         })?;
 
     let solana_validator_fee_params = program_config
-        .checked_solana_validator_fee_parameters()
-        .ok_or_else(|| {
-            msg!("Solana validator fee parameters have not been configured yet");
-            ProgramError::InvalidAccountData
-        })?;
+        .distribution_parameters
+        .solana_validator_fee_parameters;
 
     // Calculate the community burn rate for this distribution based on the
     // configured parameters (initial rate, limit, slope, etc.)
@@ -962,6 +960,11 @@ fn try_configure_distribution_debt(
 
     distribution.try_require_unfinalized_debt_calculation()?;
     distribution.try_require_calculation_allowed()?;
+
+    if distribution.solana_validator_fee_parameters == SolanaValidatorFeeParameters::default() {
+        msg!("Configuring distribution debt disallowed");
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     msg!("Set total_solana_validators: {}", total_validators);
     distribution.total_solana_validators = total_validators;

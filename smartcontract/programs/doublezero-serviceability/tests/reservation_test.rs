@@ -12,6 +12,7 @@ use doublezero_serviceability::{
         *,
     },
     resource::ResourceType,
+    seeds::SEED_MULTICAST_GROUP,
     state::{
         accounttype::AccountType,
         device::*,
@@ -845,8 +846,10 @@ async fn setup_multicast_group(
     let gs = get_globalstate(banks_client, globalstate_pubkey).await;
     let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
 
+    let (index_pda_group1, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "group1");
+
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         banks_client,
         recent_blockhash,
         program_id,
@@ -861,6 +864,7 @@ async fn setup_multicast_group(
             AccountMeta::new(globalstate_pubkey, false),
         ],
         payer,
+        &[AccountMeta::new(index_pda_group1, false)],
     )
     .await;
 

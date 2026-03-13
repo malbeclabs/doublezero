@@ -13,6 +13,7 @@ use doublezero_serviceability::{
             create::MulticastGroupCreateArgs,
         },
     },
+    seeds::SEED_MULTICAST_GROUP,
     state::{
         accesspass::AccessPassType, accounttype::AccountType, multicastgroup::MulticastGroupStatus,
     },
@@ -63,7 +64,9 @@ async fn test_multicast_subscriber_allowlist() {
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
 
-    execute_transaction(
+    let (index_pda_test, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "test");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -78,6 +81,7 @@ async fn test_multicast_subscriber_allowlist() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+        &[AccountMeta::new(index_pda_test, false)],
     )
     .await;
 
@@ -274,7 +278,9 @@ async fn test_multicast_subscriber_allowlist_sentinel_authority() {
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
 
-    execute_transaction(
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "sentinel-test");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -289,6 +295,7 @@ async fn test_multicast_subscriber_allowlist_sentinel_authority() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+        &[AccountMeta::new(index_pda, false)],
     )
     .await;
 

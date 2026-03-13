@@ -8,6 +8,13 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain Programs
+  - Serviceability: add Index account for multicast group code uniqueness — PDA derived from entity type + lowercased code enforces unique codes onchain and enables O(1) code-to-pubkey lookup
+  - Serviceability: integrate Index lifecycle into multicast group instructions (create, update, delete, close account) so Index accounts are managed atomically
+  - Serviceability: add standalone CreateIndex/DeleteIndex instructions (variants 104/105) for migration backfill of existing multicast groups
+- SDK
+  - Rust: add O(1) multicast group lookup by code via Index PDA derivation, with fallback scan for pre-migration accounts
+  - Rust: add CreateIndex/DeleteIndex command wrappers for migration tooling
 - E2E Tests
   - Add geoprobe E2E test (`TestE2E_GeoprobeDiscovery`) that exercises the full geolocation flow: deploy geolocation program, create probe onchain, start geoprobe-agent container, and verify the telemetry-agent discovers and measures the probe via TWAMP
   - Add geoprobe Docker image, geolocation program build/deploy support, and manager geolocation CLI configuration to the E2E devnet infrastructure

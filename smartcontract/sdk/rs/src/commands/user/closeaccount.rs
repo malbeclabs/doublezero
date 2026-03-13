@@ -32,7 +32,7 @@ impl CloseAccountUserCommand {
     fn execute_inner(
         &self,
         client: &dyn DoubleZeroClient,
-        _quiet: bool,
+        quiet: bool,
     ) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
@@ -117,13 +117,16 @@ impl CloseAccountUserCommand {
             accounts.push(AccountMeta::new(user.tenant_pk, false));
         }
 
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-                dz_prefix_count,
-                multicast_publisher_count,
-            }),
-            accounts,
-        )
+        let instruction = DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+            dz_prefix_count,
+            multicast_publisher_count,
+        });
+
+        if quiet {
+            client.execute_authorized_transaction_quiet(instruction, accounts)
+        } else {
+            client.execute_authorized_transaction(instruction, accounts)
+        }
     }
 }
 

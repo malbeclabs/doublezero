@@ -22,18 +22,27 @@ impl BanUserCommand {
     fn execute_inner(
         &self,
         client: &dyn DoubleZeroClient,
-        _quiet: bool,
+        quiet: bool,
     ) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::BanUser(UserBanArgs {}),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-        )
+        let accounts = vec![
+            AccountMeta::new(self.pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ];
+
+        if quiet {
+            client.execute_authorized_transaction_quiet(
+                DoubleZeroInstruction::BanUser(UserBanArgs {}),
+                accounts,
+            )
+        } else {
+            client.execute_authorized_transaction(
+                DoubleZeroInstruction::BanUser(UserBanArgs {}),
+                accounts,
+            )
+        }
     }
 }

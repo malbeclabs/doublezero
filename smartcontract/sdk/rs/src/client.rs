@@ -530,6 +530,21 @@ impl DoubleZeroClient for DZClient {
         self.build_and_send(instruction, accounts, true)
     }
 
+    fn execute_authorized_transaction_quiet(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+    ) -> eyre::Result<Signature> {
+        let mut accounts = accounts;
+        if let Some(payer) = self.payer.as_ref() {
+            let (permission_pda, _) = get_permission_pda(&self.program_id, &payer.pubkey());
+            if self.client.get_account(&permission_pda).is_ok() {
+                accounts.push(AccountMeta::new_readonly(permission_pda, false));
+            }
+        }
+        self.execute_transaction_inner(instruction, accounts, true)
+    }
+
     fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>> {
         let account_type = account_type as u8;
         let filters = vec![RpcFilterType::Memcmp(Memcmp::new(

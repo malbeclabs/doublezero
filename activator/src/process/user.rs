@@ -1775,7 +1775,7 @@ mod tests {
             UserStatus::Deleting,
             |user_service, _, seq| {
                 user_service
-                    .expect_execute_authorized_transaction()
+                    .expect_execute_authorized_transaction_quiet()
                     .times(1)
                     .in_sequence(seq)
                     .with(
@@ -1799,7 +1799,7 @@ mod tests {
             UserStatus::PendingBan,
             |user_service, _, seq| {
                 user_service
-                    .expect_execute_authorized_transaction()
+                    .expect_execute_authorized_transaction_quiet()
                     .times(1)
                     .in_sequence(seq)
                     .with(
@@ -2853,7 +2853,7 @@ mod tests {
 
             // Stateless mode: use_onchain_deallocation=true
             client
-                .expect_execute_authorized_transaction()
+                .expect_execute_authorized_transaction_quiet()
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(
@@ -2959,7 +2959,7 @@ mod tests {
                 .returning(move |_| Ok(AccountData::User(user2.clone())));
 
             client
-                .expect_execute_authorized_transaction()
+                .expect_execute_authorized_transaction_quiet()
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(

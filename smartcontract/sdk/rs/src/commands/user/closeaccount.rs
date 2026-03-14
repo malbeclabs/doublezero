@@ -29,11 +29,7 @@ impl CloseAccountUserCommand {
         self.execute_inner(client, true)
     }
 
-    fn execute_inner(
-        &self,
-        client: &dyn DoubleZeroClient,
-        quiet: bool,
-    ) -> eyre::Result<Signature> {
+    fn execute_inner(&self, client: &dyn DoubleZeroClient, quiet: bool) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;

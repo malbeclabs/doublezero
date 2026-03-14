@@ -72,7 +72,9 @@ pub fn process_close_access_pass(
 
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+    if !globalstate.foundation_allowlist.contains(payer_account.key)
+        && globalstate.reservation_authority_pk != *payer_account.key
+    {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 

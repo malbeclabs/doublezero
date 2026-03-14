@@ -110,11 +110,13 @@ pub fn process_set_access_pass(
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = GlobalState::try_from(globalstate_account)?;
     if globalstate.sentinel_authority_pk != *payer_account.key
+        && globalstate.reservation_authority_pk != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
         msg!(
-            "sentinel_authority_pk: {} payer: {} foundation_allowlist: {:?}",
+            "sentinel_authority_pk: {} reservation_authority_pk: {} payer: {} foundation_allowlist: {:?}",
             globalstate.sentinel_authority_pk,
+            globalstate.reservation_authority_pk,
             payer_account.key,
             globalstate.foundation_allowlist
         );

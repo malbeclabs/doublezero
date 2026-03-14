@@ -202,7 +202,7 @@ pub fn process_subscribe_multicastgroup(
         user.client_ip
     };
 
-    let (accesspass_pda, _) = get_accesspass_pda(program_id, &ip_seed, payer_account.key);
+    let (accesspass_pda, _) = get_accesspass_pda(program_id, &ip_seed, &user.owner);
     assert_eq!(
         accesspass_account.key, &accesspass_pda,
         "Invalid AccessPass PDA",

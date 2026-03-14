@@ -823,7 +823,14 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		req.GetAgentDate(),
 	).Inc()
 
-	resp := &pb.ConfigResponse{Config: configStr}
+	// Compute hash for backward compatibility with older agents
+	h := sha256.Sum256([]byte(configStr))
+	configHash := hex.EncodeToString(h[:])
+
+	resp := &pb.ConfigResponse{
+		Config: configStr,
+		Hash:   configHash,
+	}
 	getConfigMsgSize.Observe(float64(proto.Size(resp)))
 	getConfigDuration.Observe(float64(time.Since(reqStart).Seconds()))
 	if c.clickhouse != nil {
@@ -833,34 +840,6 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		})
 	}
 	return resp, nil
-}
-
-// GetConfigHash returns only the hash of the configuration for change detection
-func (c *Controller) GetConfigHash(ctx context.Context, req *pb.ConfigRequest) (*pb.ConfigHashResponse, error) {
-	reqStart := time.Now()
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	configStr, device, err := c.processConfigRequest(req)
-	if err != nil {
-		return nil, err
-	}
-
-	getConfigHashOps.WithLabelValues(
-		req.GetPubkey(),
-		device.Code,
-		device.ContributorCode,
-		device.ExchangeCode,
-		device.LocationCode,
-		device.Status.String(),
-		req.GetAgentVersion(),
-		req.GetAgentCommit(),
-		req.GetAgentDate(),
-	).Inc()
-
-	hash := sha256.Sum256([]byte(configStr))
-	getConfigHashDuration.Observe(float64(time.Since(reqStart).Seconds()))
-	return &pb.ConfigHashResponse{Hash: hex.EncodeToString(hash[:])}, nil
 }
 
 // formatCIDR formats a 5-byte network block into CIDR notation

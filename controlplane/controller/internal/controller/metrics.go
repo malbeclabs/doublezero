@@ -43,13 +43,6 @@ var (
 		[]string{"pubkey", "device_code", "contributor_code", "exchange_code", "location_code", "device_status", "agent_version", "agent_commit", "agent_date"},
 	)
 
-	getConfigHashOps = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "controller_grpc_getconfighash_requests_total",
-		Help: "The total number of getconfighash requests",
-	},
-		[]string{"pubkey", "device_code", "contributor_code", "exchange_code", "location_code", "device_status", "agent_version", "agent_commit", "agent_date"},
-	)
-
 	getConfigMsgSize = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "controller_grpc_getconfig_msg_size_bytes",
 		Help:    "The size of GetConfig response messages in bytes",
@@ -59,12 +52,6 @@ var (
 	getConfigDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "controller_grpc_getconfig_duration_seconds",
 		Help:    "The duration of GetConfig requests in seconds",
-		Buckets: []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5},
-	})
-
-	getConfigHashDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:    "controller_grpc_getconfighash_duration_seconds",
-		Help:    "The duration of GetConfigHash requests in seconds",
 		Buckets: []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5},
 	})
 
@@ -114,10 +101,8 @@ func init() {
 	prometheus.MustRegister(getConfigRenderErrors)
 	prometheus.MustRegister(duplicateTunnelPairs)
 	prometheus.MustRegister(getConfigOps)
-	prometheus.MustRegister(getConfigHashOps)
 	prometheus.MustRegister(getConfigMsgSize)
 	prometheus.MustRegister(getConfigDuration)
-	prometheus.MustRegister(getConfigHashDuration)
 
 	// cache update metrics
 	prometheus.MustRegister(cacheUpdateErrors)

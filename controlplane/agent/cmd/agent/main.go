@@ -137,30 +137,27 @@ func main() {
 				agent.ErrorsBgpNeighbors.Inc()
 			}
 
-			shouldFetchAndApply := false
-
-			if cachedConfigHash == "" {
-				shouldFetchAndApply = true
-			} else if time.Since(configCacheTime) >= configCacheTimeout {
-				shouldFetchAndApply = true
-			} else {
-				hash, err := agent.GetConfigHashFromServer(ctx, dzclient, *localDevicePubkey, neighborIpMap, controllerTimeoutInSeconds, version, commit, date)
-				if err != nil {
-					log.Println("ERROR: GetConfigHashFromServer returned", err)
-					continue
-				}
-				if hash != cachedConfigHash {
-					shouldFetchAndApply = true
-				}
-			}
-
-			if !shouldFetchAndApply {
-				continue
-			}
-
+			// Fetch config every 5 seconds
 			configText, configHash, err := fetchConfigFromController(ctx, dzclient, *localDevicePubkey, neighborIpMap, verbose, version, commit, date)
 			if err != nil {
 				log.Println("ERROR: fetchConfigFromController returned", err)
+				continue
+			}
+
+			// Only apply if config changed or timeout elapsed
+			shouldApply := false
+			if cachedConfigHash == "" {
+				// First run
+				shouldApply = true
+			} else if configHash != cachedConfigHash {
+				// Config changed
+				shouldApply = true
+			} else if time.Since(configCacheTime) >= configCacheTimeout {
+				// Force apply after timeout
+				shouldApply = true
+			}
+
+			if !shouldApply {
 				continue
 			}
 

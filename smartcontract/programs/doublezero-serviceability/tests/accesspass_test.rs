@@ -1534,8 +1534,91 @@ async fn test_close_accesspass_reservation_authority() {
     )
     .await;
 
-    // Foundation creates an access pass
+    // Reservation authority creates an access pass (becomes owner)
     let client_ip = Ipv4Addr::new(100, 0, 0, 90);
+    let user_payer = Pubkey::new_unique();
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 10,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+        ],
+        &reservation,
+    )
+    .await;
+    assert!(
+        res.is_ok(),
+        "Reservation authority should be able to create access passes"
+    );
+
+    // Reservation authority closes its own access pass — should succeed
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CloseAccessPass(CloseAccessPassArgs {}),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &reservation,
+    )
+    .await;
+
+    assert!(
+        res.is_ok(),
+        "Reservation authority should be able to close access passes it owns"
+    );
+
+    let account = get_account_data(&mut banks_client, accesspass_pubkey).await;
+    assert!(account.is_none(), "AccessPass should be closed");
+}
+
+#[tokio::test]
+async fn test_close_accesspass_reservation_authority_not_owner_fails() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Create reservation authority keypair and set it
+    let reservation = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &reservation.pubkey(),
+        10_000_000_000,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAuthority(SetAuthorityArgs {
+            reservation_authority_pk: Some(reservation.pubkey()),
+            ..Default::default()
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // Foundation creates an access pass (owner = payer, NOT reservation)
+    let client_ip = Ipv4Addr::new(100, 0, 0, 91);
     let user_payer = Pubkey::new_unique();
     let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
 
@@ -1558,7 +1641,7 @@ async fn test_close_accesspass_reservation_authority() {
     )
     .await;
 
-    // Reservation authority closes the access pass
+    // Reservation authority tries to close an access pass it doesn't own — should fail
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     let res = try_execute_transaction(
         &mut banks_client,
@@ -1574,11 +1657,14 @@ async fn test_close_accesspass_reservation_authority() {
     .await;
 
     assert!(
-        res.is_ok(),
-        "Reservation authority should be able to close access passes"
+        res.is_err(),
+        "Reservation authority should not be able to close access passes it doesn't own"
     );
 
-    // Verify the account was closed
-    let account = get_account_data(&mut banks_client, accesspass_pubkey).await;
-    assert!(account.is_none(), "AccessPass should be closed");
+    let error_string = format!("{:?}", res.unwrap_err());
+    assert!(
+        error_string.contains("Custom(8)"),
+        "Expected NotAllowed error (Custom(8)), got: {}",
+        error_string
+    );
 }

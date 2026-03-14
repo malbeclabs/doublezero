@@ -128,6 +128,14 @@ pub fn process_add_multicastgroup_pub_allowlist(
         );
 
         let mut accesspass = AccessPass::try_from(accesspass_account)?;
+
+        // Reservation authority can only modify access passes they own
+        if globalstate.reservation_authority_pk == *payer_account.key
+            && accesspass.owner != *payer_account.key
+        {
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+
         assert!(
             accesspass.client_ip == value.client_ip,
             "AccessPass client_ip does not match"

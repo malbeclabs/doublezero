@@ -46,7 +46,7 @@ sufficient.
 | `NETWORK_ADMIN`   | `1<<3` | Manage devices and links                                   |
 | `TENANT_ADMIN`    | `1<<4` | Manage tenants                                             |
 | `MULTICAST_ADMIN` | `1<<5` | Manage multicast groups and their allowlists               |
-| `RESERVATION`     | `1<<6` | Manage reservations                                        |
+| `FEED_AUTHORITY`  | `1<<6` | Manage access for feeds                                    |
 
 ### Tier 3 — Operational roles
 
@@ -90,7 +90,7 @@ Falls back to `GlobalState` fields:
 | `ACTIVATOR`         | `activator_authority_pk == payer`                                                  |
 | `SENTINEL`          | `sentinel_authority_pk == payer`                                                   |
 | `HEALTH_ORACLE`     | `health_oracle_pk == payer`                                                        |
-| `RESERVATION`       | `reservation_authority_pk == payer`                                                |
+| `FEED_AUTHORITY`    | `feed_authority_pk == payer`                                                       |
 | `USER_ADMIN`        | `foundation_allowlist` OR `activator_authority_pk`                                 |
 | `ACCESS_PASS_ADMIN` | `foundation_allowlist` OR `sentinel_authority_pk`                                  |
 | `NETWORK_ADMIN`     | `foundation_allowlist` OR `activator_authority_pk`                                 |

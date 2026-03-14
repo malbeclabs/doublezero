@@ -22,7 +22,6 @@ pub enum AccountType {
     AccessPass = 11,
     ResourceExtension = 12,
     Tenant = 13,
-    Reservation = 14,
     Permission = 15,
 }
 
@@ -50,7 +49,6 @@ impl From<u8> for AccountType {
             11 => AccountType::AccessPass,
             12 => AccountType::ResourceExtension,
             13 => AccountType::Tenant,
-            14 => AccountType::Reservation,
             15 => AccountType::Permission,
             _ => AccountType::None,
         }
@@ -74,7 +72,6 @@ impl fmt::Display for AccountType {
             AccountType::AccessPass => write!(f, "accesspass"),
             AccountType::ResourceExtension => write!(f, "resourceextension"),
             AccountType::Tenant => write!(f, "tenant"),
-            AccountType::Reservation => write!(f, "reservation"),
             AccountType::Permission => write!(f, "permission"),
         }
     }

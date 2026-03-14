@@ -457,7 +457,7 @@ class GlobalState:
     health_oracle_pk: Pubkey = Pubkey.default()
     qa_allowlist: list[Pubkey] = field(default_factory=list)
     feature_flags: int = 0
-    reservation_authority_pk: Pubkey = Pubkey.default()
+    feed_authority_pk: Pubkey = Pubkey.default()
 
     @classmethod
     def from_bytes(cls, data: bytes) -> GlobalState:
@@ -476,7 +476,7 @@ class GlobalState:
         gs.health_oracle_pk = _read_pubkey(r)
         gs.qa_allowlist = _read_pubkey_vec(r)
         gs.feature_flags = r.read_u128()
-        gs.reservation_authority_pk = _read_pubkey(r)
+        gs.feed_authority_pk = _read_pubkey(r)
         return gs
 
 

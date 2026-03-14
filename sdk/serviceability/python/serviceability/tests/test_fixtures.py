@@ -76,7 +76,7 @@ class TestFixtureGlobalState:
                 "ActivatorAuthorityPk": gs.activator_authority_pk,
                 "SentinelAuthorityPk": gs.sentinel_authority_pk,
                 "HealthOraclePk": gs.health_oracle_pk,
-                "ReservationAuthorityPk": gs.reservation_authority_pk,
+                "FeedAuthorityPk": gs.feed_authority_pk,
             },
         )
 

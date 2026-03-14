@@ -295,7 +295,7 @@ export interface GlobalState {
   healthOraclePk: PublicKey;
   qaAllowlist: PublicKey[];
   featureFlags: bigint;
-  reservationAuthorityPk: PublicKey;
+  feedAuthorityPk: PublicKey;
 }
 
 export function deserializeGlobalState(data: Uint8Array): GlobalState {
@@ -313,7 +313,7 @@ export function deserializeGlobalState(data: Uint8Array): GlobalState {
   const healthOraclePk = readPubkey(r);
   const qaAllowlist = readPubkeyVec(r);
   const featureFlags = r.readU128();
-  const reservationAuthorityPk = readPubkey(r);
+  const feedAuthorityPk = readPubkey(r);
   return {
     accountType,
     bumpSeed,
@@ -326,7 +326,7 @@ export function deserializeGlobalState(data: Uint8Array): GlobalState {
     healthOraclePk,
     qaAllowlist,
     featureFlags,
-    reservationAuthorityPk,
+    feedAuthorityPk,
   };
 }
 

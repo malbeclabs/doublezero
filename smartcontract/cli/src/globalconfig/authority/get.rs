@@ -77,7 +77,7 @@ mod tests {
             health_oracle_pk: Pubkey::default(),
             qa_allowlist: vec![],
             feature_flags: 0,
-            reservation_authority_pk: Pubkey::default(),
+            feed_authority_pk: Pubkey::default(),
         };
 
         client

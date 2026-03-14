@@ -28,8 +28,8 @@ pub mod permission_flags {
     pub const TENANT_ADMIN: u128 = 1 << 4;
     /// Can manage multicast groups: create, activate, reject, update, suspend, delete, allowlists.
     pub const MULTICAST_ADMIN: u128 = 1 << 5;
-    /// Can manage reservations.
-    pub const RESERVATION: u128 = 1 << 6;
+    /// Can manage access for feeds.
+    pub const FEED_AUTHORITY: u128 = 1 << 6;
 
     // ── Tier 3: Operational roles ──────────────────────────────────────────
     /// Can activate/reject network entities.

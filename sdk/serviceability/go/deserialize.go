@@ -16,7 +16,7 @@ func DeserializeGlobalState(reader *ByteReader, gs *GlobalState) {
 	gs.HealthOraclePK = reader.ReadPubkey()
 	gs.QAAllowlist = reader.ReadPubkeySlice()
 	gs.FeatureFlags = reader.ReadU128()
-	gs.ReservationAuthorityPK = reader.ReadPubkey()
+	gs.FeedAuthorityPK = reader.ReadPubkey()
 }
 
 func DeserializeGlobalConfig(reader *ByteReader, cfg *GlobalConfig) {

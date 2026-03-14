@@ -85,7 +85,6 @@ use crate::{
             resume::process_resume_permission, suspend::process_suspend_permission,
             update::process_update_permission,
         },
-        reservation::{close::process_close_reservation, reserve::process_reserve_connection},
         resource::{
             allocate::process_allocate_resource,
             closeaccount::process_closeaccount_resource_extension, create::process_create_resource,
@@ -101,16 +100,17 @@ use crate::{
             activate::process_activate_user, ban::process_ban_user,
             check_access_pass::process_check_access_pass_user,
             closeaccount::process_closeaccount_user, create::process_create_user,
-            create_reserved_subscribe::process_create_reserved_subscribe_user,
             create_subscribe::process_create_subscribe_user, delete::process_delete_user,
-            delete_reserved_subscribe::process_delete_reserved_subscribe_user,
             reject::process_reject_user, requestban::process_request_ban_user,
             update::process_update_user,
         },
     },
 };
 
-use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, msg, pubkey::Pubkey};
+use solana_program::{
+    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
+    pubkey::Pubkey,
+};
 
 // Program entrypoint
 #[cfg(not(feature = "no-entrypoint"))]
@@ -400,11 +400,11 @@ pub fn process_instruction(
         DoubleZeroInstruction::SetFeatureFlags(value) => {
             process_set_feature_flags(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ReserveConnection(value) => {
-            process_reserve_connection(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::CloseReservation(value) => {
-            process_close_reservation(program_id, accounts, &value)?
+        DoubleZeroInstruction::Deprecated95()
+        | DoubleZeroInstruction::Deprecated96()
+        | DoubleZeroInstruction::Deprecated102()
+        | DoubleZeroInstruction::Deprecated103() => {
+            return Err(ProgramError::InvalidInstructionData);
         }
         DoubleZeroInstruction::CreatePermission(value) => {
             process_create_permission(program_id, accounts, &value)?
@@ -420,12 +420,6 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::DeletePermission(value) => {
             process_delete_permission(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::CreateReservedSubscribeUser(value) => {
-            process_create_reserved_subscribe_user(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::DeleteReservedSubscribeUser(value) => {
-            process_delete_reserved_subscribe_user(program_id, accounts, &value)?
         }
     };
     Ok(())

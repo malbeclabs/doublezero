@@ -10,7 +10,6 @@ pub mod location;
 pub mod migrate;
 pub mod multicastgroup;
 pub mod permission;
-pub mod reservation;
 pub mod resource;
 pub mod tenant;
 pub mod user;

@@ -110,13 +110,11 @@ pub fn process_set_access_pass(
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = GlobalState::try_from(globalstate_account)?;
     if globalstate.sentinel_authority_pk != *payer_account.key
-        && globalstate.reservation_authority_pk != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
         msg!(
-            "sentinel_authority_pk: {} reservation_authority_pk: {} payer: {} foundation_allowlist: {:?}",
+            "sentinel_authority_pk: {} payer: {} foundation_allowlist: {:?}",
             globalstate.sentinel_authority_pk,
-            globalstate.reservation_authority_pk,
             payer_account.key,
             globalstate.foundation_allowlist
         );
@@ -194,17 +192,7 @@ pub fn process_set_access_pass(
                 "Invalid PDA Account Owner"
             );
 
-            let ap = AccessPass::try_from(accesspass_account)?;
-
-            // Reservation authority can only update access passes they own
-            if globalstate.reservation_authority_pk == *payer_account.key
-                && ap.owner != *payer_account.key
-            {
-                msg!("Reservation authority can only update access passes they own");
-                return Err(DoubleZeroError::NotAllowed.into());
-            }
-
-            ap
+            AccessPass::try_from(accesspass_account)?
         } else {
             AccessPass {
                 account_type: AccountType::AccessPass,

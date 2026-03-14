@@ -72,9 +72,7 @@ pub fn process_close_access_pass(
 
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key)
-        && globalstate.reservation_authority_pk != *payer_account.key
-    {
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
@@ -85,14 +83,6 @@ pub fn process_close_access_pass(
             return Err(DoubleZeroError::InvalidAccountType.into());
         }
         let accesspass = AccessPass::try_from(accesspass_account)?;
-
-        // Reservation authority can only close access passes they own
-        if globalstate.reservation_authority_pk == *payer_account.key
-            && accesspass.owner != *payer_account.key
-        {
-            msg!("Reservation authority can only close access passes they own");
-            return Err(DoubleZeroError::NotAllowed.into());
-        }
 
         if accesspass.connection_count != 0 {
             msg!(

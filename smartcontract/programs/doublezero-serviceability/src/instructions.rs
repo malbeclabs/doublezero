@@ -70,7 +70,6 @@ use crate::processors::{
         create::PermissionCreateArgs, delete::PermissionDeleteArgs, resume::PermissionResumeArgs,
         suspend::PermissionSuspendArgs, update::PermissionUpdateArgs,
     },
-    reservation::{close::CloseReservationArgs, reserve::ReserveConnectionArgs},
     resource::{
         allocate::ResourceAllocateArgs, closeaccount::ResourceExtensionCloseAccountArgs,
         create::ResourceCreateArgs, deallocate::ResourceDeallocateArgs,
@@ -83,9 +82,7 @@ use crate::processors::{
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
         closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
-        create_reserved_subscribe::CreateReservedSubscribeUserArgs,
-        create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs,
-        delete_reserved_subscribe::DeleteReservedSubscribeUserArgs, reject::UserRejectArgs,
+        create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs, reject::UserRejectArgs,
         requestban::UserRequestBanArgs, update::UserUpdateArgs,
     },
 };
@@ -210,8 +207,8 @@ pub enum DoubleZeroInstruction {
     UpdatePaymentStatus(UpdatePaymentStatusArgs),       // variant 93
     SetFeatureFlags(SetFeatureFlagsArgs),               // variant 94
 
-    ReserveConnection(ReserveConnectionArgs), // variant 95
-    CloseReservation(CloseReservationArgs),   // variant 96
+    Deprecated95(), // variant 95 (was ReserveConnection)
+    Deprecated96(), // variant 96 (was CloseReservation)
 
     CreatePermission(PermissionCreateArgs),   // variant 97
     UpdatePermission(PermissionUpdateArgs),   // variant 98
@@ -219,8 +216,8 @@ pub enum DoubleZeroInstruction {
     ResumePermission(PermissionResumeArgs),   // variant 100
     DeletePermission(PermissionDeleteArgs),   // variant 101
 
-    CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs), // variant 102
-    DeleteReservedSubscribeUser(DeleteReservedSubscribeUserArgs), // variant 103
+    Deprecated102(), // variant 102 (was CreateReservedSubscribeUser)
+    Deprecated103(), // variant 103 (was DeleteReservedSubscribeUser)
 }
 
 impl DoubleZeroInstruction {
@@ -346,17 +343,12 @@ impl DoubleZeroInstruction {
             93 => Ok(Self::UpdatePaymentStatus(UpdatePaymentStatusArgs::try_from(rest).unwrap())),
             94 => Ok(Self::SetFeatureFlags(SetFeatureFlagsArgs::try_from(rest).unwrap())),
 
-            95 => Ok(Self::ReserveConnection(ReserveConnectionArgs::try_from(rest).unwrap())),
-            96 => Ok(Self::CloseReservation(CloseReservationArgs::try_from(rest).unwrap())),
-
             97 => Ok(Self::CreatePermission(PermissionCreateArgs::try_from(rest).unwrap())),
             98 => Ok(Self::UpdatePermission(PermissionUpdateArgs::try_from(rest).unwrap())),
             99 => Ok(Self::SuspendPermission(PermissionSuspendArgs::try_from(rest).unwrap())),
             100 => Ok(Self::ResumePermission(PermissionResumeArgs::try_from(rest).unwrap())),
             101 => Ok(Self::DeletePermission(PermissionDeleteArgs::try_from(rest).unwrap())),
 
-            102 => Ok(Self::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs::try_from(rest).unwrap())),
-            103 => Ok(Self::DeleteReservedSubscribeUser(DeleteReservedSubscribeUserArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -480,8 +472,8 @@ impl DoubleZeroInstruction {
             Self::UpdatePaymentStatus(_) => "UpdatePaymentStatus".to_string(), // variant 93
             Self::SetFeatureFlags(_) => "SetFeatureFlags".to_string(),         // variant 94
 
-            Self::ReserveConnection(_) => "ReserveConnection".to_string(), // variant 95
-            Self::CloseReservation(_) => "CloseReservation".to_string(),   // variant 96
+            Self::Deprecated95() => "Deprecated95".to_string(),
+            Self::Deprecated96() => "Deprecated96".to_string(),
 
             Self::CreatePermission(_) => "CreatePermission".to_string(), // variant 97
             Self::UpdatePermission(_) => "UpdatePermission".to_string(), // variant 98
@@ -489,8 +481,8 @@ impl DoubleZeroInstruction {
             Self::ResumePermission(_) => "ResumePermission".to_string(), // variant 100
             Self::DeletePermission(_) => "DeletePermission".to_string(), // variant 101
 
-            Self::CreateReservedSubscribeUser(_) => "CreateReservedSubscribeUser".to_string(), // variant 102
-            Self::DeleteReservedSubscribeUser(_) => "DeleteReservedSubscribeUser".to_string(), // variant 103
+            Self::Deprecated102() => "Deprecated102".to_string(),
+            Self::Deprecated103() => "Deprecated103".to_string(),
         }
     }
 
@@ -606,8 +598,8 @@ impl DoubleZeroInstruction {
             Self::UpdatePaymentStatus(args) => format!("{args:?}"), // variant 93
             Self::SetFeatureFlags(args) => format!("{args:?}"), // variant 94
 
-            Self::ReserveConnection(args) => format!("{args:?}"), // variant 95
-            Self::CloseReservation(args) => format!("{args:?}"),  // variant 96
+            Self::Deprecated95() => String::new(),
+            Self::Deprecated96() => String::new(),
 
             Self::CreatePermission(args) => format!("{args:?}"), // variant 97
             Self::UpdatePermission(args) => format!("{args:?}"), // variant 98
@@ -615,8 +607,8 @@ impl DoubleZeroInstruction {
             Self::ResumePermission(args) => format!("{args:?}"), // variant 100
             Self::DeletePermission(args) => format!("{args:?}"), // variant 101
 
-            Self::CreateReservedSubscribeUser(args) => format!("{args:?}"), // variant 102
-            Self::DeleteReservedSubscribeUser(args) => format!("{args:?}"), // variant 103
+            Self::Deprecated102() => String::new(),
+            Self::Deprecated103() => String::new(),
         }
     }
 }
@@ -1276,14 +1268,6 @@ mod tests {
             "SetFeatureFlags",
         );
         test_instruction(
-            DoubleZeroInstruction::ReserveConnection(ReserveConnectionArgs { count: 5 }),
-            "ReserveConnection",
-        );
-        test_instruction(
-            DoubleZeroInstruction::CloseReservation(CloseReservationArgs {}),
-            "CloseReservation",
-        );
-        test_instruction(
             DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
                 user_payer: Pubkey::new_unique(),
                 permissions: permission_flags::USER_ADMIN | permission_flags::NETWORK_ADMIN,
@@ -1308,23 +1292,6 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::DeletePermission(PermissionDeleteArgs {}),
             "DeletePermission",
-        );
-        test_instruction(
-            DoubleZeroInstruction::CreateReservedSubscribeUser(CreateReservedSubscribeUserArgs {
-                user_type: UserType::Multicast,
-                cyoa_type: UserCYOA::GREOverDIA,
-                client_ip: [1, 2, 3, 4].into(),
-                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-                dz_prefix_count: 0,
-            }),
-            "CreateReservedSubscribeUser",
-        );
-        test_instruction(
-            DoubleZeroInstruction::DeleteReservedSubscribeUser(DeleteReservedSubscribeUserArgs {
-                dz_prefix_count: 0,
-                multicast_publisher_count: 0,
-            }),
-            "DeleteReservedSubscribeUser",
         );
     }
 }

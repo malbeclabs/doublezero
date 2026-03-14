@@ -243,8 +243,8 @@ mod tests {
     #[test]
     fn test_fund_all_sufficiently_funded() {
         let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
-        // balance > required (2_250_000)
-        let client = setup_client_with_balance(payer, 3_000_000);
+        // balance > required (wallet_rent_min + needs_rent = 1_000_000 + 1_250_000 = 2_250_000)
+        let client = setup_client_with_balance(payer, 2_500_000);
 
         let mut out = Vec::new();
         let res =
@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn test_fund_dry_run_shows_summary_without_transferring() {
         let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
-        // balance = 500_000 < required (2_250_000), deficit = 1_750_000
+        // balance = 500_000 < required (wallet_rent_min + needs_rent = 1_000_000 + 1_250_000 = 2_250_000), deficit = 1_750_000
         let client = setup_client_with_balance(payer, 500_000);
 
         let mut out = Vec::new();
@@ -316,8 +316,8 @@ mod tests {
     #[test]
     fn test_fund_min_balance_dominates_rent() {
         let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
-        // balance = 1_500_000 < required = wallet_rent_min (1_000_000) + max(needs_rent=1_250_000, min_balance=2_000_000) = 3_000_000
-        // deficit = 1_500_000
+        // balance = 1_500_000 > needs_rent (1_250_000) but < required
+        // required = wallet_rent_min + max(needs_rent, min_balance) = 1_000_000 + max(1_250_000, 2_000_000) = 3_000_000, deficit = 1_500_000
         let client = setup_client_with_balance(payer, 1_500_000);
 
         let mut out = Vec::new();
@@ -338,7 +338,7 @@ mod tests {
     fn test_fund_rent_dominates_min_balance() {
         let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
         // balance = 500_000, min_balance = ~1 lamport
-        // required = wallet_rent_min (1_000_000) + max(needs_rent=1_250_000, 1) = 2_250_000, deficit = 1_750_000
+        // required = wallet_rent_min + max(needs_rent, min_balance) = 1_000_000 + max(1_250_000, 1) = 2_250_000, deficit = 1_750_000
         let client = setup_client_with_balance(payer, 500_000);
 
         let mut out = Vec::new();

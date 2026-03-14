@@ -194,7 +194,17 @@ pub fn process_set_access_pass(
                 "Invalid PDA Account Owner"
             );
 
-            AccessPass::try_from(accesspass_account)?
+            let ap = AccessPass::try_from(accesspass_account)?;
+
+            // Reservation authority can only update access passes they own
+            if globalstate.reservation_authority_pk == *payer_account.key
+                && ap.owner != *payer_account.key
+            {
+                msg!("Reservation authority can only update access passes they own");
+                return Err(DoubleZeroError::NotAllowed.into());
+            }
+
+            ap
         } else {
             AccessPass {
                 account_type: AccountType::AccessPass,

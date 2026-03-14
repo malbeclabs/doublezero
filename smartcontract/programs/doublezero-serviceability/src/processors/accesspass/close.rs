@@ -86,6 +86,14 @@ pub fn process_close_access_pass(
         }
         let accesspass = AccessPass::try_from(accesspass_account)?;
 
+        // Reservation authority can only close access passes they own
+        if globalstate.reservation_authority_pk == *payer_account.key
+            && accesspass.owner != *payer_account.key
+        {
+            msg!("Reservation authority can only close access passes they own");
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+
         if accesspass.connection_count != 0 {
             msg!(
                 "AccessPass has {} active connections, cannot close",

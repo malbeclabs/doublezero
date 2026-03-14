@@ -516,10 +516,11 @@ async fn test_multicast_publisher_allowlist_reservation_authority() {
     )
     .await;
 
-    // 4. Set access pass (requires foundation allowlist, so use payer)
+    // 4. Reservation authority creates access pass (becomes owner)
     let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
 
-    execute_transaction(
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let res = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -534,11 +535,15 @@ async fn test_multicast_publisher_allowlist_reservation_authority() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_payer, false),
         ],
-        &payer,
+        &reservation,
     )
     .await;
+    assert!(
+        res.is_ok(),
+        "Reservation authority should be able to create access passes"
+    );
 
-    // 5. Reservation authority (non-owner) adds publisher allowlist entry — should succeed
+    // 5. Reservation authority (owner) adds publisher allowlist entry — should succeed
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     let res = try_execute_transaction(
         &mut banks_client,

@@ -78,7 +78,6 @@ pub fn process_add_multicastgroup_pub_allowlist(
     // Check whether mgroup is authorized
     let is_authorized = (mgroup.owner == *payer_account.key)
         || globalstate.sentinel_authority_pk == *payer_account.key
-        || globalstate.reservation_authority_pk == *payer_account.key
         || globalstate.foundation_allowlist.contains(payer_account.key);
     if !is_authorized {
         return Err(DoubleZeroError::NotAllowed.into());
@@ -128,14 +127,6 @@ pub fn process_add_multicastgroup_pub_allowlist(
         );
 
         let mut accesspass = AccessPass::try_from(accesspass_account)?;
-
-        // Reservation authority can only modify access passes they own
-        if globalstate.reservation_authority_pk == *payer_account.key
-            && accesspass.owner != *payer_account.key
-        {
-            return Err(DoubleZeroError::NotAllowed.into());
-        }
-
         assert!(
             accesspass.client_ip == value.client_ip,
             "AccessPass client_ip does not match"

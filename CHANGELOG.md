@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.
   - Add `Version` (uint8) and `TargetIP` ([4]byte) fields to LocationOffset wire format (v1, 174 bytes), with version validation on unmarshal to enable safe future format evolution
 - Tools
   - Update TWAMP signed packet parser byte offsets and `OffsetInfo` struct for LocationOffset v1 layout
+- Onchain Programs
+  - Serviceability: allow reservation authority to create, update, and close access passes, with ownership restriction preventing modification of passes created by other authorities
 - E2E Tests
   - Fix `TestE2E_UserLimits` not asserting command failure: the `; echo EXIT_CODE=$?` pattern caused the shell to always exit 0 regardless of the `doublezero` exit code, making `err` always nil; replace with `require.Error` assertions so the test fails if a limit-exceeded connect unexpectedly succeeds
   - Add geoprobe E2E test (`TestE2E_GeoprobeDiscovery`) that exercises the full geolocation flow: deploy geolocation program, create probe onchain, start geoprobe-agent container, and verify the telemetry-agent discovers and measures the probe via TWAMP

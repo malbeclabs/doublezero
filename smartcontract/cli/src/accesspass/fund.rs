@@ -243,7 +243,6 @@ mod tests {
     #[test]
     fn test_fund_all_sufficiently_funded() {
         let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
-<<<<<<< HEAD
         // balance > required (wallet_rent_min + needs_rent = 1_000_000 + 1_250_000 = 2_250_000)
         let client = setup_client_with_balance(payer, 2_500_000);
 

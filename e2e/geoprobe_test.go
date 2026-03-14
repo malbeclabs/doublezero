@@ -217,21 +217,32 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 	startGeoprobeTarget(t, targetContainerID)
 	log.Debug("==> Geoprobe target started", "containerID", targetContainerID)
 
-	// Start the geoprobe agent container.
+	// Generate keypairs for both agent and target-sender before starting either,
+	// so the agent can be configured with --allowed-pubkeys for the sender.
 	log.Debug("==> Starting geoprobe container")
 	geoprobeContainerID := startGeoprobeContainer(t, log, dn, geoprobeIPStr)
 	log.Debug("==> Geoprobe container started", "containerID", geoprobeContainerID)
 
-	// Generate keypair and start agent with the target as an additional target.
+	agentKeypairPath := "/tmp/geoprobe-keypair.json"
+	agentPubkey := generateKeypair(t, geoprobeContainerID, agentKeypairPath)
+	log.Debug("==> Agent keypair generated", "pubkey", agentPubkey)
+
+	senderKeypairPath := "/tmp/target-sender-keypair.json"
+	senderPubkey := generateKeypair(t, targetContainerID, senderKeypairPath)
+	log.Debug("==> Target-sender keypair generated", "pubkey", senderPubkey)
+
+	// Start agent with the target as an additional target and the sender's pubkey allowed.
 	log.Debug("==> Starting geoprobe agent")
-	startGeoprobeAgent(t, dn, geoprobeContainerID, geoprobeAccountPK,
+	startGeoprobeAgent(t, dn, geoprobeContainerID, agentKeypairPath, geoprobeAccountPK,
 		dn.Manager.GeolocationProgramID, dn.Manager.ServiceabilityProgramID,
 		&geoprobeAgentOpts{
 			additionalTargets: fmt.Sprintf("%s:%d:%d", targetIPStr, 8923, 8925),
 			probeInterval:     5 * time.Second,
+			allowedPubkeys:    []string{senderPubkey},
 		})
 	log.Debug("==> Geoprobe agent started")
 
+	// --- Outbound flow ---
 	// Wait for dz1's telemetry agent to discover the geoprobe and successfully probe it.
 	log.Debug("==> Waiting for geoprobe discovery and successful measurement")
 	waitForGeoprobeSuccess(t, dz1, geoprobeIPStr, 180*time.Second)
@@ -241,6 +252,16 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 	log.Debug("==> Waiting for geoprobe target to receive composite offset")
 	waitForTargetOffsetReceived(t, targetContainerID, 120*time.Second)
 	log.Debug("==> Geoprobe target received valid composite offset")
+
+	// --- Inbound flow ---
+	// Run target-sender from the target container to send signed TWAMP probes to the agent.
+	// The agent should reply with cached DZD offsets embedded in signed replies.
+	log.Debug("==> Running target-sender for inbound probing")
+	runTargetSender(t, targetContainerID, geoprobeIPStr, agentPubkey, senderKeypairPath)
+
+	log.Debug("==> Waiting for successful inbound probe with offsets")
+	waitForInboundProbeSuccess(t, targetContainerID, 120*time.Second)
+	log.Debug("==> Inbound probing verified")
 }
 
 // getExchangePK retrieves the onchain PK for an exchange by its code.
@@ -376,23 +397,35 @@ func startGeoprobeContainer(t *testing.T, log *slog.Logger, dn *devnet.Devnet, c
 type geoprobeAgentOpts struct {
 	additionalTargets string
 	probeInterval     time.Duration
+	allowedPubkeys    []string
 }
 
-// startGeoprobeAgent generates a keypair inside the container and starts the geoprobe-agent.
-func startGeoprobeAgent(t *testing.T, dn *devnet.Devnet, containerID, geoprobeAccountPK, geolocationProgramID, serviceabilityProgramID string, opts *geoprobeAgentOpts) {
+// generateKeypair creates a Solana keypair inside a container and returns its base58 pubkey.
+func generateKeypair(t *testing.T, containerID, path string) string {
 	t.Helper()
 
-	// Generate a keypair inside the container.
 	_, err := docker.Exec(t.Context(), dockerClient, containerID, []string{
-		"solana-keygen", "new", "--no-bip39-passphrase", "-o", "/tmp/geoprobe-keypair.json", "--force",
+		"solana-keygen", "new", "--no-bip39-passphrase", "-o", path, "--force",
 	})
 	require.NoError(t, err)
 
-	// Start geoprobe-agent in the background.
+	output, err := docker.Exec(t.Context(), dockerClient, containerID, []string{
+		"solana-keygen", "pubkey", path,
+	})
+	require.NoError(t, err)
+	pubkey := strings.TrimSpace(string(output))
+	require.NotEmpty(t, pubkey)
+	return pubkey
+}
+
+// startGeoprobeAgent starts the geoprobe-agent with a pre-generated keypair.
+func startGeoprobeAgent(t *testing.T, dn *devnet.Devnet, containerID, keypairPath, geoprobeAccountPK, geolocationProgramID, serviceabilityProgramID string, opts *geoprobeAgentOpts) {
+	t.Helper()
+
 	args := fmt.Sprintf(
 		"nohup doublezero-geoprobe-agent "+
 			"-ledger-rpc-url %s "+
-			"-keypair /tmp/geoprobe-keypair.json "+
+			"-keypair %s "+
 			"-geoprobe-pubkey %s "+
 			"-geolocation-program-id %s "+
 			"-serviceability-program-id %s "+
@@ -400,6 +433,7 @@ func startGeoprobeAgent(t *testing.T, dn *devnet.Devnet, containerID, geoprobeAc
 			"-udp-listen-port 8923 "+
 			"-verbose",
 		dn.Ledger.InternalRPCURL,
+		keypairPath,
 		geoprobeAccountPK,
 		geolocationProgramID,
 		serviceabilityProgramID,
@@ -411,12 +445,14 @@ func startGeoprobeAgent(t *testing.T, dn *devnet.Devnet, containerID, geoprobeAc
 		if opts.probeInterval > 0 {
 			args += fmt.Sprintf(" -probe-interval %s", opts.probeInterval)
 		}
+		if len(opts.allowedPubkeys) > 0 {
+			args += fmt.Sprintf(" -allowed-pubkeys %s", strings.Join(opts.allowedPubkeys, ","))
+		}
 	}
 	cmd := args + " > /tmp/geoprobe-agent.log 2>&1 &"
-	_, err = docker.Exec(t.Context(), dockerClient, containerID, []string{"bash", "-c", cmd})
+	_, err := docker.Exec(t.Context(), dockerClient, containerID, []string{"bash", "-c", cmd})
 	require.NoError(t, err)
 
-	// Verify the agent started.
 	require.Eventually(t, func() bool {
 		output, err := docker.Exec(t.Context(), dockerClient, containerID, []string{
 			"bash", "-c", "pgrep -f doublezero-geoprobe-agent",
@@ -536,4 +572,82 @@ func waitForTargetOffsetReceived(t *testing.T, containerID string, timeout time.
 		return strings.Contains(logStr, "received LocationOffset") &&
 			strings.Contains(logStr, "signature_valid=true")
 	}, timeout, 5*time.Second, "Expected geoprobe-target to log 'received LocationOffset' with 'signature_valid=true'")
+}
+
+// runTargetSender starts geoprobe-target-sender in the target container, sending
+// signed TWAMP probes to the agent's reflector. It runs with --count 3 so it
+// exits after 3 probe pairs.
+func runTargetSender(t *testing.T, containerID, agentIP, agentPubkey, keypairPath string) {
+	t.Helper()
+
+	cmd := fmt.Sprintf(
+		"nohup doublezero-geoprobe-target-sender "+
+			"-probe-ip %s "+
+			"-probe-port 8924 "+
+			"-probe-pk %s "+
+			"-keypair %s "+
+			"-count 3 "+
+			"-interval 5s "+
+			"-log-format json "+
+			"-verbose "+
+			"> /tmp/target-sender.log 2>&1 &",
+		agentIP, agentPubkey, keypairPath,
+	)
+	_, err := docker.Exec(t.Context(), dockerClient, containerID, []string{"bash", "-c", cmd})
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		output, err := docker.Exec(ctx, dockerClient, containerID, []string{
+			"bash", "-c", "cat /tmp/target-sender.log 2>/dev/null || echo 'no log file'",
+		})
+		if err == nil {
+			fmt.Fprintf(os.Stderr, "\n--- Target-sender log ---\n%s\n", string(output))
+		}
+	})
+}
+
+// waitForInboundProbeSuccess polls the target-sender log for a successful probe pair
+// where reply signatures are valid and DZD offset data is present.
+func waitForInboundProbeSuccess(t *testing.T, containerID string, timeout time.Duration) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		output, err := docker.Exec(t.Context(), dockerClient, containerID, []string{
+			"bash", "-c", "cat /tmp/target-sender.log 2>/dev/null",
+		})
+		if err != nil {
+			return false
+		}
+		logStr := string(output)
+
+		// Look for a JSON line with valid reply signatures and non-empty offsets.
+		for _, line := range strings.Split(logStr, "\n") {
+			line = strings.TrimSpace(line)
+			if !strings.HasPrefix(line, "{") {
+				continue
+			}
+			var result struct {
+				Reply1SigValid bool `json:"reply1_sig_valid"`
+				Offsets        []struct {
+					SigValid bool `json:"sig_valid"`
+				} `json:"offsets"`
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal([]byte(line), &result); err != nil {
+				continue
+			}
+			if result.Error != "" || !result.Reply1SigValid {
+				continue
+			}
+			if len(result.Offsets) > 0 && result.Offsets[0].SigValid {
+				return true
+			}
+		}
+		return false
+	}, timeout, 5*time.Second, "Expected target-sender log to contain a successful probe pair with valid signatures and offsets")
 }

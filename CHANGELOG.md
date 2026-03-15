@@ -7,7 +7,10 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+- Activator
+  - Cap tunnel ID allocation per device (500–627) and gracefully reject users when a device is full instead of allocating invalid tunnel IDs
 - Client
+  - Surface rejection reason as a CLI error on `doublezero connect` instead of hanging indefinitely when the activator rejects a user (e.g., device full)
   - Demote passive-mode liveness session-down log messages from Info to Debug to reduce log noise when no dataplane action is taken
 - E2E Tests
   - Add geoprobe E2E test (`TestE2E_GeoprobeDiscovery`) that exercises the full geolocation flow: deploy geolocation program, create probe onchain, start geoprobe-agent container, and verify the telemetry-agent discovers and measures the probe via TWAMP

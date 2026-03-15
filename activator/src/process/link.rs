@@ -100,7 +100,7 @@ fn get_link_id(link: &Link, link_ids: &mut IDAllocator) -> u16 {
     if link.tunnel_id != 0 {
         link.tunnel_id
     } else {
-        link_ids.next_available()
+        link_ids.next_available().expect("link ID pool exhausted")
     }
 }
 

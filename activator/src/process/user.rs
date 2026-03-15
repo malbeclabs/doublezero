@@ -100,7 +100,20 @@ pub fn process_user_event(
 
             write!(&mut log_msg, " tunnel_net: {} ", &tunnel_net).unwrap();
 
-            let tunnel_id = device_state.get_next_tunnel_id();
+            let tunnel_id = match device_state.get_next_tunnel_id() {
+                Some(id) => id,
+                None => {
+                    log_reject(
+                        client,
+                        pubkey,
+                        "Error: No available tunnel ID on device",
+                        "No available tunnel ID",
+                        &mut log_msg,
+                    );
+                    info!("{log_msg}");
+                    return;
+                }
+            };
 
             // Determine tunnel endpoint: if the client demanded a specific one, validate it;
             // otherwise fall back to first-available (backwards compat with 0.0.0.0).

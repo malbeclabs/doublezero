@@ -210,7 +210,9 @@ impl<'a> InterfaceMgr<'a> {
         // Allocate segment routing ID if needed
         if iface.node_segment_idx == 0 && iface.loopback_type == LoopbackType::Vpnv4 {
             if let Some(ref mut segment_routing_ids) = self.segment_routing_ids {
-                iface.node_segment_idx = segment_routing_ids.next_available();
+                iface.node_segment_idx = segment_routing_ids
+                    .next_available()
+                    .expect("segment routing ID pool exhausted");
                 info!(
                     "Assigning segment routing ID {} to device {} interface {}",
                     iface.node_segment_idx, device.code, iface.name

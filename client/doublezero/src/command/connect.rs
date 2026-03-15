@@ -830,22 +830,19 @@ impl ProvisioningCliCommand {
             .with_min_delay(Duration::from_secs(1))
             .with_max_delay(Duration::from_secs(32));
 
-        let get_activated_user = || {
+        let get_activated_or_rejected_user = || {
             client
                 .get_user(GetUserCommand {
                     pubkey: *user_pubkey,
                 })
-                .and_then(|(pk, user)| {
-                    if user.status != UserStatus::Activated {
-                        Err(eyre::eyre!("User not activated yet"))
-                    } else {
-                        Ok((pk, user))
-                    }
+                .and_then(|(pk, user)| match user.status {
+                    UserStatus::Activated | UserStatus::Rejected => Ok((pk, user)),
+                    _ => Err(eyre::eyre!("User not activated yet")),
                 })
                 .map_err(|e| eyre::eyre!(e.to_string()))
         };
 
-        get_activated_user
+        get_activated_or_rejected_user
             .retry(builder)
             .notify(|_, dur| {
                 spinner.set_message(format!(
@@ -948,7 +945,7 @@ impl ProvisioningCliCommand {
         user_pubkey: &Pubkey,
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {
-        spinner.println(format!("    {}", "User rejected"));
+        spinner.println("❌  User rejected");
 
         spinner.set_message("Reading logs...");
         std::thread::sleep(std::time::Duration::from_secs(10));
@@ -956,13 +953,22 @@ impl ProvisioningCliCommand {
             .get_logs(user_pubkey)
             .map_err(|_| eyre::eyre!("Unable to get logs"))?;
 
+        let mut reasons = Vec::new();
         for mut msg in msgs {
             if msg.starts_with("Program log: Error: ") {
-                spinner.println(format!("    {}", msg.split_off(20)));
+                let reason = msg.split_off(20);
+                spinner.println(format!("    Reason: {reason}"));
+                reasons.push(reason);
             }
         }
 
-        Ok(())
+        let detail = if reasons.is_empty() {
+            "no rejection reason available (check activator logs)".to_string()
+        } else {
+            reasons.join("; ")
+        };
+
+        Err(eyre::eyre!("User rejected: {detail}"))
     }
 }
 

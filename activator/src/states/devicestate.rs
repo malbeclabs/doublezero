@@ -50,7 +50,7 @@ impl DeviceState {
                 .iter()
                 .map(|b| IPBlockAllocator::new((*b).into()))
                 .collect(),
-            tunnel_ids: IDAllocator::new(500, vec![]),
+            tunnel_ids: IDAllocator::with_max(500, 627, vec![]),
             tunnel_endpoints_in_use: HashMap::new(),
         }
     }
@@ -86,7 +86,7 @@ impl DeviceState {
         None
     }
 
-    pub fn get_next_tunnel_id(&mut self) -> u16 {
+    pub fn get_next_tunnel_id(&mut self) -> Option<u16> {
         self.tunnel_ids.next_available()
     }
 

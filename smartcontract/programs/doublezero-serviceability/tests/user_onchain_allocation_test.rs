@@ -1113,9 +1113,10 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_mgroup, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda_mgroup, false)],
+        &[],
     )
     .await;
 
@@ -1432,9 +1433,10 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_mgroup, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda_mgroup, false)],
+        &[],
     )
     .await;
 

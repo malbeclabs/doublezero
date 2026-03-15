@@ -862,9 +862,10 @@ async fn setup_multicast_group(
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_group1, false),
         ],
         payer,
-        &[AccountMeta::new(index_pda_group1, false)],
+        &[],
     )
     .await;
 

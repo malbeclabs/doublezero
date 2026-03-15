@@ -63,25 +63,18 @@ pub fn process_update_multicastgroup(
     let multicastgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension account for onchain allocation (before payer)
+    // Optional: ResourceExtension account for onchain allocation
     // Account layout WITH allocation (use_onchain_allocation = true):
-    //   [mgroup, globalstate, multicast_group_block, payer, system]
+    //   [mgroup, globalstate, multicast_group_block, (opt old_index, new_index), payer, system]
     // Account layout WITHOUT (legacy, use_onchain_allocation = false):
-    //   [mgroup, globalstate, payer, system]
+    //   [mgroup, globalstate, (opt old_index, new_index), payer, system]
     let resource_extension_account = if value.use_onchain_allocation {
         Some(next_account_info(accounts_iter)?)
     } else {
         None
     };
 
-    let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
-
-    // Optional: Index accounts for code rename
-    // Account layout when code changes:
-    //   [..., payer, system, old_index_account, new_index_account]
-    // Account layout when code doesn't change:
-    //   [..., payer, system]
+    // Optional: Index accounts for code rename (before payer/system)
     let index_accounts = if value.code.is_some() {
         let old_index_account = next_account_info(accounts_iter)?;
         let new_index_account = next_account_info(accounts_iter)?;
@@ -89,6 +82,9 @@ pub fn process_update_multicastgroup(
     } else {
         None
     };
+
+    let payer_account = next_account_info(accounts_iter)?;
+    let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_update_multicastgroup({:?})", value);

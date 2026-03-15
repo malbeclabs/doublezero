@@ -67,9 +67,10 @@ async fn test_multicastgroup() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_la, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda_la, false)],
+        &[],
     )
     .await;
 
@@ -188,12 +189,11 @@ async fn test_multicastgroup() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-        &[
             AccountMeta::new(old_index_pda_la, false),
             AccountMeta::new(new_index_pda_lb, false),
         ],
+        &payer,
+        &[],
     )
     .await;
 
@@ -308,9 +308,10 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_la, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda_la, false)],
+        &[],
     )
     .await;
 
@@ -434,9 +435,10 @@ async fn test_multicastgroup_deactivate_fails_when_not_deleting() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_la, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda_la, false)],
+        &[],
     )
     .await;
 
@@ -543,9 +545,10 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
         vec![
             AccountMeta::new(wrong_multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_test, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda_test, false)],
+        &[],
     )
     .await;
 
@@ -572,9 +575,10 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
         vec![
             AccountMeta::new(correct_multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_test, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda_test, false)],
+        &[],
     )
     .await;
 
@@ -633,9 +637,10 @@ async fn test_multicastgroup_reactivate_invalid_status_fails() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda, false)],
+        &[],
     )
     .await;
 
@@ -710,9 +715,10 @@ async fn test_suspend_multicastgroup_from_pending_fails() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda, false)],
+        &[],
     )
     .await;
 
@@ -791,9 +797,10 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda, false)],
+        &[],
     )
     .await;
 

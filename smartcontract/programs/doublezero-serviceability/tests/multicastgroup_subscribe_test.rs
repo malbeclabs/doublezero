@@ -277,9 +277,10 @@ async fn setup_fixture() -> TestFixture {
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_group1, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda_group1, false)],
+        &[],
     )
     .await;
 
@@ -315,9 +316,10 @@ async fn setup_fixture() -> TestFixture {
         vec![
             AccountMeta::new(mgroup2_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_group2, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda_group2, false)],
+        &[],
     )
     .await;
 

@@ -301,9 +301,10 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_group1, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda_group1, false)],
+        &[],
     )
     .await;
 
@@ -883,9 +884,10 @@ async fn test_create_subscribe_user_inactive_mgroup_fails() {
         vec![
             AccountMeta::new(pending_mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_pending, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda_pending, false)],
+        &[],
     )
     .await;
 

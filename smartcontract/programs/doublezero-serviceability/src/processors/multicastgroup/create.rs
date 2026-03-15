@@ -58,20 +58,20 @@ pub fn process_create_multicastgroup(
     let mgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension account for onchain allocation (before payer)
+    // Optional: ResourceExtension account for onchain allocation
     // Account layout WITH ResourceExtension (use_onchain_allocation = true):
-    //   [mgroup, globalstate, multicast_group_block, payer, system]
+    //   [mgroup, globalstate, multicast_group_block, index, payer, system]
     // Account layout WITHOUT (legacy, use_onchain_allocation = false):
-    //   [mgroup, globalstate, payer, system]
+    //   [mgroup, globalstate, index, payer, system]
     let resource_extension_account = if value.use_onchain_allocation {
         Some(next_account_info(accounts_iter)?)
     } else {
         None
     };
 
+    let index_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
-    let index_account = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_create_multicastgroup({:?})", value);

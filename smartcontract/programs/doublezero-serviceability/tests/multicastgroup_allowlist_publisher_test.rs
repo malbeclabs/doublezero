@@ -79,9 +79,10 @@ async fn test_multicast_publisher_allowlist() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_test, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda_test, false)],
+        &[],
     )
     .await;
 
@@ -293,9 +294,10 @@ async fn test_multicast_publisher_allowlist_sentinel_authority() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda, false)],
+        &[],
     )
     .await;
 

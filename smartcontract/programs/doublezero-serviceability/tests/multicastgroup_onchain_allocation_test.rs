@@ -72,9 +72,10 @@ async fn test_create_multicastgroup_atomic_with_onchain_allocation() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(multicast_group_block_pda, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda, false)],
+        &[],
     )
     .await;
 
@@ -122,9 +123,10 @@ async fn test_create_multicastgroup_atomic_backward_compat() {
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda, false)],
+        &[],
     )
     .await;
 
@@ -173,9 +175,10 @@ async fn test_create_multicastgroup_atomic_feature_flag_disabled() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(multicast_group_block_pda, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda, false)],
+        &[],
     )
     .await;
 
@@ -237,9 +240,10 @@ async fn test_delete_multicastgroup_atomic_with_deallocation() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(multicast_group_block_pda, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda, false)],
+        &[],
     )
     .await;
 
@@ -325,9 +329,10 @@ async fn test_delete_multicastgroup_atomic_backward_compat() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(multicast_group_block_pda, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda, false)],
+        &[],
     )
     .await;
 
@@ -404,9 +409,10 @@ async fn test_update_multicastgroup_with_onchain_reallocation() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(multicast_group_block_pda, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda, false)],
+        &[],
     )
     .await;
 
@@ -496,9 +502,10 @@ async fn test_update_multicastgroup_backward_compat() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(multicast_group_block_pda, false),
+            AccountMeta::new(index_pda_mg1, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda_mg1, false)],
+        &[],
     )
     .await;
 
@@ -521,12 +528,11 @@ async fn test_update_multicastgroup_backward_compat() {
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-        &[
             AccountMeta::new(old_index_pda, false),
             AccountMeta::new(new_index_pda, false),
         ],
+        &payer,
+        &[],
     )
     .await;
 
@@ -568,9 +574,10 @@ async fn test_update_multicastgroup_feature_flag_disabled() {
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
-        &[AccountMeta::new(index_pda, false)],
+        &[],
     )
     .await;
 

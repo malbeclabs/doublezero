@@ -834,7 +834,7 @@ func (m *manager) onSessionDown(sess *Session) {
 	}
 
 	if m.cfg.PassiveMode {
-		m.log.Info("liveness: session down (global passive; keeping route)",
+		m.log.Debug("liveness: session down (global passive; keeping route)",
 			"peer", peer.String(),
 			"route", snap.Route.String(),
 			"downSince", snap.DownSince.UTC().String(),
@@ -845,7 +845,7 @@ func (m *manager) onSessionDown(sess *Session) {
 	}
 
 	if effectivelyPassive {
-		m.log.Info("liveness: session down (peer passive; keeping route)",
+		m.log.Debug("liveness: session down (peer passive; keeping route)",
 			"peer", peer.String(),
 			"route", snap.Route.String(),
 			"downSince", snap.DownSince.UTC().String(),

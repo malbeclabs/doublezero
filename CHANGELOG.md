@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
   - Update TWAMP signed packet parser byte offsets and `OffsetInfo` struct for LocationOffset v1 layout
 - Onchain Programs
   - Serviceability: allow reservation authority to create, update, and close access passes, with ownership restriction preventing modification of passes created by other authorities
+  - Serviceability: fix multicast user creation failing when access-pass has a `tenant_allowlist`; tenant enforcement only applies to unicast connections since multicast users are not tenant-scoped
 - E2E Tests
   - Fix `TestE2E_UserLimits` not asserting command failure: the `; echo EXIT_CODE=$?` pattern caused the shell to always exit 0 regardless of the `doublezero` exit code, making `err` always nil; replace with `require.Error` assertions so the test fails if a limit-exceeded connect unexpectedly succeeds
   - Fix intermittent flake in `TestE2E_MultiClientIBRL_RouteLiveness`: add explicit route convergence checks after each unblock before starting the next block/unblock cycle, ensuring the liveness subsystem and BGP have fully settled

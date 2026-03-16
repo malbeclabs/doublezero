@@ -32,7 +32,7 @@ use solana_program::{
 ///   HEALTH_ORACLE     → health_oracle_pk
 ///   RESERVATION       → reservation_authority_pk
 ///   USER_ADMIN        → foundation_allowlist OR activator_authority_pk
-///   ACCESS_PASS_ADMIN → foundation_allowlist OR sentinel_authority_pk
+///   ACCESS_PASS_ADMIN → foundation_allowlist OR sentinel_authority_pk OR reservation_authority_pk
 ///   NETWORK_ADMIN     → foundation_allowlist OR activator_authority_pk
 ///   TENANT_ADMIN      → foundation_allowlist OR sentinel_authority_pk
 ///   MULTICAST_ADMIN   → foundation_allowlist OR activator_authority_pk OR sentinel_authority_pk
@@ -125,10 +125,11 @@ fn check_legacy_any(payer: &Pubkey, globalstate: &GlobalState, any_of: u128) -> 
     {
         return true;
     }
-    // ACCESS_PASS_ADMIN in legacy = foundation or sentinel.
+    // ACCESS_PASS_ADMIN in legacy = foundation, sentinel, or reservation.
     if any_of & permission_flags::ACCESS_PASS_ADMIN != 0
         && (globalstate.foundation_allowlist.contains(payer)
-            || globalstate.sentinel_authority_pk == *payer)
+            || globalstate.sentinel_authority_pk == *payer
+            || globalstate.reservation_authority_pk == *payer)
     {
         return true;
     }
@@ -379,6 +380,20 @@ mod tests {
         let program_id = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
         let gs = gs_with_sentinel(&payer);
+        assert!(authorize_legacy(
+            &program_id,
+            &payer,
+            &gs,
+            permission_flags::ACCESS_PASS_ADMIN
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn test_legacy_access_pass_admin_via_reservation() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let gs = gs_with_reservation(&payer);
         assert!(authorize_legacy(
             &program_id,
             &payer,

@@ -42,6 +42,7 @@ All notable changes to this project will be documented in this file.
   - Add wheresitup job backlog observability: `pending_jobs` Prometheus gauge, `in_progress_count`/`pending_jobs` in export summary logs, and API response duration histogram ([#3203](https://github.com/malbeclabs/doublezero/pull/3203))
   - Change geoprobe-agent and geoprobe-target default TWAMP reflector port from 862 to 8925 to avoid DZD ACL blocks, use per-probe TWAMP port instead of hardcoded constant, and update `--additional-child-probes`/`--additional-targets` format to `host` or `host:offset_port:twamp_port` (two-field `host:port` rejected as ambiguous)
 - Activator
+  - Fix tunnel ID leak in user activation: eagerly-allocated tunnel_id, tunnel_net, and dz_ip were not rolled back when the activation transaction failed, causing ghost IDs to accumulate and eventually exhaust the controller's tunnel slot range
   - Suppress noisy program log output from race conditions caused by dual event processing (websocket + snapshot poll). The SDK's new `execute_transaction_quiet` returns a `SimulationError` with program logs; the activator verifies suspected races by re-fetching user state before deciding whether to print logs ([#3197](https://github.com/malbeclabs/doublezero/pull/3197))
 - CLI
   - Add `doublezero-geolocation` CLI for managing geolocation program entities: GeoProbe CRUD (create, get, list, update, delete), parent device management (add/remove), program config initialization, and geolocation-specific config get/set

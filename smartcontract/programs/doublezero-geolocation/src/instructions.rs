@@ -5,7 +5,11 @@ pub use crate::processors::{
         create::CreateGeoProbeArgs, remove_parent_device::RemoveParentDeviceArgs,
         update::UpdateGeoProbeArgs,
     },
-    geolocation_user::{create::CreateGeolocationUserArgs, update::UpdateGeolocationUserArgs},
+    geolocation_user::{
+        add_target::AddTargetArgs, create::CreateGeolocationUserArgs,
+        remove_target::RemoveTargetArgs, update::UpdateGeolocationUserArgs,
+        update_payment_status::UpdatePaymentStatusArgs,
+    },
     program_config::{init::InitProgramConfigArgs, update::UpdateProgramConfigArgs},
 };
 
@@ -21,6 +25,9 @@ pub enum GeolocationInstruction {
     CreateGeolocationUser(CreateGeolocationUserArgs),
     UpdateGeolocationUser(UpdateGeolocationUserArgs),
     DeleteGeolocationUser,
+    AddTarget(AddTargetArgs),
+    RemoveTarget(RemoveTargetArgs),
+    UpdatePaymentStatus(UpdatePaymentStatusArgs),
 }
 
 #[cfg(test)]
@@ -87,6 +94,35 @@ mod tests {
             },
         ));
         test_instruction(GeolocationInstruction::DeleteGeolocationUser);
+        test_instruction(GeolocationInstruction::AddTarget(AddTargetArgs {
+            target_type: crate::state::geolocation_user::GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            location_offset_port: 8923,
+            target_pk: Pubkey::default(),
+        }));
+        test_instruction(GeolocationInstruction::AddTarget(AddTargetArgs {
+            target_type: crate::state::geolocation_user::GeoLocationTargetType::Inbound,
+            ip_address: Ipv4Addr::UNSPECIFIED,
+            location_offset_port: 0,
+            target_pk: Pubkey::new_unique(),
+        }));
+        test_instruction(GeolocationInstruction::RemoveTarget(RemoveTargetArgs {
+            target_type: crate::state::geolocation_user::GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            target_pk: Pubkey::default(),
+        }));
+        test_instruction(GeolocationInstruction::UpdatePaymentStatus(
+            UpdatePaymentStatusArgs {
+                payment_status: 1,
+                last_deduction_dz_epoch: Some(42),
+            },
+        ));
+        test_instruction(GeolocationInstruction::UpdatePaymentStatus(
+            UpdatePaymentStatusArgs {
+                payment_status: 0,
+                last_deduction_dz_epoch: None,
+            },
+        ));
     }
 
     #[test]

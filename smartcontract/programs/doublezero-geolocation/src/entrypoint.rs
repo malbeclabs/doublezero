@@ -7,8 +7,10 @@ use crate::{
             update::process_update_geo_probe,
         },
         geolocation_user::{
-            create::process_create_geolocation_user, delete::process_delete_geolocation_user,
+            add_target::process_add_target, create::process_create_geolocation_user,
+            delete::process_delete_geolocation_user, remove_target::process_remove_target,
             update::process_update_geolocation_user,
+            update_payment_status::process_update_payment_status,
         },
         program_config::{
             init::process_init_program_config, update::process_update_program_config,
@@ -60,6 +62,13 @@ pub fn process_instruction(
         }
         GeolocationInstruction::DeleteGeolocationUser => {
             process_delete_geolocation_user(program_id, accounts)?
+        }
+        GeolocationInstruction::AddTarget(args) => process_add_target(program_id, accounts, &args)?,
+        GeolocationInstruction::RemoveTarget(args) => {
+            process_remove_target(program_id, accounts, &args)?
+        }
+        GeolocationInstruction::UpdatePaymentStatus(args) => {
+            process_update_payment_status(program_id, accounts, &args)?
         }
     };
 

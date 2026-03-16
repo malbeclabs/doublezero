@@ -7,7 +7,10 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+- Activator
+  - Cap tunnel ID allocation per device based on `max_users` and gracefully reject users when a device is full instead of allocating invalid tunnel IDs
 - Client
+  - Surface rejection reason as a CLI error on `doublezero connect` instead of hanging indefinitely when the activator rejects a user (e.g., device full)
   - Demote passive-mode liveness session-down log messages from Info to Debug to reduce log noise when no dataplane action is taken
 - Telemetry
   - Add `Version` (uint8) and `TargetIP` ([4]byte) fields to LocationOffset wire format (v1, 174 bytes), with version validation on unmarshal to enable safe future format evolution

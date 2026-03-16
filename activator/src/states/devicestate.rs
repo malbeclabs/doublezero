@@ -185,13 +185,18 @@ impl DeviceState {
     }
 
     pub fn release(&mut self, dz_ip: Ipv4Addr, tunnel_id: u16) -> eyre::Result<()> {
+        self.release_dz_ip(dz_ip)?;
+        self.tunnel_ids.unassign(tunnel_id);
+
+        Ok(())
+    }
+
+    pub fn release_dz_ip(&mut self, dz_ip: Ipv4Addr) -> eyre::Result<()> {
         for allocator in self.dz_ips.iter_mut() {
             if allocator.contains(dz_ip) {
                 allocator.unassign_block(Ipv4Network::new(dz_ip, 32)?);
             }
         }
-        self.tunnel_ids.unassign(tunnel_id);
-
         Ok(())
     }
 }

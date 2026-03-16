@@ -14,13 +14,13 @@ use solana_client::{
 use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, Args)]
-pub struct ReservationCommand {
+pub struct ShredsCommand {
     #[command(subcommand)]
-    pub command: ReservationSubcommand,
+    pub command: ShredsSubcommand,
 }
 
 #[derive(Debug, Subcommand)]
-pub enum ReservationSubcommand {
+pub enum ShredsSubcommand {
     /// Initialize a client seat (if needed) and fund a payment escrow with USDC.
     Pay(pay::PayCommand),
     /// Close a payment escrow and withdraw any remaining USDC.
@@ -31,7 +31,7 @@ pub enum ReservationSubcommand {
     Price(price::PriceCommand),
 }
 
-impl ReservationSubcommand {
+impl ShredsSubcommand {
     pub async fn try_into_execute(self) -> Result<()> {
         match self {
             Self::Pay(command) => command.try_into_execute().await,

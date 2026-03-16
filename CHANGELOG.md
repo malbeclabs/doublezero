@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Client
   - Demote passive-mode liveness session-down log messages from Info to Debug to reduce log noise when no dataplane action is taken
 - E2E Tests
+  - Fix `TestE2E_UserLimits` not asserting command failure: the `; echo EXIT_CODE=$?` pattern caused the shell to always exit 0 regardless of the `doublezero` exit code, making `err` always nil; replace with `require.Error` assertions so the test fails if a limit-exceeded connect unexpectedly succeeds
   - Add geoprobe E2E test (`TestE2E_GeoprobeDiscovery`) that exercises the full geolocation flow: deploy geolocation program, create probe onchain, start geoprobe-agent container, and verify the telemetry-agent discovers and measures the probe via TWAMP
   - Add geoprobe Docker image, geolocation program build/deploy support, and manager geolocation CLI configuration to the E2E devnet infrastructure
 - Telemetry

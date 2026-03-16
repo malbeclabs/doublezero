@@ -3,6 +3,7 @@
 package e2e_test
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -184,6 +185,65 @@ func TestE2E_MultiClientIBRL_RouteLiveness(t *testing.T) {
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client4.CYOANetworkIP + " --user-payer " + client4.Pubkey})
 	require.NoError(t, err)
 	log.Debug("--> Clients added to user Access Pass")
+
+	// Dump diagnostics on failure.
+	clients := []*devnet.Client{client1, client2, client3, client4}
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		var buf strings.Builder
+		fmt.Fprintf(&buf, "\n=== ROUTE LIVENESS DIAGNOSTIC DUMP (deploy=%s) ===\n", deployID)
+
+		// Client-side diagnostics.
+		for i, c := range clients {
+			fmt.Fprintf(&buf, "\n--- Client%d (%s) diagnostics ---\n", i+1, c.Pubkey)
+			for _, cmd := range []struct {
+				label   string
+				command []string
+			}{
+				{"doublezero status", []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/status"}},
+				{"ip addr show", []string{"ip", "addr", "show"}},
+				{"ip route show", []string{"ip", "route", "show"}},
+				{"iptables -L INPUT", []string{"iptables", "-L", "INPUT", "-n", "-v"}},
+			} {
+				output, err := c.Exec(ctx, cmd.command)
+				if err != nil {
+					fmt.Fprintf(&buf, "\n  %s: ERROR: %v\n", cmd.label, err)
+				} else {
+					fmt.Fprintf(&buf, "\n  %s:\n%s", cmd.label, string(output))
+				}
+			}
+			// Dump container logs.
+			c.DumpDiagnostics()
+		}
+
+		// Device-side diagnostics.
+		for code, device := range dn.Devices {
+			for _, cmd := range []struct {
+				label   string
+				command []string
+			}{
+				{"show running-config section Tunnel", []string{"Cli", "-p", "15", "-c", "show running-config section Tunnel"}},
+				{"show ip bgp summary", []string{"Cli", "-c", "show ip bgp summary"}},
+				{"show ip bgp summary vrf vrf1", []string{"Cli", "-c", "show ip bgp summary vrf vrf1"}},
+				{"doublezero-agent log (last 100 lines)", []string{"tail", "-100", "/var/log/agents-latest/doublezero-agent"}},
+			} {
+				output, err := device.Exec(ctx, cmd.command)
+				if err != nil {
+					fmt.Fprintf(&buf, "\n--- Device %s: %s (ERROR: %v)\n", code, cmd.label, err)
+				} else {
+					fmt.Fprintf(&buf, "\n--- Device %s: %s\n%s", code, cmd.label, string(output))
+				}
+			}
+		}
+
+		fmt.Fprintf(&buf, "\n=== ROUTE LIVENESS DIAGNOSTIC DUMP END ===\n")
+		fmt.Fprint(os.Stderr, buf.String())
+	})
 
 	// Run route liveness workflow test.
 	runMultiClientIBRLRouteLivenessTest(t, log, dn, client1, client2, client3, client4, deviceCode1, deviceCode2)

@@ -348,6 +348,8 @@ All notable changes to this project will be documented in this file.
 - Client
   - Cache network interface index/name lookups in liveness UDP service to fix high CPU usage caused by per-packet RTM_GETLINK netlink dumps
   - Add observability to BGP handleUpdate: log withdrawal/NLRI counts per batch and track processing duration via `doublezero_bgp_handle_update_duration_seconds` histogram
+- Device Health Oracle
+  - Add device-health-oracle to provisioning workflow, matching current behavior by promoting link and device health to ready without actually performing any health checks
 - E2E tests
   - The QA alldevices test now skips devices that are not calling the controller
   - e2e: Expand RFC11 end-to-end testing ([#2801](https://github.com/malbeclabs/doublezero/pull/2801))

@@ -7,6 +7,12 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+
+## [v0.12.0](https://github.com/malbeclabs/doublezero/compare/client/v0.11.0...client/v0.12.0) - 2026-03-16
+
+### Breaking
+
+### Changes
 - Onchain Programs
   - Add `GeolocationUser` account state to the geolocation program with owner, billing config (flat-per-epoch), payment/user status, and a target list supporting outbound (IP + port) and inbound (pubkey) geolocation targets
 - Client

@@ -272,15 +272,32 @@ func TestE2E_ContributorAuth(t *testing.T) {
 		log.Debug("==> Updating interface as contributor owner")
 		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf(`
 			set -euo pipefail
-			DOUBLEZERO_KEYPAIR=/tmp/co-owner.json doublezero device interface update test-dev-co04 Ethernet1 --mtu 9000 2>&1
+			DOUBLEZERO_KEYPAIR=/tmp/co-owner.json doublezero device interface update test-dev-co04 Ethernet1 --bandwidth 20G 2>&1
 		`)})
 		require.NoError(t, err, "contributor owner should be able to update interface on their own device")
 
 		// Step 9: Verify the update via Go SDK
 		log.Debug("==> Verifying interface update via SDK")
-		iface, err := waitForInterfaceUpdate(t.Context(), dn, "test-dev-co04", "Ethernet1", serviceability.LoopbackTypeNone, 9000, 30*time.Second)
-		require.NoError(t, err, "timed out waiting for interface update")
-		require.Equal(t, uint16(9000), iface.Mtu, "mtu should be updated to 9000")
+		require.Eventually(t, func() bool {
+			client, err := dn.Ledger.GetServiceabilityClient()
+			if err != nil {
+				return false
+			}
+			data, err := client.GetProgramData(t.Context())
+			if err != nil {
+				return false
+			}
+			for _, device := range data.Devices {
+				if device.Code == "test-dev-co04" {
+					for _, iface := range device.Interfaces {
+						if iface.Name == "Ethernet1" && iface.Bandwidth == 20_000_000_000 {
+							return true
+						}
+					}
+				}
+			}
+			return false
+		}, 30*time.Second, 2*time.Second, "bandwidth should be updated to 20G")
 
 		// Step 10: Negative test - random third keypair should be rejected
 		log.Debug("==> Testing that random keypair is rejected")

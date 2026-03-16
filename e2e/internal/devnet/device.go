@@ -363,6 +363,7 @@ func (d *Device) Start(ctx context.Context) error {
 		out, err := d.dn.Manager.Exec(ctx, []string{
 			"doublezero", "device", "interface", "create", spec.Code, name,
 			"--bandwidth", "10G",
+			"--mtu", "2048",
 		}, docker.NoPrintOnError())
 		if err != nil {
 			if strings.Contains(string(out), "already exists") {

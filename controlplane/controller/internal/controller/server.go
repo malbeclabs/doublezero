@@ -392,6 +392,9 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 
 			d.Interfaces[i].Metric = uint32(microseconds)
+			if link.Mtu > 0 {
+				d.Interfaces[i].Mtu = uint16(link.Mtu)
+			}
 			d.Interfaces[i].IsLink = true
 			d.Interfaces[i].LinkStatus = link.Status
 			linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))

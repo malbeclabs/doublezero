@@ -75,8 +75,8 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 		set -euo pipefail
 		doublezero device interface create test-dz01 "Ethernet1" --interface-cyoa gre-over-dia --ip-net "45.33.100.62/31" --bandwidth 10Gbps 2>&1
 		doublezero device interface create test-dz02 "Ethernet1" --interface-cyoa gre-over-dia --ip-net "45.33.100.64/31" --bandwidth 10Gbps 2>&1
-		doublezero device interface create test-dz01 "Ethernet2" --bandwidth 10Gbps 2>&1
-		doublezero device interface create test-dz02 "Ethernet2" --bandwidth 10Gbps 2>&1
+		doublezero device interface create test-dz01 "Ethernet2" --bandwidth 10Gbps --mtu 2048 2>&1
+		doublezero device interface create test-dz02 "Ethernet2" --bandwidth 10Gbps --mtu 2048 2>&1
 	`})
 	log.Debug("Interface creation output", "output", string(output))
 	require.NoError(t, err)
@@ -178,7 +178,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 			--side-z test-dz02 \
 			--side-z-interface Ethernet2 \
 			--bandwidth "10 Gbps" \
-			--mtu 9000 \
+			--mtu 2048 \
 			--delay-ms 10 \
 			--jitter-ms 1 \
 			--desired-status activated \

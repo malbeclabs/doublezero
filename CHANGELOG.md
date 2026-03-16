@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: allow reservation authority to create, update, and close access passes, with ownership restriction preventing modification of passes created by other authorities
 - E2E Tests
   - Fix `TestE2E_UserLimits` not asserting command failure: the `; echo EXIT_CODE=$?` pattern caused the shell to always exit 0 regardless of the `doublezero` exit code, making `err` always nil; replace with `require.Error` assertions so the test fails if a limit-exceeded connect unexpectedly succeeds
+  - Fix intermittent flake in `TestE2E_MultiClientIBRL_RouteLiveness`: add explicit route convergence checks after each unblock before starting the next block/unblock cycle, ensuring the liveness subsystem and BGP have fully settled
   - Add geoprobe E2E test (`TestE2E_GeoprobeDiscovery`) that exercises the full geolocation flow: deploy geolocation program, create probe onchain, start geoprobe-agent container, and verify the telemetry-agent discovers and measures the probe via TWAMP
   - Add geoprobe Docker image, geolocation program build/deploy support, and manager geolocation CLI configuration to the E2E devnet infrastructure
   - Extend geoprobe E2E test with outbound offset forwarding (agent → target with signature chain verification) and inbound signed TWAMP probing (target-sender → agent with DZD offset embedding); build geoprobe-target and geoprobe-target-sender binaries into the geoprobe Docker image

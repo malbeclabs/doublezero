@@ -36,6 +36,8 @@ jobs:
             playbook: playbooks/qa_agents.yml
           - component: geoprobe-agent
             playbook: playbooks/geoprobe_agents.yml
+          - component: geoprobe-target
+            playbook: playbooks/geoprobe_targets.yml
     with:
       component: ${{ matrix.component }}
       playbook: ${{ matrix.playbook }}

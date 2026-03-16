@@ -21,11 +21,22 @@ builds:
       - linux
     goarch:
       - amd64
+  - id: doublezero-geoprobe-target-sender
+    main: cmd/geoprobe-target-sender/main.go
+    binary: doublezero-geoprobe-target-sender
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
+    goos:
+      - linux
+    goarch:
+      - amd64
 
 archives:
   - id: geoprobe_target_archive
     formats: ['tar.gz']
-    ids: [doublezero-geoprobe-target]
+    ids: [doublezero-geoprobe-target, doublezero-geoprobe-target-sender]
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
@@ -38,7 +49,7 @@ archives:
 nfpms:
   - id: doublezero-geoprobe-target
     package_name: doublezero-geoprobe-target
-    ids: [doublezero-geoprobe-target]
+    ids: [doublezero-geoprobe-target, doublezero-geoprobe-target-sender]
     vendor: doublezero
     homepage: doublezero.xyz
     maintainer: nik <nik@malbeclabs.com>

@@ -10,6 +10,7 @@ pub enum AccountType {
     None = 0,
     ProgramConfig = 1,
     GeoProbe = 2,
+    GeolocationUser = 3,
 }
 
 impl From<u8> for AccountType {
@@ -17,6 +18,7 @@ impl From<u8> for AccountType {
         match value {
             1 => AccountType::ProgramConfig,
             2 => AccountType::GeoProbe,
+            3 => AccountType::GeolocationUser,
             _ => AccountType::None,
         }
     }
@@ -28,6 +30,7 @@ impl fmt::Display for AccountType {
             AccountType::None => write!(f, "none"),
             AccountType::ProgramConfig => write!(f, "programconfig"),
             AccountType::GeoProbe => write!(f, "geoprobe"),
+            AccountType::GeolocationUser => write!(f, "geolocationuser"),
         }
     }
 }

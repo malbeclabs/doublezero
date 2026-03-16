@@ -103,11 +103,13 @@ jobs:
             i=$((i + 1))
           done <<< "$remaining"
 
-          # Build JSON matrix: shard 1 = dedicated, shard 2 = onchain, shards 3+ = round-robin
-          matrix="[{\"shard\":1,\"run\":\"^(${dedicated})$\",\"onchain_allocation\":\"\"}"
-          matrix="${matrix},{\"shard\":2,\"run\":\"^(${onchain_tests})$\",\"onchain_allocation\":\"true\"}"
+          # Build JSON matrix: shard 1 = dedicated (legacy), shard 2 = dedicated (onchain),
+          # shard 3 = onchain (no activator), shards 4+ = round-robin (legacy)
+          matrix="[{\"shard\":1,\"run\":\"^(${dedicated})$\",\"onchain_allocation\":\"\",\"disable_activator\":\"\"}"
+          matrix="${matrix},{\"shard\":2,\"run\":\"^(${dedicated})$\",\"onchain_allocation\":\"true\",\"disable_activator\":\"\"}"
+          matrix="${matrix},{\"shard\":3,\"run\":\"^(${onchain_tests})$\",\"onchain_allocation\":\"true\",\"disable_activator\":\"true\"}"
           for ((i=0; i<SHARD_COUNT; i++)); do
-            matrix="${matrix},{\"shard\":$((i + 3)),\"run\":\"^(${shards[$i]})$\",\"onchain_allocation\":\"\"}"
+            matrix="${matrix},{\"shard\":$((i + 4)),\"run\":\"^(${shards[$i]})$\",\"onchain_allocation\":\"\",\"disable_activator\":\"\"}"
           done
           matrix="${matrix}]"
 
@@ -180,4 +182,5 @@ jobs:
         env:
           DZ_E2E_NO_BUILD: "1"
           DZ_E2E_ONCHAIN_ALLOCATION: ${{ matrix.onchain_allocation }}
+          DZ_E2E_DISABLE_ACTIVATOR: ${{ matrix.disable_activator }}
         run: go test -tags=e2e -timeout=20m -parallel=12 -run '${{ matrix.run }}' -v

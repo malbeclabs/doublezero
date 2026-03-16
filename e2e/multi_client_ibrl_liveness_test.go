@@ -335,7 +335,9 @@ func runMultiClientIBRLRouteLivenessTest(t *testing.T, log *slog.Logger, dn *dev
 
 		unblockUDPLiveness(t, client1)
 
-		// Routes restored after unblocking
+		// Routes restored after unblocking; wait for full stability before Case B.
+		// Note: c1->c4 is not checked here — client4 has liveness disabled and does not
+		// respond to probes, so c1 cannot restore that route via liveness after a block.
 		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: unblock c1: c1->c2 remains")
 		requireEventuallyRoute(t, client1, client3DZIP, true, wait, tick, "pass %d: unblock c1: c1->c3 restored")
 		requireEventuallyRoute(t, client3, client1DZIP, true, wait, tick, "pass %d: unblock c1: c3->c1 restored")
@@ -356,8 +358,10 @@ func runMultiClientIBRLRouteLivenessTest(t *testing.T, log *slog.Logger, dn *dev
 
 		unblockUDPLiveness(t, client2)
 
-		// Routes restored after unblocking
+		// Routes restored after unblocking; wait for full stability before Case C.
 		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: unblock c2: c1->c2 remains")
+		requireEventuallyRoute(t, client1, client3DZIP, true, wait, tick, "pass %d: unblock c2: c1->c3 remains stable")
+		requireEventuallyRoute(t, client3, client1DZIP, true, wait, tick, "pass %d: unblock c2: c3->c1 remains stable")
 	}
 
 	doRouteLivenessCaseC := func(pass int) {

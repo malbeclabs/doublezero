@@ -500,16 +500,25 @@ func unblockUDPLiveness(t *testing.T, c *devnet.Client) {
 	require.NoError(t, err)
 }
 
-func hasRoute(t *testing.T, from *devnet.Client, ip string) bool {
+func hasRoute(t *testing.T, from *devnet.Client, ip string) (bool, error) {
 	t.Helper()
 	out, err := from.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-	require.NoError(t, err)
-	return strings.Contains(string(out), ip)
+	if err != nil {
+		return false, err
+	}
+	return strings.Contains(string(out), ip), nil
 }
 
 func requireEventuallyRoute(t *testing.T, from *devnet.Client, ip string, want bool, wait, tick time.Duration, msg string) {
 	t.Helper()
-	require.Eventually(t, func() bool { return hasRoute(t, from, ip) == want }, wait, tick, msg)
+	require.Eventually(t, func() bool {
+		has, err := hasRoute(t, from, ip)
+		if err != nil {
+			t.Logf("hasRoute error (will retry): %v", err)
+			return false
+		}
+		return has == want
+	}, wait, tick, msg)
 }
 
 func requireUDPLivenessOnDZ0(t *testing.T, c *devnet.Client, host string, msg string) {

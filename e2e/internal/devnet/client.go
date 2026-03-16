@@ -578,18 +578,18 @@ func (c *Client) WaitForTunnelStatus(ctx context.Context, wantStatus ClientSessi
 		return false, nil
 	}, timeout, 1*time.Second)
 	if err != nil {
-		c.dumpDiagnostics()
+		c.DumpDiagnostics()
 		return fmt.Errorf("failed to wait for client tunnel status %s: %w", wantStatus, err)
 	}
 
 	return nil
 }
 
-// dumpDiagnostics prints client-side and device-side diagnostic information to help debug
+// DumpDiagnostics prints client-side and device-side diagnostic information to help debug
 // tunnel status failures. It uses a fresh context since the test context may have expired.
 // Output is buffered and written in a single fmt.Fprint call so that parallel tests don't
 // interleave each other's diagnostics.
-func (c *Client) dumpDiagnostics() {
+func (c *Client) DumpDiagnostics() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

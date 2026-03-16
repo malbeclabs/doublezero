@@ -15,6 +15,7 @@ import (
 type ActivatorSpec struct {
 	ContainerImage    string
 	OnchainAllocation *bool // nil = default (offchain), true = explicitly enabled for onchain allocation tests
+	Disabled          *bool // nil = default (enabled), true = skip starting the activator
 }
 
 // BoolPtr returns a pointer to the given bool value.
@@ -36,6 +37,14 @@ func (s *ActivatorSpec) Validate() error {
 			s.OnchainAllocation = BoolPtr(true)
 		} else {
 			s.OnchainAllocation = BoolPtr(false)
+		}
+	}
+
+	if s.Disabled == nil {
+		if os.Getenv("DZ_E2E_DISABLE_ACTIVATOR") == "true" {
+			s.Disabled = BoolPtr(true)
+		} else {
+			s.Disabled = BoolPtr(false)
 		}
 	}
 

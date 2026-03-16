@@ -488,9 +488,11 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 		return fmt.Errorf("failed to start controller: %w", err)
 	}
 
-	// Start the activator if it's not already running.
-	if _, err := d.Activator.StartIfNotRunning(ctx); err != nil {
-		return fmt.Errorf("failed to start activator: %w", err)
+	// Start the activator if it's not already running and not disabled.
+	if d.Spec.Activator.Disabled == nil || !*d.Spec.Activator.Disabled {
+		if _, err := d.Activator.StartIfNotRunning(ctx); err != nil {
+			return fmt.Errorf("failed to start activator: %w", err)
+		}
 	}
 
 	// Start the device-health-oracle if it's not already running.

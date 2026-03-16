@@ -59,7 +59,7 @@ nfpms:
     formats:
       - deb
       - rpm
-    bindir: /usr/local/bin
+    bindir: /usr/bin
     release: "1"
     section: default
     contents:

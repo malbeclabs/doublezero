@@ -452,13 +452,7 @@ async fn test_multicast_subscriber_allowlist_feed_authority() {
 
     // 2. Create a feed keypair and set it as feed authority
     let feed = Keypair::new();
-    transfer(
-        &mut banks_client,
-        &payer,
-        &feed.pubkey(),
-        10_000_000_000,
-    )
-    .await;
+    transfer(&mut banks_client, &payer, &feed.pubkey(), 10_000_000_000).await;
 
     execute_transaction(
         &mut banks_client,
@@ -602,13 +596,7 @@ async fn test_multicast_subscriber_allowlist_feed_authority_different_user_payer
 
     // 2. Create a feed keypair and set it as feed authority
     let feed = Keypair::new();
-    transfer(
-        &mut banks_client,
-        &payer,
-        &feed.pubkey(),
-        10_000_000_000,
-    )
-    .await;
+    transfer(&mut banks_client, &payer, &feed.pubkey(), 10_000_000_000).await;
 
     execute_transaction(
         &mut banks_client,

@@ -229,13 +229,16 @@ func TestE2E_UserLimits(t *testing.T) {
 			"doublezero access-pass set --accesspass-type prepaid --client-ip " + client2.CYOANetworkIP + " --user-payer " + client2.Pubkey})
 		require.NoError(t, err)
 
-		// This should fail because we've hit the unicast limit
+		// This should fail because we've hit the unicast limit.
+		// stderr is redirected to stdout so the error message is captured in output.
+		// The exit code check is done via require.Error — do not append "; echo EXIT_CODE=$?"
+		// as that would mask the non-zero exit and err would always be nil.
 		output, err := client2.Exec(ctx, []string{"bash", "-c",
-			"doublezero connect ibrl --device " + deviceCode + " --client-ip " + client2.CYOANetworkIP + " --allocate-addr 2>&1; echo EXIT_CODE=$?"})
+			"doublezero connect ibrl --device " + deviceCode + " --client-ip " + client2.CYOANetworkIP + " --allocate-addr 2>&1"})
 		outputStr := string(output)
 		log.Info("Second unicast user creation result", "output", outputStr, "err", err)
 
-		// Command should have failed (non-zero exit) and output should contain the limit error
+		require.Error(t, err, "Expected connect to fail due to unicast limit")
 		require.Contains(t, outputStr, "unicast user limit",
 			"Expected unicast limit error, got: %s", outputStr)
 
@@ -325,13 +328,16 @@ func TestE2E_UserLimits(t *testing.T) {
 			"doublezero multicast group allowlist subscriber add --code limit-mc01 --user-payer " + client2.Pubkey + " --client-ip " + client2.CYOANetworkIP})
 		require.NoError(t, err)
 
-		// This should fail because we've hit the multicast subscriber limit
+		// This should fail because we've hit the multicast subscriber limit.
+		// stderr is redirected to stdout so the error message is captured in output.
+		// The exit code check is done via require.Error — do not append "; echo EXIT_CODE=$?"
+		// as that would mask the non-zero exit and err would always be nil.
 		output, err := client2.Exec(ctx, []string{"bash", "-c",
-			"doublezero connect multicast subscriber limit-mc01 --device " + deviceCode + " --client-ip " + client2.CYOANetworkIP + " 2>&1; echo EXIT_CODE=$?"})
+			"doublezero connect multicast subscriber limit-mc01 --device " + deviceCode + " --client-ip " + client2.CYOANetworkIP + " 2>&1"})
 		outputStr := string(output)
 		log.Info("Second multicast subscriber creation result", "output", outputStr, "err", err)
 
-		// Command should have failed (non-zero exit) and output should contain the limit error
+		require.Error(t, err, "Expected connect to fail due to multicast subscriber limit")
 		require.Contains(t, outputStr, "multicast subscriber limit",
 			"Expected multicast subscriber limit error, got: %s", outputStr)
 
@@ -420,13 +426,16 @@ func TestE2E_UserLimits(t *testing.T) {
 			"doublezero multicast group allowlist publisher add --code limit-mc01 --user-payer " + client2.Pubkey + " --client-ip " + client2.CYOANetworkIP})
 		require.NoError(t, err)
 
-		// This should fail because we've hit the multicast publisher limit
+		// This should fail because we've hit the multicast publisher limit.
+		// stderr is redirected to stdout so the error message is captured in output.
+		// The exit code check is done via require.Error — do not append "; echo EXIT_CODE=$?"
+		// as that would mask the non-zero exit and err would always be nil.
 		output, err := client2.Exec(ctx, []string{"bash", "-c",
-			"doublezero connect multicast publisher limit-mc01 --device " + deviceCode + " --client-ip " + client2.CYOANetworkIP + " 2>&1; echo EXIT_CODE=$?"})
+			"doublezero connect multicast publisher limit-mc01 --device " + deviceCode + " --client-ip " + client2.CYOANetworkIP + " 2>&1"})
 		outputStr := string(output)
 		log.Info("Second multicast publisher creation result", "output", outputStr, "err", err)
 
-		// Command should have failed (non-zero exit) and output should contain the limit error
+		require.Error(t, err, "Expected connect to fail due to multicast publisher limit")
 		require.Contains(t, outputStr, "multicast publisher limit",
 			"Expected multicast publisher limit error, got: %s", outputStr)
 

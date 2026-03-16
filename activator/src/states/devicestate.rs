@@ -50,7 +50,7 @@ impl DeviceState {
                 .iter()
                 .map(|b| IPBlockAllocator::new((*b).into()))
                 .collect(),
-            tunnel_ids: IDAllocator::with_max(500, 627, vec![]),
+            tunnel_ids: IDAllocator::with_max(500, 499 + device.max_users, vec![]),
             tunnel_endpoints_in_use: HashMap::new(),
         }
     }
@@ -68,6 +68,9 @@ impl DeviceState {
                 device.code, &device.public_ip, &device.dz_prefixes,
             );
         }
+        // Update tunnel ID cap if max_users changed.
+        self.tunnel_ids.max = Some(499 + device.max_users);
+
         // Always refresh the device data so interfaces (e.g. UTE loopbacks
         // added after initial load) are visible to get_available_tunnel_endpoint.
         self.device = device.clone();

@@ -73,7 +73,7 @@ func TestFixtureGlobalState(t *testing.T) {
 		"ActivatorAuthorityPK":       solana.PublicKey(gs.ActivatorAuthorityPK),
 		"SentinelAuthorityPK":        solana.PublicKey(gs.SentinelAuthorityPK),
 		"HealthOraclePK":             solana.PublicKey(gs.HealthOraclePK),
-		"FeedAuthorityPk":     solana.PublicKey(gs.FeedAuthorityPK),
+		"FeedAuthorityPk":            solana.PublicKey(gs.FeedAuthorityPK),
 	})
 }
 

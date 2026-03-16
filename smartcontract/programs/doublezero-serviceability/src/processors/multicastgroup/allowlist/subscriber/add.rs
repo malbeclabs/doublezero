@@ -130,13 +130,6 @@ pub fn process_add_multicastgroup_sub_allowlist(
 
         let mut accesspass = AccessPass::try_from(accesspass_account)?;
 
-        // Feed authority can only modify access passes they own
-        if globalstate.feed_authority_pk == *payer_account.key
-            && accesspass.owner != *payer_account.key
-        {
-            return Err(DoubleZeroError::NotAllowed.into());
-        }
-
         assert!(
             accesspass.client_ip == value.client_ip,
             "AccessPass client_ip does not match"

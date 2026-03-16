@@ -338,7 +338,7 @@ type GlobalState struct {
 	HealthOraclePK             [32]byte
 	QAAllowlist                [][32]byte
 	FeatureFlags               Uint128
-	FeedAuthorityPK     [32]byte
+	FeedAuthorityPK            [32]byte
 	PubKey                     [32]byte
 }
 
@@ -1113,7 +1113,7 @@ const (
 	PermissionFlagNetworkAdmin     uint64 = 1 << 3
 	PermissionFlagTenantAdmin      uint64 = 1 << 4
 	PermissionFlagMulticastAdmin   uint64 = 1 << 5
-	PermissionFlagFeed             uint64 = 1 << 6
+	PermissionFlagFeedAuthority    uint64 = 1 << 6
 	PermissionFlagActivator        uint64 = 1 << 7
 	PermissionFlagSentinel         uint64 = 1 << 8
 	PermissionFlagUserAdmin        uint64 = 1 << 9

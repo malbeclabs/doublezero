@@ -510,11 +510,10 @@ async fn test_multicast_subscriber_allowlist_feed_authority() {
     )
     .await;
 
-    // 4. Feed authority creates access pass (becomes owner)
+    // 4. Set access pass (requires foundation allowlist, so use payer)
     let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
 
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    let res = try_execute_transaction(
+    execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -529,15 +528,11 @@ async fn test_multicast_subscriber_allowlist_feed_authority() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_payer, false),
         ],
-        &feed,
+        &payer,
     )
     .await;
-    assert!(
-        res.is_ok(),
-        "Feed authority should be able to create access passes"
-    );
 
-    // 5. Feed authority (owner) adds subscriber allowlist entry — should succeed
+    // 5. Feed authority (non-owner) adds subscriber allowlist entry — should succeed
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     let res = try_execute_transaction(
         &mut banks_client,
@@ -654,11 +649,10 @@ async fn test_multicast_subscriber_allowlist_feed_authority_different_user_payer
     )
     .await;
 
-    // 4. Feed authority creates access pass with original_user_payer (becomes owner)
+    // 4. Create access pass with original_user_payer (using foundation payer)
     let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &original_user_payer);
 
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    let res = try_execute_transaction(
+    execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -673,15 +667,11 @@ async fn test_multicast_subscriber_allowlist_feed_authority_different_user_payer
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(original_user_payer, false),
         ],
-        &feed,
+        &payer,
     )
     .await;
-    assert!(
-        res.is_ok(),
-        "Feed authority should be able to create access passes"
-    );
 
-    // 5. Feed authority (owner) adds subscriber allowlist with a DIFFERENT user_payer — should succeed
+    // 5. Feed authority adds subscriber allowlist with a DIFFERENT user_payer — should succeed
     let different_user_payer = Pubkey::new_unique();
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     let res = try_execute_transaction(

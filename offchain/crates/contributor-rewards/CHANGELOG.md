@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- feat(contributor-rewards): add support for distribution slack notifications and other minor cleanups ([#285](https://github.com/doublezerofoundation/doublezero-offchain/pull/285))
+
+## [0.4.3](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.4.3) - 2026-03-04
+
 - fix(contributor-rewards): stop infinite retry when recipient accounts are missing ([#280](https://github.com/doublezerofoundation/doublezero-offchain/pull/280))
 
 ## [0.4.2](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.4.2) - 2026-03-04

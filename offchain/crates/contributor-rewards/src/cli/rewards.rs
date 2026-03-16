@@ -6,9 +6,12 @@ use doublezero_solana_client_tools::rpc::SolanaConnection;
 use doublezero_solana_sdk::revenue_distribution::fetch::{
     SolConversionState, try_fetch_config, try_fetch_distribution,
 };
-use slack_notifier::contributor_rewards::{WriteResultInfo, post_detailed_completion};
+use slack_notifier::contributor_rewards::{
+    DistributionRewardRow, WriteResultInfo, post_contributor_rewards, post_distribution_rewards,
+};
 use solana_sdk::pubkey::Pubkey;
-use tracing::info;
+use tabled::{builder::Builder as TableBuilder, settings::Style};
+use tracing::{info, warn};
 
 use crate::{
     calculator::{ledger_operations::WriteResult, orchestrator::Orchestrator},
@@ -409,7 +412,7 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
                             .collect();
 
                         // Post notification
-                        match post_detailed_completion(webhook_url, network, epoch, write_results)
+                        match post_contributor_rewards(webhook_url, network, epoch, write_results)
                             .await
                         {
                             Ok(_) => {
@@ -567,7 +570,7 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
 
                     let shapley_prefix = orchestrator.settings.get_contributor_rewards_prefix();
 
-                    let outcome = distribute::try_distribute_epoch_rewards(
+                    let summary = distribute::try_distribute_epoch_rewards(
                         &wallet,
                         &dz_connection,
                         &config.rewards_accountant_key,
@@ -576,7 +579,7 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
                     )
                     .await?;
 
-                    match outcome {
+                    match &summary.outcome {
                         distribute::DistributionOutcome::Complete { total_contributors } => {
                             info!(
                                 "Epoch {dz_epoch_value} complete: {total_contributors}/{total_contributors} distributed"
@@ -593,6 +596,93 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
                         }
                         distribute::DistributionOutcome::NotReady => {
                             info!("Distribution not ready for epoch {dz_epoch_value}");
+                        }
+                    }
+
+                    // Fetch contributor labels and build display rows.
+                    if !summary.contributors.is_empty() {
+                        let labels =
+                            crate::calculator::ledger_operations::try_fetch_contributor_labels(
+                                &dz_connection,
+                                &orchestrator.settings.programs.serviceability_program_id,
+                            )
+                            .await
+                            .unwrap_or_default();
+
+                        let resolve_label = |key: &solana_sdk::pubkey::Pubkey| {
+                            labels.get(key).cloned().unwrap_or_else(|| key.to_string())
+                        };
+
+                        // Print per-contributor rewards table to stdout.
+                        let mut table_builder = TableBuilder::default();
+                        table_builder.push_record([
+                            "dz_epoch".to_string(),
+                            "index".to_string(),
+                            "contributor".to_string(),
+                            "proportion".to_string(),
+                            "reward".to_string(),
+                            "distributed".to_string(),
+                        ]);
+                        for c in &summary.contributors {
+                            table_builder.push_record([
+                                summary.dz_epoch.to_string(),
+                                c.index.to_string(),
+                                resolve_label(&c.contributor_key),
+                                format!("{:.2}%", 100.0 * c.proportion),
+                                format!("{:.1} 2Z", c.reward_tokens),
+                                if c.distributed { "yes" } else { "no" }.to_string(),
+                            ]);
+                        }
+                        let table = table_builder
+                            .build()
+                            .with(Style::psql().remove_horizontals())
+                            .to_string();
+                        println!("\n{table}");
+
+                        // Post Slack notification for completed distributions.
+                        if matches!(
+                            summary.outcome,
+                            distribute::DistributionOutcome::Complete { .. }
+                                | distribute::DistributionOutcome::PartiallyComplete { .. }
+                        ) && let Some(slack_settings) = &orchestrator.settings.slack
+                            && slack_settings.enabled
+                            && let Some(webhook_url) = &slack_settings.webhook_url
+                        {
+                            let network = format!("{:?}", orchestrator.settings.network);
+                            let rows: Vec<DistributionRewardRow> = summary
+                                .contributors
+                                .iter()
+                                .map(|c| DistributionRewardRow {
+                                    index: c.index,
+                                    contributor: resolve_label(&c.contributor_key),
+                                    proportion: format!("{:.2}%", 100.0 * c.proportion),
+                                    reward: format!("{:.1} 2Z", c.reward_tokens),
+                                    distributed: if c.distributed { "yes" } else { "no" }
+                                        .to_string(),
+                                })
+                                .collect();
+
+                            match post_distribution_rewards(
+                                webhook_url,
+                                network,
+                                summary.dz_epoch,
+                                rows,
+                            )
+                            .await
+                            {
+                                Ok(()) => {
+                                    info!(
+                                        "[OK] Posted distribution Slack notification for epoch {}",
+                                        dz_epoch_value
+                                    );
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "[WARN] Failed to post distribution Slack notification: {}",
+                                        e
+                                    );
+                                }
+                            }
                         }
                     }
                 }

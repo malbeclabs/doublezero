@@ -5,14 +5,14 @@ use doublezero_solana_client_tools::{
     rpc::DoubleZeroLedgerConnection,
 };
 use doublezero_solana_sdk::{
-    build_memo_instruction, environment_2z_token_mint_key,
+    DOUBLEZERO_MINT_DECIMALS, build_memo_instruction, environment_2z_token_mint_key,
     revenue_distribution::{
         ID,
         fetch::try_fetch_distribution,
         instruction::{RevenueDistributionInstructionData, account::DistributeRewardsAccounts},
         state::{ContributorRewards, Distribution},
         try_is_processed_leaf,
-        types::RewardShare,
+        types::{RewardShare, UnitShare32},
     },
     try_build_instruction,
 };
@@ -43,6 +43,27 @@ pub enum DistributionOutcome {
     },
 }
 
+/// Per-contributor result from a distribution attempt.
+#[derive(Debug)]
+pub struct ContributorDistributionResult {
+    pub index: usize,
+    pub contributor_key: Pubkey,
+    /// unit_share / UnitShare32::MAX, range 0.0–1.0
+    pub proportion: f64,
+    /// Human-readable 2Z amount (already divided by decimals)
+    pub reward_tokens: f64,
+    /// Whether this leaf is processed (includes both pre-existing and newly distributed)
+    pub distributed: bool,
+}
+
+/// Full summary of a distribution attempt.
+#[derive(Debug)]
+pub struct DistributionSummary {
+    pub dz_epoch: u64,
+    pub outcome: DistributionOutcome,
+    pub contributors: Vec<ContributorDistributionResult>,
+}
+
 /// Attempt to distribute rewards for the current eligible epoch.
 pub async fn try_distribute_epoch_rewards(
     wallet: &Wallet,
@@ -50,7 +71,7 @@ pub async fn try_distribute_epoch_rewards(
     rewards_accountant_key: &Pubkey,
     dz_epoch_value: u64,
     shapley_prefix: &[u8],
-) -> Result<DistributionOutcome> {
+) -> Result<DistributionSummary> {
     // Fetch the distribution for this epoch.
     let (_, distribution) = try_fetch_distribution(&wallet.connection, dz_epoch_value).await?;
 
@@ -60,7 +81,11 @@ pub async fn try_distribute_epoch_rewards(
             "Distribution for epoch {} is not finalized yet, skipping",
             dz_epoch_value
         );
-        return Ok(DistributionOutcome::NotReady);
+        return Ok(DistributionSummary {
+            dz_epoch: dz_epoch_value,
+            outcome: DistributionOutcome::NotReady,
+            contributors: vec![],
+        });
     }
 
     if !distribution.has_swept_2z_tokens() {
@@ -68,24 +93,26 @@ pub async fn try_distribute_epoch_rewards(
             "Distribution for epoch {} has not swept 2Z tokens yet, skipping",
             dz_epoch_value
         );
-        return Ok(DistributionOutcome::NotReady);
+        return Ok(DistributionSummary {
+            dz_epoch: dz_epoch_value,
+            outcome: DistributionOutcome::NotReady,
+            contributors: vec![],
+        });
     }
 
     let total_contributors = distribution.total_contributors;
 
-    // Check if all contributors are already distributed.
     if distribution.distributed_rewards_count == total_contributors {
         debug!(
-            "All {} contributors already distributed for epoch {}, skipping",
+            "All {} contributors already distributed for epoch {}, fetching summary",
             total_contributors, dz_epoch_value
         );
-        return Ok(DistributionOutcome::Complete { total_contributors });
+    } else {
+        info!(
+            "Distributing rewards for epoch {}: {}/{} already distributed onchain",
+            dz_epoch_value, distribution.distributed_rewards_count, total_contributors
+        );
     }
-
-    info!(
-        "Distributing rewards for epoch {}: {}/{} already distributed onchain",
-        dz_epoch_value, distribution.distributed_rewards_count, total_contributors
-    );
 
     let network_env = wallet.connection.try_network_environment().await?;
     let dz_mint_key = environment_2z_token_mint_key(network_env);
@@ -131,15 +158,48 @@ pub async fn try_distribute_epoch_rewards(
         }
     }
 
-    if skipped_count > 0 {
-        Ok(DistributionOutcome::PartiallyComplete {
+    let outcome = if skipped_count > 0 {
+        DistributionOutcome::PartiallyComplete {
             total_contributors,
             distributed: distribution.distributed_rewards_count + distributed_count,
             skipped: skipped_count,
-        })
+        }
     } else {
-        Ok(DistributionOutcome::Complete { total_contributors })
-    }
+        DistributionOutcome::Complete { total_contributors }
+    };
+
+    // Build per-contributor summary from in-scope data (no additional RPC calls).
+    let collected_rewards = distribution.total_collected_2z_tokens();
+    let burnable_rewards = distribution
+        .community_burn_rate
+        .mul_scalar(collected_rewards);
+    let distributable_rewards = collected_rewards - burnable_rewards;
+    let decimals_divisor = f64::powi(10.0, DOUBLEZERO_MINT_DECIMALS as i32);
+
+    let contributors = try_distribution_rewards_iter(&distribution, &shapley_output)?
+        .map(|(index, reward_share, is_processed)| {
+            let proportion = reward_share.unit_share as f64 / u32::from(UnitShare32::MAX) as f64;
+            let reward_tokens = reward_share
+                .checked_unit_share()
+                .unwrap()
+                .mul_scalar(distributable_rewards) as f64
+                / decimals_divisor;
+
+            ContributorDistributionResult {
+                index,
+                contributor_key: reward_share.contributor_key,
+                proportion,
+                reward_tokens,
+                distributed: is_processed,
+            }
+        })
+        .collect();
+
+    Ok(DistributionSummary {
+        dz_epoch: dz_epoch_value,
+        outcome,
+        contributors,
+    })
 }
 
 /// Iterate over distribution rewards, yielding (leaf_index, reward_share, is_processed)

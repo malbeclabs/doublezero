@@ -1181,7 +1181,9 @@ async fn handle_telemetry_rent_analysis(
 
     // Display telemetry breakdown table
     if !rows.is_empty() {
-        let table = Table::new(rows).with(Style::psql()).to_string();
+        let table = Table::new(rows)
+            .with(Style::psql().remove_horizontals())
+            .to_string();
         println!("{table}");
     }
 
@@ -1214,7 +1216,9 @@ async fn handle_telemetry_rent_analysis(
         },
     ];
 
-    let total_table = Table::new(total_rows).with(Style::psql()).to_string();
+    let total_table = Table::new(total_rows)
+        .with(Style::psql().remove_horizontals())
+        .to_string();
     println!("{total_table}");
     println!();
 

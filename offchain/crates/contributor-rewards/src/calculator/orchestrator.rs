@@ -1,6 +1,7 @@
-use std::{path::PathBuf, time::Instant};
+use std::{collections::HashMap, path::PathBuf, time::Instant};
 
 use anyhow::{Result, bail};
+use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
 use solana_sdk::pubkey::Pubkey;
 use tracing::{info, warn};
 
@@ -87,9 +88,25 @@ impl Orchestrator {
         let device_payload_bytes = device_telemetry_bytes.len();
         let internet_payload_bytes = internet_telemetry_bytes.len();
 
+        // Fetch contributor labels for human-readable display.
+        let dz_connection = DoubleZeroLedgerConnection::new(self.settings.rpc.dz_url.clone());
+        let pubkey_labels = ledger_operations::try_fetch_contributor_labels(
+            &dz_connection,
+            &self.settings.programs.serviceability_program_id,
+        )
+        .await
+        .unwrap_or_default();
+
+        // Build string-keyed map for shapley evaluator (which uses pubkey strings as keys).
+        let string_labels: HashMap<String, String> = pubkey_labels
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect();
+
         // Compute Shapley values using shared function
         let start_time = Instant::now();
-        let compute_result = compute_shapley_values(&shapley_inputs, &self.settings.shapley)?;
+        let compute_result =
+            compute_shapley_values(&shapley_inputs, &self.settings.shapley, &string_labels)?;
         let elapsed = start_time.elapsed();
 
         // Track total Shapley computation time
@@ -107,7 +124,11 @@ impl Orchestrator {
             info!("merkle_root: {:#?}", merkle_root);
 
             // Print rewards summary table
-            ledger_operations::print_rewards_summary(&shapley_storage, &merkle_root);
+            ledger_operations::print_rewards_summary(
+                &shapley_storage,
+                &merkle_root,
+                &pubkey_labels,
+            );
 
             // Record payload sizes to monitor ledger write growth
             let reward_input_bytes = borsh::to_vec(&input_config)?;

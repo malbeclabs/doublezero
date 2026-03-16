@@ -3,7 +3,7 @@
 //! This module provides the core Shapley computation function used by both
 //! `calculate-rewards` and `export shapley` commands.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use anyhow::{Context, Result};
 use network_shapley::shapley::{ShapleyInput, ShapleyOutput};
@@ -41,6 +41,7 @@ pub struct ShapleyComputeResult {
 pub fn compute_shapley_values(
     shapley_inputs: &ShapleyInputs,
     shapley_settings: &ShapleySettings,
+    contributor_labels: &HashMap<String, String>,
 ) -> Result<ShapleyComputeResult> {
     // Group demands by start city
     let mut demands_by_city: BTreeMap<String, Vec<network_shapley::types::Demand>> =
@@ -129,10 +130,15 @@ pub fn compute_shapley_values(
 
     // Print aggregated table
     let mut table_builder = TableBuilder::default();
-    table_builder.push_record(["Operator", "Value", "Proportion (%)"]);
+    table_builder.push_record(["Operator", "Pubkey", "Value", "Proportion (%)"]);
 
     for (operator, val) in aggregated_output.iter() {
+        let label = contributor_labels
+            .get(operator)
+            .map(String::as_str)
+            .unwrap_or(operator);
         table_builder.push_record([
+            label,
             operator,
             &val.value.to_string(),
             &format!("{:.2}", val.proportion * 100.0),
@@ -237,7 +243,7 @@ mod tests {
     #[test]
     fn test_compute_shapley_values_returns_result() {
         let (inputs, settings) = create_minimal_inputs();
-        let result = compute_shapley_values(&inputs, &settings);
+        let result = compute_shapley_values(&inputs, &settings, &HashMap::new());
 
         assert!(result.is_ok(), "Shapley computation should succeed");
         let result = result.unwrap();
@@ -254,7 +260,7 @@ mod tests {
     #[test]
     fn test_aggregated_proportions_sum_to_one() {
         let (inputs, settings) = create_minimal_inputs();
-        let result = compute_shapley_values(&inputs, &settings).unwrap();
+        let result = compute_shapley_values(&inputs, &settings, &HashMap::new()).unwrap();
 
         let total_proportion: f64 = result
             .aggregated_output

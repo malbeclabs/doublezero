@@ -4,9 +4,9 @@ use tabled::{builder::Builder as TableBuilder, settings::Style};
 
 use crate::slack::build_message_request;
 
-/// Post detailed reward cycle completion notification to Slack
+/// Post contributor-rewards completion notification to Slack
 /// Displays a table with Type | Value | Identifier format showing all write operations
-pub async fn post_detailed_completion(
+pub async fn post_contributor_rewards(
     webhook_url: &str,
     network: String,
     epoch: u64,
@@ -93,4 +93,52 @@ impl WriteResultInfo {
             WriteResultInfo::Failed { description, .. } => description,
         }
     }
+}
+
+/// Row data for the distribution rewards Slack notification table.
+#[derive(Debug, Clone)]
+pub struct DistributionRewardRow {
+    pub index: usize,
+    pub contributor: String,
+    pub proportion: String,
+    pub reward: String,
+    pub distributed: String,
+}
+
+/// Post a per-contributor rewards table to Slack after distribution.
+pub async fn post_distribution_rewards(
+    webhook_url: &str,
+    network: String,
+    dz_epoch: u64,
+    rows: Vec<DistributionRewardRow>,
+) -> Result<()> {
+    let client = Client::new();
+
+    let mut table_builder = TableBuilder::default();
+    table_builder.push_record(["#", "Contributor", "Proportion", "Reward", "Distributed"]);
+    table_builder.push_record(["", "Environment", &network, "", ""]);
+    table_builder.push_record(["", "DZ Epoch", &dz_epoch.to_string(), "", ""]);
+
+    for row in rows {
+        table_builder.push_record([
+            &row.index.to_string(),
+            &row.contributor,
+            &row.proportion,
+            &row.reward,
+            &row.distributed,
+        ]);
+    }
+
+    let table = table_builder.build().with(Style::markdown()).to_string();
+    let message_text = format!("```\n{}\n```", table);
+
+    let payload = serde_json::json!({
+        "text": message_text
+    });
+
+    let body = Body::from(serde_json::to_string(&payload)?);
+    let request = build_message_request(&client, body, webhook_url.to_string())?;
+    let _resp = request.send().await?;
+
+    Ok(())
 }

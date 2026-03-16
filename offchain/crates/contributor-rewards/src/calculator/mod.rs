@@ -13,5 +13,5 @@ pub mod util;
 pub mod write_config;
 
 // Re-export for access
-pub use distribute::DistributionOutcome;
+pub use distribute::{DistributionOutcome, DistributionSummary};
 pub use write_config::WriteConfig;

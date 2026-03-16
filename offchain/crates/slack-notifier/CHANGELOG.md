@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- feat(contributor-rewards): add support for distribution slack notifications and other minor cleanups ([#285](https://github.com/doublezerofoundation/doublezero-offchain/pull/285))
+
 ## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/slack-notifier%2Fv0.0.1) - 2025-10-21
 
 - display distribution in SOL ([#256](https://github.com/doublezerofoundation/doublezero-offchain/pull/256))

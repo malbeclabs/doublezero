@@ -206,7 +206,11 @@ async fn handle_export_shapley(
 
     // Compute Shapley values
     info!("Computing Shapley values...");
-    let compute_result = compute_shapley_values(&shapley_inputs, &orchestrator.settings().shapley)?;
+    let compute_result = compute_shapley_values(
+        &shapley_inputs,
+        &orchestrator.settings().shapley,
+        &std::collections::HashMap::new(),
+    )?;
 
     // Build per-city values map
     let per_city_values: BTreeMap<String, Vec<OperatorValue>> = compute_result

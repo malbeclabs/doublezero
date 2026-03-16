@@ -1,0 +1,15 @@
+name: release.devnet.geoprobe-target.daily
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: ./.github/workflows/release.daily.yml
+    with:
+      component: geoprobe-target
+      playbook: playbooks/geoprobe_targets.yml
+    secrets: inherit
+    permissions:
+      contents: write
+      packages: write

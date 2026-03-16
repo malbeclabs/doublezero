@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use crate::config::default_program_id;
 use doublezero_serviceability::{
-    error::DoubleZeroError, instructions::*, state::accounttype::AccountType,
+    error::DoubleZeroError, instructions::*, pda::get_permission_pda,
+    state::accounttype::AccountType,
 };
 use eyre::{bail, eyre, OptionExt};
 use log::debug;
@@ -374,6 +375,66 @@ impl DZClient {
 
         Ok(errors)
     }
+
+    fn build_and_send(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+        with_permission: bool,
+    ) -> eyre::Result<Signature> {
+        let payer = self
+            .payer
+            .as_ref()
+            .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
+        let data = instruction.pack();
+
+        let mut trailing = vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(program::id(), false),
+        ];
+        if with_permission {
+            let (permission_pda, _) = get_permission_pda(&self.program_id, &payer.pubkey());
+            if self.client.get_account(&permission_pda).is_ok() {
+                trailing.push(AccountMeta::new_readonly(permission_pda, false));
+            }
+        }
+
+        let mut transaction = Transaction::new_with_payer(
+            &[Instruction::new_with_bytes(
+                self.program_id,
+                &data,
+                [accounts, trailing].concat(),
+            )],
+            Some(&payer.pubkey()),
+        );
+
+        let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
+        transaction.sign(&[&payer], blockhash);
+
+        debug!("Simulating transaction: {transaction:?}");
+
+        let result = self.client.simulate_transaction(&transaction)?;
+        if result.value.err.is_some() {
+            eprintln!("Program Logs:");
+            if let Some(logs) = result.value.logs {
+                for log in logs {
+                    eprintln!("{log}");
+                }
+            }
+        }
+
+        if let Some(TransactionError::InstructionError(_index, InstructionError::Custom(number))) =
+            result.value.err
+        {
+            return Err(eyre!(DoubleZeroError::from(number)));
+        } else if let Some(err) = result.value.err {
+            return Err(eyre!(err));
+        }
+
+        self.client
+            .send_and_confirm_transaction(&transaction)
+            .map_err(|e| eyre!(e))
+    }
 }
 
 impl DoubleZeroClient for DZClient {
@@ -450,7 +511,7 @@ impl DoubleZeroClient for DZClient {
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature> {
-        self.execute_transaction_inner(instruction, accounts, false)
+        self.build_and_send(instruction, accounts, false)
     }
 
     fn execute_transaction_quiet(
@@ -458,6 +519,29 @@ impl DoubleZeroClient for DZClient {
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature> {
+        self.execute_transaction_inner(instruction, accounts, true)
+    }
+
+    fn execute_authorized_transaction(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+    ) -> eyre::Result<Signature> {
+        self.build_and_send(instruction, accounts, true)
+    }
+
+    fn execute_authorized_transaction_quiet(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+    ) -> eyre::Result<Signature> {
+        let mut accounts = accounts;
+        if let Some(payer) = self.payer.as_ref() {
+            let (permission_pda, _) = get_permission_pda(&self.program_id, &payer.pubkey());
+            if self.client.get_account(&permission_pda).is_ok() {
+                accounts.push(AccountMeta::new_readonly(permission_pda, false));
+            }
+        }
         self.execute_transaction_inner(instruction, accounts, true)
     }
 

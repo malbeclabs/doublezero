@@ -119,9 +119,9 @@ impl CloseAccountUserCommand {
         });
 
         if quiet {
-            client.execute_transaction_quiet(instruction, accounts)
+            client.execute_authorized_transaction_quiet(instruction, accounts)
         } else {
-            client.execute_transaction(instruction, accounts)
+            client.execute_authorized_transaction(instruction, accounts)
         }
     }
 }
@@ -185,7 +185,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::User(user.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {
@@ -289,7 +289,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::GlobalConfig(globalconfig.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {
@@ -354,7 +354,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::User(user.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {
@@ -457,7 +457,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::GlobalConfig(globalconfig.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
                     UserCloseAccountArgs {

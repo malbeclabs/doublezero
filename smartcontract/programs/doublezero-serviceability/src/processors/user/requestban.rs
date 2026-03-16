@@ -1,7 +1,8 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     serializer::try_acc_write,
-    state::{globalstate::GlobalState, user::*},
+    state::{globalstate::GlobalState, permission::permission_flags, user::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -104,9 +105,13 @@ pub fn process_request_ban_user(
     assert!(user_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::USER_ADMIN,
+    )?;
 
     let mut user: User = User::try_from(user_account)?;
     if !can_request_ban(user.status) {

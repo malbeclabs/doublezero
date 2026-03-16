@@ -1,4 +1,5 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::*,
     seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
@@ -7,6 +8,7 @@ use crate::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType, ALLOW_MULTIPLE_IP, IS_DYNAMIC},
         accounttype::AccountType,
         globalstate::GlobalState,
+        permission::permission_flags,
         tenant::Tenant,
     },
 };
@@ -107,21 +109,15 @@ pub fn process_set_access_pass(
         "Invalid System Program Account Owner"
     );
 
-    // Parse the global state account & check if the payer is in the allowlist
+    // Parse the global state account & check authorization
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if globalstate.sentinel_authority_pk != *payer_account.key
-        && globalstate.reservation_authority_pk != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
-    {
-        msg!(
-            "sentinel_authority_pk: {} reservation_authority_pk: {} payer: {} foundation_allowlist: {:?}",
-            globalstate.sentinel_authority_pk,
-            globalstate.reservation_authority_pk,
-            payer_account.key,
-            globalstate.foundation_allowlist
-        );
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::ACCESS_PASS_ADMIN,
+    )?;
 
     if let AccessPassType::SolanaValidator(node_id) = value.accesspass_type {
         if node_id == Pubkey::default() {

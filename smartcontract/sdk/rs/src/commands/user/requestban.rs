@@ -140,7 +140,7 @@ impl RequestBanUserCommand {
             (0u8, 0u8)
         };
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
                 dz_prefix_count,
                 multicast_publisher_count,
@@ -263,7 +263,7 @@ mod tests {
             get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
                     dz_prefix_count: 1,
@@ -324,7 +324,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::User(user.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::RequestBanUser(
                     UserRequestBanArgs::default(),

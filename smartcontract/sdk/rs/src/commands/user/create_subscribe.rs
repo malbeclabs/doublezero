@@ -117,7 +117,7 @@ impl CreateSubscribeUserCommand {
         };
 
         client
-            .execute_transaction(
+            .execute_authorized_transaction(
                 DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
                     user_type: self.user_type,
                     cyoa_type: self.cyoa_type,
@@ -205,7 +205,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateSubscribeUser(
                     UserCreateSubscribeArgs {
@@ -334,7 +334,7 @@ mod tests {
             get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateSubscribeUser(
                     UserCreateSubscribeArgs {

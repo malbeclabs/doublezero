@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-- add `reservation` subcommand with `initialize-seat`, `initialize-escrow`, `withdraw`, `fund` and `list` commands
+- combine `reservation initialize-seat` and `reservation fund` into a single `reservation pay` command that initializes seat/escrow on-demand before funding
 
 ## [0.4.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.4.1) - 2026-02-26
 

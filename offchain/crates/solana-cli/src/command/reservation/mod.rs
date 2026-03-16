@@ -1,6 +1,5 @@
-pub mod fund;
-pub mod initialize_seat;
 pub mod list;
+pub mod pay;
 pub mod price;
 pub mod withdraw;
 
@@ -22,14 +21,12 @@ pub struct ReservationCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum ReservationSubcommand {
-    /// Initialize a client seat for a (device, client_ip) pair.
-    InitializeSeat(initialize_seat::InitializeSeatCommand),
+    /// Initialize a client seat (if needed) and fund a payment escrow with USDC.
+    Pay(pay::PayCommand),
     /// Close a payment escrow and withdraw any remaining USDC.
     Withdraw(withdraw::WithdrawCommand),
     /// List client seats.
     List(list::ListCommand),
-    /// Fund a payment escrow with USDC.
-    Fund(fund::FundCommand),
     /// Show current device pricing.
     Price(price::PriceCommand),
 }
@@ -37,10 +34,9 @@ pub enum ReservationSubcommand {
 impl ReservationSubcommand {
     pub async fn try_into_execute(self) -> Result<()> {
         match self {
-            Self::InitializeSeat(command) => command.try_into_execute().await,
+            Self::Pay(command) => command.try_into_execute().await,
             Self::Withdraw(command) => command.try_into_execute().await,
             Self::List(command) => command.try_into_execute().await,
-            Self::Fund(command) => command.try_into_execute().await,
             Self::Price(command) => command.try_into_execute().await,
         }
     }

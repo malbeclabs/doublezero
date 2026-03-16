@@ -28,6 +28,18 @@ pub enum GeolocationError {
     UnauthorizedInitializer = 17,
     #[error("min_compatible_version cannot exceed version")]
     InvalidMinCompatibleVersion = 18,
+    #[error("Unauthorized: signer is not the account owner")]
+    Unauthorized = 19,
+    #[error("Targets must be empty before deleting user")]
+    TargetsNotEmpty = 20,
+    #[error("Maximum targets reached")]
+    MaxTargetsReached = 21,
+    #[error("Target not found")]
+    TargetNotFound = 22,
+    #[error("Target already exists")]
+    TargetAlreadyExists = 23,
+    #[error("Invalid payment status")]
+    InvalidPaymentStatus = 24,
 }
 
 impl From<GeolocationError> for ProgramError {
@@ -54,6 +66,12 @@ mod tests {
             (GeolocationError::ReferenceCountNotZero, 15),
             (GeolocationError::UnauthorizedInitializer, 17),
             (GeolocationError::InvalidMinCompatibleVersion, 18),
+            (GeolocationError::Unauthorized, 19),
+            (GeolocationError::TargetsNotEmpty, 20),
+            (GeolocationError::MaxTargetsReached, 21),
+            (GeolocationError::TargetNotFound, 22),
+            (GeolocationError::TargetAlreadyExists, 23),
+            (GeolocationError::InvalidPaymentStatus, 24),
         ]
     }
 

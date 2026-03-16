@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 - Onchain Programs
   - Add `GeolocationUser` account state to the geolocation program with owner, billing config (flat-per-epoch), payment/user status, and a target list supporting outbound (IP + port) and inbound (pubkey) geolocation targets
+  - Add GeolocationUser CRUD instruction processors (create, update, delete) with owner authorization and target-empty guard on delete
 - Client
   - Demote passive-mode liveness session-down log messages from Info to Debug to reduce log noise when no dataplane action is taken
 - Telemetry

@@ -323,6 +323,7 @@ type OffsetOutput struct {
 	SourceAddr        string            `json:"source_addr"`
 	AuthorityPubkey   string            `json:"authority_pubkey"`
 	SenderPubkey      string            `json:"sender_pubkey"`
+	TargetIP          string            `json:"target_ip"`
 	ReferencePoint    CoordinateOutput  `json:"reference_point"`
 	RttMs             float64           `json:"rtt_ms"`
 	MeasuredRttMs     float64           `json:"measured_rtt_ms"`
@@ -343,6 +344,7 @@ type CoordinateOutput struct {
 type ReferenceOutput struct {
 	AuthorityPubkey string           `json:"authority_pubkey"`
 	SenderPubkey    string           `json:"sender_pubkey"`
+	TargetIP        string           `json:"target_ip"`
 	Location        CoordinateOutput `json:"location"`
 	RttMs           float64          `json:"rtt_ms"`
 	MeasuredRttMs   float64          `json:"measured_rtt_ms"`
@@ -359,6 +361,7 @@ func formatLocationOffset(offset *geoprobe.LocationOffset, addr *net.UDPAddr, si
 		SourceAddr:       addr.String(),
 		AuthorityPubkey:  formatPubkey(offset.AuthorityPubkey[:]),
 		SenderPubkey:     formatPubkey(offset.SenderPubkey[:]),
+		TargetIP:         geoprobe.FormatTargetIP(offset.TargetIP),
 		ReferencePoint:   formatCoordinate(offset.Lat, offset.Lng),
 		RttMs:            rttMs,
 		MeasuredRttMs:    measuredRttMs,
@@ -378,6 +381,7 @@ func formatLocationOffset(offset *geoprobe.LocationOffset, addr *net.UDPAddr, si
 		output.DZDReferenceChain = append(output.DZDReferenceChain, ReferenceOutput{
 			AuthorityPubkey: formatPubkey(ref.AuthorityPubkey[:]),
 			SenderPubkey:    formatPubkey(ref.SenderPubkey[:]),
+			TargetIP:        geoprobe.FormatTargetIP(ref.TargetIP),
 			Location:        formatCoordinate(ref.Lat, ref.Lng),
 			RttMs:           refRttMs,
 			MeasuredRttMs:   refMeasuredRttMs,
@@ -394,6 +398,7 @@ func formatTextOutput(output OffsetOutput) string {
 	sb.WriteString(fmt.Sprintf("[%s] Received LocationOffset from Probe\n", output.Timestamp))
 	sb.WriteString(fmt.Sprintf("  Authority: %s\n", output.AuthorityPubkey))
 	sb.WriteString(fmt.Sprintf("  Sender:    %s\n", output.SenderPubkey))
+	sb.WriteString(fmt.Sprintf("  Target IP: %s\n", output.TargetIP))
 	sb.WriteString(fmt.Sprintf("  Reference Point: %s\n", output.ReferencePoint.Formatted))
 	sb.WriteString(fmt.Sprintf("  RTT to Target: %.2fms\n", output.RttMs))
 	sb.WriteString(fmt.Sprintf("  Measured RTT:  %.2fms\n", output.MeasuredRttMs))

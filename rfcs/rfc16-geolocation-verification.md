@@ -43,6 +43,7 @@ A signed data structure containing a DZD's geographic location (latitude and lon
 ```go
 type LocationOffset struct {
     Signature       [64]byte  // Ed25519 signature
+    Version         uint8     // Wire format version (currently 1)
     AuthorityPubkey [32]byte  // Signer's public key (metrics publisher key or probe signing key)
     SenderPubkey    [32]byte  // Device public key (DZD or Probe)
     MeasurementSlot uint64    // Current DoubleZero Slot
@@ -50,7 +51,7 @@ type LocationOffset struct {
     Lng             float64   // Reference point longitude (WGS84)
     MeasuredRttNs   uint64    // Measured RTT in nanoseconds, minimum
     RttNs           uint64    // RTT to target in ns, from lat/lng
-    TargetIP        uint32    // IPv4 Address from TWAMP measurement **NEW**
+    TargetIP        [4]byte   // IPv4 address of the TWAMP measurement target
     NumReferences   uint8     // Number of reference offsets in chain
     References      []Offset  // Reference offsets (empty for DZD→Probe)
 }

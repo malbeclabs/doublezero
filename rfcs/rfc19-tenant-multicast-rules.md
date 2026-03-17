@@ -72,15 +72,29 @@ pub enum TenantMulticastRole {
 }
 
 pub struct TenantMulticastRule {
-    pub multicast_group: Pubkey,   // 32 bytes
-    pub role: TenantMulticastRole, // 1 byte
+    pub multicast_group: Pubkey,        // 32 bytes
+    pub role: TenantMulticastRole,      // 1 byte
+    pub user_types: Vec<UserType>,      // 4 + (1 * len) bytes; empty = applies to all user types
 }
 ```
+
+`UserType` is the existing enum from `state/user.rs`:
+
+```rust
+pub enum UserType {
+    IBRL = 0,
+    IBRLWithAllocatedIP = 1,
+    EdgeFiltering = 2,
+    Multicast = 3,
+}
+```
+
+An empty `user_types` vec means the rule applies to all user types (backward-compatible default). A non-empty vec restricts the rule to the listed types only.
 
 New field appended to `Tenant`:
 
 ```rust
-pub multicast_rules: Vec<TenantMulticastRule>,  // 4 + (33 * len) bytes; max 32 entries
+pub multicast_rules: Vec<TenantMulticastRule>,  // 4 + (41 * len) bytes worst-case (all 4 user types); max 32 entries
 ```
 
 File: `smartcontract/programs/doublezero-serviceability/src/state/tenant.rs`
@@ -92,6 +106,7 @@ File: `smartcontract/programs/doublezero-serviceability/src/state/tenant.rs`
   - **Tenant authority**: tenant `owner`, member of `administrators`, or foundation allowlist
   - **MulticastGroup authority**: multicast group `owner` or foundation allowlist
 - Accounts: `Tenant`, `MulticastGroup`
+- Params: `role`, `user_types` (empty = all types)
 - Effect: appends a `TenantMulticastRule`; rejects if `multicast_group` already present
   or if `multicast_rules.len() == 32`
 
@@ -100,7 +115,8 @@ File: `smartcontract/programs/doublezero-serviceability/src/state/tenant.rs`
   - **Tenant authority**: tenant `owner`, member of `administrators`, or foundation allowlist
   - **MulticastGroup authority**: multicast group `owner` or foundation allowlist
 - Accounts: `Tenant`, `MulticastGroup`
-- Effect: updates the `role` of the entry matching `multicast_group`; rejects if not found
+- Params: `role`, `user_types` (replaces both fields atomically)
+- Effect: updates `role` and `user_types` of the entry matching `multicast_group`; rejects if not found
 
 **`RemoveTenantMulticastRule`**
 - Signers: tenant `owner`, member of `administrators`, or foundation allowlist
@@ -133,7 +149,8 @@ cycle. The change is to extend the reconciler to:
 
 2. **Compute the effective multicast set**: union of
    - `User.publishers` / `User.subscribers` (explicit per-user grants, existing)
-   - Groups derived from `tenant.multicast_rules` filtered by role
+   - Groups derived from `tenant.multicast_rules` where the rule's `user_types` is empty
+     or contains the user's `UserType`, filtered by role
 
 3. **Detect changes**: diff the effective multicast set against the currently provisioned
    state. If only the multicast group list changed (tunnel endpoint, ASN, and DZ IP are
@@ -166,10 +183,18 @@ Files:
 New subcommand group under `doublezero tenant`:
 
 ```bash
-# Add a rule
+# Add a rule (applies to all user types by default)
 doublezero tenant multicast-rule add --tenant <code> --group <code> --role publisher
 doublezero tenant multicast-rule add --tenant <code> --group <code> --role subscriber
 doublezero tenant multicast-rule add --tenant <code> --group <code> --role both
+
+# Add a rule scoped to specific user types
+doublezero tenant multicast-rule add --tenant <code> --group <code> --role publisher \
+  --user-types ibrl,multicast
+
+# Update a rule (replaces role and user-types atomically)
+doublezero tenant multicast-rule update --tenant <code> --group <code> --role both \
+  --user-types ibrl,ibrl-with-allocated-ip,edge-filtering,multicast
 
 # Remove a rule
 doublezero tenant multicast-rule remove --tenant <code> --group <code>
@@ -178,6 +203,8 @@ doublezero tenant multicast-rule remove --tenant <code> --group <code>
 doublezero tenant multicast-rule list --tenant <code>
 doublezero tenant multicast-rule list --tenant <code> --json
 ```
+
+`--user-types` accepts a comma-separated list of: `ibrl`, `ibrl-with-allocated-ip`, `edge-filtering`, `multicast`. Omitting the flag is equivalent to specifying all four types.
 
 File: `client/doublezero/src/` (CLI crate, new subcommand handlers)
 

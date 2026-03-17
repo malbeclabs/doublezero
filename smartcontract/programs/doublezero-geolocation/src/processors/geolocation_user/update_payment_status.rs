@@ -1,5 +1,4 @@
 use crate::{
-    error::GeolocationError,
     processors::check_foundation_allowlist,
     serializer::try_acc_write,
     state::geolocation_user::{GeolocationPaymentStatus, GeolocationUser},
@@ -15,7 +14,7 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct UpdatePaymentStatusArgs {
-    pub payment_status: u8,
+    pub payment_status: GeolocationPaymentStatus,
     pub last_deduction_dz_epoch: Option<u64>,
 }
 
@@ -54,10 +53,7 @@ pub fn process_update_payment_status(
 
     let mut user = GeolocationUser::try_from(user_account)?;
 
-    let new_status = GeolocationPaymentStatus::try_from(args.payment_status)
-        .map_err(|_| GeolocationError::InvalidPaymentStatus)?;
-
-    user.payment_status = new_status;
+    user.payment_status = args.payment_status;
 
     if let Some(epoch) = args.last_deduction_dz_epoch {
         match &mut user.billing {

@@ -957,7 +957,7 @@ async fn test_update_payment_status_success() {
     let update_ix = Instruction::new_with_borsh(
         program_id,
         &GeolocationInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
-            payment_status: 1, // Paid
+            payment_status: GeolocationPaymentStatus::Paid,
             last_deduction_dz_epoch: Some(42),
         }),
         vec![
@@ -1011,19 +1011,28 @@ async fn test_update_payment_status_invalid_value() {
     let serviceability_globalstate_pda =
         doublezero_serviceability::pda::get_globalstate_pda(&serviceability_program_id()).0;
 
-    let update_ix = Instruction::new_with_borsh(
-        program_id,
-        &GeolocationInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
-            payment_status: 99, // invalid
+    // Serialize a valid instruction, then patch the payment_status byte to an
+    // invalid value. With GeolocationPaymentStatus as the field type, invalid
+    // values are rejected at Borsh deserialization time (InvalidInstructionData).
+    let mut data = borsh::to_vec(&GeolocationInstruction::UpdatePaymentStatus(
+        UpdatePaymentStatusArgs {
+            payment_status: GeolocationPaymentStatus::Delinquent,
             last_deduction_dz_epoch: None,
-        }),
-        vec![
+        },
+    ))
+    .unwrap();
+    data[1] = 99; // patch payment_status to invalid discriminant
+
+    let update_ix = Instruction {
+        program_id,
+        accounts: vec![
             AccountMeta::new(user_pda, false),
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
             AccountMeta::new(payer.pubkey(), true),
         ],
-    );
+        data,
+    };
 
     let tx = Transaction::new_signed_with_payer(
         &[update_ix],
@@ -1034,9 +1043,7 @@ async fn test_update_payment_status_invalid_value() {
     let result = banks_client.process_transaction(tx).await;
     let err = result.unwrap_err().unwrap();
     match err {
-        TransactionError::InstructionError(0, InstructionError::Custom(code)) => {
-            assert_eq!(code, GeolocationError::InvalidPaymentStatus as u32);
-        }
-        _ => panic!("Expected InvalidPaymentStatus error, got: {:?}", err),
+        TransactionError::InstructionError(0, InstructionError::InvalidInstructionData) => {}
+        _ => panic!("Expected InvalidInstructionData error, got: {:?}", err),
     }
 }

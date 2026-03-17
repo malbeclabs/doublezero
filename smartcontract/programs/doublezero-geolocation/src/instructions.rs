@@ -33,6 +33,7 @@ pub enum GeolocationInstruction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::geolocation_user::GeolocationPaymentStatus;
     use solana_program::pubkey::Pubkey;
     use std::net::Ipv4Addr;
 
@@ -113,13 +114,13 @@ mod tests {
         }));
         test_instruction(GeolocationInstruction::UpdatePaymentStatus(
             UpdatePaymentStatusArgs {
-                payment_status: 1,
+                payment_status: GeolocationPaymentStatus::Paid,
                 last_deduction_dz_epoch: Some(42),
             },
         ));
         test_instruction(GeolocationInstruction::UpdatePaymentStatus(
             UpdatePaymentStatusArgs {
-                payment_status: 0,
+                payment_status: GeolocationPaymentStatus::Delinquent,
                 last_deduction_dz_epoch: None,
             },
         ));

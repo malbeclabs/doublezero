@@ -66,6 +66,7 @@ All notable changes to this project will be documented in this file.
 - SDK
   - Add read-only Go SDK for `doublezero-geolocation` program with state deserialization, PDA derivation, and RPC client for querying geoprobe configuration
   - Add `GetGeoProbeKeys` to geolocation SDK for lightweight account key fetching using DataSlice to minimize RPC bandwidth
+  - Add Rust SDK instruction builders for GeolocationUser management: CRUD (create, update, delete), target management (add, remove), payment status updates, and read queries (get by code/pubkey, list all)
 - Telemetry
   - Add onchain GeoProbe discovery to the telemetry agent: periodically queries the Geolocation program for child probes parented to the local device, replacing the need for `--additional-child-probes` CLI flag
   - Embed LocationOffsets from parent DZDs in signed TWAMP replies so inbound probes carry geolocation context, and make signed TWAMP replies more like LocationOffsets to couple with a new double-probe system for inbound probing.

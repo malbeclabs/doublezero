@@ -110,11 +110,13 @@ pub fn process_set_access_pass(
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = GlobalState::try_from(globalstate_account)?;
     if globalstate.sentinel_authority_pk != *payer_account.key
+        && globalstate.feed_authority_pk != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
         msg!(
-            "sentinel_authority_pk: {} payer: {} foundation_allowlist: {:?}",
+            "sentinel_authority_pk: {} feed_authority_pk: {} payer: {} foundation_allowlist: {:?}",
             globalstate.sentinel_authority_pk,
+            globalstate.feed_authority_pk,
             payer_account.key,
             globalstate.foundation_allowlist
         );
@@ -192,7 +194,17 @@ pub fn process_set_access_pass(
                 "Invalid PDA Account Owner"
             );
 
-            AccessPass::try_from(accesspass_account)?
+            let ap = AccessPass::try_from(accesspass_account)?;
+
+            // Feed authority can only update access passes they own
+            if globalstate.feed_authority_pk == *payer_account.key
+                && ap.owner != *payer_account.key
+            {
+                msg!("Feed authority can only update access passes they own");
+                return Err(DoubleZeroError::NotAllowed.into());
+            }
+
+            ap
         } else {
             AccessPass {
                 account_type: AccountType::AccessPass,

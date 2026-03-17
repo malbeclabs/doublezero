@@ -30,9 +30,9 @@ use solana_program::{
 ///   ACTIVATOR         → activator_authority_pk
 ///   SENTINEL          → sentinel_authority_pk
 ///   HEALTH_ORACLE     → health_oracle_pk
-///   RESERVATION       → reservation_authority_pk
+///   FEED_AUTHORITY     → feed_authority_pk
 ///   USER_ADMIN        → foundation_allowlist OR activator_authority_pk
-///   ACCESS_PASS_ADMIN → foundation_allowlist OR sentinel_authority_pk OR reservation_authority_pk
+///   ACCESS_PASS_ADMIN → foundation_allowlist OR sentinel_authority_pk OR feed_authority_pk
 ///   NETWORK_ADMIN     → foundation_allowlist OR activator_authority_pk
 ///   TENANT_ADMIN      → foundation_allowlist OR sentinel_authority_pk
 ///   MULTICAST_ADMIN   → foundation_allowlist OR activator_authority_pk OR sentinel_authority_pk
@@ -114,8 +114,7 @@ fn check_legacy_any(payer: &Pubkey, globalstate: &GlobalState, any_of: u128) -> 
     if any_of & permission_flags::HEALTH_ORACLE != 0 && globalstate.health_oracle_pk == *payer {
         return true;
     }
-    if any_of & permission_flags::RESERVATION != 0 && globalstate.reservation_authority_pk == *payer
-    {
+    if any_of & permission_flags::FEED_AUTHORITY != 0 && globalstate.feed_authority_pk == *payer {
         return true;
     }
     // USER_ADMIN in legacy = foundation or activator (historical user management authorities).
@@ -125,11 +124,11 @@ fn check_legacy_any(payer: &Pubkey, globalstate: &GlobalState, any_of: u128) -> 
     {
         return true;
     }
-    // ACCESS_PASS_ADMIN in legacy = foundation, sentinel, or reservation.
+    // ACCESS_PASS_ADMIN in legacy = foundation, sentinel, or feed authority.
     if any_of & permission_flags::ACCESS_PASS_ADMIN != 0
         && (globalstate.foundation_allowlist.contains(payer)
             || globalstate.sentinel_authority_pk == *payer
-            || globalstate.reservation_authority_pk == *payer)
+            || globalstate.feed_authority_pk == *payer)
     {
         return true;
     }
@@ -232,9 +231,9 @@ mod tests {
         }
     }
 
-    fn gs_with_reservation(authority: &Pubkey) -> GlobalState {
+    fn gs_with_feed(authority: &Pubkey) -> GlobalState {
         GlobalState {
-            reservation_authority_pk: *authority,
+            feed_authority_pk: *authority,
             ..GlobalState::default()
         }
     }
@@ -328,11 +327,13 @@ mod tests {
     }
 
     #[test]
-    fn test_legacy_reservation_allowed() {
+    fn test_legacy_feed_allowed() {
         let program_id = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
-        let gs = gs_with_reservation(&payer);
-        assert!(authorize_legacy(&program_id, &payer, &gs, permission_flags::RESERVATION).is_ok());
+        let gs = gs_with_feed(&payer);
+        assert!(
+            authorize_legacy(&program_id, &payer, &gs, permission_flags::FEED_AUTHORITY).is_ok()
+        );
     }
 
     // ── Legacy path: composite flags ─────────────────────────────────────────
@@ -390,10 +391,10 @@ mod tests {
     }
 
     #[test]
-    fn test_legacy_access_pass_admin_via_reservation() {
+    fn test_legacy_access_pass_admin_via_feed() {
         let program_id = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
-        let gs = gs_with_reservation(&payer);
+        let gs = gs_with_feed(&payer);
         assert!(authorize_legacy(
             &program_id,
             &payer,

@@ -21,9 +21,9 @@ pub struct SetAuthorityCliCommand {
     #[arg(long)]
     pub health_oracle: Option<String>,
 
-    /// New reservation authority public key
+    /// New feed authority public key
     #[arg(long)]
-    pub reservation_authority: Option<String>,
+    pub feed_authority: Option<String>,
 }
 
 impl SetAuthorityCliCommand {
@@ -64,12 +64,12 @@ impl SetAuthorityCliCommand {
                 None
             }
         };
-        let reservation_authority_pk = {
-            if let Some(reservation_authority) = &self.reservation_authority {
-                if reservation_authority.eq_ignore_ascii_case("me") {
+        let feed_authority_pk = {
+            if let Some(feed_authority) = &self.feed_authority {
+                if feed_authority.eq_ignore_ascii_case("me") {
                     Some(client.get_payer())
                 } else {
-                    Some(Pubkey::from_str(reservation_authority)?)
+                    Some(Pubkey::from_str(feed_authority)?)
                 }
             } else {
                 None
@@ -80,7 +80,7 @@ impl SetAuthorityCliCommand {
             activator_authority_pk,
             sentinel_authority_pk,
             health_oracle_pk,
-            reservation_authority_pk,
+            feed_authority_pk,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -113,7 +113,7 @@ mod tests {
         let activator_authority_pk = Pubkey::new_unique();
         let sentinel_authority_pk = Pubkey::new_unique();
         let health_oracle_pk = Pubkey::new_unique();
-        let reservation_authority_pk = Pubkey::new_unique();
+        let feed_authority_pk = Pubkey::new_unique();
 
         client
             .expect_check_requirements()
@@ -125,7 +125,7 @@ mod tests {
                 activator_authority_pk: Some(activator_authority_pk),
                 sentinel_authority_pk: Some(sentinel_authority_pk),
                 health_oracle_pk: Some(health_oracle_pk),
-                reservation_authority_pk: Some(reservation_authority_pk),
+                feed_authority_pk: Some(feed_authority_pk),
             }))
             .returning(move |_| Ok(signature));
 
@@ -136,7 +136,7 @@ mod tests {
             activator_authority: Some(activator_authority_pk.to_string()),
             sentinel_authority: Some(sentinel_authority_pk.to_string()),
             health_oracle: Some(health_oracle_pk.to_string()),
-            reservation_authority: Some(reservation_authority_pk.to_string()),
+            feed_authority: Some(feed_authority_pk.to_string()),
         }
         .execute(&client, &mut output1);
         assert!(res.is_ok());

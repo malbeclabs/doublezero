@@ -427,7 +427,7 @@ async fn test_multicast_subscriber_allowlist_sentinel_authority() {
 }
 
 #[tokio::test]
-async fn test_multicast_subscriber_allowlist_reservation_authority() {
+async fn test_multicast_subscriber_allowlist_feed_authority() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
     let client_ip = [100, 0, 0, 3].into();
@@ -450,22 +450,16 @@ async fn test_multicast_subscriber_allowlist_reservation_authority() {
     )
     .await;
 
-    // 2. Create a reservation keypair and set it as reservation authority
-    let reservation = Keypair::new();
-    transfer(
-        &mut banks_client,
-        &payer,
-        &reservation.pubkey(),
-        10_000_000_000,
-    )
-    .await;
+    // 2. Create a feed keypair and set it as feed authority
+    let feed = Keypair::new();
+    transfer(&mut banks_client, &payer, &feed.pubkey(), 10_000_000_000).await;
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetAuthority(SetAuthorityArgs {
-            reservation_authority_pk: Some(reservation.pubkey()),
+            feed_authority_pk: Some(feed.pubkey()),
             ..Default::default()
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
@@ -473,7 +467,7 @@ async fn test_multicast_subscriber_allowlist_reservation_authority() {
     )
     .await;
 
-    // 3. Create and activate a multicast group (owned by payer, NOT reservation)
+    // 3. Create and activate a multicast group (owned by payer, NOT feed)
     let globalstate = get_account_data(&mut banks_client, globalstate_pubkey)
         .await
         .expect("Unable to get Account")
@@ -488,7 +482,7 @@ async fn test_multicast_subscriber_allowlist_reservation_authority() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
-            code: "reservation-test".to_string(),
+            code: "feed-test".to_string(),
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: false,
@@ -516,7 +510,7 @@ async fn test_multicast_subscriber_allowlist_reservation_authority() {
     )
     .await;
 
-    // 4. Reservation authority creates access pass (becomes owner)
+    // 4. Feed authority creates access pass (becomes owner)
     let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
@@ -535,15 +529,15 @@ async fn test_multicast_subscriber_allowlist_reservation_authority() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_payer, false),
         ],
-        &reservation,
+        &feed,
     )
     .await;
     assert!(
         res.is_ok(),
-        "Reservation authority should be able to create access passes"
+        "Feed authority should be able to create access passes"
     );
 
-    // 5. Reservation authority (owner) adds subscriber allowlist entry — should succeed
+    // 5. Feed authority (owner) adds subscriber allowlist entry — should succeed
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     let res = try_execute_transaction(
         &mut banks_client,
@@ -558,12 +552,12 @@ async fn test_multicast_subscriber_allowlist_reservation_authority() {
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
-        &reservation,
+        &feed,
     )
     .await;
     assert!(
         res.is_ok(),
-        "Reservation authority should be able to add subscriber allowlist entry"
+        "Feed authority should be able to add subscriber allowlist entry"
     );
 
     let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
@@ -577,7 +571,7 @@ async fn test_multicast_subscriber_allowlist_reservation_authority() {
 }
 
 #[tokio::test]
-async fn test_multicast_subscriber_allowlist_reservation_authority_different_user_payer() {
+async fn test_multicast_subscriber_allowlist_feed_authority_different_user_payer() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
     let client_ip = [100, 0, 0, 4].into();
@@ -600,22 +594,16 @@ async fn test_multicast_subscriber_allowlist_reservation_authority_different_use
     )
     .await;
 
-    // 2. Create a reservation keypair and set it as reservation authority
-    let reservation = Keypair::new();
-    transfer(
-        &mut banks_client,
-        &payer,
-        &reservation.pubkey(),
-        10_000_000_000,
-    )
-    .await;
+    // 2. Create a feed keypair and set it as feed authority
+    let feed = Keypair::new();
+    transfer(&mut banks_client, &payer, &feed.pubkey(), 10_000_000_000).await;
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetAuthority(SetAuthorityArgs {
-            reservation_authority_pk: Some(reservation.pubkey()),
+            feed_authority_pk: Some(feed.pubkey()),
             ..Default::default()
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
@@ -638,7 +626,7 @@ async fn test_multicast_subscriber_allowlist_reservation_authority_different_use
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
-            code: "reservation-diff-payer".to_string(),
+            code: "feed-diff-payer".to_string(),
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: false,
@@ -666,7 +654,7 @@ async fn test_multicast_subscriber_allowlist_reservation_authority_different_use
     )
     .await;
 
-    // 4. Reservation authority creates access pass with original_user_payer (becomes owner)
+    // 4. Feed authority creates access pass with original_user_payer (becomes owner)
     let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &original_user_payer);
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
@@ -685,15 +673,15 @@ async fn test_multicast_subscriber_allowlist_reservation_authority_different_use
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(original_user_payer, false),
         ],
-        &reservation,
+        &feed,
     )
     .await;
     assert!(
         res.is_ok(),
-        "Reservation authority should be able to create access passes"
+        "Feed authority should be able to create access passes"
     );
 
-    // 5. Reservation authority (owner) adds subscriber allowlist with a DIFFERENT user_payer — should succeed
+    // 5. Feed authority (owner) adds subscriber allowlist with a DIFFERENT user_payer — should succeed
     let different_user_payer = Pubkey::new_unique();
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     let res = try_execute_transaction(
@@ -709,12 +697,12 @@ async fn test_multicast_subscriber_allowlist_reservation_authority_different_use
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
-        &reservation,
+        &feed,
     )
     .await;
     assert!(
         res.is_ok(),
-        "Reservation authority should be able to add subscriber allowlist with different user_payer"
+        "Feed authority should be able to add subscriber allowlist with different user_payer"
     );
 
     let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
@@ -728,7 +716,7 @@ async fn test_multicast_subscriber_allowlist_reservation_authority_different_use
     // Verify the access pass still has the original user_payer
     assert_eq!(accesspass.user_payer, original_user_payer);
 
-    // 6. Non-reservation authority with different user_payer should fail
+    // 6. Non-feed authority with different user_payer should fail
     let sentinel = Keypair::new();
     transfer(
         &mut banks_client,
@@ -770,6 +758,6 @@ async fn test_multicast_subscriber_allowlist_reservation_authority_different_use
     .await;
     assert!(
         res.is_err(),
-        "Non-reservation authority should fail when user_payer doesn't match"
+        "Non-feed authority should fail when user_payer doesn't match"
     );
 }

@@ -79,7 +79,7 @@ pub fn process_add_multicastgroup_sub_allowlist(
     // Check whether mgroup is authorized
     let is_authorized = (mgroup.owner == *payer_account.key)
         || globalstate.sentinel_authority_pk == *payer_account.key
-        || globalstate.reservation_authority_pk == *payer_account.key
+        || globalstate.feed_authority_pk == *payer_account.key
         || globalstate.foundation_allowlist.contains(payer_account.key);
     if !is_authorized {
         return Err(DoubleZeroError::NotAllowed.into());
@@ -130,8 +130,8 @@ pub fn process_add_multicastgroup_sub_allowlist(
 
         let mut accesspass = AccessPass::try_from(accesspass_account)?;
 
-        // Reservation authority can only modify access passes they own
-        if globalstate.reservation_authority_pk == *payer_account.key
+        // Feed authority can only modify access passes they own
+        if globalstate.feed_authority_pk == *payer_account.key
             && accesspass.owner != *payer_account.key
         {
             return Err(DoubleZeroError::NotAllowed.into());
@@ -141,8 +141,8 @@ pub fn process_add_multicastgroup_sub_allowlist(
             accesspass.client_ip == value.client_ip,
             "AccessPass client_ip does not match"
         );
-        // Reservation authority may operate on access passes with a different user_payer
-        if globalstate.reservation_authority_pk != *payer_account.key {
+        // Feed authority may operate on access passes with a different user_payer
+        if globalstate.feed_authority_pk != *payer_account.key {
             assert!(
                 accesspass.user_payer == value.user_payer,
                 "AccessPass user_payer does not match"

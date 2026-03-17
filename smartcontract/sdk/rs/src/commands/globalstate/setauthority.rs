@@ -9,7 +9,7 @@ pub struct SetAuthorityCommand {
     pub activator_authority_pk: Option<Pubkey>,
     pub sentinel_authority_pk: Option<Pubkey>,
     pub health_oracle_pk: Option<Pubkey>,
-    pub reservation_authority_pk: Option<Pubkey>,
+    pub feed_authority_pk: Option<Pubkey>,
 }
 
 impl SetAuthorityCommand {
@@ -23,7 +23,7 @@ impl SetAuthorityCommand {
                 activator_authority_pk: self.activator_authority_pk,
                 sentinel_authority_pk: self.sentinel_authority_pk,
                 health_oracle_pk: self.health_oracle_pk,
-                reservation_authority_pk: self.reservation_authority_pk,
+                feed_authority_pk: self.feed_authority_pk,
             }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
         )
@@ -52,7 +52,7 @@ mod tests {
         let activator_authority_pk = Pubkey::new_unique();
         let sentinel_authority_pk = Pubkey::new_unique();
         let health_oracle_pk = Pubkey::new_unique();
-        let reservation_authority_pk = Pubkey::new_unique();
+        let feed_authority_pk = Pubkey::new_unique();
 
         client
             .expect_execute_transaction()
@@ -61,7 +61,7 @@ mod tests {
                     activator_authority_pk: Some(activator_authority_pk),
                     sentinel_authority_pk: Some(sentinel_authority_pk),
                     health_oracle_pk: Some(health_oracle_pk),
-                    reservation_authority_pk: Some(reservation_authority_pk),
+                    feed_authority_pk: Some(feed_authority_pk),
                 })),
                 predicate::eq(vec![AccountMeta::new(globalstate_pubkey, false)]),
             )
@@ -71,7 +71,7 @@ mod tests {
             activator_authority_pk: Some(activator_authority_pk),
             sentinel_authority_pk: Some(sentinel_authority_pk),
             health_oracle_pk: Some(health_oracle_pk),
-            reservation_authority_pk: Some(reservation_authority_pk),
+            feed_authority_pk: Some(feed_authority_pk),
         }
         .execute(&client);
         assert!(res.is_ok());

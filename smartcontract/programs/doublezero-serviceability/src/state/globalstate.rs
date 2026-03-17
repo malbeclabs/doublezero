@@ -29,7 +29,7 @@ pub struct GlobalState {
     pub health_oracle_pk: Pubkey,          // 32
     pub qa_allowlist: Vec<Pubkey>,         // 4 + 32 * len
     pub feature_flags: u128,               // 16
-    pub reservation_authority_pk: Pubkey,  // 32
+    pub feed_authority_pk: Pubkey,         // 32
 }
 
 impl Default for GlobalState {
@@ -48,7 +48,7 @@ impl Default for GlobalState {
             health_oracle_pk: Pubkey::default(),
             qa_allowlist: Vec::new(),
             feature_flags: 0,
-            reservation_authority_pk: Pubkey::default(),
+            feed_authority_pk: Pubkey::default(),
         }
     }
 }
@@ -101,7 +101,7 @@ impl TryFrom<&[u8]> for GlobalState {
             health_oracle_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             qa_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             feature_flags: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            reservation_authority_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            feed_authority_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::GlobalState {
@@ -175,7 +175,7 @@ mod tests {
         assert_eq!(val.contributor_airdrop_lamports, 0);
         assert_eq!(val.user_airdrop_lamports, 0);
         assert_eq!(val.feature_flags, 0);
-        assert_eq!(val.reservation_authority_pk, Pubkey::default());
+        assert_eq!(val.feed_authority_pk, Pubkey::default());
     }
 
     #[test]
@@ -194,7 +194,7 @@ mod tests {
             health_oracle_pk: Pubkey::new_unique(),
             qa_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             feature_flags: 1,
-            reservation_authority_pk: Pubkey::new_unique(),
+            feed_authority_pk: Pubkey::new_unique(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -224,7 +224,7 @@ mod tests {
         );
         assert_eq!(val.user_airdrop_lamports, val2.user_airdrop_lamports);
         assert_eq!(val.feature_flags, val2.feature_flags);
-        assert_eq!(val.reservation_authority_pk, val2.reservation_authority_pk);
+        assert_eq!(val.feed_authority_pk, val2.feed_authority_pk);
     }
 
     #[test]
@@ -243,7 +243,7 @@ mod tests {
             health_oracle_pk: Pubkey::new_unique(),
             qa_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             feature_flags: 0,
-            reservation_authority_pk: Pubkey::new_unique(),
+            feed_authority_pk: Pubkey::new_unique(),
         };
         let err = val.validate();
         assert!(err.is_err());

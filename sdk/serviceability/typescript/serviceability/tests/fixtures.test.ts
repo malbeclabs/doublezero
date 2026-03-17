@@ -93,7 +93,7 @@ describe("GlobalState fixture", () => {
       ActivatorAuthorityPk: gs.activatorAuthorityPk,
       SentinelAuthorityPk: gs.sentinelAuthorityPk,
       HealthOraclePk: gs.healthOraclePk,
-      ReservationAuthorityPk: gs.reservationAuthorityPk,
+      FeedAuthorityPk: gs.feedAuthorityPk,
     });
   });
 });

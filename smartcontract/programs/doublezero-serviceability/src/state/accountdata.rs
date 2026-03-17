@@ -4,8 +4,8 @@ use crate::{
         accesspass::AccessPass, accounttype::AccountType, contributor::Contributor, device::Device,
         exchange::Exchange, globalconfig::GlobalConfig, globalstate::GlobalState, link::Link,
         location::Location, multicastgroup::MulticastGroup, permission::Permission,
-        programconfig::ProgramConfig, reservation::Reservation,
-        resource_extension::ResourceExtensionOwned, tenant::Tenant, user::User,
+        programconfig::ProgramConfig, resource_extension::ResourceExtensionOwned, tenant::Tenant,
+        user::User,
     },
 };
 use solana_program::program_error::ProgramError;
@@ -28,7 +28,6 @@ pub enum AccountData {
     AccessPass(AccessPass),
     ResourceExtension(ResourceExtensionOwned),
     Tenant(Tenant),
-    Reservation(Reservation),
     Permission(Permission),
 }
 
@@ -49,7 +48,6 @@ impl AccountData {
             AccountData::AccessPass(_) => "AccessPass",
             AccountData::ResourceExtension(_) => "ResourceExtension",
             AccountData::Tenant(_) => "Tenant",
-            AccountData::Reservation(_) => "Reservation",
             AccountData::Permission(_) => "Permission",
         }
     }
@@ -70,7 +68,6 @@ impl AccountData {
             AccountData::AccessPass(access_pass) => access_pass.to_string(),
             AccountData::ResourceExtension(resource_extension) => resource_extension.to_string(),
             AccountData::Tenant(tenant) => tenant.to_string(),
-            AccountData::Reservation(reservation) => reservation.to_string(),
             AccountData::Permission(permission) => permission.to_string(),
         }
     }
@@ -224,9 +221,6 @@ impl TryFrom<&[u8]> for AccountData {
                 ResourceExtensionOwned::try_from(bytes)?,
             )),
             AccountType::Tenant => Ok(AccountData::Tenant(Tenant::try_from(bytes as &[u8])?)),
-            AccountType::Reservation => Ok(AccountData::Reservation(Reservation::try_from(
-                bytes as &[u8],
-            )?)),
             AccountType::Permission => Ok(AccountData::Permission(Permission::try_from(
                 bytes as &[u8],
             )?)),

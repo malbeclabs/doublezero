@@ -282,7 +282,7 @@ mod tests {
             health_oracle_pk: Pubkey::new_unique(),
             qa_allowlist: vec![],
             feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
-            reservation_authority_pk: Pubkey::default(),
+            feed_authority_pk: Pubkey::default(),
         };
         client
             .expect_get()

@@ -17,15 +17,15 @@ pub struct SetAuthorityArgs {
     pub activator_authority_pk: Option<Pubkey>,
     pub sentinel_authority_pk: Option<Pubkey>,
     pub health_oracle_pk: Option<Pubkey>,
-    pub reservation_authority_pk: Option<Pubkey>,
+    pub feed_authority_pk: Option<Pubkey>,
 }
 
 impl fmt::Debug for SetAuthorityArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "activator_authority_pk: {:?}, sentinel_authority_pk: {:?}, health_oracle_pk: {:?}, reservation_authority_pk: {:?}",
-            self.activator_authority_pk, self.sentinel_authority_pk, self.health_oracle_pk, self.reservation_authority_pk
+            "activator_authority_pk: {:?}, sentinel_authority_pk: {:?}, health_oracle_pk: {:?}, feed_authority_pk: {:?}",
+            self.activator_authority_pk, self.sentinel_authority_pk, self.health_oracle_pk, self.feed_authority_pk
         )
     }
 }
@@ -85,8 +85,8 @@ pub fn process_set_authority(
     if let Some(health_oracle_pk) = value.health_oracle_pk {
         globalstate.health_oracle_pk = health_oracle_pk;
     }
-    if let Some(reservation_authority_pk) = value.reservation_authority_pk {
-        globalstate.reservation_authority_pk = reservation_authority_pk;
+    if let Some(feed_authority_pk) = value.feed_authority_pk {
+        globalstate.feed_authority_pk = feed_authority_pk;
     }
 
     try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;

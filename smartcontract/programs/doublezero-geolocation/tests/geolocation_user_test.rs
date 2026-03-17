@@ -6,16 +6,22 @@ use doublezero_geolocation::{
     entrypoint::process_instruction,
     error::GeolocationError,
     instructions::GeolocationInstruction,
-    pda::get_geolocation_user_pda,
-    processors::geolocation_user::{
-        create::CreateGeolocationUserArgs, update::UpdateGeolocationUserArgs,
+    pda::{get_geo_probe_pda, get_geolocation_user_pda},
+    processors::{
+        geo_probe::create::CreateGeoProbeArgs,
+        geolocation_user::{
+            add_target::AddTargetArgs, create::CreateGeolocationUserArgs,
+            remove_target::RemoveTargetArgs, update::UpdateGeolocationUserArgs,
+            update_payment_status::UpdatePaymentStatusArgs,
+        },
     },
     serviceability_program_id,
     state::{
         accounttype::AccountType,
+        geo_probe::GeoProbe,
         geolocation_user::{
-            GeolocationBillingConfig, GeolocationPaymentStatus, GeolocationUser,
-            GeolocationUserStatus,
+            GeoLocationTargetType, GeolocationBillingConfig, GeolocationPaymentStatus,
+            GeolocationUser, GeolocationUserStatus,
         },
     },
 };
@@ -27,6 +33,7 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::{Transaction, TransactionError},
 };
+use std::net::Ipv4Addr;
 use test_helpers::setup_test_with_exchange;
 
 /// Minimal test setup for self-service instructions (no foundation allowlist needed).
@@ -452,4 +459,591 @@ async fn test_delete_geolocation_user_by_foundation() {
 
     let account = banks_client.get_account(user_pda).await.unwrap();
     assert!(account.is_none());
+}
+
+// --- Helpers for AddTarget / RemoveTarget / UpdatePaymentStatus tests ---
+
+/// Creates a GeoProbe via instruction (requires foundation setup).
+async fn create_geo_probe(
+    banks_client: &mut BanksClient,
+    program_id: &Pubkey,
+    recent_blockhash: &tokio::sync::RwLock<solana_sdk::hash::Hash>,
+    payer: &Keypair,
+    exchange_pubkey: &Pubkey,
+    probe_code: &str,
+) -> Pubkey {
+    let (probe_pda, _) = get_geo_probe_pda(program_id, probe_code);
+    let program_config_pda = doublezero_geolocation::pda::get_program_config_pda(program_id).0;
+    let serviceability_globalstate_pda =
+        doublezero_serviceability::pda::get_globalstate_pda(&serviceability_program_id()).0;
+
+    let ix = Instruction::new_with_borsh(
+        *program_id,
+        &GeolocationInstruction::CreateGeoProbe(CreateGeoProbeArgs {
+            code: probe_code.to_string(),
+            public_ip: Ipv4Addr::new(8, 8, 8, 8),
+            location_offset_port: 4242,
+            metrics_publisher_pk: Pubkey::new_unique(),
+        }),
+        vec![
+            AccountMeta::new(probe_pda, false),
+            AccountMeta::new_readonly(*exchange_pubkey, false),
+            AccountMeta::new_readonly(program_config_pda, false),
+            AccountMeta::new_readonly(serviceability_globalstate_pda, false),
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+        ],
+    );
+
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+    probe_pda
+}
+
+fn build_add_target_ix(
+    program_id: &Pubkey,
+    user_pda: &Pubkey,
+    probe_pda: &Pubkey,
+    payer: &Pubkey,
+    args: AddTargetArgs,
+) -> Instruction {
+    Instruction::new_with_borsh(
+        *program_id,
+        &GeolocationInstruction::AddTarget(args),
+        vec![
+            AccountMeta::new(*user_pda, false),
+            AccountMeta::new(*probe_pda, false),
+            AccountMeta::new(*payer, true),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+        ],
+    )
+}
+
+fn build_remove_target_ix(
+    program_id: &Pubkey,
+    user_pda: &Pubkey,
+    probe_pda: &Pubkey,
+    payer: &Pubkey,
+    args: RemoveTargetArgs,
+) -> Instruction {
+    Instruction::new_with_borsh(
+        *program_id,
+        &GeolocationInstruction::RemoveTarget(args),
+        vec![
+            AccountMeta::new(*user_pda, false),
+            AccountMeta::new(*probe_pda, false),
+            AccountMeta::new(*payer, true),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+        ],
+    )
+}
+
+// --- AddTarget tests ---
+
+#[tokio::test]
+async fn test_add_target_outbound_success() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-add-out",
+    )
+    .await;
+
+    let user_code = "user-add-out";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+    let add_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            location_offset_port: 8923,
+            target_pk: Pubkey::default(),
+        },
+    );
+
+    let tx = Transaction::new_signed_with_payer(
+        &[add_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Verify target was added
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert_eq!(user.targets.len(), 1);
+    assert_eq!(user.targets[0].target_type, GeoLocationTargetType::Outbound);
+    assert_eq!(user.targets[0].ip_address, Ipv4Addr::new(8, 8, 8, 8));
+    assert_eq!(user.targets[0].geoprobe_pk, probe_pda);
+
+    // Verify probe reference_count incremented
+    let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
+    let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
+    assert_eq!(probe.reference_count, 1);
+
+    // Also add an inbound target to verify both target types work
+    let inbound_target_pk = Pubkey::new_unique();
+    let add_inbound_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::Inbound,
+            ip_address: Ipv4Addr::UNSPECIFIED,
+            location_offset_port: 0,
+            target_pk: inbound_target_pk,
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[add_inbound_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert_eq!(user.targets.len(), 2);
+    assert_eq!(user.targets[1].target_type, GeoLocationTargetType::Inbound);
+    assert_eq!(user.targets[1].target_pk, inbound_target_pk);
+
+    let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
+    let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
+    assert_eq!(probe.reference_count, 2);
+}
+
+#[tokio::test]
+async fn test_add_target_outbound_invalid_ip() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-bad-ip",
+    )
+    .await;
+
+    let user_code = "user-bad-ip";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+    let add_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(10, 0, 0, 1), // private IP
+            location_offset_port: 8923,
+            target_pk: Pubkey::default(),
+        },
+    );
+
+    let tx = Transaction::new_signed_with_payer(
+        &[add_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    let result = banks_client.process_transaction(tx).await;
+    let err = result.unwrap_err().unwrap();
+    match err {
+        TransactionError::InstructionError(0, InstructionError::Custom(code)) => {
+            assert_eq!(code, GeolocationError::InvalidIpAddress as u32);
+        }
+        _ => panic!("Expected InvalidIpAddress error, got: {:?}", err),
+    }
+}
+
+#[tokio::test]
+async fn test_add_target_duplicate_rejected() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-dup-tgt",
+    )
+    .await;
+
+    let user_code = "user-dup-tgt";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+    let args = AddTargetArgs {
+        target_type: GeoLocationTargetType::Outbound,
+        ip_address: Ipv4Addr::new(1, 1, 1, 1),
+        location_offset_port: 8923,
+        target_pk: Pubkey::default(),
+    };
+
+    // First add succeeds
+    let add_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        args.clone(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[add_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Second add with same target identity but different location_offset_port (different tx bytes,
+    // but the duplicate check matches on target_type + geoprobe_pk + ip_address + target_pk).
+    let mut args2 = args;
+    args2.location_offset_port = 9999;
+    let add_ix2 = build_add_target_ix(&program_id, &user_pda, &probe_pda, &payer.pubkey(), args2);
+    let tx = Transaction::new_signed_with_payer(
+        &[add_ix2],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    let result = banks_client.process_transaction(tx).await;
+    let err = result.unwrap_err().unwrap();
+    match err {
+        TransactionError::InstructionError(0, InstructionError::Custom(code)) => {
+            assert_eq!(code, GeolocationError::TargetAlreadyExists as u32);
+        }
+        _ => panic!("Expected TargetAlreadyExists error, got: {:?}", err),
+    }
+}
+
+// --- RemoveTarget tests ---
+
+#[tokio::test]
+async fn test_remove_target_success() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-rm",
+    )
+    .await;
+
+    let user_code = "user-rm";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+
+    // Add a target
+    let add_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            location_offset_port: 8923,
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[add_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Verify reference_count is 1
+    let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
+    let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
+    assert_eq!(probe.reference_count, 1);
+
+    // Remove the target
+    let rm_ix = build_remove_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        RemoveTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[rm_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Verify target removed
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert!(user.targets.is_empty());
+
+    // Verify reference_count decremented
+    let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
+    let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
+    assert_eq!(probe.reference_count, 0);
+}
+
+#[tokio::test]
+async fn test_remove_target_not_found() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-rm-nf",
+    )
+    .await;
+
+    let user_code = "user-rm-nf";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+    let rm_ix = build_remove_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        RemoveTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[rm_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    let result = banks_client.process_transaction(tx).await;
+    let err = result.unwrap_err().unwrap();
+    match err {
+        TransactionError::InstructionError(0, InstructionError::Custom(code)) => {
+            assert_eq!(code, GeolocationError::TargetNotFound as u32);
+        }
+        _ => panic!("Expected TargetNotFound error, got: {:?}", err),
+    }
+}
+
+// --- UpdatePaymentStatus tests ---
+
+#[tokio::test]
+async fn test_update_payment_status_success() {
+    let (mut banks_client, program_id, recent_blockhash, payer, _) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let user_code = "user-pay-ok";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+    let program_config_pda = doublezero_geolocation::pda::get_program_config_pda(&program_id).0;
+    let serviceability_globalstate_pda =
+        doublezero_serviceability::pda::get_globalstate_pda(&serviceability_program_id()).0;
+
+    let update_ix = Instruction::new_with_borsh(
+        program_id,
+        &GeolocationInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
+            payment_status: GeolocationPaymentStatus::Paid,
+            last_deduction_dz_epoch: Some(42),
+        }),
+        vec![
+            AccountMeta::new(user_pda, false),
+            AccountMeta::new_readonly(program_config_pda, false),
+            AccountMeta::new_readonly(serviceability_globalstate_pda, false),
+            AccountMeta::new(payer.pubkey(), true),
+        ],
+    );
+
+    let tx = Transaction::new_signed_with_payer(
+        &[update_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert_eq!(user.payment_status, GeolocationPaymentStatus::Paid);
+    match user.billing {
+        GeolocationBillingConfig::FlatPerEpoch(config) => {
+            assert_eq!(config.last_deduction_dz_epoch, 42);
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_update_payment_status_invalid_value() {
+    let (mut banks_client, program_id, recent_blockhash, payer, _) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let user_code = "user-pay-inv";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+    let program_config_pda = doublezero_geolocation::pda::get_program_config_pda(&program_id).0;
+    let serviceability_globalstate_pda =
+        doublezero_serviceability::pda::get_globalstate_pda(&serviceability_program_id()).0;
+
+    // Serialize a valid instruction, then patch the payment_status byte to an
+    // invalid value. With GeolocationPaymentStatus as the field type, invalid
+    // values are rejected at Borsh deserialization time (InvalidInstructionData).
+    let mut data = borsh::to_vec(&GeolocationInstruction::UpdatePaymentStatus(
+        UpdatePaymentStatusArgs {
+            payment_status: GeolocationPaymentStatus::Delinquent,
+            last_deduction_dz_epoch: None,
+        },
+    ))
+    .unwrap();
+    data[1] = 99; // patch payment_status to invalid discriminant
+
+    let update_ix = Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(user_pda, false),
+            AccountMeta::new_readonly(program_config_pda, false),
+            AccountMeta::new_readonly(serviceability_globalstate_pda, false),
+            AccountMeta::new(payer.pubkey(), true),
+        ],
+        data,
+    };
+
+    let tx = Transaction::new_signed_with_payer(
+        &[update_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    let result = banks_client.process_transaction(tx).await;
+    let err = result.unwrap_err().unwrap();
+    match err {
+        TransactionError::InstructionError(0, InstructionError::InvalidInstructionData) => {}
+        _ => panic!("Expected InvalidInstructionData error, got: {:?}", err),
+    }
 }

@@ -17,7 +17,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 )
 
 // --- test mocks ---
@@ -117,11 +117,9 @@ func testUser(clientIP [4]uint8, devicePK [32]byte, userType serviceability.User
 	}
 }
 
-func testConfig() serviceability.Config {
-	return serviceability.Config{
-		Local_asn:  65000,
-		Remote_asn: 65001,
-	}
+var globalCfg = serviceability.GlobalConfig{
+	LocalASN:  65000,
+	RemoteASN: 65001,
 }
 
 // --- reconcile tests ---
@@ -132,7 +130,7 @@ func TestReconcile_ProvisionUnicast(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
 			Users:   []serviceability.User{testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)},
 		},
@@ -165,7 +163,7 @@ func TestReconcile_ProvisionUnicast_WithTunnelEndpoint(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
 			Users:   []serviceability.User{user},
 		},
@@ -188,7 +186,7 @@ func TestReconcile_RemoveUnicast(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config: testConfig(),
+			GlobalConfig: &globalCfg,
 			Users:  []serviceability.User{}, // no matching users
 		},
 	}
@@ -210,7 +208,7 @@ func TestReconcile_NoopWhenAlreadyProvisioned(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
 			Users:   []serviceability.User{testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)},
 		},
@@ -238,7 +236,7 @@ func TestReconcile_NoopWhenNoMatchingUsers(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
 			Users:   []serviceability.User{testUser([4]uint8{9, 9, 9, 9}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)},
 		},
@@ -261,8 +259,7 @@ func TestReconcile_IgnoresNonActivatedStatuses(t *testing.T) {
 
 	statuses := []serviceability.UserStatus{
 		serviceability.UserStatusPending,
-		serviceability.UserStatusSuspendedDeprecated,
-		serviceability.UserStatusDeleted,
+		serviceability.UserStatusDeleting,
 		serviceability.UserStatusRejected,
 		serviceability.UserStatusPendingBan,
 		serviceability.UserStatusBanned,
@@ -272,7 +269,7 @@ func TestReconcile_IgnoresNonActivatedStatuses(t *testing.T) {
 	for _, status := range statuses {
 		fetcher := &mockFetcher{
 			data: &serviceability.ProgramData{
-				Config:  testConfig(),
+				GlobalConfig:  &globalCfg,
 				Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
 				Users:   []serviceability.User{testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, status)},
 			},
@@ -297,7 +294,7 @@ func TestReconcile_ProvisionMulticast(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:          testConfig(),
+			GlobalConfig:    &globalCfg,
 			Devices:         []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
 			Users:           []serviceability.User{user},
 			MulticastGroups: []serviceability.MulticastGroup{{PubKey: mcastGroupPK, MulticastIp: [4]uint8{239, 0, 0, 1}}},
@@ -327,7 +324,7 @@ func TestReconcile_RemoveMulticast(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config: testConfig(),
+			GlobalConfig: &globalCfg,
 			Users:  []serviceability.User{},
 		},
 	}
@@ -355,7 +352,7 @@ func TestReconcile_ReProvisionOnMulticastGroupChange(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
 			Users:   []serviceability.User{user},
 			MulticastGroups: []serviceability.MulticastGroup{
@@ -407,7 +404,7 @@ func TestReconcile_NoReProvisionWhenUnchanged(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:          testConfig(),
+			GlobalConfig:    &globalCfg,
 			Devices:         []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
 			Users:           []serviceability.User{user},
 			MulticastGroups: []serviceability.MulticastGroup{{PubKey: mcastGroupPK, MulticastIp: [4]uint8{239, 0, 0, 1}}},
@@ -437,7 +434,7 @@ func TestMapUserType(t *testing.T) {
 		daemon api.UserType
 	}{
 		{serviceability.UserTypeIBRL, api.UserTypeIBRL},
-		{serviceability.UserTypeIBRLWithAllocatedIP, api.UserTypeIBRLWithAllocatedIP},
+		{serviceability.UserTypeIBRLWithAllocIP, api.UserTypeIBRLWithAllocatedIP},
 		{serviceability.UserTypeEdgeFiltering, api.UserTypeEdgeFiltering},
 		{serviceability.UserTypeMulticast, api.UserTypeMulticast},
 		{serviceability.UserUserType(99), api.UserTypeUnknown},
@@ -491,7 +488,7 @@ func TestReconcile_BothUnicastAndMulticast(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:          testConfig(),
+			GlobalConfig:    &globalCfg,
 			Devices:         []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
 			Users:           []serviceability.User{ibrlUser, mcastUser},
 			MulticastGroups: []serviceability.MulticastGroup{{PubKey: mcastGroupPK, MulticastIp: [4]uint8{239, 0, 0, 1}}},
@@ -516,7 +513,7 @@ func TestReconcile_PrefixesCollectedFromAllDevices(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config: testConfig(),
+			GlobalConfig: &globalCfg,
 			Devices: []serviceability.Device{
 				testDevice(devicePK1, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}}),
 				testDevice(devicePK2, [4]uint8{5, 6, 7, 9}, [][5]uint8{{10, 1, 0, 0, 24}}),
@@ -546,9 +543,9 @@ func TestReconcile_ResolveTunnelSrc(t *testing.T) {
 	// src from the routing table; regular IBRL uses clientIP directly.
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
-			Users:   []serviceability.User{testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRLWithAllocatedIP, serviceability.UserStatusActivated)},
+			Users:   []serviceability.User{testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRLWithAllocIP, serviceability.UserStatusActivated)},
 		},
 	}
 
@@ -577,7 +574,7 @@ func TestReconcile_ResolveTunnelSrcSkippedForRegularIBRL(t *testing.T) {
 	// Regular IBRL should NOT resolve tunnel src — it uses clientIP directly.
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
 			Users:   []serviceability.User{testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)},
 		},
@@ -607,9 +604,9 @@ func TestReconcile_ResolveTunnelSrcFallback(t *testing.T) {
 	// Use IBRLWithAllocatedIP to test the fallback path when resolution fails.
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
-			Users:   []serviceability.User{testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRLWithAllocatedIP, serviceability.UserStatusActivated)},
+			Users:   []serviceability.User{testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRLWithAllocIP, serviceability.UserStatusActivated)},
 		},
 	}
 
@@ -635,7 +632,7 @@ func TestReconcile_DuplicateUnicastUsersOnlyProvisionFirst(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
 			Users:   []serviceability.User{user1, user2},
 		},
@@ -667,7 +664,7 @@ func TestReconcile_DuplicateMulticastUsersOnlyProvisionFirst(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
 			Users:   []serviceability.User{user1, user2},
 			MulticastGroups: []serviceability.MulticastGroup{
@@ -696,7 +693,7 @@ func TestReconcile_DuplicateMulticastUsersOnlyProvisionFirst(t *testing.T) {
 
 func TestStartReconciler_ContextCancellation(t *testing.T) {
 	fetcher := &mockFetcher{
-		data: &serviceability.ProgramData{Config: testConfig()},
+		data: &serviceability.ProgramData{GlobalConfig: &globalCfg},
 	}
 
 	n := newTestNLM(fetcher,
@@ -727,7 +724,7 @@ func TestStartReconciler_InitialReconcileWhenEnabled(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
 			Users:   []serviceability.User{testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)},
 		},
@@ -759,7 +756,7 @@ func TestStartReconciler_InitialReconcileWhenEnabled(t *testing.T) {
 
 func TestStartReconciler_NoReconcileWhenDisabled(t *testing.T) {
 	fetcher := &mockFetcher{
-		data: &serviceability.ProgramData{Config: testConfig()},
+		data: &serviceability.ProgramData{GlobalConfig: &globalCfg},
 	}
 
 	n := newTestNLM(fetcher,
@@ -788,7 +785,7 @@ func TestStartReconciler_EnableViaChannel(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
 			Users:   []serviceability.User{testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)},
 		},
@@ -831,7 +828,7 @@ func TestStartReconciler_DisableViaChannel_TearsDown(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
 			Users: []serviceability.User{
 				testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated),
@@ -873,7 +870,7 @@ func TestStartReconciler_DisableViaChannel_TearsDown(t *testing.T) {
 
 func TestStartReconciler_TickerReconcileWhenEnabled(t *testing.T) {
 	fetcher := &mockFetcher{
-		data: &serviceability.ProgramData{Config: testConfig()},
+		data: &serviceability.ProgramData{GlobalConfig: &globalCfg},
 	}
 
 	n := newTestNLM(fetcher,
@@ -901,7 +898,7 @@ func TestStartReconciler_TickerReconcileWhenEnabled(t *testing.T) {
 // --- Teardown tests ---
 
 func TestReconcilerTeardown_RemovesBothServices(t *testing.T) {
-	n := newTestNLM(&mockFetcher{data: &serviceability.ProgramData{Config: testConfig()}})
+	n := newTestNLM(&mockFetcher{data: &serviceability.ProgramData{GlobalConfig: &globalCfg}})
 	provisionUnicast(t, n)
 	provisionMulticast(t, n)
 
@@ -916,7 +913,7 @@ func TestReconcilerTeardown_RemovesBothServices(t *testing.T) {
 }
 
 func TestReconcilerTeardown_SkipsAbsentServices(t *testing.T) {
-	n := newTestNLM(&mockFetcher{data: &serviceability.ProgramData{Config: testConfig()}})
+	n := newTestNLM(&mockFetcher{data: &serviceability.ProgramData{GlobalConfig: &globalCfg}})
 
 	// Should not panic or error with no services
 	n.reconcilerTeardown()
@@ -930,7 +927,7 @@ func TestReconcilerTeardown_SkipsAbsentServices(t *testing.T) {
 }
 
 func TestReconcilerTeardown_OnlyUnicast(t *testing.T) {
-	n := newTestNLM(&mockFetcher{data: &serviceability.ProgramData{Config: testConfig()}})
+	n := newTestNLM(&mockFetcher{data: &serviceability.ProgramData{GlobalConfig: &globalCfg}})
 	provisionUnicast(t, n)
 
 	n.reconcilerTeardown()
@@ -941,7 +938,7 @@ func TestReconcilerTeardown_OnlyUnicast(t *testing.T) {
 }
 
 func TestReconcilerTeardown_OnlyMulticast(t *testing.T) {
-	n := newTestNLM(&mockFetcher{data: &serviceability.ProgramData{Config: testConfig()}})
+	n := newTestNLM(&mockFetcher{data: &serviceability.ProgramData{GlobalConfig: &globalCfg}})
 	provisionMulticast(t, n)
 
 	n.reconcilerTeardown()
@@ -969,7 +966,7 @@ func TestReconcile_FetchError(t *testing.T) {
 // --- HTTP handler tests ---
 
 func newTestNLMForHTTP(stateDir string) *NetlinkManager {
-	fetcher := &mockFetcher{data: &serviceability.ProgramData{Config: testConfig()}}
+	fetcher := &mockFetcher{data: &serviceability.ProgramData{GlobalConfig: &globalCfg}}
 	return newTestNLM(fetcher,
 		WithClientIP(net.IPv4(1, 2, 3, 4).To4()),
 		WithPollInterval(time.Hour),
@@ -1456,7 +1453,7 @@ func TestStartup_UpgradeFromOldDaemon_WasConnected(t *testing.T) {
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
 			Users:   []serviceability.User{testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)},
 		},
@@ -1507,7 +1504,7 @@ func TestStartup_DaemonRestart_WasEnabled(t *testing.T) {
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
 			Users:   []serviceability.User{testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)},
 		},
@@ -1548,7 +1545,7 @@ func TestStartup_FreshInstall_DoesNotProvision(t *testing.T) {
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
 			Users:   []serviceability.User{testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)},
 		},
@@ -1595,7 +1592,7 @@ func TestStartup_DaemonRestart_WasDisabled(t *testing.T) {
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
 			Users:   []serviceability.User{testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)},
 		},
@@ -1638,7 +1635,7 @@ func TestReconcile_IncrementalUpdateOnGroupChange(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
 			Users:   []serviceability.User{user},
 			MulticastGroups: []serviceability.MulticastGroup{
@@ -1686,7 +1683,7 @@ func TestReconcile_FullReprovisionOnInfraChange(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
 			Users:   []serviceability.User{user},
 			MulticastGroups: []serviceability.MulticastGroup{
@@ -1731,7 +1728,7 @@ func TestReconcile_IncrementalUpdateFallbackToReprovision(t *testing.T) {
 
 	fetcher := &mockFetcher{
 		data: &serviceability.ProgramData{
-			Config:  testConfig(),
+			GlobalConfig:  &globalCfg,
 			Devices: []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
 			Users:   []serviceability.User{user},
 			MulticastGroups: []serviceability.MulticastGroup{

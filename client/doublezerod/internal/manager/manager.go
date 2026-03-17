@@ -15,7 +15,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/services"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 )
 
 const (
@@ -533,8 +533,8 @@ func (n *NetlinkManager) reconcile(ctx context.Context) {
 	metricMatchedUsers.WithLabelValues(serviceMulticast).Set(float64(len(wantMulticast)))
 
 	// Reconcile unicast and multicast services
-	n.reconcileService(wantUnicast, n.HasUnicastService(), serviceUnicast, api.UserTypeIBRL, devicesByPK, mcastGroupsByPK, allPrefixes, data.Config)
-	n.reconcileService(wantMulticast, n.HasMulticastService(), serviceMulticast, api.UserTypeMulticast, devicesByPK, mcastGroupsByPK, allPrefixes, data.Config)
+	n.reconcileService(wantUnicast, n.HasUnicastService(), serviceUnicast, api.UserTypeIBRL, devicesByPK, mcastGroupsByPK, allPrefixes, *data.GlobalConfig)
+	n.reconcileService(wantMulticast, n.HasMulticastService(), serviceMulticast, api.UserTypeMulticast, devicesByPK, mcastGroupsByPK, allPrefixes, *data.GlobalConfig)
 }
 
 func (n *NetlinkManager) reconcileService(
@@ -545,7 +545,7 @@ func (n *NetlinkManager) reconcileService(
 	devicesByPK map[[32]byte]serviceability.Device,
 	mcastGroupsByPK map[[32]byte]serviceability.MulticastGroup,
 	allPrefixes []*net.IPNet,
-	cfg serviceability.Config,
+	cfg serviceability.GlobalConfig,
 ) {
 	if len(wantUsers) > 0 {
 		u := wantUsers[0]
@@ -639,7 +639,7 @@ func (n *NetlinkManager) buildProvisionRequest(
 	devicesByPK map[[32]byte]serviceability.Device,
 	mcastGroupsByPK map[[32]byte]serviceability.MulticastGroup,
 	allPrefixes []*net.IPNet,
-	cfg serviceability.Config,
+	cfg serviceability.GlobalConfig,
 ) (api.ProvisionRequest, error) {
 	// Resolve device
 	devPK := [32]byte(u.DevicePubKey)
@@ -668,7 +668,7 @@ func (n *NetlinkManager) buildProvisionRequest(
 	// The result is cached per destination IP so we don't repeat the kernel
 	// route lookup every reconcile cycle.
 	tunnelSrc := n.clientIP
-	if u.UserType == serviceability.UserTypeIBRLWithAllocatedIP || u.UserType == serviceability.UserTypeMulticast {
+	if u.UserType == serviceability.UserTypeIBRLWithAllocIP || u.UserType == serviceability.UserTypeMulticast {
 		dstKey := tunnelDst.String()
 		if cached, ok := n.tunnelSrcCache[dstKey]; ok {
 			tunnelSrc = cached
@@ -705,8 +705,8 @@ func (n *NetlinkManager) buildProvisionRequest(
 		TunnelNet:          tunnelNet,
 		DoubleZeroIP:       net.IP(u.DzIp[:]),
 		DoubleZeroPrefixes: allPrefixes,
-		BgpLocalAsn:        cfg.Local_asn,
-		BgpRemoteAsn:       cfg.Remote_asn,
+		BgpLocalAsn:        cfg.LocalASN,
+		BgpRemoteAsn:       cfg.RemoteASN,
 		MulticastPubGroups: pubGroups,
 		MulticastSubGroups: subGroups,
 	}, nil
@@ -717,7 +717,7 @@ func mapUserType(ut serviceability.UserUserType) api.UserType {
 	switch ut {
 	case serviceability.UserTypeIBRL:
 		return api.UserTypeIBRL
-	case serviceability.UserTypeIBRLWithAllocatedIP:
+	case serviceability.UserTypeIBRLWithAllocIP:
 		return api.UserTypeIBRLWithAllocatedIP
 	case serviceability.UserTypeEdgeFiltering:
 		return api.UserTypeEdgeFiltering

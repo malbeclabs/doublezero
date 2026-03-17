@@ -6,6 +6,10 @@ use crate::{
             delete::process_delete_geo_probe, remove_parent_device::process_remove_parent_device,
             update::process_update_geo_probe,
         },
+        geolocation_user::{
+            create::process_create_geolocation_user, delete::process_delete_geolocation_user,
+            update::process_update_geolocation_user,
+        },
         program_config::{
             init::process_init_program_config, update::process_update_program_config,
         },
@@ -47,6 +51,15 @@ pub fn process_instruction(
         GeolocationInstruction::AddParentDevice => process_add_parent_device(program_id, accounts)?,
         GeolocationInstruction::RemoveParentDevice(args) => {
             process_remove_parent_device(program_id, accounts, &args)?
+        }
+        GeolocationInstruction::CreateGeolocationUser(args) => {
+            process_create_geolocation_user(program_id, accounts, &args)?
+        }
+        GeolocationInstruction::UpdateGeolocationUser(args) => {
+            process_update_geolocation_user(program_id, accounts, &args)?
+        }
+        GeolocationInstruction::DeleteGeolocationUser => {
+            process_delete_geolocation_user(program_id, accounts)?
         }
     };
 

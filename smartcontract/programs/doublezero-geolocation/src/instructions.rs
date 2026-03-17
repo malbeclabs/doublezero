@@ -5,6 +5,7 @@ pub use crate::processors::{
         create::CreateGeoProbeArgs, remove_parent_device::RemoveParentDeviceArgs,
         update::UpdateGeoProbeArgs,
     },
+    geolocation_user::{create::CreateGeolocationUserArgs, update::UpdateGeolocationUserArgs},
     program_config::{init::InitProgramConfigArgs, update::UpdateProgramConfigArgs},
 };
 
@@ -17,6 +18,9 @@ pub enum GeolocationInstruction {
     DeleteGeoProbe,
     AddParentDevice,
     RemoveParentDevice(RemoveParentDeviceArgs),
+    CreateGeolocationUser(CreateGeolocationUserArgs),
+    UpdateGeolocationUser(UpdateGeolocationUserArgs),
+    DeleteGeolocationUser,
 }
 
 #[cfg(test)]
@@ -66,6 +70,23 @@ mod tests {
                 device_pk: Pubkey::new_unique(),
             },
         ));
+        test_instruction(GeolocationInstruction::CreateGeolocationUser(
+            CreateGeolocationUserArgs {
+                code: "geo-user-01".to_string(),
+                token_account: Pubkey::new_unique(),
+            },
+        ));
+        test_instruction(GeolocationInstruction::UpdateGeolocationUser(
+            UpdateGeolocationUserArgs {
+                token_account: Some(Pubkey::new_unique()),
+            },
+        ));
+        test_instruction(GeolocationInstruction::UpdateGeolocationUser(
+            UpdateGeolocationUserArgs {
+                token_account: None,
+            },
+        ));
+        test_instruction(GeolocationInstruction::DeleteGeolocationUser);
     }
 
     #[test]

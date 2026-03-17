@@ -20,6 +20,8 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -331,6 +333,60 @@ func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Resul
 	}
 
 	return res, nil
+}
+
+// Enable implements the Enable RPC, which enables the reconciler on doublezerod.
+// This is equivalent to running `doublezero enable`.
+func (q *QAAgent) Enable(ctx context.Context, req *emptypb.Empty) (*pb.Result, error) {
+	q.log.Debug("Received Enable request")
+	cmd := exec.CommandContext(ctx, "doublezero", "enable")
+	res, err := runCmd(cmd)
+	if err != nil {
+		q.log.Error("Failed to enable reconciler", "output", res.GetOutput())
+		return res, fmt.Errorf("failed to enable reconciler: %w", err)
+	}
+	q.log.Debug("Reconciler enabled", "output", res.GetOutput())
+	return res, nil
+}
+
+// SeatPay implements the SeatPay RPC, which pays for a seat reservation on a device.
+// This executes `doublezero-solana reservation pay` with the provided parameters.
+// When instant is true, the --now flag is appended for immediate allocation.
+func (q *QAAgent) SeatPay(ctx context.Context, req *pb.SeatPayRequest) (*pb.Result, error) {
+	if req.GetDevicePubkey() == "" {
+		return nil, fmt.Errorf("device_pubkey is required")
+	}
+	if req.GetClientIp() == "" {
+		return nil, fmt.Errorf("client_ip is required")
+	}
+	if req.GetAmount() == "" {
+		return nil, fmt.Errorf("amount is required")
+	}
+	q.log.Debug("Received SeatPay request", "device", req.GetDevicePubkey(), "clientIP", req.GetClientIp(), "amount", req.GetAmount(), "instant", req.GetInstant())
+
+	args := []string{"reservation", "pay", "--device", req.GetDevicePubkey(), "--client-ip", req.GetClientIp(), "--amount", req.GetAmount()}
+	if req.GetInstant() {
+		args = append(args, "--now")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "doublezero-solana", args...)
+	res, err := runCmd(cmd)
+	if err != nil {
+		q.log.Error("Failed to pay for seat", "device", req.GetDevicePubkey(), "output", res.GetOutput())
+		return res, fmt.Errorf("failed to pay for seat on device %s: %w", req.GetDevicePubkey(), err)
+	}
+	q.log.Debug("Seat payment successful", "device", req.GetDevicePubkey(), "output", res.GetOutput())
+	return res, nil
+}
+
+// SeatWithdraw implements the SeatWithdraw RPC. This is a placeholder — the instant
+// withdraw flag in the doublezero-solana CLI has not been implemented yet.
+func (q *QAAgent) SeatWithdraw(ctx context.Context, req *pb.SeatWithdrawRequest) (*pb.Result, error) {
+	q.log.Debug("Received SeatWithdraw request (not implemented)", "device", req.GetDevicePubkey(), "clientIP", req.GetClientIp(), "instant", req.GetInstant())
+	return nil, status.Errorf(codes.Unimplemented, "seat withdraw is not yet implemented")
 }
 
 type StatusResponse struct {

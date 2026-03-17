@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+- Onchain Programs
+  - Serviceability: remove ownership restriction on feed authority access pass operations, allowing it to update access passes and modify multicast subscriber allowlists for passes created by other authorities
 
 ## [v0.12.0](https://github.com/malbeclabs/doublezero/compare/client/v0.11.0...client/v0.12.0) - 2026-03-16
 

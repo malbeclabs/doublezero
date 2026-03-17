@@ -312,6 +312,7 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 		"from", addr,
 		"authority_pubkey", output.AuthorityPubkey,
 		"sender_pubkey", output.SenderPubkey,
+		"target_ip", output.TargetIP,
 		"rtt_ms", output.RttMs,
 		"max_distance_miles", output.MaxDistanceMiles,
 		"signature_valid", signatureValid,

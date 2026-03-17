@@ -67,11 +67,12 @@ export function deviceDeviceTypeString(v: number): string {
 const DEVICE_STATUS_NAMES: Record<number, string> = {
   0: "pending",
   1: "activated",
-  2: "deleting",
-  3: "rejected",
-  4: "drained",
-  5: "device-provisioning",
-  6: "link-provisioning",
+  // 2 was "suspended" but is no longer used
+  3: "deleting",
+  4: "rejected",
+  5: "drained",
+  6: "device-provisioning",
+  7: "link-provisioning",
 };
 export function deviceStatusString(v: number): string {
   return DEVICE_STATUS_NAMES[v] ?? "unknown";
@@ -169,6 +170,7 @@ export function linkLinkTypeString(v: number): string {
 const LINK_STATUS_NAMES: Record<number, string> = {
   0: "pending",
   1: "activated",
+  // 2 was "suspended" but is no longer used
   3: "deleting",
   4: "rejected",
   5: "requested",

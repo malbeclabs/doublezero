@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"golang.org/x/sync/singleflight"
 )
 

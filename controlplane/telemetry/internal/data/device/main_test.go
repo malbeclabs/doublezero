@@ -13,7 +13,7 @@ import (
 	"github.com/lmittmann/tint"
 	data "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/device"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/stats"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 

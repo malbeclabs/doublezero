@@ -2368,7 +2368,7 @@ func Test_GetConfig_DuplicateTunnelPairs_Integration(t *testing.T) {
 
 	// Create a state cache with duplicate tunnel pairs
 	stateCache := stateCache{
-		Config: serviceability.Config{
+		GlobalConfig: serviceability.GlobalConfig{
 			MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 		},
 		UnicastVrfs: []uint16{1},

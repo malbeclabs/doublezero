@@ -14,7 +14,7 @@ use doublezero_serviceability::{
     pda::{
         get_accesspass_pda, get_contributor_pda, get_device_pda, get_exchange_pda,
         get_globalconfig_pda, get_globalstate_pda, get_location_pda, get_multicastgroup_pda,
-        get_program_config_pda, get_resource_extension_pda, get_user_pda,
+        get_program_config_pda, get_resource_extension_pda, get_tenant_pda, get_user_pda,
     },
     processors::{
         accesspass::set::SetAccessPassArgs,
@@ -34,6 +34,7 @@ use doublezero_serviceability::{
             },
             create::MulticastGroupCreateArgs,
         },
+        tenant::create::TenantCreateArgs,
         user::create_subscribe::UserCreateSubscribeArgs,
     },
     resource::ResourceType,
@@ -931,4 +932,143 @@ async fn test_create_subscribe_user_inactive_mgroup_fails() {
         result.is_err(),
         "Should fail with graceful error when mgroup is not activated"
     );
+}
+
+/// Multicast user creation succeeds when the access-pass has a tenant_allowlist.
+///
+/// Regression test: multicast connections are not tenant-scoped. A user with an access-pass
+/// restricted to a specific tenant should still be able to create a multicast connection,
+/// because CreateSubscribeUser never passes a tenant account.
+#[tokio::test]
+async fn test_create_subscribe_user_ignores_tenant_allowlist() {
+    let client_ip = [100, 0, 0, 8];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        ..
+    } = f;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Create a tenant
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (tenant_pubkey, _) = get_tenant_pda(&program_id, "solana");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: "solana".to_string(),
+            administrator: payer.pubkey(),
+            token_account: None,
+            metro_routing: true,
+            route_liveness: false,
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create access pass with the tenant in its allowlist
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user_ip, &payer.pubkey());
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: user_ip,
+            last_access_epoch: 9999,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(Pubkey::default(), false), // no tenant to remove
+            AccountMeta::new(tenant_pubkey, false),     // add tenant to allowlist
+        ],
+        &payer,
+    )
+    .await;
+
+    // Add mgroup to allowlists
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupPubAllowlist(AddMulticastGroupPubAllowlistArgs {
+            client_ip: user_ip,
+            user_payer: payer.pubkey(),
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
+            client_ip: user_ip,
+            user_payer: payer.pubkey(),
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Multicast user creation should succeed even though access-pass has a tenant_allowlist
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Pending);
+    assert_eq!(user.subscribers, vec![mgroup_pubkey]);
 }

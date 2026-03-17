@@ -166,29 +166,31 @@ pub fn create_user_core(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
-    // Enforce tenant_allowlist: if access-pass has a non-default tenant in its
-    // allowlist, the user's tenant must be in that list.
-    if accesspass
-        .tenant_allowlist
-        .iter()
-        .any(|pk| *pk != Pubkey::default())
-    {
-        let user_tenant_pk = core.tenant_account.map(|a| *a.key).unwrap_or_default();
-        if !accesspass.tenant_allowlist.contains(&user_tenant_pk) {
+    // Enforce tenant_allowlist for unicast users only. Multicast connections are not
+    // tenant-scoped, so the access-pass tenant_allowlist does not apply to them.
+    if user_type != UserType::Multicast {
+        if accesspass
+            .tenant_allowlist
+            .iter()
+            .any(|pk| *pk != Pubkey::default())
+        {
+            let user_tenant_pk = core.tenant_account.map(|a| *a.key).unwrap_or_default();
+            if !accesspass.tenant_allowlist.contains(&user_tenant_pk) {
+                msg!(
+                    "Tenant {} not in access-pass tenant_allowlist {:?}",
+                    user_tenant_pk,
+                    accesspass.tenant_allowlist
+                );
+                return Err(DoubleZeroError::TenantNotInAccessPassAllowlist.into());
+            }
+        } else if let Some(tenant_account) = core.tenant_account {
+            let tenant = Tenant::try_from(tenant_account)?;
             msg!(
-                "Tenant {} not in access-pass tenant_allowlist {:?}",
-                user_tenant_pk,
-                accesspass.tenant_allowlist
+                "Access-pass has no tenant_allowlist, but user creation specifies tenant {}",
+                tenant.code
             );
             return Err(DoubleZeroError::TenantNotInAccessPassAllowlist.into());
         }
-    } else if let Some(tenant_account) = core.tenant_account {
-        let tenant = Tenant::try_from(tenant_account)?;
-        msg!(
-            "Access-pass has no tenant_allowlist, but user creation specifies tenant {}",
-            tenant.code
-        );
-        return Err(DoubleZeroError::TenantNotInAccessPassAllowlist.into());
     }
 
     // Check Initial epoch

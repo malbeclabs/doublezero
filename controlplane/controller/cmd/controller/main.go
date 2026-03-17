@@ -23,11 +23,12 @@ import (
 	_ "net/http/pprof"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/gagliardetto/solana-go/rpc"
+	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/controller/internal/controller"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	solrpc "github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 )
 
 var (
@@ -194,6 +195,7 @@ func (c *ControllerCommand) Run() error {
 	options := []controller.Option{}
 	var serviceabilityClient controller.ServiceabilityProgramClient
 	var deviceLocalASN uint32
+	var ledgerRPCClient *solanarpc.Client
 
 	if c.env == "" {
 		if c.programID == "" {
@@ -208,7 +210,8 @@ func (c *ControllerCommand) Run() error {
 			log.Error("device-local-asn is required when env is not set")
 			os.Exit(1)
 		}
-		serviceabilityClient = serviceability.New(rpc.New(c.rpcEndpoint), solana.MustPublicKeyFromBase58(c.programID))
+		ledgerRPCClient = solrpc.NewWithRetries(c.rpcEndpoint, nil)
+		serviceabilityClient = serviceability.New(ledgerRPCClient, solana.MustPublicKeyFromBase58(c.programID))
 		deviceLocalASN = uint32(c.deviceLocalASN)
 	} else {
 		networkConfig, err := config.NetworkConfigForEnv(c.env)
@@ -216,9 +219,11 @@ func (c *ControllerCommand) Run() error {
 			log.Error("failed to get network config", "error", err)
 			os.Exit(1)
 		}
-		serviceabilityClient = serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
+		ledgerRPCClient = solrpc.NewWithRetries(networkConfig.LedgerPublicRPCURL, nil)
+		serviceabilityClient = serviceability.New(ledgerRPCClient, networkConfig.ServiceabilityProgramID)
 		deviceLocalASN = networkConfig.DeviceLocalASN
 	}
+	defer ledgerRPCClient.Close()
 
 	options = append(options, controller.WithDeviceLocalASN(deviceLocalASN))
 

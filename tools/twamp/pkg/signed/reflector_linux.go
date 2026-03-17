@@ -3,6 +3,7 @@ package signed
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"runtime"
 	"sync"
@@ -41,6 +42,7 @@ type LinuxReflector struct {
 	offsets        [][]byte
 	shutdown       chan struct{}
 	closed         chan struct{}
+	logger         *slog.Logger
 }
 
 // NewLinuxReflector creates a signed TWAMP reflector. Only the port in addr is used; any IP is ignored.
@@ -140,6 +142,10 @@ func (r *LinuxReflector) SetOffsets(offsets [][]byte) {
 	r.offsetsMu.Unlock()
 }
 
+func (r *LinuxReflector) SetLogger(logger *slog.Logger) {
+	r.logger = logger
+}
+
 func (r *LinuxReflector) Port() uint16 {
 	return r.port
 }
@@ -199,6 +205,9 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			}
 
 			if _, ok := r.authorizedKeys.Load(probe.SenderPubkey); !ok {
+				if r.logger != nil {
+					r.logger.Debug("dropping probe from unauthorized pubkey", "sender_pubkey", fmt.Sprintf("%x", probe.SenderPubkey))
+				}
 				continue
 			}
 
@@ -212,6 +221,9 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			if interval := r.verifyInterval; interval > 0 {
 				if state.pairCount >= 2 {
 					if now.Sub(state.pairStart) < interval {
+						if r.logger != nil {
+							r.logger.Debug("dropping rate-limited probe", "sender_pubkey", fmt.Sprintf("%x", probe.SenderPubkey))
+						}
 						continue
 					}
 					state.pairCount = 0
@@ -233,6 +245,12 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			if state.pairCount == 0 {
 				state.pairSourceIP = fromAddr.Addr
 			} else if fromAddr.Addr != state.pairSourceIP {
+				if r.logger != nil {
+					r.logger.Debug("dropping probe with mismatched source IP",
+						"sender_pubkey", fmt.Sprintf("%x", probe.SenderPubkey),
+						"expected", net.IP(state.pairSourceIP[:]).String(),
+						"actual", net.IP(fromAddr.Addr[:]).String())
+				}
 				continue
 			}
 

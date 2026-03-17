@@ -2,6 +2,7 @@ package signed
 
 import (
 	"context"
+	"log/slog"
 	"time"
 )
 
@@ -12,6 +13,7 @@ type Reflector interface {
 	Port() uint16
 	SetAuthorizedKeys(keys [][32]byte)
 	SetOffsets(offsets [][]byte)
+	SetLogger(logger *slog.Logger)
 }
 
 // NewReflector creates a signed TWAMP reflector. Only the port in addr is used; any IP is ignored.

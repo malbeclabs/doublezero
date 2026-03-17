@@ -408,6 +408,9 @@ func main() {
 		log.Error("Failed to create Signed TWAMP reflector", "error", err)
 		os.Exit(1)
 	}
+	if *verbose {
+		signedReflector.SetLogger(log)
+	}
 
 	// Set up UDP listener for receiving DZD offsets.
 	offsetListener, err := geoprobe.NewUDPListener(int(*udpListenPort))
@@ -664,6 +667,7 @@ func runOffsetListener(
 			"authority_pubkey", authorityPK,
 			"sender_pubkey", senderPK,
 			"addr", addr,
+			"target_ip", geoprobe.FormatTargetIP(offset.TargetIP),
 			"rtt_ns", offset.RttNs,
 			"measured_rtt_ns", offset.MeasuredRttNs,
 			"lat", offset.Lat,

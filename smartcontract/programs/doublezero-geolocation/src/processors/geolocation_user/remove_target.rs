@@ -68,19 +68,21 @@ pub fn process_remove_target(
     let mut probe = GeoProbe::try_from(probe_account)?;
 
     let geoprobe_pk = *probe_account.key;
-    let original_len = user.targets.len();
 
-    user.targets.retain(|t| {
-        !(t.target_type == args.target_type
-            && t.geoprobe_pk == geoprobe_pk
-            && t.ip_address == args.ip_address
-            && t.target_pk == args.target_pk)
-    });
+    let index = user
+        .targets
+        .iter()
+        .position(|t| {
+            t.target_type == args.target_type
+                && t.geoprobe_pk == geoprobe_pk
+                && match args.target_type {
+                    GeoLocationTargetType::Outbound => t.ip_address == args.ip_address,
+                    GeoLocationTargetType::Inbound => t.target_pk == args.target_pk,
+                }
+        })
+        .ok_or(GeolocationError::TargetNotFound)?;
 
-    if user.targets.len() == original_len {
-        msg!("Target not found");
-        return Err(GeolocationError::TargetNotFound.into());
-    }
+    user.targets.swap_remove(index);
 
     probe.reference_count = probe.reference_count.saturating_sub(1);
 

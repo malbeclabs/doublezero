@@ -10,7 +10,7 @@ use doublezero_solana_sdk::{
             ReservationInstructionData,
             account::{
                 FundPaymentEscrowUsdcAccounts, InitializeClientSeatAccounts,
-                InitializePaymentEscrowAccounts,
+                InitializePaymentEscrowAccounts, RequestInstantAllocationAccounts,
             },
         },
         state,
@@ -42,6 +42,9 @@ pub struct PayCommand {
     /// Source USDC token account (defaults to payer's ATA)
     #[arg(long)]
     source_token_account: Option<Pubkey>,
+    /// Instantly allocate the seat (skips auction settlement).
+    #[arg(long)]
+    now: bool,
 
     #[command(flatten)]
     solana_payer_options: SolanaPayerOptions,
@@ -151,6 +154,22 @@ impl PayCommand {
         )?;
         instructions.push(fund_ix);
         compute_unit_limit += 50_000;
+
+        if self.now {
+            let request_ix = try_build_instruction(
+                &ID,
+                RequestInstantAllocationAccounts::new(
+                    &exchange_key,
+                    &device,
+                    client_ip_bits,
+                    &wallet_key,
+                    &wallet_key,
+                ),
+                &ReservationInstructionData::RequestInstantAllocation,
+            )?;
+            instructions.push(request_ix);
+            compute_unit_limit += 50_000;
+        }
 
         instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
             compute_unit_limit,

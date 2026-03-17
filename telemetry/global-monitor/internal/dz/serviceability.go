@@ -63,7 +63,7 @@ func mapUserType(ut serviceability.UserUserType) UserType {
 	switch ut {
 	case serviceability.UserTypeIBRL:
 		return UserTypeIBRL
-	case serviceability.UserTypeIBRLWithAllocatedIP:
+	case serviceability.UserTypeIBRLWithAllocIP:
 		return UserTypeIBRLWithAllocatedIP
 	case serviceability.UserTypeEdgeFiltering:
 		return UserTypeEdgeFiltering

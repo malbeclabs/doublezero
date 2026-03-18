@@ -639,6 +639,8 @@ func runOffsetListener(
 		senderPK := solana.PublicKeyFromBytes(offset.SenderPubkey[:])
 		authorityPK := solana.PublicKeyFromBytes(offset.AuthorityPubkey[:])
 
+		log.Debug("received UDP offset packet", "from", addr, "sender_pubkey", senderPK, "authority_pubkey", authorityPK)
+
 		// Verify the sender is a known parent and the authority matches.
 		expectedAuthority, knownParent := parents.getAuthority(offset.SenderPubkey)
 		if !knownParent {
@@ -659,6 +661,8 @@ func runOffsetListener(
 			log.Warn("Offset signature verification failed", "authority_pubkey", authorityPK, "addr", addr, "error", err)
 			continue
 		}
+
+		log.Debug("signature verification successful", "authority_pubkey", authorityPK)
 
 		cache.Put(offset)
 		signedReflector.SetOffsets(marshalBestOffset(cache))
@@ -738,6 +742,11 @@ func runMeasurementCycle(
 		return
 	}
 
+	// Log individual target measurement results
+	for addr, rttNs := range rttData {
+		log.Debug("target measurement result", "target", addr.Host, "rtt_ms", float64(rttNs)/1000000.0)
+	}
+
 	dzdOffset := cache.GetBest()
 	if dzdOffset == nil {
 		log.Warn("No valid DZD offsets in cache, skipping composite generation")
@@ -749,6 +758,8 @@ func runMeasurementCycle(
 		log.Error("Failed to get current slot", "error", err)
 		return
 	}
+
+	log.Debug("fetched current slot", "slot", slot)
 
 	sentCount := 0
 	for addr, measuredRttNs := range rttData {

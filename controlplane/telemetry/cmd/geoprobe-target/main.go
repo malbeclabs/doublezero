@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
@@ -37,6 +38,7 @@ var (
 	logFormat       = flag.String("log-format", "text", "Log format: text or json")
 	verifySignature = flag.Bool("verify-signatures", true, "Verify Ed25519 signatures on received offsets")
 	rateLimit       = flag.Uint("rate-limit", defaultRateLimit, "Maximum packets per second per source IP (0 disables rate limiting)")
+	verbose         = flag.Bool("verbose", false, "Enable verbose logging")
 	showVersion     = flag.Bool("version", false, "Print version and exit")
 
 	version = "dev"
@@ -61,7 +63,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := setupLogger(*logFormat)
+	log := setupLogger(*logFormat, *verbose)
 	log.Info("starting geoprobe-target",
 		"version", version,
 		"commit", commit,
@@ -95,10 +97,14 @@ func main() {
 	}
 }
 
-func setupLogger(format string) *slog.Logger {
+func setupLogger(format string, debug bool) *slog.Logger {
+	level := slog.LevelInfo
+	if debug {
+		level = slog.LevelDebug
+	}
 	var handler slog.Handler
 	opts := &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: level,
 	}
 
 	switch format {
@@ -244,6 +250,8 @@ func runUDPListener(ctx context.Context, log *slog.Logger, port uint, verifySign
 			continue
 		}
 
+		log.Debug("received UDP packet", "from", addr, "sender_pubkey", solana.PublicKeyFromBytes(offset.SenderPubkey[:]).String(), "authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String())
+
 		if err := conn.SetReadDeadline(time.Now().Add(1 * time.Second)); err != nil {
 			errCh <- fmt.Errorf("failed to set read deadline: %w", err)
 			return
@@ -293,6 +301,7 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 	if verifySignatures {
 		verifyError = geoprobe.VerifyOffsetChain(offset)
 		signatureValid = verifyError == nil
+		log.Debug("signature verification complete", "authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(), "valid", signatureValid)
 	}
 
 	output := formatLocationOffset(offset, addr, signatureValid, verifyError)
@@ -317,6 +326,7 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 		"max_distance_miles", output.MaxDistanceMiles,
 		"signature_valid", signatureValid,
 	)
+	log.Debug("offset processed successfully", "from", addr, "authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(), "rtt_ms", float64(offset.RttNs)/1000000.0)
 }
 
 type OffsetOutput struct {
@@ -360,8 +370,8 @@ func formatLocationOffset(offset *geoprobe.LocationOffset, addr *net.UDPAddr, si
 	output := OffsetOutput{
 		Timestamp:        time.Now().UTC().Format("2006-01-02 15:04:05 MST"),
 		SourceAddr:       addr.String(),
-		AuthorityPubkey:  formatPubkey(offset.AuthorityPubkey[:]),
-		SenderPubkey:     formatPubkey(offset.SenderPubkey[:]),
+		AuthorityPubkey:  solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(),
+		SenderPubkey:     solana.PublicKeyFromBytes(offset.SenderPubkey[:]).String(),
 		TargetIP:         geoprobe.FormatTargetIP(offset.TargetIP),
 		ReferencePoint:   formatCoordinate(offset.Lat, offset.Lng),
 		RttMs:            rttMs,
@@ -380,8 +390,8 @@ func formatLocationOffset(offset *geoprobe.LocationOffset, addr *net.UDPAddr, si
 		refRttMs := float64(ref.RttNs) / nanosecondsPerMs
 		refMeasuredRttMs := float64(ref.MeasuredRttNs) / nanosecondsPerMs
 		output.DZDReferenceChain = append(output.DZDReferenceChain, ReferenceOutput{
-			AuthorityPubkey: formatPubkey(ref.AuthorityPubkey[:]),
-			SenderPubkey:    formatPubkey(ref.SenderPubkey[:]),
+			AuthorityPubkey: solana.PublicKeyFromBytes(ref.AuthorityPubkey[:]).String(),
+			SenderPubkey:    solana.PublicKeyFromBytes(ref.SenderPubkey[:]).String(),
 			TargetIP:        geoprobe.FormatTargetIP(ref.TargetIP),
 			Location:        formatCoordinate(ref.Lat, ref.Lng),
 			RttMs:           refRttMs,
@@ -466,13 +476,4 @@ func formatCoordinate(lat, lng float64) CoordinateOutput {
 		Longitude: lng,
 		Formatted: formatted,
 	}
-}
-
-func formatPubkey(pubkey []byte) string {
-	if len(pubkey) < 8 {
-		return fmt.Sprintf("%x", pubkey)
-	}
-	prefix := fmt.Sprintf("%x", pubkey[:4])
-	suffix := fmt.Sprintf("%x", pubkey[len(pubkey)-4:])
-	return fmt.Sprintf("%s...%s", prefix, suffix)
 }

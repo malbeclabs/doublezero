@@ -122,6 +122,7 @@ func main() {
 		}
 
 		seq++
+		log.Debug("starting probe pair iteration", "seq", seq, "target", remoteAddr.String())
 		probePair(ctx, log, sender, seq)
 
 		if *count > 0 && seq >= uint32(*count) {
@@ -146,6 +147,8 @@ func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq 
 	probeCtx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
 
+	log.Debug("sending probe pair", "seq", seq)
+
 	result, err := sender.ProbePair(probeCtx)
 	if err != nil {
 		logProbeError(log, seq, err)
@@ -164,6 +167,16 @@ func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq 
 
 	// Target Measured RTT: lower of the two sender-measured RTTs.
 	targetMeasuredRtt := min(result.RTT0, result.RTT1)
+
+	log.Debug("probe pair replies received",
+		"seq", seq,
+		"rtt0_ms", float64(result.RTT0.Microseconds())/1000.0,
+		"rtt1_ms", float64(result.RTT1.Microseconds())/1000.0,
+		"probe_measured_rtt_ms", float64(probeMeasuredRttNs)/1e6,
+		"reply0_probe_sig", reply0ProbeSigValid,
+		"reply0_sig", reply0SigValid,
+		"reply1_probe_sig", reply1ProbeSigValid,
+		"reply1_sig", reply1SigValid)
 
 	logPairedResult(log, seq, probeMeasuredRttNs, targetMeasuredRtt,
 		reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid, result.Reply1)
@@ -325,13 +338,6 @@ func formatNsAsMs(ns uint64) string {
 	return fmt.Sprintf("%.3fms", float64(ns)/1e6)
 }
 
-func abbreviatePubkey(pk string) string {
-	if len(pk) <= 10 {
-		return pk
-	}
-	return pk[:4] + "..." + pk[len(pk)-4:]
-}
-
 func formatTextResult(seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid bool, authorityPK, geoprobePK solana.PublicKey, reply *signed.ReplyPacket, offsets []offsetOutput) string {
 	var sb strings.Builder
 
@@ -342,16 +348,16 @@ func formatTextResult(seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt t
 	fmt.Fprintf(&sb, "  Reference Point: %s\n", formatCoordinate(reply.Lat, reply.Lng))
 	fmt.Fprintf(&sb, "  Accumulated RTT: %s\n", formatNsAsMs(reply.RttNs))
 	fmt.Fprintf(&sb, "  Measurement Slot: %d\n", reply.MeasurementSlot)
-	fmt.Fprintf(&sb, "  Authority: %s\n", abbreviatePubkey(authorityPK.String()))
-	fmt.Fprintf(&sb, "  GeoProbe:  %s\n", abbreviatePubkey(geoprobePK.String()))
+	fmt.Fprintf(&sb, "  Authority: %s\n", authorityPK.String())
+	fmt.Fprintf(&sb, "  GeoProbe:  %s\n", geoprobePK.String())
 	fmt.Fprintf(&sb, "  Reply 0: sender_sig=%s geoprobe_sig=%s\n", sigMark(reply0ProbeSigValid), sigMark(reply0SigValid))
 	fmt.Fprintf(&sb, "  Reply 1: sender_sig=%s geoprobe_sig=%s\n", sigMark(reply1ProbeSigValid), sigMark(reply1SigValid))
 
 	if len(offsets) > 0 {
 		sb.WriteString("\n  DZD Reference Chain:\n")
 		for i, o := range offsets {
-			fmt.Fprintf(&sb, "    [%d] Authority: %s\n", i+1, abbreviatePubkey(o.AuthorityPubkey))
-			fmt.Fprintf(&sb, "        Sender:    %s\n", abbreviatePubkey(o.SenderPubkey))
+			fmt.Fprintf(&sb, "    [%d] Authority: %s\n", i+1, o.AuthorityPubkey)
+			fmt.Fprintf(&sb, "        Sender:    %s\n", o.SenderPubkey)
 			fmt.Fprintf(&sb, "        Location:  %s\n", formatCoordinate(o.Lat, o.Lng))
 			fmt.Fprintf(&sb, "        RTT: %s  Measured RTT: %s\n", formatNsAsMs(o.RttNs), formatNsAsMs(o.MeasuredRttNs))
 			fmt.Fprintf(&sb, "        Signature: %s\n", sigMark(o.SigValid))

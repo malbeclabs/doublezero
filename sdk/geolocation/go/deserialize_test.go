@@ -138,3 +138,67 @@ func TestSDK_Geolocation_DeserializeGeoProbe_ExtraTrailingBytes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, original.Code, result.Code)
 }
+
+func TestSDK_Geolocation_DeserializeGeolocationUser_HappyPath(t *testing.T) {
+	t.Parallel()
+
+	original := &geolocation.GeolocationUser{
+		AccountType:   geolocation.AccountTypeGeolocationUser,
+		Owner:         solana.NewWallet().PublicKey(),
+		Code:          "geo-user-01",
+		TokenAccount:  solana.NewWallet().PublicKey(),
+		PaymentStatus: geolocation.GeolocationPaymentStatusPaid,
+		Billing: geolocation.GeolocationBillingConfig{
+			Variant: geolocation.BillingConfigFlatPerEpoch,
+			FlatPerEpoch: geolocation.FlatPerEpochConfig{
+				Rate:                 1000,
+				LastDeductionDzEpoch: 42,
+			},
+		},
+		Status: geolocation.GeolocationUserStatusActivated,
+		Targets: []geolocation.GeolocationTarget{
+			{
+				TargetType:         geolocation.GeoLocationTargetTypeOutbound,
+				IPAddress:          [4]uint8{8, 8, 8, 8},
+				LocationOffsetPort: 8923,
+				TargetPK:           solana.PublicKey{},
+				GeoProbePK:         solana.NewWallet().PublicKey(),
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, original.Serialize(&buf))
+
+	result, err := geolocation.DeserializeGeolocationUser(buf.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, original.AccountType, result.AccountType)
+	require.Equal(t, original.Code, result.Code)
+	require.Len(t, result.Targets, 1)
+}
+
+func TestSDK_Geolocation_DeserializeGeolocationUser_WrongAccountType(t *testing.T) {
+	t.Parallel()
+
+	original := &geolocation.GeolocationProgramConfig{
+		AccountType:          geolocation.AccountTypeProgramConfig,
+		BumpSeed:             255,
+		Version:              1,
+		MinCompatibleVersion: 1,
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, original.Serialize(&buf))
+
+	_, err := geolocation.DeserializeGeolocationUser(buf.Bytes())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unexpected account type")
+}
+
+func TestSDK_Geolocation_DeserializeGeolocationUser_TruncatedData(t *testing.T) {
+	t.Parallel()
+
+	_, err := geolocation.DeserializeGeolocationUser([]byte{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "too short")
+}

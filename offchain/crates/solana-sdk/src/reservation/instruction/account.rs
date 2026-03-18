@@ -196,6 +196,43 @@ impl From<RequestInstantAllocationAccounts> for Vec<AccountMeta> {
     }
 }
 
+/// Accounts for the `RequestInstantSeatWithdrawal` instruction (6 accounts).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestInstantSeatWithdrawalAccounts {
+    pub program_config_key: Pubkey,
+    pub execution_controller_key: Pubkey,
+    pub client_seat_key: Pubkey,
+    pub payer_key: Pubkey,
+    pub withdraw_seat_request_key: Pubkey,
+}
+
+impl RequestInstantSeatWithdrawalAccounts {
+    pub fn new(device_key: &Pubkey, client_ip_bits: u32, payer_key: &Pubkey) -> Self {
+        let client_seat_key = state::find_client_seat_address(device_key, client_ip_bits).0;
+        Self {
+            program_config_key: state::find_program_config_address().0,
+            execution_controller_key: state::find_execution_controller_address().0,
+            client_seat_key,
+            payer_key: *payer_key,
+            withdraw_seat_request_key: state::find_withdraw_seat_request_address(&client_seat_key)
+                .0,
+        }
+    }
+}
+
+impl From<RequestInstantSeatWithdrawalAccounts> for Vec<AccountMeta> {
+    fn from(accounts: RequestInstantSeatWithdrawalAccounts) -> Self {
+        vec![
+            AccountMeta::new_readonly(accounts.program_config_key, false),
+            AccountMeta::new_readonly(accounts.execution_controller_key, false),
+            AccountMeta::new_readonly(accounts.client_seat_key, false),
+            AccountMeta::new(accounts.payer_key, true),
+            AccountMeta::new(accounts.withdraw_seat_request_key, false),
+            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+        ]
+    }
+}
+
 /// Accounts for the `FundPaymentEscrowUsdc` instruction (10 accounts).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FundPaymentEscrowUsdcAccounts {

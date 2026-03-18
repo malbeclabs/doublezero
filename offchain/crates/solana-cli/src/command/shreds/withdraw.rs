@@ -6,7 +6,10 @@ use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutco
 use doublezero_solana_sdk::{
     reservation::{
         ID,
-        instruction::{ReservationInstructionData, account::ClosePaymentEscrowAccounts},
+        instruction::{
+            ReservationInstructionData,
+            account::{ClosePaymentEscrowAccounts, RequestInstantSeatWithdrawalAccounts},
+        },
         state,
     },
     try_build_instruction,
@@ -32,6 +35,9 @@ pub struct WithdrawCommand {
     /// USDC token account to receive the refund (defaults to your ATA)
     #[arg(long)]
     refund_token_account: Option<Pubkey>,
+    /// Request instant seat withdrawal.
+    #[arg(long = "unsafe-now", hide = true)]
+    unsafe_now: bool,
 
     #[command(flatten)]
     solana_payer_options: SolanaPayerOptions,
@@ -58,26 +64,33 @@ impl WithdrawCommand {
             bail!("No payment escrow found for this seat and wallet. Nothing to withdraw.");
         }
 
-        let accounts = ClosePaymentEscrowAccounts::new(
-            &device,
-            client_ip_bits,
-            &wallet_key,
-            &usdc_mint_key,
-            self.refund_token_account.as_ref(),
-        );
+        let mut instructions = Vec::new();
+        let mut compute_unit_limit = 30_000;
 
-        let ix = try_build_instruction(
+        if self.unsafe_now {
+            instructions.push(try_build_instruction(
+                &ID,
+                RequestInstantSeatWithdrawalAccounts::new(&device, client_ip_bits, &wallet_key),
+                &ReservationInstructionData::RequestInstantSeatWithdrawal,
+            )?);
+            compute_unit_limit += 50_000;
+        }
+
+        instructions.push(try_build_instruction(
             &ID,
-            accounts,
+            ClosePaymentEscrowAccounts::new(
+                &device,
+                client_ip_bits,
+                &wallet_key,
+                &usdc_mint_key,
+                self.refund_token_account.as_ref(),
+            ),
             &ReservationInstructionData::ClosePaymentEscrow,
-        )?;
+        )?);
 
-        let compute_unit_limit = 30_000;
-
-        let mut instructions = vec![
-            ix,
-            ComputeBudgetInstruction::set_compute_unit_limit(compute_unit_limit),
-        ];
+        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
+            compute_unit_limit,
+        ));
 
         if let Some(ref compute_unit_price_ix) = wallet.compute_unit_price_ix {
             instructions.push(compute_unit_price_ix.clone());

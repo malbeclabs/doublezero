@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- add `--unsafe-now` flag to `shreds withdraw` for instant seat withdrawal request
 - add `--now` flag to `reservation pay` for instant seat allocation
 - combine `reservation initialize-seat` and `reservation fund` into a single `reservation pay` command that initializes seat/escrow on-demand before funding
 - rename `reservation` command to `shreds`

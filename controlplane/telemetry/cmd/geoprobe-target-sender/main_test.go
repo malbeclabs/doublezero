@@ -86,27 +86,6 @@ func TestFormatNsAsMs(t *testing.T) {
 	}
 }
 
-func TestAbbreviatePubkey(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{"short key", "abc", "abc"},
-		{"exactly 10", "1234567890", "1234567890"},
-		{"long key", "FSM7abc123456zmQ", "FSM7...6zmQ"},
-		{"full base58", "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", "9WzD...AWWM"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := abbreviatePubkey(tt.input)
-			if got != tt.expected {
-				t.Errorf("expected %q, got %q", tt.expected, got)
-			}
-		})
-	}
-}
-
 func TestProbeOutput_JSON(t *testing.T) {
 	output := probeOutput{
 		Timestamp:           "2025-01-15T14:23:45Z",

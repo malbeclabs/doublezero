@@ -224,7 +224,7 @@ impl From<RequestInstantSeatWithdrawalAccounts> for Vec<AccountMeta> {
     fn from(accounts: RequestInstantSeatWithdrawalAccounts) -> Self {
         vec![
             AccountMeta::new_readonly(accounts.program_config_key, false),
-            AccountMeta::new_readonly(accounts.execution_controller_key, false),
+            AccountMeta::new(accounts.execution_controller_key, false),
             AccountMeta::new_readonly(accounts.client_seat_key, false),
             AccountMeta::new(accounts.payer_key, true),
             AccountMeta::new(accounts.withdraw_seat_request_key, false),

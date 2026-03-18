@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"net"
 	"runtime"
 	"sync"
@@ -31,6 +32,11 @@ type LinuxSender struct {
 	buf          []byte
 	oob          []byte
 	mu           sync.Mutex
+	logger       *slog.Logger
+}
+
+func (s *LinuxSender) SetLogger(logger *slog.Logger) {
+	s.logger = logger
 }
 
 // NewLinuxSender creates a signed TWAMP sender. Only local.Port is used; any IP is ignored.
@@ -377,12 +383,24 @@ func (s *LinuxSender) tryRecv(sendTime time.Time, probe *ProbePacket, verify boo
 	}
 	if verify {
 		if !reply.Probe.Verify() {
+			if s.logger != nil {
+				s.logger.Debug("dropping reply: probe signature verification failed", "seq", reply.Probe.Seq)
+			}
 			return 0, nil, nil, false
 		}
 		if reply.AuthorityPubkey != s.remotePubkey {
+			if s.logger != nil {
+				s.logger.Debug("dropping reply: authority pubkey mismatch",
+					"seq", reply.Probe.Seq,
+					"got", fmt.Sprintf("%x", reply.AuthorityPubkey),
+					"expected", fmt.Sprintf("%x", s.remotePubkey))
+			}
 			return 0, nil, nil, false
 		}
 		if !reply.Verify() {
+			if s.logger != nil {
+				s.logger.Debug("dropping reply: reply signature verification failed", "seq", reply.Probe.Seq)
+			}
 			return 0, nil, nil, false
 		}
 	}

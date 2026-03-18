@@ -2,6 +2,7 @@ package signed
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"time"
 )
@@ -18,6 +19,7 @@ type ProbePairResult struct {
 type Sender interface {
 	Probe(ctx context.Context) (time.Duration, *ReplyPacket, error)
 	ProbePair(ctx context.Context) (ProbePairResult, error)
+	SetLogger(logger *slog.Logger)
 	Close() error
 }
 

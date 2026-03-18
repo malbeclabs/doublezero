@@ -204,9 +204,13 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 				continue
 			}
 
+			if r.logger != nil {
+				r.logger.Debug("received signed TWAMP probe", "from", from, "seq", probe.Seq, "sender_pubkey", fmt.Sprintf("%x", probe.SenderPubkey[:8]))
+			}
+
 			if _, ok := r.authorizedKeys.Load(probe.SenderPubkey); !ok {
 				if r.logger != nil {
-					r.logger.Debug("dropping probe from unauthorized pubkey", "sender_pubkey", fmt.Sprintf("%x", probe.SenderPubkey))
+					r.logger.Warn("dropping probe from unauthorized pubkey", "sender_pubkey", fmt.Sprintf("%x", probe.SenderPubkey), "from", from)
 				}
 				continue
 			}
@@ -290,7 +294,10 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			replyLen, _ := reply.Marshal(replyBuf[:])
 
 			state.lastTxTime = time.Now()
-			_ = unix.Sendto(r.fd, replyBuf[:replyLen], 0, from)
+			err = unix.Sendto(r.fd, replyBuf[:replyLen], 0, from)
+			if err == nil && r.logger != nil {
+				r.logger.Debug("sent signed TWAMP reply", "to", from, "seq", probe.Seq, "sender_pubkey", fmt.Sprintf("%x", probe.SenderPubkey[:8]), "reply_size", replyLen)
+			}
 		}
 	}
 }

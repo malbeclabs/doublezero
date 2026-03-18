@@ -150,7 +150,7 @@ func parseAllowedPubkeys(s string) ([][32]byte, error) {
 // offsetCache stores recent DZD offsets keyed by sender (device) pubkey.
 type offsetCache struct {
 	mu      sync.RWMutex
-	entries map[[32]byte]*cachedOffset
+	entries map[[32]byte]*cachedSender
 	maxAge  time.Duration
 }
 
@@ -159,9 +159,18 @@ type cachedOffset struct {
 	receivedAt time.Time
 }
 
+func (co *cachedOffset) expired(maxAge time.Duration) bool {
+	return co == nil || time.Since(co.receivedAt) > maxAge
+}
+
+type cachedSender struct {
+	best   *cachedOffset // lowest RTT seen in the full maxAge window
+	backup *cachedOffset // lowest RTT seen in the recent half-maxAge window
+}
+
 func newOffsetCache(maxAge time.Duration) *offsetCache {
 	return &offsetCache{
-		entries: make(map[[32]byte]*cachedOffset),
+		entries: make(map[[32]byte]*cachedSender),
 		maxAge:  maxAge,
 	}
 }
@@ -169,24 +178,66 @@ func newOffsetCache(maxAge time.Duration) *offsetCache {
 func (c *offsetCache) Put(offset *geoprobe.LocationOffset) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[offset.SenderPubkey] = &cachedOffset{
+
+	sender, ok := c.entries[offset.SenderPubkey]
+	if !ok {
+		sender = &cachedSender{}
+		c.entries[offset.SenderPubkey] = sender
+	}
+
+	now := time.Now()
+	entry := &cachedOffset{
 		offset:     *offset,
-		receivedAt: time.Now(),
+		receivedAt: now,
+	}
+
+	// If best is expired, promote backup to best (if backup is non-expired), then clear backup.
+	if sender.best.expired(c.maxAge) {
+		if !sender.backup.expired(c.maxAge) {
+			sender.best = sender.backup
+		} else {
+			sender.best = nil
+		}
+		sender.backup = nil
+	}
+
+	// If best is nil (empty after promotion attempt), just set it.
+	if sender.best == nil {
+		sender.best = entry
+		return
+	}
+
+	if offset.RttNs <= sender.best.offset.RttNs {
+		// New offset is better than or equal to best: replace best.
+		sender.best = entry
+	} else {
+		// New offset has higher RTT than best.
+		halfMaxAge := c.maxAge / 2
+		if sender.backup.expired(c.maxAge) || offset.RttNs <= sender.backup.offset.RttNs {
+			sender.backup = entry
+		} else if time.Since(sender.backup.receivedAt) > halfMaxAge {
+			// Backup is stale (older than half-maxAge): replace to keep it fresh.
+			sender.backup = entry
+		}
 	}
 }
 
 func (c *offsetCache) Get(senderPubkey [32]byte) *geoprobe.LocationOffset {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	entry, ok := c.entries[senderPubkey]
+	sender, ok := c.entries[senderPubkey]
 	if !ok {
 		return nil
 	}
-	if time.Since(entry.receivedAt) > c.maxAge {
-		return nil
+	if !sender.best.expired(c.maxAge) {
+		result := sender.best.offset
+		return &result
 	}
-	result := entry.offset
-	return &result
+	if !sender.backup.expired(c.maxAge) {
+		result := sender.backup.offset
+		return &result
+	}
+	return nil
 }
 
 // GetBest returns the non-expired offset with the shortest RttNs.
@@ -195,13 +246,15 @@ func (c *offsetCache) GetBest() *geoprobe.LocationOffset {
 	defer c.mu.RUnlock()
 
 	var best *geoprobe.LocationOffset
-	for _, entry := range c.entries {
-		if time.Since(entry.receivedAt) > c.maxAge {
-			continue
-		}
-		if best == nil || entry.offset.RttNs < best.RttNs {
-			e := entry.offset
-			best = &e
+	for _, sender := range c.entries {
+		for _, entry := range []*cachedOffset{sender.best, sender.backup} {
+			if entry.expired(c.maxAge) {
+				continue
+			}
+			if best == nil || entry.offset.RttNs < best.RttNs {
+				e := entry.offset
+				best = &e
+			}
 		}
 	}
 	return best
@@ -212,8 +265,8 @@ func (c *offsetCache) Evict() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	evicted := 0
-	for key, entry := range c.entries {
-		if time.Since(entry.receivedAt) > c.maxAge {
+	for key, sender := range c.entries {
+		if sender.best.expired(c.maxAge) && sender.backup.expired(c.maxAge) {
 			delete(c.entries, key)
 			evicted++
 		}

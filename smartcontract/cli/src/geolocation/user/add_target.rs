@@ -96,16 +96,7 @@ pub(super) fn resolve_probe<C: GeoCliCommand>(
     }
 
     if let Some(exchange_id) = exchange {
-        let exchange_pk: Pubkey = match exchange_id.parse::<Pubkey>() {
-            Ok(pk) => pk,
-            Err(_) => {
-                // Treat as exchange code - look up via serviceability (exchange is a different
-                // account type). For now, we try to parse it as a pubkey only.
-                return Err(eyre::eyre!(
-                    "exchange must be specified as a pubkey; code lookup is not yet supported"
-                ));
-            }
-        };
+        let exchange_pk = client.resolve_exchange_pk(exchange_id)?;
 
         let probes = client.list_geo_probes(ListGeoProbeCommand)?;
         let matching: Vec<_> = probes
@@ -240,13 +231,18 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_add_target_outbound_via_exchange() {
+    fn test_cli_add_target_outbound_via_exchange_pubkey() {
         let mut client = MockGeoCliCommand::new();
 
         let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
         let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let probe = make_probe(exchange_pk);
         let signature = Signature::new_unique();
+
+        client
+            .expect_resolve_exchange_pk()
+            .with(predicate::eq(exchange_pk.to_string()))
+            .returning(move |_| Ok(exchange_pk));
 
         let mut probes = HashMap::new();
         probes.insert(probe_pk, probe);
@@ -276,6 +272,55 @@ mod tests {
             target_pk: None,
             probe: None,
             exchange: Some(exchange_pk.to_string()),
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("Signature:"));
+    }
+
+    #[test]
+    fn test_cli_add_target_outbound_via_exchange_code() {
+        let mut client = MockGeoCliCommand::new();
+
+        let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
+        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let probe = make_probe(exchange_pk);
+        let signature = Signature::new_unique();
+
+        client
+            .expect_resolve_exchange_pk()
+            .with(predicate::eq("xams".to_string()))
+            .returning(move |_| Ok(exchange_pk));
+
+        let mut probes = HashMap::new();
+        probes.insert(probe_pk, probe);
+
+        client
+            .expect_list_geo_probes()
+            .returning(move |_| Ok(probes.clone()));
+
+        client
+            .expect_add_target()
+            .with(predicate::eq(AddTargetCommand {
+                code: "geo-user-01".to_string(),
+                probe_pk,
+                target_type: GeoLocationTargetType::Outbound,
+                ip_address: Ipv4Addr::new(8, 8, 8, 8),
+                location_offset_port: 8923,
+                target_pk: Pubkey::default(),
+            }))
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let res = AddTargetCliCommand {
+            code: "geo-user-01".to_string(),
+            target_type: TargetType::Outbound,
+            target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
+            target_port: 8923,
+            target_pk: None,
+            probe: None,
+            exchange: Some("xams".to_string()),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

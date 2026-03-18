@@ -5,7 +5,7 @@ mod cli;
 use cli::{command::Command, config::ConfigCommands, probe::ProbeCommands, user::UserCommands};
 use doublezero_cli::geoclicommand::GeoCliCommandImpl;
 use doublezero_config::Environment;
-use doublezero_sdk::geolocation::client::GeoClient;
+use doublezero_sdk::{geolocation::client::GeoClient, DZClient};
 use doublezero_serviceability::pda::get_globalstate_pda;
 
 #[derive(Parser, Debug)]
@@ -90,9 +90,15 @@ fn main() -> eyre::Result<()> {
         }
     }
 
+    let svc_client = DZClient::new(
+        url.clone(),
+        None,
+        Some(svc_program_id.to_string()),
+        app.keypair.clone(),
+    )?;
     let geoclient = GeoClient::new(url, geo_program_id, app.keypair)?;
     let (globalstate_pk, _) = get_globalstate_pda(&svc_program_id);
-    let client = GeoCliCommandImpl::new(&geoclient, globalstate_pk);
+    let client = GeoCliCommandImpl::new(&geoclient, &svc_client, globalstate_pk);
 
     match app.command {
         Command::Probe(cmd) => match cmd.command {

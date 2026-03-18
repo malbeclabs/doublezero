@@ -521,7 +521,7 @@ func TestRenderConfig(t *testing.T) {
 						{
 							Name:          "Switch1/1/5",
 							Ip:            netip.MustParsePrefix("172.16.0.14/31"),
-							Mtu:           2048,
+							Mtu:           1500,
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        20000,
 							IsLink:        true,
@@ -531,7 +531,7 @@ func TestRenderConfig(t *testing.T) {
 						{
 							Name:          "Switch1/1/6",
 							Ip:            netip.MustParsePrefix("172.16.0.16/31"),
-							Mtu:           2048,
+							Mtu:           1500,
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        25000,
 							IsLink:        true,

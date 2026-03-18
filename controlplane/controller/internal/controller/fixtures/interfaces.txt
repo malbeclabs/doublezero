@@ -154,12 +154,12 @@ interface Switch1/1/4
    isis network point-to-point
 !
 interface Switch1/1/5
-   mtu 2048
+   mtu 1500
    no switchport
    ip address 172.16.0.14/31
 !
 interface Switch1/1/6
-   mtu 2048
+   mtu 1500
    no switchport
    ip address 172.16.0.16/31
 !

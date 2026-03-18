@@ -140,6 +140,24 @@ pub fn process_create_device_interface(
         return Err(DoubleZeroError::CyoaRequiresPhysical.into());
     }
 
+    // Validate MTU based on interface type
+    let is_cyoa_or_dia =
+        value.interface_cyoa != InterfaceCYOA::None || value.interface_dia != InterfaceDIA::None;
+    if interface_type == InterfaceType::Loopback {
+        if value.mtu != 0 {
+            return Err(DoubleZeroError::InvalidMtu.into());
+        }
+    } else if is_cyoa_or_dia {
+        if value.mtu != 1500 {
+            return Err(DoubleZeroError::InvalidMtu.into());
+        }
+    } else {
+        // WAN/DZX physical interfaces must be 2048
+        if value.mtu != 2048 {
+            return Err(DoubleZeroError::InvalidMtu.into());
+        }
+    }
+
     // ip_net can only be set on CYOA, DIA, or user-tunnel-endpoint interfaces
     if value.ip_net.is_some()
         && value.interface_cyoa == InterfaceCYOA::None

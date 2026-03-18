@@ -410,7 +410,7 @@ async fn test_update_cyoa_interface_with_invalid_sibling() {
         program_id,
         DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
             name: "ethernet1".to_string(),
-            mtu: Some(9000),
+            mtu: Some(1500),
             ..Default::default()
         }),
         vec![
@@ -434,7 +434,7 @@ async fn test_update_cyoa_interface_with_invalid_sibling() {
         .unwrap();
 
     let updated_iface = device.find_interface("Ethernet1").unwrap().1;
-    assert_eq!(updated_iface.mtu, 9000, "MTU should be updated to 9000");
+    assert_eq!(updated_iface.mtu, 1500, "MTU should be updated to 1500");
     assert_eq!(
         updated_iface.ip_net,
         "63.243.225.62/30".parse().unwrap(),

@@ -150,6 +150,11 @@ pub fn process_create_link(
         return Err(DoubleZeroError::InvalidContributor.into());
     }
 
+    // WAN/DZX links must have MTU 2048
+    if value.mtu != 2048 {
+        return Err(DoubleZeroError::InvalidMtu.into());
+    }
+
     let side_a_iface = side_a_dev
         .interfaces
         .iter()

@@ -226,6 +226,21 @@ pub fn process_update_device_interface(
         iface.node_segment_idx = node_segment_idx;
     }
 
+    // Validate MTU against final interface state
+    let is_cyoa_or_dia =
+        iface.interface_cyoa != InterfaceCYOA::None || iface.interface_dia != InterfaceDIA::None;
+    if iface.interface_type == InterfaceType::Loopback {
+        if iface.mtu != 0 {
+            return Err(DoubleZeroError::InvalidMtu.into());
+        }
+    } else if is_cyoa_or_dia {
+        if iface.mtu != 1500 {
+            return Err(DoubleZeroError::InvalidMtu.into());
+        }
+    } else if iface.mtu != 2048 {
+        return Err(DoubleZeroError::InvalidMtu.into());
+    }
+
     // CYOA interfaces must have an ip_net — prevent setting CYOA without ip_net
     // or clearing ip_net from a CYOA interface via update
     if iface.interface_cyoa != InterfaceCYOA::None && iface.ip_net == NetworkV4::default() {

@@ -20,8 +20,6 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -349,8 +347,8 @@ func (q *QAAgent) Enable(ctx context.Context, req *emptypb.Empty) (*pb.Result, e
 	return res, nil
 }
 
-// SeatPay implements the SeatPay RPC, which pays for a seat reservation on a device.
-// This executes `doublezero-solana reservation pay` with the provided parameters.
+// SeatPay implements the SeatPay RPC, which pays for a seat on a device.
+// This executes `doublezero-solana shreds pay` with the provided parameters.
 // When instant is true, the --now flag is appended for immediate allocation.
 func (q *QAAgent) SeatPay(ctx context.Context, req *pb.SeatPayRequest) (*pb.Result, error) {
 	if req.GetDevicePubkey() == "" {
@@ -364,7 +362,7 @@ func (q *QAAgent) SeatPay(ctx context.Context, req *pb.SeatPayRequest) (*pb.Resu
 	}
 	q.log.Debug("Received SeatPay request", "device", req.GetDevicePubkey(), "clientIP", req.GetClientIp(), "amount", req.GetAmount(), "instant", req.GetInstant())
 
-	args := []string{"reservation", "pay", "--device", req.GetDevicePubkey(), "--client-ip", req.GetClientIp(), "--amount", req.GetAmount()}
+	args := []string{"shreds", "pay", "--device", req.GetDevicePubkey(), "--client-ip", req.GetClientIp(), "--amount", req.GetAmount()}
 	if req.GetInstant() {
 		args = append(args, "--now")
 	}
@@ -382,11 +380,34 @@ func (q *QAAgent) SeatPay(ctx context.Context, req *pb.SeatPayRequest) (*pb.Resu
 	return res, nil
 }
 
-// SeatWithdraw implements the SeatWithdraw RPC. This is a placeholder — the instant
-// withdraw flag in the doublezero-solana CLI has not been implemented yet.
+// SeatWithdraw implements the SeatWithdraw RPC, which withdraws a seat from a device.
+// This executes `doublezero-solana shreds withdraw` with the provided parameters.
+// When instant is true, the --unsafe-now flag is appended for immediate withdrawal.
 func (q *QAAgent) SeatWithdraw(ctx context.Context, req *pb.SeatWithdrawRequest) (*pb.Result, error) {
-	q.log.Debug("Received SeatWithdraw request (not implemented)", "device", req.GetDevicePubkey(), "clientIP", req.GetClientIp(), "instant", req.GetInstant())
-	return nil, status.Errorf(codes.Unimplemented, "seat withdraw is not yet implemented")
+	if req.GetDevicePubkey() == "" {
+		return nil, fmt.Errorf("device_pubkey is required")
+	}
+	if req.GetClientIp() == "" {
+		return nil, fmt.Errorf("client_ip is required")
+	}
+	q.log.Debug("Received SeatWithdraw request", "device", req.GetDevicePubkey(), "clientIP", req.GetClientIp(), "instant", req.GetInstant())
+
+	args := []string{"shreds", "withdraw", "--device", req.GetDevicePubkey(), "--client-ip", req.GetClientIp()}
+	if req.GetInstant() {
+		args = append(args, "--unsafe-now")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "doublezero-solana", args...)
+	res, err := runCmd(cmd)
+	if err != nil {
+		q.log.Error("Failed to withdraw seat", "device", req.GetDevicePubkey(), "output", res.GetOutput())
+		return res, fmt.Errorf("failed to withdraw seat on device %s: %w", req.GetDevicePubkey(), err)
+	}
+	q.log.Debug("Seat withdrawal successful", "device", req.GetDevicePubkey(), "output", res.GetOutput())
+	return res, nil
 }
 
 type StatusResponse struct {

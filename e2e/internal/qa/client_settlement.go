@@ -77,8 +77,8 @@ func (c *Client) SeatPay(ctx context.Context, devicePubkey string, amount string
 	return nil
 }
 
-// SeatWithdraw calls the SeatWithdraw RPC to withdraw a seat reservation.
-// This is a placeholder — the instant withdraw CLI flag has not been implemented yet.
+// SeatWithdraw calls the SeatWithdraw RPC to withdraw a seat from a device.
+// When instant is true, the --unsafe-now flag triggers immediate withdrawal.
 func (c *Client) SeatWithdraw(ctx context.Context, devicePubkey string, instant bool) error {
 	c.log.Debug("Withdrawing seat", "host", c.Host, "device", devicePubkey, "instant", instant)
 	resp, err := c.grpcClient.SeatWithdraw(ctx, &pb.SeatWithdrawRequest{

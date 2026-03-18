@@ -63,17 +63,12 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	require.Equal(t, device.Code, ibrlStatus.CurrentDevice, "tunnel connected to wrong device")
 	log.Info("Tunnel up and device matches", "device", ibrlStatus.CurrentDevice, "dzIP", ibrlStatus.DoubleZeroIp)
 
-	// Step 6: Placeholder — instant withdraw.
-	t.Run("instant_withdraw", func(t *testing.T) {
-		t.Skip("instant withdraw CLI flag not yet implemented in doublezero-solana")
+	// Step 6: Instant withdraw — request immediate seat withdrawal and validate tunnel teardown.
+	log.Info("Withdrawing seat instantly", "device", device.Code)
+	err = client.SeatWithdraw(ctx, device.PubKey, true)
+	require.NoError(t, err, "failed to withdraw seat")
 
-		// When implemented, this subtest should:
-		// err := client.SeatWithdraw(ctx, device.PubKey, true)
-		// require.NoError(t, err, "failed to withdraw seat")
-		//
-		// err = client.WaitForStatusDisconnected(ctx)
-		// require.NoError(t, err, "tunnel did not come down after seat withdrawal")
-		//
-		// TODO: Also verify onchain seat removal (query ClientSeat account and confirm it's closed).
-	})
+	log.Info("Waiting for tunnel to come down")
+	err = client.WaitForStatusDisconnected(ctx)
+	require.NoError(t, err, "tunnel did not come down after seat withdrawal")
 }

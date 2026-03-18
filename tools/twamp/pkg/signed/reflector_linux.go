@@ -57,6 +57,12 @@ func NewLinuxReflector(addr string, timeout time.Duration, signer Signer, geopro
 		return nil, fmt.Errorf("socket: %w", err)
 	}
 
+	// Mark reflected probes as TC5 (DSCP CS5 = 40, TOS byte = 0xA0).
+	if err := unix.SetsockoptInt(fd, unix.IPPROTO_IP, unix.IP_TOS, tosDSCPCS5); err != nil {
+		unix.Close(fd)
+		return nil, fmt.Errorf("IP_TOS: %w", err)
+	}
+
 	sockaddr := &unix.SockaddrInet4{Port: udpAddr.Port}
 	if err := unix.Bind(fd, sockaddr); err != nil {
 		unix.Close(fd)

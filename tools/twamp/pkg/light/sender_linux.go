@@ -13,6 +13,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// tosDSCPCS5 is the IP TOS byte value for DSCP CS5 (Traffic Class 5).
+// DSCP CS5 = 40 (0b101000), shifted left 2 bits into the TOS byte = 0xA0.
+const tosDSCPCS5 = 0xA0
+
 type LinuxSender struct {
 	fd         int
 	epfd       int
@@ -30,6 +34,12 @@ func NewLinuxSender(ctx context.Context, iface string, local *net.UDPAddr, remot
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_NONBLOCK, unix.IPPROTO_UDP)
 	if err != nil {
 		return nil, fmt.Errorf("socket: %w", err)
+	}
+
+	// Mark probes as TC5 (DSCP CS5 = 40, TOS byte = 0xA0).
+	if err := unix.SetsockoptInt(fd, unix.IPPROTO_IP, unix.IP_TOS, tosDSCPCS5); err != nil {
+		unix.Close(fd)
+		return nil, fmt.Errorf("IP_TOS: %w", err)
 	}
 
 	if iface != "" {

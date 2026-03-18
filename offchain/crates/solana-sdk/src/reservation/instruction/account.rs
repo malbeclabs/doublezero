@@ -137,9 +137,9 @@ impl From<ClosePaymentEscrowAccounts> for Vec<AccountMeta> {
     }
 }
 
-/// Accounts for the `RequestInstantAllocation` instruction (9 accounts).
+/// Accounts for the `RequestInstantSeatAllocation` instruction (9 accounts).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RequestInstantAllocationAccounts {
+pub struct RequestInstantSeatAllocationAccounts {
     pub program_config_key: Pubkey,
     pub execution_controller_key: Pubkey,
     pub metro_history_key: Pubkey,
@@ -150,7 +150,7 @@ pub struct RequestInstantAllocationAccounts {
     pub new_instant_allocation_request_key: Pubkey,
 }
 
-impl RequestInstantAllocationAccounts {
+impl RequestInstantSeatAllocationAccounts {
     pub fn new(
         exchange_key: &Pubkey,
         device_key: &Pubkey,
@@ -180,8 +180,8 @@ impl RequestInstantAllocationAccounts {
     }
 }
 
-impl From<RequestInstantAllocationAccounts> for Vec<AccountMeta> {
-    fn from(accounts: RequestInstantAllocationAccounts) -> Self {
+impl From<RequestInstantSeatAllocationAccounts> for Vec<AccountMeta> {
+    fn from(accounts: RequestInstantSeatAllocationAccounts) -> Self {
         vec![
             AccountMeta::new_readonly(accounts.program_config_key, false),
             AccountMeta::new(accounts.execution_controller_key, false),

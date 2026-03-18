@@ -10,7 +10,7 @@ use doublezero_solana_sdk::{
             ReservationInstructionData,
             account::{
                 FundPaymentEscrowUsdcAccounts, InitializeClientSeatAccounts,
-                InitializePaymentEscrowAccounts, RequestInstantAllocationAccounts,
+                InitializePaymentEscrowAccounts, RequestInstantSeatAllocationAccounts,
             },
         },
         state,
@@ -158,14 +158,14 @@ impl PayCommand {
         if self.now {
             let request_ix = try_build_instruction(
                 &ID,
-                RequestInstantAllocationAccounts::new(
+                RequestInstantSeatAllocationAccounts::new(
                     &exchange_key,
                     &device,
                     client_ip_bits,
                     &wallet_key,
                     &wallet_key,
                 ),
-                &ReservationInstructionData::RequestInstantAllocation,
+                &ReservationInstructionData::RequestInstantSeatAllocation,
             )?;
             instructions.push(request_ix);
             compute_unit_limit += 50_000;

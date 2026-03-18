@@ -16,7 +16,7 @@ pub enum ReservationInstructionData {
     /// Fund a payment escrow with USDC.
     FundPaymentEscrowUsdc(u64),
     /// Request instant allocation for a funded seat (skips auction settlement).
-    RequestInstantAllocation,
+    RequestInstantSeatAllocation,
     /// Request instant seat withdrawal.
     RequestInstantSeatWithdrawal,
 }
@@ -30,10 +30,10 @@ impl ReservationInstructionData {
         Discriminator::new_sha2(b"dz::ix::close_payment_escrow");
     pub const FUND_PAYMENT_ESCROW_USDC: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::fund_payment_escrow_usdc");
-    pub const REQUEST_INSTANT_ALLOCATION: Discriminator<DISCRIMINATOR_LEN> =
-        Discriminator::new_sha2(b"dz::ix::request_instant_allocation");
-    pub const REQUEST_SEAT_WITHDRAWAL: Discriminator<DISCRIMINATOR_LEN> =
-        Discriminator::new_sha2(b"dz::ix::request_seat_withdrawal");
+    pub const REQUEST_INSTANT_SEAT_ALLOCATION: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::request_instant_seat_allocation");
+    pub const REQUEST_INSTANT_SEAT_WITHDRAWAL: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::request_instant_seat_withdrawal");
 }
 
 impl BorshSerialize for ReservationInstructionData {
@@ -49,8 +49,12 @@ impl BorshSerialize for ReservationInstructionData {
                 Self::FUND_PAYMENT_ESCROW_USDC.serialize(writer)?;
                 amount.serialize(writer)
             }
-            Self::RequestInstantAllocation => Self::REQUEST_INSTANT_ALLOCATION.serialize(writer),
-            Self::RequestInstantSeatWithdrawal => Self::REQUEST_SEAT_WITHDRAWAL.serialize(writer),
+            Self::RequestInstantSeatAllocation => {
+                Self::REQUEST_INSTANT_SEAT_ALLOCATION.serialize(writer)
+            }
+            Self::RequestInstantSeatWithdrawal => {
+                Self::REQUEST_INSTANT_SEAT_WITHDRAWAL.serialize(writer)
+            }
         }
     }
 }
@@ -68,8 +72,8 @@ impl BorshDeserialize for ReservationInstructionData {
                 let amount = u64::deserialize_reader(reader)?;
                 Ok(Self::FundPaymentEscrowUsdc(amount))
             }
-            Self::REQUEST_INSTANT_ALLOCATION => Ok(Self::RequestInstantAllocation),
-            Self::REQUEST_SEAT_WITHDRAWAL => Ok(Self::RequestInstantSeatWithdrawal),
+            Self::REQUEST_INSTANT_SEAT_ALLOCATION => Ok(Self::RequestInstantSeatAllocation),
+            Self::REQUEST_INSTANT_SEAT_WITHDRAWAL => Ok(Self::RequestInstantSeatWithdrawal),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid discriminator",

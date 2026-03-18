@@ -373,4 +373,45 @@ mod tests {
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("--target-pk"));
     }
+
+    #[test]
+    fn test_cli_add_target_exchange_multiple_probes_errors() {
+        let mut client = MockGeoCliCommand::new();
+
+        let probe_pk1 = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
+        let probe_pk2 = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+
+        client
+            .expect_resolve_exchange_pk()
+            .with(predicate::eq(exchange_pk.to_string()))
+            .returning(move |_| Ok(exchange_pk));
+
+        let mut probes = HashMap::new();
+        probes.insert(probe_pk1, make_probe(exchange_pk));
+        probes.insert(probe_pk2, make_probe(exchange_pk));
+
+        client
+            .expect_list_geo_probes()
+            .returning(move |_| Ok(probes.clone()));
+
+        let mut output = Vec::new();
+        let res = AddTargetCliCommand {
+            code: "geo-user-01".to_string(),
+            target_type: TargetType::Outbound,
+            target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
+            target_port: 8923,
+            target_pk: None,
+            probe: None,
+            exchange: Some(exchange_pk.to_string()),
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        let err = res.unwrap_err().to_string();
+        assert!(
+            err.contains("found 2 probes"),
+            "expected multi-probe error, got: {err}"
+        );
+        assert!(err.contains("--probe"));
+    }
 }

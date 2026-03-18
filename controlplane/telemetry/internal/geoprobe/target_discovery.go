@@ -174,6 +174,11 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]b
 						"user", users[i].Code, "addr", addr, "error", err)
 					continue
 				}
+				if err := addr.ValidateScope(); err != nil {
+					d.log.Warn("Rejecting non-public outbound target",
+						"user", users[i].Code, "addr", addr, "error", err)
+					continue
+				}
 				onchainTargets = append(onchainTargets, addr)
 
 			case geolocation.GeoLocationTargetTypeInbound:

@@ -82,7 +82,7 @@ func TestTargetDiscovery_HappyPath(t *testing.T) {
 	client := &mockGeolocationUserClient{
 		users: []geolocation.KeyedGeolocationUser{
 			makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
-				outboundTarget([4]uint8{10, 0, 0, 1}, 9000, probePK),
+				outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
 			}),
 		},
 	}
@@ -95,7 +95,7 @@ func TestTargetDiscovery_HappyPath(t *testing.T) {
 	if len(targets) != 1 {
 		t.Fatalf("expected 1 target, got %d", len(targets))
 	}
-	if targets[0].Host != "10.0.0.1" || targets[0].Port != 9000 {
+	if targets[0].Host != "44.0.0.1" || targets[0].Port != 9000 {
 		t.Errorf("unexpected target: %v", targets[0])
 	}
 	if len(keys) != 0 {
@@ -108,7 +108,7 @@ func TestTargetDiscovery_StatusFilter(t *testing.T) {
 	client := &mockGeolocationUserClient{
 		users: []geolocation.KeyedGeolocationUser{
 			makeUser(geolocation.GeolocationUserStatusSuspended, geolocation.GeolocationPaymentStatusPaid, "suspended", []geolocation.GeolocationTarget{
-				outboundTarget([4]uint8{10, 0, 0, 1}, 9000, probePK),
+				outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
 			}),
 		},
 	}
@@ -131,7 +131,7 @@ func TestTargetDiscovery_PaymentFilter(t *testing.T) {
 	client := &mockGeolocationUserClient{
 		users: []geolocation.KeyedGeolocationUser{
 			makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusDelinquent, "delinquent", []geolocation.GeolocationTarget{
-				outboundTarget([4]uint8{10, 0, 0, 1}, 9000, probePK),
+				outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
 			}),
 		},
 	}
@@ -154,10 +154,10 @@ func TestTargetDiscovery_CombinedFilter(t *testing.T) {
 	client := &mockGeolocationUserClient{
 		users: []geolocation.KeyedGeolocationUser{
 			makeUser(geolocation.GeolocationUserStatusSuspended, geolocation.GeolocationPaymentStatusDelinquent, "bad", []geolocation.GeolocationTarget{
-				outboundTarget([4]uint8{10, 0, 0, 1}, 9000, probePK),
+				outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
 			}),
 			makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "good", []geolocation.GeolocationTarget{
-				outboundTarget([4]uint8{10, 0, 0, 2}, 9001, probePK),
+				outboundTarget([4]uint8{44, 0, 0, 2}, 9001, probePK),
 			}),
 		},
 	}
@@ -170,7 +170,7 @@ func TestTargetDiscovery_CombinedFilter(t *testing.T) {
 	if len(targets) != 1 {
 		t.Fatalf("expected 1 target, got %d", len(targets))
 	}
-	if targets[0].Host != "10.0.0.2" {
+	if targets[0].Host != "44.0.0.2" {
 		t.Errorf("expected 10.0.0.2, got %s", targets[0].Host)
 	}
 }
@@ -180,7 +180,7 @@ func TestTargetDiscovery_ProbePKFilter(t *testing.T) {
 	client := &mockGeolocationUserClient{
 		users: []geolocation.KeyedGeolocationUser{
 			makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
-				outboundTarget([4]uint8{10, 0, 0, 1}, 9000, otherPK),
+				outboundTarget([4]uint8{44, 0, 0, 1}, 9000, otherPK),
 			}),
 		},
 	}
@@ -230,7 +230,7 @@ func TestTargetDiscovery_MixedTargets(t *testing.T) {
 	client := &mockGeolocationUserClient{
 		users: []geolocation.KeyedGeolocationUser{
 			makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
-				outboundTarget([4]uint8{10, 0, 0, 1}, 9000, probePK),
+				outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
 				inboundTarget(targetPK, probePK),
 			}),
 		},
@@ -251,11 +251,11 @@ func TestTargetDiscovery_MixedTargets(t *testing.T) {
 
 func TestTargetDiscovery_MergeWithCLITargets(t *testing.T) {
 	probePK := testProbePubkey()
-	cliTargets := []ProbeAddress{{Host: "10.0.0.1", Port: 9000, TWAMPPort: 8925}}
+	cliTargets := []ProbeAddress{{Host: "44.0.0.1", Port: 9000, TWAMPPort: 8925}}
 	client := &mockGeolocationUserClient{
 		users: []geolocation.KeyedGeolocationUser{
 			makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
-				outboundTarget([4]uint8{10, 0, 0, 2}, 9001, probePK),
+				outboundTarget([4]uint8{44, 0, 0, 2}, 9001, probePK),
 			}),
 		},
 	}
@@ -298,7 +298,7 @@ func TestTargetDiscovery_DiffDetection(t *testing.T) {
 	client := &mockGeolocationUserClient{
 		users: []geolocation.KeyedGeolocationUser{
 			makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
-				outboundTarget([4]uint8{10, 0, 0, 1}, 9000, probePK),
+				outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
 			}),
 		},
 	}
@@ -403,6 +403,42 @@ func TestNewTargetDiscovery_Validation(t *testing.T) {
 			_, err := NewTargetDiscovery(tt.cfg)
 			if err == nil {
 				t.Error("expected validation error")
+			}
+		})
+	}
+}
+
+func TestTargetDiscovery_RejectsNonPublicOutboundTargets(t *testing.T) {
+	probePK := testProbePubkey()
+
+	tests := []struct {
+		name string
+		ip   [4]uint8
+	}{
+		{"loopback", [4]uint8{127, 0, 0, 1}},
+		{"private 10/8", [4]uint8{10, 0, 0, 1}},
+		{"private 172.16/12", [4]uint8{172, 16, 0, 1}},
+		{"private 192.168/16", [4]uint8{192, 168, 1, 1}},
+		{"link-local", [4]uint8{169, 254, 1, 1}},
+		{"multicast", [4]uint8{224, 0, 0, 1}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &mockGeolocationUserClient{
+				users: []geolocation.KeyedGeolocationUser{
+					makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
+						outboundTarget(tt.ip, 9000, probePK),
+					}),
+				},
+			}
+			td := newTestTargetDiscovery(client, nil, nil)
+			targets, _, err := td.discover(context.Background())
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(targets) != 0 {
+				t.Errorf("expected non-public target %v to be rejected, got %v", tt.ip, targets)
 			}
 		})
 	}

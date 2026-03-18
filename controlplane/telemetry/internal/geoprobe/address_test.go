@@ -80,6 +80,37 @@ func TestProbeAddress_Validate(t *testing.T) {
 	}
 }
 
+func TestProbeAddress_ValidateScope(t *testing.T) {
+	tests := []struct {
+		name    string
+		host    string
+		wantErr bool
+	}{
+		{"public IP", "8.8.8.8", false},
+		{"another public IP", "44.0.0.1", false},
+		{"loopback", "127.0.0.1", true},
+		{"private 10/8", "10.0.0.1", true},
+		{"private 172.16/12", "172.16.0.1", true},
+		{"private 192.168/16", "192.168.1.1", true},
+		{"link-local", "169.254.1.1", true},
+		{"multicast", "224.0.0.1", true},
+		{"unspecified", "0.0.0.0", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			addr := ProbeAddress{Host: tt.host, Port: 9000, TWAMPPort: 8925}
+			err := addr.ValidateScope()
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "not a public unicast address")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestParseProbeAddresses(t *testing.T) {
 	tests := []struct {
 		name       string

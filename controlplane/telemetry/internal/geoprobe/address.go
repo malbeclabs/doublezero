@@ -37,6 +37,20 @@ func (p ProbeAddress) Validate() error {
 	return nil
 }
 
+// ValidateScope rejects non-public unicast addresses (loopback, private, link-local,
+// multicast, unspecified). Use this for addresses sourced from untrusted onchain data
+// to prevent SSRF-like attacks against internal networks.
+func (p ProbeAddress) ValidateScope() error {
+	ip := net.ParseIP(p.Host)
+	if ip == nil {
+		return fmt.Errorf("host must be a valid IP address")
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+		return fmt.Errorf("host %s is not a public unicast address", p.Host)
+	}
+	return nil
+}
+
 // ParseProbeAddresses parses a comma-separated list of probe addresses.
 // Each entry is either host (default ports) or host:offset_port:twamp_port
 // (both explicit). Two-field format (host:port) is rejected as ambiguous.

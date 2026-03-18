@@ -228,7 +228,8 @@ func TestSDK_Geolocation_Client_GetGeolocationUserByCode_HappyPath(t *testing.T)
 			}
 			return &solanarpc.GetAccountInfoResult{
 				Value: &solanarpc.Account{
-					Data: solanarpc.DataBytesOrJSONFromBytes(buf.Bytes()),
+					Owner: programID,
+					Data:  solanarpc.DataBytesOrJSONFromBytes(buf.Bytes()),
 				},
 			}, nil
 		},
@@ -310,13 +311,15 @@ func TestSDK_Geolocation_Client_GetGeolocationUsers_HappyPath(t *testing.T) {
 				{
 					Pubkey: acctKey1,
 					Account: &solanarpc.Account{
-						Data: solanarpc.DataBytesOrJSONFromBytes(buf1.Bytes()),
+						Owner: programID,
+						Data:  solanarpc.DataBytesOrJSONFromBytes(buf1.Bytes()),
 					},
 				},
 				{
 					Pubkey: acctKey2,
 					Account: &solanarpc.Account{
-						Data: solanarpc.DataBytesOrJSONFromBytes(buf2.Bytes()),
+						Owner: programID,
+						Data:  solanarpc.DataBytesOrJSONFromBytes(buf2.Bytes()),
 					},
 				},
 			}, nil
@@ -331,6 +334,93 @@ func TestSDK_Geolocation_Client_GetGeolocationUsers_HappyPath(t *testing.T) {
 	require.Equal(t, "geo-user-01", users[0].Code)
 	require.Equal(t, acctKey2, users[1].Pubkey)
 	require.Equal(t, "geo-user-02", users[1].Code)
+}
+
+func TestSDK_Geolocation_Client_GetGeolocationUserByCode_OwnerMismatch(t *testing.T) {
+	t.Parallel()
+
+	programID := solana.NewWallet().PublicKey()
+	wrongOwner := solana.NewWallet().PublicKey()
+
+	user := &geolocation.GeolocationUser{
+		AccountType:   geolocation.AccountTypeGeolocationUser,
+		Owner:         solana.NewWallet().PublicKey(),
+		Code:          "geo-user-01",
+		TokenAccount:  solana.NewWallet().PublicKey(),
+		PaymentStatus: geolocation.GeolocationPaymentStatusPaid,
+		Billing: geolocation.GeolocationBillingConfig{
+			Variant: geolocation.BillingConfigFlatPerEpoch,
+			FlatPerEpoch: geolocation.FlatPerEpochConfig{
+				Rate:                 1000,
+				LastDeductionDzEpoch: 42,
+			},
+		},
+		Status:  geolocation.GeolocationUserStatusActivated,
+		Targets: []geolocation.GeolocationTarget{},
+	}
+
+	mockRPC := &mockRPCClient{
+		GetAccountInfoFunc: func(_ context.Context, _ solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			buf := new(bytes.Buffer)
+			if err := user.Serialize(buf); err != nil {
+				t.Fatalf("mock serialize: %v", err)
+			}
+			return &solanarpc.GetAccountInfoResult{
+				Value: &solanarpc.Account{
+					Owner: wrongOwner,
+					Data:  solanarpc.DataBytesOrJSONFromBytes(buf.Bytes()),
+				},
+			}, nil
+		},
+	}
+
+	client := geolocation.New(slog.Default(), mockRPC, programID)
+	_, err := client.GetGeolocationUserByCode(context.Background(), "geo-user-01")
+	require.ErrorIs(t, err, geolocation.ErrOwnerMismatch)
+}
+
+func TestSDK_Geolocation_Client_GetGeolocationUsers_SkipsWrongOwner(t *testing.T) {
+	t.Parallel()
+
+	programID := solana.NewWallet().PublicKey()
+	wrongOwner := solana.NewWallet().PublicKey()
+
+	user1 := &geolocation.GeolocationUser{
+		AccountType:   geolocation.AccountTypeGeolocationUser,
+		Owner:         solana.NewWallet().PublicKey(),
+		Code:          "geo-user-01",
+		TokenAccount:  solana.NewWallet().PublicKey(),
+		PaymentStatus: geolocation.GeolocationPaymentStatusPaid,
+		Billing: geolocation.GeolocationBillingConfig{
+			Variant:      geolocation.BillingConfigFlatPerEpoch,
+			FlatPerEpoch: geolocation.FlatPerEpochConfig{Rate: 1000},
+		},
+		Status:  geolocation.GeolocationUserStatusActivated,
+		Targets: []geolocation.GeolocationTarget{},
+	}
+
+	mockRPC := &mockRPCClient{
+		GetProgramAccountsWithOptsFunc: func(_ context.Context, _ solana.PublicKey, _ *solanarpc.GetProgramAccountsOpts) (solanarpc.GetProgramAccountsResult, error) {
+			var buf1 bytes.Buffer
+			if err := user1.Serialize(&buf1); err != nil {
+				t.Fatalf("mock serialize: %v", err)
+			}
+			return solanarpc.GetProgramAccountsResult{
+				{
+					Pubkey: solana.NewWallet().PublicKey(),
+					Account: &solanarpc.Account{
+						Owner: wrongOwner,
+						Data:  solanarpc.DataBytesOrJSONFromBytes(buf1.Bytes()),
+					},
+				},
+			}, nil
+		},
+	}
+
+	client := geolocation.New(slog.Default(), mockRPC, programID)
+	users, err := client.GetGeolocationUsers(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, users)
 }
 
 func TestSDK_Geolocation_Client_GetGeolocationUsers_Empty(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 
 var (
 	ErrAccountNotFound = errors.New("account not found")
+	ErrOwnerMismatch   = errors.New("account owner does not match program ID")
 )
 
 type Client struct {
@@ -163,6 +164,9 @@ func (c *Client) GetGeolocationUserByCode(ctx context.Context, code string) (*Ge
 	if account.Value == nil {
 		return nil, ErrAccountNotFound
 	}
+	if account.Value.Owner != c.programID {
+		return nil, fmt.Errorf("%w: got %s, want %s", ErrOwnerMismatch, account.Value.Owner, c.programID)
+	}
 
 	user, err := DeserializeGeolocationUser(account.Value.Data.GetBinary())
 	if err != nil {
@@ -192,6 +196,10 @@ func (c *Client) GetGeolocationUsers(ctx context.Context) ([]KeyedGeolocationUse
 
 	users := make([]KeyedGeolocationUser, 0, len(accounts))
 	for _, acct := range accounts {
+		if acct.Account.Owner != c.programID {
+			c.log.Warn("skipping account with wrong owner", "pubkey", acct.Pubkey, "owner", acct.Account.Owner)
+			continue
+		}
 		user, err := DeserializeGeolocationUser(acct.Account.Data.GetBinary())
 		if err != nil {
 			c.log.Warn("failed to deserialize geolocation user account", "pubkey", acct.Pubkey, "error", err)

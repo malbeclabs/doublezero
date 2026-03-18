@@ -1,6 +1,7 @@
 package geolocation
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -291,6 +292,9 @@ func (t *GeolocationTarget) Deserialize(dec *bin.Decoder) error {
 	if err := dec.Decode(&t.TargetType); err != nil {
 		return err
 	}
+	if t.TargetType > GeoLocationTargetTypeInbound {
+		return fmt.Errorf("invalid target type: %d", t.TargetType)
+	}
 	if err := dec.Decode(&t.IPAddress); err != nil {
 		return err
 	}
@@ -357,7 +361,38 @@ func (g *GeolocationUser) Serialize(w io.Writer) error {
 	return nil
 }
 
+// geolocationUserTargetSize is the wire size of a single GeolocationTarget (1+4+2+32+32).
+const geolocationUserTargetSize = 71
+
 func (g *GeolocationUser) Deserialize(data []byte) error {
+	// Pre-validate the code string length prefix from raw bytes before the
+	// decoder allocates memory for it. The prefix sits at a fixed offset:
+	// account_type(1) + owner(32) = 33 bytes.
+	const codeOffset = 1 + 32
+	if len(data) < codeOffset+4 {
+		return fmt.Errorf("data too short for code length prefix: %d bytes", len(data))
+	}
+	codeLen := binary.LittleEndian.Uint32(data[codeOffset : codeOffset+4])
+	if codeLen > MaxCodeLength {
+		return fmt.Errorf("code length %d exceeds max allowed length %d", codeLen, MaxCodeLength)
+	}
+
+	// Pre-validate the target count from raw bytes. The count sits after:
+	// code_offset(33) + code_len_prefix(4) + code(codeLen) + token_account(32) +
+	// payment_status(1) + billing(17) + status(1) = 88 + codeLen.
+	targetCountOffset := codeOffset + 4 + int(codeLen) + 32 + 1 + 17 + 1
+	if len(data) < targetCountOffset+4 {
+		return fmt.Errorf("data too short for target count: %d bytes", len(data))
+	}
+	targetCount := binary.LittleEndian.Uint32(data[targetCountOffset : targetCountOffset+4])
+	if targetCount > MaxTargets {
+		return fmt.Errorf("targets count %d exceeds max allowed %d", targetCount, MaxTargets)
+	}
+	if len(data) < targetCountOffset+4+int(targetCount)*geolocationUserTargetSize {
+		return fmt.Errorf("data too short for %d targets: need %d bytes, have %d",
+			targetCount, targetCountOffset+4+int(targetCount)*geolocationUserTargetSize, len(data))
+	}
+
 	dec := bin.NewBorshDecoder(data)
 	if err := dec.Decode(&g.AccountType); err != nil {
 		return err
@@ -368,14 +403,14 @@ func (g *GeolocationUser) Deserialize(data []byte) error {
 	if err := dec.Decode(&g.Code); err != nil {
 		return err
 	}
-	if len(g.Code) > MaxCodeLength {
-		return fmt.Errorf("code length %d exceeds max allowed length %d", len(g.Code), MaxCodeLength)
-	}
 	if err := dec.Decode(&g.TokenAccount); err != nil {
 		return err
 	}
 	if err := dec.Decode(&g.PaymentStatus); err != nil {
 		return err
+	}
+	if g.PaymentStatus > GeolocationPaymentStatusPaid {
+		return fmt.Errorf("invalid payment status: %d", g.PaymentStatus)
 	}
 	if err := g.Billing.Deserialize(dec); err != nil {
 		return err
@@ -383,13 +418,13 @@ func (g *GeolocationUser) Deserialize(data []byte) error {
 	if err := dec.Decode(&g.Status); err != nil {
 		return err
 	}
-	// Deserialize targets
-	var targetCount uint32
-	if err := dec.Decode(&targetCount); err != nil {
-		return err
+	if g.Status > GeolocationUserStatusSuspended {
+		return fmt.Errorf("invalid user status: %d", g.Status)
 	}
-	if targetCount > MaxTargets {
-		return fmt.Errorf("targets count %d exceeds max allowed %d", targetCount, MaxTargets)
+	// Skip the target count — already validated above.
+	var tc uint32
+	if err := dec.Decode(&tc); err != nil {
+		return err
 	}
 	g.Targets = make([]GeolocationTarget, targetCount)
 	for i := uint32(0); i < targetCount; i++ {

@@ -2,10 +2,10 @@ use clap::Parser;
 use std::path::PathBuf;
 
 mod cli;
-use cli::{command::Command, config::ConfigCommands, probe::ProbeCommands};
+use cli::{command::Command, config::ConfigCommands, probe::ProbeCommands, user::UserCommands};
 use doublezero_cli::geoclicommand::GeoCliCommandImpl;
 use doublezero_config::Environment;
-use doublezero_sdk::geolocation::client::GeoClient;
+use doublezero_sdk::{geolocation::client::GeoClient, DZClient};
 use doublezero_serviceability::pda::get_globalstate_pda;
 
 #[derive(Parser, Debug)]
@@ -72,6 +72,9 @@ fn main() -> eyre::Result<()> {
     let needs_keypair = matches!(
         &app.command,
         Command::Probe(cmd) if !matches!(cmd.command, ProbeCommands::Get(_) | ProbeCommands::List(_))
+    ) || matches!(
+        &app.command,
+        Command::User(cmd) if !matches!(cmd.command, UserCommands::Get(_) | UserCommands::List(_))
     ) || matches!(&app.command, Command::InitConfig(_));
 
     if needs_keypair {
@@ -87,9 +90,15 @@ fn main() -> eyre::Result<()> {
         }
     }
 
+    let svc_client = DZClient::new(
+        url.clone(),
+        None,
+        Some(svc_program_id.to_string()),
+        app.keypair.clone(),
+    )?;
     let geoclient = GeoClient::new(url, geo_program_id, app.keypair)?;
     let (globalstate_pk, _) = get_globalstate_pda(&svc_program_id);
-    let client = GeoCliCommandImpl::new(&geoclient, globalstate_pk);
+    let client = GeoCliCommandImpl::new(&geoclient, &svc_client, globalstate_pk);
 
     match app.command {
         Command::Probe(cmd) => match cmd.command {
@@ -100,6 +109,15 @@ fn main() -> eyre::Result<()> {
             ProbeCommands::List(args) => args.execute(&client, &mut handle),
             ProbeCommands::AddParent(args) => args.execute(&client, &mut handle),
             ProbeCommands::RemoveParent(args) => args.execute(&client, &mut handle),
+        },
+        Command::User(cmd) => match cmd.command {
+            UserCommands::Create(args) => args.execute(&client, &mut handle),
+            UserCommands::Delete(args) => args.execute(&client, &mut handle),
+            UserCommands::Get(args) => args.execute(&client, &mut handle),
+            UserCommands::List(args) => args.execute(&client, &mut handle),
+            UserCommands::AddTarget(args) => args.execute(&client, &mut handle),
+            UserCommands::RemoveTarget(args) => args.execute(&client, &mut handle),
+            UserCommands::UpdatePayment(args) => args.execute(&client, &mut handle),
         },
         Command::InitConfig(args) => args.execute(&client, &mut handle),
         // Config commands are handled by the early return above.

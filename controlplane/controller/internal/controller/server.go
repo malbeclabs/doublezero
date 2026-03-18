@@ -392,7 +392,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 
 			d.Interfaces[i].Metric = uint32(microseconds)
-			if link.Mtu > 0 {
+			if link.Mtu > 0 && (iface.IsCYOA || iface.IsDIA) {
 				d.Interfaces[i].Mtu = uint16(link.Mtu)
 			}
 			d.Interfaces[i].IsLink = true

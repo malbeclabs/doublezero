@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
   - Add `geolocation user` subcommands to manage GeolocationUser accounts and targets: `create`, `delete`, `get`, `list`, `add-target`, `remove-target`, and `update-payment-status`
 - Controller
   - Retry transient Solana RPC failures when fetching onchain serviceability accounts so controller polls are more resilient to short-lived provider resets
+  - ensure WAN MTU always 2048
 
 ## [v0.12.0](https://github.com/malbeclabs/doublezero/compare/client/v0.11.0...client/v0.12.0) - 2026-03-16
 

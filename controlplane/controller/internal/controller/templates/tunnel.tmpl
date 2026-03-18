@@ -87,8 +87,12 @@ system control-plane
 {{- range .Device.Interfaces }}
 interface {{ .Name }}
    {{- if .IsPhysical }}
-      {{- if .Mtu }}
+      {{- if or .IsCYOA .IsDIA }}
+         {{- if .Mtu }}
    mtu {{ .Mtu }}
+         {{- else }}
+   mtu 1500
+         {{- end }}
       {{- else }}
    mtu 2048
       {{- end }}

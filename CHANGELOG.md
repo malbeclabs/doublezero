@@ -15,8 +15,14 @@ All notable changes to this project will be documented in this file.
   - Add `geolocation user` subcommands to manage GeolocationUser accounts and targets: `create`, `delete`, `get`, `list`, `add-target`, `remove-target`, and `update-payment-status`
 - SDK
   - Add GeolocationUser types, Borsh deserialization, PDA derivation, and read-only client methods (`GetGeolocationUserByCode`, `GetGeolocationUsers`) to the Go geolocation SDK
+- Telemetry
+  - Add onchain target discovery to the geoProbe agent: polls GeolocationUser accounts at 60s intervals, filters for activated+paid users, dynamically updates outbound probe targets and inbound signed TWAMP authorized keys
 - Controller
   - Retry transient Solana RPC failures when fetching onchain serviceability accounts so controller polls are more resilient to short-lived provider resets
+
+### Fixed
+- Telemetry
+  - Fix geoProbe parent discovery incorrectly adding parent authority keys to the signed TWAMP reflector allowlist; parent DZDs use the unsigned reflector
 
 ## [v0.12.0](https://github.com/malbeclabs/doublezero/compare/client/v0.11.0...client/v0.12.0) - 2026-03-16
 

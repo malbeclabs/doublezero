@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+- CLI
+  - Add `geolocation user` subcommands to manage GeolocationUser accounts and targets: `create`, `delete`, `get`, `list`, `add-target`, `remove-target`, and `update-payment-status`
 - Controller
   - Retry transient Solana RPC failures when fetching onchain serviceability accounts so controller polls are more resilient to short-lived provider resets
 

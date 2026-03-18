@@ -2461,3 +2461,332 @@ func Test_GetConfig_DuplicateTunnelPairs_Integration(t *testing.T) {
 		t.Errorf("expected 2 tunnels in config (2 'tunnel source' lines), got %d", tunnelSourceCount)
 	}
 }
+
+// TestGenerateConfig tests the generateConfig helper function
+func TestGenerateConfig(t *testing.T) {
+	tests := []struct {
+		name           string
+		device         *Device
+		unknownPeers   []net.IP
+		cache          stateCache
+		deviceLocalASN uint32
+		environment    string
+		wantErr        bool
+		errContains    string
+		configContains []string
+	}{
+		{
+			name: "successful config generation",
+			device: &Device{
+				Code:            "test1",
+				ExchangeCode:    "tst",
+				LocationCode:    "loc1",
+				ContributorCode: "contrib1",
+				Ipv4LoopbackIP:  net.ParseIP("10.1.1.1"),
+				BgpCommunity:    65001,
+				Status:          serviceability.DeviceStatusActivated,
+				Tunnels: []*Tunnel{
+					{
+						Id:           500,
+						OverlaySrcIP: net.ParseIP("192.168.1.1"),
+						OverlayDstIP: net.ParseIP("192.168.1.2"),
+					},
+				},
+			},
+			unknownPeers: []net.IP{},
+			cache: stateCache{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+					UserTunnelBlock:     [5]uint8{192, 168, 0, 0, 16},
+					TunnelTunnelBlock:   [5]uint8{10, 0, 0, 0, 16},
+				},
+				Vpnv4BgpPeers: []BgpPeer{},
+				Ipv4BgpPeers:  []BgpPeer{},
+				UnicastVrfs:   []uint16{1},
+			},
+			deviceLocalASN: 65000,
+			wantErr:        false,
+			configContains: []string{
+				"interface Tunnel500",
+			},
+		},
+		{
+			name: "config with unknown peers to remove",
+			device: &Device{
+				Code:           "test2",
+				ExchangeCode:   "tst",
+				Ipv4LoopbackIP: net.ParseIP("10.1.1.2"),
+				BgpCommunity:   65002,
+				Status:         serviceability.DeviceStatusActivated,
+				Tunnels:        []*Tunnel{},
+			},
+			unknownPeers: []net.IP{
+				net.ParseIP("192.168.100.1"),
+				net.ParseIP("192.168.100.2"),
+			},
+			cache: stateCache{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+					UserTunnelBlock:     [5]uint8{192, 168, 0, 0, 16},
+				},
+				UnicastVrfs: []uint16{},
+			},
+			deviceLocalASN: 65000,
+			wantErr:        false,
+			configContains: []string{
+				"no neighbor 192.168.100.1",
+				"no neighbor 192.168.100.2",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Controller{
+				cache:          tt.cache,
+				deviceLocalASN: tt.deviceLocalASN,
+				environment:    tt.environment,
+			}
+
+			config, err := c.generateConfig("test-pubkey", tt.device, tt.unknownPeers)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				} else if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("expected error to contain %q, got %q", tt.errContains, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				for _, expected := range tt.configContains {
+					if !strings.Contains(config, expected) {
+						t.Errorf("expected config to contain %q, but it didn't", expected)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestProcessConfigRequest tests the processConfigRequest helper function
+func TestProcessConfigRequest(t *testing.T) {
+	tests := []struct {
+		name        string
+		req         *pb.ConfigRequest
+		cache       stateCache
+		wantErr     bool
+		errContains string
+		wantDevice  bool
+	}{
+		{
+			name: "successful request processing",
+			req: &pb.ConfigRequest{
+				Pubkey:   "device1",
+				BgpPeers: []string{"10.0.0.1", "10.0.0.2"},
+			},
+			cache: stateCache{
+				Config: serviceability.Config{
+					UserTunnelBlock:     [5]uint8{10, 0, 0, 0, 16},
+					TunnelTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				Devices: map[string]*Device{
+					"device1": {
+						Code:            "dev1",
+						ExchangeCode:    "ex1",
+						LocationCode:    "loc1",
+						ContributorCode: "con1",
+						Status:          serviceability.DeviceStatusActivated,
+						Ipv4LoopbackIP:  net.ParseIP("1.1.1.1"),
+						Tunnels: []*Tunnel{
+							{Id: 500, OverlayDstIP: net.ParseIP("10.0.0.1")},
+							{Id: 501, OverlayDstIP: net.ParseIP("10.0.0.2")},
+						},
+					},
+				},
+				Vpnv4BgpPeers: []BgpPeer{},
+				Ipv4BgpPeers:  []BgpPeer{},
+			},
+			wantErr:    false,
+			wantDevice: true,
+		},
+		{
+			name: "device not found",
+			req: &pb.ConfigRequest{
+				Pubkey: "nonexistent",
+			},
+			cache: stateCache{
+				Devices: map[string]*Device{},
+			},
+			wantErr:     true,
+			errContains: "not found",
+			wantDevice:  false,
+		},
+		{
+			name: "request with unknown BGP peers",
+			req: &pb.ConfigRequest{
+				Pubkey: "device3",
+				BgpPeers: []string{
+					"10.0.0.1",    // known
+					"10.0.0.100",  // unknown, in UserTunnelBlock
+					"192.168.1.1", // unknown, not in any block
+				},
+			},
+			cache: stateCache{
+				Config: serviceability.Config{
+					UserTunnelBlock:     [5]uint8{10, 0, 0, 0, 16},
+					TunnelTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				Devices: map[string]*Device{
+					"device3": {
+						Code:           "dev3",
+						Status:         serviceability.DeviceStatusActivated,
+						Ipv4LoopbackIP: net.ParseIP("1.1.1.3"),
+						Tunnels: []*Tunnel{
+							{Id: 500, OverlayDstIP: net.ParseIP("10.0.0.1")},
+						},
+					},
+				},
+				Vpnv4BgpPeers: []BgpPeer{},
+				Ipv4BgpPeers:  []BgpPeer{},
+			},
+			wantErr:    false,
+			wantDevice: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Controller{
+				cache:          tt.cache,
+				deviceLocalASN: 65000,
+			}
+
+			config, device, err := c.processConfigRequest(tt.req)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				} else if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("expected error to contain %q, got %q", tt.errContains, err.Error())
+				}
+				if config != "" {
+					t.Errorf("expected empty config on error, got %q", config)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				if config == "" && tt.wantDevice {
+					t.Errorf("expected non-empty config")
+				}
+			}
+
+			if tt.wantDevice && device == nil {
+				t.Errorf("expected device to be returned, got nil")
+			}
+			if !tt.wantDevice && device != nil {
+				t.Errorf("expected no device on error, got %+v", device)
+			}
+		})
+	}
+}
+
+// TestGetConfigHashComputation tests that GetConfig properly computes and returns the config hash
+func TestGetConfigHashComputation(t *testing.T) {
+	// Create a simple controller with test data
+	c := &Controller{
+		cache: stateCache{
+			Config: serviceability.Config{
+				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				UserTunnelBlock:     [5]uint8{10, 0, 0, 0, 16},
+				TunnelTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
+			},
+			Devices: map[string]*Device{
+				"testdevice": {
+					Code:            "test1",
+					ExchangeCode:    "ex1",
+					LocationCode:    "loc1",
+					ContributorCode: "con1",
+					Status:          serviceability.DeviceStatusActivated,
+					Ipv4LoopbackIP:  net.ParseIP("10.1.1.1"),
+					BgpCommunity:    65001,
+					Tunnels: []*Tunnel{
+						{
+							Id:           500,
+							OverlaySrcIP: net.ParseIP("10.0.0.1"),
+							OverlayDstIP: net.ParseIP("10.0.0.2"),
+						},
+					},
+				},
+			},
+			Vpnv4BgpPeers: []BgpPeer{},
+			Ipv4BgpPeers:  []BgpPeer{},
+			UnicastVrfs:   []uint16{1},
+		},
+		deviceLocalASN: 65000,
+	}
+
+	req := &pb.ConfigRequest{
+		Pubkey:   "testdevice",
+		BgpPeers: []string{},
+	}
+
+	// Call GetConfig
+	resp, err := c.GetConfig(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify response has both config and hash
+	if resp.Config == "" {
+		t.Error("expected non-empty config in response")
+	}
+	if resp.Hash == "" {
+		t.Error("expected non-empty hash in response")
+	}
+
+	// Verify hash is 64 characters (SHA256 in hex)
+	if len(resp.Hash) != 64 {
+		t.Errorf("expected hash to be 64 characters (SHA256 hex), got %d", len(resp.Hash))
+	}
+
+	// Call GetConfig again with same request, verify same hash
+	resp2, err := c.GetConfig(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error on second call: %v", err)
+	}
+
+	if resp2.Hash != resp.Hash {
+		t.Errorf("expected same hash for same config, got %q != %q", resp2.Hash, resp.Hash)
+	}
+
+	// Modify request to get different config
+	reqModified := &pb.ConfigRequest{
+		Pubkey:   "testdevice",
+		BgpPeers: []string{"10.0.0.100"}, // unknown peer to be removed
+	}
+
+	resp3, err := c.GetConfig(context.Background(), reqModified)
+	if err != nil {
+		t.Fatalf("unexpected error with modified request: %v", err)
+	}
+
+	// Different config should have different hash
+	if resp3.Hash == resp.Hash {
+		t.Error("expected different hash for different config")
+	}
+
+	// Verify the hash is consistent for same config content
+	resp4, err := c.GetConfig(context.Background(), reqModified)
+	if err != nil {
+		t.Fatalf("unexpected error on repeat modified request: %v", err)
+	}
+
+	if resp4.Hash != resp3.Hash {
+		t.Errorf("expected same hash for same modified config, got %q != %q", resp4.Hash, resp3.Hash)
+	}
+}

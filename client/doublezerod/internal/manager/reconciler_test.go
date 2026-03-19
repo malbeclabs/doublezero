@@ -1196,151 +1196,194 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 	devicePK := [32]byte{1}
 	exchangePK := [32]byte{2}
 	tenantPK := [32]byte{3}
+	mcastGroupPK := [32]byte{10}
+	clientIPBytes := [4]uint8{1, 2, 3, 4}
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 
 	device := testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})
 	device.ExchangePubKey = exchangePK
 	device.Code = "dz1"
 	device.Status = serviceability.DeviceStatusActivated
-
-	user := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)
-	user.TenantPubKey = tenantPK
-
-	fetcher := &mockFetcher{
-		data: &serviceability.ProgramData{
-			Config:  testConfig(),
-			Devices: []serviceability.Device{device},
-			Users:   []serviceability.User{user},
-			Exchanges: []serviceability.Exchange{
-				{PubKey: exchangePK, Name: "Amsterdam"},
-			},
-			Tenants: []serviceability.Tenant{
-				{PubKey: tenantPK, Code: "acme"},
-			},
-		},
-	}
-
-	dir := t.TempDir()
-	n := newTestNLM(fetcher,
-		WithClientIP(clientIP),
-		WithPollInterval(time.Hour),
-		WithStateDir(dir),
-		WithEnabled(true),
-		WithNetwork("testnet"),
-	)
-
-	// Let reconciler provision the service so Status() returns data.
-	n.reconcile(context.Background())
-
-	req := httptest.NewRequest(http.MethodGet, "/v2/status", nil)
-	w := httptest.NewRecorder()
-	n.ServeV2Status(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-
-	var resp V2StatusResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatal(err)
-	}
-
-	if resp.Network != "testnet" {
-		t.Fatalf("expected network=testnet, got %s", resp.Network)
-	}
-	if len(resp.Services) != 1 {
-		t.Fatalf("expected 1 service, got %d", len(resp.Services))
-	}
-
-	svc := resp.Services[0]
-	if svc.CurrentDevice != "dz1" {
-		t.Fatalf("expected current_device=dz1, got %s", svc.CurrentDevice)
-	}
-	if svc.Metro != "Amsterdam" {
-		t.Fatalf("expected metro=Amsterdam, got %s", svc.Metro)
-	}
-	if svc.Tenant != "acme" {
-		t.Fatalf("expected tenant=acme, got %s", svc.Tenant)
-	}
-}
-
-func TestServeV2Status_MulticastSubscriberEnrichment(t *testing.T) {
-	devicePK := [32]byte{1}
-	exchangePK := [32]byte{2}
-	tenantPK := [32]byte{3}
-	clientIP := net.IPv4(1, 2, 3, 4).To4()
-
-	device := testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})
-	device.ExchangePubKey = exchangePK
-	device.Code = "dz1"
-	device.Status = serviceability.DeviceStatusActivated
-
-	// Multicast subscriber-only user with DzIp = 0.0.0.0 and a tunnel
-	// endpoint that differs from the device public IP. This exercises the
-	// client_ip + user_type fallback in enrichStatuses.
-	mcastUser := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
-	mcastUser.DzIp = [4]uint8{0, 0, 0, 0}
-	mcastUser.TunnelEndpoint = [4]uint8{9, 9, 9, 9} // different from device.PublicIp
-	mcastUser.TenantPubKey = tenantPK
-	mcastUser.Subscribers = [][32]byte{{10}}
 
 	mcastGroup := serviceability.MulticastGroup{
-		PubKey:      [32]byte{10},
+		PubKey:      mcastGroupPK,
 		MulticastIp: [4]uint8{239, 0, 0, 1},
 	}
 
-	fetcher := &mockFetcher{
-		data: &serviceability.ProgramData{
-			Config:          testConfig(),
-			Devices:         []serviceability.Device{device},
-			Users:           []serviceability.User{mcastUser},
-			MulticastGroups: []serviceability.MulticastGroup{mcastGroup},
-			Exchanges: []serviceability.Exchange{
-				{PubKey: exchangePK, Name: "Amsterdam"},
+	type wantService struct {
+		userType      string
+		currentDevice string
+		metro         string
+		tenant        string
+		hasDzIP       bool // whether DoubleZeroIP should be non-empty
+	}
+
+	tests := []struct {
+		name  string
+		users []serviceability.User
+		want  []wantService
+	}{
+		{
+			name: "ibrl_only",
+			users: []serviceability.User{
+				func() serviceability.User {
+					u := testUser(clientIPBytes, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)
+					u.TenantPubKey = tenantPK
+					return u
+				}(),
 			},
-			Tenants: []serviceability.Tenant{
-				{PubKey: tenantPK, Code: "acme"},
+			want: []wantService{
+				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true},
+			},
+		},
+		{
+			name: "multicast_publisher",
+			users: []serviceability.User{
+				func() serviceability.User {
+					u := testUser(clientIPBytes, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
+					u.TenantPubKey = tenantPK
+					u.Publishers = [][32]byte{mcastGroupPK}
+					return u
+				}(),
+			},
+			want: []wantService{
+				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true},
+			},
+		},
+		{
+			name: "multicast_subscriber",
+			users: []serviceability.User{
+				func() serviceability.User {
+					u := testUser(clientIPBytes, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
+					u.DzIp = [4]uint8{0, 0, 0, 0}
+					u.TunnelEndpoint = [4]uint8{9, 9, 9, 9} // differs from device.PublicIp
+					u.TenantPubKey = tenantPK
+					u.Subscribers = [][32]byte{mcastGroupPK}
+					return u
+				}(),
+			},
+			want: []wantService{
+				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: false},
+			},
+		},
+		{
+			name: "ibrl_plus_multicast_subscriber",
+			users: []serviceability.User{
+				func() serviceability.User {
+					u := testUser(clientIPBytes, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)
+					u.TenantPubKey = tenantPK
+					return u
+				}(),
+				func() serviceability.User {
+					u := testUser(clientIPBytes, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
+					u.DzIp = [4]uint8{0, 0, 0, 0}
+					u.TunnelEndpoint = [4]uint8{9, 9, 9, 9}
+					u.TenantPubKey = tenantPK
+					u.Subscribers = [][32]byte{mcastGroupPK}
+					return u
+				}(),
+			},
+			want: []wantService{
+				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true},
+				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: false},
+			},
+		},
+		{
+			name: "ibrl_plus_multicast_publisher",
+			users: []serviceability.User{
+				func() serviceability.User {
+					u := testUser(clientIPBytes, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)
+					u.TenantPubKey = tenantPK
+					return u
+				}(),
+				func() serviceability.User {
+					u := testUser(clientIPBytes, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
+					u.TenantPubKey = tenantPK
+					u.Publishers = [][32]byte{mcastGroupPK}
+					return u
+				}(),
+			},
+			want: []wantService{
+				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true},
+				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true},
 			},
 		},
 	}
 
-	dir := t.TempDir()
-	n := newTestNLM(fetcher,
-		WithClientIP(clientIP),
-		WithPollInterval(time.Hour),
-		WithStateDir(dir),
-		WithEnabled(true),
-		WithNetwork("testnet"),
-	)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fetcher := &mockFetcher{
+				data: &serviceability.ProgramData{
+					Config:          testConfig(),
+					Devices:         []serviceability.Device{device},
+					Users:           tt.users,
+					MulticastGroups: []serviceability.MulticastGroup{mcastGroup},
+					Exchanges: []serviceability.Exchange{
+						{PubKey: exchangePK, Name: "Amsterdam"},
+					},
+					Tenants: []serviceability.Tenant{
+						{PubKey: tenantPK, Code: "acme"},
+					},
+				},
+			}
 
-	// Reconcile to provision multicast service.
-	n.reconcile(context.Background())
+			dir := t.TempDir()
+			n := newTestNLM(fetcher,
+				WithClientIP(clientIP),
+				WithPollInterval(time.Hour),
+				WithStateDir(dir),
+				WithEnabled(true),
+				WithNetwork("testnet"),
+			)
 
-	req := httptest.NewRequest(http.MethodGet, "/v2/status", nil)
-	w := httptest.NewRecorder()
-	n.ServeV2Status(w, req)
+			n.reconcile(context.Background())
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
+			req := httptest.NewRequest(http.MethodGet, "/v2/status", nil)
+			w := httptest.NewRecorder()
+			n.ServeV2Status(w, req)
 
-	var resp V2StatusResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Services) != 1 {
-		t.Fatalf("expected 1 service, got %d", len(resp.Services))
-	}
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d", w.Code)
+			}
 
-	svc := resp.Services[0]
-	if svc.CurrentDevice != "dz1" {
-		t.Fatalf("expected current_device=dz1, got %q", svc.CurrentDevice)
-	}
-	if svc.Metro != "Amsterdam" {
-		t.Fatalf("expected metro=Amsterdam, got %q", svc.Metro)
-	}
-	if svc.Tenant != "acme" {
-		t.Fatalf("expected tenant=acme, got %q", svc.Tenant)
+			var resp V2StatusResponse
+			if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+				t.Fatal(err)
+			}
+
+			if resp.Network != "testnet" {
+				t.Fatalf("expected network=testnet, got %s", resp.Network)
+			}
+			if len(resp.Services) != len(tt.want) {
+				t.Fatalf("expected %d services, got %d", len(tt.want), len(resp.Services))
+			}
+
+			// Build a lookup by user type for assertions since order may vary.
+			byType := make(map[string]V2ServiceStatus)
+			for _, svc := range resp.Services {
+				byType[svc.UserType.String()] = svc
+			}
+
+			for _, w := range tt.want {
+				svc, ok := byType[w.userType]
+				if !ok {
+					t.Fatalf("missing service with user_type=%s", w.userType)
+				}
+				if svc.CurrentDevice != w.currentDevice {
+					t.Errorf("[%s] expected current_device=%q, got %q", w.userType, w.currentDevice, svc.CurrentDevice)
+				}
+				if svc.Metro != w.metro {
+					t.Errorf("[%s] expected metro=%q, got %q", w.userType, w.metro, svc.Metro)
+				}
+				if svc.Tenant != w.tenant {
+					t.Errorf("[%s] expected tenant=%q, got %q", w.userType, w.tenant, svc.Tenant)
+				}
+				gotDzIP := svc.DoubleZeroIP != nil && !svc.DoubleZeroIP.IsUnspecified()
+				if gotDzIP != w.hasDzIP {
+					t.Errorf("[%s] expected hasDzIP=%v, got DoubleZeroIP=%v", w.userType, w.hasDzIP, svc.DoubleZeroIP)
+				}
+			}
+		})
 	}
 }
 

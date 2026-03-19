@@ -366,11 +366,17 @@ func (q *QAAgent) SeatPay(ctx context.Context, req *pb.SeatPayRequest) (*pb.Resu
 	if req.GetInstant() {
 		args = append(args, "--now")
 	}
+	if req.GetSolanaRpcUrl() != "" {
+		args = append(args, "--url", req.GetSolanaRpcUrl())
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "doublezero-solana", args...)
+	if req.GetReservationProgramId() != "" {
+		cmd.Env = append(cmd.Environ(), "RESERVATION_PROGRAM_ID="+req.GetReservationProgramId())
+	}
 	res, err := runCmd(cmd)
 	if err != nil {
 		q.log.Error("Failed to pay for seat", "device", req.GetDevicePubkey(), "output", res.GetOutput())
@@ -396,11 +402,17 @@ func (q *QAAgent) SeatWithdraw(ctx context.Context, req *pb.SeatWithdrawRequest)
 	if req.GetInstant() {
 		args = append(args, "--unsafe-now")
 	}
+	if req.GetSolanaRpcUrl() != "" {
+		args = append(args, "--url", req.GetSolanaRpcUrl())
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "doublezero-solana", args...)
+	if req.GetReservationProgramId() != "" {
+		cmd.Env = append(cmd.Environ(), "RESERVATION_PROGRAM_ID="+req.GetReservationProgramId())
+	}
 	res, err := runCmd(cmd)
 	if err != nil {
 		q.log.Error("Failed to withdraw seat", "device", req.GetDevicePubkey(), "output", res.GetOutput())

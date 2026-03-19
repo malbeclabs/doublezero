@@ -61,10 +61,12 @@ func (c *Client) ClosestDevice(ctx context.Context) (*Device, error) {
 func (c *Client) SeatPay(ctx context.Context, devicePubkey string, amount string, instant bool) error {
 	c.log.Debug("Paying for seat", "host", c.Host, "device", devicePubkey, "amount", amount, "instant", instant)
 	resp, err := c.grpcClient.SeatPay(ctx, &pb.SeatPayRequest{
-		DevicePubkey: devicePubkey,
-		ClientIp:     c.publicIP.To4().String(),
-		Amount:       amount,
-		Instant:      instant,
+		DevicePubkey:           devicePubkey,
+		ClientIp:               c.publicIP.To4().String(),
+		Amount:                 amount,
+		Instant:                instant,
+		SolanaRpcUrl:           c.SolanaRPCURL,
+		ReservationProgramId:   c.ReservationProgramID,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to pay for seat on host %s: %w", c.Host, err)
@@ -82,9 +84,11 @@ func (c *Client) SeatPay(ctx context.Context, devicePubkey string, amount string
 func (c *Client) SeatWithdraw(ctx context.Context, devicePubkey string, instant bool) error {
 	c.log.Debug("Withdrawing seat", "host", c.Host, "device", devicePubkey, "instant", instant)
 	resp, err := c.grpcClient.SeatWithdraw(ctx, &pb.SeatWithdrawRequest{
-		DevicePubkey: devicePubkey,
-		ClientIp:     c.publicIP.To4().String(),
-		Instant:      instant,
+		DevicePubkey:           devicePubkey,
+		ClientIp:               c.publicIP.To4().String(),
+		Instant:                instant,
+		SolanaRpcUrl:           c.SolanaRPCURL,
+		ReservationProgramId:   c.ReservationProgramID,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to withdraw seat on host %s: %w", c.Host, err)

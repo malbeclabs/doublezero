@@ -1735,13 +1735,15 @@ func (x *MulticastSendRequest) GetDuration() uint32 {
 }
 
 type SeatPayRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DevicePubkey  string                 `protobuf:"bytes,1,opt,name=device_pubkey,json=devicePubkey,proto3" json:"device_pubkey,omitempty"`
-	ClientIp      string                 `protobuf:"bytes,2,opt,name=client_ip,json=clientIp,proto3" json:"client_ip,omitempty"`
-	Amount        string                 `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
-	Instant       bool                   `protobuf:"varint,4,opt,name=instant,proto3" json:"instant,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	DevicePubkey         string                 `protobuf:"bytes,1,opt,name=device_pubkey,json=devicePubkey,proto3" json:"device_pubkey,omitempty"`
+	ClientIp             string                 `protobuf:"bytes,2,opt,name=client_ip,json=clientIp,proto3" json:"client_ip,omitempty"`
+	Amount               string                 `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
+	Instant              bool                   `protobuf:"varint,4,opt,name=instant,proto3" json:"instant,omitempty"`
+	SolanaRpcUrl         string                 `protobuf:"bytes,5,opt,name=solana_rpc_url,json=solanaRpcUrl,proto3" json:"solana_rpc_url,omitempty"`
+	ReservationProgramId string                 `protobuf:"bytes,6,opt,name=reservation_program_id,json=reservationProgramId,proto3" json:"reservation_program_id,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *SeatPayRequest) Reset() {
@@ -1802,13 +1804,29 @@ func (x *SeatPayRequest) GetInstant() bool {
 	return false
 }
 
+func (x *SeatPayRequest) GetSolanaRpcUrl() string {
+	if x != nil {
+		return x.SolanaRpcUrl
+	}
+	return ""
+}
+
+func (x *SeatPayRequest) GetReservationProgramId() string {
+	if x != nil {
+		return x.ReservationProgramId
+	}
+	return ""
+}
+
 type SeatWithdrawRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DevicePubkey  string                 `protobuf:"bytes,1,opt,name=device_pubkey,json=devicePubkey,proto3" json:"device_pubkey,omitempty"`
-	ClientIp      string                 `protobuf:"bytes,2,opt,name=client_ip,json=clientIp,proto3" json:"client_ip,omitempty"`
-	Instant       bool                   `protobuf:"varint,3,opt,name=instant,proto3" json:"instant,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	DevicePubkey         string                 `protobuf:"bytes,1,opt,name=device_pubkey,json=devicePubkey,proto3" json:"device_pubkey,omitempty"`
+	ClientIp             string                 `protobuf:"bytes,2,opt,name=client_ip,json=clientIp,proto3" json:"client_ip,omitempty"`
+	Instant              bool                   `protobuf:"varint,3,opt,name=instant,proto3" json:"instant,omitempty"`
+	SolanaRpcUrl         string                 `protobuf:"bytes,4,opt,name=solana_rpc_url,json=solanaRpcUrl,proto3" json:"solana_rpc_url,omitempty"`
+	ReservationProgramId string                 `protobuf:"bytes,5,opt,name=reservation_program_id,json=reservationProgramId,proto3" json:"reservation_program_id,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *SeatWithdrawRequest) Reset() {
@@ -1860,6 +1878,20 @@ func (x *SeatWithdrawRequest) GetInstant() bool {
 		return x.Instant
 	}
 	return false
+}
+
+func (x *SeatWithdrawRequest) GetSolanaRpcUrl() string {
+	if x != nil {
+		return x.SolanaRpcUrl
+	}
+	return ""
+}
+
+func (x *SeatWithdrawRequest) GetReservationProgramId() string {
+	if x != nil {
+		return x.ReservationProgramId
+	}
+	return ""
 }
 
 var File_agent_proto protoreflect.FileDescriptor
@@ -1993,16 +2025,20 @@ const file_agent_proto_rawDesc = "" +
 	"\x14MulticastSendRequest\x12\x14\n" +
 	"\x05group\x18\x01 \x01(\tR\x05group\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\rR\x04port\x12\x1a\n" +
-	"\bduration\x18\x03 \x01(\rR\bduration\"\x84\x01\n" +
+	"\bduration\x18\x03 \x01(\rR\bduration\"\xe0\x01\n" +
 	"\x0eSeatPayRequest\x12#\n" +
 	"\rdevice_pubkey\x18\x01 \x01(\tR\fdevicePubkey\x12\x1b\n" +
 	"\tclient_ip\x18\x02 \x01(\tR\bclientIp\x12\x16\n" +
 	"\x06amount\x18\x03 \x01(\tR\x06amount\x12\x18\n" +
-	"\ainstant\x18\x04 \x01(\bR\ainstant\"q\n" +
+	"\ainstant\x18\x04 \x01(\bR\ainstant\x12$\n" +
+	"\x0esolana_rpc_url\x18\x05 \x01(\tR\fsolanaRpcUrl\x124\n" +
+	"\x16reservation_program_id\x18\x06 \x01(\tR\x14reservationProgramId\"\xcd\x01\n" +
 	"\x13SeatWithdrawRequest\x12#\n" +
 	"\rdevice_pubkey\x18\x01 \x01(\tR\fdevicePubkey\x12\x1b\n" +
 	"\tclient_ip\x18\x02 \x01(\tR\bclientIp\x12\x18\n" +
-	"\ainstant\x18\x03 \x01(\bR\ainstant2\xb2\t\n" +
+	"\ainstant\x18\x03 \x01(\bR\ainstant\x12$\n" +
+	"\x0esolana_rpc_url\x18\x04 \x01(\tR\fsolanaRpcUrl\x124\n" +
+	"\x16reservation_program_id\x18\x05 \x01(\tR\x14reservationProgramId2\xb2\t\n" +
 	"\x0eQAAgentService\x127\n" +
 	"\x0eConnectUnicast\x12\x19.qa.ConnectUnicastRequest\x1a\n" +
 	".qa.Result\x12C\n" +

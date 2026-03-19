@@ -29,6 +29,7 @@ type NetworkConfig struct {
 	TelemetryStateIngestURL       string
 	TelemetryGNMITunnelServerAddr string
 	GeolocationProgramID          solana.PublicKey
+	ReservationProgramID          string
 }
 
 func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
@@ -63,6 +64,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			RevenueDistributionProgramID:  revenueDistributionProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
+			ReservationProgramID:          MainnetReservationProgramID,
 			DeviceLocalASN:                MainnetDeviceLocalASN,
 			TwoZOracleURL:                 MainnetTwoZOracleURL,
 			SolanaRPCURL:                  MainnetSolanaRPC,
@@ -94,6 +96,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
+			ReservationProgramID:          TestnetReservationProgramID,
 			DeviceLocalASN:                TestnetDeviceLocalASN,
 			TwoZOracleURL:                 TestnetTwoZOracleURL,
 			SolanaRPCURL:                  TestnetSolanaRPC,
@@ -125,6 +128,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
+			ReservationProgramID:          DevnetReservationProgramID,
 			DeviceLocalASN:                DevnetDeviceLocalASN,
 			TwoZOracleURL:                 DevnetTwoZOracleURL,
 			SolanaRPCURL:                  TestnetSolanaRPC,
@@ -156,6 +160,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
+			ReservationProgramID:          LocalnetReservationProgramID,
 			DeviceLocalASN:                LocalnetDeviceLocalASN,
 			TwoZOracleURL:                 LocalnetTwoZOracleURL,
 			SolanaRPCURL:                  LocalnetSolanaRPC,

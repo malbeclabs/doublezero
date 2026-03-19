@@ -617,6 +617,238 @@ mod tests {
     }
 
     #[test]
+    fn test_delete_user_with_foundation_key_clears_subscriptions() {
+        let mut client = MockDoubleZeroClient::new();
+
+        let foundation_key = Pubkey::new_unique();
+        let user_owner = Pubkey::new_unique();
+        client.expect_get_payer().returning(move || foundation_key);
+        let program_id = Pubkey::new_unique();
+        client.expect_get_program_id().returning(move || program_id);
+
+        let (globalstate_pubkey, bump_seed) = get_globalstate_pda(&program_id);
+        let globalstate = GlobalState {
+            account_type: AccountType::GlobalState,
+            bump_seed,
+            account_index: 0,
+            foundation_allowlist: vec![foundation_key],
+            _device_allowlist: vec![],
+            _user_allowlist: vec![],
+            activator_authority_pk: Pubkey::new_unique(),
+            sentinel_authority_pk: Pubkey::new_unique(),
+            contributor_airdrop_lamports: 1_000_000_000,
+            user_airdrop_lamports: 40_000,
+            health_oracle_pk: Pubkey::new_unique(),
+            qa_allowlist: vec![],
+            feature_flags: 0,
+            feed_authority_pk: Pubkey::default(),
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(globalstate_pubkey))
+            .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
+
+        let user_pubkey = Pubkey::new_unique();
+        let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
+        let client_ip = Ipv4Addr::new(100, 0, 0, 1);
+
+        // AccessPass is keyed to (client_ip, user_owner) — not foundation_key
+        let (unspecified_accesspass_pubkey, _) =
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &user_owner);
+        let (accesspass_pubkey, _) =
+            get_accesspass_pda(&program_id, &client_ip, &user_owner);
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 0,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            user_payer: user_owner,
+            last_access_epoch: 0,
+            connection_count: 0,
+            status: AccessPassStatus::Requested,
+            owner: user_owner,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![mgroup_pubkey],
+            tenant_allowlist: vec![],
+            flags: 0,
+        };
+
+        let user_with_sub = User {
+            account_type: AccountType::User,
+            owner: user_owner,
+            bump_seed: 0,
+            index: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::Multicast,
+            device_pk: Pubkey::default(),
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip,
+            dz_ip: client_ip,
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![mgroup_pubkey],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        };
+
+        let user_activated_final = User {
+            status: UserStatus::Activated,
+            subscribers: vec![],
+            ..user_with_sub.clone()
+        };
+
+        let mgroup = MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            owner: user_owner,
+            bump_seed: 0,
+            index: 1,
+            code: "test".to_string(),
+            max_bandwidth: 1000,
+            status: MulticastGroupStatus::Activated,
+            tenant_pk: Pubkey::default(),
+            multicast_ip: "223.0.0.1".parse().unwrap(),
+            publisher_count: 0,
+            subscriber_count: 1,
+        };
+
+        let mut seq = Sequence::new();
+
+        // Call 1: Initial user fetch in DeleteUserCommand
+        let user_clone1 = user_with_sub.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::User(user_clone1.clone())));
+
+        // Call 2: ListMulticastGroupCommand
+        let mgroup_for_list = mgroup.clone();
+        client
+            .expect_gets()
+            .with(predicate::eq(AccountType::MulticastGroup))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| {
+                let mut map = std::collections::HashMap::new();
+                map.insert(
+                    mgroup_pubkey,
+                    AccountData::MulticastGroup(mgroup_for_list.clone()),
+                );
+                Ok(map)
+            });
+
+        // Call 3: MulticastGroup fetch in SubscribeMulticastGroupCommand
+        let mgroup_clone = mgroup.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(mgroup_pubkey))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::MulticastGroup(mgroup_clone.clone())));
+
+        // Call 4: User fetch inside SubscribeMulticastGroupCommand
+        let user_clone2 = user_with_sub.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::User(user_clone2.clone())));
+
+        // Call 5a: UNSPECIFIED AccessPass lookup fails (fallback path) — SubscribeMulticastGroupCommand
+        let user_clone_fallback1 = user_with_sub.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(unspecified_accesspass_pubkey))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::User(user_clone_fallback1.clone())));
+
+        // Call 5b: AccessPass fetch via client_ip fallback — keyed to (client_ip, user_owner)
+        let accesspass_clone1 = accesspass.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pubkey))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone1.clone())));
+
+        // Call 6: Execute unsubscribe transaction
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::SubscribeMulticastGroup(
+                    MulticastGroupSubscribeArgs {
+                        publisher: false,
+                        subscriber: false,
+                        client_ip,
+                        use_onchain_allocation: false,
+                    },
+                )),
+                predicate::eq(vec![
+                    AccountMeta::new(mgroup_pubkey, false),
+                    AccountMeta::new(accesspass_pubkey, false),
+                    AccountMeta::new(user_pubkey, false),
+                ]),
+            )
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        // Call 7: Wait-loop GetUserCommand — returns Activated immediately (no Updating)
+        let user_final_clone = user_activated_final.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::User(user_final_clone.clone())));
+
+        // Call 8a: UNSPECIFIED AccessPass lookup fails (fallback path) — DeleteUserCommand
+        let user_clone_fallback2 = user_activated_final.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(unspecified_accesspass_pubkey))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::User(user_clone_fallback2.clone())));
+
+        // Call 8b: AccessPass fetch via client_ip fallback — keyed to (client_ip, user_owner)
+        let accesspass_clone2 = accesspass.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pubkey))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone2.clone())));
+
+        // Call 9: Execute DeleteUser transaction
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs::default())),
+                predicate::eq(vec![
+                    AccountMeta::new(user_pubkey, false),
+                    AccountMeta::new(accesspass_pubkey, false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                ]),
+            )
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let res = DeleteUserCommand {
+            pubkey: user_pubkey,
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+    }
+
+    #[test]
     fn test_delete_user_with_onchain_deallocation() {
         let mut client = MockDoubleZeroClient::new();
 

@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Onchain Programs
   - Allow foundation to remove targets from GeolocationUser accounts via the `RemoveTarget` instruction, unblocking foundation-initiated user deletion when targets still exist
 - Client
+  - Fix `v2/status` returning empty `current_device` and `metro` for multicast subscribers by adding a `clientIP + UserType` fallback in status enrichment when DzIp and tunnel_dst matching both fail
   - Set tunnel interface administratively down before deleting during teardown, so external applications with sockets bound to the tunnel's overlay IP receive errors before the interface is removed
 - CLI
   - Include feed authority in `global-config authority get` output

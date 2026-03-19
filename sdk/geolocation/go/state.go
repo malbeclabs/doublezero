@@ -361,6 +361,9 @@ func (g *GeolocationUser) Serialize(w io.Writer) error {
 	return nil
 }
 
+// geolocationBillingConfigSize is the wire size of a GeolocationBillingConfig (1+8+8).
+const geolocationBillingConfigSize = 17
+
 // geolocationUserTargetSize is the wire size of a single GeolocationTarget (1+4+2+32+32).
 const geolocationUserTargetSize = 71
 
@@ -379,8 +382,8 @@ func (g *GeolocationUser) Deserialize(data []byte) error {
 
 	// Pre-validate the target count from raw bytes. The count sits after:
 	// code_offset(33) + code_len_prefix(4) + code(codeLen) + token_account(32) +
-	// payment_status(1) + billing(17) + status(1) = 88 + codeLen.
-	targetCountOffset := codeOffset + 4 + int(codeLen) + 32 + 1 + 17 + 1
+	// payment_status(1) + billing + status(1) = 88 + codeLen.
+	targetCountOffset := codeOffset + 4 + int(codeLen) + 32 + 1 + geolocationBillingConfigSize + 1
 	if len(data) < targetCountOffset+4 {
 		return fmt.Errorf("data too short for target count: %d bytes", len(data))
 	}

@@ -100,6 +100,11 @@ func (s *IBRLService) Teardown() error {
 		errRemovePeer = fmt.Errorf("bgp: error while deleting peer: %v", err)
 	}
 
+	slog.Info("teardown: setting tunnel interface down")
+	if err := s.nl.TunnelDown(s.Tunnel); err != nil {
+		slog.Error("teardown: error setting tunnel interface down", "error", err)
+	}
+
 	slog.Info("teardown: removing tunnel interface")
 	if err := s.nl.TunnelDelete(s.Tunnel); err != nil {
 		errRemoveTunnel = fmt.Errorf("error removing tunnel interface: %v", err)

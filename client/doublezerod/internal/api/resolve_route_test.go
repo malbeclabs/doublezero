@@ -21,6 +21,7 @@ type mockNetlinker struct {
 }
 
 func (m *mockNetlinker) TunnelAdd(*routing.Tunnel) error                  { return nil }
+func (m *mockNetlinker) TunnelDown(*routing.Tunnel) error                 { return nil }
 func (m *mockNetlinker) TunnelDelete(*routing.Tunnel) error               { return nil }
 func (m *mockNetlinker) TunnelAddrAdd(*routing.Tunnel, string, int) error { return nil }
 func (m *mockNetlinker) TunnelUp(*routing.Tunnel) error                   { return nil }

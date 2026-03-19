@@ -13,6 +13,7 @@ type Netlink struct{}
 
 type Netlinker interface {
 	TunnelAdd(*Tunnel) error
+	TunnelDown(*Tunnel) error
 	TunnelDelete(*Tunnel) error
 	// TunnelAddrAdd adds an address to a tunnel interface with the given scope (syscall.RT_SCOPE_*).
 	TunnelAddrAdd(*Tunnel, string, int) error
@@ -42,6 +43,18 @@ func (n Netlink) TunnelAdd(t *Tunnel) error {
 	}
 	return err
 }
+func (n Netlink) TunnelDown(t *Tunnel) error {
+	gre := &nl.Gretun{
+		LinkAttrs: nl.LinkAttrs{
+			Name:      t.Name,
+			EncapType: string(t.EncapType),
+		},
+		Local:  t.LocalUnderlay,
+		Remote: t.RemoteUnderlay,
+	}
+	return nl.LinkSetDown(gre)
+}
+
 func (n Netlink) TunnelDelete(t *Tunnel) error {
 	gre := &nl.Gretun{
 		LinkAttrs: nl.LinkAttrs{

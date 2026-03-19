@@ -33,8 +33,11 @@ connection diagnostics.
 
 - **Store status in S3/ClickHouse only** — already done for raw socket stats. Not queryable
   onchain and not accessible to other onchain programs.
-- **Separate PDA account per user** — avoids resizing the User account but adds a new account
-  type and complicates reads. Rejected for simplicity.
+- **Separate `UserBGPSession` PDA per user** — isolates BGP state from the User account and
+  avoids resizing it. Rejected because BGP status has a strict 1:1 relationship with the user,
+  the Device account must always be read to verify write authority regardless, and splitting the
+  data would require reading two accounts for every consumer that queries a user's connection
+  state.
 
 ## Detailed Design
 
@@ -52,21 +55,21 @@ Add three fields to the end of the `User` struct:
   transitioned to `Up`. Zero means the session has never been observed Up.
 
 3. `last_bgp_reported_at: u64` (8 bytes, DZ ledger slot) — the last slot when the
-  telemetry agent successfully wrote a BGP status change for this user. Updated only
-  when `bgp_status` transitions to a different value. Consumers can use this field to
-  detect agent silence: if `last_bgp_reported_at` is older than a threshold, the
-  `bgp_status` value should be treated as stale rather than authoritative, avoiding
-  false `Up` readings when the agent has stopped reporting.
+  telemetry agent successfully wrote a BGP status update for this user. Updated on
+  every `SetUserBGPStatus` write, whether or not `bgp_status` changed. Consumers can
+  use this field to detect agent silence: if `last_bgp_reported_at` is older than a
+  threshold, the `bgp_status` value should be treated as stale rather than
+  authoritative, avoiding false `Up` readings when the agent has stopped reporting.
 
 The `SetUserBGPStatus` instruction reallocates the account by 17 bytes on first write
 (1 + 8 + 8), with the metrics publisher covering any additional rent. `last_bgp_up_at`
-and `last_bgp_reported_at` are both updated only when the status value changes.
+is updated only when the status transitions to `Up`.
 
-### New instruction: SetUserBGPStatus (variant 94)
+### New instruction: SetUserBGPStatus (variant TBD)
 
 Accounts: user (writable), device (readonly), metrics_publisher (signer + writable).
 
-Validation: signer == device.metrics_publisher_pk, user.device_pk == device, user.status == Activated.
+Validation: signer == device.metrics_publisher_pk, user.device_pk == device.
 
 ### Telemetry collector
 
@@ -75,18 +78,21 @@ After each BGP socket collection tick in `collectBGPStateSnapshot`:
 1. Fetch activated users for this device from the serviceability program.
 2. Map each user to its BGP peer IP: `overlay_dst_ip = user.TunnelNet[0:4]`, last octet +1.
 3. For each user: Up if a socket with matching RemoteIP exists, Down otherwise.
-4. Enqueue one `SetUserBGPStatus` transaction per user into a non-blocking background
-   worker. The worker retries failed submissions independently so that a single RPC
-   error or congested transaction does not delay other users or block the collection
-   tick. The metrics publisher keypair is already loaded in the telemetry agent.
+4. For each user, submit `SetUserBGPStatus` if: (a) the computed status differs from
+   the last known onchain value, or (b) the last write was more than a configurable
+   interval ago (e.g., 1h), to keep `last_bgp_reported_at` fresh for staleness
+   detection. Submissions are enqueued into a non-blocking background worker that
+   retries independently so that a single RPC error does not delay other users or
+   block the collection tick. The metrics publisher keypair is already loaded in the
+   telemetry agent.
 
 The raw TCP snapshot upload to S3 continues unchanged.
 
 ## Impact
 
 - Serviceability program: one new instruction, seventeen new bytes on User accounts (1 byte `bgp_status` + 8 bytes `last_bgp_up_at` + 8 bytes `last_bgp_reported_at`).
-- Telemetry agent: one extra RPC call per collection tick to fetch users; N transactions
-  per tick (one per activated user on the device).
+- Telemetry agent: one extra RPC call per collection tick to fetch users; up to N transactions
+  per tick (one per user whose status changed, or whose periodic refresh interval has elapsed).
 - Read SDKs (Go, TypeScript, Python): update User deserialization for the new field.
 
 ## Security Considerations
@@ -131,15 +137,10 @@ On a devnet device with at least one activated user:
 - Should there be a grace period before marking a session `Down`? A single missed tick
   due to a transient collection error would incorrectly transition an active user to
   `Down`. One option is to require N consecutive `Down` observations before writing.
-- Since the agent only writes on status changes, `last_bgp_reported_at` will not
-  advance for stable sessions, making it impossible to distinguish a healthy long-lived
-  `Up` session from a silent agent. Should the agent periodically send a reconfirmation
-  write (e.g., every N days) even when the status has not changed, to keep
-  `last_bgp_reported_at` fresh and preserve staleness detection?
 - Should we implement per-user rate limiting to prevent RPC saturation caused by
   constant BGP flaps? A user cycling Up/Down rapidly would generate a transaction on
-  every tick; a cooldown window or minimum time-between-writes per user account could
-  bound the worst-case submission rate.
+  every state-change; a cooldown window or minimum time-between-writes per user account
+  could bound the worst-case submission rate.
 - How should recurring circuit flaps be handled? A user whose BGP session repeatedly
   drops and recovers within short windows may indicate an unstable circuit rather than
   a transient error. Should the data model track a flap counter or a flap rate to

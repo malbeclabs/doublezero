@@ -13,6 +13,7 @@ import (
 var (
 	enableSettlementTests = flag.Bool("enable-settlement-tests", false, "enable multicast settlement tests")
 	seatAmountFlag        = flag.String("seat-amount", "100", "USDC amount for seat payment in settlement test")
+	settlementHostFlag    = flag.String("settlement-host", "", "specific host to use for settlement test (default: random)")
 )
 
 func TestQA_MulticastSettlement(t *testing.T) {
@@ -25,8 +26,14 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)
 	require.NoError(t, err, "failed to create test")
 
-	// Use a single client for the settlement test.
-	client := test.RandomClient()
+	// Use a specific client if provided, otherwise pick a random one.
+	var client *qa.Client
+	if *settlementHostFlag != "" {
+		client = test.GetClient(*settlementHostFlag)
+		require.NotNil(t, client, "host %q not found", *settlementHostFlag)
+	} else {
+		client = test.RandomClient()
+	}
 	log.Info("Selected client", "host", client.Host)
 
 	// Dump diagnostics on failure.

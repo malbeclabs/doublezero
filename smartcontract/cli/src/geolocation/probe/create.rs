@@ -1,6 +1,6 @@
 use crate::{
     geoclicommand::GeoCliCommand,
-    validators::{validate_code, validate_pubkey},
+    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_sdk::geolocation::geo_probe::create::CreateGeoProbeCommand;
@@ -10,10 +10,10 @@ use std::{io::Write, net::Ipv4Addr};
 #[derive(Args, Debug)]
 pub struct CreateGeoProbeCliCommand {
     /// Unique probe code (e.g., "ams-probe-01")
-    #[arg(long, value_parser = validate_code)]
+    #[arg(long, value_name = "PROBE_CODE", value_parser = validate_code)]
     pub code: String,
-    /// Exchange account pubkey
-    #[arg(long, value_parser = validate_pubkey)]
+    /// Exchange pubkey or code
+    #[arg(long, value_name = "PROBE_EXCHANGE", value_parser = validate_pubkey_or_code)]
     pub exchange: String,
     /// Public IPv4 address where probe listens
     #[arg(long)]
@@ -28,7 +28,7 @@ pub struct CreateGeoProbeCliCommand {
 
 impl CreateGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let exchange_pk: Pubkey = self.exchange.parse().expect("validated by clap");
+        let exchange_pk = client.resolve_exchange_pk(self.exchange)?;
         let metrics_publisher_pk: Pubkey = self.signing_keypair.parse().expect("validated by clap");
 
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
@@ -69,6 +69,11 @@ mod tests {
             139, 130, 217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139,
             100, 221, 20, 137, 4, 5,
         ]);
+
+        client
+            .expect_resolve_exchange_pk()
+            .with(predicate::eq(exchange_pk.to_string()))
+            .returning(move |_| Ok(exchange_pk));
 
         client
             .expect_get_serviceability_globalstate_pk()

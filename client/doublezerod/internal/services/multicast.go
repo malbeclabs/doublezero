@@ -62,12 +62,14 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 	isPublisher := len(p.MulticastPubGroups) > 0
 	isSubscriber := len(p.MulticastSubGroups) > 0
 
+	// Store the DZ IP for status reporting regardless of publisher/subscriber role.
+	s.DoubleZeroAddr = p.DoubleZeroIP
+
 	nlri := []bgp.NLRI{}
 	if isPublisher {
 		if err = createTunnelWithIP(s.nl, tun, p.DoubleZeroIP); err != nil {
 			return fmt.Errorf("error creating tunnel interface: %v", err)
 		}
-		s.DoubleZeroAddr = p.DoubleZeroIP
 		s.MulticastPubGroups = p.MulticastPubGroups
 		// advertise DZ IP over session
 		rt, err := bgp.NewNLRI([]uint32{p.BgpLocalAsn}, s.Tunnel.LocalOverlay.String(), s.DoubleZeroAddr.String(), 32)

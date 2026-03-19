@@ -26,6 +26,8 @@ All notable changes to this project will be documented in this file.
   - Add onchain target discovery to the geoProbe agent: polls GeolocationUser accounts at 60s intervals, filters for activated+paid users, dynamically updates outbound probe targets and inbound signed TWAMP authorized keys
 - Controller
   - Retry transient Solana RPC failures when fetching onchain serviceability accounts so controller polls are more resilient to short-lived provider resets
+- Onchain Programs
+  - Serviceability: fix `SubscribeMulticastGroup` deriving the AccessPass PDA from `payer_account.key` instead of `user.owner`, which caused `user delete` to fail with "Invalid AccessPass PDA" when a foundation allowlist key signed and the user had active multicast subscriptions
 
 ### Fixed
 - Telemetry

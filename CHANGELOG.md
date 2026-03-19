@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
   - Fix duplicate tunnel_net/tunnel_id allocation by reserving addresses for links in HardDrained, SoftDrained, and Provisioning states during startup initialization
 - Onchain Programs
   - Allow foundation to remove targets from GeolocationUser accounts via the `RemoveTarget` instruction, unblocking foundation-initiated user deletion when targets still exist
+  - Serviceability: fix `SubscribeMulticastGroup` deriving the AccessPass PDA from `payer_account.key` instead of `user.owner`, which caused `user delete` to fail with "Invalid AccessPass PDA" when a foundation allowlist key signed and the user had active multicast subscriptions
 - Client
   - Fix `v2/status` returning empty `current_device` and `metro` for multicast subscribers by adding a `clientIP + UserType` fallback in status enrichment when DzIp and tunnel_dst matching both fail
   - Set tunnel interface administratively down before deleting during teardown, so external applications with sockets bound to the tunnel's overlay IP receive errors before the interface is removed

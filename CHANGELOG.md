@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.
   - Set tunnel interface administratively down before deleting during teardown, so external applications with sockets bound to the tunnel's overlay IP receive errors before the interface is removed
 - CLI
   - Add `geolocation user` subcommands to manage GeolocationUser accounts and targets: `create`, `delete`, `get`, `list`, `add-target`, `remove-target`, and `update-payment-status`
+- SDK
+  - Add GeolocationUser types, Borsh deserialization, PDA derivation, and read-only client methods (`GetGeolocationUserByCode`, `GetGeolocationUsers`) to the Go geolocation SDK
 - Controller
   - Retry transient Solana RPC failures when fetching onchain serviceability accounts so controller polls are more resilient to short-lived provider resets
 

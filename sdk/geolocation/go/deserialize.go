@@ -35,3 +35,20 @@ func DeserializeGeoProbe(data []byte) (*GeoProbe, error) {
 	}
 	return &probe, nil
 }
+
+// DeserializeGeolocationUser deserializes binary data into a GeolocationUser.
+// It validates the account type discriminator before decoding.
+func DeserializeGeolocationUser(data []byte) (*GeolocationUser, error) {
+	if len(data) < 1 {
+		return nil, fmt.Errorf("account data too short: %d bytes", len(data))
+	}
+	if AccountType(data[0]) != AccountTypeGeolocationUser {
+		return nil, fmt.Errorf("unexpected account type: got %d, want %d", data[0], AccountTypeGeolocationUser)
+	}
+
+	var user GeolocationUser
+	if err := user.Deserialize(data); err != nil {
+		return nil, fmt.Errorf("failed to deserialize geolocation user: %w", err)
+	}
+	return &user, nil
+}

@@ -107,3 +107,54 @@ func TestSDK_Geolocation_DeriveGeoProbePDA_CodeTooLong(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "exceeds max")
 }
+
+func TestSDK_Geolocation_DeriveGeolocationUserPDA(t *testing.T) {
+	t.Parallel()
+
+	programID := solana.NewWallet().PublicKey()
+	code := "geo-user-01"
+
+	pda1, bump1, err := geolocation.DeriveGeolocationUserPDA(programID, code)
+	require.NoError(t, err)
+	require.False(t, pda1.IsZero(), "PDA should not be zero")
+	require.LessOrEqual(t, int(bump1), 255, "Invalid bump seed")
+
+	// Same inputs produce same PDA (determinism)
+	pda2, bump2, err := geolocation.DeriveGeolocationUserPDA(programID, code)
+	require.NoError(t, err)
+	require.Equal(t, pda1, pda2, "PDA should be deterministic")
+	require.Equal(t, bump1, bump2, "Bump should be deterministic")
+}
+
+func TestSDK_Geolocation_DeriveGeolocationUserPDA_DifferentCodes(t *testing.T) {
+	t.Parallel()
+
+	programID := solana.NewWallet().PublicKey()
+
+	pda1, _, err := geolocation.DeriveGeolocationUserPDA(programID, "geo-user-01")
+	require.NoError(t, err)
+
+	pda2, _, err := geolocation.DeriveGeolocationUserPDA(programID, "geo-user-02")
+	require.NoError(t, err)
+
+	require.NotEqual(t, pda1, pda2, "PDAs should be different for different codes")
+}
+
+func TestSDK_Geolocation_DeriveGeolocationUserPDA_EmptyCode(t *testing.T) {
+	t.Parallel()
+
+	programID := solana.NewWallet().PublicKey()
+	_, _, err := geolocation.DeriveGeolocationUserPDA(programID, "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "code is required")
+}
+
+func TestSDK_Geolocation_DeriveGeolocationUserPDA_CodeTooLong(t *testing.T) {
+	t.Parallel()
+
+	programID := solana.NewWallet().PublicKey()
+	longCode := strings.Repeat("a", geolocation.MaxCodeLength+1)
+	_, _, err := geolocation.DeriveGeolocationUserPDA(programID, longCode)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exceeds max")
+}

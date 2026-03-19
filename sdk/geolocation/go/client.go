@@ -12,6 +12,7 @@ import (
 
 var (
 	ErrAccountNotFound = errors.New("account not found")
+	ErrOwnerMismatch   = errors.New("account owner does not match program ID")
 )
 
 type Client struct {
@@ -144,4 +145,67 @@ func (c *Client) GetGeoProbeKeys(ctx context.Context) ([]solana.PublicKey, error
 		keys[i] = acct.Pubkey
 	}
 	return keys, nil
+}
+
+// GetGeolocationUserByCode fetches a GeolocationUser account by its code.
+func (c *Client) GetGeolocationUserByCode(ctx context.Context, code string) (*GeolocationUser, error) {
+	pda, _, err := DeriveGeolocationUserPDA(c.programID, code)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive PDA: %w", err)
+	}
+
+	account, err := c.rpc.GetAccountInfo(ctx, pda)
+	if err != nil {
+		if errors.Is(err, solanarpc.ErrNotFound) {
+			return nil, ErrAccountNotFound
+		}
+		return nil, fmt.Errorf("failed to get account data: %w", err)
+	}
+	if account.Value == nil {
+		return nil, ErrAccountNotFound
+	}
+	if account.Value.Owner != c.programID {
+		return nil, fmt.Errorf("%w: got %s, want %s", ErrOwnerMismatch, account.Value.Owner, c.programID)
+	}
+
+	user, err := DeserializeGeolocationUser(account.Value.Data.GetBinary())
+	if err != nil {
+		return nil, fmt.Errorf("failed to deserialize geolocation user: %w", err)
+	}
+	return user, nil
+}
+
+// GetGeolocationUsers fetches all GeolocationUser accounts for the program,
+// returning each user paired with its onchain account pubkey.
+func (c *Client) GetGeolocationUsers(ctx context.Context) ([]KeyedGeolocationUser, error) {
+	opts := &solanarpc.GetProgramAccountsOpts{
+		Filters: []solanarpc.RPCFilter{
+			{
+				Memcmp: &solanarpc.RPCFilterMemcmp{
+					Offset: 0,
+					Bytes:  solana.Base58([]byte{byte(AccountTypeGeolocationUser)}),
+				},
+			},
+		},
+	}
+
+	accounts, err := c.rpc.GetProgramAccountsWithOpts(ctx, c.programID, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get program accounts: %w", err)
+	}
+
+	users := make([]KeyedGeolocationUser, 0, len(accounts))
+	for _, acct := range accounts {
+		if acct.Account.Owner != c.programID {
+			c.log.Warn("skipping account with wrong owner", "pubkey", acct.Pubkey, "owner", acct.Account.Owner)
+			continue
+		}
+		user, err := DeserializeGeolocationUser(acct.Account.Data.GetBinary())
+		if err != nil {
+			c.log.Warn("failed to deserialize geolocation user account", "pubkey", acct.Pubkey, "error", err)
+			continue
+		}
+		users = append(users, KeyedGeolocationUser{Pubkey: acct.Pubkey, GeolocationUser: *user})
+	}
+	return users, nil
 }

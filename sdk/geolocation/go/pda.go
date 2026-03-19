@@ -36,6 +36,23 @@ func DeriveGeoProbePDA(programID solana.PublicKey, code string) (solana.PublicKe
 	return solana.FindProgramAddress(seeds, programID)
 }
 
+// DeriveGeolocationUserPDA derives the PDA for a GeolocationUser account.
+// Seeds: ["doublezero", "geouser", code.as_bytes()]
+func DeriveGeolocationUserPDA(programID solana.PublicKey, code string) (solana.PublicKey, uint8, error) {
+	if code == "" {
+		return solana.PublicKey{}, 0, fmt.Errorf("code is required")
+	}
+	if len(code) > MaxCodeLength {
+		return solana.PublicKey{}, 0, fmt.Errorf("code length %d exceeds max %d", len(code), MaxCodeLength)
+	}
+	seeds := [][]byte{
+		[]byte(SeedPrefix),
+		[]byte(GeolocationUserSeed),
+		[]byte(code),
+	}
+	return solana.FindProgramAddress(seeds, programID)
+}
+
 // DeriveProgramDataPDA derives the program data PDA for a BPF Upgradeable program.
 // Seeds: [programID] with BPF Loader Upgradeable as the program.
 func DeriveProgramDataPDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {

@@ -6,9 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- `shreds pay`: block payment when client IP already has an active multicast user on serviceability
+- `shreds withdraw`: allow `--unsafe-now` without a payment escrow (sends only the instant withdrawal request)
+- `shreds withdraw`: exit cleanly instead of erroring when no escrow exists and `--unsafe-now` is not set
 - add `--unsafe-now` flag to `shreds withdraw` for instant seat withdrawal request
 - add `--now` flag to `reservation pay` for instant seat allocation
-- combine `reservation initialize-seat` and `reservation fund` into a single `reservation pay` command that initializes seat/escrow on-demand before funding
+- combine `shreds initialize-seat` and `shreds fund` into a single `shreds pay` command that initializes seat/escrow on-demand before funding
 - rename `reservation` command to `shreds`
 
 ## [0.4.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.4.1) - 2026-02-26

@@ -58,9 +58,11 @@ impl WithdrawCommand {
         let client_ip_bits = u32::from(self.client_ip);
         let (client_seat_key, _) = state::find_client_seat_address(&device, client_ip_bits);
 
-        // Verify the payment escrow exists before submitting the transaction.
+        // Check if the payment escrow exists.
         let (escrow_key, _) = state::find_payment_escrow_address(&client_seat_key, &wallet_key);
-        if wallet.connection.get_account(&escrow_key).await.is_err() {
+        let escrow_exists = wallet.connection.get_account(&escrow_key).await.is_ok();
+
+        if !escrow_exists && !self.unsafe_now {
             bail!("No payment escrow found for this seat and wallet. Nothing to withdraw.");
         }
 
@@ -76,17 +78,19 @@ impl WithdrawCommand {
             compute_unit_limit += 50_000;
         }
 
-        instructions.push(try_build_instruction(
-            &ID,
-            ClosePaymentEscrowAccounts::new(
-                &device,
-                client_ip_bits,
-                &wallet_key,
-                &usdc_mint_key,
-                self.refund_token_account.as_ref(),
-            ),
-            &ReservationInstructionData::ClosePaymentEscrow,
-        )?);
+        if escrow_exists {
+            instructions.push(try_build_instruction(
+                &ID,
+                ClosePaymentEscrowAccounts::new(
+                    &device,
+                    client_ip_bits,
+                    &wallet_key,
+                    &usdc_mint_key,
+                    self.refund_token_account.as_ref(),
+                ),
+                &ReservationInstructionData::ClosePaymentEscrow,
+            )?);
+        }
 
         instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
             compute_unit_limit,

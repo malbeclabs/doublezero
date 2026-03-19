@@ -2,7 +2,11 @@ use std::net::Ipv4Addr;
 
 use anyhow::{Result, bail};
 use clap::Args;
-use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
+use doublezero_serviceability::{pda::get_user_pda, state::user::UserType};
+use doublezero_solana_client_tools::{
+    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
+    rpc::DoubleZeroLedgerConnection,
+};
 use doublezero_solana_sdk::{
     reservation::{
         ID,
@@ -17,8 +21,11 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
 use spl_associated_token_account_interface::address::get_associated_token_address;
+
+use super::serviceability_program_id;
 
 /*
    doublezero-solana reservation pay \
@@ -62,6 +69,26 @@ impl PayCommand {
 
         let device = self.device_args.resolve(network_env).await?;
         let client_ip_bits = u32::from(self.client_ip);
+
+        // Best-effort check: verify this client IP doesn't already have a Multicast
+        // user on serviceability. If so, the shred oracle will fail to create a new
+        // subscribe user at settlement time. This is not enforced on-chain.
+        if let Ok(svc_program_id) = serviceability_program_id(network_env) {
+            let dz_connection = DoubleZeroLedgerConnection::from(network_env);
+            let (user_pda, _) = get_user_pda(&svc_program_id, &self.client_ip, UserType::Multicast);
+            if let Ok(Some(_)) = dz_connection
+                .get_account_with_commitment(&user_pda, CommitmentConfig::confirmed())
+                .await
+                .map(|r| r.value)
+            {
+                bail!(
+                    "Client IP {} already has an active multicast user on serviceability. \
+                     Disconnect first (doublezero disconnect) before purchasing a \
+                     shred subscription.",
+                    self.client_ip,
+                );
+            }
+        }
 
         // Derive PDAs.
         let (client_seat_key, seat_bump) = state::find_client_seat_address(&device, client_ip_bits);

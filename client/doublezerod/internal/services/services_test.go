@@ -58,6 +58,11 @@ func (m *MockNetlink) TunnelAdd(t *routing.Tunnel) error {
 	return nil
 }
 
+func (m *MockNetlink) TunnelDown(t *routing.Tunnel) error {
+	m.callLog = append(m.callLog, "TunnelDown")
+	return nil
+}
+
 func (m *MockNetlink) TunnelDelete(n *routing.Tunnel) error {
 	m.callLog = append(m.callLog, "TunnelDelete")
 	m.tunRemoved = n

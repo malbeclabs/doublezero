@@ -173,6 +173,13 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 		return nil, fmt.Errorf("invalid environment %q, must be one of: %s, %s, %s", env, EnvMainnetBeta, EnvTestnet, EnvDevnet)
 	}
 
+	// Validate reservation program ID if set (empty means not yet deployed to this env).
+	if config.ReservationProgramID != "" {
+		if _, err := solana.PublicKeyFromBase58(config.ReservationProgramID); err != nil {
+			return nil, fmt.Errorf("failed to parse reservation program ID: %w", err)
+		}
+	}
+
 	ledgerRPCURL := os.Getenv("DZ_LEDGER_RPC_URL")
 	if ledgerRPCURL != "" {
 		config.LedgerPublicRPCURL = ledgerRPCURL

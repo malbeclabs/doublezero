@@ -370,10 +370,10 @@ func (q *QAAgent) SeatPay(ctx context.Context, req *pb.SeatPayRequest) (*pb.Resu
 		args = append(args, "--url", req.GetSolanaRpcUrl())
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "doublezero-solana", args...)
+	cmd := exec.CommandContext(cmdCtx, "doublezero-solana", args...)
 	if req.GetReservationProgramId() != "" {
 		cmd.Env = append(cmd.Environ(), "RESERVATION_PROGRAM_ID="+req.GetReservationProgramId())
 	}
@@ -406,10 +406,10 @@ func (q *QAAgent) SeatWithdraw(ctx context.Context, req *pb.SeatWithdrawRequest)
 		args = append(args, "--url", req.GetSolanaRpcUrl())
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "doublezero-solana", args...)
+	cmd := exec.CommandContext(cmdCtx, "doublezero-solana", args...)
 	if req.GetReservationProgramId() != "" {
 		cmd.Env = append(cmd.Environ(), "RESERVATION_PROGRAM_ID="+req.GetReservationProgramId())
 	}

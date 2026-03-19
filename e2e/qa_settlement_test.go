@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"context"
 	"flag"
 	"testing"
 
@@ -36,8 +37,16 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 	log.Info("Selected client", "host", client.Host)
 
-	// Dump diagnostics on failure.
+	// Dump diagnostics on failure and attempt seat withdrawal cleanup
+	// to avoid leaving orphaned reservations with real USDC.
+	var device *qa.Device
 	t.Cleanup(func() {
+		if device != nil {
+			cleanupCtx := context.Background()
+			if withdrawErr := client.SeatWithdraw(cleanupCtx, device.PubKey, true); withdrawErr != nil {
+				log.Info("Cleanup: seat withdraw failed (may already be withdrawn)", "error", withdrawErr)
+			}
+		}
 		if !t.Failed() {
 			return
 		}
@@ -51,7 +60,7 @@ func TestQA_MulticastSettlement(t *testing.T) {
 
 	// Step 2: Find the closest device by latency.
 	log.Info("Finding closest device")
-	device, err := client.ClosestDevice(ctx)
+	device, err = client.ClosestDevice(ctx)
 	require.NoError(t, err, "failed to find closest device")
 	log.Info("Closest device", "code", device.Code, "pubkey", device.PubKey)
 

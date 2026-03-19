@@ -52,6 +52,7 @@ impl RemoveTargetCliCommand {
         };
 
         let probe_pk = super::add_target::resolve_probe(client, self.probe, self.exchange)?;
+        let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
         let sig = client.remove_target(RemoveTargetCommand {
             code: self.code,
@@ -59,6 +60,7 @@ impl RemoveTargetCliCommand {
             target_type,
             ip_address,
             target_pk,
+            serviceability_globalstate_pk,
         })?;
 
         writeln!(out, "Signature: {sig}")?;
@@ -95,6 +97,7 @@ mod tests {
         let mut client = MockGeoCliCommand::new();
 
         let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
+        let svc_gs_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange_pk = Pubkey::new_unique();
         let probe = make_probe(exchange_pk);
         let signature = Signature::new_unique();
@@ -107,6 +110,10 @@ mod tests {
             .returning(move |_| Ok((probe_pk, probe.clone())));
 
         client
+            .expect_get_serviceability_globalstate_pk()
+            .returning(move || svc_gs_pk);
+
+        client
             .expect_remove_target()
             .with(predicate::eq(RemoveTargetCommand {
                 code: "geo-user-01".to_string(),
@@ -114,6 +121,7 @@ mod tests {
                 target_type: GeoLocationTargetType::Outbound,
                 ip_address: Ipv4Addr::new(8, 8, 8, 8),
                 target_pk: Pubkey::default(),
+                serviceability_globalstate_pk: svc_gs_pk,
             }))
             .returning(move |_| Ok(signature));
 
@@ -137,6 +145,7 @@ mod tests {
         let mut client = MockGeoCliCommand::new();
 
         let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
+        let svc_gs_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange_pk = Pubkey::new_unique();
         let probe = make_probe(exchange_pk);
         let target_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -150,6 +159,10 @@ mod tests {
             .returning(move |_| Ok((probe_pk, probe.clone())));
 
         client
+            .expect_get_serviceability_globalstate_pk()
+            .returning(move || svc_gs_pk);
+
+        client
             .expect_remove_target()
             .with(predicate::eq(RemoveTargetCommand {
                 code: "geo-user-01".to_string(),
@@ -157,6 +170,7 @@ mod tests {
                 target_type: GeoLocationTargetType::Inbound,
                 ip_address: Ipv4Addr::UNSPECIFIED,
                 target_pk,
+                serviceability_globalstate_pk: svc_gs_pk,
             }))
             .returning(move |_| Ok(signature));
 

@@ -196,15 +196,12 @@ pub fn process_subscribe_multicastgroup(
 
     let accesspass = AccessPass::try_from(accesspass_account)?;
 
-    let ip_seed = if accesspass.allow_multiple_ip() {
-        Ipv4Addr::UNSPECIFIED
-    } else {
-        user.client_ip
-    };
-
-    let (accesspass_pda, _) = get_accesspass_pda(program_id, &ip_seed, &user.owner);
-    assert_eq!(
-        accesspass_account.key, &accesspass_pda,
+    let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
+    let (accesspass_dynamic_pda, _) =
+        get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
+    assert!(
+        accesspass_account.key == &accesspass_pda
+            || accesspass_account.key == &accesspass_dynamic_pda,
         "Invalid AccessPass PDA",
     );
 

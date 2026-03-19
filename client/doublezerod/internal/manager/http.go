@@ -249,7 +249,7 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 			}
 		}
 
-		// Fallback: match by tunnel_dst to device public_ip (for multicast subscribers without dz_ip).
+		// Fallback: match by tunnel_dst to device public_ip.
 		if matchedDevice == nil && svc.TunnelDst != nil {
 			tunnelDst := svc.TunnelDst.To4()
 			if tunnelDst != nil {
@@ -257,6 +257,23 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 				copy(key[:], tunnelDst)
 				if d, ok := deviceByPublicIP[key]; ok {
 					matchedDevice = d
+				}
+			}
+		}
+
+		// Fallback: match by client_ip + user_type (e.g. multicast subscribers
+		// whose tunnel endpoint differs from the device public IP).
+		if matchedDevice == nil {
+			clientIP4 := n.clientIP.To4()
+			for i := range users {
+				u := &users[i]
+				if net.IP(u.ClientIp[:]).Equal(clientIP4) && mapUserType(u.UserType) == svc.UserType {
+					matchedUser = u
+					devPK := [32]byte(u.DevicePubKey)
+					if d, ok := devicesByPK[devPK]; ok {
+						matchedDevice = &d
+					}
+					break
 				}
 			}
 		}

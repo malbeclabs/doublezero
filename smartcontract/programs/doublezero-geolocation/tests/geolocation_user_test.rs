@@ -531,12 +531,18 @@ fn build_remove_target_ix(
     payer: &Pubkey,
     args: RemoveTargetArgs,
 ) -> Instruction {
+    let program_config_pda = doublezero_geolocation::pda::get_program_config_pda(program_id).0;
+    let serviceability_globalstate_pda =
+        doublezero_serviceability::pda::get_globalstate_pda(&serviceability_program_id()).0;
+
     Instruction::new_with_borsh(
         *program_id,
         &GeolocationInstruction::RemoveTarget(args),
         vec![
             AccountMeta::new(*user_pda, false),
             AccountMeta::new(*probe_pda, false),
+            AccountMeta::new_readonly(program_config_pda, false),
+            AccountMeta::new_readonly(serviceability_globalstate_pda, false),
             AccountMeta::new(*payer, true),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
         ],
@@ -924,6 +930,190 @@ async fn test_remove_target_not_found() {
             assert_eq!(code, GeolocationError::TargetNotFound as u32);
         }
         _ => panic!("Expected TargetNotFound error, got: {:?}", err),
+    }
+}
+
+#[tokio::test]
+async fn test_remove_target_foundation_can_remove() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-rm-f",
+    )
+    .await;
+
+    // Create a user owned by a different keypair.
+    let user_owner = Keypair::new();
+    let transfer_ix = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &user_owner.pubkey(),
+        2_000_000_000,
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let user_code = "user-rm-f";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &user_owner.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&user_owner.pubkey()),
+        &[&user_owner],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+
+    // Owner adds a target
+    let add_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &user_owner.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            location_offset_port: 8923,
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[add_ix],
+        Some(&user_owner.pubkey()),
+        &[&user_owner],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Foundation (payer) removes the target
+    let rm_ix = build_remove_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        RemoveTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[rm_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert!(user.targets.is_empty());
+}
+
+#[tokio::test]
+async fn test_remove_target_unauthorized_non_owner() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-rm-u",
+    )
+    .await;
+
+    let user_code = "user-rm-u";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+
+    // Owner (payer) adds a target
+    let add_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            location_offset_port: 8923,
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[add_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Random non-owner, non-foundation signer tries to remove
+    let random_signer = Keypair::new();
+    let program_config_pda = doublezero_geolocation::pda::get_program_config_pda(&program_id).0;
+    let serviceability_globalstate_pda =
+        doublezero_serviceability::pda::get_globalstate_pda(&serviceability_program_id()).0;
+
+    let rm_ix = Instruction::new_with_borsh(
+        program_id,
+        &GeolocationInstruction::RemoveTarget(RemoveTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            target_pk: Pubkey::default(),
+        }),
+        vec![
+            AccountMeta::new(user_pda, false),
+            AccountMeta::new(probe_pda, false),
+            AccountMeta::new_readonly(program_config_pda, false),
+            AccountMeta::new_readonly(serviceability_globalstate_pda, false),
+            AccountMeta::new(random_signer.pubkey(), true),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+        ],
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[rm_ix],
+        Some(&payer.pubkey()),
+        &[&payer, &random_signer],
+        *recent_blockhash.read().await,
+    );
+    let result = banks_client.process_transaction(tx).await;
+    let err = result.unwrap_err().unwrap();
+    match err {
+        TransactionError::InstructionError(0, InstructionError::Custom(code)) => {
+            assert_eq!(code, GeolocationError::NotAllowed as u32);
+        }
+        _ => panic!("Expected NotAllowed error, got: {:?}", err),
     }
 }
 

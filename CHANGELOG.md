@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+- Onchain Programs
+  - Allow foundation to remove targets from GeolocationUser accounts via the `RemoveTarget` instruction, unblocking foundation-initiated user deletion when targets still exist
 - Client
   - Set tunnel interface administratively down before deleting during teardown, so external applications with sockets bound to the tunnel's overlay IP receive errors before the interface is removed
 - CLI

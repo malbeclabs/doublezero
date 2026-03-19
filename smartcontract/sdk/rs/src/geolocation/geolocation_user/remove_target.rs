@@ -17,6 +17,7 @@ pub struct RemoveTargetCommand {
     pub target_type: GeoLocationTargetType,
     pub ip_address: Ipv4Addr,
     pub target_pk: Pubkey,
+    pub serviceability_globalstate_pk: Pubkey,
 }
 
 impl RemoveTargetCommand {
@@ -27,6 +28,7 @@ impl RemoveTargetCommand {
 
         let program_id = client.get_program_id();
         let (user_pda, _) = pda::get_geolocation_user_pda(&program_id, &code);
+        let (config_pda, _) = pda::get_program_config_pda(&program_id);
 
         client.execute_transaction(
             GeolocationInstruction::RemoveTarget(RemoveTargetArgs {
@@ -37,6 +39,8 @@ impl RemoveTargetCommand {
             vec![
                 AccountMeta::new(user_pda, false),
                 AccountMeta::new(self.probe_pk, false),
+                AccountMeta::new_readonly(config_pda, false),
+                AccountMeta::new_readonly(self.serviceability_globalstate_pk, false),
             ],
         )
     }
@@ -57,8 +61,10 @@ mod tests {
 
         let code = "geo-user-01";
         let probe_pk = Pubkey::new_unique();
+        let svc_gs = Pubkey::new_unique();
 
         let (user_pda, _) = pda::get_geolocation_user_pda(&program_id, code);
+        let (config_pda, _) = pda::get_program_config_pda(&program_id);
 
         client
             .expect_execute_transaction()
@@ -71,6 +77,8 @@ mod tests {
                 predicate::eq(vec![
                     AccountMeta::new(user_pda, false),
                     AccountMeta::new(probe_pk, false),
+                    AccountMeta::new_readonly(config_pda, false),
+                    AccountMeta::new_readonly(svc_gs, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
@@ -81,6 +89,7 @@ mod tests {
             target_type: GeoLocationTargetType::Outbound,
             ip_address: Ipv4Addr::new(8, 8, 8, 8),
             target_pk: Pubkey::default(),
+            serviceability_globalstate_pk: svc_gs,
         };
 
         let result = command.execute(&client);

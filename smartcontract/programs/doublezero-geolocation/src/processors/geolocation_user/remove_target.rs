@@ -1,5 +1,6 @@
 use crate::{
     error::GeolocationError,
+    processors::check_foundation_allowlist,
     serializer::try_acc_write,
     state::{
         geo_probe::GeoProbe,
@@ -32,6 +33,8 @@ pub fn process_remove_target(
 
     let user_account = next_account_info(accounts_iter)?;
     let probe_account = next_account_info(accounts_iter)?;
+    let program_config_account = next_account_info(accounts_iter)?;
+    let serviceability_globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
 
@@ -61,8 +64,12 @@ pub fn process_remove_target(
     let mut user = GeolocationUser::try_from(user_account)?;
 
     if user.owner != *payer_account.key {
-        msg!("Signer is not the account owner");
-        return Err(GeolocationError::Unauthorized.into());
+        check_foundation_allowlist(
+            program_config_account,
+            serviceability_globalstate_account,
+            payer_account,
+            program_id,
+        )?;
     }
 
     let mut probe = GeoProbe::try_from(probe_account)?;

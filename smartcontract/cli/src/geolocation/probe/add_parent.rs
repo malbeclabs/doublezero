@@ -1,25 +1,24 @@
 use crate::{
     geoclicommand::GeoCliCommand,
-    validators::{validate_code, validate_pubkey},
+    validators::{validate_code, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_sdk::geolocation::geo_probe::add_parent_device::AddParentDeviceCommand;
-use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct AddParentGeoProbeCliCommand {
     /// Probe code
-    #[arg(long, value_parser = validate_code)]
+    #[arg(long, value_name = "PROBE_CODE", value_parser = validate_code)]
     pub code: String,
-    /// Device account pubkey to add as parent
-    #[arg(long, value_parser = validate_pubkey)]
+    /// Device pubkey or code to add as parent
+    #[arg(long, value_name = "PARENT_DEVICE", value_parser = validate_pubkey_or_code)]
     pub device: String,
 }
 
 impl AddParentGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let device_pk: Pubkey = self.device.parse().expect("validated by clap");
+        let device_pk = client.resolve_device_pk(self.device)?;
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
         let sig = client.add_parent_device(AddParentDeviceCommand {
@@ -53,6 +52,11 @@ mod tests {
             139, 130, 217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139,
             100, 221, 20, 137, 4, 5,
         ]);
+
+        client
+            .expect_resolve_device_pk()
+            .with(predicate::eq(device_pk.to_string()))
+            .returning(move |_| Ok(device_pk));
 
         client
             .expect_get_serviceability_globalstate_pk()

@@ -6,7 +6,7 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct DeleteGeoProbeCliCommand {
     /// Probe code to delete
-    #[arg(long, value_parser = validate_code)]
+    #[arg(long, value_name = "PROBE_CODE", value_parser = validate_code)]
     pub code: String,
     /// Skip confirmation prompt
     #[arg(long, default_value_t = false)]

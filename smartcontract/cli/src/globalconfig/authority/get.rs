@@ -20,6 +20,8 @@ pub struct AuthorityDisplay {
     pub activator_authority: Pubkey,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub access_authority: Pubkey,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub feed_authority: Pubkey,
 }
 
 impl GetAuthorityCliCommand {
@@ -29,6 +31,7 @@ impl GetAuthorityCliCommand {
         let config_display = AuthorityDisplay {
             activator_authority: gstate.activator_authority_pk,
             access_authority: gstate.sentinel_authority_pk,
+            feed_authority: gstate.feed_authority_pk,
         };
 
         if self.json {
@@ -63,6 +66,7 @@ mod tests {
         let gstate_pubkey = Pubkey::new_unique();
         let activator_authority = Pubkey::new_unique();
         let sentinel_authority = Pubkey::new_unique();
+        let feed_authority = Pubkey::new_unique();
         let globalstate = GlobalState {
             account_type: AccountType::GlobalState,
             bump_seed: 0,
@@ -77,7 +81,7 @@ mod tests {
             health_oracle_pk: Pubkey::default(),
             qa_allowlist: vec![],
             feature_flags: 0,
-            feed_authority_pk: Pubkey::default(),
+            feed_authority_pk: feed_authority,
         };
 
         client
@@ -103,6 +107,10 @@ mod tests {
             has_row("access_authority", &sentinel_authority.to_string()),
             "access_authority row should contain value"
         );
+        assert!(
+            has_row("feed_authority", &feed_authority.to_string()),
+            "feed_authority row should contain value"
+        );
 
         // JSON output
         let mut output = Vec::new();
@@ -117,6 +125,10 @@ mod tests {
         assert_eq!(
             json["access_authority"].as_str().unwrap(),
             sentinel_authority.to_string()
+        );
+        assert_eq!(
+            json["feed_authority"].as_str().unwrap(),
+            feed_authority.to_string()
         );
     }
 }

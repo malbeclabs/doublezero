@@ -10,11 +10,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var seatAmountFlag = flag.String("seat-amount", "", "USDC amount for seat payment in settlement test")
+var (
+	enableSettlementTests = flag.Bool("enable-settlement-tests", false, "enable multicast settlement tests")
+	seatAmountFlag        = flag.String("seat-amount", "100", "USDC amount for seat payment in settlement test")
+)
 
 func TestQA_MulticastSettlement(t *testing.T) {
-	if *seatAmountFlag == "" {
-		t.Skip("Skipping: --seat-amount flag not provided")
+	if !*enableSettlementTests {
+		t.Skip("Skipping: --enable-settlement-tests flag not set")
 	}
 
 	log := newTestLogger(t)

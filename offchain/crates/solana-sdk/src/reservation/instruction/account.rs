@@ -66,7 +66,7 @@ impl From<InitializePaymentEscrowAccounts> for Vec<AccountMeta> {
     fn from(accounts: InitializePaymentEscrowAccounts) -> Self {
         vec![
             AccountMeta::new_readonly(accounts.program_config_key, false),
-            AccountMeta::new_readonly(accounts.client_seat_key, false),
+            AccountMeta::new(accounts.client_seat_key, false),
             AccountMeta::new(accounts.withdraw_authority_key, true),
             AccountMeta::new(accounts.new_payment_escrow_key, false),
             AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
@@ -128,7 +128,7 @@ impl From<ClosePaymentEscrowAccounts> for Vec<AccountMeta> {
             AccountMeta::new_readonly(accounts.execution_controller_key, false),
             AccountMeta::new(accounts.payment_escrow_key, false),
             AccountMeta::new(accounts.withdraw_authority_key, true),
-            AccountMeta::new_readonly(accounts.client_seat_key, false),
+            AccountMeta::new(accounts.client_seat_key, false),
             AccountMeta::new_readonly(accounts.device_history_key, false),
             AccountMeta::new(accounts.device_history_usdc_token_account_key, false),
             AccountMeta::new(accounts.refund_usdc_token_account_key, false),
@@ -225,7 +225,7 @@ impl From<RequestInstantSeatWithdrawalAccounts> for Vec<AccountMeta> {
         vec![
             AccountMeta::new_readonly(accounts.program_config_key, false),
             AccountMeta::new(accounts.execution_controller_key, false),
-            AccountMeta::new_readonly(accounts.client_seat_key, false),
+            AccountMeta::new(accounts.client_seat_key, false),
             AccountMeta::new(accounts.payer_key, true),
             AccountMeta::new(accounts.withdraw_seat_request_key, false),
             AccountMeta::new_readonly(solana_sdk::system_program::ID, false),

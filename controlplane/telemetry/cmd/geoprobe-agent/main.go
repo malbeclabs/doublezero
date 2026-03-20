@@ -724,10 +724,13 @@ func runMeasurementLoop(
 			for _, t := range update.Targets {
 				newSet[t.String()] = t
 			}
+			var newlyAdded []geoprobe.ProbeAddress
 			for key, addr := range newSet {
 				if _, exists := oldSet[key]; !exists {
 					if err := pinger.AddProbe(ctx, addr); err != nil {
 						log.Warn("Failed to add discovered target probe", "target", addr, "error", err)
+					} else {
+						newlyAdded = append(newlyAdded, addr)
 					}
 				}
 			}
@@ -740,6 +743,20 @@ func runMeasurementLoop(
 			}
 			targets = update.Targets
 			log.Info("Updated targets from discovery", "totalTargets", len(targets))
+
+			// Immediately probe newly discovered targets so they don't
+			// have to wait for the next measurement ticker.
+			if len(newlyAdded) > 0 {
+				rttData := make(map[geoprobe.ProbeAddress]uint64, len(newlyAdded))
+				for _, addr := range newlyAdded {
+					if rttNs, ok := pinger.MeasureOne(ctx, addr); ok {
+						rttData[addr] = rttNs
+					}
+				}
+				if len(rttData) > 0 {
+					sendCompositeOffsets(ctx, log, rttData, cache, signer, senderConn, getCurrentSlot)
+				}
+			}
 
 		case keyUpdate := <-inboundKeyCh:
 			signedReflector.SetAuthorizedKeys(keyUpdate.Keys)
@@ -784,16 +801,33 @@ func runMeasurementCycle(
 		log.Debug("target measurement result", "target", addr.Host, "rtt_ms", float64(rttNs)/1000000.0)
 	}
 
+	sent := sendCompositeOffsets(ctx, log, rttData, cache, signer, senderConn, getCurrentSlot)
+
+	log.Info("Completed measurement cycle",
+		"measured", len(rttData),
+		"sent", sent,
+		"total_targets", len(targets))
+}
+
+func sendCompositeOffsets(
+	ctx context.Context,
+	log *slog.Logger,
+	rttData map[geoprobe.ProbeAddress]uint64,
+	cache *offsetCache,
+	signer *geoprobe.OffsetSigner,
+	senderConn *net.UDPConn,
+	getCurrentSlot func(ctx context.Context) (uint64, error),
+) int {
 	dzdOffset := cache.GetBest()
 	if dzdOffset == nil {
 		log.Warn("No valid DZD offsets in cache, skipping composite generation")
-		return
+		return 0
 	}
 
 	slot, err := getCurrentSlot(ctx)
 	if err != nil {
 		log.Error("Failed to get current slot", "error", err)
-		return
+		return 0
 	}
 
 	log.Debug("fetched current slot", "slot", slot)
@@ -835,8 +869,5 @@ func runMeasurementCycle(
 			"ref_sender_pubkey", solana.PublicKeyFromBytes(dzdOffset.SenderPubkey[:]))
 	}
 
-	log.Info("Completed measurement cycle",
-		"measured", len(rttData),
-		"sent", sentCount,
-		"total_targets", len(targets))
+	return sentCount
 }

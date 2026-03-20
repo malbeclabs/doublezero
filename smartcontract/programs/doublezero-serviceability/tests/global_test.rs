@@ -728,6 +728,9 @@ async fn test_doublezero_program() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             desired_status: Some(LinkDesiredStatus::Activated),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..LinkUpdateArgs::default()
         }),
         vec![

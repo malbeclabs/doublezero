@@ -341,6 +341,9 @@ async fn test_activate_link_with_onchain_allocation() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             desired_status: Some(LinkDesiredStatus::Activated),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -1073,6 +1076,9 @@ async fn test_closeaccount_link_with_deallocation() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::SoftDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -1655,6 +1661,9 @@ async fn test_delete_link_atomic_with_deallocation() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::SoftDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -1763,6 +1772,9 @@ async fn test_delete_link_atomic_backward_compat() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::SoftDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![

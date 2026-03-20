@@ -585,6 +585,9 @@ async fn test_dzx_link() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             desired_status: Some(LinkDesiredStatus::Activated),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -698,6 +701,9 @@ async fn test_dzx_link() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             delay_override_ns: Some(500000),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -728,6 +734,9 @@ async fn test_dzx_link() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::HardDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -757,6 +766,9 @@ async fn test_dzx_link() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::SoftDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -785,6 +797,9 @@ async fn test_dzx_link() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::Activated),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -813,6 +828,9 @@ async fn test_dzx_link() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::SoftDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -842,6 +860,9 @@ async fn test_dzx_link() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::SoftDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![

@@ -603,6 +603,9 @@ async fn test_wan_link() {
             delay_override_ns: Some(0),
             status: None,
             desired_status: Some(LinkDesiredStatus::Activated),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
@@ -663,6 +666,9 @@ async fn test_wan_link() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::HardDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -691,6 +697,9 @@ async fn test_wan_link() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::SoftDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -719,6 +728,9 @@ async fn test_wan_link() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::Activated),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -748,6 +760,9 @@ async fn test_wan_link() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::SoftDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -2333,6 +2348,9 @@ async fn test_link_delete_from_soft_drained() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::SoftDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -2421,6 +2439,9 @@ async fn test_link_delete_from_hard_drained() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::HardDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![

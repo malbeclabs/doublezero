@@ -4378,3 +4378,825 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
 
     println!("[PASS] test_delete_user_atomic_decrements_multicast_subscribers_count");
 }
+
+// ============================================================================
+// Legacy Path (DeleteUser dz_prefix_count=0 → CloseAccountUser) Counter Tests
+// ============================================================================
+
+/// Verify that legacy CloseAccountUser decrements `multicast_subscribers_count`
+/// (not `multicast_publishers_count`) when `multicast_publisher=false` at closeaccount time.
+///
+/// This test exercises the scenario where a user was once a publisher but unsubscribed via
+/// the legacy path (status→Updating), then re-activated (which resets multicast_publisher=false
+/// because publishers list is empty). At closeaccount time, multicast_publisher=false so the
+/// subscribers counter should be decremented.
+///
+/// Note: this test name was corrected — the user ends up as a subscriber at closeaccount time
+/// because the legacy re-activation after unsubscribe resets multicast_publisher to false.
+#[tokio::test]
+async fn test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_subscribers_count() {
+    println!("[TEST] test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_subscribers_count");
+
+    let client_ip = [100, 0, 0, 60];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
+    ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
+
+    // Step 1: Initial activation (no publishers → multicast_publisher=false)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 2: Create and activate a multicast group
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (multicastgroup_pubkey, _) =
+        get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "ca-pub-mgroup".to_string(),
+            max_bandwidth: 1000,
+            owner: payer.pubkey(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
+            multicast_ip: [239, 0, 0, 60].into(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 3: Add user to publisher allowlist, then subscribe as publisher
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupPubAllowlist(AddMulticastGroupPubAllowlistArgs {
+            client_ip: client_ip.into(),
+            user_payer: payer.pubkey(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: client_ip.into(),
+            publisher: true,
+            subscriber: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 4: Re-activate → multicast_publisher=true
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_mid = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_mid.status, UserStatus::Activated);
+    assert!(
+        user_mid.multicast_publisher,
+        "multicast_publisher must be true after re-activation with publishers list non-empty"
+    );
+
+    // Step 5: Unsubscribe from publisher role (publishers empty, status→Updating)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: client_ip.into(),
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 6: Re-activate to get back to Activated (required for legacy DeleteUser)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // After re-activation with empty publishers, multicast_publisher is false again.
+    // At this point the user is counted as a subscriber in the device counters
+    // (the Go activator would have transitioned the counter from publishers→subscribers,
+    // but in the test env the counter starts at subscribers_count=1 from CreateUser and
+    // publishers_count=0 throughout). So CloseAccountUser should decrement subscribers_count.
+    let user_after_reactivate = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_after_reactivate.status, UserStatus::Activated);
+    assert!(
+        !user_after_reactivate.multicast_publisher,
+        "multicast_publisher should be false after re-activation with empty publishers"
+    );
+
+    // Capture device counters before legacy delete
+    let device_before = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    let subscribers_before = device_before.multicast_subscribers_count;
+    let publishers_before = device_before.multicast_publishers_count;
+
+    // Step 7: Legacy DeleteUser (dz_prefix_count=0) → sets status=Deleting
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    let user_owner = user_after_reactivate.owner;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_deleting = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(
+        user_deleting.status,
+        UserStatus::Deleting,
+        "User should be in Deleting status after legacy DeleteUser"
+    );
+
+    // Step 8: Legacy CloseAccountUser (dz_prefix_count=0) → closes account and decrements counters
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+            dz_prefix_count: 0, // legacy path
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(user_owner, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // User should be closed
+    let user_after = get_account_data(&mut banks_client, user_pubkey).await;
+    assert!(user_after.is_none(), "User account should be closed");
+
+    // Because multicast_publisher=false at closeaccount time (Go activator reset it on
+    // re-activation after unsubscribe), subscribers_count should be decremented.
+    let device_after = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(
+        device_after.multicast_subscribers_count,
+        subscribers_before.saturating_sub(1),
+        "multicast_subscribers_count must be decremented (user had multicast_publisher=false)"
+    );
+    assert_eq!(
+        device_after.multicast_publishers_count, publishers_before,
+        "multicast_publishers_count must not change (user had multicast_publisher=false)"
+    );
+
+    println!("[PASS] test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_subscribers_count");
+}
+
+/// Verify that legacy CloseAccountUser decrements `multicast_publishers_count`
+/// (not `multicast_subscribers_count`) when `multicast_publisher=true` at closeaccount time.
+///
+/// This exercises the publisher branch of the closeaccount counter logic:
+/// 1. Subscribe as publisher via legacy path (status→Updating)
+/// 2. Re-activate → multicast_publisher=true, dz_ip allocated from MulticastPublisherBlock
+/// 3. Unsubscribe via ONCHAIN path (use_onchain_allocation=true, publisher=false)
+///    → status stays Activated, dz_ip returned to MulticastPublisherBlock, multicast_publisher stays true
+/// 4. Legacy DeleteUser (dz_prefix_count=0) → status=Deleting
+/// 5. Legacy CloseAccountUser → multicast_publisher=true → decrements multicast_publishers_count
+#[tokio::test]
+async fn test_closeaccount_user_legacy_decrements_multicast_publishers_count() {
+    println!("[TEST] test_closeaccount_user_legacy_decrements_multicast_publishers_count");
+
+    let client_ip = [100, 0, 0, 62];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
+    ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
+
+    // Step 1: Initial activation (no publishers → multicast_publisher=false)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 2: Create and activate a multicast group
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (multicastgroup_pubkey, _) =
+        get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "pub-mgroup".to_string(),
+            max_bandwidth: 1000,
+            owner: payer.pubkey(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
+            multicast_ip: [239, 0, 0, 62].into(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 3: Add user to publisher allowlist
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupPubAllowlist(AddMulticastGroupPubAllowlistArgs {
+            client_ip: client_ip.into(),
+            user_payer: payer.pubkey(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 4: Subscribe as publisher via legacy path (status→Updating)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: client_ip.into(),
+            publisher: true,
+            subscriber: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Confirm status is Updating (legacy path)
+    let user_updating = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_updating.status, UserStatus::Updating);
+
+    // Step 5: Re-activate → multicast_publisher=true, dz_ip allocated from MulticastPublisherBlock
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_as_publisher = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_as_publisher.status, UserStatus::Activated);
+    assert!(
+        user_as_publisher.multicast_publisher,
+        "multicast_publisher must be true after re-activation with non-empty publishers list"
+    );
+    assert_ne!(
+        user_as_publisher.dz_ip, user_as_publisher.client_ip,
+        "dz_ip should have been allocated from MulticastPublisherBlock"
+    );
+    assert_ne!(
+        user_as_publisher.dz_ip,
+        Ipv4Addr::UNSPECIFIED,
+        "dz_ip should not be UNSPECIFIED after publisher activation"
+    );
+
+    // Step 6: Enable OnChainAllocation feature flag (needed for onchain unsubscribe)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // Step 7: Unsubscribe via ONCHAIN path (publisher=false, use_onchain_allocation=true)
+    // → status stays Activated, dz_ip returned to MulticastPublisherBlock,
+    // → multicast_publisher remains true (not reset until next activate.rs run)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: client_ip.into(),
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Confirm status is still Activated and multicast_publisher is still true
+    let user_after_onchain_unsub = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(
+        user_after_onchain_unsub.status,
+        UserStatus::Activated,
+        "Onchain unsubscribe should keep user Activated (no Updating round-trip)"
+    );
+    assert!(
+        user_after_onchain_unsub.multicast_publisher,
+        "multicast_publisher should still be true — onchain unsubscribe does not reset it"
+    );
+    assert!(
+        user_after_onchain_unsub.publishers.is_empty(),
+        "publishers list should be empty after unsubscribe"
+    );
+
+    let user_owner = user_after_onchain_unsub.owner;
+
+    // Capture device counters before delete
+    let device_before = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    let subscribers_before = device_before.multicast_subscribers_count;
+    let publishers_before = device_before.multicast_publishers_count;
+
+    // Step 8: Legacy DeleteUser (dz_prefix_count=0) → sets status=Deleting
+    // Works because status is Activated (onchain unsubscribe preserved it)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_deleting = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(
+        user_deleting.status,
+        UserStatus::Deleting,
+        "User should be in Deleting status after legacy DeleteUser"
+    );
+    assert!(
+        user_deleting.multicast_publisher,
+        "multicast_publisher should still be true at Deleting stage"
+    );
+
+    // Step 9: Legacy CloseAccountUser (dz_prefix_count=0)
+    // → user.multicast_publisher=true → decrements multicast_publishers_count
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+            dz_prefix_count: 0, // legacy path
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(user_owner, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // User account should be closed
+    let user_after = get_account_data(&mut banks_client, user_pubkey).await;
+    assert!(user_after.is_none(), "User account should be closed");
+
+    // multicast_publisher=true at closeaccount → publishers_count decremented, subscribers_count unchanged
+    let device_after = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(
+        device_after.multicast_publishers_count,
+        publishers_before.saturating_sub(1),
+        "multicast_publishers_count must be decremented (user had multicast_publisher=true)"
+    );
+    assert_eq!(
+        device_after.multicast_subscribers_count,
+        subscribers_before,
+        "multicast_subscribers_count must not change (user had multicast_publisher=true)"
+    );
+
+    println!("[PASS] test_closeaccount_user_legacy_decrements_multicast_publishers_count");
+}
+
+/// Verify that legacy CloseAccountUser decrements `multicast_subscribers_count`
+/// for a subscriber-only multicast user.
+///
+/// Simpler path: user is activated as a subscriber (multicast_publisher=false),
+/// then legacy deleted and closed. Verifies the common subscriber path.
+#[tokio::test]
+async fn test_closeaccount_user_legacy_decrements_multicast_subscribers_count() {
+    println!("[TEST] test_closeaccount_user_legacy_decrements_multicast_subscribers_count");
+
+    let client_ip = [100, 0, 0, 61];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        _resource_pubkeys,
+    ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
+
+    // Step 1: Activate user with legacy path (no ResourceExtension accounts)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 501,
+            tunnel_net: "169.254.0.0/25".parse().unwrap(),
+            dz_ip: [200, 0, 0, 1].into(),
+            dz_prefix_count: 0, // legacy path
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_activated = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_activated.status, UserStatus::Activated);
+    assert!(
+        !user_activated.multicast_publisher,
+        "multicast_publisher must be false for subscriber"
+    );
+    let user_owner = user_activated.owner;
+
+    // Capture device counters before legacy delete
+    let device_before = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    let subscribers_before = device_before.multicast_subscribers_count;
+    let publishers_before = device_before.multicast_publishers_count;
+
+    // Step 2: Legacy DeleteUser (dz_prefix_count=0) → sets status=Deleting
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_deleting = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_deleting.status, UserStatus::Deleting);
+
+    // Step 3: Legacy CloseAccountUser (dz_prefix_count=0)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(user_owner, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // User should be closed
+    let user_after = get_account_data(&mut banks_client, user_pubkey).await;
+    assert!(user_after.is_none(), "User account should be closed");
+
+    // subscribers_count must be decremented, publishers_count must be unchanged
+    let device_after = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(
+        device_after.multicast_subscribers_count,
+        subscribers_before.saturating_sub(1),
+        "multicast_subscribers_count must be decremented for subscriber closeaccount"
+    );
+    assert_eq!(
+        device_after.multicast_publishers_count, publishers_before,
+        "multicast_publishers_count must not change for subscriber closeaccount"
+    );
+
+    println!("[PASS] test_closeaccount_user_legacy_decrements_multicast_subscribers_count");
+}

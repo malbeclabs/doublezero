@@ -627,7 +627,6 @@ pub fn process_user_event_stateless(
                 dz_ip: Ipv4Addr::UNSPECIFIED,
                 use_onchain_allocation: true,
                 tunnel_endpoint: user.tunnel_endpoint,
-                multicast_publisher: false,
             }
             .execute_quiet(client);
 
@@ -684,7 +683,6 @@ pub fn process_user_event_stateless(
                 dz_ip: user.dz_ip,
                 use_onchain_allocation: true,
                 tunnel_endpoint: user.tunnel_endpoint,
-                multicast_publisher: false,
             }
             .execute_quiet(client);
 
@@ -1022,7 +1020,6 @@ mod tests {
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 multicast_publisher: false,
-                multicast_publisher: false,
             };
 
             let (accesspass_pk_unspecified, _) = get_accesspass_pda(
@@ -1081,8 +1078,6 @@ mod tests {
                         dz_ip: expected_dz_ip.unwrap_or(Ipv4Addr::UNSPECIFIED),
                         dz_prefix_count: 0, // legacy path
                         tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
-                        multicast_publisher: false,
-                        multicast_publisher: false,
                     })),
                     predicate::always(),
                 )
@@ -1232,7 +1227,6 @@ mod tests {
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 multicast_publisher: false,
-                multicast_publisher: false,
             };
 
             let (accesspass_pk_unspecified, _) = get_accesspass_pda(
@@ -1292,8 +1286,6 @@ mod tests {
                         dz_ip: [148, 51, 120, 1].into(),
                         dz_prefix_count: 0, // legacy path
                         tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
-                        multicast_publisher: false,
-                        multicast_publisher: false,
                     })),
                     predicate::always(),
                 )
@@ -1387,7 +1379,6 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-                multicast_publisher: false,
                 multicast_publisher: false,
             };
 
@@ -1505,7 +1496,6 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-                multicast_publisher: false,
                 multicast_publisher: false,
             };
 
@@ -1628,7 +1618,6 @@ mod tests {
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 multicast_publisher: false,
-                multicast_publisher: false,
             };
 
             client
@@ -1740,7 +1729,6 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-                multicast_publisher: false,
                 multicast_publisher: false,
             };
 
@@ -1904,7 +1892,6 @@ mod tests {
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::new(9, 9, 9, 9),
                 multicast_publisher: false,
-                multicast_publisher: false,
             };
 
             // Expect a reject transaction
@@ -2023,7 +2010,6 @@ mod tests {
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 multicast_publisher: false,
-                multicast_publisher: false,
             };
 
             client
@@ -2122,7 +2108,6 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-                multicast_publisher: false,
                 multicast_publisher: false,
             };
 
@@ -2301,7 +2286,6 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             multicast_publisher: false,
-            multicast_publisher: false,
         };
 
         // Deallocate — this should free the IP even though publishers is empty
@@ -2354,7 +2338,6 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
             multicast_publisher: false,
         };
 
@@ -2530,7 +2513,6 @@ mod tests {
                         dz_ip: Ipv4Addr::new(192, 168, 1, 1),
                         dz_prefix_count: 0,
                         tunnel_endpoint: demanded_endpoint,
-                        multicast_publisher: false,
                     })),
                     predicate::always(),
                 )
@@ -2626,7 +2608,6 @@ mod tests {
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::new(9, 9, 9, 9),
                 multicast_publisher: false,
-                multicast_publisher: false,
             };
 
             // Expect a reject transaction, NOT an activate
@@ -2716,7 +2697,6 @@ mod tests {
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED, // no demand
                 multicast_publisher: false,
-                multicast_publisher: false,
             };
 
             let (accesspass_pk_unspecified, _) = get_accesspass_pda(
@@ -2776,8 +2756,6 @@ mod tests {
                         dz_ip: Ipv4Addr::new(192, 168, 1, 1),
                         dz_prefix_count: 0,
                         tunnel_endpoint: Ipv4Addr::new(5, 5, 5, 5),
-                        multicast_publisher: false,
-                        multicast_publisher: false,
                     })),
                     predicate::always(),
                 )
@@ -2932,7 +2910,6 @@ mod tests {
                         dz_ip: [148, 51, 120, 1].into(),
                         dz_prefix_count: 0,
                         tunnel_endpoint: demanded_endpoint,
-                        multicast_publisher: false,
                     })),
                     predicate::always(),
                 )
@@ -3026,7 +3003,6 @@ mod tests {
                 subscribers: vec![Pubkey::default()],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::new(9, 9, 9, 9),
-                multicast_publisher: false,
                 multicast_publisher: false,
             };
 
@@ -3139,7 +3115,6 @@ mod tests {
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 multicast_publisher: false,
-                multicast_publisher: false,
             };
 
             let (accesspass_pk_unspecified, _) = get_accesspass_pda(
@@ -3211,8 +3186,6 @@ mod tests {
                         dz_ip: Ipv4Addr::UNSPECIFIED,
                         dz_prefix_count: 1, // onchain allocation path
                         tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-                        multicast_publisher: false,
-                        multicast_publisher: false,
                     })),
                     predicate::always(),
                 )
@@ -3301,7 +3274,6 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-                multicast_publisher: false,
                 multicast_publisher: false,
             };
 
@@ -3422,7 +3394,6 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-                multicast_publisher: false,
                 multicast_publisher: false,
             };
 

@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+
 - Activator
   - Reserve device allocations (loopback IPs and segment routing IDs) for devices in Drained, DeviceProvisioning, and LinkProvisioning states at startup, preventing collisions with new device allocations
   - Reserve user allocations (tunnel_net, tunnel_id, dz_ip, publisher IPs, tunnel endpoints) for users in Updating and OutOfCredits states at startup, preventing collisions with new user allocations
@@ -20,6 +21,7 @@ All notable changes to this project will be documented in this file.
 - Onchain Programs
   - Allow foundation to remove targets from GeolocationUser accounts via the `RemoveTarget` instruction, unblocking foundation-initiated user deletion when targets still exist
   - Serviceability: fix `SubscribeMulticastGroup` deriving the AccessPass PDA from `payer_account.key` instead of `user.owner`, which caused `user delete` to fail with "Invalid AccessPass PDA" when a foundation allowlist key signed and the user had active multicast subscriptions
+  - feat(smartcontract): add tunnel_net/tunnel_id reallocation to UpdateLink ([#3326](https://github.com/malbeclabs/doublezero/pull/3326))
 - Client
   - Fix `v2/status` returning empty `current_device` and `metro` for multicast subscribers by adding a `clientIP + UserType` fallback in status enrichment when DzIp and tunnel_dst matching both fail
   - Set tunnel interface administratively down before deleting during teardown, so external applications with sockets bound to the tunnel's overlay IP receive errors before the interface is removed
@@ -33,14 +35,13 @@ All notable changes to this project will be documented in this file.
   - Fix geoProbe parent discovery incorrectly adding parent authority keys to the signed TWAMP reflector allowlist; parent DZDs use the unsigned reflector
 - Controller
   - Retry transient Solana RPC failures when fetching onchain serviceability accounts so controller polls are more resilient to short-lived provider resets
-- Onchain Programs
-  - Serviceability: fix `SubscribeMulticastGroup` deriving the AccessPass PDA from `payer_account.key` instead of `user.owner`, which caused `user delete` to fail with "Invalid AccessPass PDA" when a foundation allowlist key signed and the user had active multicast subscriptions
 
 ## [v0.12.0](https://github.com/malbeclabs/doublezero/compare/client/v0.11.0...client/v0.12.0) - 2026-03-16
 
 ### Breaking
 
 ### Changes
+
 - Onchain Programs
   - Add `GeolocationUser` account state to the geolocation program with owner, billing config (flat-per-epoch), payment/user status, and a target list supporting outbound (IP + port) and inbound (pubkey) geolocation targets
   - Add GeolocationUser CRUD instruction processors (create, update, delete) with owner authorization and target-empty guard on delete
@@ -73,6 +74,7 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+
 - Onchain Programs
   - Serviceability: split per-device multicast user tracking into separate subscriber and publisher counters (`multicast_subscribers_count`/`max_multicast_subscribers` and `multicast_publishers_count`/`max_multicast_publishers`); publisher and subscriber limits are now enforced independently
 - Controller

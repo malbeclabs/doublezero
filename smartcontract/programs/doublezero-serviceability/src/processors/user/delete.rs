@@ -262,7 +262,7 @@ pub fn process_delete_user(
         device.users_count = device.users_count.saturating_sub(1);
         match user.user_type {
             UserType::Multicast => {
-                if !user.publishers.is_empty() {
+                if user.multicast_publisher {
                     device.multicast_publishers_count =
                         device.multicast_publishers_count.saturating_sub(1);
                 } else {

@@ -29,8 +29,12 @@ use doublezero_serviceability::{
         location::create::LocationCreateArgs,
         multicastgroup::{
             activate::MulticastGroupActivateArgs,
-            allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
-            create::MulticastGroupCreateArgs, subscribe::MulticastGroupSubscribeArgs,
+            allowlist::{
+                publisher::add::AddMulticastGroupPubAllowlistArgs,
+                subscriber::add::AddMulticastGroupSubAllowlistArgs,
+            },
+            create::MulticastGroupCreateArgs,
+            subscribe::MulticastGroupSubscribeArgs,
         },
         user::{
             activate::UserActivateArgs, closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
@@ -3820,4 +3824,557 @@ async fn test_activate_sets_multicast_publisher_false_for_subscriber() {
     );
 
     println!("[PASS] test_activate_sets_multicast_publisher_false_for_subscriber");
+}
+
+/// Verify that atomic DeleteUser decrements `multicast_publishers_count` (not
+/// `multicast_subscribers_count`) when the departing user is a publisher.
+///
+/// Regression test for the bug where `!user.publishers.is_empty()` was always
+/// false at delete time (publishers must be empty to pass the
+/// `ReferenceCountNotZero` guard), causing every multicast delete to decrement
+/// the subscriber counter instead.
+#[tokio::test]
+async fn test_delete_user_atomic_decrements_multicast_publishers_count() {
+    println!("[TEST] test_delete_user_atomic_decrements_multicast_publishers_count");
+
+    let client_ip = [100, 0, 0, 52];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
+    ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
+
+    // Step 1: Initial activation (no publishers yet → multicast_publisher=false,
+    //         multicast_subscribers_count incremented)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 2: Create and activate a multicast group
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (multicastgroup_pubkey, _) =
+        get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "pub-del-mgroup".to_string(),
+            max_bandwidth: 1000,
+            owner: payer.pubkey(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
+            multicast_ip: [239, 0, 0, 52].into(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 3: Add user to publisher allowlist
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupPubAllowlist(AddMulticastGroupPubAllowlistArgs {
+            client_ip: client_ip.into(),
+            user_payer: payer.pubkey(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 4: Subscribe user as publisher → user status becomes Updating
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: client_ip.into(),
+            publisher: true,
+            subscriber: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 5: Re-activate → multicast_publisher=true, publishers_count=1, subscribers_count=0
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Confirm that multicast_publisher=true is set after re-activation with publishers list
+    let user_mid = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_mid.status, UserStatus::Activated);
+    assert!(
+        user_mid.multicast_publisher,
+        "multicast_publisher must be true after activating with publishers list non-empty"
+    );
+
+    // Step 6: Unsubscribe from publisher role → publishers becomes empty, status→Updating.
+    // Do NOT re-activate: atomic delete works on Updating status, and we want multicast_publisher
+    // to remain true (it was set at the previous activation).
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: client_ip.into(),
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Confirm state before delete: multicast_publisher=true, publishers empty, status=Updating
+    let user_before_delete = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_before_delete.status, UserStatus::Updating);
+    assert!(
+        user_before_delete.multicast_publisher,
+        "multicast_publisher should remain true (was set at last activation)"
+    );
+    assert!(
+        user_before_delete.publishers.is_empty(),
+        "publishers should be empty so ReferenceCountNotZero guard passes"
+    );
+
+    // Capture device counters before delete.
+    // subscribers_count=1 (set at CreateUser since publisher was false then).
+    // publishers_count=0 (never incremented via this test path).
+    let device_before = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    let subscribers_before = device_before.multicast_subscribers_count;
+
+    // Enable OnChainAllocation feature flag (required for atomic delete deallocation path)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // Step 7: Atomic DeleteUser
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 1,
+            multicast_publisher_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false), // owner
+        ],
+        &payer,
+    )
+    .await;
+
+    // User account should be closed
+    let user_after = get_account_data(&mut banks_client, user_pubkey).await;
+    assert!(
+        user_after.is_none(),
+        "User account should be closed after atomic delete"
+    );
+
+    // CRITICAL: because multicast_publisher=true, the fix should decrement publishers_count
+    // (not subscribers_count). subscribers_count must remain unchanged — this is the key
+    // regression check. Without the fix, the bug always decrements subscribers_count.
+    //
+    // Note: multicast_publishers_count is incremented by the Go activator (not the Solana
+    // program), so it starts at 0 in this test environment. The assertion below confirms
+    // saturating_sub leaves it at 0, but the meaningful coverage is subscribers_count unchanged.
+    let device_after = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(
+        device_after.multicast_subscribers_count, subscribers_before,
+        "multicast_subscribers_count must NOT be decremented for a publisher delete"
+    );
+    assert_eq!(
+        device_after.multicast_publishers_count, 0,
+        "multicast_publishers_count was 0 before delete (never incremented in test env); saturating_sub leaves it 0"
+    );
+
+    println!("[PASS] test_delete_user_atomic_decrements_multicast_publishers_count");
+}
+
+/// Verify that atomic DeleteUser decrements `multicast_subscribers_count` (not
+/// `multicast_publishers_count`) when the departing user is a subscriber.
+#[tokio::test]
+async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
+    println!("[TEST] test_delete_user_atomic_decrements_multicast_subscribers_count");
+
+    let client_ip = [100, 0, 0, 53];
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+        (
+            user_tunnel_block_pubkey,
+            multicast_publisher_block_pubkey,
+            tunnel_ids_pubkey,
+            dz_prefix_block_pubkey,
+        ),
+    ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
+
+    // Step 1: Create and activate a multicast group
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (multicastgroup_pubkey, _) =
+        get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "sub-del-mgroup".to_string(),
+            max_bandwidth: 1000,
+            owner: payer.pubkey(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
+            multicast_ip: [239, 0, 0, 53].into(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 2: Activate user (moves from Pending to Activated, sets multicast_publisher=false)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 3: Add user to subscriber allowlist, then subscribe as subscriber.
+    // Note: subscriber-only subscribe does NOT change user status to Updating
+    // (only publisher_list_transitioned triggers Updating).
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
+            client_ip: client_ip.into(),
+            user_payer: payer.pubkey(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: client_ip.into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Device counters: set at CreateUser time (subscriber bucket), unchanged by subscribe.
+    let device_mid = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(
+        device_mid.multicast_subscribers_count, 1,
+        "subscribers_count should be 1 (set at CreateUser)"
+    );
+    assert_eq!(
+        device_mid.multicast_publishers_count, 0,
+        "publishers_count should be 0"
+    );
+
+    // Step 4: Unsubscribe (subscribers becomes empty so ReferenceCountNotZero guard passes).
+    // Status stays Activated since subscriber-only unsubscribe does not trigger Updating.
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: client_ip.into(),
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Confirm state before delete
+    let user_before_delete = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_before_delete.status, UserStatus::Activated);
+    assert!(
+        !user_before_delete.multicast_publisher,
+        "multicast_publisher should be false for subscriber"
+    );
+    assert!(
+        user_before_delete.subscribers.is_empty(),
+        "subscribers should be empty so delete guard passes"
+    );
+
+    // Enable OnChainAllocation feature flag (required for atomic delete deallocation path)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // Step 6: Atomic DeleteUser
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 1,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false), // owner
+        ],
+        &payer,
+    )
+    .await;
+
+    // User account should be closed
+    let user_after = get_account_data(&mut banks_client, user_pubkey).await;
+    assert!(
+        user_after.is_none(),
+        "User account should be closed after atomic delete"
+    );
+
+    // CRITICAL: subscribers_count must have decremented, not publishers_count
+    let device_after = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(
+        device_after.multicast_subscribers_count, 0,
+        "multicast_subscribers_count must be 0 after subscriber delete"
+    );
+    assert_eq!(
+        device_after.multicast_publishers_count, 0,
+        "multicast_publishers_count must remain 0 (was not a publisher)"
+    );
+
+    println!("[PASS] test_delete_user_atomic_decrements_multicast_subscribers_count");
 }

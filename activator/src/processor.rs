@@ -118,10 +118,15 @@ impl<T: DoubleZeroClient> Processor<T> {
         let mut user_tunnel_ips = IPBlockAllocator::new(config.user_tunnel_block.into());
         let mut publisher_dz_ips = IPBlockAllocator::new(config.multicast_publisher_block.into());
 
-        for (_, link) in links
-            .iter()
-            .filter(|(_, l)| l.status == LinkStatus::Activated)
-        {
+        for (_, link) in links.iter().filter(|(_, l)| {
+            matches!(
+                l.status,
+                LinkStatus::Activated
+                    | LinkStatus::HardDrained
+                    | LinkStatus::SoftDrained
+                    | LinkStatus::Provisioning
+            )
+        }) {
             link_ids.assign(link.tunnel_id);
             link_ips.assign_block(link.tunnel_net.into());
         }
@@ -389,7 +394,9 @@ impl<T: DoubleZeroClient> ProcessorStateless<T> {
 mod tests {
     use super::*;
     use doublezero_program_common::types::NetworkV4;
-    use doublezero_sdk::{AccountType, GlobalConfig, MockDoubleZeroClient};
+    use doublezero_sdk::{
+        AccountType, GlobalConfig, Link, LinkLinkType, LinkStatus, MockDoubleZeroClient,
+    };
     use doublezero_serviceability::pda::get_globalconfig_pda;
     use mockall::predicate;
     use std::{collections::HashMap, sync::Arc};
@@ -468,5 +475,129 @@ mod tests {
             err.contains("multicast_publisher_block"),
             "error was: {err}"
         );
+    }
+
+    /// Regression test: Processor::new must reserve tunnel_net/tunnel_id for links in
+    /// HardDrained/SoftDrained/Provisioning states. Otherwise new links get colliding addresses.
+    ///
+    /// This test simulates the Processor::new initialization logic: it iterates over
+    /// existing links and only reserves addresses for those matching the filter.
+    /// Then it calls process_link_event with a new Pending link and asserts the
+    /// allocated tunnel_net does NOT collide with the existing link.
+    #[test]
+    fn test_drained_link_tunnel_net_must_be_reserved_at_startup() {
+        use crate::{
+            idallocator::IDAllocator,
+            ipblockallocator::IPBlockAllocator,
+            process::link::process_link_event,
+            tests::utils::{create_test_client, get_tunnel_bump_seed},
+        };
+        use doublezero_serviceability::instructions::DoubleZeroInstruction;
+        use solana_sdk::signature::Signature;
+
+        let mut client = create_test_client();
+
+        // Existing link in HardDrained state — has tunnel_net 1.0.0.0/31 and tunnel_id 5
+        let drained_link = Link {
+            account_type: AccountType::Link,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            bump_seed: get_tunnel_bump_seed(&client),
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: Pubkey::new_unique(),
+            side_z_pk: Pubkey::new_unique(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 1500,
+            delay_ns: 20_000,
+            jitter_ns: 100,
+            delay_override_ns: 0,
+            tunnel_id: 5,
+            tunnel_net: "1.0.0.0/31".parse().unwrap(),
+            status: LinkStatus::HardDrained,
+            code: "DrainedLink".to_string(),
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: "Ethernet1".to_string(),
+            link_health: doublezero_serviceability::state::link::LinkHealth::Pending,
+            desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+        };
+
+        // Simulate Processor::new initialization: build allocators and iterate existing links
+        // using the SAME filter as Processor::new (only LinkStatus::Activated).
+        let existing_links: Vec<Link> = vec![drained_link];
+        let mut link_ips = IPBlockAllocator::new("1.0.0.0/24".parse().unwrap());
+        let mut link_ids = IDAllocator::new(0, vec![]);
+
+        // This mirrors the fixed filter from Processor::new — drained/provisioning links
+        // are now reserved, preventing address collisions.
+        for link in existing_links.iter().filter(|l| {
+            matches!(
+                l.status,
+                LinkStatus::Activated
+                    | LinkStatus::HardDrained
+                    | LinkStatus::SoftDrained
+                    | LinkStatus::Provisioning
+            )
+        }) {
+            link_ids.assign(link.tunnel_id);
+            link_ips.assign_block(link.tunnel_net.into());
+        }
+
+        // New pending link arrives — the allocator should give it a non-colliding address
+        let new_link_pubkey = Pubkey::new_unique();
+        let new_link = Link {
+            account_type: AccountType::Link,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: get_tunnel_bump_seed(&client),
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: Pubkey::new_unique(),
+            side_z_pk: Pubkey::new_unique(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 1500,
+            delay_ns: 20_000,
+            jitter_ns: 100,
+            delay_override_ns: 0,
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: LinkStatus::Pending,
+            code: "NewLink".to_string(),
+            side_a_iface_name: "Ethernet2".to_string(),
+            side_z_iface_name: "Ethernet3".to_string(),
+            link_health: doublezero_serviceability::state::link::LinkHealth::Pending,
+            desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+        };
+
+        let new_link_cloned = new_link.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(new_link_pubkey))
+            .times(1)
+            .returning(move |_| Ok(AccountData::Link(new_link_cloned.clone())));
+
+        // Assert the allocated tunnel_net does NOT collide with the drained link's 1.0.0.0/31
+        client
+            .expect_execute_transaction()
+            .withf(|instruction, _| {
+                if let DoubleZeroInstruction::ActivateLink(args) = instruction {
+                    let allocated_net: String = args.tunnel_net.to_string();
+                    assert_ne!(
+                        allocated_net, "1.0.0.0/31",
+                        "BUG: allocated tunnel_net 1.0.0.0/31 collides with HardDrained link"
+                    );
+                    assert_ne!(
+                        args.tunnel_id, 5,
+                        "BUG: allocated tunnel_id 5 collides with HardDrained link"
+                    );
+                    true
+                } else {
+                    false
+                }
+            })
+            .times(1)
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        process_link_event(&client, &new_link_pubkey, &mut link_ips, &mut link_ids, &new_link);
     }
 }

@@ -655,8 +655,7 @@ mod tests {
         // AccessPass is keyed to (client_ip, user_owner) — not foundation_key
         let (unspecified_accesspass_pubkey, _) =
             get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &user_owner);
-        let (accesspass_pubkey, _) =
-            get_accesspass_pda(&program_id, &client_ip, &user_owner);
+        let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_owner);
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed: 0,

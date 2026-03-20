@@ -296,6 +296,10 @@ pub fn process_activate_user(
         user.tunnel_endpoint = value.tunnel_endpoint;
     }
 
+    // Record publisher role durably so delete/closeaccount can decrement the correct device counter.
+    // publishers list will be empty by delete time (ReferenceCountNotZero guard enforces this).
+    user.multicast_publisher = user.user_type == UserType::Multicast && !user.publishers.is_empty();
+
     user.try_activate(&mut accesspass)?;
 
     try_acc_write(&user, user_account, payer_account, accounts)?;

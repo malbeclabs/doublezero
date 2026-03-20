@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- rework `shreds list`: show device code instead of seat PDA/pubkey, add escrow balance and estimated epochs paid columns
 - `shreds pay`: block payment when client IP already has an active multicast user on serviceability
 - `shreds withdraw`: allow `--unsafe-now` without a payment escrow (sends only the instant withdrawal request)
 - `shreds withdraw`: exit cleanly instead of erroring when no escrow exists and `--unsafe-now` is not set

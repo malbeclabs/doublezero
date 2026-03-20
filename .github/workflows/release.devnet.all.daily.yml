@@ -39,7 +39,7 @@ jobs:
           - component: geoprobe-target
             playbook: playbooks/geoprobe_targets.yml
           - component: geolocation-cli
-            playbook: playbooks/geoprobe_agents.yml
+            playbook: playbooks/noop.yml
     with:
       component: ${{ matrix.component }}
       playbook: ${{ matrix.playbook }}

@@ -1,11 +1,12 @@
 use crate::state::accounttype::AccountType;
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, net::Ipv4Addr};
 
 pub const MAX_PARENT_DEVICES: usize = 5;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GeoProbe {
     pub account_type: AccountType, // 1
@@ -25,7 +26,8 @@ pub struct GeoProbe {
         )
     )]
     pub exchange_pk: Pubkey, // 32
-    pub public_ip: Ipv4Addr,       // 4
+    #[incremental(default = Ipv4Addr::UNSPECIFIED)]
+    pub public_ip: Ipv4Addr, // 4
     pub location_offset_port: u16, // 2
     #[cfg_attr(
         feature = "serde",
@@ -41,6 +43,8 @@ pub struct GeoProbe {
     // Variable-length fields must be at the end for Borsh deserialization
     pub code: String,                // 4 + len
     pub parent_devices: Vec<Pubkey>, // 4 + 32 * len
+    #[incremental(default = 0)]
+    pub target_update_count: u32, // 4
 }
 
 impl fmt::Display for GeoProbe {
@@ -48,24 +52,12 @@ impl fmt::Display for GeoProbe {
         write!(
             f,
             "account_type: {}, owner: {}, exchange_pk: {}, public_ip: {}, location_offset_port: {}, \
-            metrics_publisher_pk: {}, reference_count: {}, code: {}, parent_devices: {:?}",
+            metrics_publisher_pk: {}, reference_count: {}, code: {}, parent_devices: {:?}, \
+            target_update_count: {}",
             self.account_type, self.owner, self.exchange_pk, self.public_ip, self.location_offset_port,
             self.metrics_publisher_pk, self.reference_count, self.code, self.parent_devices,
+            self.target_update_count,
         )
-    }
-}
-
-impl TryFrom<&[u8]> for GeoProbe {
-    type Error = ProgramError;
-
-    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
-        let out = Self::deserialize(&mut data).map_err(|_| ProgramError::InvalidAccountData)?;
-
-        if out.account_type != AccountType::GeoProbe {
-            return Err(ProgramError::InvalidAccountData);
-        }
-
-        Ok(out)
     }
 }
 
@@ -74,11 +66,15 @@ impl TryFrom<&AccountInfo<'_>> for GeoProbe {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        let res = Self::try_from(&data[..]);
-        if res.is_err() {
-            msg!("Failed to deserialize GeoProbe: {:?}", res.as_ref().err());
+        let probe = Self::try_from(&data[..]).map_err(|e| {
+            msg!("Failed to deserialize GeoProbe: {}", e);
+            ProgramError::InvalidAccountData
+        })?;
+        if probe.account_type != AccountType::GeoProbe {
+            msg!("Invalid account type: {}", probe.account_type);
+            return Err(ProgramError::InvalidAccountData);
         }
-        res
+        Ok(probe)
     }
 }
 
@@ -98,6 +94,7 @@ mod tests {
             reference_count: 3,
             code: "probe-ams-01".to_string(),
             parent_devices: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            target_update_count: 7,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -112,9 +109,35 @@ mod tests {
     }
 
     #[test]
+    fn test_state_geo_probe_backward_compat_without_target_update_count() {
+        let old = GeoProbe {
+            account_type: AccountType::GeoProbe,
+            owner: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            public_ip: [8, 8, 8, 8].into(),
+            location_offset_port: 4242,
+            metrics_publisher_pk: Pubkey::new_unique(),
+            reference_count: 3,
+            code: "probe-ams-01".to_string(),
+            parent_devices: vec![Pubkey::new_unique()],
+            target_update_count: 0,
+        };
+
+        // Serialize, then truncate the trailing target_update_count (4 bytes) to simulate old data.
+        let mut data = borsh::to_vec(&old).unwrap();
+        data.truncate(data.len() - 4);
+
+        let deserialized = GeoProbe::try_from(&data[..]).unwrap();
+        assert_eq!(deserialized.target_update_count, 0);
+        assert_eq!(deserialized.parent_devices, old.parent_devices);
+    }
+
+    #[test]
     fn test_state_geo_probe_try_from_invalid_account_type() {
         let data = [AccountType::None as u8];
         let result = GeoProbe::try_from(&data[..]);
-        assert_eq!(result.unwrap_err(), ProgramError::InvalidAccountData);
+        // BorshDeserializeIncremental successfully deserializes but with wrong account type
+        let probe = result.unwrap();
+        assert_eq!(probe.account_type, AccountType::None);
     }
 }

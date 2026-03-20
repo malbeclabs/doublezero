@@ -138,6 +138,7 @@ mod tests {
             parent_devices: vec![],
             metrics_publisher_pk: Pubkey::new_unique(),
             reference_count: 0,
+            target_update_count: 0,
         }
     }
 

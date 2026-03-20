@@ -100,6 +100,7 @@ pub fn process_create_geo_probe(
         reference_count: 0,
         code,
         parent_devices: vec![],
+        target_update_count: 0,
     };
 
     try_acc_create(

@@ -125,6 +125,7 @@ mod tests {
             parent_devices,
             metrics_publisher_pk: metrics_pk,
             reference_count: 0,
+            target_update_count: 0,
         }
     }
 

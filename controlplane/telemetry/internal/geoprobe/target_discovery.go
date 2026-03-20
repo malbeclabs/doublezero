@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -27,30 +28,38 @@ type InboundKeyUpdate struct {
 	Keys [][32]byte
 }
 
+// targetDiscoveryFullRefreshEvery controls how often a full GeolocationUser scan
+// is forced regardless of whether the GeoProbe target_update_count has changed.
+// At the default 60s interval, 5 means a full refresh every ~5 minutes.
+const targetDiscoveryFullRefreshEvery = 5
+
 // TargetDiscoveryConfig holds configuration for target discovery.
 type TargetDiscoveryConfig struct {
-	GeoProbePubkey solana.PublicKey
-	Client         GeolocationUserClient
-	CLITargets     []ProbeAddress
-	CLIAllowedKeys [][32]byte
-	Interval       time.Duration
-	Logger         *slog.Logger
+	GeoProbePubkey         solana.PublicKey
+	Client                 GeolocationUserClient
+	CLITargets             []ProbeAddress
+	CLIAllowedKeys         [][32]byte
+	Interval               time.Duration
+	Logger                 *slog.Logger
+	ProbeTargetUpdateCount *atomic.Uint32 // shared counter from parent discovery
 }
 
 // TargetDiscovery polls GeolocationUser accounts and sends target/key updates
 // when changes are detected. It filters for activated, paid users whose targets
 // reference this probe's pubkey.
 type TargetDiscovery struct {
-	log            *slog.Logger
-	geoProbePubkey solana.PublicKey
-	client         GeolocationUserClient
-	cliTargets     []ProbeAddress
-	cliAllowedKeys [][32]byte
-	interval       time.Duration
+	log                    *slog.Logger
+	geoProbePubkey         solana.PublicKey
+	client                 GeolocationUserClient
+	cliTargets             []ProbeAddress
+	cliAllowedKeys         [][32]byte
+	interval               time.Duration
+	probeTargetUpdateCount *atomic.Uint32
 
-	cachedTargets     []ProbeAddress
-	cachedInboundKeys [][32]byte
-	tickCount         uint64
+	cachedTargets             []ProbeAddress
+	cachedInboundKeys         [][32]byte
+	tickCount                 uint64
+	lastSeenTargetUpdateCount uint32
 }
 
 // NewTargetDiscovery creates a new TargetDiscovery instance.
@@ -69,12 +78,13 @@ func NewTargetDiscovery(cfg *TargetDiscoveryConfig) (*TargetDiscovery, error) {
 	}
 
 	return &TargetDiscovery{
-		log:            cfg.Logger,
-		geoProbePubkey: cfg.GeoProbePubkey,
-		client:         cfg.Client,
-		cliTargets:     cfg.CLITargets,
-		cliAllowedKeys: cfg.CLIAllowedKeys,
-		interval:       cfg.Interval,
+		log:                    cfg.Logger,
+		geoProbePubkey:         cfg.GeoProbePubkey,
+		client:                 cfg.Client,
+		cliTargets:             cfg.CLITargets,
+		cliAllowedKeys:         cfg.CLIAllowedKeys,
+		interval:               cfg.Interval,
+		probeTargetUpdateCount: cfg.ProbeTargetUpdateCount,
 	}, nil
 }
 
@@ -111,6 +121,11 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 		return
 	}
 
+	// nil targets means the scan was skipped (target_update_count unchanged).
+	if targets == nil && inboundKeys == nil {
+		return
+	}
+
 	if !probeAddressSlicesEqual(targets, d.cachedTargets) {
 		d.cachedTargets = targets
 		select {
@@ -131,9 +146,20 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 }
 
 // discover performs a single discovery cycle: fetch users, filter, extract targets/keys,
-// merge with CLI values.
+// merge with CLI values. Returns nil, nil, nil when the scan is skipped.
 func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]byte, error) {
+	forceFullRefresh := d.tickCount%targetDiscoveryFullRefreshEvery == 0
 	d.tickCount++
+
+	if d.probeTargetUpdateCount != nil && !forceFullRefresh {
+		current := d.probeTargetUpdateCount.Load()
+		if current == d.lastSeenTargetUpdateCount && d.tickCount > 1 {
+			d.log.Debug("GeoProbe target_update_count unchanged, skipping target scan",
+				"targetUpdateCount", current)
+			return nil, nil, nil
+		}
+		d.lastSeenTargetUpdateCount = current
+	}
 
 	users, err := d.client.GetGeolocationUsers(ctx)
 	if err != nil {
@@ -194,6 +220,11 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]b
 
 	mergedTargets := mergeProbes(d.cliTargets, onchainTargets)
 	mergedKeys := mergeKeys(d.cliAllowedKeys, onchainKeys)
+
+	// Sync lastSeenTargetUpdateCount after a full scan (covers forced refresh path).
+	if d.probeTargetUpdateCount != nil {
+		d.lastSeenTargetUpdateCount = d.probeTargetUpdateCount.Load()
+	}
 
 	d.log.Debug("Target discovery tick",
 		"users", len(users),

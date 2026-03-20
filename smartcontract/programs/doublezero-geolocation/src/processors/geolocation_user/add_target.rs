@@ -110,6 +110,7 @@ pub fn process_add_target(
     });
 
     probe.reference_count = probe.reference_count.saturating_add(1);
+    probe.target_update_count = probe.target_update_count.wrapping_add(1);
 
     try_acc_write(&user, user_account, payer_account, accounts)?;
     try_acc_write(&probe, probe_account, payer_account, accounts)?;

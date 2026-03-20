@@ -108,6 +108,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer sender.Close()
+	sender.SetLogger(log)
 
 	log.Info("sending paired probes", "target", remoteAddr.String())
 

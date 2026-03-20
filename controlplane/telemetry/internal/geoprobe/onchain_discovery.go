@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -38,22 +39,24 @@ type ParentUpdate struct {
 
 // ParentDiscoveryConfig holds configuration for parent discovery.
 type ParentDiscoveryConfig struct {
-	GeoProbePubkey solana.PublicKey
-	Client         GeoProbeAccountClient
-	Resolver       DeviceResolver
-	CLIParents     map[[32]byte][32]byte // static parents from --additional-parent
-	Interval       time.Duration
-	Logger         *slog.Logger
+	GeoProbePubkey         solana.PublicKey
+	Client                 GeoProbeAccountClient
+	Resolver               DeviceResolver
+	CLIParents             map[[32]byte][32]byte // static parents from --additional-parent
+	Interval               time.Duration
+	Logger                 *slog.Logger
+	ProbeTargetUpdateCount *atomic.Uint32 // shared counter for target discovery change detection
 }
 
 // ParentDiscovery polls the GeoProbe account and resolves parent devices.
 type ParentDiscovery struct {
-	log            *slog.Logger
-	geoProbePubkey solana.PublicKey
-	client         GeoProbeAccountClient
-	resolver       DeviceResolver
-	cliParents     map[[32]byte][32]byte
-	interval       time.Duration
+	log                    *slog.Logger
+	geoProbePubkey         solana.PublicKey
+	client                 GeoProbeAccountClient
+	resolver               DeviceResolver
+	cliParents             map[[32]byte][32]byte
+	interval               time.Duration
+	probeTargetUpdateCount *atomic.Uint32
 
 	cachedParentDevices []solana.PublicKey
 	tickCount           uint64
@@ -83,12 +86,13 @@ func NewParentDiscovery(cfg *ParentDiscoveryConfig) (*ParentDiscovery, error) {
 	}
 
 	return &ParentDiscovery{
-		log:            cfg.Logger,
-		geoProbePubkey: cfg.GeoProbePubkey,
-		client:         cfg.Client,
-		resolver:       cfg.Resolver,
-		cliParents:     cliParents,
-		interval:       cfg.Interval,
+		log:                    cfg.Logger,
+		geoProbePubkey:         cfg.GeoProbePubkey,
+		client:                 cfg.Client,
+		resolver:               cfg.Resolver,
+		cliParents:             cliParents,
+		interval:               cfg.Interval,
+		probeTargetUpdateCount: cfg.ProbeTargetUpdateCount,
 	}, nil
 }
 
@@ -150,6 +154,11 @@ func (d *ParentDiscovery) discover(ctx context.Context) (*ParentUpdate, error) {
 	}
 	if probe == nil {
 		return d.cliOnlyUpdate(), nil
+	}
+
+	// Publish the probe's target_update_count for target discovery change detection.
+	if d.probeTargetUpdateCount != nil {
+		d.probeTargetUpdateCount.Store(probe.TargetUpdateCount)
 	}
 
 	// Check if parent device set changed since last poll.

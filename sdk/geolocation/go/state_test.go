@@ -47,6 +47,7 @@ func TestSDK_Geolocation_State_GeoProbe_RoundTrip(t *testing.T) {
 		},
 		MetricsPublisherPK: solana.NewWallet().PublicKey(),
 		ReferenceCount:     5,
+		TargetUpdateCount:  42,
 	}
 
 	var buf bytes.Buffer
@@ -64,6 +65,7 @@ func TestSDK_Geolocation_State_GeoProbe_RoundTrip(t *testing.T) {
 	require.Equal(t, original.ParentDevices, decoded.ParentDevices)
 	require.Equal(t, original.MetricsPublisherPK, decoded.MetricsPublisherPK)
 	require.Equal(t, original.ReferenceCount, decoded.ReferenceCount)
+	require.Equal(t, original.TargetUpdateCount, decoded.TargetUpdateCount)
 }
 
 func TestSDK_Geolocation_State_GeoProbe_EmptyParentDevices(t *testing.T) {
@@ -121,6 +123,38 @@ func TestSDK_Geolocation_State_GeoProbe_MaxParentDevices(t *testing.T) {
 	for i := range devices {
 		require.Equal(t, devices[i], decoded.ParentDevices[i])
 	}
+}
+
+func TestSDK_Geolocation_State_GeoProbe_BackwardCompat_NoTargetUpdateCount(t *testing.T) {
+	t.Parallel()
+
+	// Serialize a GeoProbe with TargetUpdateCount, then truncate the last 4 bytes
+	// to simulate an old account that was serialized before target_update_count existed.
+	original := &geolocation.GeoProbe{
+		AccountType:        geolocation.AccountTypeGeoProbe,
+		Owner:              solana.NewWallet().PublicKey(),
+		ExchangePK:         solana.NewWallet().PublicKey(),
+		PublicIP:           [4]uint8{10, 0, 1, 1},
+		LocationOffsetPort: 8923,
+		Code:               "old-probe",
+		ParentDevices:      []solana.PublicKey{solana.NewWallet().PublicKey()},
+		MetricsPublisherPK: solana.NewWallet().PublicKey(),
+		ReferenceCount:     3,
+		TargetUpdateCount:  0,
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, original.Serialize(&buf))
+
+	// Truncate the trailing target_update_count (4 bytes) to simulate old data.
+	data := buf.Bytes()[:buf.Len()-4]
+
+	var decoded geolocation.GeoProbe
+	require.NoError(t, decoded.Deserialize(data))
+
+	require.Equal(t, original.Owner, decoded.Owner)
+	require.Equal(t, original.ParentDevices, decoded.ParentDevices)
+	require.Equal(t, uint32(0), decoded.TargetUpdateCount)
 }
 
 func TestSDK_Geolocation_State_GeolocationUser_RoundTrip(t *testing.T) {

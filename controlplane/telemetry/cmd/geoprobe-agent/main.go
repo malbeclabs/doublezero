@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -533,6 +534,10 @@ func main() {
 		}
 	}()
 
+	// Shared counter: parent discovery writes the GeoProbe target_update_count on each
+	// poll; target discovery reads it to skip expensive full scans when unchanged.
+	var probeTargetUpdateCount atomic.Uint32
+
 	// Run parent DZD discovery if program IDs are configured.
 	if parentDiscoveryEnabled {
 		parentUpdateCh := make(chan geoprobe.ParentUpdate, 1)
@@ -540,12 +545,13 @@ func main() {
 		deviceResolver := geoprobe.NewRPCDeviceResolver(rpcClient, serviceabilityProgramID)
 
 		pd, err := geoprobe.NewParentDiscovery(&geoprobe.ParentDiscoveryConfig{
-			GeoProbePubkey: geoProbePubkey,
-			Client:         geoProbeClient,
-			Resolver:       deviceResolver,
-			CLIParents:     cliParentAuthorities,
-			Interval:       parentDiscoveryInterval,
-			Logger:         log,
+			GeoProbePubkey:         geoProbePubkey,
+			Client:                 geoProbeClient,
+			Resolver:               deviceResolver,
+			CLIParents:             cliParentAuthorities,
+			Interval:               parentDiscoveryInterval,
+			Logger:                 log,
+			ProbeTargetUpdateCount: &probeTargetUpdateCount,
 		})
 		if err != nil {
 			log.Error("Failed to create parent discovery", "error", err)
@@ -578,12 +584,13 @@ func main() {
 	if !geolocationProgramID.IsZero() {
 		geolocationUserClient := geolocation.New(log, rpcClient, geolocationProgramID)
 		td, err := geoprobe.NewTargetDiscovery(&geoprobe.TargetDiscoveryConfig{
-			GeoProbePubkey: geoProbePubkey,
-			Client:         geolocationUserClient,
-			CLITargets:     targets,
-			CLIAllowedKeys: allowedKeys,
-			Interval:       discoveryInterval,
-			Logger:         log,
+			GeoProbePubkey:         geoProbePubkey,
+			Client:                 geolocationUserClient,
+			CLITargets:             targets,
+			CLIAllowedKeys:         allowedKeys,
+			Interval:               discoveryInterval,
+			Logger:                 log,
+			ProbeTargetUpdateCount: &probeTargetUpdateCount,
 		})
 		if err != nil {
 			log.Error("Failed to create target discovery", "error", err)

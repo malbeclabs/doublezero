@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,9 +16,11 @@ import (
 type mockGeolocationUserClient struct {
 	users []geolocation.KeyedGeolocationUser
 	err   error
+	calls int
 }
 
 func (m *mockGeolocationUserClient) GetGeolocationUsers(_ context.Context) ([]geolocation.KeyedGeolocationUser, error) {
+	m.calls++
 	return m.users, m.err
 }
 
@@ -405,6 +408,152 @@ func TestNewTargetDiscovery_Validation(t *testing.T) {
 				t.Error("expected validation error")
 			}
 		})
+	}
+}
+
+func TestTargetDiscovery_TargetUpdateCountUnchanged_SkipsScan(t *testing.T) {
+	probePK := testProbePubkey()
+	client := &mockGeolocationUserClient{
+		users: []geolocation.KeyedGeolocationUser{
+			makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
+				outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
+			}),
+		},
+	}
+
+	var counter atomic.Uint32
+	counter.Store(5)
+
+	td, _ := NewTargetDiscovery(&TargetDiscoveryConfig{
+		GeoProbePubkey:         testProbePubkey(),
+		Client:                 client,
+		Interval:               time.Minute,
+		Logger:                 slog.Default(),
+		ProbeTargetUpdateCount: &counter,
+	})
+
+	// First call (tick 0): always does full scan (forceFullRefresh).
+	targets, _, err := td.discover(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 target on first scan, got %d", len(targets))
+	}
+	if client.calls != 1 {
+		t.Fatalf("expected 1 RPC call on first scan, got %d", client.calls)
+	}
+
+	// Second call: counter unchanged → should skip.
+	targets, keys, err := td.discover(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if targets != nil || keys != nil {
+		t.Errorf("expected nil targets/keys when skipped, got targets=%v keys=%v", targets, keys)
+	}
+	if client.calls != 1 {
+		t.Errorf("expected no additional RPC call when skipped, got %d total", client.calls)
+	}
+}
+
+func TestTargetDiscovery_TargetUpdateCountChanged_DoesFullScan(t *testing.T) {
+	probePK := testProbePubkey()
+	client := &mockGeolocationUserClient{
+		users: []geolocation.KeyedGeolocationUser{
+			makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
+				outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
+			}),
+		},
+	}
+
+	var counter atomic.Uint32
+	counter.Store(5)
+
+	td, _ := NewTargetDiscovery(&TargetDiscoveryConfig{
+		GeoProbePubkey:         testProbePubkey(),
+		Client:                 client,
+		Interval:               time.Minute,
+		Logger:                 slog.Default(),
+		ProbeTargetUpdateCount: &counter,
+	})
+
+	// First call: full scan.
+	_, _, _ = td.discover(context.Background())
+
+	// Change counter, second call should do full scan.
+	counter.Store(6)
+	targets, _, err := td.discover(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 target after counter change, got %d", len(targets))
+	}
+	if client.calls != 2 {
+		t.Errorf("expected 2 RPC calls total, got %d", client.calls)
+	}
+}
+
+func TestTargetDiscovery_ForcedFullRefresh_IgnoresCounter(t *testing.T) {
+	probePK := testProbePubkey()
+	client := &mockGeolocationUserClient{
+		users: []geolocation.KeyedGeolocationUser{
+			makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
+				outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
+			}),
+		},
+	}
+
+	var counter atomic.Uint32
+	counter.Store(5)
+
+	td, _ := NewTargetDiscovery(&TargetDiscoveryConfig{
+		GeoProbePubkey:         testProbePubkey(),
+		Client:                 client,
+		Interval:               time.Minute,
+		Logger:                 slog.Default(),
+		ProbeTargetUpdateCount: &counter,
+	})
+
+	// Tick through to the next forced refresh (every 5th tick).
+	// Tick 0: forced (0 % 5 == 0), tick 1-4: skipped (counter unchanged), tick 5: forced.
+	for i := 0; i < targetDiscoveryFullRefreshEvery; i++ {
+		_, _, _ = td.discover(context.Background())
+	}
+	callsBefore := client.calls
+
+	// Next tick (tick 5): forced full refresh even though counter unchanged.
+	targets, _, err := td.discover(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 target on forced refresh, got %d", len(targets))
+	}
+	if client.calls != callsBefore+1 {
+		t.Errorf("expected forced refresh to call RPC, calls before=%d after=%d", callsBefore, client.calls)
+	}
+}
+
+func TestTargetDiscovery_NilProbeTargetUpdateCount_AlwaysScans(t *testing.T) {
+	probePK := testProbePubkey()
+	client := &mockGeolocationUserClient{
+		users: []geolocation.KeyedGeolocationUser{
+			makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
+				outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
+			}),
+		},
+	}
+
+	// No ProbeTargetUpdateCount set — backward compat: always scans.
+	td := newTestTargetDiscovery(client, nil, nil)
+
+	for i := 0; i < 3; i++ {
+		_, _, _ = td.discover(context.Background())
+	}
+	if client.calls != 3 {
+		t.Errorf("expected 3 RPC calls without ProbeTargetUpdateCount, got %d", client.calls)
 	}
 }
 

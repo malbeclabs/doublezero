@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -610,4 +611,47 @@ func TestPubkeySlicesEqual(t *testing.T) {
 			assert.Equal(t, tt.want, pubkeySlicesEqual(tt.a, tt.b))
 		})
 	}
+}
+
+func TestParentDiscovery_StoresTargetUpdateCount(t *testing.T) {
+	t.Parallel()
+
+	geoProbePK := solana.NewWallet().PublicKey()
+	parentDevicePK := solana.NewWallet().PublicKey()
+	var metricsKey [32]byte
+	metricsKey = solana.NewWallet().PublicKey()
+
+	client := &mockGeoProbeAccountClient{
+		probe: &geolocation.GeoProbe{
+			AccountType:       geolocation.AccountTypeGeoProbe,
+			ParentDevices:     []solana.PublicKey{parentDevicePK},
+			TargetUpdateCount: 42,
+		},
+	}
+
+	resolver := &mockDeviceResolver{
+		devices: map[solana.PublicKey]*serviceability.Device{
+			parentDevicePK: {
+				PublicIp:               [4]uint8{10, 0, 0, 1},
+				MetricsPublisherPubKey: metricsKey,
+			},
+		},
+	}
+
+	var counter atomic.Uint32
+	pd, err := NewParentDiscovery(&ParentDiscoveryConfig{
+		Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		Client:                 client,
+		Resolver:               resolver,
+		GeoProbePubkey:         geoProbePK,
+		Interval:               10 * time.Millisecond,
+		ProbeTargetUpdateCount: &counter,
+	})
+	require.NoError(t, err)
+
+	update, err := pd.discover(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, update)
+
+	assert.Equal(t, uint32(42), counter.Load())
 }

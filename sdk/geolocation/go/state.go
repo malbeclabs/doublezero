@@ -74,6 +74,7 @@ type GeoProbe struct {
 	ReferenceCount     uint32             // 4 bytes LE
 	Code               string             // 4-byte length prefix + UTF-8 bytes
 	ParentDevices      []solana.PublicKey // 4-byte count + N*32 bytes
+	TargetUpdateCount  uint32             // 4 bytes LE (appended; defaults to 0 for old accounts)
 }
 
 func (g *GeoProbe) Serialize(w io.Writer) error {
@@ -103,6 +104,9 @@ func (g *GeoProbe) Serialize(w io.Writer) error {
 		return err
 	}
 	if err := enc.Encode(g.ParentDevices); err != nil {
+		return err
+	}
+	if err := enc.Encode(g.TargetUpdateCount); err != nil {
 		return err
 	}
 	return nil
@@ -142,6 +146,10 @@ func (g *GeoProbe) Deserialize(data []byte) error {
 	}
 	if len(g.ParentDevices) > MaxParentDevices {
 		return fmt.Errorf("parent devices count %d exceeds max allowed %d", len(g.ParentDevices), MaxParentDevices)
+	}
+	// TargetUpdateCount is appended; old accounts without it default to 0.
+	if err := dec.Decode(&g.TargetUpdateCount); err != nil {
+		g.TargetUpdateCount = 0
 	}
 	return nil
 }

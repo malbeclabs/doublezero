@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+- Activator
+  - Reserve device allocations (loopback IPs and segment routing IDs) for devices in Drained, DeviceProvisioning, and LinkProvisioning states at startup, preventing collisions with new device allocations
 - Onchain Programs
   - Allow foundation to remove targets from GeolocationUser accounts via the `RemoveTarget` instruction, unblocking foundation-initiated user deletion when targets still exist
 - Client

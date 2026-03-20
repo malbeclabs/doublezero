@@ -139,7 +139,11 @@ impl PriceCommand {
             .await?;
 
         if device_accounts.is_empty() {
-            println!("No devices found.");
+            if self.json {
+                println!("[]");
+            } else {
+                println!("No devices found.");
+            }
             return Ok(());
         }
 
@@ -219,22 +223,17 @@ impl PriceCommand {
             })
             .collect();
 
-        if rows.is_empty() {
-            println!("No device pricing data available.");
-            return Ok(());
-        }
-
         rows.sort_by(|a, b| {
             a.metro_code
                 .cmp(&b.metro_code)
                 .then(a.device_code.cmp(&b.device_code))
         });
 
-        println!("{} device(s) found:\n", rows.len());
-
         if self.json {
             println!("{}", serde_json::to_string_pretty(&rows)?);
         } else {
+            println!("{} device(s) found:\n", rows.len());
+
             let mut table = Table::new(rows);
             if !self.wide {
                 table

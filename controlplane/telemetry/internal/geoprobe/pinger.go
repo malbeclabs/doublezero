@@ -188,6 +188,56 @@ func (p *Pinger) probeWorker(
 	}
 }
 
+// MeasureOne measures a single probe and returns the best RTT in nanoseconds.
+func (p *Pinger) MeasureOne(ctx context.Context, addr ProbeAddress) (uint64, bool) {
+	p.sendersMu.Lock()
+	entry, exists := p.senders[addr.String()]
+	p.sendersMu.Unlock()
+	if !exists {
+		p.log.Warn("MeasureOne called for unknown probe", "probe", addr.String())
+		return 0, false
+	}
+
+	probeCtx, cancel := context.WithTimeout(ctx, p.cfg.ProbeTimeout)
+	defer cancel()
+
+	type probeResult struct {
+		rtt time.Duration
+		err error
+	}
+	ch := make(chan probeResult, 2)
+	go func() {
+		rtt, err := entry.warmupSender.Probe(probeCtx)
+		ch <- probeResult{rtt, err}
+	}()
+	go func() {
+		time.Sleep(DefaultWarmupDelay)
+		rtt, err := entry.sender.Probe(probeCtx)
+		ch <- probeResult{rtt, err}
+	}()
+
+	var bestRTT time.Duration
+	ok := false
+	for range 2 {
+		r := <-ch
+		if r.err == nil && (!ok || r.rtt < bestRTT) {
+			bestRTT = r.rtt
+			ok = true
+		}
+	}
+
+	if ok {
+		p.log.Debug("MeasureOne succeeded", "probe", addr.String(), "rtt", bestRTT)
+	} else {
+		p.log.Debug("MeasureOne failed", "probe", addr.String())
+	}
+
+	if !ok {
+		return 0, false
+	}
+	return uint64(bestRTT.Nanoseconds()), true
+}
+
 func (p *Pinger) MeasureAll(ctx context.Context) (map[ProbeAddress]uint64, error) {
 	p.sendersMu.Lock()
 	sendersCopy := make([]*senderEntry, 0, len(p.senders))

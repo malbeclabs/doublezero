@@ -95,6 +95,12 @@ func TestProbeAddress_ValidateScope(t *testing.T) {
 		{"link-local", "169.254.1.1", true},
 		{"multicast", "224.0.0.1", true},
 		{"unspecified", "0.0.0.0", true},
+		{"CGN 100.64/10", "100.64.0.1", true},
+		{"CGN upper bound", "100.127.255.254", true},
+		{"benchmarking 198.18/15", "198.18.0.1", true},
+		{"TEST-NET-1", "192.0.2.1", true},
+		{"TEST-NET-2", "198.51.100.1", true},
+		{"TEST-NET-3", "203.0.113.1", true},
 	}
 
 	for _, tt := range tests {

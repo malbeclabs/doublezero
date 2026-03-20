@@ -7,7 +7,7 @@ use std::io::Write;
 pub struct DeleteGeolocationUserCliCommand {
     /// User code to delete
     #[arg(long, value_parser = validate_code)]
-    pub code: String,
+    pub user: String,
     /// Skip confirmation prompt
     #[arg(long, default_value_t = false)]
     pub yes: bool,
@@ -16,7 +16,7 @@ pub struct DeleteGeolocationUserCliCommand {
 impl DeleteGeolocationUserCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         if !self.yes {
-            eprint!("Delete user '{}'? [y/N]: ", self.code);
+            eprint!("Delete user '{}'? [y/N]: ", self.user);
             let mut input = String::new();
             std::io::stdin().read_line(&mut input)?;
             if !input.trim().eq_ignore_ascii_case("y") {
@@ -28,7 +28,7 @@ impl DeleteGeolocationUserCliCommand {
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
         let sig = client.delete_geolocation_user(DeleteGeolocationUserCommand {
-            code: self.code,
+            code: self.user,
             serviceability_globalstate_pk,
         })?;
 
@@ -71,7 +71,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = DeleteGeolocationUserCliCommand {
-            code: "geo-user-01".to_string(),
+            user: "geo-user-01".to_string(),
             yes: true,
         }
         .execute(&client, &mut output);

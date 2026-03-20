@@ -15,7 +15,7 @@ use super::add_target::TargetType;
 pub struct RemoveTargetCliCommand {
     /// User code
     #[arg(long, value_parser = validate_code)]
-    pub code: String,
+    pub user: String,
     /// Target type
     #[arg(long = "type", value_enum)]
     pub target_type: TargetType,
@@ -55,7 +55,7 @@ impl RemoveTargetCliCommand {
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
         let sig = client.remove_target(RemoveTargetCommand {
-            code: self.code,
+            code: self.user,
             probe_pk,
             target_type,
             ip_address,
@@ -127,7 +127,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = RemoveTargetCliCommand {
-            code: "geo-user-01".to_string(),
+            user: "geo-user-01".to_string(),
             target_type: TargetType::Outbound,
             target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
             target_pk: None,
@@ -176,7 +176,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = RemoveTargetCliCommand {
-            code: "geo-user-01".to_string(),
+            user: "geo-user-01".to_string(),
             target_type: TargetType::Inbound,
             target_ip: None,
             target_pk: Some(target_pk.to_string()),

@@ -955,6 +955,154 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
     );
 }
 
+/// Foundation admin (payer != user.owner) can subscribe a user to a multicast group.
+/// Regression test for the bug where process_subscribe_multicastgroup derived the AccessPass PDA
+/// using payer_account.key instead of user.owner.
+#[tokio::test]
+async fn test_subscribe_foundation_admin_payer_differs_from_user_owner() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer, // payer is user.owner (alice)
+        program_id,
+        accesspass_pubkey, // derived from payer.pubkey() = user.owner
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    // foundation_admin is a different keypair — simulates a foundation admin acting on behalf of the user
+    let foundation_admin = solana_sdk::signature::Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &foundation_admin.pubkey(),
+        10_000_000,
+    )
+    .await;
+
+    // Subscribe the user as subscriber, signed by foundation_admin (payer != user.owner).
+    // Before the fix this would panic with "Invalid AccessPass PDA" because the PDA was
+    // derived from payer_account.key (foundation_admin) instead of user.owner (alice).
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &foundation_admin,
+    )
+    .await
+    .expect("Foundation admin should be able to subscribe user to multicast group");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.subscribers.len(), 1);
+    assert_eq!(user.status, UserStatus::Activated);
+}
+
+/// Foundation admin (payer != user.owner) can unsubscribe a user from a multicast group.
+/// This is the same regression as test_subscribe_foundation_admin_payer_differs_from_user_owner
+/// but exercises the unsubscribe direction (publisher: false, subscriber: false), which is the
+/// exact path taken by `user delete` when clearing subscriptions before deleting the user.
+#[tokio::test]
+async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer, // payer is user.owner (alice)
+        program_id,
+        accesspass_pubkey, // derived from payer.pubkey() = user.owner
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    // First subscribe the user as user.owner (alice) so there is a subscription to remove.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &payer,
+    )
+    .await
+    .expect("user.owner should be able to subscribe");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.subscribers.len(), 1);
+
+    // foundation_admin is a different keypair — simulates a foundation admin deleting the user.
+    let foundation_admin = solana_sdk::signature::Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &foundation_admin.pubkey(),
+        10_000_000,
+    )
+    .await;
+
+    // Unsubscribe the user, signed by foundation_admin (payer != user.owner).
+    // Before the fix this would panic with "Invalid AccessPass PDA" because the PDA was
+    // derived from payer_account.key (foundation_admin) instead of user.owner (alice).
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &foundation_admin,
+    )
+    .await
+    .expect("Foundation admin should be able to unsubscribe user from multicast group");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.subscribers.len(), 0);
+    assert_eq!(user.status, UserStatus::Activated);
+}
+
 // --- Onchain allocation tests ---
 
 /// Helper to enable the OnChainAllocation feature flag on an existing fixture.

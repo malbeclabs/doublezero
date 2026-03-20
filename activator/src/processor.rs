@@ -596,6 +596,12 @@ mod tests {
             .times(1)
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        process_link_event(&client, &new_link_pubkey, &mut link_ips, &mut link_ids, &new_link);
+        process_link_event(
+            &client,
+            &new_link_pubkey,
+            &mut link_ips,
+            &mut link_ids,
+            &new_link,
+        );
     }
 }

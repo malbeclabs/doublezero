@@ -14,7 +14,7 @@ pub enum PaymentStatus {
 pub struct UpdatePaymentStatusCliCommand {
     /// User code
     #[arg(long, value_parser = validate_code)]
-    pub code: String,
+    pub user: String,
     /// New payment status
     #[arg(long, value_enum)]
     pub status: PaymentStatus,
@@ -33,7 +33,7 @@ impl UpdatePaymentStatusCliCommand {
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
         let sig = client.update_payment_status(UpdatePaymentStatusCommand {
-            code: self.code,
+            code: self.user,
             serviceability_globalstate_pk,
             payment_status,
             last_deduction_dz_epoch: self.last_deduction_epoch,
@@ -75,7 +75,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = UpdatePaymentStatusCliCommand {
-            code: "geo-user-01".to_string(),
+            user: "geo-user-01".to_string(),
             status: PaymentStatus::Paid,
             last_deduction_epoch: Some(42),
         }
@@ -108,7 +108,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = UpdatePaymentStatusCliCommand {
-            code: "geo-user-01".to_string(),
+            user: "geo-user-01".to_string(),
             status: PaymentStatus::Delinquent,
             last_deduction_epoch: None,
         }

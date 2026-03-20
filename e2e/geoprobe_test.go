@@ -855,7 +855,7 @@ func updateGeolocationUserPayment(t *testing.T, dn *devnet.Devnet, code, status 
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
 		"doublezero-geolocation", "user", "update-payment",
-		"--code", code,
+		"--user", code,
 		"--status", status,
 	})
 	require.NoError(t, err, "user update-payment failed: %s", string(output))
@@ -866,7 +866,7 @@ func addGeolocationOutboundTarget(t *testing.T, dn *devnet.Devnet, userCode, tar
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
 		"doublezero-geolocation", "user", "add-target",
-		"--code", userCode,
+		"--user", userCode,
 		"--type", "outbound",
 		"--target-ip", targetIP,
 		"--target-port", fmt.Sprintf("%d", targetPort),
@@ -880,7 +880,7 @@ func addGeolocationInboundTarget(t *testing.T, dn *devnet.Devnet, userCode, targ
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
 		"doublezero-geolocation", "user", "add-target",
-		"--code", userCode,
+		"--user", userCode,
 		"--type", "inbound",
 		"--target-pk", targetPK,
 		"--probe", probeCode,

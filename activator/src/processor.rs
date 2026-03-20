@@ -21,8 +21,8 @@ use doublezero_sdk::{
         user::list::ListUserCommand,
     },
     doublezeroclient::DoubleZeroClient,
-    AccountData, Device, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType, LinkStatus,
-    Location, MulticastGroup, UserStatus, UserType,
+    AccountData, Device, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType, Link,
+    LinkStatus, Location, MulticastGroup, UserStatus, UserType,
 };
 use log::{debug, error, info, warn};
 use solana_sdk::pubkey::Pubkey;

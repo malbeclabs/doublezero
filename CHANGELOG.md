@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+
 - Onchain Programs
   - Add `GeolocationUser` account state to the geolocation program with owner, billing config (flat-per-epoch), payment/user status, and a target list supporting outbound (IP + port) and inbound (pubkey) geolocation targets
 - Client
@@ -39,6 +40,7 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+
 - Onchain Programs
   - Serviceability: split per-device multicast user tracking into separate subscriber and publisher counters (`multicast_subscribers_count`/`max_multicast_subscribers` and `multicast_publishers_count`/`max_multicast_publishers`); publisher and subscriber limits are now enforced independently
 - Controller

@@ -1478,6 +1478,7 @@ mod tests {
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: user.client_ip,
                 tunnel_endpoint: user.tunnel_endpoint,
+                multicast_publisher: false,
                 tenant_pk,
             };
 
@@ -1514,6 +1515,7 @@ mod tests {
                 publisher,
                 subscriber,
                 tunnel_endpoint: user.tunnel_endpoint,
+                multicast_publisher: false,
             };
 
             let users = self.users.clone();

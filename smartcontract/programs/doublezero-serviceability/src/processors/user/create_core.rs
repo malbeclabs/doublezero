@@ -334,6 +334,7 @@ pub fn create_user_core(
         subscribers: vec![],
         validator_pubkey,
         tunnel_endpoint,
+        multicast_publisher: false,
     };
 
     Ok(CreateUserCoreResult {

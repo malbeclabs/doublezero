@@ -238,6 +238,7 @@ mod tests {
             subscribers: vec![mgroup_pubkey],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            multicast_publisher: false,
         };
 
         // User with Updating status (returned by first retry call)
@@ -443,6 +444,7 @@ mod tests {
             subscribers: vec![mgroup_pubkey],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            multicast_publisher: false,
         };
 
         let user_updating = User {
@@ -690,6 +692,7 @@ mod tests {
             subscribers: vec![mgroup_pubkey],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            multicast_publisher: false,
         };
 
         let user_activated_final = User {
@@ -900,6 +903,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            multicast_publisher: false,
         };
 
         let owner = user.owner;

@@ -184,6 +184,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            multicast_publisher: false,
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(
@@ -277,6 +278,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            multicast_publisher: false,
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(

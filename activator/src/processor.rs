@@ -21,8 +21,8 @@ use doublezero_sdk::{
         user::list::ListUserCommand,
     },
     doublezeroclient::DoubleZeroClient,
-    AccountData, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType, Link, LinkStatus,
-    Location, MulticastGroup, UserStatus, UserType,
+    AccountData, Device, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType, Link,
+    LinkStatus, Location, MulticastGroup, UserStatus, UserType,
 };
 use log::{debug, error, info, warn};
 use solana_sdk::pubkey::Pubkey;
@@ -63,6 +63,39 @@ pub struct ProcessorStateless<T: DoubleZeroClient> {
     client: Arc<T>,
     devices: DeviceMapStateless,
     multicastgroups: MulticastGroupMap,
+}
+
+/// Reserve segment routing IDs and loopback IPs for devices that have active allocations.
+/// Devices in Activated, Drained, DeviceProvisioning, or LinkProvisioning states all
+/// hold allocated addresses that must not be handed out to new devices.
+fn reserve_device_allocations(
+    devices: &HashMap<Pubkey, Device>,
+    segment_routing_ids: &mut IDAllocator,
+    link_ips: &mut IPBlockAllocator,
+    device_map: &mut DeviceMap,
+) {
+    for (pubkey, device) in devices.iter().filter(|(_, d)| {
+        matches!(
+            d.status,
+            DeviceStatus::Activated
+                | DeviceStatus::Drained
+                | DeviceStatus::DeviceProvisioning
+                | DeviceStatus::LinkProvisioning
+        )
+    }) {
+        device.interfaces.iter().for_each(|interface| {
+            let interface = interface.into_current_version();
+            if interface.node_segment_idx > 0 {
+                segment_routing_ids.assign(interface.node_segment_idx);
+            }
+            if interface.interface_type == InterfaceType::Loopback {
+                link_ips.assign_block(interface.ip_net.into());
+            }
+        });
+        device_map
+            .entry(*pubkey)
+            .or_insert_with(|| DeviceState::new(device));
+    }
 }
 
 /// Reserve tunnel IDs and IP blocks for links that have active allocations.
@@ -142,23 +175,12 @@ impl<T: DoubleZeroClient> Processor<T> {
 
         reserve_link_allocations(&links, &mut link_ids, &mut link_ips);
 
-        for (pubkey, device) in devices
-            .iter()
-            .filter(|(_, d)| d.status == DeviceStatus::Activated)
-        {
-            device.interfaces.iter().for_each(|interface| {
-                let interface = interface.into_current_version();
-                if interface.node_segment_idx > 0 {
-                    segment_routing_ids.assign(interface.node_segment_idx);
-                }
-                if interface.interface_type == InterfaceType::Loopback {
-                    link_ips.assign_block(interface.ip_net.into());
-                }
-            });
-            device_map
-                .entry(*pubkey)
-                .or_insert_with(|| DeviceState::new(device));
-        }
+        reserve_device_allocations(
+            &devices,
+            &mut segment_routing_ids,
+            &mut link_ips,
+            &mut device_map,
+        );
 
         users
             .iter()
@@ -485,6 +507,99 @@ mod tests {
         assert!(
             err.contains("multicast_publisher_block"),
             "error was: {err}"
+        );
+    }
+
+    /// Regression test: reserve_device_allocations must reserve loopback IPs and segment
+    /// routing IDs for devices in Drained/DeviceProvisioning/LinkProvisioning states.
+    /// Otherwise new devices get colliding addresses.
+    #[test]
+    fn test_drained_device_allocations_must_be_reserved_at_startup() {
+        use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator};
+        use doublezero_sdk::{
+            AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType,
+            InterfaceStatus, InterfaceType, LoopbackType,
+        };
+
+        // Existing device in Drained state with loopback IP 1.0.0.0/32 and segment routing ID 1
+        let drained_device = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            bump_seed: 0,
+            reference_count: 0,
+            contributor_pk: Pubkey::new_unique(),
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [192, 168, 1, 1].into(),
+            status: DeviceStatus::Drained,
+            metrics_publisher_pk: Pubkey::default(),
+            code: "DrainedDevice".to_string(),
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![CurrentInterfaceVersion {
+                status: InterfaceStatus::Activated,
+                name: "Loopback0".to_string(),
+                interface_type: InterfaceType::Loopback,
+                loopback_type: LoopbackType::Vpnv4,
+                vlan_id: 0,
+                ip_net: "1.0.0.0/32".parse().unwrap(),
+                node_segment_idx: 1,
+                user_tunnel_endpoint: false,
+                ..Default::default()
+            }
+            .to_interface()],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_subscribers_count: 0,
+            max_unicast_users: 0,
+            max_multicast_subscribers: 0,
+            reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
+        };
+
+        let mut devices: HashMap<Pubkey, Device> = HashMap::new();
+        devices.insert(Pubkey::new_unique(), drained_device);
+
+        let mut segment_routing_ids = IDAllocator::new(1, vec![]);
+        let mut link_ips = IPBlockAllocator::new("1.0.0.0/24".parse().unwrap());
+        let mut device_map: DeviceMap = DeviceMap::new();
+
+        reserve_device_allocations(
+            &devices,
+            &mut segment_routing_ids,
+            &mut link_ips,
+            &mut device_map,
+        );
+
+        // The next segment routing ID should NOT collide with the Drained device's ID 1
+        let next_sr_id = segment_routing_ids.next_available();
+        assert_ne!(
+            next_sr_id, 1,
+            "BUG: allocated segment routing ID 1 collides with Drained device"
+        );
+
+        // The next loopback IP should NOT collide with the Drained device's 1.0.0.0/32
+        let next_ip = link_ips
+            .next_available_block(1, 1)
+            .expect("should have available block");
+        assert_ne!(
+            next_ip.ip().to_string(),
+            "1.0.0.0",
+            "BUG: allocated loopback IP collides with Drained device's 1.0.0.0/32"
+        );
+
+        // The device should be in the device_map
+        assert_eq!(
+            device_map.len(),
+            1,
+            "Drained device should be in device_map"
         );
     }
 

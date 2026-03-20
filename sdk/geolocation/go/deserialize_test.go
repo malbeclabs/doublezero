@@ -207,11 +207,11 @@ func TestSDK_Geolocation_DeserializeGeolocationUser_OversizedCodeLength(t *testi
 	t.Parallel()
 
 	// Craft raw bytes with a valid discriminator but a code length prefix
-	// that exceeds MaxCodeLength. Layout: account_type(1) + owner(32) + code_len(4).
-	data := make([]byte, 37)
+	// that exceeds MaxCodeLength. Layout: account_type(1) + owner(32) + update_count(4) + code_len(4).
+	data := make([]byte, 41)
 	data[0] = byte(geolocation.AccountTypeGeolocationUser)
-	// Set code length to 255 (> MaxCodeLength=32) at offset 33.
-	data[33] = 255
+	// Set code length to 255 (> MaxCodeLength=32) at offset 37.
+	data[37] = 255
 
 	_, err := geolocation.DeserializeGeolocationUser(data)
 	require.Error(t, err)
@@ -242,8 +242,8 @@ func TestSDK_Geolocation_DeserializeGeolocationUser_OversizedTargetCount(t *test
 	data := buf.Bytes()
 
 	// Target count is the last 4 bytes (code "test" = 4 bytes).
-	// Offset: 1 + 32 + 4 + 4 + 32 + 1 + 17 + 1 = 92.
-	targetCountOffset := 1 + 32 + 4 + len("test") + 32 + 1 + 17 + 1
+	// Offset: 1 + 32 + 4 + 4 + 4 + 32 + 1 + 17 + 1 = 96.
+	targetCountOffset := 1 + 32 + 4 + 4 + len("test") + 32 + 1 + 17 + 1
 	data[targetCountOffset] = 0xFF
 	data[targetCountOffset+1] = 0xFF
 	data[targetCountOffset+2] = 0x00
@@ -276,8 +276,8 @@ func TestSDK_Geolocation_DeserializeGeolocationUser_InvalidPaymentStatus(t *test
 	require.NoError(t, user.Serialize(&buf))
 	data := buf.Bytes()
 
-	// PaymentStatus is at offset: 1 + 32 + 4 + len("test") + 32 = 73.
-	paymentOffset := 1 + 32 + 4 + len("test") + 32
+	// PaymentStatus is at offset: 1 + 32 + 4 + 4 + len("test") + 32 = 77.
+	paymentOffset := 1 + 32 + 4 + 4 + len("test") + 32
 	data[paymentOffset] = 99 // invalid
 
 	_, err := geolocation.DeserializeGeolocationUser(data)
@@ -306,8 +306,8 @@ func TestSDK_Geolocation_DeserializeGeolocationUser_InvalidUserStatus(t *testing
 	require.NoError(t, user.Serialize(&buf))
 	data := buf.Bytes()
 
-	// Status is at offset: 1 + 32 + 4 + len("test") + 32 + 1 + 17 = 91.
-	statusOffset := 1 + 32 + 4 + len("test") + 32 + 1 + 17
+	// Status is at offset: 1 + 32 + 4 + 4 + len("test") + 32 + 1 + 17 = 95.
+	statusOffset := 1 + 32 + 4 + 4 + len("test") + 32 + 1 + 17
 	data[statusOffset] = 99 // invalid
 
 	_, err := geolocation.DeserializeGeolocationUser(data)
@@ -344,9 +344,9 @@ func TestSDK_Geolocation_DeserializeGeolocationUser_InvalidTargetType(t *testing
 	require.NoError(t, user.Serialize(&buf))
 	data := buf.Bytes()
 
-	// First target starts at offset: 1 + 32 + 4 + len("test") + 32 + 1 + 17 + 1 + 4 = 96.
+	// First target starts at offset: 1 + 32 + 4 + 4 + len("test") + 32 + 1 + 17 + 1 + 4 = 100.
 	// The first byte of the target is TargetType.
-	targetOffset := 1 + 32 + 4 + len("test") + 32 + 1 + 17 + 1 + 4
+	targetOffset := 1 + 32 + 4 + 4 + len("test") + 32 + 1 + 17 + 1 + 4
 	data[targetOffset] = 99 // invalid target type
 
 	_, err := geolocation.DeserializeGeolocationUser(data)

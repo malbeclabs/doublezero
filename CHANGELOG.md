@@ -8,6 +8,13 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain Programs
+  - Add `update_count` field to `GeolocationUser` account, incremented on target add/remove and payment status changes, enabling lightweight change-detection polling by geoprobes
+- SDK
+  - Add `GetGeolocationUserUpdateCounts` to the Go geolocation SDK, using Solana `DataSlice` to fetch only the 4-byte counter per account
+- Telemetry
+  - Optimize geoProbe target discovery to use lightweight update-count polling, falling back to full account fetches only when changes are detected or a configurable full-refresh interval (default 5m) elapses
+
 ## [v0.13.0](https://github.com/malbeclabs/doublezero/compare/client/v0.12.0...client/v0.13.0) - 2026-03-20
 
 ### Breaking

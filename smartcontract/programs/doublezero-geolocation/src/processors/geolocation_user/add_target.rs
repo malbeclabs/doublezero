@@ -101,6 +101,7 @@ pub fn process_add_target(
         return Err(GeolocationError::TargetAlreadyExists.into());
     }
 
+    user.update_count = user.update_count.wrapping_add(1);
     user.targets.push(GeolocationTarget {
         target_type: args.target_type,
         ip_address: args.ip_address,

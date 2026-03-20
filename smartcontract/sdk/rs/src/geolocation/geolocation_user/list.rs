@@ -61,6 +61,7 @@ mod tests {
         GeolocationUser {
             account_type: AccountType::GeolocationUser,
             owner: Pubkey::new_unique(),
+            update_count: 0,
             code: code.to_string(),
             token_account: Pubkey::new_unique(),
             payment_status: GeolocationPaymentStatus::Delinquent,

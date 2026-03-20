@@ -13,12 +13,21 @@ import (
 
 // mockGeolocationUserClient implements GeolocationUserClient for testing.
 type mockGeolocationUserClient struct {
-	users []geolocation.KeyedGeolocationUser
-	err   error
+	users        []geolocation.KeyedGeolocationUser
+	err          error
+	updateCounts map[solana.PublicKey]uint32
+	updateErr    error
 }
 
 func (m *mockGeolocationUserClient) GetGeolocationUsers(_ context.Context) ([]geolocation.KeyedGeolocationUser, error) {
 	return m.users, m.err
+}
+
+func (m *mockGeolocationUserClient) GetGeolocationUserUpdateCounts(_ context.Context) (map[solana.PublicKey]uint32, error) {
+	if m.updateCounts == nil && m.updateErr == nil {
+		return nil, fmt.Errorf("not configured")
+	}
+	return m.updateCounts, m.updateErr
 }
 
 func testProbePubkey() solana.PublicKey {
@@ -441,5 +450,124 @@ func TestTargetDiscovery_RejectsNonPublicOutboundTargets(t *testing.T) {
 				t.Errorf("expected non-public target %v to be rejected, got %v", tt.ip, targets)
 			}
 		})
+	}
+}
+
+func TestTargetDiscovery_UpdateCountsSkipsFetch(t *testing.T) {
+	probePK := testProbePubkey()
+	userPK := solana.NewWallet().PublicKey()
+
+	user := makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
+		outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
+	})
+	user.Pubkey = userPK
+	user.UpdateCount = 5
+
+	client := &mockGeolocationUserClient{
+		users:        []geolocation.KeyedGeolocationUser{user},
+		updateCounts: map[solana.PublicKey]uint32{userPK: 5},
+	}
+
+	td := newTestTargetDiscovery(client, nil, nil)
+	ctx := context.Background()
+
+	// First discover: counts changed (cache is empty vs counts has entry) -> full fetch
+	targets, _, err := td.discover(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 target on first discover, got %d", len(targets))
+	}
+
+	// Second discover: same counts -> no change, returns nil
+	targets, keys, err := td.discover(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if targets != nil || keys != nil {
+		t.Errorf("expected nil targets/keys when no update count changes, got targets=%v keys=%v", targets, keys)
+	}
+}
+
+func TestTargetDiscovery_UpdateCountsDetectsChange(t *testing.T) {
+	probePK := testProbePubkey()
+	userPK := solana.NewWallet().PublicKey()
+
+	user := makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
+		outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
+	})
+	user.Pubkey = userPK
+	user.UpdateCount = 5
+
+	client := &mockGeolocationUserClient{
+		users:        []geolocation.KeyedGeolocationUser{user},
+		updateCounts: map[solana.PublicKey]uint32{userPK: 5},
+	}
+
+	td := newTestTargetDiscovery(client, nil, nil)
+	ctx := context.Background()
+
+	// First discover to populate cache
+	_, _, _ = td.discover(ctx)
+
+	// Change update count
+	client.updateCounts = map[solana.PublicKey]uint32{userPK: 6}
+
+	// Second discover should detect change and do full fetch
+	targets, _, err := td.discover(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 target after count change, got %d", len(targets))
+	}
+}
+
+func TestTargetDiscovery_ForceFullRefresh(t *testing.T) {
+	probePK := testProbePubkey()
+	userPK := solana.NewWallet().PublicKey()
+
+	counts := map[solana.PublicKey]uint32{userPK: 5}
+	client := &mockGeolocationUserClient{
+		users: []geolocation.KeyedGeolocationUser{
+			makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
+				outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
+			}),
+		},
+		updateCounts: counts,
+	}
+
+	td, _ := NewTargetDiscovery(&TargetDiscoveryConfig{
+		GeoProbePubkey:      testProbePubkey(),
+		Client:              client,
+		Interval:            time.Minute,
+		FullRefreshInterval: time.Nanosecond, // Very short interval to force refresh
+		Logger:              slog.Default(),
+	})
+	ctx := context.Background()
+
+	// First discover populates cache
+	targets, _, err := td.discover(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 target, got %d", len(targets))
+	}
+
+	// Wait a tiny bit to ensure interval elapsed
+	time.Sleep(time.Millisecond)
+
+	// Same update counts, but forced refresh should still do full fetch
+	targets, _, err = td.discover(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if targets == nil {
+		t.Fatal("expected non-nil targets on forced refresh")
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 target on forced refresh, got %d", len(targets))
 	}
 }

@@ -2,6 +2,7 @@ package geolocation
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -208,4 +209,46 @@ func (c *Client) GetGeolocationUsers(ctx context.Context) ([]KeyedGeolocationUse
 		users = append(users, KeyedGeolocationUser{Pubkey: acct.Pubkey, GeolocationUser: *user})
 	}
 	return users, nil
+}
+
+// GetGeolocationUserUpdateCounts returns a map of GeolocationUser pubkeys to their
+// update_count values. Uses DataSlice to return only 4 bytes per account, making it
+// suitable for lightweight polling-based change detection.
+func (c *Client) GetGeolocationUserUpdateCounts(ctx context.Context) (map[solana.PublicKey]uint32, error) {
+	offset := uint64(GeolocationUserUpdateCountOffset)
+	length := uint64(GeolocationUserUpdateCountLength)
+	opts := &solanarpc.GetProgramAccountsOpts{
+		Filters: []solanarpc.RPCFilter{
+			{
+				Memcmp: &solanarpc.RPCFilterMemcmp{
+					Offset: 0,
+					Bytes:  solana.Base58([]byte{byte(AccountTypeGeolocationUser)}),
+				},
+			},
+		},
+		DataSlice: &solanarpc.DataSlice{
+			Offset: &offset,
+			Length: &length,
+		},
+	}
+
+	accounts, err := c.rpc.GetProgramAccountsWithOpts(ctx, c.programID, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get program accounts: %w", err)
+	}
+
+	result := make(map[solana.PublicKey]uint32, len(accounts))
+	for _, acct := range accounts {
+		if acct.Account.Owner != c.programID {
+			c.log.Warn("skipping account with wrong owner", "pubkey", acct.Pubkey, "owner", acct.Account.Owner)
+			continue
+		}
+		data := acct.Account.Data.GetBinary()
+		if len(data) < 4 {
+			c.log.Warn("skipping account with insufficient data for update_count", "pubkey", acct.Pubkey)
+			continue
+		}
+		result[acct.Pubkey] = binary.LittleEndian.Uint32(data[:4])
+	}
+	return result, nil
 }

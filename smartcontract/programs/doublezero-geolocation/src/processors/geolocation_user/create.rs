@@ -60,6 +60,7 @@ pub fn process_create_geolocation_user(
     let user = GeolocationUser {
         account_type: AccountType::GeolocationUser,
         owner: *payer_account.key,
+        update_count: 0,
         code,
         token_account: args.token_account,
         payment_status: GeolocationPaymentStatus::Delinquent,

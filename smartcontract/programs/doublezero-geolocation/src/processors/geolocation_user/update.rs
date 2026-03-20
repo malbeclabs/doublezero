@@ -51,6 +51,9 @@ pub fn process_update_geolocation_user(
         return Err(GeolocationError::Unauthorized.into());
     }
 
+    // update_count is intentionally not incremented here. It tracks changes to
+    // probe-relevant state (targets, payment_status). token_account is billing
+    // plumbing and does not affect geoProbe polling.
     if let Some(token_account) = args.token_account {
         user.token_account = token_account;
     }

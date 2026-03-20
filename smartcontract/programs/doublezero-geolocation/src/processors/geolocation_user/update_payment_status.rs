@@ -54,6 +54,7 @@ pub fn process_update_payment_status(
     let mut user = GeolocationUser::try_from(user_account)?;
 
     user.payment_status = args.payment_status;
+    user.update_count = user.update_count.wrapping_add(1);
 
     if let Some(epoch) = args.last_deduction_dz_epoch {
         match &mut user.billing {

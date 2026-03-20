@@ -171,6 +171,7 @@ pub struct GeolocationUser {
         )
     )]
     pub owner: Pubkey, // 32
+    pub update_count: u32,         // 4
     pub code: String,              // 4 + len
     #[cfg_attr(
         feature = "serde",
@@ -190,10 +191,11 @@ impl fmt::Display for GeolocationUser {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, code: {}, token_account: {}, \
+            "account_type: {}, owner: {}, update_count: {}, code: {}, token_account: {}, \
             payment_status: {}, billing: {}, status: {}, targets: {:?}",
             self.account_type,
             self.owner,
+            self.update_count,
             self.code,
             self.token_account,
             self.payment_status,
@@ -243,6 +245,7 @@ mod tests {
         let val = GeolocationUser {
             account_type: AccountType::GeolocationUser,
             owner: Pubkey::new_unique(),
+            update_count: 0,
             code: "geo-user-01".to_string(),
             token_account: Pubkey::new_unique(),
             payment_status: GeolocationPaymentStatus::Paid,

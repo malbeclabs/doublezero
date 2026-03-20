@@ -106,6 +106,7 @@ async fn test_create_geolocation_user_success() {
     let expected = GeolocationUser {
         account_type: AccountType::GeolocationUser,
         owner: payer.pubkey(),
+        update_count: 0,
         code: code.to_string(),
         token_account,
         payment_status: GeolocationPaymentStatus::Delinquent,
@@ -610,6 +611,7 @@ async fn test_add_target_outbound_success() {
     assert_eq!(user.targets[0].target_type, GeoLocationTargetType::Outbound);
     assert_eq!(user.targets[0].ip_address, Ipv4Addr::new(8, 8, 8, 8));
     assert_eq!(user.targets[0].geoprobe_pk, probe_pda);
+    assert_eq!(user.update_count, 1);
 
     // Verify probe reference_count incremented
     let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
@@ -643,6 +645,7 @@ async fn test_add_target_outbound_success() {
     assert_eq!(user.targets.len(), 2);
     assert_eq!(user.targets[1].target_type, GeoLocationTargetType::Inbound);
     assert_eq!(user.targets[1].target_pk, inbound_target_pk);
+    assert_eq!(user.update_count, 2);
 
     let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
     let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
@@ -868,6 +871,7 @@ async fn test_remove_target_success() {
     let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
     let user = GeolocationUser::try_from(&account.data[..]).unwrap();
     assert!(user.targets.is_empty());
+    assert_eq!(user.update_count, 2); // 1 from add + 1 from remove
 
     // Verify reference_count decremented
     let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
@@ -1169,6 +1173,7 @@ async fn test_update_payment_status_success() {
     let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
     let user = GeolocationUser::try_from(&account.data[..]).unwrap();
     assert_eq!(user.payment_status, GeolocationPaymentStatus::Paid);
+    assert_eq!(user.update_count, 1);
     match user.billing {
         GeolocationBillingConfig::FlatPerEpoch(config) => {
             assert_eq!(config.last_deduction_dz_epoch, 42);

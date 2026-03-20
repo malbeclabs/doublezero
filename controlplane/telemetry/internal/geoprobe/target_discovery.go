@@ -12,9 +12,11 @@ import (
 	geolocation "github.com/malbeclabs/doublezero/sdk/geolocation/go"
 )
 
-// GeolocationUserClient fetches all GeolocationUser accounts from the onchain program.
+// GeolocationUserClient fetches GeolocationUser accounts and lightweight
+// update-count snapshots used for change-detection polling.
 type GeolocationUserClient interface {
 	GetGeolocationUsers(ctx context.Context) ([]geolocation.KeyedGeolocationUser, error)
+	GetGeolocationUserUpdateCounts(ctx context.Context) (map[solana.PublicKey]uint32, error)
 }
 
 // TargetUpdate contains outbound probe targets discovered from onchain data.
@@ -29,12 +31,13 @@ type InboundKeyUpdate struct {
 
 // TargetDiscoveryConfig holds configuration for target discovery.
 type TargetDiscoveryConfig struct {
-	GeoProbePubkey solana.PublicKey
-	Client         GeolocationUserClient
-	CLITargets     []ProbeAddress
-	CLIAllowedKeys [][32]byte
-	Interval       time.Duration
-	Logger         *slog.Logger
+	GeoProbePubkey      solana.PublicKey
+	Client              GeolocationUserClient
+	CLITargets          []ProbeAddress
+	CLIAllowedKeys      [][32]byte
+	Interval            time.Duration
+	FullRefreshInterval time.Duration
+	Logger              *slog.Logger
 }
 
 // TargetDiscovery polls GeolocationUser accounts and sends target/key updates
@@ -48,9 +51,12 @@ type TargetDiscovery struct {
 	cliAllowedKeys [][32]byte
 	interval       time.Duration
 
-	cachedTargets     []ProbeAddress
-	cachedInboundKeys [][32]byte
-	tickCount         uint64
+	cachedTargets       []ProbeAddress
+	cachedInboundKeys   [][32]byte
+	tickCount           uint64
+	fullRefreshInterval time.Duration
+	lastFullRefresh     time.Time
+	cachedUpdateCounts  map[solana.PublicKey]uint32
 }
 
 // NewTargetDiscovery creates a new TargetDiscovery instance.
@@ -68,13 +74,20 @@ func NewTargetDiscovery(cfg *TargetDiscoveryConfig) (*TargetDiscovery, error) {
 		return nil, fmt.Errorf("interval must be greater than 0")
 	}
 
+	fullRefreshInterval := cfg.FullRefreshInterval
+	if fullRefreshInterval == 0 {
+		fullRefreshInterval = 5 * time.Minute
+	}
+
 	return &TargetDiscovery{
-		log:            cfg.Logger,
-		geoProbePubkey: cfg.GeoProbePubkey,
-		client:         cfg.Client,
-		cliTargets:     cfg.CLITargets,
-		cliAllowedKeys: cfg.CLIAllowedKeys,
-		interval:       cfg.Interval,
+		log:                 cfg.Logger,
+		geoProbePubkey:      cfg.GeoProbePubkey,
+		client:              cfg.Client,
+		cliTargets:          cfg.CLITargets,
+		cliAllowedKeys:      cfg.CLIAllowedKeys,
+		interval:            cfg.Interval,
+		fullRefreshInterval: fullRefreshInterval,
+		cachedUpdateCounts:  make(map[solana.PublicKey]uint32),
 	}, nil
 }
 
@@ -111,6 +124,11 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 		return
 	}
 
+	// nil targets and keys means no changes detected (lightweight poll found no differences)
+	if targets == nil && inboundKeys == nil {
+		return
+	}
+
 	if !probeAddressSlicesEqual(targets, d.cachedTargets) {
 		d.cachedTargets = targets
 		select {
@@ -134,6 +152,19 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 // merge with CLI values.
 func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]byte, error) {
 	d.tickCount++
+
+	forceFullRefresh := d.fullRefreshInterval > 0 && time.Since(d.lastFullRefresh) >= d.fullRefreshInterval
+
+	// Try lightweight change detection unless forced refresh
+	if !forceFullRefresh {
+		counts, err := d.client.GetGeolocationUserUpdateCounts(ctx)
+		if err != nil {
+			d.log.Warn("Failed to fetch update counts, falling back to full fetch", "error", err)
+		} else if !d.updateCountsChanged(counts) {
+			d.log.Debug("No update count changes detected, skipping full fetch")
+			return nil, nil, nil
+		}
+	}
 
 	users, err := d.client.GetGeolocationUsers(ctx)
 	if err != nil {
@@ -205,7 +236,35 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]b
 		"mergedKeys", len(mergedKeys),
 	)
 
+	d.lastFullRefresh = time.Now()
+	// Rebuild cached update counts from the full fetch we already have,
+	// regardless of how we got here (lightweight change detection, forced
+	// refresh, or error fallback). This avoids a redundant RPC call.
+	d.cachedUpdateCounts = extractUpdateCounts(users)
+
 	return mergedTargets, mergedKeys, nil
+}
+
+// updateCountsChanged checks whether the given update counts differ from the cached counts.
+func (d *TargetDiscovery) updateCountsChanged(counts map[solana.PublicKey]uint32) bool {
+	if len(d.cachedUpdateCounts) != len(counts) {
+		return true
+	}
+	for pk, count := range counts {
+		if cached, ok := d.cachedUpdateCounts[pk]; !ok || cached != count {
+			return true
+		}
+	}
+	return false
+}
+
+// extractUpdateCounts builds an update-count map from fully-fetched users.
+func extractUpdateCounts(users []geolocation.KeyedGeolocationUser) map[solana.PublicKey]uint32 {
+	counts := make(map[solana.PublicKey]uint32, len(users))
+	for i := range users {
+		counts[users[i].Pubkey] = users[i].UpdateCount
+	}
+	return counts
 }
 
 // targetToProbeAddress converts a GeolocationTarget to a ProbeAddress.

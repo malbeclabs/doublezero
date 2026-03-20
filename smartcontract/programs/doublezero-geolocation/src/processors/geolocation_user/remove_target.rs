@@ -89,6 +89,7 @@ pub fn process_remove_target(
         })
         .ok_or(GeolocationError::TargetNotFound)?;
 
+    user.update_count = user.update_count.wrapping_add(1);
     user.targets.swap_remove(index);
 
     probe.reference_count = probe.reference_count.saturating_sub(1);

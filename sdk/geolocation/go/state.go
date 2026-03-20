@@ -318,6 +318,7 @@ type KeyedGeolocationUser struct {
 type GeolocationUser struct {
 	AccountType   AccountType              // 1 byte
 	Owner         solana.PublicKey         // 32 bytes
+	UpdateCount   uint32                   // 4 bytes LE
 	Code          string                   // 4-byte length prefix + UTF-8 bytes
 	TokenAccount  solana.PublicKey         // 32 bytes
 	PaymentStatus GeolocationPaymentStatus // 1 byte
@@ -332,6 +333,9 @@ func (g *GeolocationUser) Serialize(w io.Writer) error {
 		return err
 	}
 	if err := enc.Encode(g.Owner); err != nil {
+		return err
+	}
+	if err := enc.Encode(g.UpdateCount); err != nil {
 		return err
 	}
 	if err := enc.Encode(g.Code); err != nil {
@@ -361,6 +365,13 @@ func (g *GeolocationUser) Serialize(w io.Writer) error {
 	return nil
 }
 
+// GeolocationUserUpdateCountOffset is the byte offset of the update_count field
+// in the Borsh-serialized GeolocationUser account: account_type(1) + owner(32).
+const GeolocationUserUpdateCountOffset = 33
+
+// GeolocationUserUpdateCountLength is the wire size of the update_count field (u32).
+const GeolocationUserUpdateCountLength = 4
+
 // geolocationBillingConfigSize is the wire size of a GeolocationBillingConfig (1+8+8).
 const geolocationBillingConfigSize = 17
 
@@ -370,8 +381,8 @@ const geolocationUserTargetSize = 71
 func (g *GeolocationUser) Deserialize(data []byte) error {
 	// Pre-validate the code string length prefix from raw bytes before the
 	// decoder allocates memory for it. The prefix sits at a fixed offset:
-	// account_type(1) + owner(32) = 33 bytes.
-	const codeOffset = 1 + 32
+	// account_type(1) + owner(32) + update_count(4) = 37 bytes.
+	const codeOffset = 1 + 32 + 4
 	if len(data) < codeOffset+4 {
 		return fmt.Errorf("data too short for code length prefix: %d bytes", len(data))
 	}
@@ -381,8 +392,8 @@ func (g *GeolocationUser) Deserialize(data []byte) error {
 	}
 
 	// Pre-validate the target count from raw bytes. The count sits after:
-	// code_offset(33) + code_len_prefix(4) + code(codeLen) + token_account(32) +
-	// payment_status(1) + billing + status(1) = 88 + codeLen.
+	// code_offset(37) + code_len_prefix(4) + code(codeLen) + token_account(32) +
+	// payment_status(1) + billing + status(1) = 92 + codeLen.
 	targetCountOffset := codeOffset + 4 + int(codeLen) + 32 + 1 + geolocationBillingConfigSize + 1
 	if len(data) < targetCountOffset+4 {
 		return fmt.Errorf("data too short for target count: %d bytes", len(data))
@@ -401,6 +412,9 @@ func (g *GeolocationUser) Deserialize(data []byte) error {
 		return err
 	}
 	if err := dec.Decode(&g.Owner); err != nil {
+		return err
+	}
+	if err := dec.Decode(&g.UpdateCount); err != nil {
 		return err
 	}
 	if err := dec.Decode(&g.Code); err != nil {

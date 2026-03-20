@@ -149,6 +149,7 @@ mod tests {
         GeolocationUser {
             account_type: AccountType::GeolocationUser,
             owner: Pubkey::from_str_const("DDddB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt"),
+            update_count: 0,
             code: code.to_string(),
             token_account: Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc"),
             payment_status: GeolocationPaymentStatus::Paid,

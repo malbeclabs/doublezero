@@ -3,6 +3,7 @@ package geolocation_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"log/slog"
 	"testing"
 
@@ -206,6 +207,7 @@ func TestSDK_Geolocation_Client_GetGeolocationUserByCode_HappyPath(t *testing.T)
 	expected := &geolocation.GeolocationUser{
 		AccountType:   geolocation.AccountTypeGeolocationUser,
 		Owner:         solana.NewWallet().PublicKey(),
+		UpdateCount:   0,
 		Code:          "geo-user-01",
 		TokenAccount:  solana.NewWallet().PublicKey(),
 		PaymentStatus: geolocation.GeolocationPaymentStatusPaid,
@@ -268,6 +270,7 @@ func TestSDK_Geolocation_Client_GetGeolocationUsers_HappyPath(t *testing.T) {
 	user1 := &geolocation.GeolocationUser{
 		AccountType:   geolocation.AccountTypeGeolocationUser,
 		Owner:         solana.NewWallet().PublicKey(),
+		UpdateCount:   0,
 		Code:          "geo-user-01",
 		TokenAccount:  solana.NewWallet().PublicKey(),
 		PaymentStatus: geolocation.GeolocationPaymentStatusPaid,
@@ -284,6 +287,7 @@ func TestSDK_Geolocation_Client_GetGeolocationUsers_HappyPath(t *testing.T) {
 	user2 := &geolocation.GeolocationUser{
 		AccountType:   geolocation.AccountTypeGeolocationUser,
 		Owner:         solana.NewWallet().PublicKey(),
+		UpdateCount:   0,
 		Code:          "geo-user-02",
 		TokenAccount:  solana.NewWallet().PublicKey(),
 		PaymentStatus: geolocation.GeolocationPaymentStatusDelinquent,
@@ -345,6 +349,7 @@ func TestSDK_Geolocation_Client_GetGeolocationUserByCode_OwnerMismatch(t *testin
 	user := &geolocation.GeolocationUser{
 		AccountType:   geolocation.AccountTypeGeolocationUser,
 		Owner:         solana.NewWallet().PublicKey(),
+		UpdateCount:   0,
 		Code:          "geo-user-01",
 		TokenAccount:  solana.NewWallet().PublicKey(),
 		PaymentStatus: geolocation.GeolocationPaymentStatusPaid,
@@ -388,6 +393,7 @@ func TestSDK_Geolocation_Client_GetGeolocationUsers_SkipsWrongOwner(t *testing.T
 	user1 := &geolocation.GeolocationUser{
 		AccountType:   geolocation.AccountTypeGeolocationUser,
 		Owner:         solana.NewWallet().PublicKey(),
+		UpdateCount:   0,
 		Code:          "geo-user-01",
 		TokenAccount:  solana.NewWallet().PublicKey(),
 		PaymentStatus: geolocation.GeolocationPaymentStatusPaid,
@@ -438,4 +444,45 @@ func TestSDK_Geolocation_Client_GetGeolocationUsers_Empty(t *testing.T) {
 	users, err := client.GetGeolocationUsers(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, users)
+}
+
+func TestSDK_Geolocation_Client_GetGeolocationUserUpdateCounts_HappyPath(t *testing.T) {
+	t.Parallel()
+
+	programID := solana.NewWallet().PublicKey()
+	acctKey1 := solana.NewWallet().PublicKey()
+	acctKey2 := solana.NewWallet().PublicKey()
+
+	mockRPC := &mockRPCClient{
+		GetProgramAccountsWithOptsFunc: func(_ context.Context, _ solana.PublicKey, opts *solanarpc.GetProgramAccountsOpts) (solanarpc.GetProgramAccountsResult, error) {
+			// Verify DataSlice is set correctly
+			require.NotNil(t, opts.DataSlice)
+			require.Equal(t, uint64(33), *opts.DataSlice.Offset)
+			require.Equal(t, uint64(4), *opts.DataSlice.Length)
+
+			// Return raw 4-byte update_count values
+			data1 := make([]byte, 4)
+			binary.LittleEndian.PutUint32(data1, 42)
+			data2 := make([]byte, 4)
+			binary.LittleEndian.PutUint32(data2, 0)
+
+			return solanarpc.GetProgramAccountsResult{
+				{
+					Pubkey:  acctKey1,
+					Account: &solanarpc.Account{Owner: programID, Data: solanarpc.DataBytesOrJSONFromBytes(data1)},
+				},
+				{
+					Pubkey:  acctKey2,
+					Account: &solanarpc.Account{Owner: programID, Data: solanarpc.DataBytesOrJSONFromBytes(data2)},
+				},
+			}, nil
+		},
+	}
+
+	client := geolocation.New(slog.Default(), mockRPC, programID)
+	counts, err := client.GetGeolocationUserUpdateCounts(context.Background())
+	require.NoError(t, err)
+	require.Len(t, counts, 2)
+	require.Equal(t, uint32(42), counts[acctKey1])
+	require.Equal(t, uint32(0), counts[acctKey2])
 }

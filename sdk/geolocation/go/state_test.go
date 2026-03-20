@@ -129,6 +129,7 @@ func TestSDK_Geolocation_State_GeolocationUser_RoundTrip(t *testing.T) {
 	original := &geolocation.GeolocationUser{
 		AccountType:   geolocation.AccountTypeGeolocationUser,
 		Owner:         solana.NewWallet().PublicKey(),
+		UpdateCount:   5,
 		Code:          "geo-user-01",
 		TokenAccount:  solana.NewWallet().PublicKey(),
 		PaymentStatus: geolocation.GeolocationPaymentStatusPaid,
@@ -166,6 +167,7 @@ func TestSDK_Geolocation_State_GeolocationUser_RoundTrip(t *testing.T) {
 
 	require.Equal(t, original.AccountType, decoded.AccountType)
 	require.Equal(t, original.Owner, decoded.Owner)
+	require.Equal(t, original.UpdateCount, decoded.UpdateCount)
 	require.Equal(t, original.Code, decoded.Code)
 	require.Equal(t, original.TokenAccount, decoded.TokenAccount)
 	require.Equal(t, original.PaymentStatus, decoded.PaymentStatus)
@@ -182,6 +184,7 @@ func TestSDK_Geolocation_State_GeolocationUser_EmptyTargets(t *testing.T) {
 	original := &geolocation.GeolocationUser{
 		AccountType:   geolocation.AccountTypeGeolocationUser,
 		Owner:         solana.NewWallet().PublicKey(),
+		UpdateCount:   0,
 		Code:          "empty-targets",
 		TokenAccount:  solana.NewWallet().PublicKey(),
 		PaymentStatus: geolocation.GeolocationPaymentStatusDelinquent,
@@ -226,6 +229,7 @@ func TestSDK_Geolocation_State_GeolocationTarget_RoundTrip(t *testing.T) {
 	user := &geolocation.GeolocationUser{
 		AccountType:   geolocation.AccountTypeGeolocationUser,
 		Owner:         solana.NewWallet().PublicKey(),
+		UpdateCount:   0,
 		Code:          "target-test",
 		TokenAccount:  solana.NewWallet().PublicKey(),
 		PaymentStatus: geolocation.GeolocationPaymentStatusPaid,

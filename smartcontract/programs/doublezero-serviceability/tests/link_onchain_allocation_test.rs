@@ -341,6 +341,9 @@ async fn test_activate_link_with_onchain_allocation() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             desired_status: Some(LinkDesiredStatus::Activated),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -1073,6 +1076,9 @@ async fn test_closeaccount_link_with_deallocation() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::SoftDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -1655,6 +1661,9 @@ async fn test_delete_link_atomic_with_deallocation() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::SoftDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -1763,6 +1772,9 @@ async fn test_delete_link_atomic_backward_compat() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::SoftDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![
@@ -2027,4 +2039,405 @@ async fn test_delete_link_atomic_rejects_activated_status() {
     assert_eq!(link_after.status, LinkStatus::Activated);
 
     println!("test_delete_link_atomic_rejects_activated_status PASSED");
+}
+
+/// Test that UpdateLink can reallocate tunnel_id and tunnel_net with onchain allocation
+#[tokio::test]
+async fn test_update_link_tunnel_reallocation_with_onchain_allocation() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Enable OnChainAllocation feature flag
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    let (
+        device_a_pubkey,
+        device_z_pubkey,
+        contributor_pubkey,
+        device_tunnel_block_pda,
+        link_ids_pda,
+    ) = setup_wan_link_infra(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
+    // Create Link with atomic onchain allocation (ends up Activated)
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
+            code: "wan1".to_string(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 9000,
+            delay_ns: 500000,
+            jitter_ns: 50000,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: Some("Ethernet1".to_string()),
+            desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify link is Activated with allocated resources
+    let link = get_account_data(&mut banks_client, link_pubkey)
+        .await
+        .expect("Link not found")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link.status, LinkStatus::Activated);
+    let original_tunnel_id = link.tunnel_id;
+    let original_tunnel_net = link.tunnel_net;
+    println!(
+        "Link created: tunnel_id={}, tunnel_net={}",
+        original_tunnel_id, original_tunnel_net
+    );
+
+    // Capture resource state before update
+    let device_tunnel_ext_before =
+        get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
+            .await
+            .expect("DeviceTunnelBlock not found");
+    let link_ids_ext_before = get_resource_extension_data(&mut banks_client, link_ids_pda)
+        .await
+        .expect("LinkIds not found");
+    println!("DeviceTunnelBlock before update: {device_tunnel_ext_before}");
+    println!("LinkIds before update: {link_ids_ext_before}");
+
+    // Reallocate tunnel_id via UpdateLink with onchain allocation
+    let new_tunnel_id: u16 = 42;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            tunnel_id: Some(new_tunnel_id),
+            use_onchain_allocation: true,
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify tunnel_id was updated
+    let link = get_account_data(&mut banks_client, link_pubkey)
+        .await
+        .expect("Link not found")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link.tunnel_id, new_tunnel_id);
+    // tunnel_net should be unchanged
+    assert_eq!(link.tunnel_net, original_tunnel_net);
+    println!(
+        "After tunnel_id update: tunnel_id={}, tunnel_net={}",
+        link.tunnel_id, link.tunnel_net
+    );
+
+    // Reallocate tunnel_net via UpdateLink with onchain allocation
+    // Must be within DeviceTunnelBlock's base network (10.100.0.0/24)
+    let new_tunnel_net: doublezero_program_common::types::NetworkV4 =
+        "10.100.0.10/31".parse().unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            tunnel_net: Some(new_tunnel_net),
+            use_onchain_allocation: true,
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify tunnel_net was updated and tunnel_id preserved
+    let link = get_account_data(&mut banks_client, link_pubkey)
+        .await
+        .expect("Link not found")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link.tunnel_net, new_tunnel_net);
+    assert_eq!(link.tunnel_id, new_tunnel_id);
+    println!(
+        "After tunnel_net update: tunnel_id={}, tunnel_net={}",
+        link.tunnel_id, link.tunnel_net
+    );
+
+    // Verify the old tunnel_id was deallocated — allocate it again to prove it's free
+    let second_tunnel_id = original_tunnel_id;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            tunnel_id: Some(second_tunnel_id),
+            use_onchain_allocation: true,
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let link = get_account_data(&mut banks_client, link_pubkey)
+        .await
+        .expect("Link not found")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link.tunnel_id, second_tunnel_id);
+    println!(
+        "Re-allocated original tunnel_id: tunnel_id={}, tunnel_net={}",
+        link.tunnel_id, link.tunnel_net
+    );
+
+    // Verify resource extension state after all updates
+    let device_tunnel_ext_after =
+        get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
+            .await
+            .expect("DeviceTunnelBlock not found");
+    let link_ids_ext_after = get_resource_extension_data(&mut banks_client, link_ids_pda)
+        .await
+        .expect("LinkIds not found");
+    println!("DeviceTunnelBlock after updates: {device_tunnel_ext_after}");
+    println!("LinkIds after updates: {link_ids_ext_after}");
+
+    println!("test_update_link_tunnel_reallocation_with_onchain_allocation PASSED");
+}
+
+/// Test that UpdateLink tunnel reallocation fails without foundation allowlist
+#[tokio::test]
+async fn test_update_link_tunnel_reallocation_rejects_non_foundation() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Enable OnChainAllocation feature flag
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    let (
+        device_a_pubkey,
+        device_z_pubkey,
+        contributor_pubkey,
+        device_tunnel_block_pda,
+        link_ids_pda,
+    ) = setup_wan_link_infra(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
+    // Create Link with atomic onchain allocation
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
+            code: "wan1".to_string(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 9000,
+            delay_ns: 500000,
+            jitter_ns: 50000,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: Some("Ethernet1".to_string()),
+            desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create a second signer (not in foundation allowlist)
+    let non_foundation_payer = solana_sdk::signer::keypair::Keypair::new();
+
+    // Fund the non-foundation payer
+    let transfer_ix = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &non_foundation_payer.pubkey(),
+        1_000_000_000,
+    );
+    let transfer_tx = solana_sdk::transaction::Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    banks_client.process_transaction(transfer_tx).await.unwrap();
+
+    // Attempt tunnel reallocation with non-foundation signer — should fail with NotAllowed
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            tunnel_id: Some(99),
+            use_onchain_allocation: true,
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+        ],
+        &non_foundation_payer,
+    )
+    .await;
+
+    // NotAllowed = Custom(8)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(8),
+        ))) => {}
+        _ => panic!("Expected NotAllowed error (Custom(8)), got {:?}", result),
+    }
+
+    println!("test_update_link_tunnel_reallocation_rejects_non_foundation PASSED");
+}
+
+/// Test that UpdateLink tunnel reallocation fails when feature flag is disabled
+#[tokio::test]
+async fn test_update_link_tunnel_reallocation_rejects_feature_flag_disabled() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // NOTE: Feature flag is NOT enabled
+
+    let (
+        _device_a_pubkey,
+        _device_z_pubkey,
+        contributor_pubkey,
+        device_tunnel_block_pda,
+        link_ids_pda,
+    ) = setup_wan_link_infra(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
+    // Create Link without onchain allocation (legacy path — feature flag off)
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
+            code: "wan1".to_string(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 9000,
+            delay_ns: 500000,
+            jitter_ns: 50000,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: None,
+            desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(_device_a_pubkey, false),
+            AccountMeta::new(_device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Attempt tunnel reallocation with use_onchain_allocation=true but feature flag off
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            tunnel_id: Some(99),
+            use_onchain_allocation: true,
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // FeatureNotEnabled = Custom(84)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(84),
+        ))) => {}
+        _ => panic!(
+            "Expected FeatureNotEnabled error (Custom(84)), got {:?}",
+            result
+        ),
+    }
+
+    println!("test_update_link_tunnel_reallocation_rejects_feature_flag_disabled PASSED");
 }

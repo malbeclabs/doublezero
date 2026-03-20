@@ -9,6 +9,7 @@ use crate::{
     },
 };
 use clap::Args;
+use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::commands::{
     contributor::get::GetContributorCommand,
     link::{get::GetLinkCommand, update::UpdateLinkCommand},
@@ -52,6 +53,12 @@ pub struct UpdateLinkCliCommand {
     /// Update link desired status (e.g. activated, soft-drained, hard-drained)
     #[arg(long, hide = true)]
     pub desired_status: Option<LinkDesiredStatus>,
+    /// Reassign tunnel ID (foundation-only)
+    #[arg(long)]
+    pub tunnel_id: Option<u16>,
+    /// Reassign tunnel network (foundation-only, e.g. 172.16.1.100/31)
+    #[arg(long)]
+    pub tunnel_net: Option<NetworkV4>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -118,6 +125,8 @@ impl UpdateLinkCliCommand {
                 .map(|delay_override_ms| (delay_override_ms * 1000000.0) as u64),
             status,
             desired_status: self.desired_status,
+            tunnel_id: self.tunnel_id,
+            tunnel_net: self.tunnel_net,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -265,6 +274,8 @@ mod tests {
                 delay_override_ns: None,
                 status: None,
                 desired_status: None,
+                tunnel_id: None,
+                tunnel_net: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -282,6 +293,8 @@ mod tests {
             delay_override_ms: None,
             status: None,
             desired_status: None,
+            tunnel_id: None,
+            tunnel_net: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -305,6 +318,8 @@ mod tests {
             delay_override_ms: None,
             status: None,
             desired_status: None,
+            tunnel_id: None,
+            tunnel_net: None,
             wait: false,
         }
         .execute(&client, &mut output);

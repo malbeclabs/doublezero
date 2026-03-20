@@ -21,7 +21,7 @@ use doublezero_sdk::{
         user::list::ListUserCommand,
     },
     doublezeroclient::DoubleZeroClient,
-    AccountData, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType, LinkStatus,
+    AccountData, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType, Link, LinkStatus,
     Location, MulticastGroup, UserStatus, UserType,
 };
 use log::{debug, error, info, warn};
@@ -63,6 +63,28 @@ pub struct ProcessorStateless<T: DoubleZeroClient> {
     client: Arc<T>,
     devices: DeviceMapStateless,
     multicastgroups: MulticastGroupMap,
+}
+
+/// Reserve tunnel IDs and IP blocks for links that have active allocations.
+/// Links in Activated, HardDrained, SoftDrained, or Provisioning states all
+/// hold allocated addresses that must not be handed out to new links.
+fn reserve_link_allocations(
+    links: &HashMap<Pubkey, Link>,
+    link_ids: &mut IDAllocator,
+    link_ips: &mut IPBlockAllocator,
+) {
+    for (_, link) in links.iter().filter(|(_, l)| {
+        matches!(
+            l.status,
+            LinkStatus::Activated
+                | LinkStatus::HardDrained
+                | LinkStatus::SoftDrained
+                | LinkStatus::Provisioning
+        )
+    }) {
+        link_ids.assign(link.tunnel_id);
+        link_ips.assign_block(link.tunnel_net.into());
+    }
 }
 
 impl<T: DoubleZeroClient> Processor<T> {
@@ -118,18 +140,7 @@ impl<T: DoubleZeroClient> Processor<T> {
         let mut user_tunnel_ips = IPBlockAllocator::new(config.user_tunnel_block.into());
         let mut publisher_dz_ips = IPBlockAllocator::new(config.multicast_publisher_block.into());
 
-        for (_, link) in links.iter().filter(|(_, l)| {
-            matches!(
-                l.status,
-                LinkStatus::Activated
-                    | LinkStatus::HardDrained
-                    | LinkStatus::SoftDrained
-                    | LinkStatus::Provisioning
-            )
-        }) {
-            link_ids.assign(link.tunnel_id);
-            link_ips.assign_block(link.tunnel_net.into());
-        }
+        reserve_link_allocations(&links, &mut link_ids, &mut link_ips);
 
         for (pubkey, device) in devices
             .iter()
@@ -522,26 +533,13 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
         };
 
-        // Simulate Processor::new initialization: build allocators and iterate existing links
-        // using the SAME filter as Processor::new (only LinkStatus::Activated).
-        let existing_links: Vec<Link> = vec![drained_link];
+        let mut existing_links: HashMap<Pubkey, Link> = HashMap::new();
+        existing_links.insert(Pubkey::new_unique(), drained_link);
         let mut link_ips = IPBlockAllocator::new("1.0.0.0/24".parse().unwrap());
         let mut link_ids = IDAllocator::new(0, vec![]);
 
-        // This mirrors the fixed filter from Processor::new — drained/provisioning links
-        // are now reserved, preventing address collisions.
-        for link in existing_links.iter().filter(|l| {
-            matches!(
-                l.status,
-                LinkStatus::Activated
-                    | LinkStatus::HardDrained
-                    | LinkStatus::SoftDrained
-                    | LinkStatus::Provisioning
-            )
-        }) {
-            link_ids.assign(link.tunnel_id);
-            link_ips.assign_block(link.tunnel_net.into());
-        }
+        // Uses the same function as Processor::new
+        reserve_link_allocations(&existing_links, &mut link_ids, &mut link_ips);
 
         // New pending link arrives — the allocator should give it a non-colliding address
         let new_link_pubkey = Pubkey::new_unique();

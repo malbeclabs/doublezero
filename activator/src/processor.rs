@@ -22,7 +22,7 @@ use doublezero_sdk::{
     },
     doublezeroclient::DoubleZeroClient,
     AccountData, Device, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType, Link,
-    LinkStatus, Location, MulticastGroup, UserStatus, UserType,
+    LinkStatus, Location, MulticastGroup, User, UserStatus, UserType,
 };
 use log::{debug, error, info, warn};
 use solana_sdk::pubkey::Pubkey;
@@ -96,6 +96,60 @@ fn reserve_device_allocations(
             .entry(*pubkey)
             .or_insert_with(|| DeviceState::new(device));
     }
+}
+
+/// Reserve tunnel IPs, tunnel IDs, dz_ips, and publisher IPs for users that
+/// have active allocations. Users in Activated, Updating, or OutOfCredits
+/// states all hold allocated addresses that must not be handed out to new users.
+fn reserve_user_allocations(
+    users: &HashMap<Pubkey, User>,
+    device_map: &mut DeviceMap,
+    user_tunnel_ips: &mut IPBlockAllocator,
+    publisher_dz_ips: &mut IPBlockAllocator,
+) -> eyre::Result<()> {
+    users
+        .iter()
+        .filter(|(_, u)| {
+            matches!(
+                u.status,
+                UserStatus::Activated | UserStatus::Updating | UserStatus::OutOfCredits
+            )
+        })
+        .try_for_each(|(_, user)| {
+            if let Some(device_state) = device_map.get_mut(&user.device_pk) {
+                device_state
+                    .register(user.dz_ip, user.tunnel_id)
+                    .map_err(|e| {
+                        eyre::eyre!(
+                            "Error registering user dz_ip={} tunnel_id={}: {}",
+                            user.dz_ip,
+                            user.tunnel_id,
+                            e
+                        )
+                    })?;
+                user_tunnel_ips.assign_block(user.tunnel_net.into());
+
+                // Mark publisher IPs as allocated in the publisher pool
+                if user.user_type == UserType::Multicast
+                    && !user.publishers.is_empty()
+                    && user.dz_ip != std::net::Ipv4Addr::UNSPECIFIED
+                    && user.dz_ip != user.client_ip
+                {
+                    if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
+                        publisher_dz_ips.assign_block(dz_ip_net.into());
+                        info!(
+                            "Marked publisher dz_ip {} as allocated (loaded from existing user)",
+                            user.dz_ip
+                        );
+                    }
+                }
+                // Register tunnel endpoint if set
+                if user.has_tunnel_endpoint() {
+                    device_state.register_tunnel_endpoint(user.client_ip, user.tunnel_endpoint);
+                }
+            }
+            Ok::<(), eyre::Error>(())
+        })
 }
 
 /// Reserve tunnel IDs and IP blocks for links that have active allocations.
@@ -182,44 +236,12 @@ impl<T: DoubleZeroClient> Processor<T> {
             &mut device_map,
         );
 
-        users
-            .iter()
-            .filter(|(_, u)| u.status == UserStatus::Activated)
-            .try_for_each(|(_, user)| {
-                if let Some(device_state) = device_map.get_mut(&user.device_pk) {
-                    device_state
-                        .register(user.dz_ip, user.tunnel_id)
-                        .map_err(|e| {
-                            eyre::eyre!(
-                                "Error registering user dz_ip={} tunnel_id={}: {}",
-                                user.dz_ip,
-                                user.tunnel_id,
-                                e
-                            )
-                        })?;
-                    user_tunnel_ips.assign_block(user.tunnel_net.into());
-
-                    // Mark publisher IPs as allocated in the publisher pool
-                    if user.user_type == UserType::Multicast
-                        && !user.publishers.is_empty()
-                        && user.dz_ip != std::net::Ipv4Addr::UNSPECIFIED
-                        && user.dz_ip != user.client_ip
-                    {
-                        if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
-                            publisher_dz_ips.assign_block(dz_ip_net.into());
-                            info!(
-                                "Marked publisher dz_ip {} as allocated (loaded from existing user)",
-                                user.dz_ip
-                            );
-                        }
-                    }
-                    // Register tunnel endpoint if set
-                    if user.has_tunnel_endpoint() {
-                        device_state.register_tunnel_endpoint(user.client_ip, user.tunnel_endpoint);
-                    }
-                }
-                Ok::<(), eyre::Error>(())
-            })?;
+        reserve_user_allocations(
+            &users,
+            &mut device_map,
+            &mut user_tunnel_ips,
+            &mut publisher_dz_ips,
+        )?;
 
         info!(
             "Number of - devices: {} links: {} users: {}",
@@ -507,6 +529,98 @@ mod tests {
         assert!(
             err.contains("multicast_publisher_block"),
             "error was: {err}"
+        );
+    }
+
+    /// Regression test: reserve_user_allocations must reserve tunnel_net for users
+    /// in Updating and OutOfCredits states. Otherwise new users get colliding addresses.
+    #[test]
+    fn test_updating_user_allocations_must_be_reserved_at_startup() {
+        use crate::{ipblockallocator::IPBlockAllocator, states::devicestate::DeviceState};
+        use doublezero_sdk::{
+            AccountType, Device, DeviceStatus, DeviceType, User, UserStatus, UserType,
+        };
+        use doublezero_serviceability::state::user::UserCYOA;
+        use std::net::Ipv4Addr;
+
+        let device_pubkey = Pubkey::new_unique();
+        let device = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            reference_count: 0,
+            bump_seed: 0,
+            contributor_pk: Pubkey::new_unique(),
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [192, 168, 1, 2].into(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            code: "TestDevice".to_string(),
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_subscribers_count: 0,
+            max_unicast_users: 0,
+            max_multicast_subscribers: 0,
+            reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
+        };
+
+        let mut device_map: DeviceMap = DeviceMap::new();
+        device_map.insert(device_pubkey, DeviceState::new(&device));
+
+        // Existing user in Updating state with tunnel_net 2.0.0.0/31
+        let updating_user = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            bump_seed: 0,
+            user_type: UserType::IBRL,
+            tenant_pk: Pubkey::new_unique(),
+            device_pk: device_pubkey,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: [192, 168, 1, 1].into(),
+            dz_ip: [10, 0, 0, 1].into(),
+            tunnel_id: 500,
+            tunnel_net: "2.0.0.0/31".parse().unwrap(),
+            status: UserStatus::Updating,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        };
+
+        let mut users: HashMap<Pubkey, User> = HashMap::new();
+        users.insert(Pubkey::new_unique(), updating_user);
+
+        let mut user_tunnel_ips = IPBlockAllocator::new("2.0.0.0/24".parse().unwrap());
+        let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
+
+        reserve_user_allocations(
+            &users,
+            &mut device_map,
+            &mut user_tunnel_ips,
+            &mut publisher_dz_ips,
+        )
+        .expect("reserve_user_allocations should succeed");
+
+        // The next allocation should NOT collide with the Updating user's 2.0.0.0/31
+        let next_block = user_tunnel_ips
+            .next_available_block(0, 2)
+            .expect("should have available block");
+        assert_ne!(
+            next_block.ip().to_string(),
+            "2.0.0.0",
+            "BUG: allocated tunnel_net collides with Updating user's 2.0.0.0/31"
         );
     }
 

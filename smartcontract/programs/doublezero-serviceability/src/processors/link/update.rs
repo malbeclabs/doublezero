@@ -1,12 +1,24 @@
 use crate::{
     error::DoubleZeroError,
+    pda::get_resource_extension_pda,
+    processors::{
+        resource::{allocate_specific_id, allocate_specific_ip, deallocate_id, deallocate_ip},
+        validation::validate_program_account,
+    },
+    resource::ResourceType,
     serializer::try_acc_write,
-    state::{contributor::Contributor, device::Device, globalstate::GlobalState, link::*},
+    state::{
+        contributor::Contributor,
+        device::Device,
+        feature_flags::{is_feature_enabled, FeatureFlag},
+        globalstate::GlobalState,
+        link::*,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-use doublezero_program_common::validate_account_code;
+use doublezero_program_common::{types::NetworkV4, validate_account_code};
 
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -26,6 +38,10 @@ pub struct LinkUpdateArgs {
     pub status: Option<LinkStatus>,
     pub delay_override_ns: Option<u64>,
     pub desired_status: Option<LinkDesiredStatus>,
+    pub tunnel_id: Option<u16>,
+    pub tunnel_net: Option<NetworkV4>,
+    #[incremental(default = false)]
+    pub use_onchain_allocation: bool,
 }
 
 impl fmt::Debug for LinkUpdateArgs {
@@ -61,6 +77,15 @@ impl fmt::Debug for LinkUpdateArgs {
         if let Some(ref desired_status) = self.desired_status {
             parts.push(format!("desired_status: {:?}", desired_status));
         }
+        if let Some(tunnel_id) = self.tunnel_id {
+            parts.push(format!("tunnel_id: {:?}", tunnel_id));
+        }
+        if let Some(ref tunnel_net) = self.tunnel_net {
+            parts.push(format!("tunnel_net: {:?}", tunnel_net));
+        }
+        if self.use_onchain_allocation {
+            parts.push("use_onchain_allocation: true".to_string());
+        }
         write!(f, "{}", parts.join(", "))
     }
 }
@@ -74,12 +99,27 @@ pub fn process_update_link(
 
     let link_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
-    let side_z_account: Option<&AccountInfo> = if accounts.len() > 5 {
+
+    // Account layout WITH resource accounts (use_onchain_allocation == true):
+    //   [link, contributor, side_z?, globalstate, device_tunnel_block, link_ids, payer, system]
+    // Account layout WITHOUT (legacy, use_onchain_allocation == false):
+    //   [link, contributor, side_z?, globalstate, payer, system]
+    let expected_without_side_z = if value.use_onchain_allocation { 7 } else { 5 };
+    let side_z_account: Option<&AccountInfo> = if accounts.len() > expected_without_side_z {
         Some(next_account_info(accounts_iter)?)
     } else {
         None
     };
     let globalstate_account = next_account_info(accounts_iter)?;
+
+    let resource_accounts = if value.use_onchain_allocation {
+        let device_tunnel_block_ext = next_account_info(accounts_iter)?;
+        let link_ids_ext = next_account_info(accounts_iter)?;
+        Some((device_tunnel_block_ext, link_ids_ext))
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -185,6 +225,81 @@ pub fn process_update_link(
         link.status = status;
     }
 
+    // Handle tunnel_id/tunnel_net reallocation (foundation-only)
+    if value.tunnel_id.is_some() || value.tunnel_net.is_some() {
+        if !globalstate.foundation_allowlist.contains(payer_account.key) {
+            msg!("tunnel field updates require foundation allowlist");
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+
+        if let Some((device_tunnel_block_ext, link_ids_ext)) = resource_accounts {
+            // Resource accounts provided — require feature flag
+            if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
+                return Err(DoubleZeroError::FeatureNotEnabled.into());
+            }
+
+            // Validate DeviceTunnelBlock PDA
+            let (expected_device_tunnel_pda, _, _) =
+                get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
+            validate_program_account!(
+                device_tunnel_block_ext,
+                program_id,
+                writable = true,
+                pda = Some(&expected_device_tunnel_pda),
+                "DeviceTunnelBlock"
+            );
+
+            // Validate LinkIds PDA
+            let (expected_link_ids_pda, _, _) =
+                get_resource_extension_pda(program_id, ResourceType::LinkIds);
+            validate_program_account!(
+                link_ids_ext,
+                program_id,
+                writable = true,
+                pda = Some(&expected_link_ids_pda),
+                "LinkIds"
+            );
+
+            // Deallocate/allocate tunnel_id
+            if let Some(new_tunnel_id) = value.tunnel_id {
+                if link.tunnel_id != 0 {
+                    deallocate_id(link_ids_ext, link.tunnel_id);
+                    #[cfg(test)]
+                    msg!("Deallocated old tunnel_id {}", link.tunnel_id);
+                }
+                if new_tunnel_id != 0 {
+                    allocate_specific_id(link_ids_ext, new_tunnel_id)?;
+                    #[cfg(test)]
+                    msg!("Allocated new tunnel_id {}", new_tunnel_id);
+                }
+                link.tunnel_id = new_tunnel_id;
+            }
+
+            // Deallocate/allocate tunnel_net
+            if let Some(new_tunnel_net) = value.tunnel_net {
+                if link.tunnel_net != NetworkV4::default() {
+                    deallocate_ip(device_tunnel_block_ext, link.tunnel_net);
+                    #[cfg(test)]
+                    msg!("Deallocated old tunnel_net {}", link.tunnel_net);
+                }
+                if new_tunnel_net != NetworkV4::default() {
+                    allocate_specific_ip(device_tunnel_block_ext, new_tunnel_net)?;
+                    #[cfg(test)]
+                    msg!("Allocated new tunnel_net {}", new_tunnel_net);
+                }
+                link.tunnel_net = new_tunnel_net;
+            }
+        } else {
+            // Legacy path: no resource accounts, just overwrite fields
+            if let Some(tunnel_id) = value.tunnel_id {
+                link.tunnel_id = tunnel_id;
+            }
+            if let Some(tunnel_net) = value.tunnel_net {
+                link.tunnel_net = tunnel_net;
+            }
+        }
+    }
+
     link.check_status_transition();
 
     try_acc_write(&link, link_account, payer_account, accounts)?;
@@ -237,6 +352,62 @@ mod tests {
             status: Some(LinkStatus::Activated),
             delay_override_ns: None,
             desired_status: None,
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
+        };
+
+        let serialized = borsh::to_vec(&args_before).unwrap();
+        let deserialized = LinkUpdateArgs::try_from(&serialized[..]).unwrap();
+
+        assert_eq!(expected, deserialized);
+    }
+
+    #[test]
+    fn test_deserialize_link_update_args_before_tunnel_fields() {
+        #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default, Debug)]
+        pub struct LinkUpdateArgsBeforeTunnelFields {
+            pub code: Option<String>,
+            pub contributor_pk: Option<Pubkey>,
+            pub tunnel_type: Option<LinkLinkType>,
+            pub bandwidth: Option<u64>,
+            pub mtu: Option<u32>,
+            pub delay_ns: Option<u64>,
+            pub jitter_ns: Option<u64>,
+            pub status: Option<LinkStatus>,
+            pub delay_override_ns: Option<u64>,
+            pub desired_status: Option<LinkDesiredStatus>,
+        }
+
+        let contributor_pk = Pubkey::new_unique();
+
+        let args_before = LinkUpdateArgsBeforeTunnelFields {
+            code: Some("test-code".to_string()),
+            contributor_pk: Some(contributor_pk),
+            tunnel_type: Some(LinkLinkType::WAN),
+            bandwidth: Some(10_000_000_000),
+            mtu: Some(1500),
+            delay_ns: Some(1_000_000),
+            jitter_ns: Some(100_000),
+            status: Some(LinkStatus::Activated),
+            delay_override_ns: Some(500_000),
+            desired_status: Some(LinkDesiredStatus::Activated),
+        };
+
+        let expected = LinkUpdateArgs {
+            code: Some("test-code".to_string()),
+            contributor_pk: Some(contributor_pk),
+            tunnel_type: Some(LinkLinkType::WAN),
+            bandwidth: Some(10_000_000_000),
+            mtu: Some(1500),
+            delay_ns: Some(1_000_000),
+            jitter_ns: Some(100_000),
+            status: Some(LinkStatus::Activated),
+            delay_override_ns: Some(500_000),
+            desired_status: Some(LinkDesiredStatus::Activated),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
         };
 
         let serialized = borsh::to_vec(&args_before).unwrap();

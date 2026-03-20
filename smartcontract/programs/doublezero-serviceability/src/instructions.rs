@@ -813,6 +813,9 @@ mod tests {
                 delay_override_ns: Some(0),
                 status: None,
                 desired_status: None,
+                tunnel_id: None,
+                tunnel_net: None,
+                use_onchain_allocation: false,
             }),
             "UpdateLink",
         );

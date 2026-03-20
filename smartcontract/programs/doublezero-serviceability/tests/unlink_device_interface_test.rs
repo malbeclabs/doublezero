@@ -673,6 +673,9 @@ async fn test_unlink_activated_with_deleting_link_succeeds() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::SoftDrained),
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
             ..Default::default()
         }),
         vec![

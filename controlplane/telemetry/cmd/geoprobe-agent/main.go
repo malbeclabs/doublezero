@@ -19,6 +19,7 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
+	geolocation "github.com/malbeclabs/doublezero/sdk/geolocation/go"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/malbeclabs/doublezero/tools/twamp/pkg/signed"
 )
@@ -553,7 +554,10 @@ func main() {
 
 		go pd.Run(ctx, parentUpdateCh)
 
-		// Consume parent updates: update parentState and signed TWAMP authorized keys.
+		// Consume parent updates: update parentState for OffsetListener validation.
+		// Parent authority keys are NOT added to the signed TWAMP reflector — parent
+		// DZDs use the unsigned reflector. The signed reflector's allowlist comes
+		// from target discovery (inbound targets) and CLI --allowed-pubkeys only.
 		go func() {
 			for {
 				select {
@@ -561,32 +565,37 @@ func main() {
 					return
 				case update := <-parentUpdateCh:
 					pState.update(update.Authorities)
-					// Merge CLI allowed keys with discovered keys.
-					mergedKeys := make([][32]byte, 0, len(allowedKeys)+len(update.AllowedKeys))
-					mergedKeys = append(mergedKeys, allowedKeys...)
-					seen := make(map[[32]byte]struct{}, len(allowedKeys))
-					for _, k := range allowedKeys {
-						seen[k] = struct{}{}
-					}
-					for _, k := range update.AllowedKeys {
-						if _, exists := seen[k]; !exists {
-							mergedKeys = append(mergedKeys, k)
-							seen[k] = struct{}{}
-						}
-					}
-					signedReflector.SetAuthorizedKeys(mergedKeys)
 					log.Info("Updated parent authorities from discovery",
-						"totalParents", len(update.Authorities),
-						"totalAllowedKeys", len(mergedKeys))
+						"totalParents", len(update.Authorities))
 				}
 			}
 		}()
 	}
 
+	// Run target discovery if geolocation program ID is configured.
+	targetUpdateCh := make(chan geoprobe.TargetUpdate, 1)
+	inboundKeyCh := make(chan geoprobe.InboundKeyUpdate, 1)
+	if !geolocationProgramID.IsZero() {
+		geolocationUserClient := geolocation.New(log, rpcClient, geolocationProgramID)
+		td, err := geoprobe.NewTargetDiscovery(&geoprobe.TargetDiscoveryConfig{
+			GeoProbePubkey: geoProbePubkey,
+			Client:         geolocationUserClient,
+			CLITargets:     targets,
+			CLIAllowedKeys: allowedKeys,
+			Interval:       discoveryInterval,
+			Logger:         log,
+		})
+		if err != nil {
+			log.Error("Failed to create target discovery", "error", err)
+			os.Exit(1)
+		}
+		go td.Run(ctx, targetUpdateCh, inboundKeyCh)
+	}
+
 	// Run main measurement loop. This runs regardless of whether trusted parents
 	// are configured at startup, since they may be added dynamically at runtime.
 	go func() {
-		if err := runMeasurementLoop(ctx, log, pinger, cache, signer, senderConn, targets, getCurrentSlot); err != nil {
+		if err := runMeasurementLoop(ctx, log, pinger, cache, signer, senderConn, targets, getCurrentSlot, targetUpdateCh, inboundKeyCh, signedReflector, allowedKeys); err != nil {
 			errCh <- fmt.Errorf("measurement loop: %w", err)
 		}
 	}()
@@ -689,12 +698,13 @@ func runMeasurementLoop(
 	senderConn *net.UDPConn,
 	targets []geoprobe.ProbeAddress,
 	getCurrentSlot func(ctx context.Context) (uint64, error),
+	targetUpdateCh <-chan geoprobe.TargetUpdate,
+	inboundKeyCh <-chan geoprobe.InboundKeyUpdate,
+	signedReflector signed.Reflector,
+	cliAllowedKeys [][32]byte,
 ) error {
 	measureTicker := time.NewTicker(*probeInterval)
 	defer measureTicker.Stop()
-
-	discoveryTicker := time.NewTicker(discoveryInterval)
-	defer discoveryTicker.Stop()
 
 	for {
 		select {
@@ -704,12 +714,39 @@ func runMeasurementLoop(
 		case <-measureTicker.C:
 			runMeasurementCycle(ctx, log, pinger, cache, signer, senderConn, targets, getCurrentSlot)
 
-		case <-discoveryTicker.C:
-			// TODO: Check for new targets (stub for future implementation).
-			// When implemented, new targets will be added to the pinger and
-			// receive an immediate one-off probe. Subsequent probes happen
-			// on the next regular measurement tick.
-			// log.Debug("Target discovery tick (no-op)")
+		case update := <-targetUpdateCh:
+			// Reconcile pinger probes with new target set.
+			oldSet := make(map[string]geoprobe.ProbeAddress, len(targets))
+			for _, t := range targets {
+				oldSet[t.String()] = t
+			}
+			newSet := make(map[string]geoprobe.ProbeAddress, len(update.Targets))
+			for _, t := range update.Targets {
+				newSet[t.String()] = t
+			}
+			for key, addr := range newSet {
+				if _, exists := oldSet[key]; !exists {
+					if err := pinger.AddProbe(ctx, addr); err != nil {
+						log.Warn("Failed to add discovered target probe", "target", addr, "error", err)
+					}
+				}
+			}
+			for key, addr := range oldSet {
+				if _, exists := newSet[key]; !exists {
+					if err := pinger.RemoveProbe(addr); err != nil {
+						log.Warn("Failed to remove stale target probe", "target", addr, "error", err)
+					}
+				}
+			}
+			targets = update.Targets
+			log.Info("Updated targets from discovery", "totalTargets", len(targets))
+
+		case keyUpdate := <-inboundKeyCh:
+			signedReflector.SetAuthorizedKeys(keyUpdate.Keys)
+			log.Info("Updated signed TWAMP authorized keys from discovery",
+				"totalKeys", len(keyUpdate.Keys),
+				"cliKeys", len(cliAllowedKeys),
+				"discoveredKeys", len(keyUpdate.Keys)-len(cliAllowedKeys))
 		}
 	}
 }

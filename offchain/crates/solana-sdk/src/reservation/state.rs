@@ -230,7 +230,7 @@ pub const DEVICE_HISTORY_DEVICE_KEY_OFFSET: usize = DISCRIMINATOR_LEN;
 pub const DEVICE_HISTORY_FLAGS_OFFSET: usize = DISCRIMINATOR_LEN + 32;
 pub const DEVICE_HISTORY_EXCHANGE_KEY_OFFSET: usize = DISCRIMINATOR_LEN + 32 + 16;
 const DEVICE_HISTORY_RING_OFFSET: usize = DISCRIMINATOR_LEN + 208; // after StorageGap<4> (128 bytes)
-const DEVICE_HISTORY_ENTRY_SIZE: usize = 88; // EpochEntry<DeviceSubscription>
+const DEVICE_HISTORY_ENTRY_SIZE: usize = 80; // EpochEntry<DeviceSubscription>
 
 /// Parse the metro exchange pubkey directly from raw `DeviceHistory` account data.
 pub fn parse_exchange_key_from_device_history(data: &[u8]) -> Option<Pubkey> {
@@ -245,8 +245,12 @@ pub fn parse_exchange_key_from_device_history(data: &[u8]) -> Option<Pubkey> {
 pub struct DeviceHistoryInfo {
     pub device_key: Pubkey,
     pub exchange_key: Pubkey,
+    pub is_enabled: bool,
     pub current_epoch: u64,
     pub current_premium: i16,
+    pub requested_seat_count: u16,
+    pub total_available_seats: u16,
+    pub granted_seat_count: u16,
 }
 
 /// Parse a `DeviceHistory` account's current-epoch pricing from raw bytes.
@@ -261,6 +265,12 @@ pub fn parse_device_history(data: &[u8]) -> Option<DeviceHistoryInfo> {
             .try_into()
             .ok()?,
     );
+    let flags = u64::from_le_bytes(
+        data[DEVICE_HISTORY_FLAGS_OFFSET..DEVICE_HISTORY_FLAGS_OFFSET + 8]
+            .try_into()
+            .ok()?,
+    );
+    let is_enabled = flags & (1 << 1) != 0;
     let exchange_key = Pubkey::new_from_array(
         data[DEVICE_HISTORY_EXCHANGE_KEY_OFFSET..DEVICE_HISTORY_EXCHANGE_KEY_OFFSET + 32]
             .try_into()
@@ -275,19 +285,29 @@ pub fn parse_device_history(data: &[u8]) -> Option<DeviceHistoryInfo> {
 
     let entries_offset = ring_offset + 8; // skip current_index + total_count + padding
     let entry_offset = entries_offset + current_index * DEVICE_HISTORY_ENTRY_SIZE;
-    if data.len() < entry_offset + 10 {
+    if data.len() < entry_offset + 16 {
         return None;
     }
 
     let current_epoch = u64::from_le_bytes(data[entry_offset..entry_offset + 8].try_into().ok()?);
     let current_premium =
         i16::from_le_bytes(data[entry_offset + 8..entry_offset + 10].try_into().ok()?);
+    let requested_seat_count =
+        u16::from_le_bytes(data[entry_offset + 10..entry_offset + 12].try_into().ok()?);
+    let total_available_seats =
+        u16::from_le_bytes(data[entry_offset + 12..entry_offset + 14].try_into().ok()?);
+    let granted_seat_count =
+        u16::from_le_bytes(data[entry_offset + 14..entry_offset + 16].try_into().ok()?);
 
     Some(DeviceHistoryInfo {
         device_key,
         exchange_key,
+        is_enabled,
         current_epoch,
         current_premium,
+        requested_seat_count,
+        total_available_seats,
+        granted_seat_count,
     })
 }
 

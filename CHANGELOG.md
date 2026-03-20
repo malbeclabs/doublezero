@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 - Activator
   - Reserve device allocations (loopback IPs and segment routing IDs) for devices in Drained, DeviceProvisioning, and LinkProvisioning states at startup, preventing collisions with new device allocations
+  - Reserve user allocations (tunnel_net, tunnel_id, dz_ip, publisher IPs, tunnel endpoints) for users in Updating and OutOfCredits states at startup, preventing collisions with new user allocations
   - Fix duplicate tunnel_net/tunnel_id allocation by reserving addresses for links in HardDrained, SoftDrained, and Provisioning states during startup initialization
 - Onchain Programs
   - Allow foundation to remove targets from GeolocationUser accounts via the `RemoveTarget` instruction, unblocking foundation-initiated user deletion when targets still exist

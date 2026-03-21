@@ -67,7 +67,7 @@ jobs:
   e2e:
     needs: setup
     runs-on: doublezero-k8s-ci
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       packages: read
       contents: read

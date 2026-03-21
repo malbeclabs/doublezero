@@ -97,3 +97,90 @@ pub fn append_timestamp_index_entry(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::timestamp_index::TimestampIndexHeader;
+    use solana_program::account_info::AccountInfo;
+
+    #[test]
+    fn test_append_skips_when_full() {
+        let program_id = Pubkey::new_unique();
+        let samples_key = Pubkey::new_unique();
+
+        let (ts_pda, _) = derive_timestamp_index_pda(&program_id, &samples_key);
+
+        // Build a timestamp index header at max capacity.
+        let header = TimestampIndexHeader {
+            account_type: AccountType::TimestampIndex,
+            samples_account_pk: samples_key,
+            next_entry_index: MAX_TIMESTAMP_INDEX_ENTRIES as u32,
+            _unused: [0u8; 64],
+        };
+        let mut ts_data = borsh::to_vec(&header).unwrap();
+        // Pad with dummy entries so data_is_empty() returns false and
+        // the account data is consistent with the header.
+        ts_data.resize(
+            TIMESTAMP_INDEX_HEADER_SIZE + MAX_TIMESTAMP_INDEX_ENTRIES * TIMESTAMP_INDEX_ENTRY_SIZE,
+            0,
+        );
+        let ts_data_snapshot = ts_data.clone();
+
+        let mut ts_lamports = 1_000_000u64;
+        let ts_account = AccountInfo::new(
+            &ts_pda,
+            false,
+            true,
+            &mut ts_lamports,
+            &mut ts_data,
+            &program_id,
+            false,
+            0,
+        );
+
+        let mut samples_lamports = 1_000_000u64;
+        let mut samples_data = vec![0u8; 1]; // non-empty placeholder
+        let samples_account = AccountInfo::new(
+            &samples_key,
+            false,
+            false,
+            &mut samples_lamports,
+            &mut samples_data,
+            &program_id,
+            false,
+            0,
+        );
+
+        let payer_key = Pubkey::new_unique();
+        let mut payer_lamports = 10_000_000u64;
+        let mut payer_data = vec![];
+        let payer = AccountInfo::new(
+            &payer_key,
+            true,
+            true,
+            &mut payer_lamports,
+            &mut payer_data,
+            &solana_program::system_program::ID,
+            false,
+            0,
+        );
+
+        let accounts = vec![ts_account.clone(), samples_account.clone(), payer.clone()];
+
+        // Appending should succeed (Ok) without modifying the account.
+        let result = append_timestamp_index_entry(
+            &program_id,
+            &ts_account,
+            &samples_account,
+            &payer,
+            &accounts,
+            99999, // sample_index
+            1_700_000_000_000_000,
+        );
+        assert!(result.is_ok());
+
+        // Account data should be unchanged — no new entry was appended.
+        assert_eq!(*ts_account.data.borrow(), ts_data_snapshot);
+    }
+}

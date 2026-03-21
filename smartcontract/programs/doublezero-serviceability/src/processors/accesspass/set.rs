@@ -194,16 +194,7 @@ pub fn process_set_access_pass(
                 "Invalid PDA Account Owner"
             );
 
-            let ap = AccessPass::try_from(accesspass_account)?;
-
-            // Feed authority can only update access passes they own
-            if globalstate.feed_authority_pk == *payer_account.key && ap.owner != *payer_account.key
-            {
-                msg!("Feed authority can only update access passes they own");
-                return Err(DoubleZeroError::NotAllowed.into());
-            }
-
-            ap
+            AccessPass::try_from(accesspass_account)?
         } else {
             AccessPass {
                 account_type: AccountType::AccessPass,

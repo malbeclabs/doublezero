@@ -10,7 +10,8 @@ use std::{
 };
 
 /// Maximum number of timestamp index entries per account.
-/// At one entry per write batch, this supports well beyond a 48-hour epoch.
+/// At one entry per write batch (up to 245 samples each), this comfortably
+/// covers a 48-hour epoch. Once full, appends are silently skipped.
 pub const MAX_TIMESTAMP_INDEX_ENTRIES: usize = 10_000;
 
 /// Header size in bytes:

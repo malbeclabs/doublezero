@@ -64,10 +64,12 @@ pub fn append_timestamp_index_entry(
         return Err(TelemetryError::InvalidAccountOwner.into());
     }
 
-    // Check capacity.
+    // Check capacity — silently skip the append if the index is full.
+    // The timestamp index is supplementary; hitting the cap should not
+    // block the parent write transaction.
     if header.next_entry_index as usize >= MAX_TIMESTAMP_INDEX_ENTRIES {
-        msg!("Timestamp index is full");
-        return Err(TelemetryError::TimestampIndexFull.into());
+        msg!("Timestamp index is full, skipping append");
+        return Ok(());
     }
 
     // Write the new entry.

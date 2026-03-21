@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -391,6 +392,67 @@ func TestWatcher_BuildSlackMessage(t *testing.T) {
 				"every row must have the same number of columns")
 		}
 	})
+}
+
+func TestWatcher_SlackWebhookIntegration(t *testing.T) {
+	webhookURL := os.Getenv("SLACK_WEBHOOK_URL")
+	if webhookURL == "" {
+		t.Skip("set SLACK_WEBHOOK_URL to run this integration test")
+	}
+
+	mockRPC := &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 1}, nil
+		},
+	}
+	w, err := NewServiceabilityWatcher(&Config{
+		Logger: newTestLogger(t),
+		Serviceability: &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{}, nil
+		}},
+		Interval:        10 * time.Millisecond,
+		SlackWebhookURL: webhookURL,
+		LedgerRPCClient: mockRPC,
+		SolanaRPCClient: mockRPC,
+	})
+	require.NoError(t, err)
+
+	devicePubKey := [32]byte{10, 11, 12}
+	groupPubKey := [32]byte{20, 21, 22}
+	events := []ServiceabilityUserEvent{
+		{
+			eventType: EventTypeAdded,
+			User: serviceability.User{
+				Owner:        [32]uint8{0xAA},
+				ClientIp:     [4]uint8{10, 0, 0, 1},
+				DevicePubKey: devicePubKey,
+				TunnelId:     500,
+				TenantPubKey: [32]byte{1, 2, 3},
+			},
+		},
+		{
+			eventType: EventTypeAdded,
+			User: serviceability.User{
+				Owner:        [32]uint8{0xBB},
+				ClientIp:     [4]uint8{10, 0, 0, 2},
+				DevicePubKey: devicePubKey,
+				TunnelId:     501,
+				TenantPubKey: [32]byte{1, 2, 3},
+				UserType:     serviceability.UserTypeMulticast,
+				Publishers:   [][32]uint8{groupPubKey},
+				Subscribers:  [][32]uint8{groupPubKey},
+			},
+		},
+	}
+	devices := []serviceability.Device{{Code: "dz-test", PubKey: devicePubKey}}
+	tenants := []serviceability.Tenant{{Code: "test-tenant", PubKey: [32]byte{1, 2, 3}}}
+
+	msg, err := w.buildSlackMessage(events, devices, tenants, 1280)
+	require.NoError(t, err)
+	require.NotEmpty(t, msg)
+
+	err = w.postSlackMessage(msg)
+	require.NoError(t, err, "Slack webhook should accept the message with 2xx status")
 }
 
 func TestWatcher_BuildEpochChangeSlackMessage(t *testing.T) {

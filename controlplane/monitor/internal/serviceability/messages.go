@@ -69,6 +69,9 @@ func GenerateSlackTableMessage(headerText string, tableRows [][]string, columnSe
 	for i, row := range tableRows {
 		slackRow := make([]TableCell, len(row))
 		for j, cellText := range row {
+			if cellText == "" {
+				cellText = "-"
+			}
 			slackRow[j] = TableCell{
 				Type: "raw_text",
 				Text: cellText,

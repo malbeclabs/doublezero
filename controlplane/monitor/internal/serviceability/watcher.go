@@ -340,6 +340,24 @@ func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEven
 		return ""
 	}
 
+	multicastRole := func(u serviceability.User) string {
+		if u.UserType != serviceability.UserTypeMulticast {
+			return ""
+		}
+		hasPub := len(u.Publishers) > 0
+		hasSub := len(u.Subscribers) > 0
+		switch {
+		case hasPub && hasSub:
+			return "publisher+subscriber"
+		case hasPub:
+			return "publisher"
+		case hasSub:
+			return "subscriber"
+		default:
+			return ""
+		}
+	}
+
 	users := [][]string{}
 	for _, e := range event {
 		users = append(users, []string{
@@ -349,6 +367,8 @@ func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEven
 			findDeviceCode(e.User.DevicePubKey),
 			strconv.FormatUint(uint64(e.User.TunnelId), 10),
 			findTenantCode(e.User.TenantPubKey),
+			e.User.UserType.String(),
+			multicastRole(e.User),
 		})
 	}
 
@@ -357,7 +377,7 @@ func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEven
 		title = "New DoubleZero User Added!"
 	}
 
-	users = slices.Insert(users, 0, []string{"UserPubKey", "Client IP", "Device PubKey", "Device Name", "Tunnel ID", "Tenant"})
+	users = slices.Insert(users, 0, []string{"UserPubKey", "Client IP", "Device PubKey", "Device Name", "Tunnel ID", "Tenant", "User Type", "Multicast Role"})
 	header := fmt.Sprintf(":yay-frog: :frog-wow-scroll: :elmo-fire: :lfg-dz: %s :lfg-dz: :elmo-fire: :frog-wow-scroll: :yay-frog:", title)
 	footer := fmt.Sprintf("Total Users: %d", totalUsers)
 	return GenerateSlackTableMessage(header, users, nil, footer)

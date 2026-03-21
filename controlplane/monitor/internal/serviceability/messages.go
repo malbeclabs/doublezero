@@ -69,6 +69,9 @@ func GenerateSlackTableMessage(headerText string, tableRows [][]string, columnSe
 	for i, row := range tableRows {
 		slackRow := make([]TableCell, len(row))
 		for j, cellText := range row {
+			if cellText == "" {
+				cellText = "-"
+			}
 			slackRow[j] = TableCell{
 				Type: "raw_text",
 				Text: cellText,
@@ -77,10 +80,11 @@ func GenerateSlackTableMessage(headerText string, tableRows [][]string, columnSe
 		slackRows[i] = slackRow
 	}
 
-	if columnSettings == nil {
-		columnSettings = []ColumnSetting{
-			{IsWrapped: true},
-			{Align: "right"},
+	if columnSettings == nil && len(tableRows) > 0 {
+		numCols := len(tableRows[0])
+		columnSettings = make([]ColumnSetting, numCols)
+		for i := range columnSettings {
+			columnSettings[i] = ColumnSetting{IsWrapped: true}
 		}
 	}
 

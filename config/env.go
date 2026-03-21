@@ -29,6 +29,7 @@ type NetworkConfig struct {
 	TelemetryStateIngestURL       string
 	TelemetryGNMITunnelServerAddr string
 	GeolocationProgramID          solana.PublicKey
+	ReservationProgramID          string
 }
 
 func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
@@ -63,6 +64,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			RevenueDistributionProgramID:  revenueDistributionProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
+			ReservationProgramID:          MainnetReservationProgramID,
 			DeviceLocalASN:                MainnetDeviceLocalASN,
 			TwoZOracleURL:                 MainnetTwoZOracleURL,
 			SolanaRPCURL:                  MainnetSolanaRPC,
@@ -94,6 +96,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
+			ReservationProgramID:          TestnetReservationProgramID,
 			DeviceLocalASN:                TestnetDeviceLocalASN,
 			TwoZOracleURL:                 TestnetTwoZOracleURL,
 			SolanaRPCURL:                  TestnetSolanaRPC,
@@ -125,6 +128,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
+			ReservationProgramID:          DevnetReservationProgramID,
 			DeviceLocalASN:                DevnetDeviceLocalASN,
 			TwoZOracleURL:                 DevnetTwoZOracleURL,
 			SolanaRPCURL:                  TestnetSolanaRPC,
@@ -156,6 +160,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
+			ReservationProgramID:          LocalnetReservationProgramID,
 			DeviceLocalASN:                LocalnetDeviceLocalASN,
 			TwoZOracleURL:                 LocalnetTwoZOracleURL,
 			SolanaRPCURL:                  LocalnetSolanaRPC,
@@ -166,6 +171,13 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 	default:
 		// We intentionally do not include localnet in the error message.
 		return nil, fmt.Errorf("invalid environment %q, must be one of: %s, %s, %s", env, EnvMainnetBeta, EnvTestnet, EnvDevnet)
+	}
+
+	// Validate reservation program ID if set (empty means not yet deployed to this env).
+	if config.ReservationProgramID != "" {
+		if _, err := solana.PublicKeyFromBase58(config.ReservationProgramID); err != nil {
+			return nil, fmt.Errorf("failed to parse reservation program ID: %w", err)
+		}
 	}
 
 	ledgerRPCURL := os.Getenv("DZ_LEDGER_RPC_URL")

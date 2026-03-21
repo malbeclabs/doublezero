@@ -333,6 +333,95 @@ func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Resul
 	return res, nil
 }
 
+// Enable implements the Enable RPC, which enables the reconciler on doublezerod.
+// This is equivalent to running `doublezero enable`.
+func (q *QAAgent) Enable(ctx context.Context, req *emptypb.Empty) (*pb.Result, error) {
+	q.log.Debug("Received Enable request")
+	cmd := exec.CommandContext(ctx, "doublezero", "enable")
+	res, err := runCmd(cmd)
+	if err != nil {
+		q.log.Error("Failed to enable reconciler", "output", res.GetOutput())
+		return res, fmt.Errorf("failed to enable reconciler: %w", err)
+	}
+	q.log.Debug("Reconciler enabled", "output", res.GetOutput())
+	return res, nil
+}
+
+// SeatPay implements the SeatPay RPC, which pays for a seat on a device.
+// This executes `doublezero-solana shreds pay` with the provided parameters.
+// When instant is true, the --now flag is appended for immediate allocation.
+func (q *QAAgent) SeatPay(ctx context.Context, req *pb.SeatPayRequest) (*pb.Result, error) {
+	if req.GetDevicePubkey() == "" {
+		return nil, fmt.Errorf("device_pubkey is required")
+	}
+	if req.GetClientIp() == "" {
+		return nil, fmt.Errorf("client_ip is required")
+	}
+	if req.GetAmount() == "" {
+		return nil, fmt.Errorf("amount is required")
+	}
+	q.log.Debug("Received SeatPay request", "device", req.GetDevicePubkey(), "clientIP", req.GetClientIp(), "amount", req.GetAmount(), "instant", req.GetInstant())
+
+	args := []string{"shreds", "pay", "--device", req.GetDevicePubkey(), "--client-ip", req.GetClientIp(), "--amount", req.GetAmount()}
+	if req.GetInstant() {
+		args = append(args, "--now")
+	}
+	if req.GetSolanaRpcUrl() != "" {
+		args = append(args, "--url", req.GetSolanaRpcUrl())
+	}
+
+	cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(cmdCtx, "doublezero-solana", args...)
+	if req.GetReservationProgramId() != "" {
+		cmd.Env = append(cmd.Environ(), "RESERVATION_PROGRAM_ID="+req.GetReservationProgramId())
+	}
+	res, err := runCmd(cmd)
+	if err != nil {
+		q.log.Error("Failed to pay for seat", "device", req.GetDevicePubkey(), "output", res.GetOutput())
+		return res, fmt.Errorf("failed to pay for seat on device %s: %w", req.GetDevicePubkey(), err)
+	}
+	q.log.Debug("Seat payment successful", "device", req.GetDevicePubkey(), "output", res.GetOutput())
+	return res, nil
+}
+
+// SeatWithdraw implements the SeatWithdraw RPC, which withdraws a seat from a device.
+// This executes `doublezero-solana shreds withdraw` with the provided parameters.
+// When instant is true, the --unsafe-now flag is appended for immediate withdrawal.
+func (q *QAAgent) SeatWithdraw(ctx context.Context, req *pb.SeatWithdrawRequest) (*pb.Result, error) {
+	if req.GetDevicePubkey() == "" {
+		return nil, fmt.Errorf("device_pubkey is required")
+	}
+	if req.GetClientIp() == "" {
+		return nil, fmt.Errorf("client_ip is required")
+	}
+	q.log.Debug("Received SeatWithdraw request", "device", req.GetDevicePubkey(), "clientIP", req.GetClientIp(), "instant", req.GetInstant())
+
+	args := []string{"shreds", "withdraw", "--device", req.GetDevicePubkey(), "--client-ip", req.GetClientIp()}
+	if req.GetInstant() {
+		args = append(args, "--unsafe-now")
+	}
+	if req.GetSolanaRpcUrl() != "" {
+		args = append(args, "--url", req.GetSolanaRpcUrl())
+	}
+
+	cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(cmdCtx, "doublezero-solana", args...)
+	if req.GetReservationProgramId() != "" {
+		cmd.Env = append(cmd.Environ(), "RESERVATION_PROGRAM_ID="+req.GetReservationProgramId())
+	}
+	res, err := runCmd(cmd)
+	if err != nil {
+		q.log.Error("Failed to withdraw seat", "device", req.GetDevicePubkey(), "output", res.GetOutput())
+		return res, fmt.Errorf("failed to withdraw seat on device %s: %w", req.GetDevicePubkey(), err)
+	}
+	q.log.Debug("Seat withdrawal successful", "device", req.GetDevicePubkey(), "output", res.GetOutput())
+	return res, nil
+}
+
 type StatusResponse struct {
 	Response struct {
 		TunnelName       string `json:"tunnel_name"`

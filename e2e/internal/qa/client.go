@@ -101,6 +101,10 @@ type Client struct {
 	// Exported as a simple configuration field (unlike publicIP which uses a setter
 	// because it has a non-nil invariant enforced by SetPublicIP).
 	ClientIP string
+
+	// Settlement config passed to doublezero-solana shreds commands.
+	SolanaRPCURL         string
+	ReservationProgramID string
 }
 
 func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int, networkConfig *config.NetworkConfig, devices map[string]*Device, allocateAddr bool) (*Client, error) {
@@ -133,8 +137,10 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 		serviceability: serviceabilityClient,
 		devices:        devices,
 
-		Host:         hostname,
-		AllocateAddr: allocateAddr,
+		Host:                 hostname,
+		AllocateAddr:         allocateAddr,
+		SolanaRPCURL:         networkConfig.SolanaRPCURL,
+		ReservationProgramID: networkConfig.ReservationProgramID,
 	}, nil
 }
 

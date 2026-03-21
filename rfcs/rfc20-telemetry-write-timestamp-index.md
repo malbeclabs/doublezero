@@ -115,7 +115,7 @@ Entries are append-only and naturally ordered by `sample_index`.
 
 #### Maximum Entries
 
-`MAX_TIMESTAMP_INDEX_ENTRIES = 10_000` entries is enforced. At one entry per write batch, this supports well beyond a 48-hour epoch even with per-second writes. Total max account size: `101 + 10,000 * 12 = ~120 KB`.
+`MAX_TIMESTAMP_INDEX_ENTRIES = 10_000` entries is enforced. At one entry per write batch (up to 245 samples each), this comfortably covers a 48-hour epoch — e.g., 5-second sampling produces ~141 batches, and even 1-second sampling produces ~706 batches. Once full, the write instruction silently skips the timestamp index append rather than failing the transaction. Total max account size: `101 + 10,000 * 12 = ~120 KB`.
 
 ### Account Type Enum
 

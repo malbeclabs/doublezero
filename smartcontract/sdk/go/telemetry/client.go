@@ -16,9 +16,10 @@ import (
 )
 
 var (
-	ErrAccountNotFound      = errors.New("account not found")
-	ErrSamplesBatchTooLarge = fmt.Errorf("samples batch too large, must not exceed %d samples", MaxSamplesPerBatch)
-	ErrSamplesAccountFull   = errors.New("samples account is full")
+	ErrAccountNotFound        = errors.New("account not found")
+	ErrSamplesBatchTooLarge   = fmt.Errorf("samples batch too large, must not exceed %d samples", MaxSamplesPerBatch)
+	ErrSamplesAccountFull     = errors.New("samples account is full")
+	ErrTimestampIndexNotFound = errors.New("timestamp index account not found")
 )
 
 type Client struct {
@@ -281,6 +282,8 @@ func (c *Client) WriteDeviceLatencySamples(
 									return solana.Signature{}, nil, ErrAccountNotFound
 								case strconv.Itoa(InstructionErrorAccountSamplesAccountFull):
 									return solana.Signature{}, nil, ErrSamplesAccountFull
+								case strconv.Itoa(InstructionErrorTimestampIndexAccountDoesNotExist):
+									return solana.Signature{}, nil, ErrTimestampIndexNotFound
 								}
 							}
 						}
@@ -387,6 +390,8 @@ func (c *Client) WriteInternetLatencySamples(
 									return solana.Signature{}, nil, ErrAccountNotFound
 								case strconv.Itoa(InstructionErrorAccountSamplesAccountFull):
 									return solana.Signature{}, nil, ErrSamplesAccountFull
+								case strconv.Itoa(InstructionErrorTimestampIndexAccountDoesNotExist):
+									return solana.Signature{}, nil, ErrTimestampIndexNotFound
 								}
 							}
 						}

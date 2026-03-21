@@ -77,13 +77,17 @@ type mockTelemetryProgramClient struct {
 	InitializeDeviceLatencySamplesFunc func(ctx context.Context, config sdktelemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
 	WriteDeviceLatencySamplesFunc      func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
 	GetDeviceLatencySamplesFunc        func(ctx context.Context, originDevicePK solana.PublicKey, targetDevicePK solana.PublicKey, linkPK solana.PublicKey, epoch uint64) (*sdktelemetry.DeviceLatencySamples, error)
+	InitializeTimestampIndexFunc       func(ctx context.Context, samplesAccountPK solana.PublicKey) (solana.Signature, *solanarpc.GetTransactionResult, error)
 }
 
 func (c *mockTelemetryProgramClient) ProgramID() solana.PublicKey {
 	return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
 }
 
-func (c *mockTelemetryProgramClient) InitializeTimestampIndex(_ context.Context, _ solana.PublicKey) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+func (c *mockTelemetryProgramClient) InitializeTimestampIndex(ctx context.Context, samplesAccountPK solana.PublicKey) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+	if c.InitializeTimestampIndexFunc != nil {
+		return c.InitializeTimestampIndexFunc(ctx, samplesAccountPK)
+	}
 	return solana.Signature{}, nil, nil
 }
 

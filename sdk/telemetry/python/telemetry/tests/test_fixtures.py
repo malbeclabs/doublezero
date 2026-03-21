@@ -5,7 +5,14 @@ from pathlib import Path
 
 from solders.pubkey import Pubkey  # type: ignore[import-untyped]
 
-from telemetry.state import DeviceLatencySamples, InternetLatencySamples
+from telemetry.state import (
+    DeviceLatencySamples,
+    InternetLatencySamples,
+    TimestampIndex,
+    TimestampIndexEntry,
+    reconstruct_timestamp,
+    reconstruct_timestamps,
+)
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "testdata" / "fixtures"
 
@@ -75,3 +82,75 @@ class TestFixtureInternetLatencySamples:
                 "SamplesCount": len(d.samples),
             },
         )
+
+
+class TestFixtureTimestampIndex:
+    def test_deserialize(self):
+        data, meta = _load_fixture("timestamp_index")
+        d = TimestampIndex.from_bytes(data)
+        got = {
+            "AccountType": d.account_type,
+            "SamplesAccountPK": d.samples_account_pk,
+            "NextEntryIndex": d.next_entry_index,
+            "EntriesCount": len(d.entries),
+        }
+        if len(d.entries) > 0:
+            got["Entry0SampleIndex"] = d.entries[0].sample_index
+            got["Entry0Timestamp"] = d.entries[0].timestamp_microseconds
+        if len(d.entries) > 1:
+            got["Entry1SampleIndex"] = d.entries[1].sample_index
+            got["Entry1Timestamp"] = d.entries[1].timestamp_microseconds
+        if len(d.entries) > 2:
+            got["Entry2SampleIndex"] = d.entries[2].sample_index
+            got["Entry2Timestamp"] = d.entries[2].timestamp_microseconds
+        _assert_fields(meta["fields"], got)
+
+
+class TestReconstructTimestamp:
+    def test_with_entries(self):
+        interval = 5_000_000
+        entries = [
+            TimestampIndexEntry(0, 1_700_000_000_000_000),
+            TimestampIndexEntry(12, 1_700_000_000_120_000),
+            TimestampIndexEntry(24, 1_700_000_000_240_000),
+        ]
+        assert reconstruct_timestamp(entries, 0, 0, interval) == 1_700_000_000_000_000
+        assert reconstruct_timestamp(entries, 5, 0, interval) == 1_700_000_000_000_000 + 5 * interval
+        assert reconstruct_timestamp(entries, 12, 0, interval) == 1_700_000_000_120_000
+        assert reconstruct_timestamp(entries, 15, 0, interval) == 1_700_000_000_120_000 + 3 * interval
+        assert reconstruct_timestamp(entries, 30, 0, interval) == 1_700_000_000_240_000 + 6 * interval
+
+    def test_fallback_no_entries(self):
+        ts = reconstruct_timestamp([], 10, 1_700_000_000_000_000, 5_000_000)
+        assert ts == 1_700_000_000_000_000 + 10 * 5_000_000
+
+    def test_late_start(self):
+        start_ts = 1_700_000_000_000_000
+        interval = 5_000_000
+        entries = [
+            TimestampIndexEntry(120, 1_700_000_000_800_000),
+            TimestampIndexEntry(240, 1_700_000_001_600_000),
+        ]
+        # Before first entry: implicit model
+        assert reconstruct_timestamp(entries, 0, start_ts, interval) == start_ts
+        assert reconstruct_timestamp(entries, 50, start_ts, interval) == start_ts + 50 * interval
+        assert reconstruct_timestamp(entries, 119, start_ts, interval) == start_ts + 119 * interval
+        # At and after first entry
+        assert reconstruct_timestamp(entries, 120, start_ts, interval) == 1_700_000_000_800_000
+        assert reconstruct_timestamp(entries, 125, start_ts, interval) == 1_700_000_000_800_000 + 5 * interval
+        assert reconstruct_timestamp(entries, 240, start_ts, interval) == 1_700_000_001_600_000
+
+    def test_reconstruct_all(self):
+        entries = [
+            TimestampIndexEntry(0, 1000),
+            TimestampIndexEntry(3, 5000),
+        ]
+        ts = reconstruct_timestamps(5, entries, 0, 100)
+        assert ts == [1000, 1100, 1200, 5000, 5100]
+
+    def test_reconstruct_all_late_start(self):
+        entries = [
+            TimestampIndexEntry(3, 5000),
+        ]
+        ts = reconstruct_timestamps(5, entries, 1000, 100)
+        assert ts == [1000, 1100, 1200, 5000, 5100]

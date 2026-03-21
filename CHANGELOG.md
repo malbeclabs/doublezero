@@ -38,6 +38,9 @@ All notable changes to this project will be documented in this file.
 - Controller
   - Retry transient Solana RPC failures when fetching onchain serviceability accounts so controller polls are more resilient to short-lived provider resets
 
+- Telemetry
+  - Add timestamp index companion account for device and internet latency samples, enabling reliable timestamp reconstruction when agents experience downtime gaps within an epoch
+
 ## [v0.12.0](https://github.com/malbeclabs/doublezero/compare/client/v0.11.0...client/v0.12.0) - 2026-03-16
 
 ### Breaking

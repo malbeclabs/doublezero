@@ -11,6 +11,7 @@ pub enum AccountType {
     InternetLatencySamplesV0 = 2,
     DeviceLatencySamples = 3,
     InternetLatencySamples = 4,
+    TimestampIndex = 5,
 }
 
 impl TryFrom<u8> for AccountType {
@@ -22,6 +23,7 @@ impl TryFrom<u8> for AccountType {
             2 => Ok(Self::InternetLatencySamplesV0),
             3 => Ok(Self::DeviceLatencySamples),
             4 => Ok(Self::InternetLatencySamples),
+            5 => Ok(Self::TimestampIndex),
             _ => Err(ProgramError::InvalidAccountData),
         }
     }
@@ -34,6 +36,7 @@ impl fmt::Display for AccountType {
             Self::InternetLatencySamplesV0 => write!(f, "InternetLatencySamplesV0"),
             Self::DeviceLatencySamples => write!(f, "DeviceLatencySamples"),
             Self::InternetLatencySamples => write!(f, "InternetLatencySamples"),
+            Self::TimestampIndex => write!(f, "TimestampIndex"),
         }
     }
 }

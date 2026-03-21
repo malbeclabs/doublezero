@@ -19,8 +19,11 @@ INTERNET_LATENCY_SAMPLES_SEED = b"inetlatency"
 
 MAX_DEVICE_LATENCY_SAMPLES_PER_ACCOUNT = 35_000
 MAX_INTERNET_LATENCY_SAMPLES_PER_ACCOUNT = 3_000
+MAX_TIMESTAMP_INDEX_ENTRIES = 10_000
 
 DEVICE_LATENCY_HEADER_SIZE = 1 + 8 + 32 * 6 + 8 + 8 + 4 + 128
+TIMESTAMP_INDEX_HEADER_SIZE = 1 + 32 + 4 + 64
+TIMESTAMP_INDEX_ENTRY_SIZE = 4 + 8
 
 
 def _read_pubkey(r: DefensiveReader) -> Pubkey:
@@ -139,3 +142,106 @@ class InternetLatencySamples:
             next_sample_index=next_sample_index,
             samples=samples,
         )
+
+
+@dataclass
+class TimestampIndexEntry:
+    sample_index: int
+    timestamp_microseconds: int
+
+
+@dataclass
+class TimestampIndex:
+    account_type: int
+    samples_account_pk: Pubkey
+    next_entry_index: int
+    entries: list[TimestampIndexEntry] = field(default_factory=list)
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> TimestampIndex:
+        if len(data) < TIMESTAMP_INDEX_HEADER_SIZE:
+            raise ValueError(
+                f"data too short for timestamp index header: {len(data)} < {TIMESTAMP_INDEX_HEADER_SIZE}"
+            )
+
+        r = DefensiveReader(data)
+
+        account_type = r.read_u8()
+        samples_account_pk = _read_pubkey(r)
+        next_entry_index = r.read_u32()
+
+        r.read_bytes(64)  # reserved
+
+        count = min(next_entry_index, MAX_TIMESTAMP_INDEX_ENTRIES)
+        entries: list[TimestampIndexEntry] = []
+        for _ in range(count):
+            if r.remaining < TIMESTAMP_INDEX_ENTRY_SIZE:
+                break
+            sample_index = r.read_u32()
+            timestamp_microseconds = r.read_u64()
+            entries.append(TimestampIndexEntry(sample_index, timestamp_microseconds))
+
+        return cls(
+            account_type=account_type,
+            samples_account_pk=samples_account_pk,
+            next_entry_index=next_entry_index,
+            entries=entries,
+        )
+
+
+def reconstruct_timestamp(
+    entries: list[TimestampIndexEntry],
+    sample_index: int,
+    start_timestamp_microseconds: int,
+    sampling_interval_microseconds: int,
+) -> int:
+    """Return the wall-clock timestamp (microseconds) for a sample at the given index.
+
+    Uses binary search over entries. O(log m) where m is the number of entries.
+    Falls back to the implicit model when no entries are available.
+    """
+    if not entries:
+        return start_timestamp_microseconds + sample_index * sampling_interval_microseconds
+
+    # Binary search: find the last entry where sample_index <= target.
+    lo, hi = 0, len(entries) - 1
+    while lo < hi:
+        mid = lo + (hi - lo + 1) // 2
+        if entries[mid].sample_index <= sample_index:
+            lo = mid
+        else:
+            hi = mid - 1
+
+    entry = entries[lo]
+    if entry.sample_index > sample_index:
+        return start_timestamp_microseconds + sample_index * sampling_interval_microseconds
+    return entry.timestamp_microseconds + (sample_index - entry.sample_index) * sampling_interval_microseconds
+
+
+def reconstruct_timestamps(
+    sample_count: int,
+    entries: list[TimestampIndexEntry],
+    start_timestamp_microseconds: int,
+    sampling_interval_microseconds: int,
+) -> list[int]:
+    """Return wall-clock timestamps (microseconds) for all samples.
+
+    Single-pass O(n + m) where n is sample_count and m is the number of entries.
+    """
+    if not entries:
+        return [
+            start_timestamp_microseconds + i * sampling_interval_microseconds
+            for i in range(sample_count)
+        ]
+
+    timestamps: list[int] = []
+    entry_idx = 0
+    for i in range(sample_count):
+        while entry_idx + 1 < len(entries) and entries[entry_idx + 1].sample_index <= i:
+            entry_idx += 1
+        e = entries[entry_idx]
+        if e.sample_index > i:
+            timestamps.append(start_timestamp_microseconds + i * sampling_interval_microseconds)
+        else:
+            timestamps.append(e.timestamp_microseconds + (i - e.sample_index) * sampling_interval_microseconds)
+    return timestamps

@@ -571,6 +571,58 @@ func TestInternetLatency_Submitter(t *testing.T) {
 		assert.False(t, buffer.Has(key), "partition key should be removed after account full error")
 	})
 
+	t.Run("initializes_only_timestamp_index_when_timestamp_index_not_found", func(t *testing.T) {
+		t.Parallel()
+
+		log := logger.With("test", t.Name())
+
+		key := newTestPartitionKey()
+		sample := newTestSample()
+
+		var initSamplesCalled, initTimestampIndexCalled, writeCalled int32
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteInternetLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				if atomic.AddInt32(&writeCalled, 1) == 1 {
+					return solana.Signature{}, nil, sdktelemetry.ErrTimestampIndexNotFound
+				}
+				return solana.Signature{}, nil, nil
+			},
+			InitializeInternetLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.InitializeInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				atomic.AddInt32(&initSamplesCalled, 1)
+				return solana.Signature{}, nil, nil
+			},
+			InitializeTimestampIndexFunc: func(ctx context.Context, samplesAccountPK solana.PublicKey) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				atomic.AddInt32(&initTimestampIndexCalled, 1)
+				return solana.Signature{}, nil, nil
+			},
+		}
+
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
+		buffer.Add(key, sample)
+
+		submitter, err := exporter.NewSubmitter(log, &exporter.SubmitterConfig{
+			OracleAgentPK: solana.NewWallet().PublicKey(),
+			Interval:      time.Hour,
+			Buffer:        buffer,
+			Telemetry:     telemetryProgram,
+			MaxAttempts:   3,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			EpochFinder: &mockEpochFinder{ApproximateAtTimeFunc: func(ctx context.Context, target time.Time) (uint64, error) {
+				return key.Epoch, nil
+			}},
+			DataProviderSamplingIntervals: map[exporter.DataProviderName]time.Duration{
+				key.DataProvider: time.Second,
+			},
+		})
+		require.NoError(t, err)
+
+		submitter.Tick(t.Context())
+
+		assert.Equal(t, int32(0), atomic.LoadInt32(&initSamplesCalled), "should not initialize samples account")
+		assert.Equal(t, int32(1), atomic.LoadInt32(&initTimestampIndexCalled), "should initialize timestamp index")
+		assert.Equal(t, int32(2), atomic.LoadInt32(&writeCalled), "should try write twice (before and after timestamp index init)")
+	})
+
 	t.Run("failed_retries_reinsert_at_front_preserving_order", func(t *testing.T) {
 		t.Parallel()
 

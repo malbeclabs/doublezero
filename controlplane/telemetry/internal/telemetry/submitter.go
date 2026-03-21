@@ -146,7 +146,23 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 
 		_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
 		if err != nil {
-			if errors.Is(err, telemetry.ErrAccountNotFound) {
+			if errors.Is(err, telemetry.ErrTimestampIndexNotFound) {
+				log.Info("Timestamp index account not found, initializing")
+				_, _, err = s.cfg.ProgramClient.InitializeTimestampIndex(ctx, samplesPDA)
+				if err != nil {
+					log.Warn("Failed to initialize timestamp index, writes will proceed without it", "error", err)
+				}
+				_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
+				if err != nil {
+					if errors.Is(err, telemetry.ErrSamplesAccountFull) {
+						log.Warn("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
+						s.cfg.Buffer.Remove(partitionKey)
+						return nil
+					}
+					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToWriteSamples).Inc()
+					return fmt.Errorf("failed to write device latency samples after timestamp index init: %w", err)
+				}
+			} else if errors.Is(err, telemetry.ErrAccountNotFound) {
 				log.Info("Account not found, initializing new account")
 				_, _, err = s.cfg.ProgramClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
 					AgentPK:                      s.cfg.MetricsPublisherPK,

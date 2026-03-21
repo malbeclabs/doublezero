@@ -23,6 +23,10 @@ const (
 	// when the given PDA does not exist.
 	InstructionErrorAccountDoesNotExist = 1011
 
+	// InstructionErrorTimestampIndexAccountDoesNotExist is the error code that the telemetry
+	// program returns when the timestamp index account does not exist.
+	InstructionErrorTimestampIndexAccountDoesNotExist = 1019
+
 	// MaxSamplesPerBatch is the maximum number of samples that can be written in a single batch.
 	//
 	// Messages transmitted to Solana validators must not exceed the IPv6 MTU size to ensure fast

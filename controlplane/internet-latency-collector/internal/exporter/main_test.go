@@ -52,13 +52,17 @@ type mockTelemetryProgramClient struct {
 	InitializeInternetLatencySamplesFunc func(ctx context.Context, config telemetry.InitializeInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
 	WriteInternetLatencySamplesFunc      func(ctx context.Context, config telemetry.WriteInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
 	GetInternetLatencySamplesFunc        func(ctx context.Context, dataProviderName string, originExchangePK solana.PublicKey, targetExchangePK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
+	InitializeTimestampIndexFunc         func(ctx context.Context, samplesAccountPK solana.PublicKey) (solana.Signature, *solanarpc.GetTransactionResult, error)
 }
 
 func (c *mockTelemetryProgramClient) ProgramID() solana.PublicKey {
 	return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
 }
 
-func (c *mockTelemetryProgramClient) InitializeTimestampIndex(_ context.Context, _ solana.PublicKey) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+func (c *mockTelemetryProgramClient) InitializeTimestampIndex(ctx context.Context, samplesAccountPK solana.PublicKey) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+	if c.InitializeTimestampIndexFunc != nil {
+		return c.InitializeTimestampIndexFunc(ctx, samplesAccountPK)
+	}
 	return solana.Signature{}, nil, nil
 }
 

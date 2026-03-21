@@ -39,6 +39,8 @@ pub enum TelemetryError {
     EmptyLatencySamples = 1017,
     /// Timestamp index account is full
     TimestampIndexFull = 1018,
+    /// Timestamp index account does not exist
+    TimestampIndexAccountDoesNotExist = 1019,
 }
 
 impl From<TelemetryError> for ProgramError {
@@ -81,6 +83,9 @@ impl fmt::Display for TelemetryError {
             Self::SameTargetAsOrigin => write!(f, "Origin and target are the same exchange"),
             Self::EmptyLatencySamples => write!(f, "Write transaction contains no samples"),
             Self::TimestampIndexFull => write!(f, "Timestamp index account is full"),
+            Self::TimestampIndexAccountDoesNotExist => {
+                write!(f, "Timestamp index account does not exist")
+            }
         }
     }
 }

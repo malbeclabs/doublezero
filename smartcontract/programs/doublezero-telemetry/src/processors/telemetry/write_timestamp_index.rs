@@ -32,7 +32,7 @@ pub fn append_timestamp_index_entry(
     // Validate the timestamp index account exists and is owned by this program.
     if timestamp_index_account.data_is_empty() {
         msg!("Timestamp index account does not exist");
-        return Err(TelemetryError::AccountDoesNotExist.into());
+        return Err(TelemetryError::TimestampIndexAccountDoesNotExist.into());
     }
 
     if timestamp_index_account.owner != program_id {

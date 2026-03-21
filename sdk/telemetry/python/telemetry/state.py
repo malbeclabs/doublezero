@@ -213,6 +213,8 @@ def reconstruct_timestamp(
             hi = mid - 1
 
     entry = entries[lo]
+    if entry.sample_index > sample_index:
+        return start_timestamp_microseconds + sample_index * sampling_interval_microseconds
     return entry.timestamp_microseconds + (sample_index - entry.sample_index) * sampling_interval_microseconds
 
 
@@ -238,5 +240,8 @@ def reconstruct_timestamps(
         while entry_idx + 1 < len(entries) and entries[entry_idx + 1].sample_index <= i:
             entry_idx += 1
         e = entries[entry_idx]
-        timestamps.append(e.timestamp_microseconds + (i - e.sample_index) * sampling_interval_microseconds)
+        if e.sample_index > i:
+            timestamps.append(start_timestamp_microseconds + i * sampling_interval_microseconds)
+        else:
+            timestamps.append(e.timestamp_microseconds + (i - e.sample_index) * sampling_interval_microseconds)
     return timestamps

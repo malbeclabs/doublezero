@@ -124,10 +124,33 @@ class TestReconstructTimestamp:
         ts = reconstruct_timestamp([], 10, 1_700_000_000_000_000, 5_000_000)
         assert ts == 1_700_000_000_000_000 + 10 * 5_000_000
 
+    def test_late_start(self):
+        start_ts = 1_700_000_000_000_000
+        interval = 5_000_000
+        entries = [
+            TimestampIndexEntry(120, 1_700_000_000_800_000),
+            TimestampIndexEntry(240, 1_700_000_001_600_000),
+        ]
+        # Before first entry: implicit model
+        assert reconstruct_timestamp(entries, 0, start_ts, interval) == start_ts
+        assert reconstruct_timestamp(entries, 50, start_ts, interval) == start_ts + 50 * interval
+        assert reconstruct_timestamp(entries, 119, start_ts, interval) == start_ts + 119 * interval
+        # At and after first entry
+        assert reconstruct_timestamp(entries, 120, start_ts, interval) == 1_700_000_000_800_000
+        assert reconstruct_timestamp(entries, 125, start_ts, interval) == 1_700_000_000_800_000 + 5 * interval
+        assert reconstruct_timestamp(entries, 240, start_ts, interval) == 1_700_000_001_600_000
+
     def test_reconstruct_all(self):
         entries = [
             TimestampIndexEntry(0, 1000),
             TimestampIndexEntry(3, 5000),
         ]
         ts = reconstruct_timestamps(5, entries, 0, 100)
+        assert ts == [1000, 1100, 1200, 5000, 5100]
+
+    def test_reconstruct_all_late_start(self):
+        entries = [
+            TimestampIndexEntry(3, 5000),
+        ]
+        ts = reconstruct_timestamps(5, entries, 1000, 100)
         assert ts == [1000, 1100, 1200, 5000, 5100]

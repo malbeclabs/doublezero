@@ -197,6 +197,55 @@ func TestReconstructTimestamps(t *testing.T) {
 	}
 }
 
+func TestReconstructTimestamp_LateStart(t *testing.T) {
+	// Timestamp index created mid-epoch: first entry starts at sample 120.
+	// Samples 0..119 should fall back to the implicit model.
+	startTS := uint64(1_700_000_000_000_000)
+	interval := uint64(5_000_000) // 5s in µs
+	entries := []TimestampIndexEntry{
+		{SampleIndex: 120, TimestampMicroseconds: 1_700_000_000_800_000},
+		{SampleIndex: 240, TimestampMicroseconds: 1_700_000_001_600_000},
+	}
+
+	// Sample 0: before first entry, should use implicit model.
+	ts := ReconstructTimestamp(entries, 0, startTS, interval)
+	assertEq(t, "sample0", startTS, ts)
+
+	// Sample 50: still before first entry.
+	ts = ReconstructTimestamp(entries, 50, startTS, interval)
+	assertEq(t, "sample50", startTS+50*interval, ts)
+
+	// Sample 119: last sample before first entry.
+	ts = ReconstructTimestamp(entries, 119, startTS, interval)
+	assertEq(t, "sample119", startTS+119*interval, ts)
+
+	// Sample 120: exactly at first entry.
+	ts = ReconstructTimestamp(entries, 120, startTS, interval)
+	assertEq(t, "sample120", uint64(1_700_000_000_800_000), ts)
+
+	// Sample 125: within first entry's range.
+	ts = ReconstructTimestamp(entries, 125, startTS, interval)
+	assertEq(t, "sample125", uint64(1_700_000_000_800_000+5*interval), ts)
+
+	// Sample 240: at second entry.
+	ts = ReconstructTimestamp(entries, 240, startTS, interval)
+	assertEq(t, "sample240", uint64(1_700_000_001_600_000), ts)
+}
+
+func TestReconstructTimestamps_LateStart(t *testing.T) {
+	// First entry starts at sample 3, so samples 0..2 use implicit model.
+	startTS := uint64(1000)
+	interval := uint64(100)
+	entries := []TimestampIndexEntry{
+		{SampleIndex: 3, TimestampMicroseconds: 5000},
+	}
+	ts := ReconstructTimestamps(5, entries, startTS, interval)
+	expected := []uint64{1000, 1100, 1200, 5000, 5100}
+	for i, want := range expected {
+		assertEq(t, "ts_"+strconv.Itoa(i), want, ts[i])
+	}
+}
+
 func assertEq(t *testing.T, name string, want, got any) {
 	t.Helper()
 	if !reflect.DeepEqual(want, got) {

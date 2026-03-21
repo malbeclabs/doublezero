@@ -207,6 +207,9 @@ export function reconstructTimestamp(
   }
 
   const entry = entries[lo];
+  if (entry.sampleIndex > sampleIndex) {
+    return startTimestampMicroseconds + BigInt(sampleIndex) * samplingIntervalMicroseconds;
+  }
   return entry.timestampMicroseconds + BigInt(sampleIndex - entry.sampleIndex) * samplingIntervalMicroseconds;
 }
 
@@ -234,7 +237,11 @@ export function reconstructTimestamps(
       entryIdx++;
     }
     const e = entries[entryIdx];
-    timestamps.push(e.timestampMicroseconds + BigInt(i - e.sampleIndex) * samplingIntervalMicroseconds);
+    if (e.sampleIndex > i) {
+      timestamps.push(startTimestampMicroseconds + BigInt(i) * samplingIntervalMicroseconds);
+    } else {
+      timestamps.push(e.timestampMicroseconds + BigInt(i - e.sampleIndex) * samplingIntervalMicroseconds);
+    }
   }
   return timestamps;
 }

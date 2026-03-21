@@ -8,6 +8,13 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain Programs
+  - Add `target_update_count` field to GeoProbe account, incremented on `AddTarget` and `RemoveTarget`; uses `BorshDeserializeIncremental` so existing accounts default to 0 (non-breaking)
+- SDK
+  - Add `TargetUpdateCount` field to Go GeoProbe struct with backward-compatible deserialization
+- Telemetry
+  - Skip expensive `GetGeolocationUsers` RPC scan in geoprobe-agent when the probe's `target_update_count` is unchanged, with a forced full refresh every ~5 minutes as safety net
+
 ## [v0.13.0](https://github.com/malbeclabs/doublezero/compare/client/v0.12.0...client/v0.13.0) - 2026-03-20
 
 ### Breaking

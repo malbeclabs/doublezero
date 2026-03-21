@@ -75,6 +75,7 @@ async fn test_create_geo_probe_success() {
         reference_count: 0,
         code: code.to_string(),
         parent_devices: vec![],
+        target_update_count: 0,
     };
 
     assert_eq!(probe, expected_probe);
@@ -265,6 +266,7 @@ async fn test_update_geo_probe_success() {
         reference_count: 0,                          // Unchanged
         code: code.to_string(),                      // Immutable
         parent_devices: vec![],                      // Unchanged
+        target_update_count: 0,                      // Unchanged
     };
 
     assert_eq!(probe, expected_probe);

@@ -151,12 +151,36 @@ describe("reconstructTimestamp", () => {
     expect(ts).toBe(1_700_000_000_000_000n + 10n * 5_000_000n);
   });
 
+  test("late start falls back to implicit model for early samples", () => {
+    const startTS = 1_700_000_000_000_000n;
+    const lateEntries = [
+      { sampleIndex: 120, timestampMicroseconds: 1_700_000_000_800_000n },
+      { sampleIndex: 240, timestampMicroseconds: 1_700_000_001_600_000n },
+    ];
+    // Before first entry: implicit model
+    expect(reconstructTimestamp(lateEntries, 0, startTS, interval)).toBe(startTS);
+    expect(reconstructTimestamp(lateEntries, 50, startTS, interval)).toBe(startTS + 50n * interval);
+    expect(reconstructTimestamp(lateEntries, 119, startTS, interval)).toBe(startTS + 119n * interval);
+    // At and after first entry
+    expect(reconstructTimestamp(lateEntries, 120, startTS, interval)).toBe(1_700_000_000_800_000n);
+    expect(reconstructTimestamp(lateEntries, 125, startTS, interval)).toBe(1_700_000_000_800_000n + 5n * interval);
+    expect(reconstructTimestamp(lateEntries, 240, startTS, interval)).toBe(1_700_000_001_600_000n);
+  });
+
   test("reconstructTimestamps returns all timestamps", () => {
     const e = [
       { sampleIndex: 0, timestampMicroseconds: 1000n },
       { sampleIndex: 3, timestampMicroseconds: 5000n },
     ];
     const ts = reconstructTimestamps(5, e, 0n, 100n);
+    expect(ts).toEqual([1000n, 1100n, 1200n, 5000n, 5100n]);
+  });
+
+  test("reconstructTimestamps late start falls back for early samples", () => {
+    const e = [
+      { sampleIndex: 3, timestampMicroseconds: 5000n },
+    ];
+    const ts = reconstructTimestamps(5, e, 1000n, 100n);
     expect(ts).toEqual([1000n, 1100n, 1200n, 5000n, 5100n]);
   });
 });

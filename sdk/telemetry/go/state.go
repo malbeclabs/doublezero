@@ -213,6 +213,9 @@ func ReconstructTimestamp(
 	}
 
 	entry := entries[lo]
+	if entry.SampleIndex > sampleIndex {
+		return startTimestampMicroseconds + uint64(sampleIndex)*samplingIntervalMicroseconds
+	}
 	return entry.TimestampMicroseconds + uint64(sampleIndex-entry.SampleIndex)*samplingIntervalMicroseconds
 }
 
@@ -238,7 +241,7 @@ func ReconstructTimestamps(
 			entryIdx++
 		}
 
-		if len(entries) == 0 {
+		if len(entries) == 0 || entries[entryIdx].SampleIndex > i {
 			timestamps[i] = startTimestampMicroseconds + uint64(i)*samplingIntervalMicroseconds
 		} else {
 			e := entries[entryIdx]

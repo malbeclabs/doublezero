@@ -102,6 +102,9 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 	for i := range data.Devices {
 		data.Devices[i].UsersCount = 0
 		data.Devices[i].ReferenceCount = 0
+		data.Devices[i].UnicastUsersCount = 0
+		data.Devices[i].MulticastSubscribersCount = 0
+		data.Devices[i].MulticastPublishersCount = 0
 	}
 	if !w.cfg.AllowOwnUsers {
 		// filter out our own users

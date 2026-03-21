@@ -77,10 +77,11 @@ func GenerateSlackTableMessage(headerText string, tableRows [][]string, columnSe
 		slackRows[i] = slackRow
 	}
 
-	if columnSettings == nil {
-		columnSettings = []ColumnSetting{
-			{IsWrapped: true},
-			{Align: "right"},
+	if columnSettings == nil && len(tableRows) > 0 {
+		numCols := len(tableRows[0])
+		columnSettings = make([]ColumnSetting, numCols)
+		for i := range columnSettings {
+			columnSettings[i] = ColumnSetting{IsWrapped: true}
 		}
 	}
 

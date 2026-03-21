@@ -2,6 +2,7 @@ package serviceability
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync/atomic"
 	"testing"
@@ -359,6 +360,36 @@ func TestWatcher_BuildSlackMessage(t *testing.T) {
 		msg, err := w.buildSlackMessage(events, devices, tenants, 42)
 		require.NoError(t, err)
 		require.Contains(t, msg, "42")
+	})
+
+	t.Run("column_settings count matches column count", func(t *testing.T) {
+		t.Parallel()
+		w := makeCfg(t)
+		events := []ServiceabilityUserEvent{makeEvent(1, tenantPubKey)}
+		msg, err := w.buildSlackMessage(events, devices, tenants, 1)
+		require.NoError(t, err)
+
+		var parsed SlackMessage
+		require.NoError(t, json.Unmarshal([]byte(msg), &parsed))
+
+		var tableBlock *Block
+		for i := range parsed.Blocks {
+			if parsed.Blocks[i].Type == "table" {
+				tableBlock = &parsed.Blocks[i]
+				break
+			}
+		}
+		require.NotNil(t, tableBlock, "message must contain a table block")
+		require.NotEmpty(t, tableBlock.Rows, "table must have rows")
+
+		numCols := len(tableBlock.Rows[0])
+		require.Equal(t, numCols, len(tableBlock.ColumnSettings),
+			"column_settings length must match the number of columns in each row")
+
+		for _, row := range tableBlock.Rows {
+			require.Equal(t, numCols, len(row),
+				"every row must have the same number of columns")
+		}
 	})
 }
 

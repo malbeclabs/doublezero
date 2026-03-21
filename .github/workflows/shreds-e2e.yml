@@ -1,0 +1,121 @@
+name: shreds-e2e
+on:
+  push:
+    branches: [main, 'hotfix/**']
+  pull_request:
+    branches: [main, 'hotfix/**']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DZ_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  SHRED_IMAGE_REPO: ghcr.io/malbeclabs/dz-shreds-e2e
+  SHRED_IMAGE_TAG: ${{ github.event.pull_request.head.sha || github.sha }}
+  SHRED_BASE_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/base:${{ github.event.pull_request.head.sha || github.sha }}
+  SHRED_LEDGER_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/ledger:${{ github.event.pull_request.head.sha || github.sha }}
+  SHRED_MANAGER_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/manager:${{ github.event.pull_request.head.sha || github.sha }}
+  SHRED_ACTIVATOR_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/activator:${{ github.event.pull_request.head.sha || github.sha }}
+  SHRED_ORACLE_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/oracle:${{ github.event.pull_request.head.sha || github.sha }}
+  SHRED_CLIENT_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/client:${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  setup:
+    runs-on: self-hosted
+    timeout-minutes: 20
+    permissions:
+      packages: write
+      contents: read
+    outputs:
+      shreds-sha: ${{ steps.checkout-shreds.outputs.commit }}
+    steps:
+      - name: Checkout doublezero-shreds
+        id: checkout-shreds
+        uses: actions/checkout@v4
+        with:
+          repository: malbeclabs/doublezero-shreds
+          token: ${{ secrets.MALBEC_INFRA_RO }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: e2e/go.mod
+          cache: true
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Override doublezero SHA
+        run: |
+          echo "Using doublezero SHA: $DZ_SHA"
+          jq --arg sha "$DZ_SHA" '.doublezero = $sha' e2e/.dep-shas.json > e2e/.dep-shas.json.tmp
+          mv e2e/.dep-shas.json.tmp e2e/.dep-shas.json
+          cat e2e/.dep-shas.json
+      - name: Build images
+        working-directory: e2e/
+        run: go run -tags=e2e ./cmd/devnet build -v
+      - name: Push images to registry
+        run: |
+          docker push ${{ env.SHRED_IMAGE_REPO }}/base:${{ env.SHRED_IMAGE_TAG }}
+          docker push ${{ env.SHRED_IMAGE_REPO }}/ledger:${{ env.SHRED_IMAGE_TAG }}
+          docker push ${{ env.SHRED_IMAGE_REPO }}/manager:${{ env.SHRED_IMAGE_TAG }}
+          docker push ${{ env.SHRED_IMAGE_REPO }}/activator:${{ env.SHRED_IMAGE_TAG }}
+          docker push ${{ env.SHRED_IMAGE_REPO }}/oracle:${{ env.SHRED_IMAGE_TAG }}
+          docker push ${{ env.SHRED_IMAGE_REPO }}/client:${{ env.SHRED_IMAGE_TAG }}
+
+  e2e:
+    needs: setup
+    runs-on: doublezero-k8s-ci
+    timeout-minutes: 20
+    permissions:
+      packages: read
+      contents: read
+    defaults:
+      run:
+        working-directory: e2e/
+    steps:
+      - name: Checkout doublezero-shreds
+        uses: actions/checkout@v4
+        with:
+          repository: malbeclabs/doublezero-shreds
+          ref: ${{ needs.setup.outputs.shreds-sha }}
+          token: ${{ secrets.MALBEC_INFRA_RO }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: e2e/go.mod
+          cache: true
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull pre-built images
+        run: |
+          pull_with_retry() {
+            local image=$1
+            local max_attempts=3
+            local attempt=1
+            while [ $attempt -le $max_attempts ]; do
+              echo "Pulling $image (attempt $attempt/$max_attempts)"
+              if docker pull "$image"; then
+                return 0
+              fi
+              echo "Pull failed, retrying in 5 seconds..."
+              sleep 5
+              attempt=$((attempt + 1))
+            done
+            echo "Failed to pull $image after $max_attempts attempts"
+            return 1
+          }
+          pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/base:${{ env.SHRED_IMAGE_TAG }}
+          pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/ledger:${{ env.SHRED_IMAGE_TAG }}
+          pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/manager:${{ env.SHRED_IMAGE_TAG }}
+          pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/activator:${{ env.SHRED_IMAGE_TAG }}
+          pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/oracle:${{ env.SHRED_IMAGE_TAG }}
+          pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/client:${{ env.SHRED_IMAGE_TAG }}
+      - name: Run e2e tests
+        env:
+          SHRED_E2E_NO_BUILD: "1"
+        run: go test -tags=e2e -timeout=20m -v -count=1 .

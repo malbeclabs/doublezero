@@ -20,7 +20,6 @@ use doublezero_sdk::{
     UserType,
 };
 
-
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, ValueEnum)]
 pub enum DzMode {

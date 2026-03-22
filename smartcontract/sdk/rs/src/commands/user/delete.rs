@@ -29,6 +29,8 @@ pub struct DeleteUserCommand {
 
 impl DeleteUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
+        eprintln!("DeleteUser: starting for user {}", self.pubkey);
+
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
@@ -42,6 +44,16 @@ impl DeleteUserCommand {
             .get_user()
             .map_err(|e| eyre::eyre!(e))?;
 
+        eprintln!(
+            "DeleteUser: user {} client_ip={} status={:?} publishers={} subscribers={} device={}",
+            self.pubkey,
+            user.client_ip,
+            user.status,
+            user.publishers.len(),
+            user.subscribers.len(),
+            user.device_pk,
+        );
+
         let unique_mgroup_pks: Vec<Pubkey> = user
             .publishers
             .iter()
@@ -51,8 +63,14 @@ impl DeleteUserCommand {
             .into_iter()
             .collect();
         let multicastgroups = ListMulticastGroupCommand {}.execute(client)?;
+        eprintln!(
+            "DeleteUser: {} multicast group(s) to unsubscribe, {} total groups onchain",
+            unique_mgroup_pks.len(),
+            multicastgroups.len(),
+        );
         for mgroup_pk in &unique_mgroup_pks {
             if multicastgroups.contains_key(mgroup_pk) {
+                eprintln!("DeleteUser: unsubscribing from multicast group {mgroup_pk}");
                 SubscribeMulticastGroupCommand {
                     group_pk: *mgroup_pk,
                     user_pk: self.pubkey,
@@ -61,6 +79,9 @@ impl DeleteUserCommand {
                     subscriber: false,
                 }
                 .execute(client)?;
+                eprintln!("DeleteUser: unsubscribed from {mgroup_pk}");
+            } else {
+                eprintln!("DeleteUser: skipping {mgroup_pk} (not found onchain)");
             }
         }
 
@@ -87,12 +108,18 @@ impl DeleteUserCommand {
                 Err(_) => Err(()),
             };
 
+            eprintln!("DeleteUser: waiting for user status to leave Updating");
             let _ = get_user
                 .retry(builder)
                 .call()
                 .map_err(|_| eyre::eyre!("Timeout waiting for user multicast unsubscribe"))?;
+            eprintln!("DeleteUser: user status resolved");
         }
 
+        eprintln!(
+            "DeleteUser: looking up access pass for owner {}",
+            user.owner
+        );
         let (accesspass_pk, _) = GetAccessPassCommand {
             client_ip: Ipv4Addr::UNSPECIFIED,
             user_payer: user.owner,
@@ -108,6 +135,8 @@ impl DeleteUserCommand {
             .flatten()
         })
         .ok_or_else(|| eyre::eyre!("You have no Access Pass"))?;
+
+        eprintln!("DeleteUser: using access pass {accesspass_pk}");
 
         let mut accounts = vec![
             AccountMeta::new(self.pubkey, false),
@@ -168,6 +197,9 @@ impl DeleteUserCommand {
             (0u8, 0u8)
         };
 
+        eprintln!(
+            "DeleteUser: submitting delete transaction (onchain_deallocation={use_onchain_deallocation})"
+        );
         client.execute_transaction(
             DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
                 dz_prefix_count,

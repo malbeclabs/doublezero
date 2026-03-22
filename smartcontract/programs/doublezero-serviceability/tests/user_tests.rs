@@ -1658,3 +1658,205 @@ async fn test_user_delete_from_out_of_credits() {
         .unwrap();
     assert_eq!(user.status, UserStatus::Deleting);
 }
+
+/// Access pass owner (different from user.owner) can delete the user.
+/// An admin (foundation member) creates the access pass, making the admin the
+/// access pass owner. The user is then created by a different keypair. The admin
+/// (as access pass owner but NOT user.owner) can delete the user.
+#[tokio::test]
+async fn test_user_delete_by_accesspass_owner() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, user_pubkey, _accesspass_pubkey) =
+        setup_activated_user().await;
+
+    // Create an admin keypair and add to foundation so it can create access passes
+    let admin = Keypair::new();
+    transfer(&mut banks_client, &payer, &admin.pubkey(), 10_000_000_000).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddFoundationAllowlist(
+            allowlist::foundation::add::AddFoundationAllowlistArgs {
+                pubkey: admin.pubkey(),
+            },
+        ),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // Create user_owner keypair (will own the user but NOT the access pass)
+    let user_owner = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &user_owner.pubkey(),
+        10_000_000_000,
+    )
+    .await;
+
+    // Admin creates access pass for user_owner -> admin becomes access pass owner
+    let user_ip: Ipv4Addr = [100, 0, 0, 2].into();
+    let (new_accesspass_pubkey, _) =
+        get_accesspass_pda(&program_id, &user_ip, &user_owner.pubkey());
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: user_ip,
+            last_access_epoch: 9999,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(new_accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_owner.pubkey(), false),
+        ],
+        &admin,
+    )
+    .await;
+
+    let accesspass = get_account_data(&mut banks_client, new_accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(accesspass.owner, admin.pubkey());
+
+    // Get device_pk from existing user
+    let existing_user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    let device_pubkey = existing_user.device_pk;
+
+    // user_owner creates user (becomes user.owner)
+    let (new_user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::IBRL);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: user_ip,
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
+        }),
+        vec![
+            AccountMeta::new(new_user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(new_accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &user_owner,
+    )
+    .await;
+
+    // Activate user
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 501,
+            tunnel_net: "169.254.0.128/25".parse().unwrap(),
+            dz_ip: [200, 0, 0, 2].into(),
+            dz_prefix_count: 0,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(new_user_pubkey, false),
+            AccountMeta::new(new_accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, new_user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Activated);
+    assert_eq!(user.owner, user_owner.pubkey());
+
+    // Stranger should NOT be able to delete
+    let stranger = Keypair::new();
+    transfer(&mut banks_client, &payer, &stranger.pubkey(), 10_000_000).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(new_user_pubkey, false),
+            AccountMeta::new(new_accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &stranger,
+    )
+    .await;
+    assert!(res.is_err(), "Stranger should not be able to delete user");
+
+    // Remove admin from foundation so the only auth path is access pass owner
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RemoveFoundationAllowlist(
+            allowlist::foundation::remove::RemoveFoundationAllowlistArgs {
+                pubkey: admin.pubkey(),
+            },
+        ),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // Admin (access pass owner, NOT user.owner, NOT foundation) deletes user
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(new_user_pubkey, false),
+            AccountMeta::new(new_accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &admin,
+    )
+    .await;
+    assert!(
+        res.is_ok(),
+        "Access pass owner should be able to delete user"
+    );
+
+    let user = get_account_data(&mut banks_client, new_user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Deleting);
+}

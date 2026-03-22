@@ -37,23 +37,38 @@ pub struct DecommissioningCliCommand {
     /// [deprecated] Client IP address — ignored; set --client-ip on the daemon (doublezerod) instead
     #[arg(long)]
     pub client_ip: Option<String>,
-    /// Allocate a new address for the user
+    /// Show detailed output
     #[arg(short, long, default_value_t = false)]
     pub verbose: bool,
+    /// Plain output without spinner (useful for scripting/debugging)
+    #[arg(long, default_value_t = false)]
+    pub plain: bool,
     #[arg(value_enum)]
     pub dz_mode: Option<DzMode>,
 }
 
 impl DecommissioningCliCommand {
     pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
-        let spinner = init_command(4);
+        let spinner = if self.plain {
+            ProgressBar::hidden()
+        } else {
+            init_command(4)
+        };
         let controller = ServiceControllerImpl::new(None);
+
+        let log = |msg: &str| {
+            if self.plain {
+                eprintln!("{msg}");
+            } else {
+                spinner.println(msg);
+            }
+        };
 
         // Check that have your id.json
         check_requirements(client, Some(&spinner), CHECK_ID_JSON | CHECK_BALANCE)?;
         check_doublezero(&controller, client, Some(&spinner)).await?;
         // READY
-        spinner.println("🔍  Decommissioning User");
+        log("Decommissioning User");
 
         // Get public IP
         let (client_ip, _) = look_for_ip(&self.client_ip, &spinner).await?;
@@ -76,9 +91,9 @@ impl DecommissioningCliCommand {
             })
             .collect();
 
-        if self.verbose {
-            spinner.println(format!(
-                "    Found {} user(s) matching client_ip={} mode={:?}",
+        if self.verbose || self.plain {
+            log(&format!(
+                "Found {} user(s) matching client_ip={} mode={:?}",
                 matched_users.len(),
                 client_ip,
                 self.dz_mode
@@ -86,23 +101,23 @@ impl DecommissioningCliCommand {
         }
 
         if matched_users.is_empty() {
-            spinner.println("🔍  No matching user accounts found");
+            log("No matching user accounts found");
         }
 
         for (pubkey, user) in &matched_users {
             spinner.inc(1);
-            if self.verbose {
-                spinner.println(format!(
-                    "    User {pubkey}: type={:?} status={:?} publishers={} subscribers={}",
+            if self.verbose || self.plain {
+                log(&format!(
+                    "User {pubkey}: type={:?} status={:?} publishers={} subscribers={}",
                     user.user_type,
                     user.status,
                     user.publishers.len(),
                     user.subscribers.len(),
                 ));
             }
-            println!("🔍  Deleting User Account for: {pubkey}");
+            log(&format!("Deleting User Account for: {pubkey}"));
             client.delete_user(DeleteUserCommand { pubkey: **pubkey })?;
-            spinner.println("🔍  User Account deleting...");
+            log("User Account deleting...");
 
             self.poll_for_user_closed(client, pubkey, &spinner)?;
         }
@@ -118,16 +133,16 @@ impl DecommissioningCliCommand {
             .await
         {
             Ok(()) => {
-                spinner.println("    Daemon confirmed tunnel(s) removed");
+                log("Daemon confirmed tunnel(s) removed");
             }
             Err(e) => {
-                spinner.println(format!(
-                    "    Daemon deprovisioning in progress (will complete automatically): {e}"
+                log(&format!(
+                    "Daemon deprovisioning in progress (will complete automatically): {e}"
                 ));
             }
         }
 
-        spinner.println("✅  Deprovisioning Complete");
+        log("Deprovisioning Complete");
         spinner.finish_and_clear();
 
         Ok(())
@@ -233,6 +248,7 @@ mod tests {
             device: None,
             client_ip: None,
             verbose: false,
+            plain: false,
             dz_mode: None,
         }
     }

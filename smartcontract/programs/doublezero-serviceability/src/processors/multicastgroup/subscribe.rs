@@ -196,12 +196,20 @@ pub fn process_subscribe_multicastgroup(
 
     let accesspass = AccessPass::try_from(accesspass_account)?;
 
-    let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
-    let (accesspass_dynamic_pda, _) =
+    // Accept the access pass from either the user's owner or the caller
+    // (payer). This allows a third party (e.g. an oracle) to subscribe an
+    // existing user to a new multicast group using its own access pass.
+    let (owner_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
+    let (owner_dynamic_pda, _) =
         get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
+    let (payer_pda, _) = get_accesspass_pda(program_id, &user.client_ip, payer_account.key);
+    let (payer_dynamic_pda, _) =
+        get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, payer_account.key);
     assert!(
-        accesspass_account.key == &accesspass_pda
-            || accesspass_account.key == &accesspass_dynamic_pda,
+        accesspass_account.key == &owner_pda
+            || accesspass_account.key == &owner_dynamic_pda
+            || accesspass_account.key == &payer_pda
+            || accesspass_account.key == &payer_dynamic_pda,
         "Invalid AccessPass PDA",
     );
 

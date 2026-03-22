@@ -116,25 +116,41 @@ impl DeleteUserCommand {
             eprintln!("DeleteUser: user status resolved");
         }
 
-        eprintln!(
-            "DeleteUser: looking up access pass for owner {}",
-            user.owner
-        );
-        let (accesspass_pk, _) = GetAccessPassCommand {
-            client_ip: Ipv4Addr::UNSPECIFIED,
-            user_payer: user.owner,
-        }
-        .execute(client)?
-        .or_else(|| {
-            GetAccessPassCommand {
-                client_ip: user.client_ip,
-                user_payer: user.owner,
-            }
+        // Look up access pass: try payer's first, then fall back to user.owner's.
+        // This allows a third party (e.g. oracle) to delete using its own access pass.
+        let payer_key = client.get_payer();
+        let access_pass_lookup_keys = if payer_key == user.owner {
+            vec![user.owner]
+        } else {
+            vec![payer_key, user.owner]
+        };
+
+        let mut accesspass_result = None;
+        for key in &access_pass_lookup_keys {
+            eprintln!("DeleteUser: looking up access pass for {key}");
+            let found = (GetAccessPassCommand {
+                client_ip: Ipv4Addr::UNSPECIFIED,
+                user_payer: *key,
+            })
             .execute(client)
             .ok()
             .flatten()
-        })
-        .ok_or_else(|| eyre::eyre!("You have no Access Pass"))?;
+            .or_else(|| {
+                (GetAccessPassCommand {
+                    client_ip: user.client_ip,
+                    user_payer: *key,
+                })
+                .execute(client)
+                .ok()
+                .flatten()
+            });
+            if let Some(result) = found {
+                accesspass_result = Some(result);
+                break;
+            }
+        }
+        let (accesspass_pk, _) =
+            accesspass_result.ok_or_else(|| eyre::eyre!("No Access Pass found"))?;
 
         eprintln!("DeleteUser: using access pass {accesspass_pk}");
 
@@ -838,7 +854,28 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::User(user_final_clone.clone())));
 
-        // Call 8a: UNSPECIFIED AccessPass lookup fails (fallback path) — DeleteUserCommand
+        // Call 8a: UNSPECIFIED AccessPass lookup for payer (foundation_key) — not found
+        let (payer_unspecified_ap, _) =
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &foundation_key);
+        let user_clone_payer_fallback = user_activated_final.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(payer_unspecified_ap))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::User(user_clone_payer_fallback.clone())));
+
+        // Call 8b: client_ip AccessPass lookup for payer (foundation_key) — not found
+        let (payer_ip_ap, _) = get_accesspass_pda(&program_id, &client_ip, &foundation_key);
+        let user_clone_payer_fallback2 = user_activated_final.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(payer_ip_ap))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::User(user_clone_payer_fallback2.clone())));
+
+        // Call 8c: UNSPECIFIED AccessPass lookup for user_owner — not found
         let user_clone_fallback2 = user_activated_final.clone();
         client
             .expect_get()
@@ -847,7 +884,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::User(user_clone_fallback2.clone())));
 
-        // Call 8b: AccessPass fetch via client_ip fallback — keyed to (client_ip, user_owner)
+        // Call 8d: client_ip AccessPass fetch for user_owner — found
         let accesspass_clone2 = accesspass.clone();
         client
             .expect_get()

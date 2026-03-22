@@ -1,11 +1,16 @@
+#[cfg(test)]
 use backon::{BlockingRetryable, ExponentialBuilder};
+#[cfg(test)]
 use doublezero_cli::helpers::get_public_ipv4;
+#[cfg(test)]
 use indicatif::ProgressBar;
+#[cfg(test)]
 use std::{
     net::{Ipv4Addr, UdpSocket},
     time::Duration,
 };
 
+#[cfg(test)]
 pub async fn look_for_ip(
     client_ip: &Option<String>,
     spinner: &ProgressBar,
@@ -13,15 +18,7 @@ pub async fn look_for_ip(
     look_for_ip_with(client_ip, spinner, discover_public_ip).await
 }
 
-/// Discovers the client's public IP address.
-///
-/// Resolution order:
-///  1. Ask the kernel for the default route's source address (via a UDP
-///     connect to 8.8.8.8 — no packets are sent). If the source is a
-///     publicly routable IPv4 address, use it.
-///  2. Fall back to querying ifconfig.me/ip.
-///
-/// This matches the daemon's discovery logic so both always agree on the IP.
+#[cfg(test)]
 fn discover_public_ip() -> Result<String, Box<dyn std::error::Error>> {
     // Try default route source hint first.
     if let Ok(ip) = discover_from_default_route() {
@@ -32,9 +29,7 @@ fn discover_public_ip() -> Result<String, Box<dyn std::error::Error>> {
     get_public_ipv4()
 }
 
-/// Performs a kernel route lookup by binding a UDP socket to a well-known
-/// public IP. The local address chosen by the kernel reflects the default
-/// route's source hint. Returns the IP only if it's publicly routable.
+#[cfg(test)]
 fn discover_from_default_route() -> Result<Ipv4Addr, Box<dyn std::error::Error>> {
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.connect("8.8.8.8:80")?;
@@ -55,6 +50,7 @@ fn discover_from_default_route() -> Result<Ipv4Addr, Box<dyn std::error::Error>>
     Ok(ip)
 }
 
+#[cfg(test)]
 async fn look_for_ip_with(
     client_ip: &Option<String>,
     spinner: &ProgressBar,
@@ -107,9 +103,7 @@ async fn look_for_ip_with(
     Ok((ip, client_ip.to_string()))
 }
 
-/// Returns `Some(reason)` if the given IPv4 address is a BGP martian (should
-/// never appear as a source in the global routing table), or `None` if the
-/// address is publicly routable.
+#[cfg(test)]
 fn is_bgp_martian(ip: Ipv4Addr) -> Option<&'static str> {
     let octets = ip.octets();
 

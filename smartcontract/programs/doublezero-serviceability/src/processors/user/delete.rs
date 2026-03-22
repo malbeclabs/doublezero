@@ -144,43 +144,40 @@ pub fn process_delete_user(
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
-    // Allow delete if payer is: the user owner, the access pass owner,
+    // Allow delete if payer is: the user owner, the access pass user_payer,
     // or on the foundation allowlist.
-    let accesspass_owner = if !accesspass_account.data_is_empty() {
+    let accesspass_user_payer = if !accesspass_account.data_is_empty() {
         AccessPass::try_from(accesspass_account)
-            .map(|ap| ap.owner)
+            .map(|ap| ap.user_payer)
             .ok()
     } else {
         None
     };
     let is_authorized = globalstate.foundation_allowlist.contains(payer_account.key)
         || user.owner == *payer_account.key
-        || accesspass_owner == Some(*payer_account.key);
+        || accesspass_user_payer == Some(*payer_account.key);
     if !is_authorized {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
-    let (accesspass_dynamic_pda, _) =
+    // Accept access pass from either user.owner or payer
+    let (owner_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
+    let (owner_dynamic_pda, _) =
         get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
-    // Access Pass must exist and match the client_ip or allow_multiple_ip must be enabled
+    let (payer_pda, _) = get_accesspass_pda(program_id, &user.client_ip, payer_account.key);
+    let (payer_dynamic_pda, _) =
+        get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, payer_account.key);
     assert!(
-        accesspass_account.key == &accesspass_pda
-            || accesspass_account.key == &accesspass_dynamic_pda,
+        accesspass_account.key == &owner_pda
+            || accesspass_account.key == &owner_dynamic_pda
+            || accesspass_account.key == &payer_pda
+            || accesspass_account.key == &payer_dynamic_pda,
         "Invalid AccessPass PDA",
     );
 
     if !accesspass_account.data_is_empty() {
         // Read Access Pass
         let mut accesspass = AccessPass::try_from(accesspass_account)?;
-        if accesspass.user_payer != user.owner {
-            msg!(
-                "Invalid user_payer accesspass.user_payer: {} = user_payer: {} ",
-                accesspass.user_payer,
-                user.owner
-            );
-            return Err(DoubleZeroError::Unauthorized.into());
-        }
         if accesspass.is_dynamic() && accesspass.client_ip == Ipv4Addr::UNSPECIFIED {
             accesspass.client_ip = user.client_ip; // lock to the first used IP
         }

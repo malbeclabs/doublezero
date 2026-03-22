@@ -1658,3 +1658,71 @@ async fn test_user_delete_from_out_of_credits() {
         .unwrap();
     assert_eq!(user.status, UserStatus::Deleting);
 }
+
+/// Access pass user_payer can delete the user. Also verifies a stranger cannot.
+#[tokio::test]
+async fn test_user_delete_by_accesspass_user_payer() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, user_pubkey, accesspass_pubkey) =
+        setup_activated_user().await;
+
+    // Verify payer is the access pass user_payer
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(accesspass.user_payer, payer.pubkey());
+
+    // Stranger should NOT be able to delete
+    let stranger = Keypair::new();
+    transfer(&mut banks_client, &payer, &stranger.pubkey(), 10_000_000).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &stranger,
+    )
+    .await;
+    assert!(res.is_err(), "Stranger should not be able to delete user");
+
+    // Payer (access pass user_payer) can delete
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    assert!(
+        res.is_ok(),
+        "Access pass user_payer should be able to delete user"
+    );
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Deleting);
+}

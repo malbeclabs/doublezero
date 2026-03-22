@@ -143,9 +143,20 @@ pub fn process_delete_user(
     let user: User = User::try_from(user_account)?;
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key)
-        && user.owner != *payer_account.key
-    {
+
+    // Allow delete if payer is: the user owner, the access pass owner,
+    // or on the foundation allowlist.
+    let accesspass_owner = if !accesspass_account.data_is_empty() {
+        AccessPass::try_from(accesspass_account)
+            .map(|ap| ap.owner)
+            .ok()
+    } else {
+        None
+    };
+    let is_authorized = globalstate.foundation_allowlist.contains(payer_account.key)
+        || user.owner == *payer_account.key
+        || accesspass_owner == Some(*payer_account.key);
+    if !is_authorized {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 

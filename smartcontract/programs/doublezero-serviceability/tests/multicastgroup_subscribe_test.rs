@@ -1428,3 +1428,283 @@ async fn test_subscribe_onchain_second_publisher_no_reallocation() {
         "dz_ip should not change on second publisher subscription"
     );
 }
+
+// --- Payer access pass tests ---
+
+/// A third-party payer can subscribe a user using the payer's own IP-specific access pass
+/// (derived from payer's pubkey + user's client_ip).
+#[tokio::test]
+async fn test_subscribe_with_payer_ip_specific_accesspass() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer, // payer is user.owner (alice)
+        program_id,
+        recent_blockhash,
+        globalstate_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    let user_ip: Ipv4Addr = [100, 0, 0, 1].into();
+
+    // Create a third-party oracle keypair
+    let oracle = solana_sdk::signature::Keypair::new();
+    transfer(&mut banks_client, &payer, &oracle.pubkey(), 10_000_000).await;
+
+    // Create an IP-specific access pass for the oracle (derived from oracle pubkey + user's IP)
+    let (oracle_accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user_ip, &oracle.pubkey());
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: user_ip,
+            last_access_epoch: 9999,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(oracle_accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(oracle.pubkey(), false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Add mgroup1 to the oracle's access pass sub allowlist
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
+            client_ip: user_ip,
+            user_payer: oracle.pubkey(),
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(oracle_accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Subscribe the user using the oracle's access pass, signed by oracle
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(oracle_accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &oracle,
+    )
+    .await
+    .expect("Oracle should subscribe user using its own IP-specific access pass");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.subscribers.len(), 1);
+    assert_eq!(user.status, UserStatus::Activated);
+}
+
+/// A third-party payer can subscribe a user using the payer's own dynamic (UNSPECIFIED IP)
+/// access pass.
+#[tokio::test]
+async fn test_subscribe_with_payer_dynamic_accesspass() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        recent_blockhash,
+        globalstate_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    let user_ip: Ipv4Addr = [100, 0, 0, 1].into();
+
+    // Create a third-party oracle keypair
+    let oracle = solana_sdk::signature::Keypair::new();
+    transfer(&mut banks_client, &payer, &oracle.pubkey(), 10_000_000).await;
+
+    // Create a dynamic access pass for the oracle (UNSPECIFIED IP)
+    let (oracle_dynamic_accesspass_pubkey, _) =
+        get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &oracle.pubkey());
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            last_access_epoch: 9999,
+            allow_multiple_ip: true,
+        }),
+        vec![
+            AccountMeta::new(oracle_dynamic_accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(oracle.pubkey(), false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Add mgroup1 to the oracle's dynamic access pass sub allowlist
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            user_payer: oracle.pubkey(),
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(oracle_dynamic_accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Subscribe using oracle's dynamic access pass
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(oracle_dynamic_accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &oracle,
+    )
+    .await
+    .expect("Oracle should subscribe user using its own dynamic access pass");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.subscribers.len(), 1);
+    assert_eq!(user.status, UserStatus::Activated);
+}
+
+/// An access pass that belongs to neither the user's owner nor the payer should be rejected.
+#[tokio::test]
+async fn test_subscribe_rejects_accesspass_from_unrelated_party() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        recent_blockhash,
+        globalstate_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    let user_ip: Ipv4Addr = [100, 0, 0, 1].into();
+
+    // Create two third parties: oracle (payer) and stranger (access pass owner)
+    let oracle = solana_sdk::signature::Keypair::new();
+    let stranger = solana_sdk::signature::Keypair::new();
+    transfer(&mut banks_client, &payer, &oracle.pubkey(), 10_000_000).await;
+
+    // Create an access pass owned by the stranger
+    let (stranger_accesspass_pubkey, _) =
+        get_accesspass_pda(&program_id, &user_ip, &stranger.pubkey());
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: user_ip,
+            last_access_epoch: 9999,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(stranger_accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(stranger.pubkey(), false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Add mgroup1 to the stranger's access pass sub allowlist
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
+            client_ip: user_ip,
+            user_payer: stranger.pubkey(),
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(stranger_accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Try to subscribe using stranger's access pass, signed by oracle.
+    // The access pass belongs to neither user.owner (payer) nor the caller (oracle).
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(stranger_accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &oracle,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "Should reject access pass from unrelated party"
+    );
+}

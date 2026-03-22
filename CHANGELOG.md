@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain Programs
+  - Serviceability: allow `SubscribeMulticastGroup` to accept an access pass derived from the payer (caller) in addition to the user's owner, enabling a third party (e.g. an oracle) to subscribe an existing user to a new multicast group using its own access pass
+
 ## [v0.13.0](https://github.com/malbeclabs/doublezero/compare/client/v0.12.0...client/v0.13.0) - 2026-03-20
 
 ### Breaking

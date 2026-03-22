@@ -63,26 +63,45 @@ impl DecommissioningCliCommand {
 
         let users = client.list_user(ListUserCommand)?;
 
-        for (pubkey, user) in users.iter().filter(|(_, u)| u.client_ip == client_ip) {
-            match self.dz_mode {
+        let matched_users: Vec<_> = users
+            .iter()
+            .filter(|(_, u)| u.client_ip == client_ip)
+            .filter(|(_, user)| match self.dz_mode {
                 Some(DzMode::IBRL) => {
-                    if user.user_type != UserType::IBRL
-                        && user.user_type != UserType::IBRLWithAllocatedIP
-                    {
-                        continue;
-                    }
+                    user.user_type == UserType::IBRL
+                        || user.user_type == UserType::IBRLWithAllocatedIP
                 }
-                Some(DzMode::Multicast) => {
-                    if user.user_type != UserType::Multicast {
-                        continue;
-                    }
-                }
-                None => {}
-            }
+                Some(DzMode::Multicast) => user.user_type == UserType::Multicast,
+                None => true,
+            })
+            .collect();
 
+        if self.verbose {
+            spinner.println(format!(
+                "    Found {} user(s) matching client_ip={} mode={:?}",
+                matched_users.len(),
+                client_ip,
+                self.dz_mode
+            ));
+        }
+
+        if matched_users.is_empty() {
+            spinner.println("🔍  No matching user accounts found");
+        }
+
+        for (pubkey, user) in &matched_users {
             spinner.inc(1);
+            if self.verbose {
+                spinner.println(format!(
+                    "    User {pubkey}: type={:?} status={:?} publishers={} subscribers={}",
+                    user.user_type,
+                    user.status,
+                    user.publishers.len(),
+                    user.subscribers.len(),
+                ));
+            }
             println!("🔍  Deleting User Account for: {pubkey}");
-            client.delete_user(DeleteUserCommand { pubkey: *pubkey })?;
+            client.delete_user(DeleteUserCommand { pubkey: **pubkey })?;
             spinner.println("🔍  User Account deleting...");
 
             self.poll_for_user_closed(client, pubkey, &spinner)?;

@@ -187,8 +187,8 @@ func runMultiTunnelFallbackTest(t *testing.T, log *slog.Logger, dn *devnet.Devne
 
 	// Connect IBRL client to device1 using --device flag
 	log.Info("==> Connecting client with IBRL to device1", "device", device1.Spec.Code)
-	ibrlCmd := fmt.Sprintf("doublezero connect ibrl --client-ip %s --device %s",
-		client.CYOANetworkIP, device1.Spec.Code)
+	ibrlCmd := fmt.Sprintf("doublezero connect ibrl --device %s",
+		device1.Spec.Code)
 	if useAllocatedAddr {
 		ibrlCmd += " --allocate-addr"
 	}
@@ -220,8 +220,7 @@ func runMultiTunnelFallbackTest(t *testing.T, log *slog.Logger, dn *devnet.Devne
 
 	// Connect multicast without specifying device - it should automatically pick device2
 	// because device1's tunnel endpoint is already in use by the IBRL tunnel
-	mcastCmd := fmt.Sprintf("doublezero connect multicast subscriber mg01 --client-ip %s 2>&1",
-		client.CYOANetworkIP)
+	mcastCmd := "doublezero connect multicast subscriber mg01 2>&1"
 	mcastOutput, err := client.Exec(t.Context(), []string{"bash", "-c", mcastCmd})
 	log.Info("==> Multicast connect output", "output", string(mcastOutput))
 	require.NoError(t, err)
@@ -287,7 +286,7 @@ func runMultiTunnelFallbackTest(t *testing.T, log *slog.Logger, dn *devnet.Devne
 	log.Info("==> Disconnecting multicast")
 	_, err = client.Exec(t.Context(), []string{
 		"bash", "-c",
-		"doublezero disconnect multicast --client-ip " + client.CYOANetworkIP,
+		"doublezero disconnect multicast",
 	})
 	if err != nil {
 		log.Info("--> Warning: multicast disconnect returned error", "error", err)
@@ -305,7 +304,7 @@ func runMultiTunnelFallbackTest(t *testing.T, log *slog.Logger, dn *devnet.Devne
 	log.Info("==> Disconnecting IBRL")
 	_, err = client.Exec(t.Context(), []string{
 		"bash", "-c",
-		"doublezero disconnect --client-ip " + client.CYOANetworkIP,
+		"doublezero disconnect",
 	})
 	if err != nil {
 		log.Info("--> Warning: IBRL disconnect returned error", "error", err)
@@ -511,7 +510,7 @@ func runSimultaneousTunnelTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet
 	// Connect IBRL. With only one device, the CLI auto-selects it.
 	// The client picks the best tunnel endpoint based on latency probing.
 	log.Info("==> Connecting client with IBRL")
-	ibrlCmd := fmt.Sprintf("doublezero connect ibrl --client-ip %s", client.CYOANetworkIP)
+	ibrlCmd := "doublezero connect ibrl"
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", ibrlCmd})
 	require.NoError(t, err)
 
@@ -543,8 +542,7 @@ func runSimultaneousTunnelTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet
 
 	// Connect multicast subscriber. The client's exclude_ips list contains the
 	// first tunnel's endpoint, so it selects the remaining endpoint on this device.
-	mcastCmd := fmt.Sprintf("doublezero connect multicast subscriber mg01 --client-ip %s 2>&1",
-		client.CYOANetworkIP)
+	mcastCmd := "doublezero connect multicast subscriber mg01 2>&1"
 	mcastOutput, err := client.Exec(t.Context(), []string{"bash", "-c", mcastCmd})
 	log.Info("==> Multicast connect output", "output", string(mcastOutput))
 	require.NoError(t, err)
@@ -616,7 +614,7 @@ func runSimultaneousTunnelTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet
 	log.Info("==> Disconnecting multicast")
 	_, err = client.Exec(t.Context(), []string{
 		"bash", "-c",
-		"doublezero disconnect multicast --client-ip " + client.CYOANetworkIP,
+		"doublezero disconnect multicast",
 	})
 	if err != nil {
 		log.Info("--> Warning: multicast disconnect returned error", "error", err)
@@ -634,7 +632,7 @@ func runSimultaneousTunnelTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet
 	log.Info("==> Disconnecting IBRL")
 	_, err = client.Exec(t.Context(), []string{
 		"bash", "-c",
-		"doublezero disconnect --client-ip " + client.CYOANetworkIP,
+		"doublezero disconnect",
 	})
 	if err != nil {
 		log.Info("--> Warning: IBRL disconnect returned error", "error", err)

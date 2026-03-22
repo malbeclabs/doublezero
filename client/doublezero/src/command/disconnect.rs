@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{net::Ipv4Addr, time::Duration};
 
 use backon::{BlockingRetryable, ExponentialBuilder};
 use clap::{Args, ValueEnum};
@@ -20,7 +20,6 @@ use doublezero_sdk::{
     UserType,
 };
 
-use super::helpers::look_for_ip;
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, ValueEnum)]
@@ -70,8 +69,21 @@ impl DecommissioningCliCommand {
         // READY
         log("Decommissioning User");
 
-        // Get public IP
-        let (client_ip, _) = look_for_ip(&self.client_ip, &spinner).await?;
+        // Get client IP from daemon (same source as connect)
+        let v2_status = controller.v2_status().await?;
+        if v2_status.client_ip.is_empty() {
+            return Err(eyre::eyre!(
+                "Daemon has not discovered its client IP. Ensure the daemon is running \
+                 and has started up successfully, or set --client-ip on the daemon."
+            ));
+        }
+        let client_ip: Ipv4Addr = v2_status.client_ip.parse().map_err(|e| {
+            eyre::eyre!(
+                "Daemon returned invalid client IP '{}': {e}",
+                v2_status.client_ip
+            )
+        })?;
+        log(&format!("Client IP: {client_ip}"));
 
         spinner.inc(1);
         spinner.set_message("deleting user account...");

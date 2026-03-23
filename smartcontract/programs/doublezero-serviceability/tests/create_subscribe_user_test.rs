@@ -33,9 +33,13 @@ use doublezero_serviceability::{
                 subscriber::add::AddMulticastGroupSubAllowlistArgs,
             },
             create::MulticastGroupCreateArgs,
+            subscribe::MulticastGroupSubscribeArgs,
         },
         tenant::create::TenantCreateArgs,
-        user::create_subscribe::UserCreateSubscribeArgs,
+        user::{
+            activate::UserActivateArgs, closeaccount::UserCloseAccountArgs,
+            create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs,
+        },
     },
     resource::ResourceType,
     state::{
@@ -1071,4 +1075,422 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
         .unwrap();
     assert_eq!(user.status, UserStatus::Pending);
     assert_eq!(user.subscribers, vec![mgroup_pubkey]);
+}
+
+// ============================================================================
+// Regression Tests: multicast_publisher flag and counter lifecycle
+// ============================================================================
+
+/// Regression test: verify `multicast_publisher` is set at creation time (via create_user_core)
+/// and confirmed on first Pending activation, then PRESERVED through re-activation after
+/// unsubscribing (the Updating→Activated path must NOT reset the flag).
+///
+/// This covers the exact E2E failure scenario: publisher connects (CreateSubscribeUser →
+/// ActivateUser), then disconnects (SubscribeMulticastGroup publisher=false → ActivateUser).
+/// After disconnect, multicast_publisher must still be true so delete decrements publishers_count.
+#[tokio::test]
+async fn test_publisher_multicast_publisher_persists_through_disconnect() {
+    let client_ip = [100, 0, 0, 90];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+    } = f;
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+
+    // Step 1: CreateSubscribeUser with publisher=true (legacy, non-atomic)
+    // create_user_core sets is_publisher=true → device.publishers_count++
+    // and user.multicast_publisher=true at creation.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: true,
+            subscriber: false,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_created = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_created.status, UserStatus::Pending);
+    assert_eq!(user_created.publishers, vec![mgroup_pubkey]);
+    assert!(
+        user_created.multicast_publisher,
+        "multicast_publisher must be true at creation (create_user_core sets is_publisher)"
+    );
+
+    // Verify device counter incremented at creation
+    let device_created = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(
+        device_created.multicast_publishers_count, 1,
+        "publishers_count must be 1 after CreateSubscribeUser(publisher=true)"
+    );
+    assert_eq!(
+        device_created.multicast_subscribers_count, 0,
+        "subscribers_count must be 0 (user is a publisher)"
+    );
+
+    // Step 2: First activation (Pending → Activated) — "only on Pending" sets flag
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_activated = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_activated.status, UserStatus::Activated);
+    assert!(
+        user_activated.multicast_publisher,
+        "multicast_publisher must be true after first (Pending) activation with publishers non-empty"
+    );
+
+    // Step 3: Disconnect — unsubscribe as publisher (legacy path → status=Updating, publishers=[])
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_updating = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_updating.status, UserStatus::Updating);
+    assert!(user_updating.publishers.is_empty());
+    // multicast_publisher should still be true (SubscribeMulticastGroup doesn't touch it)
+    assert!(
+        user_updating.multicast_publisher,
+        "multicast_publisher must still be true after unsubscribing (only activate.rs touches it)"
+    );
+
+    // Step 4: Re-activation (Updating → Activated) — THE KEY REGRESSION CHECK
+    // activate.rs must NOT reset multicast_publisher to false when publishers is empty.
+    // "only on Pending" approach: Updating activations never change the flag.
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_reactivated = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_reactivated.status, UserStatus::Activated);
+    assert!(
+        user_reactivated.publishers.is_empty(),
+        "publishers list should be empty after unsubscribing"
+    );
+    assert!(
+        user_reactivated.multicast_publisher,
+        "REGRESSION: multicast_publisher must STAY true after re-activation (Updating) with \
+         empty publishers. This is the core fix — activate.rs must not reset the flag on \
+         re-activation, only set it on first Pending activation."
+    );
+}
+
+/// Regression test: verify `multicast_publishers_count` is decremented (not
+/// `multicast_subscribers_count`) when a publisher created via CreateSubscribeUser disconnects
+/// and is deleted.
+///
+/// This is the exact production scenario that caused the E2E test failure: publisher
+/// connects → disconnects (unsubscribe + re-activate with empty publishers) → deletes.
+/// Before the fix, the delete always decremented subscribers_count (bug). After the fix,
+/// it correctly decrements publishers_count.
+#[tokio::test]
+async fn test_publisher_disconnect_delete_decrements_publishers_count() {
+    let client_ip = [100, 0, 0, 91];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+    } = f;
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+
+    // Step 1: CreateSubscribeUser(publisher=true) — publishers_count=1
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: true,
+            subscriber: false,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 2: First Pending activation
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 3: Disconnect — unsubscribe (publishers → [], status → Updating)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 4: Re-activation (Updating → Activated)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_after_disconnect = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_after_disconnect.status, UserStatus::Activated);
+    assert!(
+        user_after_disconnect.multicast_publisher,
+        "multicast_publisher must be true after disconnect re-activation"
+    );
+
+    let user_owner = user_after_disconnect.owner;
+
+    // Capture counters before legacy delete
+    let device_before = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(
+        device_before.multicast_publishers_count, 1,
+        "publishers_count must be 1 before delete (set at CreateSubscribeUser)"
+    );
+    assert_eq!(
+        device_before.multicast_subscribers_count, 0,
+        "subscribers_count must be 0 (user is a publisher)"
+    );
+
+    // Step 5: Legacy DeleteUser (status → Deleting)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 6: Legacy CloseAccountUser → REGRESSION CHECK: publishers_count decremented
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+            dz_prefix_count: 0,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(user_owner, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_closed = get_account_data(&mut banks_client, user_pubkey).await;
+    assert!(user_closed.is_none(), "User account should be closed");
+
+    let device_after = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(
+        device_after.multicast_publishers_count, 0,
+        "REGRESSION: publishers_count must be decremented from 1 to 0. \
+         Bug: was never decremented because multicast_publisher was reset to false on re-activation."
+    );
+    assert_eq!(
+        device_after.multicast_subscribers_count, 0,
+        "subscribers_count must remain 0 (was never incremented for publisher user)"
+    );
 }

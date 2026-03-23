@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
+	"sync/atomic"
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
@@ -38,22 +38,22 @@ type ParentUpdate struct {
 
 // ParentDiscoveryConfig holds configuration for parent discovery.
 type ParentDiscoveryConfig struct {
-	GeoProbePubkey solana.PublicKey
-	Client         GeoProbeAccountClient
-	Resolver       DeviceResolver
-	CLIParents     map[[32]byte][32]byte // static parents from --additional-parent
-	Interval       time.Duration
-	Logger         *slog.Logger
+	GeoProbePubkey         solana.PublicKey
+	Client                 GeoProbeAccountClient
+	Resolver               DeviceResolver
+	CLIParents             map[[32]byte][32]byte // static parents from --additional-parent
+	Logger                 *slog.Logger
+	ProbeTargetUpdateCount *atomic.Uint32 // shared counter for target discovery change detection
 }
 
 // ParentDiscovery polls the GeoProbe account and resolves parent devices.
 type ParentDiscovery struct {
-	log            *slog.Logger
-	geoProbePubkey solana.PublicKey
-	client         GeoProbeAccountClient
-	resolver       DeviceResolver
-	cliParents     map[[32]byte][32]byte
-	interval       time.Duration
+	log                    *slog.Logger
+	geoProbePubkey         solana.PublicKey
+	client                 GeoProbeAccountClient
+	resolver               DeviceResolver
+	cliParents             map[[32]byte][32]byte
+	probeTargetUpdateCount *atomic.Uint32
 
 	cachedParentDevices []solana.PublicKey
 	tickCount           uint64
@@ -73,48 +73,24 @@ func NewParentDiscovery(cfg *ParentDiscoveryConfig) (*ParentDiscovery, error) {
 	if cfg.GeoProbePubkey.IsZero() {
 		return nil, fmt.Errorf("geoprobe pubkey is required")
 	}
-	if cfg.Interval <= 0 {
-		return nil, fmt.Errorf("interval must be greater than 0")
-	}
-
 	cliParents := cfg.CLIParents
 	if cliParents == nil {
 		cliParents = make(map[[32]byte][32]byte)
 	}
 
 	return &ParentDiscovery{
-		log:            cfg.Logger,
-		geoProbePubkey: cfg.GeoProbePubkey,
-		client:         cfg.Client,
-		resolver:       cfg.Resolver,
-		cliParents:     cliParents,
-		interval:       cfg.Interval,
+		log:                    cfg.Logger,
+		geoProbePubkey:         cfg.GeoProbePubkey,
+		client:                 cfg.Client,
+		resolver:               cfg.Resolver,
+		cliParents:             cliParents,
+		probeTargetUpdateCount: cfg.ProbeTargetUpdateCount,
 	}, nil
 }
 
-// Run starts the discovery polling loop, sending ParentUpdates to the channel.
-// It performs an immediate discovery tick, then repeats at the configured interval.
-func (d *ParentDiscovery) Run(ctx context.Context, ch chan<- ParentUpdate) {
-	d.log.Info("Starting parent DZD discovery",
-		"interval", d.interval,
-		"geoProbePubkey", d.geoProbePubkey,
-		"cliParents", len(d.cliParents),
-	)
-
+// Tick performs a single parent discovery cycle and sends updates to the channel.
+func (d *ParentDiscovery) Tick(ctx context.Context, ch chan<- ParentUpdate) {
 	d.discoverAndSend(ctx, ch)
-
-	ticker := time.NewTicker(d.interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			d.log.Info("Parent DZD discovery shutting down")
-			return
-		case <-ticker.C:
-			d.discoverAndSend(ctx, ch)
-		}
-	}
 }
 
 func (d *ParentDiscovery) discoverAndSend(ctx context.Context, ch chan<- ParentUpdate) {
@@ -150,6 +126,11 @@ func (d *ParentDiscovery) discover(ctx context.Context) (*ParentUpdate, error) {
 	}
 	if probe == nil {
 		return d.cliOnlyUpdate(), nil
+	}
+
+	// Publish the probe's target_update_count for target discovery change detection.
+	if d.probeTargetUpdateCount != nil {
+		d.probeTargetUpdateCount.Store(probe.TargetUpdateCount)
 	}
 
 	// Check if parent device set changed since last poll.

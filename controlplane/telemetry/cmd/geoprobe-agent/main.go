@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -35,7 +36,6 @@ const (
 	defaultEvictionInterval      = 30 * time.Minute
 	defaultVerifyInterval        = 29 * time.Second
 	discoveryInterval            = 60 * time.Second
-	parentDiscoveryInterval      = 60 * time.Second
 )
 
 var (
@@ -533,26 +533,35 @@ func main() {
 		}
 	}()
 
-	// Run parent DZD discovery if program IDs are configured.
+	// Shared counter: parent discovery writes the GeoProbe target_update_count on each
+	// poll; target discovery reads it to skip expensive full scans when unchanged.
+	// Both discoveries run sequentially in a single goroutine to guarantee the
+	// counter is updated before target discovery reads it.
+	var probeTargetUpdateCount atomic.Uint32
+
+	targetUpdateCh := make(chan geoprobe.TargetUpdate, 1)
+	inboundKeyCh := make(chan geoprobe.InboundKeyUpdate, 1)
+	parentUpdateCh := make(chan geoprobe.ParentUpdate, 1)
+
+	// Build parent discovery if program IDs are configured.
+	var pd *geoprobe.ParentDiscovery
 	if parentDiscoveryEnabled {
-		parentUpdateCh := make(chan geoprobe.ParentUpdate, 1)
 		geoProbeClient := geoprobe.NewRPCGeoProbeClient(rpcClient, geolocationProgramID)
 		deviceResolver := geoprobe.NewRPCDeviceResolver(rpcClient, serviceabilityProgramID)
 
-		pd, err := geoprobe.NewParentDiscovery(&geoprobe.ParentDiscoveryConfig{
-			GeoProbePubkey: geoProbePubkey,
-			Client:         geoProbeClient,
-			Resolver:       deviceResolver,
-			CLIParents:     cliParentAuthorities,
-			Interval:       parentDiscoveryInterval,
-			Logger:         log,
+		var pdErr error
+		pd, pdErr = geoprobe.NewParentDiscovery(&geoprobe.ParentDiscoveryConfig{
+			GeoProbePubkey:         geoProbePubkey,
+			Client:                 geoProbeClient,
+			Resolver:               deviceResolver,
+			CLIParents:             cliParentAuthorities,
+			Logger:                 log,
+			ProbeTargetUpdateCount: &probeTargetUpdateCount,
 		})
-		if err != nil {
-			log.Error("Failed to create parent discovery", "error", err)
+		if pdErr != nil {
+			log.Error("Failed to create parent discovery", "error", pdErr)
 			os.Exit(1)
 		}
-
-		go pd.Run(ctx, parentUpdateCh)
 
 		// Consume parent updates: update parentState for OffsetListener validation.
 		// Parent authority keys are NOT added to the signed TWAMP reflector — parent
@@ -572,25 +581,51 @@ func main() {
 		}()
 	}
 
-	// Run target discovery if geolocation program ID is configured.
-	targetUpdateCh := make(chan geoprobe.TargetUpdate, 1)
-	inboundKeyCh := make(chan geoprobe.InboundKeyUpdate, 1)
+	// Build target discovery if geolocation program ID is configured.
+	var td *geoprobe.TargetDiscovery
 	if !geolocationProgramID.IsZero() {
 		geolocationUserClient := geolocation.New(log, rpcClient, geolocationProgramID)
-		td, err := geoprobe.NewTargetDiscovery(&geoprobe.TargetDiscoveryConfig{
-			GeoProbePubkey: geoProbePubkey,
-			Client:         geolocationUserClient,
-			CLITargets:     targets,
-			CLIAllowedKeys: allowedKeys,
-			Interval:       discoveryInterval,
-			Logger:         log,
+		var tdErr error
+		td, tdErr = geoprobe.NewTargetDiscovery(&geoprobe.TargetDiscoveryConfig{
+			GeoProbePubkey:         geoProbePubkey,
+			Client:                 geolocationUserClient,
+			CLITargets:             targets,
+			CLIAllowedKeys:         allowedKeys,
+			Logger:                 log,
+			ProbeTargetUpdateCount: &probeTargetUpdateCount,
 		})
-		if err != nil {
-			log.Error("Failed to create target discovery", "error", err)
+		if tdErr != nil {
+			log.Error("Failed to create target discovery", "error", tdErr)
 			os.Exit(1)
 		}
-		go td.Run(ctx, targetUpdateCh, inboundKeyCh)
 	}
+
+	// Run parent and target discovery sequentially in a single goroutine so that
+	// parent discovery always updates probeTargetUpdateCount before target
+	// discovery reads it.
+	go func() {
+		tick := func() {
+			if pd != nil {
+				pd.Tick(ctx, parentUpdateCh)
+			}
+			if td != nil {
+				td.Tick(ctx, targetUpdateCh, inboundKeyCh)
+			}
+		}
+
+		tick()
+
+		discoveryTicker := time.NewTicker(discoveryInterval)
+		defer discoveryTicker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-discoveryTicker.C:
+				tick()
+			}
+		}
+	}()
 
 	// Run main measurement loop. This runs regardless of whether trusted parents
 	// are configured at startup, since they may be added dynamically at runtime.

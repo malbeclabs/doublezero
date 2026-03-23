@@ -105,6 +105,7 @@ mod tests {
             parent_devices: vec![],
             metrics_publisher_pk: Pubkey::new_unique(),
             reference_count: 0,
+            target_update_count: 0,
         };
 
         let mut probes = HashMap::new();
@@ -144,6 +145,7 @@ mod tests {
             parent_devices: vec![parent_pk],
             metrics_publisher_pk: Pubkey::new_unique(),
             reference_count: 2,
+            target_update_count: 0,
         };
 
         let mut probes = HashMap::new();

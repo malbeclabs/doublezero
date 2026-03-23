@@ -5,8 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/gagliardetto/solana-go"
 	geolocation "github.com/malbeclabs/doublezero/sdk/geolocation/go"
@@ -56,7 +56,6 @@ func newTestParentDiscoveryConfig() *ParentDiscoveryConfig {
 		},
 		Resolver:       &mockDeviceResolver{},
 		GeoProbePubkey: solana.NewWallet().PublicKey(),
-		Interval:       10 * time.Millisecond,
 	}
 }
 
@@ -82,7 +81,6 @@ func TestNewParentDiscovery_ValidationErrors(t *testing.T) {
 		{"nil client", func(c *ParentDiscoveryConfig) { c.Client = nil }, "geoprobe account client is required"},
 		{"nil resolver", func(c *ParentDiscoveryConfig) { c.Resolver = nil }, "device resolver is required"},
 		{"zero pubkey", func(c *ParentDiscoveryConfig) { c.GeoProbePubkey = solana.PublicKey{} }, "geoprobe pubkey is required"},
-		{"zero interval", func(c *ParentDiscoveryConfig) { c.Interval = 0 }, "interval must be greater than 0"},
 	}
 
 	for _, tt := range tests {
@@ -135,14 +133,11 @@ func TestParentDiscovery_HappyPath(t *testing.T) {
 		Client:         client,
 		Resolver:       resolver,
 		GeoProbePubkey: geoProbePK,
-		Interval:       10 * time.Millisecond,
 	})
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-
-	go pd.Run(ctx, ch)
+	ctx := context.Background()
+	pd.Tick(ctx, ch)
 
 	select {
 	case update := <-ch:
@@ -150,8 +145,8 @@ func TestParentDiscovery_HappyPath(t *testing.T) {
 		assert.Equal(t, metricsKey1, update.Authorities[parentDevice1PK])
 		assert.Equal(t, metricsKey2, update.Authorities[parentDevice2PK])
 		assert.Len(t, update.AllowedKeys, 2)
-	case <-ctx.Done():
-		t.Fatal("timed out waiting for parent update")
+	default:
+		t.Fatal("expected parent update")
 	}
 }
 
@@ -191,14 +186,11 @@ func TestParentDiscovery_MergeWithCLIParents(t *testing.T) {
 		Resolver:       resolver,
 		GeoProbePubkey: geoProbePK,
 		CLIParents:     cliParents,
-		Interval:       10 * time.Millisecond,
 	})
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-
-	go pd.Run(ctx, ch)
+	ctx := context.Background()
+	pd.Tick(ctx, ch)
 
 	select {
 	case update := <-ch:
@@ -206,8 +198,8 @@ func TestParentDiscovery_MergeWithCLIParents(t *testing.T) {
 		assert.Equal(t, onchainMetricsKey, update.Authorities[onchainParentPK])
 		assert.Equal(t, cliMetricsKey, update.Authorities[cliParentPK])
 		assert.Len(t, update.AllowedKeys, 2)
-	case <-ctx.Done():
-		t.Fatal("timed out waiting for parent update")
+	default:
+		t.Fatal("expected parent update")
 	}
 }
 
@@ -224,22 +216,19 @@ func TestParentDiscovery_GeoProbeNotFound(t *testing.T) {
 		Client:         client,
 		Resolver:       &mockDeviceResolver{},
 		GeoProbePubkey: solana.NewWallet().PublicKey(),
-		Interval:       10 * time.Millisecond,
 	})
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-
-	go pd.Run(ctx, ch)
+	ctx := context.Background()
+	pd.Tick(ctx, ch)
 
 	// Should receive CLI-only update (empty since no CLI parents).
 	select {
 	case update := <-ch:
 		assert.Empty(t, update.Authorities)
 		assert.Empty(t, update.AllowedKeys)
-	case <-ctx.Done():
-		t.Fatal("timed out waiting for parent update")
+	default:
+		t.Fatal("expected parent update")
 	}
 }
 
@@ -265,22 +254,19 @@ func TestParentDiscovery_GeoProbeNotFound_WithCLIParents(t *testing.T) {
 		Resolver:       &mockDeviceResolver{},
 		GeoProbePubkey: solana.NewWallet().PublicKey(),
 		CLIParents:     cliParents,
-		Interval:       10 * time.Millisecond,
 	})
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-
-	go pd.Run(ctx, ch)
+	ctx := context.Background()
+	pd.Tick(ctx, ch)
 
 	select {
 	case update := <-ch:
 		assert.Len(t, update.Authorities, 1)
 		assert.Equal(t, cliMetricsKey, update.Authorities[cliParentPK])
 		assert.Len(t, update.AllowedKeys, 1)
-	case <-ctx.Done():
-		t.Fatal("timed out waiting for parent update")
+	default:
+		t.Fatal("expected parent update")
 	}
 }
 
@@ -315,22 +301,19 @@ func TestParentDiscovery_DeviceResolutionFailure(t *testing.T) {
 		Client:         client,
 		Resolver:       resolver,
 		GeoProbePubkey: geoProbePK,
-		Interval:       10 * time.Millisecond,
 	})
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-
-	go pd.Run(ctx, ch)
+	ctx := context.Background()
+	pd.Tick(ctx, ch)
 
 	select {
 	case update := <-ch:
 		// Only good parent should be present.
 		assert.Len(t, update.Authorities, 1)
 		assert.Equal(t, goodMetricsKey, update.Authorities[goodParentPK])
-	case <-ctx.Done():
-		t.Fatal("timed out waiting for parent update")
+	default:
+		t.Fatal("expected parent update")
 	}
 }
 
@@ -362,7 +345,6 @@ func TestParentDiscovery_Caching(t *testing.T) {
 		Client:         client,
 		Resolver:       resolver,
 		GeoProbePubkey: geoProbePK,
-		Interval:       time.Second,
 	})
 	require.NoError(t, err)
 
@@ -410,7 +392,6 @@ func TestParentDiscovery_ForcedFullRefresh(t *testing.T) {
 		Client:         client,
 		Resolver:       resolver,
 		GeoProbePubkey: geoProbePK,
-		Interval:       time.Second,
 	})
 	require.NoError(t, err)
 
@@ -445,22 +426,14 @@ func TestParentDiscovery_RPCError(t *testing.T) {
 		Client:         client,
 		Resolver:       &mockDeviceResolver{},
 		GeoProbePubkey: solana.NewWallet().PublicKey(),
-		Interval:       10 * time.Millisecond,
 	})
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-
-	go pd.Run(ctx, ch)
+	ctx := context.Background()
+	pd.Tick(ctx, ch)
 
 	// On RPC error (not ErrAccountNotFound), no update should be sent.
-	select {
-	case <-ch:
-		t.Fatal("should not receive update on RPC error")
-	case <-time.After(30 * time.Millisecond):
-		// Expected: no update sent.
-	}
+	assert.Equal(t, 0, len(ch), "should not receive update on RPC error")
 }
 
 func TestParentDiscovery_EmptyParentDevices(t *testing.T) {
@@ -487,48 +460,19 @@ func TestParentDiscovery_EmptyParentDevices(t *testing.T) {
 		Resolver:       &mockDeviceResolver{},
 		GeoProbePubkey: solana.NewWallet().PublicKey(),
 		CLIParents:     cliParents,
-		Interval:       10 * time.Millisecond,
 	})
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-
-	go pd.Run(ctx, ch)
+	ctx := context.Background()
+	pd.Tick(ctx, ch)
 
 	select {
 	case update := <-ch:
 		// Only CLI parent should be present.
 		assert.Len(t, update.Authorities, 1)
 		assert.Equal(t, cliMetricsKey, update.Authorities[cliParentPK])
-	case <-ctx.Done():
-		t.Fatal("timed out waiting for parent update")
-	}
-}
-
-func TestParentDiscovery_ContextCancellation(t *testing.T) {
-	t.Parallel()
-
-	cfg := newTestParentDiscoveryConfig()
-	pd, err := NewParentDiscovery(cfg)
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-	defer cancel()
-
-	ch := make(chan ParentUpdate, 1)
-
-	done := make(chan struct{})
-	go func() {
-		pd.Run(ctx, ch)
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// Run exited cleanly on context cancellation.
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("Run did not exit on context cancellation")
+	default:
+		t.Fatal("expected parent update")
 	}
 }
 
@@ -567,7 +511,6 @@ func TestParentDiscovery_CLIDedupWithOnchain(t *testing.T) {
 		Resolver:       resolver,
 		GeoProbePubkey: geoProbePK,
 		CLIParents:     cliParents,
-		Interval:       time.Second,
 	})
 	require.NoError(t, err)
 
@@ -610,4 +553,46 @@ func TestPubkeySlicesEqual(t *testing.T) {
 			assert.Equal(t, tt.want, pubkeySlicesEqual(tt.a, tt.b))
 		})
 	}
+}
+
+func TestParentDiscovery_StoresTargetUpdateCount(t *testing.T) {
+	t.Parallel()
+
+	geoProbePK := solana.NewWallet().PublicKey()
+	parentDevicePK := solana.NewWallet().PublicKey()
+	var metricsKey [32]byte
+	metricsKey = solana.NewWallet().PublicKey()
+
+	client := &mockGeoProbeAccountClient{
+		probe: &geolocation.GeoProbe{
+			AccountType:       geolocation.AccountTypeGeoProbe,
+			ParentDevices:     []solana.PublicKey{parentDevicePK},
+			TargetUpdateCount: 42,
+		},
+	}
+
+	resolver := &mockDeviceResolver{
+		devices: map[solana.PublicKey]*serviceability.Device{
+			parentDevicePK: {
+				PublicIp:               [4]uint8{10, 0, 0, 1},
+				MetricsPublisherPubKey: metricsKey,
+			},
+		},
+	}
+
+	var counter atomic.Uint32
+	pd, err := NewParentDiscovery(&ParentDiscoveryConfig{
+		Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		Client:                 client,
+		Resolver:               resolver,
+		GeoProbePubkey:         geoProbePK,
+		ProbeTargetUpdateCount: &counter,
+	})
+	require.NoError(t, err)
+
+	update, err := pd.discover(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, update)
+
+	assert.Equal(t, uint32(42), counter.Load())
 }

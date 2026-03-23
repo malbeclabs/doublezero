@@ -611,10 +611,11 @@ async fn test_add_target_outbound_success() {
     assert_eq!(user.targets[0].ip_address, Ipv4Addr::new(8, 8, 8, 8));
     assert_eq!(user.targets[0].geoprobe_pk, probe_pda);
 
-    // Verify probe reference_count incremented
+    // Verify probe reference_count and target_target_update_count incremented
     let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
     let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
     assert_eq!(probe.reference_count, 1);
+    assert_eq!(probe.target_update_count, 1);
 
     // Also add an inbound target to verify both target types work
     let inbound_target_pk = Pubkey::new_unique();
@@ -647,6 +648,7 @@ async fn test_add_target_outbound_success() {
     let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
     let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
     assert_eq!(probe.reference_count, 2);
+    assert_eq!(probe.target_update_count, 2);
 }
 
 #[tokio::test]
@@ -869,10 +871,11 @@ async fn test_remove_target_success() {
     let user = GeolocationUser::try_from(&account.data[..]).unwrap();
     assert!(user.targets.is_empty());
 
-    // Verify reference_count decremented
+    // Verify reference_count decremented and target_update_count incremented
     let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
     let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
     assert_eq!(probe.reference_count, 0);
+    assert_eq!(probe.target_update_count, 2); // 1 from add + 1 from remove
 }
 
 #[tokio::test]

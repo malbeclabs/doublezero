@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
-	"time"
+	"sync/atomic"
 
 	"github.com/gagliardetto/solana-go"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
@@ -27,30 +27,36 @@ type InboundKeyUpdate struct {
 	Keys [][32]byte
 }
 
+// targetDiscoveryFullRefreshEvery controls how often a full GeolocationUser scan
+// is forced regardless of whether the GeoProbe target_update_count has changed.
+// At the default 60s interval, 5 means a full refresh every ~5 minutes.
+const targetDiscoveryFullRefreshEvery = 5
+
 // TargetDiscoveryConfig holds configuration for target discovery.
 type TargetDiscoveryConfig struct {
-	GeoProbePubkey solana.PublicKey
-	Client         GeolocationUserClient
-	CLITargets     []ProbeAddress
-	CLIAllowedKeys [][32]byte
-	Interval       time.Duration
-	Logger         *slog.Logger
+	GeoProbePubkey         solana.PublicKey
+	Client                 GeolocationUserClient
+	CLITargets             []ProbeAddress
+	CLIAllowedKeys         [][32]byte
+	Logger                 *slog.Logger
+	ProbeTargetUpdateCount *atomic.Uint32 // shared counter from parent discovery
 }
 
 // TargetDiscovery polls GeolocationUser accounts and sends target/key updates
 // when changes are detected. It filters for activated, paid users whose targets
 // reference this probe's pubkey.
 type TargetDiscovery struct {
-	log            *slog.Logger
-	geoProbePubkey solana.PublicKey
-	client         GeolocationUserClient
-	cliTargets     []ProbeAddress
-	cliAllowedKeys [][32]byte
-	interval       time.Duration
+	log                    *slog.Logger
+	geoProbePubkey         solana.PublicKey
+	client                 GeolocationUserClient
+	cliTargets             []ProbeAddress
+	cliAllowedKeys         [][32]byte
+	probeTargetUpdateCount *atomic.Uint32
 
-	cachedTargets     []ProbeAddress
-	cachedInboundKeys [][32]byte
-	tickCount         uint64
+	cachedTargets             []ProbeAddress
+	cachedInboundKeys         [][32]byte
+	tickCount                 uint64
+	lastSeenTargetUpdateCount uint32
 }
 
 // NewTargetDiscovery creates a new TargetDiscovery instance.
@@ -64,50 +70,30 @@ func NewTargetDiscovery(cfg *TargetDiscoveryConfig) (*TargetDiscovery, error) {
 	if cfg.GeoProbePubkey.IsZero() {
 		return nil, fmt.Errorf("geoprobe pubkey is required")
 	}
-	if cfg.Interval <= 0 {
-		return nil, fmt.Errorf("interval must be greater than 0")
-	}
-
 	return &TargetDiscovery{
-		log:            cfg.Logger,
-		geoProbePubkey: cfg.GeoProbePubkey,
-		client:         cfg.Client,
-		cliTargets:     cfg.CLITargets,
-		cliAllowedKeys: cfg.CLIAllowedKeys,
-		interval:       cfg.Interval,
+		log:                    cfg.Logger,
+		geoProbePubkey:         cfg.GeoProbePubkey,
+		client:                 cfg.Client,
+		cliTargets:             cfg.CLITargets,
+		cliAllowedKeys:         cfg.CLIAllowedKeys,
+		probeTargetUpdateCount: cfg.ProbeTargetUpdateCount,
 	}, nil
 }
 
-// Run starts the discovery polling loop, sending updates to the provided channels.
-// It performs an immediate discovery tick, then repeats at the configured interval.
-func (d *TargetDiscovery) Run(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate) {
-	d.log.Info("Starting target discovery",
-		"interval", d.interval,
-		"geoProbePubkey", d.geoProbePubkey,
-		"cliTargets", len(d.cliTargets),
-		"cliAllowedKeys", len(d.cliAllowedKeys),
-	)
-
+// Tick performs a single target discovery cycle and sends updates to the channels.
+func (d *TargetDiscovery) Tick(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate) {
 	d.discoverAndSend(ctx, targetCh, keyCh)
-
-	ticker := time.NewTicker(d.interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			d.log.Info("Target discovery shutting down")
-			return
-		case <-ticker.C:
-			d.discoverAndSend(ctx, targetCh, keyCh)
-		}
-	}
 }
 
 func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate) {
 	targets, inboundKeys, err := d.discover(ctx)
 	if err != nil {
 		d.log.Warn("Target discovery tick failed", "error", err)
+		return
+	}
+
+	// nil targets means the scan was skipped (target_update_count unchanged).
+	if targets == nil && inboundKeys == nil {
 		return
 	}
 
@@ -131,9 +117,20 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 }
 
 // discover performs a single discovery cycle: fetch users, filter, extract targets/keys,
-// merge with CLI values.
+// merge with CLI values. Returns nil, nil, nil when the scan is skipped.
 func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]byte, error) {
+	forceFullRefresh := d.tickCount%targetDiscoveryFullRefreshEvery == 0
 	d.tickCount++
+
+	if d.probeTargetUpdateCount != nil && !forceFullRefresh {
+		current := d.probeTargetUpdateCount.Load()
+		if current == d.lastSeenTargetUpdateCount && d.tickCount > 1 {
+			d.log.Debug("GeoProbe target_update_count unchanged, skipping target scan",
+				"targetUpdateCount", current)
+			return nil, nil, nil
+		}
+		d.lastSeenTargetUpdateCount = current
+	}
 
 	users, err := d.client.GetGeolocationUsers(ctx)
 	if err != nil {
@@ -194,6 +191,11 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]b
 
 	mergedTargets := mergeProbes(d.cliTargets, onchainTargets)
 	mergedKeys := mergeKeys(d.cliAllowedKeys, onchainKeys)
+
+	// Sync lastSeenTargetUpdateCount after a full scan (covers forced refresh path).
+	if d.probeTargetUpdateCount != nil {
+		d.lastSeenTargetUpdateCount = d.probeTargetUpdateCount.Load()
+	}
 
 	d.log.Debug("Target discovery tick",
 		"users", len(users),

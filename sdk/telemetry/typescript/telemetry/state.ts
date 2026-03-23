@@ -161,10 +161,21 @@ export function deserializeTimestampIndex(
 
   r.readBytes(64); // _unused
 
-  const count = Math.min(nextEntryIndex, MAX_TIMESTAMP_INDEX_ENTRIES);
+  if (nextEntryIndex > MAX_TIMESTAMP_INDEX_ENTRIES) {
+    throw new Error(
+      `next_entry_index ${nextEntryIndex} exceeds max ${MAX_TIMESTAMP_INDEX_ENTRIES}`,
+    );
+  }
+
+  const count = nextEntryIndex;
+  if (r.remaining < count * TIMESTAMP_INDEX_ENTRY_SIZE) {
+    throw new Error(
+      `data too short for ${count} timestamp index entries: ${r.remaining} < ${count * TIMESTAMP_INDEX_ENTRY_SIZE}`,
+    );
+  }
+
   const entries: TimestampIndexEntry[] = [];
   for (let i = 0; i < count; i++) {
-    if (r.remaining < TIMESTAMP_INDEX_ENTRY_SIZE) break;
     entries.push({
       sampleIndex: r.readU32(),
       timestampMicroseconds: r.readU64(),

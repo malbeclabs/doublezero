@@ -173,11 +173,12 @@ func DeserializeTimestampIndex(data []byte) (*TimestampIndex, error) {
 		return nil, fmt.Errorf("next_entry_index %d exceeds max %d", count, MaxTimestampIndexEntries)
 	}
 
+	if r.Remaining() < count*timestampIndexEntrySize {
+		return nil, fmt.Errorf("data too short for %d timestamp index entries: %d < %d", count, r.Remaining(), count*timestampIndexEntrySize)
+	}
+
 	d.Entries = make([]TimestampIndexEntry, count)
 	for i := range count {
-		if r.Remaining() < timestampIndexEntrySize {
-			break
-		}
 		d.Entries[i].SampleIndex, _ = r.ReadU32()
 		d.Entries[i].TimestampMicroseconds, _ = r.ReadU64()
 	}

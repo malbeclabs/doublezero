@@ -172,11 +172,20 @@ class TimestampIndex:
 
         r.read_bytes(64)  # reserved
 
-        count = min(next_entry_index, MAX_TIMESTAMP_INDEX_ENTRIES)
+        if next_entry_index > MAX_TIMESTAMP_INDEX_ENTRIES:
+            raise ValueError(
+                f"next_entry_index {next_entry_index} exceeds max {MAX_TIMESTAMP_INDEX_ENTRIES}"
+            )
+
+        count = next_entry_index
+        if r.remaining < count * TIMESTAMP_INDEX_ENTRY_SIZE:
+            raise ValueError(
+                f"data too short for {count} timestamp index entries: "
+                f"{r.remaining} < {count * TIMESTAMP_INDEX_ENTRY_SIZE}"
+            )
+
         entries: list[TimestampIndexEntry] = []
         for _ in range(count):
-            if r.remaining < TIMESTAMP_INDEX_ENTRY_SIZE:
-                break
             sample_index = r.read_u32()
             timestamp_microseconds = r.read_u64()
             entries.append(TimestampIndexEntry(sample_index, timestamp_microseconds))

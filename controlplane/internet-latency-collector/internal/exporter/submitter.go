@@ -154,6 +154,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 				_, _, err = s.cfg.Telemetry.InitializeTimestampIndex(ctx, samplesPDA)
 				if err != nil {
 					log.Warn("Failed to initialize timestamp index, writes will proceed without it", "error", err)
+					writeConfig.TimestampIndexPK = nil
 				}
 				_, _, err = s.cfg.Telemetry.WriteInternetLatencySamples(ctx, writeConfig)
 				if err != nil {
@@ -185,6 +186,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 				_, _, err = s.cfg.Telemetry.InitializeTimestampIndex(ctx, samplesPDA)
 				if err != nil {
 					log.Warn("Failed to initialize timestamp index, writes will proceed without it", "error", err)
+					writeConfig.TimestampIndexPK = nil
 				}
 				_, _, err = s.cfg.Telemetry.WriteInternetLatencySamples(ctx, writeConfig)
 				if err != nil {

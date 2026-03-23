@@ -25,7 +25,7 @@ const (
 
 	// InstructionErrorTimestampIndexAccountDoesNotExist is the error code that the telemetry
 	// program returns when the timestamp index account does not exist.
-	InstructionErrorTimestampIndexAccountDoesNotExist = 1019
+	InstructionErrorTimestampIndexAccountDoesNotExist = 1018
 
 	// MaxSamplesPerBatch is the maximum number of samples that can be written in a single batch.
 	//

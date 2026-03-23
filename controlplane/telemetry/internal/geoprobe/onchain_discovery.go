@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sync/atomic"
-	"time"
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
@@ -43,7 +42,6 @@ type ParentDiscoveryConfig struct {
 	Client                 GeoProbeAccountClient
 	Resolver               DeviceResolver
 	CLIParents             map[[32]byte][32]byte // static parents from --additional-parent
-	Interval               time.Duration
 	Logger                 *slog.Logger
 	ProbeTargetUpdateCount *atomic.Uint32 // shared counter for target discovery change detection
 }
@@ -55,7 +53,6 @@ type ParentDiscovery struct {
 	client                 GeoProbeAccountClient
 	resolver               DeviceResolver
 	cliParents             map[[32]byte][32]byte
-	interval               time.Duration
 	probeTargetUpdateCount *atomic.Uint32
 
 	cachedParentDevices []solana.PublicKey
@@ -76,10 +73,6 @@ func NewParentDiscovery(cfg *ParentDiscoveryConfig) (*ParentDiscovery, error) {
 	if cfg.GeoProbePubkey.IsZero() {
 		return nil, fmt.Errorf("geoprobe pubkey is required")
 	}
-	if cfg.Interval <= 0 {
-		return nil, fmt.Errorf("interval must be greater than 0")
-	}
-
 	cliParents := cfg.CLIParents
 	if cliParents == nil {
 		cliParents = make(map[[32]byte][32]byte)
@@ -91,34 +84,13 @@ func NewParentDiscovery(cfg *ParentDiscoveryConfig) (*ParentDiscovery, error) {
 		client:                 cfg.Client,
 		resolver:               cfg.Resolver,
 		cliParents:             cliParents,
-		interval:               cfg.Interval,
 		probeTargetUpdateCount: cfg.ProbeTargetUpdateCount,
 	}, nil
 }
 
-// Run starts the discovery polling loop, sending ParentUpdates to the channel.
-// It performs an immediate discovery tick, then repeats at the configured interval.
-func (d *ParentDiscovery) Run(ctx context.Context, ch chan<- ParentUpdate) {
-	d.log.Info("Starting parent DZD discovery",
-		"interval", d.interval,
-		"geoProbePubkey", d.geoProbePubkey,
-		"cliParents", len(d.cliParents),
-	)
-
+// Tick performs a single parent discovery cycle and sends updates to the channel.
+func (d *ParentDiscovery) Tick(ctx context.Context, ch chan<- ParentUpdate) {
 	d.discoverAndSend(ctx, ch)
-
-	ticker := time.NewTicker(d.interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			d.log.Info("Parent DZD discovery shutting down")
-			return
-		case <-ticker.C:
-			d.discoverAndSend(ctx, ch)
-		}
-	}
 }
 
 func (d *ParentDiscovery) discoverAndSend(ctx context.Context, ch chan<- ParentUpdate) {

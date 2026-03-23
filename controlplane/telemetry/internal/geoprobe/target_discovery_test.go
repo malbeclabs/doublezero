@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/gagliardetto/solana-go"
 	geolocation "github.com/malbeclabs/doublezero/sdk/geolocation/go"
@@ -74,7 +73,6 @@ func newTestTargetDiscovery(client GeolocationUserClient, cliTargets []ProbeAddr
 		Client:         client,
 		CLITargets:     cliTargets,
 		CLIAllowedKeys: cliKeys,
-		Interval:       time.Minute,
 		Logger:         slog.Default(),
 	})
 	return td
@@ -340,28 +338,6 @@ func TestTargetDiscovery_RPCError(t *testing.T) {
 	}
 }
 
-func TestTargetDiscovery_ContextCancellation(t *testing.T) {
-	client := &mockGeolocationUserClient{}
-	td := newTestTargetDiscovery(client, nil, nil)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	targetCh := make(chan TargetUpdate, 1)
-	keyCh := make(chan InboundKeyUpdate, 1)
-
-	done := make(chan struct{})
-	go func() {
-		td.Run(ctx, targetCh, keyCh)
-		close(done)
-	}()
-
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not return after context cancellation")
-	}
-}
-
 func TestTargetDiscovery_DeduplicateInboundKeys(t *testing.T) {
 	probePK := testProbePubkey()
 	targetPK := solana.NewWallet().PublicKey()
@@ -395,10 +371,9 @@ func TestNewTargetDiscovery_Validation(t *testing.T) {
 		name string
 		cfg  *TargetDiscoveryConfig
 	}{
-		{"nil logger", &TargetDiscoveryConfig{Client: client, GeoProbePubkey: probePK, Interval: time.Minute}},
-		{"nil client", &TargetDiscoveryConfig{Logger: logger, GeoProbePubkey: probePK, Interval: time.Minute}},
-		{"zero pubkey", &TargetDiscoveryConfig{Logger: logger, Client: client, Interval: time.Minute}},
-		{"zero interval", &TargetDiscoveryConfig{Logger: logger, Client: client, GeoProbePubkey: probePK}},
+		{"nil logger", &TargetDiscoveryConfig{Client: client, GeoProbePubkey: probePK}},
+		{"nil client", &TargetDiscoveryConfig{Logger: logger, GeoProbePubkey: probePK}},
+		{"zero pubkey", &TargetDiscoveryConfig{Logger: logger, Client: client}},
 	}
 
 	for _, tt := range tests {
@@ -427,7 +402,6 @@ func TestTargetDiscovery_TargetUpdateCountUnchanged_SkipsScan(t *testing.T) {
 	td, _ := NewTargetDiscovery(&TargetDiscoveryConfig{
 		GeoProbePubkey:         testProbePubkey(),
 		Client:                 client,
-		Interval:               time.Minute,
 		Logger:                 slog.Default(),
 		ProbeTargetUpdateCount: &counter,
 	})
@@ -473,7 +447,6 @@ func TestTargetDiscovery_TargetUpdateCountChanged_DoesFullScan(t *testing.T) {
 	td, _ := NewTargetDiscovery(&TargetDiscoveryConfig{
 		GeoProbePubkey:         testProbePubkey(),
 		Client:                 client,
-		Interval:               time.Minute,
 		Logger:                 slog.Default(),
 		ProbeTargetUpdateCount: &counter,
 	})
@@ -511,7 +484,6 @@ func TestTargetDiscovery_ForcedFullRefresh_IgnoresCounter(t *testing.T) {
 	td, _ := NewTargetDiscovery(&TargetDiscoveryConfig{
 		GeoProbePubkey:         testProbePubkey(),
 		Client:                 client,
-		Interval:               time.Minute,
 		Logger:                 slog.Default(),
 		ProbeTargetUpdateCount: &counter,
 	})

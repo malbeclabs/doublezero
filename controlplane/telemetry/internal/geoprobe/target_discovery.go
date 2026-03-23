@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"sort"
 	"sync/atomic"
-	"time"
 
 	"github.com/gagliardetto/solana-go"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
@@ -39,7 +38,6 @@ type TargetDiscoveryConfig struct {
 	Client                 GeolocationUserClient
 	CLITargets             []ProbeAddress
 	CLIAllowedKeys         [][32]byte
-	Interval               time.Duration
 	Logger                 *slog.Logger
 	ProbeTargetUpdateCount *atomic.Uint32 // shared counter from parent discovery
 }
@@ -53,7 +51,6 @@ type TargetDiscovery struct {
 	client                 GeolocationUserClient
 	cliTargets             []ProbeAddress
 	cliAllowedKeys         [][32]byte
-	interval               time.Duration
 	probeTargetUpdateCount *atomic.Uint32
 
 	cachedTargets             []ProbeAddress
@@ -73,45 +70,19 @@ func NewTargetDiscovery(cfg *TargetDiscoveryConfig) (*TargetDiscovery, error) {
 	if cfg.GeoProbePubkey.IsZero() {
 		return nil, fmt.Errorf("geoprobe pubkey is required")
 	}
-	if cfg.Interval <= 0 {
-		return nil, fmt.Errorf("interval must be greater than 0")
-	}
-
 	return &TargetDiscovery{
 		log:                    cfg.Logger,
 		geoProbePubkey:         cfg.GeoProbePubkey,
 		client:                 cfg.Client,
 		cliTargets:             cfg.CLITargets,
 		cliAllowedKeys:         cfg.CLIAllowedKeys,
-		interval:               cfg.Interval,
 		probeTargetUpdateCount: cfg.ProbeTargetUpdateCount,
 	}, nil
 }
 
-// Run starts the discovery polling loop, sending updates to the provided channels.
-// It performs an immediate discovery tick, then repeats at the configured interval.
-func (d *TargetDiscovery) Run(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate) {
-	d.log.Info("Starting target discovery",
-		"interval", d.interval,
-		"geoProbePubkey", d.geoProbePubkey,
-		"cliTargets", len(d.cliTargets),
-		"cliAllowedKeys", len(d.cliAllowedKeys),
-	)
-
+// Tick performs a single target discovery cycle and sends updates to the channels.
+func (d *TargetDiscovery) Tick(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate) {
 	d.discoverAndSend(ctx, targetCh, keyCh)
-
-	ticker := time.NewTicker(d.interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			d.log.Info("Target discovery shutting down")
-			return
-		case <-ticker.C:
-			d.discoverAndSend(ctx, targetCh, keyCh)
-		}
-	}
 }
 
 func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate) {

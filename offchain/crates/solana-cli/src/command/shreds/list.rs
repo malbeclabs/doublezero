@@ -202,8 +202,10 @@ impl ListCommand {
                 let balance = escrow_balances.get(seat_key).copied().unwrap_or(0);
                 let escrow_usdc = format!("{:.2}", balance as f64 / 1_000_000.0);
                 let price = device_prices.get(device_key).copied().unwrap_or(0);
+                // balance is micro-USDC (1 USDC = 1_000_000), price is centi-USDC
+                // (1 USDC = 100); divide balance by 10_000 to align units.
                 let est_epochs_paid = if price > 0 {
-                    format!("~{}", balance / price)
+                    format!("~{}", balance / 10_000 / price)
                 } else {
                     "N/A".to_string()
                 };

@@ -221,6 +221,11 @@ pub fn parse_payment_escrow(data: &[u8]) -> Option<(Pubkey, Pubkey, u64)> {
 //   [49)      usdc_token_pda_bump_seed: u8
 //   [50..56)  _padding: [u8; 6]
 //   [56..88)  metro_exchange_key: Pubkey
+//   [88..90)  active_granted_seats: u16
+//   [90..92)  active_total_available_seats: u16
+//   [92..120) _padding
+//   [120..216) StorageGap<3>
+//   [216..)   subscriptions: RingBuffer<DeviceSubscription, 32>
 // ---------------------------------------------------------------------------
 
 pub const DEVICE_HISTORY_DISCRIMINATOR: Discriminator<DISCRIMINATOR_LEN> =
@@ -229,7 +234,9 @@ pub const DEVICE_HISTORY_DISCRIMINATOR: Discriminator<DISCRIMINATOR_LEN> =
 pub const DEVICE_HISTORY_DEVICE_KEY_OFFSET: usize = DISCRIMINATOR_LEN;
 pub const DEVICE_HISTORY_FLAGS_OFFSET: usize = DISCRIMINATOR_LEN + 32;
 pub const DEVICE_HISTORY_EXCHANGE_KEY_OFFSET: usize = DISCRIMINATOR_LEN + 32 + 16;
-const DEVICE_HISTORY_RING_OFFSET: usize = DISCRIMINATOR_LEN + 208; // after StorageGap<4> (128 bytes)
+const DEVICE_HISTORY_ACTIVE_GRANTED_SEATS_OFFSET: usize = DISCRIMINATOR_LEN + 80;
+const DEVICE_HISTORY_ACTIVE_TOTAL_AVAILABLE_SEATS_OFFSET: usize = DISCRIMINATOR_LEN + 82;
+const DEVICE_HISTORY_RING_OFFSET: usize = DISCRIMINATOR_LEN + 208; // after active seat fields + StorageGap<3> (128 bytes total)
 const DEVICE_HISTORY_ENTRY_SIZE: usize = 80; // EpochEntry<DeviceSubscription>
 
 /// Parse the metro exchange pubkey directly from raw `DeviceHistory` account data.
@@ -294,10 +301,22 @@ pub fn parse_device_history(data: &[u8]) -> Option<DeviceHistoryInfo> {
         i16::from_le_bytes(data[entry_offset + 8..entry_offset + 10].try_into().ok()?);
     let requested_seat_count =
         u16::from_le_bytes(data[entry_offset + 10..entry_offset + 12].try_into().ok()?);
-    let total_available_seats =
-        u16::from_le_bytes(data[entry_offset + 12..entry_offset + 14].try_into().ok()?);
-    let granted_seat_count =
-        u16::from_le_bytes(data[entry_offset + 14..entry_offset + 16].try_into().ok()?);
+
+    // Read device-level active seat fields from the header (outside the ring
+    // buffer). These are maintained by instant allocation/withdrawal and synced
+    // during settlement, so they always reflect the current state.
+    let total_available_seats = u16::from_le_bytes(
+        data[DEVICE_HISTORY_ACTIVE_TOTAL_AVAILABLE_SEATS_OFFSET
+            ..DEVICE_HISTORY_ACTIVE_TOTAL_AVAILABLE_SEATS_OFFSET + 2]
+            .try_into()
+            .ok()?,
+    );
+    let granted_seat_count = u16::from_le_bytes(
+        data[DEVICE_HISTORY_ACTIVE_GRANTED_SEATS_OFFSET
+            ..DEVICE_HISTORY_ACTIVE_GRANTED_SEATS_OFFSET + 2]
+            .try_into()
+            .ok()?,
+    );
 
     Some(DeviceHistoryInfo {
         device_key,

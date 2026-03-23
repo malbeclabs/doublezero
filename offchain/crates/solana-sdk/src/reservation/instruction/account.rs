@@ -196,12 +196,13 @@ impl From<RequestInstantSeatAllocationAccounts> for Vec<AccountMeta> {
     }
 }
 
-/// Accounts for the `RequestInstantSeatWithdrawal` instruction (6 accounts).
+/// Accounts for the `RequestInstantSeatWithdrawal` instruction (7 accounts).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequestInstantSeatWithdrawalAccounts {
     pub program_config_key: Pubkey,
     pub execution_controller_key: Pubkey,
     pub client_seat_key: Pubkey,
+    pub device_history_key: Pubkey,
     pub payer_key: Pubkey,
     pub withdraw_seat_request_key: Pubkey,
 }
@@ -213,6 +214,7 @@ impl RequestInstantSeatWithdrawalAccounts {
             program_config_key: state::find_program_config_address().0,
             execution_controller_key: state::find_execution_controller_address().0,
             client_seat_key,
+            device_history_key: state::find_device_history_address(device_key).0,
             payer_key: *payer_key,
             withdraw_seat_request_key: state::find_withdraw_seat_request_address(&client_seat_key)
                 .0,
@@ -226,6 +228,7 @@ impl From<RequestInstantSeatWithdrawalAccounts> for Vec<AccountMeta> {
             AccountMeta::new_readonly(accounts.program_config_key, false),
             AccountMeta::new(accounts.execution_controller_key, false),
             AccountMeta::new(accounts.client_seat_key, false),
+            AccountMeta::new(accounts.device_history_key, false),
             AccountMeta::new(accounts.payer_key, true),
             AccountMeta::new(accounts.withdraw_seat_request_key, false),
             AccountMeta::new_readonly(solana_sdk::system_program::ID, false),

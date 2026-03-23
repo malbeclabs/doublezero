@@ -3,9 +3,7 @@ use std::collections::HashMap;
 use anyhow::Result;
 use clap::Args;
 use doublezero_serviceability::state::{device::Device, exchange::Exchange};
-use doublezero_solana_client_tools::rpc::{
-    DoubleZeroLedgerConnection, SolanaConnection, SolanaConnectionOptions,
-};
+use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
 use doublezero_solana_sdk::reservation::{self, state};
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
@@ -17,6 +15,8 @@ use tabled::{
     Table, Tabled,
     settings::{Remove, Style, location::ByColumnName},
 };
+
+use super::make_dz_connection;
 
 /*
    doublezero-solana reservation price [--device <PUBKEY> | --device-code <CODE> | --metro <PUBKEY>]
@@ -69,7 +69,7 @@ struct PriceRow {
 }
 
 impl PriceCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn try_into_execute(self, dz_ledger_url: Option<String>) -> Result<()> {
         let connection = SolanaConnection::from(self.connection_options);
         let network_env = connection.try_network_environment().await?;
 
@@ -111,7 +111,10 @@ impl PriceCommand {
         ))];
 
         if self.device_args.device.is_some() || self.device_args.device_code.is_some() {
-            let device = self.device_args.resolve(network_env).await?;
+            let device = self
+                .device_args
+                .resolve(network_env, &dz_ledger_url)
+                .await?;
             device_filters.push(RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
                 state::DEVICE_HISTORY_DEVICE_KEY_OFFSET,
                 device.to_bytes().to_vec(),
@@ -155,7 +158,7 @@ impl PriceCommand {
 
         // Fetch Device accounts from DZ Ledger for code, status, etc.
         let device_keys: Vec<Pubkey> = device_infos.iter().map(|d| d.device_key).collect();
-        let dz_connection = DoubleZeroLedgerConnection::from(network_env);
+        let dz_connection = make_dz_connection(&dz_ledger_url, network_env);
         let dz_device_accounts = dz_connection.get_multiple_accounts(&device_keys).await?;
 
         let device_map: HashMap<Pubkey, Device> = device_keys

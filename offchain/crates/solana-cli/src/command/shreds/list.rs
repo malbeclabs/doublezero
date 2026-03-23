@@ -3,9 +3,7 @@ use std::{collections::HashMap, net::Ipv4Addr};
 use anyhow::Result;
 use clap::Args;
 use doublezero_serviceability::state::device::Device;
-use doublezero_solana_client_tools::rpc::{
-    DoubleZeroLedgerConnection, SolanaConnection, SolanaConnectionOptions,
-};
+use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
 use doublezero_solana_sdk::reservation::{self, state};
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
@@ -14,6 +12,8 @@ use solana_client::{
 };
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use tabled::{Table, Tabled, settings::Style};
+
+use super::make_dz_connection;
 
 /*
    doublezero-solana reservation list [--device <PUBKEY> | --device-code <CODE>]
@@ -52,7 +52,7 @@ struct SeatRow {
 }
 
 impl ListCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn try_into_execute(self, dz_ledger_url: Option<String>) -> Result<()> {
         let connection = SolanaConnection::from(self.connection_options);
 
         let discriminator_bytes =
@@ -66,7 +66,10 @@ impl ListCommand {
         // Resolve device filter.
         let network_env = connection.try_network_environment().await?;
         if self.device_args.device.is_some() || self.device_args.device_code.is_some() {
-            let device = self.device_args.resolve(network_env).await?;
+            let device = self
+                .device_args
+                .resolve(network_env, &dz_ledger_url)
+                .await?;
             filters.push(RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
                 state::CLIENT_SEAT_DEVICE_KEY_OFFSET,
                 device.to_bytes().to_vec(),
@@ -171,7 +174,7 @@ impl ListCommand {
 
         // Resolve device codes from DZ Ledger (best-effort).
         let device_codes: HashMap<Pubkey, String> = {
-            let dz_connection = DoubleZeroLedgerConnection::from(network_env);
+            let dz_connection = make_dz_connection(&dz_ledger_url, network_env);
             let dz_accounts = dz_connection.get_multiple_accounts(&unique_devices).await;
             dz_accounts
                 .unwrap_or_default()

@@ -15,8 +15,21 @@ use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, Args)]
 pub struct ShredsCommand {
+    /// Override the DZ Ledger RPC URL. When omitted, the URL is derived from
+    /// the Solana network environment. Required for e2e / Docker environments
+    /// where the DZ Ledger runs on the same validator as the shred-subscription
+    /// program.
+    #[arg(long)]
+    dz_ledger_url: Option<String>,
+
     #[command(subcommand)]
     pub command: ShredsSubcommand,
+}
+
+impl ShredsCommand {
+    pub async fn try_into_execute(self) -> Result<()> {
+        self.command.try_into_execute(self.dz_ledger_url).await
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -32,12 +45,12 @@ pub enum ShredsSubcommand {
 }
 
 impl ShredsSubcommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn try_into_execute(self, dz_ledger_url: Option<String>) -> Result<()> {
         match self {
-            Self::Pay(command) => command.try_into_execute().await,
-            Self::Withdraw(command) => command.try_into_execute().await,
-            Self::List(command) => command.try_into_execute().await,
-            Self::Price(command) => command.try_into_execute().await,
+            Self::Pay(command) => command.try_into_execute(dz_ledger_url).await,
+            Self::Withdraw(command) => command.try_into_execute(dz_ledger_url).await,
+            Self::List(command) => command.try_into_execute(dz_ledger_url).await,
+            Self::Price(command) => command.try_into_execute(dz_ledger_url).await,
         }
     }
 }
@@ -59,17 +72,33 @@ pub struct DeviceArgs {
 impl DeviceArgs {
     /// Resolve the device pubkey. When `--device-code` is used, queries the
     /// DZ Ledger's serviceability program based on the given network environment.
-    pub async fn resolve(&self, network_env: NetworkEnvironment) -> Result<Pubkey> {
+    pub async fn resolve(
+        &self,
+        network_env: NetworkEnvironment,
+        dz_ledger_url: &Option<String>,
+    ) -> Result<Pubkey> {
         if let Some(device) = self.device {
             return Ok(device);
         }
         if let Some(ref code) = self.device_code {
-            let dz_connection = DoubleZeroLedgerConnection::from(network_env);
+            let dz_connection = make_dz_connection(dz_ledger_url, network_env);
             let program_id = serviceability_program_id(network_env)?;
             resolve_device_code(&dz_connection, &program_id, code).await
         } else {
             bail!("Either --device or --device-code must be specified");
         }
+    }
+}
+
+/// Construct a DZ Ledger connection, using the explicit URL if provided or
+/// falling back to the environment-derived URL.
+pub(super) fn make_dz_connection(
+    dz_ledger_url: &Option<String>,
+    network_env: NetworkEnvironment,
+) -> DoubleZeroLedgerConnection {
+    match dz_ledger_url {
+        Some(url) => DoubleZeroLedgerConnection::new(url.clone()),
+        None => DoubleZeroLedgerConnection::from(network_env),
     }
 }
 

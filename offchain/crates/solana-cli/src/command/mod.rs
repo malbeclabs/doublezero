@@ -29,7 +29,7 @@ impl DoubleZeroSolanaCommand {
                 revenue_distribution.command.try_into_execute().await
             }
             #[cfg(feature = "experimental")]
-            Self::Shreds(shreds) => shreds.command.try_into_execute().await,
+            Self::Shreds(shreds) => shreds.try_into_execute().await,
         }
     }
 }

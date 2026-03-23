@@ -646,3 +646,67 @@ func TestPinger_DualProbe_BothFail(t *testing.T) {
 	assert.NotContains(t, results, addr,
 		"should not have result when both probes fail")
 }
+
+func TestPinger_MeasureOne_UnknownProbe(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	pinger := NewPinger(&PingerConfig{
+		Logger:       logger,
+		ProbeTimeout: 1 * time.Second,
+		Interval:     1 * time.Second,
+		StaggerDelay: 1 * time.Millisecond,
+	})
+
+	addr := ProbeAddress{Host: "192.0.2.99", Port: 8923, TWAMPPort: 8925}
+	rtt, ok := pinger.MeasureOne(context.Background(), addr)
+	assert.False(t, ok)
+	assert.Equal(t, uint64(0), rtt)
+}
+
+func TestPinger_MeasureOne_Success(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	pinger := NewPinger(&PingerConfig{
+		Logger:       logger,
+		ProbeTimeout: 1 * time.Second,
+		Interval:     1 * time.Second,
+		StaggerDelay: 1 * time.Millisecond,
+	})
+
+	addr := ProbeAddress{Host: "192.0.2.1", Port: 8923, TWAMPPort: 8925}
+	pinger.senders[addr.String()] = &senderEntry{
+		addr:         addr,
+		sender:       &mockSender{rtt: 10 * time.Millisecond},
+		warmupSender: &mockSender{rtt: 50 * time.Millisecond},
+	}
+
+	rtt, ok := pinger.MeasureOne(context.Background(), addr)
+	assert.True(t, ok)
+	assert.Equal(t, uint64((10 * time.Millisecond).Nanoseconds()), rtt,
+		"should return the lower RTT in nanoseconds")
+}
+
+func TestPinger_MeasureOne_BothFail(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	pinger := NewPinger(&PingerConfig{
+		Logger:       logger,
+		ProbeTimeout: 1 * time.Second,
+		Interval:     1 * time.Second,
+		StaggerDelay: 1 * time.Millisecond,
+	})
+
+	addr := ProbeAddress{Host: "192.0.2.1", Port: 8923, TWAMPPort: 8925}
+	pinger.senders[addr.String()] = &senderEntry{
+		addr:         addr,
+		sender:       &mockSender{err: context.DeadlineExceeded},
+		warmupSender: &mockSender{err: context.DeadlineExceeded},
+	}
+
+	rtt, ok := pinger.MeasureOne(context.Background(), addr)
+	assert.False(t, ok)
+	assert.Equal(t, uint64(0), rtt)
+}

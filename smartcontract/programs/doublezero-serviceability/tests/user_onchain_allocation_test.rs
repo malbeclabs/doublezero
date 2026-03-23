@@ -5057,8 +5057,7 @@ async fn test_closeaccount_user_legacy_decrements_multicast_publishers_count() {
         "multicast_publishers_count must be decremented (user had multicast_publisher=true)"
     );
     assert_eq!(
-        device_after.multicast_subscribers_count,
-        subscribers_before,
+        device_after.multicast_subscribers_count, subscribers_before,
         "multicast_subscribers_count must not change (user had multicast_publisher=true)"
     );
 

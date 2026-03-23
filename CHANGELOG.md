@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+- Smartcontract
+  - Fix multicast publisher/subscriber device counter divergence: `multicast_publishers_count` never decremented and `multicast_subscribers_count` over-decremented on user disconnect because the decrement logic checked `!publishers.is_empty()`, which is always false at delete time. Add a durable `multicast_publisher` flag to the `User` struct, set at activation, and use it in the delete and closeaccount instructions.
 
 ## [v0.14.0](https://github.com/malbeclabs/doublezero/compare/client/v0.13.0...client/v0.14.0) - 2026-03-24
 

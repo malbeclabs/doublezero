@@ -1,6 +1,6 @@
 use std::net::Ipv4Addr;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use clap::Args;
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
 use doublezero_solana_sdk::{
@@ -35,10 +35,6 @@ pub struct WithdrawCommand {
     /// USDC token account to receive the refund (defaults to your ATA)
     #[arg(long)]
     refund_token_account: Option<Pubkey>,
-    /// Request instant seat withdrawal.
-    #[arg(long = "unsafe-now", hide = true)]
-    unsafe_now: bool,
-
     #[command(flatten)]
     solana_payer_options: SolanaPayerOptions,
 }
@@ -62,21 +58,15 @@ impl WithdrawCommand {
         let (escrow_key, _) = state::find_payment_escrow_address(&client_seat_key, &wallet_key);
         let escrow_exists = wallet.connection.get_account(&escrow_key).await.is_ok();
 
-        if !escrow_exists && !self.unsafe_now {
-            bail!("No payment escrow found for this seat and wallet. Nothing to withdraw.");
-        }
-
         let mut instructions = Vec::new();
         let mut compute_unit_limit = 30_000;
 
-        if self.unsafe_now {
-            instructions.push(try_build_instruction(
-                &ID,
-                RequestInstantSeatWithdrawalAccounts::new(&device, client_ip_bits, &wallet_key),
-                &ReservationInstructionData::RequestInstantSeatWithdrawal,
-            )?);
-            compute_unit_limit += 50_000;
-        }
+        instructions.push(try_build_instruction(
+            &ID,
+            RequestInstantSeatWithdrawalAccounts::new(&device, client_ip_bits, &wallet_key),
+            &ReservationInstructionData::RequestInstantSeatWithdrawal,
+        )?);
+        compute_unit_limit += 50_000;
 
         if escrow_exists {
             instructions.push(try_build_instruction(

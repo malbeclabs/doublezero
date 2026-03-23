@@ -211,7 +211,9 @@ func (c *offsetCache) Put(offset *geoprobe.LocationOffset) {
 		// New offset is better than or equal to best: replace best.
 		sender.best = entry
 	} else {
-		// New offset has higher RTT than best.
+		// New offset has higher RTT than best, consider it for second-best.
+		// Second-best must have a half of a MaxAge left to live, so that if
+		// it gets promoted, it could hold for a meaningful amount of time.
 		halfMaxAge := c.maxAge / 2
 		if sender.backup.expired(c.maxAge) || offset.RttNs <= sender.backup.offset.RttNs {
 			sender.backup = entry

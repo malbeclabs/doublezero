@@ -41,6 +41,17 @@ struct EpochWarningInput {
     slots_in_epoch: u64,
 }
 
+/// Returns `true` when the client seat already has an active allocation
+/// (`active_epoch > 0`). Re-funding an active seat only needs to top up the
+/// escrow — requesting a new instant allocation would fail onchain because the
+/// seat is already counted against the device's available capacity.
+fn is_seat_already_active(seat_data: Option<&[u8]>) -> bool {
+    seat_data
+        .and_then(state::parse_client_seat)
+        .map(|(_, _, _, _, active_epoch)| active_epoch > 0)
+        .unwrap_or(false)
+}
+
 /// Returns `Some(prompt_message)` if the user should be warned about paying late
 /// in the epoch, or `None` if no warning is needed.
 fn epoch_warning_prompt(input: &EpochWarningInput) -> Option<String> {
@@ -153,6 +164,9 @@ impl PayCommand {
             .unwrap();
         let seat_exists = accounts[0].is_some();
         let escrow_exists = accounts[1].is_some();
+
+        let seat_already_active =
+            is_seat_already_active(accounts[0].as_ref().map(|a| a.data.as_slice()));
 
         // Epoch-remaining warning: if <10% of the epoch remains, the user is
         // paying full price for a partial epoch. Skip if: flag set, dry-run,
@@ -272,19 +286,21 @@ impl PayCommand {
         instructions.push(fund_ix);
         compute_unit_limit += 50_000;
 
-        let request_ix = try_build_instruction(
-            &ID,
-            RequestInstantSeatAllocationAccounts::new(
-                &exchange_key,
-                &device,
-                client_ip_bits,
-                &wallet_key,
-                &wallet_key,
-            ),
-            &ReservationInstructionData::RequestInstantSeatAllocation,
-        )?;
-        instructions.push(request_ix);
-        compute_unit_limit += 50_000;
+        if !seat_already_active {
+            let request_ix = try_build_instruction(
+                &ID,
+                RequestInstantSeatAllocationAccounts::new(
+                    &exchange_key,
+                    &device,
+                    client_ip_bits,
+                    &wallet_key,
+                    &wallet_key,
+                ),
+                &ReservationInstructionData::RequestInstantSeatAllocation,
+            )?;
+            instructions.push(request_ix);
+            compute_unit_limit += 50_000;
+        }
 
         instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
             compute_unit_limit,
@@ -676,5 +692,40 @@ mod tests {
         };
         // 1/1 = 100% remaining → no warning
         assert!(epoch_warning_prompt(&input).is_none());
+    }
+
+    // --- is_seat_already_active tests ---
+
+    /// Build a minimal ClientSeat byte buffer with the given active_epoch.
+    fn make_seat_data(active_epoch: u64) -> Vec<u8> {
+        // Minimum valid size: ACTIVE_EPOCH_OFFSET + 8 = 64 + 8 = 72 bytes
+        // (DISCRIMINATOR_LEN = 8, offsets are relative to that)
+        let mut data = vec![0u8; 72];
+        // Write active_epoch at offset 64 (DISCRIMINATOR_LEN + 56).
+        data[64..72].copy_from_slice(&active_epoch.to_le_bytes());
+        data
+    }
+
+    #[test]
+    fn seat_active_when_active_epoch_nonzero() {
+        let data = make_seat_data(5);
+        assert!(is_seat_already_active(Some(&data)));
+    }
+
+    #[test]
+    fn seat_not_active_when_active_epoch_zero() {
+        let data = make_seat_data(0);
+        assert!(!is_seat_already_active(Some(&data)));
+    }
+
+    #[test]
+    fn seat_not_active_when_no_account() {
+        assert!(!is_seat_already_active(None));
+    }
+
+    #[test]
+    fn seat_not_active_when_data_too_short() {
+        let short_data = vec![0u8; 10];
+        assert!(!is_seat_already_active(Some(&short_data)));
     }
 }

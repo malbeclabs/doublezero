@@ -115,7 +115,7 @@ func runSingleClientMulticastPubSubSwapTest(t *testing.T, log *slog.Logger, dn *
 
 	// Connect IBRL client
 	log.Info("==> Connecting client with IBRL")
-	ibrlCmd := "doublezero connect ibrl --client-ip " + client.CYOANetworkIP
+	ibrlCmd := "doublezero connect ibrl"
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", ibrlCmd})
 	require.NoError(t, err)
 
@@ -152,7 +152,7 @@ func runSingleClientMulticastPubSubSwapTest(t *testing.T, log *slog.Logger, dn *
 
 	log.Info("==> PHASE 2: Adding multicast subscriber")
 
-	mcastCmd := "doublezero connect multicast subscriber mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
+	mcastCmd := "doublezero connect multicast subscriber mg01 2>&1"
 	mcastOutput, err := client.Exec(t.Context(), []string{"bash", "-c", mcastCmd})
 	log.Info("==> Multicast subscriber connect output", "output", string(mcastOutput))
 	require.NoError(t, err)
@@ -175,7 +175,7 @@ func runSingleClientMulticastPubSubSwapTest(t *testing.T, log *slog.Logger, dn *
 
 	log.Info("==> PHASE 3: Removing multicast subscriber")
 
-	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})
+	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast"})
 	require.NoError(t, err)
 	log.Info("--> Multicast subscriber disconnected")
 
@@ -193,7 +193,7 @@ func runSingleClientMulticastPubSubSwapTest(t *testing.T, log *slog.Logger, dn *
 
 	log.Info("==> PHASE 4: Adding multicast publisher")
 
-	mcastCmd = "doublezero connect multicast publisher mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
+	mcastCmd = "doublezero connect multicast publisher mg01 2>&1"
 	mcastOutput, err = client.Exec(t.Context(), []string{"bash", "-c", mcastCmd})
 	log.Info("==> Multicast publisher connect output", "output", string(mcastOutput))
 	require.NoError(t, err)
@@ -216,7 +216,7 @@ func runSingleClientMulticastPubSubSwapTest(t *testing.T, log *slog.Logger, dn *
 
 	log.Info("==> PHASE 5: Removing multicast publisher")
 
-	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})
+	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast"})
 	require.NoError(t, err)
 	log.Info("--> Multicast publisher disconnected")
 
@@ -234,7 +234,7 @@ func runSingleClientMulticastPubSubSwapTest(t *testing.T, log *slog.Logger, dn *
 
 	log.Info("==> PHASE 6: Re-adding multicast subscriber (swap from publisher back to subscriber)")
 
-	mcastCmd = "doublezero connect multicast subscriber mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
+	mcastCmd = "doublezero connect multicast subscriber mg01 2>&1"
 	mcastOutput, err = client.Exec(t.Context(), []string{"bash", "-c", mcastCmd})
 	log.Info("==> Multicast subscriber connect output", "output", string(mcastOutput))
 	require.NoError(t, err)
@@ -258,13 +258,13 @@ func runSingleClientMulticastPubSubSwapTest(t *testing.T, log *slog.Logger, dn *
 	log.Info("==> DISCONNECT PHASE")
 
 	log.Info("==> Disconnecting multicast")
-	_, disconnectMcastErr := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})
+	_, disconnectMcastErr := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast"})
 	if disconnectMcastErr != nil {
 		log.Info("--> Warning: Multicast disconnect failed", "error", disconnectMcastErr)
 	}
 
 	log.Info("==> Disconnecting IBRL")
-	_, disconnectErr := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect --client-ip " + client.CYOANetworkIP})
+	_, disconnectErr := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect"})
 	if disconnectErr != nil {
 		log.Info("--> Warning: IBRL disconnect failed", "error", disconnectErr)
 	} else {
@@ -316,7 +316,7 @@ func TestE2E_Multicast_PublisherAndSubscriber(t *testing.T) {
 
 	// Connect as both publisher and subscriber using new flags
 	log.Debug("==> Connecting as both publisher and subscriber")
-	cmd := "doublezero connect multicast --publish mg01 --subscribe mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
+	cmd := "doublezero connect multicast --publish mg01 --subscribe mg01 2>&1"
 	output, err := client.Exec(t.Context(), []string{"bash", "-c", cmd})
 	log.Debug("==> Connect output", "output", string(output))
 	require.NoError(t, err, "should be able to connect as both publisher and subscriber")
@@ -348,7 +348,7 @@ func TestE2E_Multicast_PublisherAndSubscriber(t *testing.T) {
 
 	// Disconnect
 	log.Debug("==> Disconnecting")
-	disconnectOutput, disconnectErr := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP + " 2>&1"})
+	disconnectOutput, disconnectErr := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast 2>&1"})
 	log.Debug("==> Disconnect output", "output", string(disconnectOutput))
 	require.NoError(t, disconnectErr, "disconnect should succeed")
 	verifyTunnelRemoved(t, client, "doublezero1")
@@ -496,7 +496,7 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 
 	// Connect IBRL client (latency-based device selection)
 	log.Debug("==> Connecting client with IBRL", "useAllocatedAddr", useAllocatedAddr)
-	ibrlCmd := "doublezero connect ibrl --client-ip " + client.CYOANetworkIP
+	ibrlCmd := "doublezero connect ibrl"
 	if useAllocatedAddr {
 		ibrlCmd += " --allocate-addr"
 	}
@@ -542,10 +542,10 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 	var mcastCmd string
 	if asPublisher {
 		log.Debug("==> Adding multicast publisher subscription")
-		mcastCmd = "doublezero connect multicast publisher mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
+		mcastCmd = "doublezero connect multicast publisher mg01 2>&1"
 	} else {
 		log.Debug("==> Adding multicast subscriber subscription")
-		mcastCmd = "doublezero connect multicast subscriber mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
+		mcastCmd = "doublezero connect multicast subscriber mg01 2>&1"
 	}
 	mcastOutput, err := client.Exec(t.Context(), []string{"bash", "-c", mcastCmd})
 	log.Debug("==> Multicast connect command output", "output", string(mcastOutput))
@@ -635,7 +635,7 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 
 	// Disconnect multicast first
 	log.Debug("==> Disconnecting multicast")
-	_, disconnectMcastErr := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})
+	_, disconnectMcastErr := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast"})
 	if disconnectMcastErr != nil {
 		log.Debug("--> Warning: Multicast disconnect failed (ledger may be unavailable)", "error", disconnectMcastErr)
 	}
@@ -647,7 +647,7 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 
 	// Disconnect IBRL
 	log.Debug("==> Disconnecting IBRL")
-	_, disconnectErr := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect --client-ip " + client.CYOANetworkIP})
+	_, disconnectErr := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect"})
 	if disconnectErr != nil {
 		log.Debug("--> Warning: IBRL disconnect failed (ledger may be unavailable)", "error", disconnectErr)
 	} else {
@@ -795,7 +795,7 @@ func runIBRLWithMulticastSubscriberTest(t *testing.T, log *slog.Logger, dn *devn
 
 	// Connect IBRL client
 	log.Debug("==> Connecting IBRL client", "useAllocatedAddr", useAllocatedAddr)
-	ibrlCmd := "doublezero connect ibrl --client-ip " + ibrlClient.CYOANetworkIP
+	ibrlCmd := "doublezero connect ibrl"
 	if useAllocatedAddr {
 		ibrlCmd += " --allocate-addr"
 	}
@@ -804,7 +804,7 @@ func runIBRLWithMulticastSubscriberTest(t *testing.T, log *slog.Logger, dn *devn
 
 	// Connect multicast subscriber
 	log.Debug("==> Connecting multicast subscriber")
-	_, err = mcastClient.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber mg01 --client-ip " + mcastClient.CYOANetworkIP})
+	_, err = mcastClient.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber mg01"})
 	require.NoError(t, err)
 
 	// Wait for tunnels to come up
@@ -857,7 +857,7 @@ func runIBRLWithMulticastSubscriberTest(t *testing.T, log *slog.Logger, dn *devn
 
 	// Disconnect multicast subscriber - don't fail if ledger is unavailable
 	log.Debug("==> Disconnecting multicast subscriber to test independence")
-	_, disconnectMcastErr := mcastClient.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + mcastClient.CYOANetworkIP})
+	_, disconnectMcastErr := mcastClient.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast"})
 	if disconnectMcastErr != nil {
 		log.Debug("--> Warning: Multicast disconnect failed (ledger may be unavailable)", "error", disconnectMcastErr)
 		return
@@ -872,7 +872,7 @@ func runIBRLWithMulticastSubscriberTest(t *testing.T, log *slog.Logger, dn *devn
 	log.Debug("==> FULL DISCONNECT PHASE")
 
 	// Disconnect IBRL client - don't fail test if ledger is unavailable (infrastructure flakiness)
-	_, disconnectErr := ibrlClient.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect --client-ip " + ibrlClient.CYOANetworkIP})
+	_, disconnectErr := ibrlClient.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect"})
 	if disconnectErr != nil {
 		log.Debug("--> Warning: IBRL disconnect failed (ledger may be unavailable)", "error", disconnectErr)
 	} else {
@@ -907,7 +907,7 @@ func runIBRLWithMulticastPublisherTest(t *testing.T, log *slog.Logger, dn *devne
 
 	// Connect IBRL client
 	log.Debug("==> Connecting IBRL client", "useAllocatedAddr", useAllocatedAddr)
-	ibrlCmd := "doublezero connect ibrl --client-ip " + ibrlClient.CYOANetworkIP
+	ibrlCmd := "doublezero connect ibrl"
 	if useAllocatedAddr {
 		ibrlCmd += " --allocate-addr"
 	}
@@ -916,7 +916,7 @@ func runIBRLWithMulticastPublisherTest(t *testing.T, log *slog.Logger, dn *devne
 
 	// Connect multicast publisher
 	log.Debug("==> Connecting multicast publisher")
-	_, err = mcastClient.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher mg01 --client-ip " + mcastClient.CYOANetworkIP})
+	_, err = mcastClient.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher mg01"})
 	require.NoError(t, err)
 
 	// Wait for tunnels to come up
@@ -961,7 +961,7 @@ func runIBRLWithMulticastPublisherTest(t *testing.T, log *slog.Logger, dn *devne
 
 	// Disconnect multicast publisher - don't fail if ledger is unavailable
 	log.Debug("==> Disconnecting multicast publisher to test independence")
-	_, disconnectMcastErr := mcastClient.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + mcastClient.CYOANetworkIP})
+	_, disconnectMcastErr := mcastClient.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast"})
 	if disconnectMcastErr != nil {
 		log.Debug("--> Warning: Multicast disconnect failed (ledger may be unavailable)", "error", disconnectMcastErr)
 		return
@@ -976,7 +976,7 @@ func runIBRLWithMulticastPublisherTest(t *testing.T, log *slog.Logger, dn *devne
 	log.Debug("==> FULL DISCONNECT PHASE")
 
 	// Disconnect IBRL client - don't fail test if ledger is unavailable (infrastructure flakiness)
-	_, disconnectErr := ibrlClient.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect --client-ip " + ibrlClient.CYOANetworkIP})
+	_, disconnectErr := ibrlClient.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect"})
 	if disconnectErr != nil {
 		log.Debug("--> Warning: IBRL disconnect failed (ledger may be unavailable)", "error", disconnectErr)
 		log.Debug("--> Skipping tunnel removal verification due to disconnect failure")

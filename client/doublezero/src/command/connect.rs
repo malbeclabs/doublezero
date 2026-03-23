@@ -126,19 +126,7 @@ impl ProvisioningCliCommand {
         }
 
         // Get public IP from daemon
-        let v2_status = controller.v2_status().await?;
-        if v2_status.client_ip.is_empty() {
-            return Err(eyre::eyre!(
-                "Daemon has not discovered its client IP. Ensure the daemon is running \
-                 and has started up successfully, or set --client-ip on the daemon."
-            ));
-        }
-        let client_ip: Ipv4Addr = v2_status.client_ip.parse().map_err(|e| {
-            eyre::eyre!(
-                "Daemon returned invalid client IP '{}': {e}",
-                v2_status.client_ip
-            )
-        })?;
+        let client_ip = super::helpers::resolve_client_ip(controller).await?;
         let client_ip_str = client_ip.to_string();
 
         if !check_accesspass(client, client_ip)? {

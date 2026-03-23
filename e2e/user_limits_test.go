@@ -184,7 +184,7 @@ func TestE2E_UserLimits(t *testing.T) {
 
 		// Use --device to specify device explicitly (no latency probing needed)
 		_, err = client1.Exec(ctx, []string{"bash", "-c",
-			"doublezero connect ibrl --device " + deviceCode + " --client-ip " + client1.CYOANetworkIP + " --allocate-addr"})
+			"doublezero connect ibrl --device " + deviceCode + " --allocate-addr"})
 		require.NoError(t, err)
 
 		// Wait for first user to be activated
@@ -234,7 +234,7 @@ func TestE2E_UserLimits(t *testing.T) {
 		// The exit code check is done via require.Error — do not append "; echo EXIT_CODE=$?"
 		// as that would mask the non-zero exit and err would always be nil.
 		output, err := client2.Exec(ctx, []string{"bash", "-c",
-			"doublezero connect ibrl --device " + deviceCode + " --client-ip " + client2.CYOANetworkIP + " --allocate-addr 2>&1"})
+			"doublezero connect ibrl --device " + deviceCode + " --allocate-addr 2>&1"})
 		outputStr := string(output)
 		log.Info("Second unicast user creation result", "output", outputStr, "err", err)
 
@@ -278,7 +278,7 @@ func TestE2E_UserLimits(t *testing.T) {
 
 		// Use --device to specify device explicitly (no latency probing needed)
 		_, err = client1.Exec(ctx, []string{"bash", "-c",
-			"doublezero connect multicast subscriber limit-mc01 --device " + deviceCode + " --client-ip " + client1.CYOANetworkIP})
+			"doublezero connect multicast subscriber limit-mc01 --device " + deviceCode + ""})
 		require.NoError(t, err)
 
 		// Wait for first multicast subscriber to be activated
@@ -333,7 +333,7 @@ func TestE2E_UserLimits(t *testing.T) {
 		// The exit code check is done via require.Error — do not append "; echo EXIT_CODE=$?"
 		// as that would mask the non-zero exit and err would always be nil.
 		output, err := client2.Exec(ctx, []string{"bash", "-c",
-			"doublezero connect multicast subscriber limit-mc01 --device " + deviceCode + " --client-ip " + client2.CYOANetworkIP + " 2>&1"})
+			"doublezero connect multicast subscriber limit-mc01 --device " + deviceCode + " 2>&1"})
 		outputStr := string(output)
 		log.Info("Second multicast subscriber creation result", "output", outputStr, "err", err)
 
@@ -376,7 +376,7 @@ func TestE2E_UserLimits(t *testing.T) {
 
 		// Use --device to specify device explicitly (no latency probing needed)
 		_, err = client1.Exec(ctx, []string{"bash", "-c",
-			"doublezero connect multicast publisher limit-mc01 --device " + deviceCode + " --client-ip " + client1.CYOANetworkIP})
+			"doublezero connect multicast publisher limit-mc01 --device " + deviceCode + ""})
 		require.NoError(t, err)
 
 		// Wait for first multicast publisher to be activated
@@ -431,7 +431,7 @@ func TestE2E_UserLimits(t *testing.T) {
 		// The exit code check is done via require.Error — do not append "; echo EXIT_CODE=$?"
 		// as that would mask the non-zero exit and err would always be nil.
 		output, err := client2.Exec(ctx, []string{"bash", "-c",
-			"doublezero connect multicast publisher limit-mc01 --device " + deviceCode + " --client-ip " + client2.CYOANetworkIP + " 2>&1"})
+			"doublezero connect multicast publisher limit-mc01 --device " + deviceCode + " 2>&1"})
 		outputStr := string(output)
 		log.Info("Second multicast publisher creation result", "output", outputStr, "err", err)
 

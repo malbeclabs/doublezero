@@ -20,8 +20,6 @@ use doublezero_sdk::{
     UserType,
 };
 
-use super::helpers::look_for_ip;
-
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, ValueEnum)]
 pub enum DzMode {
@@ -55,8 +53,9 @@ impl DecommissioningCliCommand {
         // READY
         spinner.println("🔍  Decommissioning User");
 
-        // Get public IP
-        let (client_ip, _) = look_for_ip(&self.client_ip, &spinner).await?;
+        // Get client IP from daemon (same source as connect)
+        let client_ip = super::helpers::resolve_client_ip(&controller).await?;
+        spinner.println(format!("    Client IP: {client_ip}"));
 
         spinner.inc(1);
         spinner.set_message("deleting user account...");
@@ -214,7 +213,11 @@ impl DecommissioningCliCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::servicecontroller::{DoubleZeroStatus, MockServiceController, StatusResponse};
+    use std::net::Ipv4Addr;
+
+    use crate::servicecontroller::{
+        DoubleZeroStatus, MockServiceController, StatusResponse, V2StatusResponse,
+    };
 
     fn test_cmd() -> DecommissioningCliCommand {
         DecommissioningCliCommand {
@@ -359,6 +362,72 @@ mod tests {
         assert!(
             call_count.load(Ordering::SeqCst) >= 2,
             "should have polled at least twice"
+        );
+    }
+
+    fn v2_status_with_ip(client_ip: &str) -> V2StatusResponse {
+        V2StatusResponse {
+            reconciler_enabled: true,
+            client_ip: client_ip.to_string(),
+            network: "mainnet".to_string(),
+            services: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_client_ip_success() {
+        let mut mock = MockServiceController::new();
+        mock.expect_v2_status()
+            .returning(|| Ok(v2_status_with_ip("1.2.3.4")));
+
+        let ip = crate::command::helpers::resolve_client_ip(&mock)
+            .await
+            .unwrap();
+        assert_eq!(ip, Ipv4Addr::new(1, 2, 3, 4));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_client_ip_empty() {
+        let mut mock = MockServiceController::new();
+        mock.expect_v2_status()
+            .returning(|| Ok(v2_status_with_ip("")));
+
+        let err = crate::command::helpers::resolve_client_ip(&mock)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("has not discovered its client IP"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_client_ip_invalid() {
+        let mut mock = MockServiceController::new();
+        mock.expect_v2_status()
+            .returning(|| Ok(v2_status_with_ip("not-an-ip")));
+
+        let err = crate::command::helpers::resolve_client_ip(&mock)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("invalid client IP 'not-an-ip'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_client_ip_daemon_unreachable() {
+        let mut mock = MockServiceController::new();
+        mock.expect_v2_status()
+            .returning(|| Err(eyre::eyre!("connection refused")));
+
+        let err = crate::command::helpers::resolve_client_ip(&mock)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("connection refused"),
+            "unexpected error: {err}"
         );
     }
 }

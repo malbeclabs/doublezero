@@ -736,7 +736,7 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 	// Phase 1: Initial activation as Multicast publisher
 	// =========================================================================
 	log.Debug("==> Phase 1: Connecting as multicast publisher to first group")
-	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast publisher test-mc01 --client-ip " + client.CYOANetworkIP})
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast publisher test-mc01"})
 	require.NoError(t, err, "failed to connect as multicast publisher")
 
 	// Wait for user to be activated
@@ -792,7 +792,7 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 	log.Debug("==> Phase 2: Disconnecting and reconnecting with both multicast groups to trigger re-activation")
 
 	// Disconnect existing multicast service first (required — daemon doesn't support updating in-place)
-	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero disconnect multicast"})
 	require.NoError(t, err, "failed to disconnect multicast")
 
 	// Wait for daemon to fully tear down the multicast service before reconnecting
@@ -806,7 +806,7 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 	}, 30*time.Second, 2*time.Second, "daemon did not tear down multicast service within timeout")
 
 	// Reconnect with both pub groups in a single command
-	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast --publish test-mc01 test-mc02 --client-ip " + client.CYOANetworkIP})
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast --publish test-mc01 test-mc02"})
 	require.NoError(t, err, "failed to reconnect with both pub groups")
 
 	// =========================================================================

@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- `shreds pay`: warn when <10% of the Solana epoch remains, with `--accept-partial-epoch` flag to suppress ([#302](https://github.com/doublezerofoundation/doublezero-offchain/pull/302))
 - add `--dz-ledger-url` flag to `shreds` commands to override the DZ Ledger RPC endpoint ([#303](https://github.com/doublezerofoundation/doublezero-offchain/pull/303))
 - `shreds pay`: always request instant seat allocation (removed `--now` flag)
 - `shreds withdraw`: always request instant seat withdrawal (removed `--unsafe-now` flag)

@@ -1190,18 +1190,15 @@ mod tests {
             // feed_authority_pk is set to default (won't match any user.owner),
             // so transfers won't be attempted unless a test explicitly overrides this.
             let globalstate_pubkey = Pubkey::new_unique();
-            fixture
-                .client
-                .expect_get_globalstate()
-                .returning(move |_| {
-                    Ok((
-                        globalstate_pubkey,
-                        GlobalState {
-                            account_type: AccountType::GlobalState,
-                            ..Default::default()
-                        },
-                    ))
-                });
+            fixture.client.expect_get_globalstate().returning(move |_| {
+                Ok((
+                    globalstate_pubkey,
+                    GlobalState {
+                        account_type: AccountType::GlobalState,
+                        ..Default::default()
+                    },
+                ))
+            });
 
             fixture
                 .controller

@@ -14,6 +14,7 @@ use doublezero_sdk::{
     commands::{
         accesspass::get::GetAccessPassCommand,
         device::{get::GetDeviceCommand, list::ListDeviceCommand},
+        globalstate::get::GetGlobalStateCommand,
         multicastgroup::{
             list::ListMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
         },
@@ -21,6 +22,7 @@ use doublezero_sdk::{
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
             get::GetUserCommand, list::ListUserCommand,
+            transfer_ownership::TransferUserOwnershipCommand,
         },
     },
     Device, User, UserCYOA, UserStatus, UserType,
@@ -666,6 +668,10 @@ impl ProvisioningCliCommand {
                     self.poll_for_user_activated(client, user_pk, spinner)?;
                 }
 
+                // If user.owner is the feed authority and an access pass exists for this
+                // client's payer, transfer ownership so the user is owned by the client
+                self.maybe_transfer_user_ownership(client, user_pk, &user, client_ip, spinner)?;
+
                 // Subscribe to any pub groups not already subscribed
                 for group_pk in pub_group_pks {
                     if !user.publishers.contains(group_pk) {
@@ -803,6 +809,57 @@ impl ProvisioningCliCommand {
         let user = self.poll_for_user_activated(client, &user_pubkey, spinner)?;
 
         Ok((user_pubkey, user))
+    }
+
+    /// If the user is currently owned by the feed authority and an access pass exists
+    /// for the client's payer, transfer ownership so the user is owned by the client.
+    fn maybe_transfer_user_ownership(
+        &self,
+        client: &dyn CliCommand,
+        user_pubkey: &Pubkey,
+        user: &User,
+        client_ip: &Ipv4Addr,
+        spinner: &ProgressBar,
+    ) -> eyre::Result<()> {
+        let payer = client.get_payer();
+
+        // Skip if the user is already owned by the client's payer
+        if user.owner == payer {
+            return Ok(());
+        }
+
+        // Check if the user is owned by the feed authority
+        let (_, globalstate) = client.get_globalstate(GetGlobalStateCommand)?;
+        if user.owner != globalstate.feed_authority_pk {
+            return Ok(());
+        }
+
+        // Check if an access pass exists for this client's payer and IP
+        let has_accesspass = client
+            .get_accesspass(GetAccessPassCommand {
+                client_ip: *client_ip,
+                user_payer: payer,
+            })?
+            .is_some();
+
+        if !has_accesspass {
+            return Ok(());
+        }
+
+        spinner.println(format!(
+            "    Transferring user ownership from feed authority to {}",
+            payer
+        ));
+
+        client.transfer_user_ownership(TransferUserOwnershipCommand {
+            user_pubkey: *user_pubkey,
+            client_ip: *client_ip,
+            old_user_payer: globalstate.feed_authority_pk,
+            new_user_payer: payer,
+        })?;
+
+        spinner.println("    Ownership transferred successfully");
+        Ok(())
     }
 
     fn poll_for_user_activated(

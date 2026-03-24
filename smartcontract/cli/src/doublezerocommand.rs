@@ -102,7 +102,8 @@ use doublezero_sdk::{
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
             delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand,
-            requestban::RequestBanUserCommand, update::UpdateUserCommand,
+            requestban::RequestBanUserCommand, transfer_ownership::TransferUserOwnershipCommand,
+            update::UpdateUserCommand,
         },
     },
     telemetry::LinkLatencyStats,
@@ -258,6 +259,8 @@ pub trait CliCommand {
     fn update_user(&self, cmd: UpdateUserCommand) -> eyre::Result<Signature>;
     fn delete_user(&self, cmd: DeleteUserCommand) -> eyre::Result<Signature>;
     fn request_ban_user(&self, cmd: RequestBanUserCommand) -> eyre::Result<Signature>;
+    fn transfer_user_ownership(&self, cmd: TransferUserOwnershipCommand)
+        -> eyre::Result<Signature>;
 
     fn list_foundation_allowlist(
         &self,
@@ -665,6 +668,12 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn request_ban_user(&self, cmd: RequestBanUserCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn transfer_user_ownership(
+        &self,
+        cmd: TransferUserOwnershipCommand,
+    ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn list_foundation_allowlist(

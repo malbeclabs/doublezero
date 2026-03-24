@@ -72,7 +72,7 @@ impl AcceptLinkCommand {
         client.execute_transaction(
             DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
                 side_z_iface_name: self.side_z_iface_name.clone(),
-                use_onchain_allocation: use_onchain_allocation,
+                use_onchain_allocation,
             }),
             accounts,
         )
@@ -170,7 +170,6 @@ mod tests {
         let res = AcceptLinkCommand {
             link_pubkey,
             side_z_iface_name: "Ethernet1".to_string(),
-            use_onchain_allocation: false,
         }
         .execute(&client);
 
@@ -256,7 +255,6 @@ mod tests {
         let res = AcceptLinkCommand {
             link_pubkey,
             side_z_iface_name: "Ethernet1".to_string(),
-            use_onchain_allocation: true,
         }
         .execute(&client);
 

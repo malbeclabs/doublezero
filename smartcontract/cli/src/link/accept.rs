@@ -274,7 +274,6 @@ mod tests {
             .with(predicate::eq(AcceptLinkCommand {
                 link_pubkey: pda_pubkey,
                 side_z_iface_name: "Ethernet1/2".to_string(),
-                use_onchain_allocation: false,
             }))
             .returning(move |_| Ok(signature));
 

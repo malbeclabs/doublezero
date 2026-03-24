@@ -2180,6 +2180,8 @@ async fn test_update_link_tunnel_reallocation_with_onchain_allocation() {
             AccountMeta::new(link_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
         ],
@@ -2199,6 +2201,23 @@ async fn test_update_link_tunnel_reallocation_with_onchain_allocation() {
         "After tunnel_net update: tunnel_id={}, tunnel_net={}",
         link.tunnel_id, link.tunnel_net
     );
+
+    // Verify device interface IPs were updated from the new tunnel_net
+    let device_a = get_device(&mut banks_client, device_a_pubkey)
+        .await
+        .expect("Device A not found");
+    let (_, iface_a) = device_a.find_interface("Ethernet0").unwrap();
+    let expected_ip_a: doublezero_program_common::types::NetworkV4 =
+        "10.100.0.10/31".parse().unwrap();
+    assert_eq!(iface_a.ip_net, expected_ip_a);
+
+    let device_z = get_device(&mut banks_client, device_z_pubkey)
+        .await
+        .expect("Device Z not found");
+    let (_, iface_z) = device_z.find_interface("Ethernet1").unwrap();
+    let expected_ip_z: doublezero_program_common::types::NetworkV4 =
+        "10.100.0.11/31".parse().unwrap();
+    assert_eq!(iface_z.ip_net, expected_ip_z);
 
     // Verify the old tunnel_id was deallocated — allocate it again to prove it's free
     let second_tunnel_id = original_tunnel_id;

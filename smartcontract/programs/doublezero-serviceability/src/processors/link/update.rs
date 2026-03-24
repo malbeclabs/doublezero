@@ -24,6 +24,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
@@ -100,17 +101,31 @@ pub fn process_update_link(
     let link_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
 
-    // Account layout WITH resource accounts (use_onchain_allocation == true):
-    //   [link, contributor, side_z?, globalstate, device_tunnel_block, link_ids, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_allocation == false):
-    //   [link, contributor, side_z?, globalstate, payer, system]
-    let expected_without_side_z = if value.use_onchain_allocation { 7 } else { 5 };
+    // Account layout (all optional accounts included):
+    //   [link, contributor, side_z?, globalstate, device_a?, device_z?, device_tunnel_block?, link_ids?, payer, system]
+    // device_a/device_z: present when tunnel_net is being updated (needed for interface IP update)
+    // device_tunnel_block/link_ids: present when use_onchain_allocation is true
+    let mut expected_without_side_z: usize = 5; // link, contributor, globalstate, payer, system
+    if value.tunnel_net.is_some() {
+        expected_without_side_z += 2; // device_a, device_z
+    }
+    if value.use_onchain_allocation {
+        expected_without_side_z += 2; // device_tunnel_block, link_ids
+    }
     let side_z_account: Option<&AccountInfo> = if accounts.len() > expected_without_side_z {
         Some(next_account_info(accounts_iter)?)
     } else {
         None
     };
     let globalstate_account = next_account_info(accounts_iter)?;
+
+    let device_accounts = if value.tunnel_net.is_some() {
+        let device_a_account = next_account_info(accounts_iter)?;
+        let device_z_account = next_account_info(accounts_iter)?;
+        Some((device_a_account, device_z_account))
+    } else {
+        None
+    };
 
     let resource_accounts = if value.use_onchain_allocation {
         let device_tunnel_block_ext = next_account_info(accounts_iter)?;
@@ -298,6 +313,52 @@ pub fn process_update_link(
                 link.tunnel_net = tunnel_net;
             }
         }
+    }
+
+    // Update device interface IPs when tunnel_net was changed
+    if let Some((device_a_account, device_z_account)) = device_accounts {
+        assert_eq!(
+            device_a_account.owner, program_id,
+            "Invalid Device A Account Owner"
+        );
+        assert_eq!(
+            device_z_account.owner, program_id,
+            "Invalid Device Z Account Owner"
+        );
+        assert!(
+            device_a_account.is_writable,
+            "Device A Account is not writable"
+        );
+        assert!(
+            device_z_account.is_writable,
+            "Device Z Account is not writable"
+        );
+
+        if link.side_a_pk != *device_a_account.key || link.side_z_pk != *device_z_account.key {
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        let mut side_a_dev = Device::try_from(device_a_account)?;
+        let mut side_z_dev = Device::try_from(device_z_account)?;
+
+        let (idx_a, side_a_iface) = side_a_dev
+            .find_interface(&link.side_a_iface_name)
+            .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
+        let mut updated_iface_a = side_a_iface.clone();
+        updated_iface_a.ip_net =
+            NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix()).unwrap();
+        side_a_dev.interfaces[idx_a] = updated_iface_a.to_interface();
+
+        let (idx_z, side_z_iface) = side_z_dev
+            .find_interface(&link.side_z_iface_name)
+            .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
+        let mut updated_iface_z = side_z_iface.clone();
+        updated_iface_z.ip_net =
+            NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix()).unwrap();
+        side_z_dev.interfaces[idx_z] = updated_iface_z.to_interface();
+
+        try_acc_write(&side_a_dev, device_a_account, payer_account, accounts)?;
+        try_acc_write(&side_z_dev, device_z_account, payer_account, accounts)?;
     }
 
     link.check_status_transition();

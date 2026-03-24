@@ -65,6 +65,12 @@ impl UpdateLinkCommand {
             AccountMeta::new(globalstate_pubkey, false),
         ];
 
+        // Device accounts needed when updating tunnel_net (for interface IP update)
+        if self.tunnel_net.is_some() {
+            accounts.push(AccountMeta::new(link.side_a_pk, false));
+            accounts.push(AccountMeta::new(link.side_z_pk, false));
+        }
+
         if use_onchain_allocation {
             // DeviceTunnelBlock (global)
             let (device_tunnel_block_ext, _, _) = get_resource_extension_pda(

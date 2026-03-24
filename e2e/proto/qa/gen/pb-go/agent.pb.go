@@ -1735,18 +1735,18 @@ func (x *MulticastSendRequest) GetDuration() uint32 {
 }
 
 type FeedSeatPayRequest struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	DevicePubkey         string                 `protobuf:"bytes,1,opt,name=device_pubkey,json=devicePubkey,proto3" json:"device_pubkey,omitempty"`
-	ClientIp             string                 `protobuf:"bytes,2,opt,name=client_ip,json=clientIp,proto3" json:"client_ip,omitempty"`
-	Amount               string                 `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
-	Instant              bool                   `protobuf:"varint,4,opt,name=instant,proto3" json:"instant,omitempty"`
-	SolanaRpcUrl         string                 `protobuf:"bytes,5,opt,name=solana_rpc_url,json=solanaRpcUrl,proto3" json:"solana_rpc_url,omitempty"`
+	state                      protoimpl.MessageState `protogen:"open.v1"`
+	DevicePubkey               string                 `protobuf:"bytes,1,opt,name=device_pubkey,json=devicePubkey,proto3" json:"device_pubkey,omitempty"`
+	ClientIp                   string                 `protobuf:"bytes,2,opt,name=client_ip,json=clientIp,proto3" json:"client_ip,omitempty"`
+	Amount                     string                 `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
+	Instant                    bool                   `protobuf:"varint,4,opt,name=instant,proto3" json:"instant,omitempty"`
+	SolanaRpcUrl               string                 `protobuf:"bytes,5,opt,name=solana_rpc_url,json=solanaRpcUrl,proto3" json:"solana_rpc_url,omitempty"`
 	ShredSubscriptionProgramId string                 `protobuf:"bytes,6,opt,name=shred_subscription_program_id,json=shredSubscriptionProgramId,proto3" json:"shred_subscription_program_id,omitempty"`
-	DzLedgerUrl          string                 `protobuf:"bytes,7,opt,name=dz_ledger_url,json=dzLedgerUrl,proto3" json:"dz_ledger_url,omitempty"`
-	UsdcMint             string                 `protobuf:"bytes,8,opt,name=usdc_mint,json=usdcMint,proto3" json:"usdc_mint,omitempty"`
-	Keypair              string                 `protobuf:"bytes,9,opt,name=keypair,proto3" json:"keypair,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	DzLedgerUrl                string                 `protobuf:"bytes,7,opt,name=dz_ledger_url,json=dzLedgerUrl,proto3" json:"dz_ledger_url,omitempty"`
+	UsdcMint                   string                 `protobuf:"bytes,8,opt,name=usdc_mint,json=usdcMint,proto3" json:"usdc_mint,omitempty"`
+	Keypair                    string                 `protobuf:"bytes,9,opt,name=keypair,proto3" json:"keypair,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *FeedSeatPayRequest) Reset() {
@@ -1843,17 +1843,17 @@ func (x *FeedSeatPayRequest) GetKeypair() string {
 }
 
 type FeedSeatWithdrawRequest struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	DevicePubkey         string                 `protobuf:"bytes,1,opt,name=device_pubkey,json=devicePubkey,proto3" json:"device_pubkey,omitempty"`
-	ClientIp             string                 `protobuf:"bytes,2,opt,name=client_ip,json=clientIp,proto3" json:"client_ip,omitempty"`
-	Instant              bool                   `protobuf:"varint,3,opt,name=instant,proto3" json:"instant,omitempty"`
-	SolanaRpcUrl         string                 `protobuf:"bytes,4,opt,name=solana_rpc_url,json=solanaRpcUrl,proto3" json:"solana_rpc_url,omitempty"`
+	state                      protoimpl.MessageState `protogen:"open.v1"`
+	DevicePubkey               string                 `protobuf:"bytes,1,opt,name=device_pubkey,json=devicePubkey,proto3" json:"device_pubkey,omitempty"`
+	ClientIp                   string                 `protobuf:"bytes,2,opt,name=client_ip,json=clientIp,proto3" json:"client_ip,omitempty"`
+	Instant                    bool                   `protobuf:"varint,3,opt,name=instant,proto3" json:"instant,omitempty"`
+	SolanaRpcUrl               string                 `protobuf:"bytes,4,opt,name=solana_rpc_url,json=solanaRpcUrl,proto3" json:"solana_rpc_url,omitempty"`
 	ShredSubscriptionProgramId string                 `protobuf:"bytes,5,opt,name=shred_subscription_program_id,json=shredSubscriptionProgramId,proto3" json:"shred_subscription_program_id,omitempty"`
-	DzLedgerUrl          string                 `protobuf:"bytes,6,opt,name=dz_ledger_url,json=dzLedgerUrl,proto3" json:"dz_ledger_url,omitempty"`
-	UsdcMint             string                 `protobuf:"bytes,7,opt,name=usdc_mint,json=usdcMint,proto3" json:"usdc_mint,omitempty"`
-	Keypair              string                 `protobuf:"bytes,8,opt,name=keypair,proto3" json:"keypair,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	DzLedgerUrl                string                 `protobuf:"bytes,6,opt,name=dz_ledger_url,json=dzLedgerUrl,proto3" json:"dz_ledger_url,omitempty"`
+	UsdcMint                   string                 `protobuf:"bytes,7,opt,name=usdc_mint,json=usdcMint,proto3" json:"usdc_mint,omitempty"`
+	Keypair                    string                 `protobuf:"bytes,8,opt,name=keypair,proto3" json:"keypair,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *FeedSeatWithdrawRequest) Reset() {
@@ -1943,14 +1943,14 @@ func (x *FeedSeatWithdrawRequest) GetKeypair() string {
 }
 
 type FeedSeatPriceRequest struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	SolanaRpcUrl         string                 `protobuf:"bytes,1,opt,name=solana_rpc_url,json=solanaRpcUrl,proto3" json:"solana_rpc_url,omitempty"`
-	DzLedgerUrl          string                 `protobuf:"bytes,2,opt,name=dz_ledger_url,json=dzLedgerUrl,proto3" json:"dz_ledger_url,omitempty"`
-	UsdcMint             string                 `protobuf:"bytes,3,opt,name=usdc_mint,json=usdcMint,proto3" json:"usdc_mint,omitempty"`
-	Keypair              string                 `protobuf:"bytes,4,opt,name=keypair,proto3" json:"keypair,omitempty"`
+	state                      protoimpl.MessageState `protogen:"open.v1"`
+	SolanaRpcUrl               string                 `protobuf:"bytes,1,opt,name=solana_rpc_url,json=solanaRpcUrl,proto3" json:"solana_rpc_url,omitempty"`
+	DzLedgerUrl                string                 `protobuf:"bytes,2,opt,name=dz_ledger_url,json=dzLedgerUrl,proto3" json:"dz_ledger_url,omitempty"`
+	UsdcMint                   string                 `protobuf:"bytes,3,opt,name=usdc_mint,json=usdcMint,proto3" json:"usdc_mint,omitempty"`
+	Keypair                    string                 `protobuf:"bytes,4,opt,name=keypair,proto3" json:"keypair,omitempty"`
 	ShredSubscriptionProgramId string                 `protobuf:"bytes,5,opt,name=shred_subscription_program_id,json=shredSubscriptionProgramId,proto3" json:"shred_subscription_program_id,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *FeedSeatPriceRequest) Reset() {
@@ -2309,32 +2309,32 @@ const file_agent_proto_rawDesc = "" +
 	"\x14MulticastSendRequest\x12\x14\n" +
 	"\x05group\x18\x01 \x01(\tR\x05group\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\rR\x04port\x12\x1a\n" +
-	"\bduration\x18\x03 \x01(\rR\bduration\"\xbf\x02\n" +
+	"\bduration\x18\x03 \x01(\rR\bduration\"\xcc\x02\n" +
 	"\x12FeedSeatPayRequest\x12#\n" +
 	"\rdevice_pubkey\x18\x01 \x01(\tR\fdevicePubkey\x12\x1b\n" +
 	"\tclient_ip\x18\x02 \x01(\tR\bclientIp\x12\x16\n" +
 	"\x06amount\x18\x03 \x01(\tR\x06amount\x12\x18\n" +
 	"\ainstant\x18\x04 \x01(\bR\ainstant\x12$\n" +
-	"\x0esolana_rpc_url\x18\x05 \x01(\tR\fsolanaRpcUrl\x124\n" +
-	"\x16shred_subscription_program_id\x18\x06 \x01(\tR\x14shredSubscriptionProgramId\x12\"\n" +
+	"\x0esolana_rpc_url\x18\x05 \x01(\tR\fsolanaRpcUrl\x12A\n" +
+	"\x1dshred_subscription_program_id\x18\x06 \x01(\tR\x1ashredSubscriptionProgramId\x12\"\n" +
 	"\rdz_ledger_url\x18\a \x01(\tR\vdzLedgerUrl\x12\x1b\n" +
 	"\tusdc_mint\x18\b \x01(\tR\busdcMint\x12\x18\n" +
-	"\akeypair\x18\t \x01(\tR\akeypair\"\xac\x02\n" +
+	"\akeypair\x18\t \x01(\tR\akeypair\"\xb9\x02\n" +
 	"\x17FeedSeatWithdrawRequest\x12#\n" +
 	"\rdevice_pubkey\x18\x01 \x01(\tR\fdevicePubkey\x12\x1b\n" +
 	"\tclient_ip\x18\x02 \x01(\tR\bclientIp\x12\x18\n" +
 	"\ainstant\x18\x03 \x01(\bR\ainstant\x12$\n" +
-	"\x0esolana_rpc_url\x18\x04 \x01(\tR\fsolanaRpcUrl\x124\n" +
-	"\x16shred_subscription_program_id\x18\x05 \x01(\tR\x14shredSubscriptionProgramId\x12\"\n" +
+	"\x0esolana_rpc_url\x18\x04 \x01(\tR\fsolanaRpcUrl\x12A\n" +
+	"\x1dshred_subscription_program_id\x18\x05 \x01(\tR\x1ashredSubscriptionProgramId\x12\"\n" +
 	"\rdz_ledger_url\x18\x06 \x01(\tR\vdzLedgerUrl\x12\x1b\n" +
 	"\tusdc_mint\x18\a \x01(\tR\busdcMint\x12\x18\n" +
-	"\akeypair\x18\b \x01(\tR\akeypair\"\xcd\x01\n" +
+	"\akeypair\x18\b \x01(\tR\akeypair\"\xda\x01\n" +
 	"\x14FeedSeatPriceRequest\x12$\n" +
 	"\x0esolana_rpc_url\x18\x01 \x01(\tR\fsolanaRpcUrl\x12\"\n" +
 	"\rdz_ledger_url\x18\x02 \x01(\tR\vdzLedgerUrl\x12\x1b\n" +
 	"\tusdc_mint\x18\x03 \x01(\tR\busdcMint\x12\x18\n" +
-	"\akeypair\x18\x04 \x01(\tR\akeypair\x124\n" +
-	"\x16shred_subscription_program_id\x18\x05 \x01(\tR\x14shredSubscriptionProgramId\"\xd1\x02\n" +
+	"\akeypair\x18\x04 \x01(\tR\akeypair\x12A\n" +
+	"\x1dshred_subscription_program_id\x18\x05 \x01(\tR\x1ashredSubscriptionProgramId\"\xd1\x02\n" +
 	"\vDevicePrice\x12\x1f\n" +
 	"\vdevice_code\x18\x01 \x01(\tR\n" +
 	"deviceCode\x12#\n" +

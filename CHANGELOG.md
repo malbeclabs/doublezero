@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Onchain Programs
+  - Serviceability: update device interface IPs when `tunnel_net` is changed via `UpdateLink`, matching the existing `ActivateLink` behavior ([#3365](https://github.com/malbeclabs/doublezero/pull/3365))
   - Serviceability: add `feed_authority` to `RemoveMulticastGroupSubAllowlist` auth check, matching `AddMulticastGroupSubAllowlist`
 - Client
   - Get client IP from the daemon in the disconnect command, matching the connect command's behavior, to avoid IP mismatches behind NAT

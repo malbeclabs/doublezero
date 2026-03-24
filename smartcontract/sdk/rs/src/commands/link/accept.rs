@@ -6,8 +6,8 @@ use crate::{
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::link::accept::LinkAcceptArgs,
-    state::link::LinkStatus,
+    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
+    processors::link::accept::LinkAcceptArgs, resource::ResourceType, state::link::LinkStatus,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -15,6 +15,10 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 pub struct AcceptLinkCommand {
     pub link_pubkey: Pubkey,
     pub side_z_iface_name: String,
+    /// When true, SDK includes side_a_device and ResourceExtension accounts
+    /// for combined accept+activate with onchain allocation.
+    /// When false, uses legacy behavior (accept only, link moves to Pending).
+    pub use_onchain_allocation: bool,
 }
 
 impl AcceptLinkCommand {
@@ -39,16 +43,218 @@ impl AcceptLinkCommand {
         .execute(client)
         .map_err(|_err| eyre::eyre!("Device Z not found"))?;
 
+        let mut accounts = vec![
+            AccountMeta::new(self.link_pubkey, false),
+            AccountMeta::new(device_z.contributor_pk, false),
+            AccountMeta::new(link.side_z_pk, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ];
+
+        if self.use_onchain_allocation {
+            accounts.push(AccountMeta::new(link.side_a_pk, false));
+
+            let (device_tunnel_block_ext, _, _) = get_resource_extension_pda(
+                &client.get_program_id(),
+                ResourceType::DeviceTunnelBlock,
+            );
+            let (link_ids_ext, _, _) =
+                get_resource_extension_pda(&client.get_program_id(), ResourceType::LinkIds);
+
+            accounts.push(AccountMeta::new(device_tunnel_block_ext, false));
+            accounts.push(AccountMeta::new(link_ids_ext, false));
+        }
+
         client.execute_transaction(
             DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
                 side_z_iface_name: self.side_z_iface_name.clone(),
+                use_onchain_allocation: self.use_onchain_allocation,
             }),
-            vec![
-                AccountMeta::new(self.link_pubkey, false),
-                AccountMeta::new(device_z.contributor_pk, false),
-                AccountMeta::new(link.side_z_pk, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
+            accounts,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        commands::link::accept::AcceptLinkCommand, tests::utils::create_test_client,
+        DoubleZeroClient,
+    };
+    use doublezero_program_common::types::NetworkV4;
+    use doublezero_serviceability::{
+        instructions::DoubleZeroInstruction,
+        pda::{get_globalstate_pda, get_resource_extension_pda},
+        processors::link::accept::LinkAcceptArgs,
+        resource::ResourceType,
+        state::{
+            accountdata::AccountData,
+            accounttype::AccountType,
+            link::{Link, LinkDesiredStatus, LinkHealth, LinkLinkType, LinkStatus},
+        },
+    };
+    use mockall::predicate;
+    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+
+    #[test]
+    fn test_commands_link_accept_legacy() {
+        let mut client = create_test_client();
+
+        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let link_pubkey = Pubkey::new_unique();
+        let side_a_pk = Pubkey::new_unique();
+        let side_z_pk = Pubkey::new_unique();
+        let contributor_pk = Pubkey::new_unique();
+
+        let link = Link {
+            account_type: AccountType::Link,
+            owner: client.get_payer(),
+            index: 1,
+            bump_seed: 0,
+            code: "test".to_string(),
+            link_type: LinkLinkType::DZX,
+            link_health: LinkHealth::Unknown,
+            contributor_pk,
+            side_a_pk,
+            side_z_pk,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: "".to_string(),
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            bandwidth: 10_000_000_000,
+            mtu: 9000,
+            delay_ns: 1000000,
+            delay_override_ns: 0,
+            jitter_ns: 100000,
+            status: LinkStatus::Requested,
+            desired_status: LinkDesiredStatus::Activated,
+        };
+
+        let device_z = doublezero_serviceability::state::device::Device {
+            contributor_pk,
+            ..Default::default()
+        };
+
+        // Mock Link fetch
+        client
+            .expect_get()
+            .with(predicate::eq(link_pubkey))
+            .returning(move |_| Ok(AccountData::Link(link.clone())));
+
+        // Mock Device Z fetch
+        client
+            .expect_get()
+            .with(predicate::eq(side_z_pk))
+            .returning(move |_| Ok(AccountData::Device(device_z.clone())));
+
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
+                    side_z_iface_name: "Ethernet1".to_string(),
+                    use_onchain_allocation: false,
+                })),
+                predicate::eq(vec![
+                    AccountMeta::new(link_pubkey, false),
+                    AccountMeta::new(contributor_pk, false),
+                    AccountMeta::new(side_z_pk, false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                ]),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let res = AcceptLinkCommand {
+            link_pubkey,
+            side_z_iface_name: "Ethernet1".to_string(),
+            use_onchain_allocation: false,
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_commands_link_accept_with_onchain_allocation() {
+        let mut client = create_test_client();
+
+        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let link_pubkey = Pubkey::new_unique();
+        let side_a_pk = Pubkey::new_unique();
+        let side_z_pk = Pubkey::new_unique();
+        let contributor_pk = Pubkey::new_unique();
+
+        let link = Link {
+            account_type: AccountType::Link,
+            owner: client.get_payer(),
+            index: 1,
+            bump_seed: 0,
+            code: "test".to_string(),
+            link_type: LinkLinkType::DZX,
+            link_health: LinkHealth::Unknown,
+            contributor_pk,
+            side_a_pk,
+            side_z_pk,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: "".to_string(),
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            bandwidth: 10_000_000_000,
+            mtu: 9000,
+            delay_ns: 1000000,
+            delay_override_ns: 0,
+            jitter_ns: 100000,
+            status: LinkStatus::Requested,
+            desired_status: LinkDesiredStatus::Activated,
+        };
+
+        let device_z = doublezero_serviceability::state::device::Device {
+            contributor_pk,
+            ..Default::default()
+        };
+
+        // Compute ResourceExtension PDAs
+        let (device_tunnel_block_ext, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::DeviceTunnelBlock);
+        let (link_ids_ext, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::LinkIds);
+
+        // Mock Link fetch
+        client
+            .expect_get()
+            .with(predicate::eq(link_pubkey))
+            .returning(move |_| Ok(AccountData::Link(link.clone())));
+
+        // Mock Device Z fetch
+        client
+            .expect_get()
+            .with(predicate::eq(side_z_pk))
+            .returning(move |_| Ok(AccountData::Device(device_z.clone())));
+
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
+                    side_z_iface_name: "Ethernet1".to_string(),
+                    use_onchain_allocation: true,
+                })),
+                predicate::eq(vec![
+                    AccountMeta::new(link_pubkey, false),
+                    AccountMeta::new(contributor_pk, false),
+                    AccountMeta::new(side_z_pk, false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(side_a_pk, false),
+                    AccountMeta::new(device_tunnel_block_ext, false),
+                    AccountMeta::new(link_ids_ext, false),
+                ]),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let res = AcceptLinkCommand {
+            link_pubkey,
+            side_z_iface_name: "Ethernet1".to_string(),
+            use_onchain_allocation: true,
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
     }
 }

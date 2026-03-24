@@ -1089,6 +1089,7 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
                 side_z_iface_name: "AcceptLink".to_string(),
+                use_onchain_allocation: false,
             }),
             "AcceptLink",
         );

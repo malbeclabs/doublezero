@@ -525,6 +525,7 @@ async fn test_dzx_link() {
         program_id,
         DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
             side_z_iface_name: "Ethernet1".to_string(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
@@ -556,6 +557,7 @@ async fn test_dzx_link() {
         program_id,
         DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
             side_z_iface_name: "Ethernet1".to_string(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),

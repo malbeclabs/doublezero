@@ -75,6 +75,7 @@ impl AcceptLinkCliCommand {
         let signature = client.accept_link(AcceptLinkCommand {
             link_pubkey: pubkey,
             side_z_iface_name: self.side_z_interface.clone(),
+            use_onchain_allocation: false,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -274,6 +275,7 @@ mod tests {
             .with(predicate::eq(AcceptLinkCommand {
                 link_pubkey: pda_pubkey,
                 side_z_iface_name: "Ethernet1/2".to_string(),
+                use_onchain_allocation: false,
             }))
             .returning(move |_| Ok(signature));
 

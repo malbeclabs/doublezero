@@ -32,6 +32,8 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				TelemetryStateIngestURL:       config.MainnetTelemetryStateIngestURL,
 				TelemetryGNMITunnelServerAddr: config.MainnetTelemetryGNMITunnelServerAddr,
 				GeolocationProgramID:          solana.MustPublicKeyFromBase58(config.MainnetGeolocationProgramID),
+				ShredSubscriptionProgramID:    config.MainnetShredSubscriptionProgramID,
+				USDCMint:                      config.MainnetUSDCMint,
 			},
 		},
 		{
@@ -50,6 +52,8 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				TelemetryStateIngestURL:       config.MainnetTelemetryStateIngestURL,
 				TelemetryGNMITunnelServerAddr: config.MainnetTelemetryGNMITunnelServerAddr,
 				GeolocationProgramID:          solana.MustPublicKeyFromBase58(config.MainnetGeolocationProgramID),
+				ShredSubscriptionProgramID:    config.MainnetShredSubscriptionProgramID,
+				USDCMint:                      config.MainnetUSDCMint,
 			},
 		},
 		{
@@ -67,6 +71,8 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				TelemetryStateIngestURL:       config.TestnetTelemetryStateIngestURL,
 				TelemetryGNMITunnelServerAddr: config.TestnetTelemetryGNMITunnelServerAddr,
 				GeolocationProgramID:          solana.MustPublicKeyFromBase58(config.TestnetGeolocationProgramID),
+				ShredSubscriptionProgramID:    config.TestnetShredSubscriptionProgramID,
+				USDCMint:                      config.TestnetUSDCMint,
 			},
 		},
 		{

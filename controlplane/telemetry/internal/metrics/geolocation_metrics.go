@@ -22,8 +22,6 @@ const (
 	GeoProbeMetricLabelReason = "reason"
 
 	// GeoProbe agent error types.
-	GeoProbeErrorTypeParentDiscovery  = "parent_discovery"
-	GeoProbeErrorTypeTargetDiscovery  = "target_discovery"
 	GeoProbeErrorTypeMeasurementCycle = "measurement_cycle"
 	GeoProbeErrorTypeSlotFetch        = "slot_fetch"
 	GeoProbeErrorTypeSignOffset       = "sign_offset"
@@ -35,6 +33,14 @@ const (
 	GeoProbeRejectWrongAuthority   = "wrong_authority"
 	GeoProbeRejectInvalidSignature = "invalid_signature"
 )
+
+// geoProbeDiscoveryBuckets covers RPC-heavy discovery operations which commonly
+// take 1-30s depending on network conditions and validator load.
+var geoProbeDiscoveryBuckets = []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 15, 30, 60}
+
+// geoProbeMeasurementBuckets covers full measurement cycles which include TWAMP
+// probes across multiple targets and can take 30s+.
+var geoProbeMeasurementBuckets = []float64{0.5, 1, 2.5, 5, 10, 15, 30, 60, 120}
 
 var (
 	GeoProbeBuildInfo = promauto.NewGaugeVec(
@@ -55,22 +61,25 @@ var (
 
 	GeoProbeParentDiscoveryDuration = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Name: GeoProbeMetricNameParentDiscoveryDuration,
-			Help: "Duration of parent discovery ticks in seconds",
+			Name:    GeoProbeMetricNameParentDiscoveryDuration,
+			Help:    "Duration of parent discovery ticks in seconds",
+			Buckets: geoProbeDiscoveryBuckets,
 		},
 	)
 
 	GeoProbeTargetDiscoveryDuration = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Name: GeoProbeMetricNameTargetDiscoveryDuration,
-			Help: "Duration of target discovery ticks in seconds",
+			Name:    GeoProbeMetricNameTargetDiscoveryDuration,
+			Help:    "Duration of target discovery ticks in seconds",
+			Buckets: geoProbeDiscoveryBuckets,
 		},
 	)
 
 	GeoProbeMeasurementCycleDuration = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Name: GeoProbeMetricNameMeasurementCycleDuration,
-			Help: "Duration of a full measurement cycle in seconds",
+			Name:    GeoProbeMetricNameMeasurementCycleDuration,
+			Help:    "Duration of a full measurement cycle in seconds",
+			Buckets: geoProbeMeasurementBuckets,
 		},
 	)
 

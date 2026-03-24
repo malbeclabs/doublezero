@@ -24,6 +24,10 @@ service QAAgentService {
   rpc MulticastLeave(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc MulticastReport(MulticastReportRequest) returns (MulticastReportResult);
   rpc MulticastSend(MulticastSendRequest) returns (google.protobuf.Empty);
+  rpc FeedEnable(google.protobuf.Empty) returns (Result);
+  rpc FeedSeatPrice(FeedSeatPriceRequest) returns (FeedSeatPriceResponse);
+  rpc FeedSeatPay(FeedSeatPayRequest) returns (Result);
+  rpc FeedSeatWithdraw(FeedSeatWithdrawRequest) returns (Result);
 }
 
 message ConnectUnicastRequest {
@@ -202,4 +206,52 @@ message MulticastSendRequest {
   string group = 1;
   uint32 port = 2;
   uint32 duration = 3; // in seconds
+}
+
+message FeedSeatPayRequest {
+  string device_pubkey = 1;
+  string client_ip = 2;
+  string amount = 3;
+  bool instant = 4;
+  string solana_rpc_url = 5;
+  string reservation_program_id = 6;
+  string dz_ledger_url = 7;
+  string usdc_mint = 8;
+  string keypair = 9;
+}
+
+message FeedSeatWithdrawRequest {
+  string device_pubkey = 1;
+  string client_ip = 2;
+  bool instant = 3;
+  string solana_rpc_url = 4;
+  string reservation_program_id = 5;
+  string dz_ledger_url = 6;
+  string usdc_mint = 7;
+  string keypair = 8;
+}
+
+message FeedSeatPriceRequest {
+  string solana_rpc_url = 1;
+  string dz_ledger_url = 2;
+  string usdc_mint = 3;
+  string keypair = 4;
+  string reservation_program_id = 5;
+}
+
+message DevicePrice {
+  string device_code = 1;
+  string device_pubkey = 2;
+  string metro_code = 3;
+  string metro_name = 4;
+  string status = 5;
+  uint32 settled_seats = 6;
+  uint32 available_seats = 7;
+  uint64 base_price = 8;
+  uint64 premium = 9;
+  uint64 epoch_price = 10;
+}
+
+message FeedSeatPriceResponse {
+  repeated DevicePrice prices = 1;
 }

@@ -101,6 +101,15 @@ type Client struct {
 	// Exported as a simple configuration field (unlike publicIP which uses a setter
 	// because it has a non-nil invariant enforced by SetPublicIP).
 	ClientIP string
+
+	// Settlement config passed to doublezero-solana shreds commands.
+	// SolanaRPCURL is the Solana RPC endpoint for settlement transactions (--url).
+	// On testnet this is the DZ ledger URL; on mainnet it's the public Solana RPC.
+	SolanaRPCURL         string
+	ReservationProgramID string
+	DZLedgerURL          string
+	USDCMint             string
+	Keypair              string
 }
 
 func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int, networkConfig *config.NetworkConfig, devices map[string]*Device, allocateAddr bool) (*Client, error) {
@@ -125,6 +134,14 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 
 	serviceabilityClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
 
+	// Settlement transactions on testnet/devnet use the DZ ledger RPC endpoint
+	// (which hosts the settlement programs). Mainnet and localnet use the
+	// standard Solana RPC.
+	solanaRPCURL := networkConfig.SolanaRPCURL
+	if networkConfig.Moniker == config.EnvTestnet || networkConfig.Moniker == config.EnvDevnet {
+		solanaRPCURL = networkConfig.LedgerPublicRPCURL
+	}
+
 	return &Client{
 		log:            log,
 		grpcClient:     grpcClient,
@@ -133,8 +150,12 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 		serviceability: serviceabilityClient,
 		devices:        devices,
 
-		Host:         hostname,
-		AllocateAddr: allocateAddr,
+		Host:                 hostname,
+		AllocateAddr:         allocateAddr,
+		SolanaRPCURL:         solanaRPCURL,
+		ReservationProgramID: networkConfig.ReservationProgramID,
+		DZLedgerURL:          networkConfig.LedgerPublicRPCURL,
+		USDCMint:             networkConfig.USDCMint,
 	}, nil
 }
 

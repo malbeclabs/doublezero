@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -330,6 +331,175 @@ func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Resul
 		UserDisconnectDuration.Observe(duration.Seconds())
 	}
 
+	return res, nil
+}
+
+// FeedEnable implements the FeedEnable RPC, which enables the reconciler on doublezerod.
+// This is equivalent to running `doublezero enable`.
+func (q *QAAgent) FeedEnable(ctx context.Context, req *emptypb.Empty) (*pb.Result, error) {
+	q.log.Debug("Received FeedEnable request")
+	cmd := exec.CommandContext(ctx, "doublezero", "enable")
+	res, err := runCmd(cmd)
+	if err != nil {
+		q.log.Error("Failed to enable reconciler", "output", res.GetOutput())
+		return res, fmt.Errorf("failed to enable reconciler: %w", err)
+	}
+	q.log.Debug("Reconciler enabled", "output", res.GetOutput())
+	return res, nil
+}
+
+// FeedSeatPrice implements the FeedSeatPrice RPC, which queries device seat prices.
+// This executes `doublezero-solana shreds price --json` and parses the output.
+func (q *QAAgent) FeedSeatPrice(ctx context.Context, req *pb.FeedSeatPriceRequest) (*pb.FeedSeatPriceResponse, error) {
+	q.log.Debug("Received FeedSeatPrice request")
+
+	args := []string{"shreds"}
+	if req.GetDzLedgerUrl() != "" {
+		args = append(args, "--dz-ledger-url", req.GetDzLedgerUrl())
+	}
+	args = append(args, "price", "--json")
+	if req.GetSolanaRpcUrl() != "" {
+		args = append(args, "--url", req.GetSolanaRpcUrl())
+	}
+
+	cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(cmdCtx, "doublezero-solana", args...)
+	if req.GetReservationProgramId() != "" {
+		cmd.Env = append(cmd.Environ(), "RESERVATION_PROGRAM_ID="+req.GetReservationProgramId())
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		q.log.Error("Failed to get seat prices", "error", err, "output", string(out))
+		return nil, fmt.Errorf("failed to get seat prices: %w, output: %s", err, string(out))
+	}
+
+	var rawPrices []struct {
+		DeviceCode     string `json:"device_code"`
+		Device         string `json:"device"`
+		MetroCode      string `json:"metro_code"`
+		MetroName      string `json:"metro_name"`
+		Status         string `json:"status"`
+		SettledSeats   uint32 `json:"settled_seats"`
+		AvailableSeats uint32 `json:"available_seats"`
+		BasePrice      uint64 `json:"base_price"`
+		Premium        uint64 `json:"premium"`
+		EpochPrice     uint64 `json:"epoch_price"`
+	}
+	if err := json.Unmarshal(out, &rawPrices); err != nil {
+		q.log.Error("Failed to parse seat prices", "output", string(out), "error", err)
+		return nil, fmt.Errorf("failed to parse seat prices: %w", err)
+	}
+
+	prices := make([]*pb.DevicePrice, 0, len(rawPrices))
+	for _, p := range rawPrices {
+		prices = append(prices, &pb.DevicePrice{
+			DeviceCode:     p.DeviceCode,
+			DevicePubkey:   p.Device,
+			MetroCode:      p.MetroCode,
+			MetroName:      p.MetroName,
+			Status:         p.Status,
+			SettledSeats:   p.SettledSeats,
+			AvailableSeats: p.AvailableSeats,
+			BasePrice:      p.BasePrice,
+			Premium:        p.Premium,
+			EpochPrice:     p.EpochPrice,
+		})
+	}
+
+	q.log.Debug("Seat prices retrieved", "count", len(prices))
+	return &pb.FeedSeatPriceResponse{Prices: prices}, nil
+}
+
+// FeedSeatPay implements the FeedSeatPay RPC, which pays for a seat on a device.
+// This executes `doublezero-solana shreds pay` with the provided parameters.
+// Instant allocation is always the default in the CLI (--now was removed).
+// --accept-partial-epoch is hardcoded to prevent the interactive prompt from
+// hanging in non-interactive QA test runs.
+func (q *QAAgent) FeedSeatPay(ctx context.Context, req *pb.FeedSeatPayRequest) (*pb.Result, error) {
+	if req.GetDevicePubkey() == "" {
+		return nil, fmt.Errorf("device_pubkey is required")
+	}
+	if req.GetClientIp() == "" {
+		return nil, fmt.Errorf("client_ip is required")
+	}
+	if req.GetAmount() == "" {
+		return nil, fmt.Errorf("amount is required")
+	}
+	q.log.Debug("Received SeatPay request", "device", req.GetDevicePubkey(), "clientIP", req.GetClientIp(), "amount", req.GetAmount())
+
+	args := []string{"shreds"}
+	if req.GetDzLedgerUrl() != "" {
+		args = append(args, "--dz-ledger-url", req.GetDzLedgerUrl())
+	}
+	args = append(args, "pay", "--device", req.GetDevicePubkey(), "--client-ip", req.GetClientIp(), "--amount", req.GetAmount(), "--accept-partial-epoch")
+	if req.GetSolanaRpcUrl() != "" {
+		args = append(args, "--url", req.GetSolanaRpcUrl())
+	}
+	if req.GetUsdcMint() != "" {
+		args = append(args, "--usdc-mint", req.GetUsdcMint())
+	}
+	if req.GetKeypair() != "" {
+		args = append(args, "--keypair", os.ExpandEnv(req.GetKeypair()))
+	}
+
+	cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(cmdCtx, "doublezero-solana", args...)
+	if req.GetReservationProgramId() != "" {
+		cmd.Env = append(cmd.Environ(), "RESERVATION_PROGRAM_ID="+req.GetReservationProgramId())
+	}
+	res, err := runCmd(cmd)
+	if err != nil {
+		q.log.Error("Failed to pay for seat", "device", req.GetDevicePubkey(), "output", res.GetOutput())
+		return res, fmt.Errorf("failed to pay for seat on device %s: %w", req.GetDevicePubkey(), err)
+	}
+	q.log.Debug("Seat payment successful", "device", req.GetDevicePubkey(), "output", res.GetOutput())
+	return res, nil
+}
+
+// FeedSeatWithdraw implements the FeedSeatWithdraw RPC, which withdraws a seat from a device.
+// This executes `doublezero-solana shreds withdraw` with the provided parameters.
+// Instant withdrawal is always the default in the CLI (--unsafe-now was removed).
+func (q *QAAgent) FeedSeatWithdraw(ctx context.Context, req *pb.FeedSeatWithdrawRequest) (*pb.Result, error) {
+	if req.GetDevicePubkey() == "" {
+		return nil, fmt.Errorf("device_pubkey is required")
+	}
+	if req.GetClientIp() == "" {
+		return nil, fmt.Errorf("client_ip is required")
+	}
+	q.log.Debug("Received SeatWithdraw request", "device", req.GetDevicePubkey(), "clientIP", req.GetClientIp())
+
+	args := []string{"shreds"}
+	if req.GetDzLedgerUrl() != "" {
+		args = append(args, "--dz-ledger-url", req.GetDzLedgerUrl())
+	}
+	args = append(args, "withdraw", "--device", req.GetDevicePubkey(), "--client-ip", req.GetClientIp())
+	if req.GetSolanaRpcUrl() != "" {
+		args = append(args, "--url", req.GetSolanaRpcUrl())
+	}
+	if req.GetUsdcMint() != "" {
+		args = append(args, "--usdc-mint", req.GetUsdcMint())
+	}
+	if req.GetKeypair() != "" {
+		args = append(args, "--keypair", os.ExpandEnv(req.GetKeypair()))
+	}
+
+	cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(cmdCtx, "doublezero-solana", args...)
+	if req.GetReservationProgramId() != "" {
+		cmd.Env = append(cmd.Environ(), "RESERVATION_PROGRAM_ID="+req.GetReservationProgramId())
+	}
+	res, err := runCmd(cmd)
+	if err != nil {
+		q.log.Error("Failed to withdraw seat", "device", req.GetDevicePubkey(), "output", res.GetOutput())
+		return res, fmt.Errorf("failed to withdraw seat on device %s: %w", req.GetDevicePubkey(), err)
+	}
+	q.log.Debug("Seat withdrawal successful", "device", req.GetDevicePubkey(), "output", res.GetOutput())
 	return res, nil
 }
 

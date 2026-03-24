@@ -1,5 +1,6 @@
 pub mod list;
 pub mod pay;
+pub mod payments;
 pub mod price;
 pub mod withdraw;
 
@@ -40,6 +41,8 @@ pub enum ShredsSubcommand {
     Withdraw(withdraw::WithdrawCommand),
     /// List client seats.
     List(list::ListCommand),
+    /// Show payment history for a client seat escrow.
+    Payments(payments::PaymentsCommand),
     /// Show current device pricing.
     Price(price::PriceCommand),
 }
@@ -50,6 +53,7 @@ impl ShredsSubcommand {
             Self::Pay(command) => command.try_into_execute(dz_ledger_url).await,
             Self::Withdraw(command) => command.try_into_execute(dz_ledger_url).await,
             Self::List(command) => command.try_into_execute(dz_ledger_url).await,
+            Self::Payments(command) => command.try_into_execute(dz_ledger_url).await,
             Self::Price(command) => command.try_into_execute(dz_ledger_url).await,
         }
     }

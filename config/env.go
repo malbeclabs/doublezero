@@ -29,7 +29,7 @@ type NetworkConfig struct {
 	TelemetryStateIngestURL       string
 	TelemetryGNMITunnelServerAddr string
 	GeolocationProgramID          solana.PublicKey
-	ReservationProgramID          string
+	ShredSubscriptionProgramID          string
 	USDCMint                      string
 }
 
@@ -65,7 +65,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			RevenueDistributionProgramID:  revenueDistributionProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
-			ReservationProgramID:          MainnetReservationProgramID,
+			ShredSubscriptionProgramID:          MainnetShredSubscriptionProgramID,
 			USDCMint:                      MainnetUSDCMint,
 			DeviceLocalASN:                MainnetDeviceLocalASN,
 			TwoZOracleURL:                 MainnetTwoZOracleURL,
@@ -98,7 +98,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
-			ReservationProgramID:          TestnetReservationProgramID,
+			ShredSubscriptionProgramID:          TestnetShredSubscriptionProgramID,
 			USDCMint:                      TestnetUSDCMint,
 			DeviceLocalASN:                TestnetDeviceLocalASN,
 			TwoZOracleURL:                 TestnetTwoZOracleURL,
@@ -131,7 +131,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
-			ReservationProgramID:          DevnetReservationProgramID,
+			ShredSubscriptionProgramID:          DevnetShredSubscriptionProgramID,
 			USDCMint:                      DevnetUSDCMint,
 			DeviceLocalASN:                DevnetDeviceLocalASN,
 			TwoZOracleURL:                 DevnetTwoZOracleURL,
@@ -164,7 +164,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
-			ReservationProgramID:          LocalnetReservationProgramID,
+			ShredSubscriptionProgramID:          LocalnetShredSubscriptionProgramID,
 			USDCMint:                      LocalnetUSDCMint,
 			DeviceLocalASN:                LocalnetDeviceLocalASN,
 			TwoZOracleURL:                 LocalnetTwoZOracleURL,
@@ -178,10 +178,10 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 		return nil, fmt.Errorf("invalid environment %q, must be one of: %s, %s, %s", env, EnvMainnetBeta, EnvTestnet, EnvDevnet)
 	}
 
-	// Validate reservation program ID if set (empty means not yet deployed to this env).
-	if config.ReservationProgramID != "" {
-		if _, err := solana.PublicKeyFromBase58(config.ReservationProgramID); err != nil {
-			return nil, fmt.Errorf("failed to parse reservation program ID: %w", err)
+	// Validate shred subscription program ID if set (empty means not yet deployed to this env).
+	if config.ShredSubscriptionProgramID != "" {
+		if _, err := solana.PublicKeyFromBase58(config.ShredSubscriptionProgramID); err != nil {
+			return nil, fmt.Errorf("failed to parse shred subscription program ID: %w", err)
 		}
 	}
 

@@ -214,7 +214,7 @@ message FeedSeatPayRequest {
   string amount = 3;
   bool instant = 4;
   string solana_rpc_url = 5;
-  string reservation_program_id = 6;
+  string shred_subscription_program_id = 6;
   string dz_ledger_url = 7;
   string usdc_mint = 8;
   string keypair = 9;
@@ -225,7 +225,7 @@ message FeedSeatWithdrawRequest {
   string client_ip = 2;
   bool instant = 3;
   string solana_rpc_url = 4;
-  string reservation_program_id = 5;
+  string shred_subscription_program_id = 5;
   string dz_ledger_url = 6;
   string usdc_mint = 7;
   string keypair = 8;
@@ -236,7 +236,7 @@ message FeedSeatPriceRequest {
   string dz_ledger_url = 2;
   string usdc_mint = 3;
   string keypair = 4;
-  string reservation_program_id = 5;
+  string shred_subscription_program_id = 5;
 }
 
 message DevicePrice {

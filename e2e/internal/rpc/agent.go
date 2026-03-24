@@ -366,8 +366,8 @@ func (q *QAAgent) FeedSeatPrice(ctx context.Context, req *pb.FeedSeatPriceReques
 	defer cancel()
 
 	cmd := exec.CommandContext(cmdCtx, "doublezero-solana", args...)
-	if req.GetReservationProgramId() != "" {
-		cmd.Env = append(cmd.Environ(), "RESERVATION_PROGRAM_ID="+req.GetReservationProgramId())
+	if req.GetShredSubscriptionProgramId() != "" {
+		cmd.Env = append(cmd.Environ(), "SHRED_SUBSCRIPTION_PROGRAM_ID="+req.GetShredSubscriptionProgramId())
 	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -448,8 +448,8 @@ func (q *QAAgent) FeedSeatPay(ctx context.Context, req *pb.FeedSeatPayRequest) (
 	defer cancel()
 
 	cmd := exec.CommandContext(cmdCtx, "doublezero-solana", args...)
-	if req.GetReservationProgramId() != "" {
-		cmd.Env = append(cmd.Environ(), "RESERVATION_PROGRAM_ID="+req.GetReservationProgramId())
+	if req.GetShredSubscriptionProgramId() != "" {
+		cmd.Env = append(cmd.Environ(), "SHRED_SUBSCRIPTION_PROGRAM_ID="+req.GetShredSubscriptionProgramId())
 	}
 	res, err := runCmd(cmd)
 	if err != nil {
@@ -491,8 +491,8 @@ func (q *QAAgent) FeedSeatWithdraw(ctx context.Context, req *pb.FeedSeatWithdraw
 	defer cancel()
 
 	cmd := exec.CommandContext(cmdCtx, "doublezero-solana", args...)
-	if req.GetReservationProgramId() != "" {
-		cmd.Env = append(cmd.Environ(), "RESERVATION_PROGRAM_ID="+req.GetReservationProgramId())
+	if req.GetShredSubscriptionProgramId() != "" {
+		cmd.Env = append(cmd.Environ(), "SHRED_SUBSCRIPTION_PROGRAM_ID="+req.GetShredSubscriptionProgramId())
 	}
 	res, err := runCmd(cmd)
 	if err != nil {

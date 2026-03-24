@@ -64,7 +64,7 @@ func (c *Client) FeedSeatPrice(ctx context.Context) ([]*pb.DevicePrice, error) {
 		DzLedgerUrl:          c.DZLedgerURL,
 		UsdcMint:             c.USDCMint,
 		Keypair:              c.Keypair,
-		ReservationProgramId: c.ReservationProgramID,
+		ShredSubscriptionProgramId: c.ShredSubscriptionProgramID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get seat prices on host %s: %w", c.Host, err)
@@ -82,7 +82,7 @@ func (c *Client) FeedSeatPay(ctx context.Context, devicePubkey string, amount st
 		ClientIp:             c.publicIP.To4().String(),
 		Amount:               amount,
 		SolanaRpcUrl:         c.SolanaRPCURL,
-		ReservationProgramId: c.ReservationProgramID,
+		ShredSubscriptionProgramId: c.ShredSubscriptionProgramID,
 		DzLedgerUrl:          c.DZLedgerURL,
 		UsdcMint:             c.USDCMint,
 		Keypair:              c.Keypair,
@@ -106,7 +106,7 @@ func (c *Client) FeedSeatWithdraw(ctx context.Context, devicePubkey string) erro
 		DevicePubkey:         devicePubkey,
 		ClientIp:             c.publicIP.To4().String(),
 		SolanaRpcUrl:         c.SolanaRPCURL,
-		ReservationProgramId: c.ReservationProgramID,
+		ShredSubscriptionProgramId: c.ShredSubscriptionProgramID,
 		DzLedgerUrl:          c.DZLedgerURL,
 		UsdcMint:             c.USDCMint,
 		Keypair:              c.Keypair,

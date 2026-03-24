@@ -15,7 +15,7 @@ const (
 
 	MainnetRevenueDistributionProgramID = "dzrevZC94tBLwuHw1dyynZxaXTWyp7yocsinyEVPtt4"
 	MainnetGeolocationProgramID         = "8H7nS6eZiuf7rGQtz3PPz2q9m4eJRL37PPM678KHnspG"
-	MainnetReservationProgramID         = "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE"
+	MainnetShredSubscriptionProgramID   = "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE"
 	MainnetUSDCMint                     = "" // CLI defaults to real USDC on mainnet
 
 	// Testnet constants.
@@ -29,7 +29,7 @@ const (
 	TestnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.testnet.doublezero.xyz"
 	TestnetTelemetryStateIngestURL       = "http://telemetry-state-in.testnet.doublezero.xyz"
 	TestnetGeolocationProgramID          = "3AG2BCA7gAm47Q6xZzPQcUUYvnBjxAvPKnPz919cxHF4"
-	TestnetReservationProgramID          = "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE"
+	TestnetShredSubscriptionProgramID    = "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE"
 	TestnetUSDCMint                      = "uSDZq2RMuxrEf7gqgDjR8wJCtCyaDAQk2e5jLAaoeeM"
 	TestnetTelemetryGNMITunnelServerAddr = "gnmic-testnet.doublezero.xyz:443"
 
@@ -43,7 +43,7 @@ const (
 	DevnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.devnet.doublezero.xyz"
 	DevnetTelemetryStateIngestURL       = "http://telemetry-state-in.devnet.doublezero.xyz"
 	DevnetGeolocationProgramID          = "EXUUFfAjjuXnaBtsAMLsJX18ynnNHPwtkmk33bLVVoCm"
-	DevnetReservationProgramID          = "" // TODO: set when deployed to devnet
+	DevnetShredSubscriptionProgramID    = "" // TODO: set when deployed to devnet
 	DevnetUSDCMint                      = "" // TODO: set when deployed to devnet
 	DevnetTelemetryGNMITunnelServerAddr = "gnmic-devnet.doublezero.xyz:443"
 
@@ -58,7 +58,7 @@ const (
 	LocalnetTelemetryFlowIngestURL        = "http://localhost:8911"
 	LocalnetTelemetryStateIngestURL       = "http://localhost:8911"
 	LocalnetGeolocationProgramID          = "36WA9nUCsJaAQL5h44WYoLezDpocy8Q71NZbtrUN8DyC"
-	LocalnetReservationProgramID          = "" // TODO: set when deployed to localnet
+	LocalnetShredSubscriptionProgramID    = "" // TODO: set when deployed to localnet
 	LocalnetUSDCMint                      = "" // TODO: set when deployed to localnet
 	LocalnetTelemetryGNMITunnelServerAddr = "localhost:50051"
 )

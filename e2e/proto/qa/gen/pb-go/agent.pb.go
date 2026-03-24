@@ -1741,7 +1741,7 @@ type FeedSeatPayRequest struct {
 	Amount               string                 `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
 	Instant              bool                   `protobuf:"varint,4,opt,name=instant,proto3" json:"instant,omitempty"`
 	SolanaRpcUrl         string                 `protobuf:"bytes,5,opt,name=solana_rpc_url,json=solanaRpcUrl,proto3" json:"solana_rpc_url,omitempty"`
-	ReservationProgramId string                 `protobuf:"bytes,6,opt,name=reservation_program_id,json=reservationProgramId,proto3" json:"reservation_program_id,omitempty"`
+	ShredSubscriptionProgramId string                 `protobuf:"bytes,6,opt,name=shred_subscription_program_id,json=shredSubscriptionProgramId,proto3" json:"shred_subscription_program_id,omitempty"`
 	DzLedgerUrl          string                 `protobuf:"bytes,7,opt,name=dz_ledger_url,json=dzLedgerUrl,proto3" json:"dz_ledger_url,omitempty"`
 	UsdcMint             string                 `protobuf:"bytes,8,opt,name=usdc_mint,json=usdcMint,proto3" json:"usdc_mint,omitempty"`
 	Keypair              string                 `protobuf:"bytes,9,opt,name=keypair,proto3" json:"keypair,omitempty"`
@@ -1814,9 +1814,9 @@ func (x *FeedSeatPayRequest) GetSolanaRpcUrl() string {
 	return ""
 }
 
-func (x *FeedSeatPayRequest) GetReservationProgramId() string {
+func (x *FeedSeatPayRequest) GetShredSubscriptionProgramId() string {
 	if x != nil {
-		return x.ReservationProgramId
+		return x.ShredSubscriptionProgramId
 	}
 	return ""
 }
@@ -1848,7 +1848,7 @@ type FeedSeatWithdrawRequest struct {
 	ClientIp             string                 `protobuf:"bytes,2,opt,name=client_ip,json=clientIp,proto3" json:"client_ip,omitempty"`
 	Instant              bool                   `protobuf:"varint,3,opt,name=instant,proto3" json:"instant,omitempty"`
 	SolanaRpcUrl         string                 `protobuf:"bytes,4,opt,name=solana_rpc_url,json=solanaRpcUrl,proto3" json:"solana_rpc_url,omitempty"`
-	ReservationProgramId string                 `protobuf:"bytes,5,opt,name=reservation_program_id,json=reservationProgramId,proto3" json:"reservation_program_id,omitempty"`
+	ShredSubscriptionProgramId string                 `protobuf:"bytes,5,opt,name=shred_subscription_program_id,json=shredSubscriptionProgramId,proto3" json:"shred_subscription_program_id,omitempty"`
 	DzLedgerUrl          string                 `protobuf:"bytes,6,opt,name=dz_ledger_url,json=dzLedgerUrl,proto3" json:"dz_ledger_url,omitempty"`
 	UsdcMint             string                 `protobuf:"bytes,7,opt,name=usdc_mint,json=usdcMint,proto3" json:"usdc_mint,omitempty"`
 	Keypair              string                 `protobuf:"bytes,8,opt,name=keypair,proto3" json:"keypair,omitempty"`
@@ -1914,9 +1914,9 @@ func (x *FeedSeatWithdrawRequest) GetSolanaRpcUrl() string {
 	return ""
 }
 
-func (x *FeedSeatWithdrawRequest) GetReservationProgramId() string {
+func (x *FeedSeatWithdrawRequest) GetShredSubscriptionProgramId() string {
 	if x != nil {
-		return x.ReservationProgramId
+		return x.ShredSubscriptionProgramId
 	}
 	return ""
 }
@@ -1948,7 +1948,7 @@ type FeedSeatPriceRequest struct {
 	DzLedgerUrl          string                 `protobuf:"bytes,2,opt,name=dz_ledger_url,json=dzLedgerUrl,proto3" json:"dz_ledger_url,omitempty"`
 	UsdcMint             string                 `protobuf:"bytes,3,opt,name=usdc_mint,json=usdcMint,proto3" json:"usdc_mint,omitempty"`
 	Keypair              string                 `protobuf:"bytes,4,opt,name=keypair,proto3" json:"keypair,omitempty"`
-	ReservationProgramId string                 `protobuf:"bytes,5,opt,name=reservation_program_id,json=reservationProgramId,proto3" json:"reservation_program_id,omitempty"`
+	ShredSubscriptionProgramId string                 `protobuf:"bytes,5,opt,name=shred_subscription_program_id,json=shredSubscriptionProgramId,proto3" json:"shred_subscription_program_id,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -2011,9 +2011,9 @@ func (x *FeedSeatPriceRequest) GetKeypair() string {
 	return ""
 }
 
-func (x *FeedSeatPriceRequest) GetReservationProgramId() string {
+func (x *FeedSeatPriceRequest) GetShredSubscriptionProgramId() string {
 	if x != nil {
-		return x.ReservationProgramId
+		return x.ShredSubscriptionProgramId
 	}
 	return ""
 }
@@ -2316,7 +2316,7 @@ const file_agent_proto_rawDesc = "" +
 	"\x06amount\x18\x03 \x01(\tR\x06amount\x12\x18\n" +
 	"\ainstant\x18\x04 \x01(\bR\ainstant\x12$\n" +
 	"\x0esolana_rpc_url\x18\x05 \x01(\tR\fsolanaRpcUrl\x124\n" +
-	"\x16reservation_program_id\x18\x06 \x01(\tR\x14reservationProgramId\x12\"\n" +
+	"\x16shred_subscription_program_id\x18\x06 \x01(\tR\x14shredSubscriptionProgramId\x12\"\n" +
 	"\rdz_ledger_url\x18\a \x01(\tR\vdzLedgerUrl\x12\x1b\n" +
 	"\tusdc_mint\x18\b \x01(\tR\busdcMint\x12\x18\n" +
 	"\akeypair\x18\t \x01(\tR\akeypair\"\xac\x02\n" +
@@ -2325,7 +2325,7 @@ const file_agent_proto_rawDesc = "" +
 	"\tclient_ip\x18\x02 \x01(\tR\bclientIp\x12\x18\n" +
 	"\ainstant\x18\x03 \x01(\bR\ainstant\x12$\n" +
 	"\x0esolana_rpc_url\x18\x04 \x01(\tR\fsolanaRpcUrl\x124\n" +
-	"\x16reservation_program_id\x18\x05 \x01(\tR\x14reservationProgramId\x12\"\n" +
+	"\x16shred_subscription_program_id\x18\x05 \x01(\tR\x14shredSubscriptionProgramId\x12\"\n" +
 	"\rdz_ledger_url\x18\x06 \x01(\tR\vdzLedgerUrl\x12\x1b\n" +
 	"\tusdc_mint\x18\a \x01(\tR\busdcMint\x12\x18\n" +
 	"\akeypair\x18\b \x01(\tR\akeypair\"\xcd\x01\n" +
@@ -2334,7 +2334,7 @@ const file_agent_proto_rawDesc = "" +
 	"\rdz_ledger_url\x18\x02 \x01(\tR\vdzLedgerUrl\x12\x1b\n" +
 	"\tusdc_mint\x18\x03 \x01(\tR\busdcMint\x12\x18\n" +
 	"\akeypair\x18\x04 \x01(\tR\akeypair\x124\n" +
-	"\x16reservation_program_id\x18\x05 \x01(\tR\x14reservationProgramId\"\xd1\x02\n" +
+	"\x16shred_subscription_program_id\x18\x05 \x01(\tR\x14shredSubscriptionProgramId\"\xd1\x02\n" +
 	"\vDevicePrice\x12\x1f\n" +
 	"\vdevice_code\x18\x01 \x01(\tR\n" +
 	"deviceCode\x12#\n" +

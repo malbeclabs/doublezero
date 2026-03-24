@@ -106,7 +106,7 @@ type Client struct {
 	// SolanaRPCURL is the Solana RPC endpoint for settlement transactions (--url).
 	// On testnet this is the DZ ledger URL; on mainnet it's the public Solana RPC.
 	SolanaRPCURL         string
-	ReservationProgramID string
+	ShredSubscriptionProgramID string
 	DZLedgerURL          string
 	USDCMint             string
 	Keypair              string
@@ -153,7 +153,7 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 		Host:                 hostname,
 		AllocateAddr:         allocateAddr,
 		SolanaRPCURL:         solanaRPCURL,
-		ReservationProgramID: networkConfig.ReservationProgramID,
+		ShredSubscriptionProgramID: networkConfig.ShredSubscriptionProgramID,
 		DZLedgerURL:          networkConfig.LedgerPublicRPCURL,
 		USDCMint:             networkConfig.USDCMint,
 	}, nil

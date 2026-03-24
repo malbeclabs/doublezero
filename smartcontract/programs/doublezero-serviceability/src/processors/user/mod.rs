@@ -9,4 +9,5 @@ pub mod delete;
 pub mod reject;
 pub mod requestban;
 pub mod resource_onchain_helpers;
+pub mod transfer_ownership;
 pub mod update;

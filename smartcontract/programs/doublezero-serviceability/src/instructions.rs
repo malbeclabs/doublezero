@@ -83,7 +83,8 @@ use crate::processors::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
         closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
         create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs, reject::UserRejectArgs,
-        requestban::UserRequestBanArgs, update::UserUpdateArgs,
+        requestban::UserRequestBanArgs, transfer_ownership::TransferUserOwnershipArgs,
+        update::UserUpdateArgs,
     },
 };
 use borsh::BorshSerialize;
@@ -218,6 +219,8 @@ pub enum DoubleZeroInstruction {
 
     Deprecated102(), // variant 102 (was CreateReservedSubscribeUser)
     Deprecated103(), // variant 103 (was DeleteReservedSubscribeUser)
+
+    TransferUserOwnership(TransferUserOwnershipArgs), // variant 104
 }
 
 impl DoubleZeroInstruction {
@@ -349,6 +352,7 @@ impl DoubleZeroInstruction {
             100 => Ok(Self::ResumePermission(PermissionResumeArgs::try_from(rest).unwrap())),
             101 => Ok(Self::DeletePermission(PermissionDeleteArgs::try_from(rest).unwrap())),
 
+            104 => Ok(Self::TransferUserOwnership(TransferUserOwnershipArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -483,6 +487,8 @@ impl DoubleZeroInstruction {
 
             Self::Deprecated102() => "Deprecated102".to_string(),
             Self::Deprecated103() => "Deprecated103".to_string(),
+
+            Self::TransferUserOwnership(_) => "TransferUserOwnership".to_string(), // variant 104
         }
     }
 
@@ -609,6 +615,8 @@ impl DoubleZeroInstruction {
 
             Self::Deprecated102() => String::new(),
             Self::Deprecated103() => String::new(),
+
+            Self::TransferUserOwnership(args) => format!("{args:?}"), // variant 104
         }
     }
 }
@@ -1297,6 +1305,10 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::DeletePermission(PermissionDeleteArgs {}),
             "DeletePermission",
+        );
+        test_instruction(
+            DoubleZeroInstruction::TransferUserOwnership(TransferUserOwnershipArgs {}),
+            "TransferUserOwnership",
         );
     }
 }

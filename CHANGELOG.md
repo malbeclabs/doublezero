@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.14.0](https://github.com/malbeclabs/doublezero/compare/client/v0.13.0...client/v0.14.0) - 2026-03-24
+
+### Breaking
+
+### Changes
+
 - Controller
   - Log an error when duplicate tunnel-id assignments are detected on the same device during state cache update, instead of silently overwriting
 - Onchain Programs

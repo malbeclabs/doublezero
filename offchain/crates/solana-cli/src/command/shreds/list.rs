@@ -202,10 +202,9 @@ impl ListCommand {
                 let balance = escrow_balances.get(seat_key).copied().unwrap_or(0);
                 let escrow_usdc = format!("{:.2}", balance as f64 / 1_000_000.0);
                 let price = device_prices.get(device_key).copied().unwrap_or(0);
-                // balance is micro-USDC (1 USDC = 1_000_000), price is centi-USDC
-                // (1 USDC = 100); divide balance by 10_000 to align units.
+                // balance is micro-USDC (1 USDC = 1_000_000), price is whole USDC.
                 let est_epochs_paid = if price > 0 {
-                    format!("~{}", balance / 10_000 / price)
+                    format!("~{}", balance / (price * 1_000_000))
                 } else {
                     "N/A".to_string()
                 };
@@ -236,7 +235,7 @@ impl ListCommand {
     }
 }
 
-/// Fetch the current epoch price (base + premium, in micro-USDC) for each device.
+/// Fetch the current epoch price (base + premium, in whole USDC) for each device.
 async fn fetch_device_prices(
     connection: &SolanaConnection,
     device_keys: &[Pubkey],

@@ -16,7 +16,11 @@ use doublezero_solana_sdk::{
         types::DoubleZeroEpoch,
     },
     sol_conversion::{
-        ID as SOL_CONVERSION_PROGRAM_ID, state::ProgramState as SolConversionProgramState,
+        ID as SOL_CONVERSION_PROGRAM_ID,
+        state::{
+            ConfigurationRegistry as SolConversionConfigurationRegistry, Fill, FillsRegistry,
+            MAX_FILLS_QUEUE_SIZE, ProgramState as SolConversionProgramState,
+        },
     },
     zero_copy,
 };
@@ -345,6 +349,12 @@ async fn try_fetch_and_write_accounts(
         )?;
         tracing::info!("Updated Passport config authorities");
 
+        let (_, sol_conversion_state) = try_read_borsh_account::<SolConversionProgramState>(
+            &SolConversionProgramState::find_address().0,
+            TMP_ACCOUNTS_PATH,
+        )?;
+        let fills_registry_key = sol_conversion_state.fills_registry_key;
+
         try_modify_borsh_account::<SolConversionProgramState>(
             &SolConversionProgramState::find_address().0,
             TMP_ACCOUNTS_PATH,
@@ -355,6 +365,41 @@ async fn try_fetch_and_write_accounts(
             },
         )?;
         tracing::info!("Updated SOL Conversion config authorities");
+
+        let (journal_key, _) = Journal::find_address();
+        try_modify_zero_copy_account::<Journal, _>(&journal_key, TMP_ACCOUNTS_PATH, |journal| {
+            journal.swapped_sol_amount = journal.swapped_sol_amount.saturating_mul(10);
+        })?;
+        tracing::info!("Updated Journal swapped SOL amount");
+
+        // Fill the fills registry with synthetic fills so that sweeps have
+        // enough SOL to cover the debt across multiple epochs.
+        let (_, configuration_registry) =
+            try_read_borsh_account::<SolConversionConfigurationRegistry>(
+                &SolConversionConfigurationRegistry::find_address().0,
+                TMP_ACCOUNTS_PATH,
+            )?;
+        let fixed_fill_quantity = configuration_registry.fixed_fill_quantity;
+
+        try_modify_zero_copy_account::<FillsRegistry, _>(
+            &fills_registry_key,
+            TMP_ACCOUNTS_PATH,
+            |registry| {
+                let fill_count = MAX_FILLS_QUEUE_SIZE as usize;
+                for i in 0..fill_count {
+                    registry.fills[i] = Fill {
+                        amount_sol_in: fixed_fill_quantity,
+                        amount_2z_out: fixed_fill_quantity, // Arbitrary 2Z amount.
+                    };
+                }
+                registry.head = 0;
+                registry.tail = 0;
+                registry.count = fill_count as u64;
+                registry.total_sol_pending = fixed_fill_quantity * fill_count as u64;
+                registry.total_2z_pending = fixed_fill_quantity * fill_count as u64;
+            },
+        )?;
+        tracing::info!("Filled FillsRegistry with {MAX_FILLS_QUEUE_SIZE} synthetic fills");
 
         // Override mint authority.
 

@@ -14,13 +14,13 @@ import (
 )
 
 var (
-	enableSettlementTests = flag.Bool("enable-settlement-tests", false, "enable multicast settlement tests")
+	enableSettlementTests = flag.Bool("enable-multicast-settlement-tests", false, "enable multicast settlement tests")
 	keypairFlag           = flag.String("keypair", "$HOME/.config/doublezero/id.json", "path to keypair file for settlement commands")
 )
 
 func TestQA_MulticastSettlement(t *testing.T) {
 	if !*enableSettlementTests {
-		t.Skip("Skipping: --enable-settlement-tests flag not set")
+		t.Skip("Skipping: --enable-multicast-settlement-tests flag not set")
 	}
 
 	log := newTestLogger(t)

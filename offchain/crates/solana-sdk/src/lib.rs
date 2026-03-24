@@ -1,6 +1,6 @@
 pub mod passport;
-pub mod reservation;
 pub mod revenue_distribution;
+pub mod shred_subscription;
 
 //
 

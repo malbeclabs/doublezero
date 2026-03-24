@@ -4,10 +4,10 @@ use anyhow::Result;
 use clap::Args;
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
 use doublezero_solana_sdk::{
-    reservation::{
+    shred_subscription::{
         ID,
         instruction::{
-            ReservationInstructionData,
+            ShredSubscriptionInstructionData,
             account::{ClosePaymentEscrowAccounts, RequestInstantSeatWithdrawalAccounts},
         },
         state,
@@ -17,7 +17,7 @@ use doublezero_solana_sdk::{
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
 
 /*
-   doublezero-solana reservation withdraw \
+   doublezero-solana shreds withdraw \
        --device <PUBKEY> | --device-code <CODE> \
        --client-ip <IP> [--usdc-mint <PUBKEY>] [--refund-token-account <PUBKEY>]
 */
@@ -44,7 +44,7 @@ impl WithdrawCommand {
         let wallet = Wallet::try_from(self.solana_payer_options)?;
         let wallet_key = wallet.pubkey();
 
-        println!("Reservation - Withdraw (Close Payment Escrow)");
+        println!("Shred subscription - Withdraw (Close Payment Escrow)");
 
         let network_env = wallet.connection.try_network_environment().await?;
         println!("Connected to Solana: {network_env:?}");
@@ -67,7 +67,7 @@ impl WithdrawCommand {
         instructions.push(try_build_instruction(
             &ID,
             RequestInstantSeatWithdrawalAccounts::new(&device, client_ip_bits, &wallet_key),
-            &ReservationInstructionData::RequestInstantSeatWithdrawal,
+            &ShredSubscriptionInstructionData::RequestInstantSeatWithdrawal,
         )?);
         compute_unit_limit += 50_000;
 
@@ -81,7 +81,7 @@ impl WithdrawCommand {
                     &usdc_mint_key,
                     self.refund_token_account.as_ref(),
                 ),
-                &ReservationInstructionData::ClosePaymentEscrow,
+                &ShredSubscriptionInstructionData::ClosePaymentEscrow,
             )?);
         }
 

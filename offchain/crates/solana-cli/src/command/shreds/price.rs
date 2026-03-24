@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::Args;
 use doublezero_serviceability::state::{device::Device, exchange::Exchange};
 use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
-use doublezero_solana_sdk::reservation::{self, state};
+use doublezero_solana_sdk::shred_subscription::{self, state};
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
     rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
@@ -19,7 +19,7 @@ use tabled::{
 use super::make_dz_connection;
 
 /*
-   doublezero-solana reservation price [--device <PUBKEY> | --device-code <CODE> | --metro <PUBKEY>]
+   doublezero-solana shreds price [--device <PUBKEY> | --device-code <CODE> | --metro <PUBKEY>]
 */
 
 #[derive(Debug, Args)]
@@ -91,7 +91,7 @@ impl PriceCommand {
         };
 
         let metro_accounts: Vec<(Pubkey, Account)> = connection
-            .get_program_accounts_with_config(&reservation::ID, metro_config)
+            .get_program_accounts_with_config(&shred_subscription::ID, metro_config)
             .await?;
 
         let metro_map: HashMap<Pubkey, state::MetroHistoryInfo> = metro_accounts
@@ -138,7 +138,7 @@ impl PriceCommand {
         };
 
         let device_accounts: Vec<(Pubkey, Account)> = connection
-            .get_program_accounts_with_config(&reservation::ID, device_config)
+            .get_program_accounts_with_config(&shred_subscription::ID, device_config)
             .await?;
 
         if device_accounts.is_empty() {

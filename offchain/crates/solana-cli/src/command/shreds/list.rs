@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::Args;
 use doublezero_serviceability::state::device::Device;
 use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
-use doublezero_solana_sdk::reservation::{self, state};
+use doublezero_solana_sdk::shred_subscription::{self, state};
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
     rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
@@ -16,7 +16,7 @@ use tabled::{Table, Tabled, settings::Style};
 use super::make_dz_connection;
 
 /*
-   doublezero-solana reservation list [--device <PUBKEY> | --device-code <CODE>]
+   doublezero-solana shred-subscription list [--device <PUBKEY> | --device-code <CODE>]
 */
 
 #[derive(Debug, Args)]
@@ -94,7 +94,7 @@ impl ListCommand {
         };
 
         let accounts: Vec<(Pubkey, Account)> = connection
-            .get_program_accounts_with_config(&reservation::ID, config)
+            .get_program_accounts_with_config(&shred_subscription::ID, config)
             .await?;
 
         if accounts.is_empty() {
@@ -147,7 +147,7 @@ impl ListCommand {
                 ..Default::default()
             };
             let escrow_accounts: Vec<(Pubkey, Account)> = connection
-                .get_program_accounts_with_config(&reservation::ID, escrow_config)
+                .get_program_accounts_with_config(&shred_subscription::ID, escrow_config)
                 .await?;
 
             let mut balances: HashMap<Pubkey, u64> = HashMap::new();

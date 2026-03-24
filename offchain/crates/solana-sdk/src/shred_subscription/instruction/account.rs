@@ -1,7 +1,7 @@
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
 use spl_associated_token_account_interface::address::get_associated_token_address;
 
-use crate::reservation::state;
+use crate::shred_subscription::state;
 
 /// Accounts for the `InitializeClientSeat` instruction (6 accounts).
 #[derive(Debug, Clone, PartialEq, Eq)]

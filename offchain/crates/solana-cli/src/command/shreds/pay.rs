@@ -5,10 +5,10 @@ use clap::Args;
 use doublezero_serviceability::{pda::get_user_pda, state::user::UserType};
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
 use doublezero_solana_sdk::{
-    reservation::{
+    shred_subscription::{
         ID,
         instruction::{
-            ReservationInstructionData,
+            ShredSubscriptionInstructionData,
             account::{
                 FundPaymentEscrowUsdcAccounts, InitializeClientSeatAccounts,
                 InitializePaymentEscrowAccounts, RequestInstantSeatAllocationAccounts,
@@ -86,7 +86,7 @@ fn epoch_warning_prompt(input: &EpochWarningInput) -> Option<String> {
 }
 
 /*
-   doublezero-solana reservation pay \
+   doublezero-solana shreds pay \
        --device <PUBKEY> | --device-code <CODE> \
        --client-ip <IP> --amount <USDC_DECIMAL>
 */
@@ -120,7 +120,7 @@ impl PayCommand {
         let wallet = Wallet::try_from(self.solana_payer_options)?;
         let wallet_key = wallet.pubkey();
 
-        println!("Reservation - Pay");
+        println!("Shred subscription - Pay");
 
         let network_env = wallet.connection.try_network_environment().await?;
         println!("Connected to Solana: {network_env:?}");
@@ -248,7 +248,7 @@ impl PayCommand {
             let seat_ix = try_build_instruction(
                 &ID,
                 InitializeClientSeatAccounts::new(&wallet_key, &device, client_ip_bits),
-                &ReservationInstructionData::InitializeClientSeat {
+                &ShredSubscriptionInstructionData::InitializeClientSeat {
                     client_ip: client_ip_bits,
                 },
             )?;
@@ -260,7 +260,7 @@ impl PayCommand {
             let escrow_ix = try_build_instruction(
                 &ID,
                 InitializePaymentEscrowAccounts::new(&client_seat_key, &wallet_key),
-                &ReservationInstructionData::InitializePaymentEscrow,
+                &ShredSubscriptionInstructionData::InitializePaymentEscrow,
             )?;
             instructions.push(escrow_ix);
             compute_unit_limit += 50_000 + Wallet::compute_units_for_bump_seed(escrow_bump);
@@ -281,7 +281,7 @@ impl PayCommand {
                 &source_usdc_token_account,
                 &wallet_key,
             ),
-            &ReservationInstructionData::FundPaymentEscrowUsdc(amount_micro),
+            &ShredSubscriptionInstructionData::FundPaymentEscrowUsdc(amount_micro),
         )?;
         instructions.push(fund_ix);
         compute_unit_limit += 50_000;
@@ -296,7 +296,7 @@ impl PayCommand {
                     &wallet_key,
                     &wallet_key,
                 ),
-                &ReservationInstructionData::RequestInstantSeatAllocation,
+                &ShredSubscriptionInstructionData::RequestInstantSeatAllocation,
             )?;
             instructions.push(request_ix);
             compute_unit_limit += 50_000;

@@ -1,6 +1,6 @@
 
 /target
-programs/mock-reservation-program/target
+programs/mock-shred-history-program/target
 
 # IDE
 .vscode

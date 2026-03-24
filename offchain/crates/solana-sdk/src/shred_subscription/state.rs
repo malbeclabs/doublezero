@@ -19,24 +19,30 @@ const DEFAULT_USDC_MINT_KEY: Pubkey =
 
 /// USDC mint address.
 pub static USDC_MINT_KEY: LazyLock<Pubkey> = LazyLock::new(|| {
-    std::env::var("RESERVATION_USDC_MINT")
+    std::env::var("SHRED_SUBSCRIPTION_USDC_MINT")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(DEFAULT_USDC_MINT_KEY)
 });
 
 pub fn find_program_config_address() -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[PROGRAM_CONFIG_SEED_PREFIX], &crate::reservation::ID)
+    Pubkey::find_program_address(
+        &[PROGRAM_CONFIG_SEED_PREFIX],
+        &crate::shred_subscription::ID,
+    )
 }
 
 pub fn find_execution_controller_address() -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[EXECUTION_CONTROLLER_SEED_PREFIX], &crate::reservation::ID)
+    Pubkey::find_program_address(
+        &[EXECUTION_CONTROLLER_SEED_PREFIX],
+        &crate::shred_subscription::ID,
+    )
 }
 
 pub fn find_device_history_address(device_key: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[DEVICE_HISTORY_SEED_PREFIX, device_key.as_ref()],
-        &crate::reservation::ID,
+        &crate::shred_subscription::ID,
     )
 }
 
@@ -47,14 +53,14 @@ pub fn find_client_seat_address(device_key: &Pubkey, client_ip_bits: u32) -> (Pu
             device_key.as_ref(),
             &client_ip_bits.to_le_bytes(),
         ],
-        &crate::reservation::ID,
+        &crate::shred_subscription::ID,
     )
 }
 
 pub fn find_metro_history_address(exchange_key: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[METRO_HISTORY_SEED_PREFIX, exchange_key.as_ref()],
-        &crate::reservation::ID,
+        &crate::shred_subscription::ID,
     )
 }
 
@@ -65,7 +71,7 @@ pub fn find_token_pda_address(token_owner_key: &Pubkey, mint_key: &Pubkey) -> (P
             token_owner_key.as_ref(),
             mint_key.as_ref(),
         ],
-        &crate::reservation::ID,
+        &crate::shred_subscription::ID,
     )
 }
 
@@ -79,14 +85,14 @@ pub fn find_instant_allocation_request_address(
             device_key.as_ref(),
             &client_ip_bits.to_le_bytes(),
         ],
-        &crate::reservation::ID,
+        &crate::shred_subscription::ID,
     )
 }
 
 pub fn find_withdraw_seat_request_address(client_seat_key: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[WITHDRAW_SEAT_REQUEST_SEED_PREFIX, client_seat_key.as_ref()],
-        &crate::reservation::ID,
+        &crate::shred_subscription::ID,
     )
 }
 
@@ -100,7 +106,7 @@ pub fn find_payment_escrow_address(
             client_seat_key.as_ref(),
             withdraw_authority_key.as_ref(),
         ],
-        &crate::reservation::ID,
+        &crate::shred_subscription::ID,
     )
 }
 

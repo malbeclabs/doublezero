@@ -16,7 +16,7 @@ pub enum DoubleZeroSolanaCommand {
     /// Revenue distribution program commands.
     RevenueDistribution(revenue_distribution::RevenueDistributionCommand),
 
-    /// Shreds reservation program commands (experimental).
+    /// Shred subscription program commands (experimental).
     #[cfg(feature = "experimental")]
     Shreds(shreds::ShredsCommand),
 }

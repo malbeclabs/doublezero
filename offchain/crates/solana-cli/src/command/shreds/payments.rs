@@ -4,7 +4,9 @@ use anyhow::Result;
 use borsh::BorshDeserialize;
 use clap::Args;
 use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
-use doublezero_solana_sdk::reservation::{self, instruction::ReservationInstructionData, state};
+use doublezero_solana_sdk::shred_subscription::{
+    self as shred_subscription, instruction::ShredSubscriptionInstructionData, state,
+};
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
     rpc_client::GetConfirmedSignaturesForAddress2Config,
@@ -112,7 +114,7 @@ impl PaymentsCommand {
         };
 
         let escrow_accounts: Vec<(Pubkey, Account)> = connection
-            .get_program_accounts_with_config(&reservation::ID, config)
+            .get_program_accounts_with_config(&shred_subscription::ID, config)
             .await?;
 
         if escrow_accounts.is_empty() {
@@ -168,7 +170,7 @@ impl PaymentsCommand {
                         .copied()
                         .unwrap_or_default();
 
-                    if program_id != *reservation::ID {
+                    if program_id != *shred_subscription::ID {
                         continue;
                     }
 
@@ -184,8 +186,8 @@ impl PaymentsCommand {
                         continue;
                     }
 
-                    match ReservationInstructionData::try_from_slice(&ix.data) {
-                        Ok(ReservationInstructionData::FundPaymentEscrowUsdc(amount)) => {
+                    match ShredSubscriptionInstructionData::try_from_slice(&ix.data) {
+                        Ok(ShredSubscriptionInstructionData::FundPaymentEscrowUsdc(amount)) => {
                             events.push(PaymentEvent {
                                 event_type: EventType::Funded,
                                 amount_micro: amount as i64,
@@ -198,14 +200,14 @@ impl PaymentsCommand {
                         // to get the negative amount. Without it, we can't derive
                         // the correct withdrawal amount from the running balance
                         // alone because oracle debits are not yet tracked.
-                        Ok(ReservationInstructionData::ClosePaymentEscrow) => {}
+                        Ok(ShredSubscriptionInstructionData::ClosePaymentEscrow) => {}
                         // These instructions touch the escrow account but don't
                         // move funds — they appear in the same tx as fund/close.
                         Ok(
-                            ReservationInstructionData::InitializePaymentEscrow
-                            | ReservationInstructionData::InitializeClientSeat { .. }
-                            | ReservationInstructionData::RequestInstantSeatAllocation
-                            | ReservationInstructionData::RequestInstantSeatWithdrawal,
+                            ShredSubscriptionInstructionData::InitializePaymentEscrow
+                            | ShredSubscriptionInstructionData::InitializeClientSeat { .. }
+                            | ShredSubscriptionInstructionData::RequestInstantSeatAllocation
+                            | ShredSubscriptionInstructionData::RequestInstantSeatWithdrawal,
                         ) => {}
                         // TODO: oracle instructions (BatchAllocateSeats,
                         // InstantAllocateSeat) debit the escrow. Their

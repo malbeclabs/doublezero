@@ -6,7 +6,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_tools::{DISCRIMINATOR_LEN, Discriminator};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ReservationInstructionData {
+pub enum ShredSubscriptionInstructionData {
     /// Initialize a client seat for a (device, client_ip) pair.
     InitializeClientSeat { client_ip: u32 },
     /// Initialize a payment escrow for a (seat, withdraw_authority) pair.
@@ -21,7 +21,7 @@ pub enum ReservationInstructionData {
     RequestInstantSeatWithdrawal,
 }
 
-impl ReservationInstructionData {
+impl ShredSubscriptionInstructionData {
     pub const INITIALIZE_CLIENT_SEAT: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::initialize_client_seat");
     pub const INITIALIZE_PAYMENT_ESCROW: Discriminator<DISCRIMINATOR_LEN> =
@@ -36,7 +36,7 @@ impl ReservationInstructionData {
         Discriminator::new_sha2(b"dz::ix::request_instant_seat_withdrawal");
 }
 
-impl BorshSerialize for ReservationInstructionData {
+impl BorshSerialize for ShredSubscriptionInstructionData {
     fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         match self {
             Self::InitializeClientSeat { client_ip } => {
@@ -59,7 +59,7 @@ impl BorshSerialize for ReservationInstructionData {
     }
 }
 
-impl BorshDeserialize for ReservationInstructionData {
+impl BorshDeserialize for ShredSubscriptionInstructionData {
     fn deserialize_reader<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         match Discriminator::deserialize_reader(reader)? {
             Self::INITIALIZE_CLIENT_SEAT => {

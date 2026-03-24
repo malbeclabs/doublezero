@@ -16,8 +16,15 @@ use doublezero_cli::{
 };
 
 use doublezero_sdk::{
-    commands::user::{delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand},
-    UserType,
+    commands::{
+        accesspass::get::GetAccessPassCommand,
+        globalstate::get::GetGlobalStateCommand,
+        user::{
+            delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand,
+            transfer_ownership::TransferUserOwnershipCommand,
+        },
+    },
+    User, UserType,
 };
 
 #[allow(clippy::upper_case_acronyms)]
@@ -80,6 +87,10 @@ impl DecommissioningCliCommand {
             }
 
             spinner.inc(1);
+
+            // Transfer ownership if needed before deleting
+            self.maybe_transfer_user_ownership(client, pubkey, user, &client_ip, &spinner)?;
+
             println!("🔍  Deleting User Account for: {pubkey}");
             let res = client.delete_user(DeleteUserCommand { pubkey: *pubkey });
             match res {
@@ -167,6 +178,54 @@ impl DecommissioningCliCommand {
         }
 
         eyre::bail!("timed out waiting for daemon to remove tunnel")
+    }
+
+    /// If the user is currently owned by the feed authority and an access pass exists
+    /// for the client's payer, transfer ownership so the delete instruction can succeed.
+    fn maybe_transfer_user_ownership(
+        &self,
+        client: &dyn CliCommand,
+        user_pubkey: &Pubkey,
+        user: &User,
+        client_ip: &std::net::Ipv4Addr,
+        spinner: &ProgressBar,
+    ) -> eyre::Result<()> {
+        let payer = client.get_payer();
+
+        if user.owner == payer {
+            return Ok(());
+        }
+
+        let (_, globalstate) = client.get_globalstate(GetGlobalStateCommand)?;
+        if user.owner != globalstate.feed_authority_pk {
+            return Ok(());
+        }
+
+        let has_accesspass = client
+            .get_accesspass(GetAccessPassCommand {
+                client_ip: *client_ip,
+                user_payer: payer,
+            })?
+            .is_some();
+
+        if !has_accesspass {
+            return Ok(());
+        }
+
+        spinner.println(format!(
+            "    Transferring user ownership from feed authority to {}",
+            payer
+        ));
+
+        client.transfer_user_ownership(TransferUserOwnershipCommand {
+            user_pubkey: *user_pubkey,
+            client_ip: *client_ip,
+            old_user_payer: globalstate.feed_authority_pk,
+            new_user_payer: payer,
+        })?;
+
+        spinner.println("    Ownership transferred successfully");
+        Ok(())
     }
 
     fn poll_for_user_closed(

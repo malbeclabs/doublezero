@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -20,9 +21,11 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	geolocation "github.com/malbeclabs/doublezero/sdk/geolocation/go"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/malbeclabs/doublezero/tools/twamp/pkg/signed"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -57,6 +60,8 @@ var (
 	serviceabilityProgramIDStr = flag.String("serviceability-program-id", "", "Serviceability program ID (base58). If env is provided, this is derived automatically.")
 	verbose                    = flag.Bool("verbose", false, "Enable verbose logging.")
 	showVersion                = flag.Bool("version", false, "Print the version and exit.")
+	metricsEnable              = flag.Bool("metrics-enable", false, "Enable prometheus metrics.")
+	metricsAddr                = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics.")
 	// Set by LDFLAGS
 	version = "dev"
 	commit  = "none"
@@ -438,6 +443,24 @@ func main() {
 		"geoprobe_pubkey", geoProbePubkey,
 	)
 
+	// Set up prometheus metrics server if enabled.
+	if *metricsEnable {
+		metrics.GeoProbeBuildInfo.WithLabelValues(version, commit, date).Set(1)
+		go func() {
+			listener, err := net.Listen("tcp", *metricsAddr)
+			if err != nil {
+				log.Error("Failed to start prometheus metrics server listener", "error", err)
+				return
+			}
+			log.Info("Prometheus metrics server listening", "address", listener.Addr().String())
+			mux := http.NewServeMux()
+			mux.Handle("/metrics", promhttp.Handler())
+			if err := http.Serve(listener, mux); err != nil {
+				log.Error("Failed to start prometheus metrics server", "error", err)
+			}
+		}()
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
@@ -629,6 +652,7 @@ func main() {
 					return
 				case update := <-parentUpdateCh:
 					pState.update(update.Authorities)
+					metrics.GeoProbeParentsDiscovered.Set(float64(len(update.Authorities)))
 					log.Info("Updated parent authorities from discovery",
 						"totalParents", len(update.Authorities))
 				}
@@ -661,10 +685,14 @@ func main() {
 	go func() {
 		tick := func() {
 			if pd != nil {
+				start := time.Now()
 				pd.Tick(ctx, parentUpdateCh)
+				metrics.GeoProbeParentDiscoveryDuration.Observe(time.Since(start).Seconds())
 			}
 			if td != nil {
+				start := time.Now()
 				td.Tick(ctx, targetUpdateCh, inboundKeyCh)
+				metrics.GeoProbeTargetDiscoveryDuration.Observe(time.Since(start).Seconds())
 			}
 		}
 
@@ -732,6 +760,7 @@ func runOffsetListener(
 				return
 			}
 			log.Warn("Failed to receive offset", "error", err)
+			metrics.GeoProbeErrors.WithLabelValues(metrics.GeoProbeErrorTypeOffsetReceive).Inc()
 			continue
 		}
 
@@ -744,6 +773,7 @@ func runOffsetListener(
 		expectedAuthority, knownParent := parents.getAuthority(offset.SenderPubkey)
 		if !knownParent {
 			log.Debug("Rejecting offset from unknown parent", "sender_pubkey", senderPK, "addr", addr)
+			metrics.GeoProbeOffsetsRejected.WithLabelValues(metrics.GeoProbeRejectUnknownParent).Inc()
 			continue
 		}
 		if expectedAuthority != offset.AuthorityPubkey {
@@ -752,12 +782,14 @@ func runOffsetListener(
 				"expected_authority", solana.PublicKeyFromBytes(expectedAuthority[:]),
 				"actual_authority", authorityPK,
 				"addr", addr)
+			metrics.GeoProbeOffsetsRejected.WithLabelValues(metrics.GeoProbeRejectWrongAuthority).Inc()
 			continue
 		}
 
 		// Verify signature chain (top-level and all references).
 		if err := geoprobe.VerifyOffsetChain(offset); err != nil {
 			log.Warn("Offset signature verification failed", "authority_pubkey", authorityPK, "addr", addr, "error", err)
+			metrics.GeoProbeOffsetsRejected.WithLabelValues(metrics.GeoProbeRejectInvalidSignature).Inc()
 			continue
 		}
 
@@ -765,6 +797,7 @@ func runOffsetListener(
 
 		cache.Put(offset)
 		signedReflector.SetOffsets(marshalBestOffset(cache))
+		metrics.GeoProbeOffsetsReceived.Inc()
 
 		log.Debug("Cached DZD offset",
 			"authority_pubkey", authorityPK,
@@ -832,6 +865,7 @@ func runMeasurementLoop(
 				}
 			}
 			targets = update.Targets
+			metrics.GeoProbeTargetsDiscovered.Set(float64(len(targets)))
 			log.Info("Updated targets from discovery", "totalTargets", len(targets))
 
 			// Immediately probe newly discovered targets so they don't
@@ -874,10 +908,15 @@ func runMeasurementCycle(
 	}
 
 	log.Debug("Starting measurement cycle", "targets", len(targets))
+	start := time.Now()
+	defer func() {
+		metrics.GeoProbeMeasurementCycleDuration.Observe(time.Since(start).Seconds())
+	}()
 
 	rttData, err := pinger.MeasureAll(ctx)
 	if err != nil {
 		log.Error("Failed to measure targets", "error", err)
+		metrics.GeoProbeErrors.WithLabelValues(metrics.GeoProbeErrorTypeMeasurementCycle).Inc()
 		return
 	}
 
@@ -917,6 +956,7 @@ func sendCompositeOffsets(
 	slot, err := getCurrentSlot(ctx)
 	if err != nil {
 		log.Error("Failed to get current slot", "error", err)
+		metrics.GeoProbeErrors.WithLabelValues(metrics.GeoProbeErrorTypeSlotFetch).Inc()
 		return 0
 	}
 
@@ -938,16 +978,19 @@ func sendCompositeOffsets(
 
 		if err := signer.SignOffset(&compositeOffset); err != nil {
 			log.Error("Failed to sign composite offset", "target", addr, "error", err)
+			metrics.GeoProbeErrors.WithLabelValues(metrics.GeoProbeErrorTypeSignOffset).Inc()
 			continue
 		}
 
 		targetAddr := &net.UDPAddr{IP: net.ParseIP(addr.Host), Port: int(addr.Port)}
 		if err := geoprobe.SendOffset(senderConn, targetAddr, &compositeOffset); err != nil {
 			log.Error("Failed to send composite offset", "target", addr, "error", err)
+			metrics.GeoProbeErrors.WithLabelValues(metrics.GeoProbeErrorTypeSendOffset).Inc()
 			continue
 		}
 
 		sentCount++
+		metrics.GeoProbeCompositeOffsetsSent.Inc()
 		log.Debug("Sent composite offset to target",
 			"target", addr,
 			"slot", slot,

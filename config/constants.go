@@ -43,8 +43,8 @@ const (
 	DevnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.devnet.doublezero.xyz"
 	DevnetTelemetryStateIngestURL       = "http://telemetry-state-in.devnet.doublezero.xyz"
 	DevnetGeolocationProgramID          = "EXUUFfAjjuXnaBtsAMLsJX18ynnNHPwtkmk33bLVVoCm"
-	DevnetShredSubscriptionProgramID    = "" // TODO: set when deployed to devnet
-	DevnetUSDCMint                      = "" // TODO: set when deployed to devnet
+	DevnetShredSubscriptionProgramID    = ""
+	DevnetUSDCMint                      = ""
 	DevnetTelemetryGNMITunnelServerAddr = "gnmic-devnet.doublezero.xyz:443"
 
 	// Localnet constants.
@@ -58,7 +58,7 @@ const (
 	LocalnetTelemetryFlowIngestURL        = "http://localhost:8911"
 	LocalnetTelemetryStateIngestURL       = "http://localhost:8911"
 	LocalnetGeolocationProgramID          = "36WA9nUCsJaAQL5h44WYoLezDpocy8Q71NZbtrUN8DyC"
-	LocalnetShredSubscriptionProgramID    = "" // TODO: set when deployed to localnet
-	LocalnetUSDCMint                      = "" // TODO: set when deployed to localnet
+	LocalnetShredSubscriptionProgramID    = ""
+	LocalnetUSDCMint                      = ""
 	LocalnetTelemetryGNMITunnelServerAddr = "localhost:50051"
 )

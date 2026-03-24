@@ -79,17 +79,14 @@ async fn setup() -> TransferOwnershipFixture {
             health_oracle_pk: None,
             feed_authority_pk: Some(feed_authority),
         }),
-        vec![
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
+        vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
     )
     .await;
 
     // Create Location
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) =
-        get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
@@ -113,8 +110,7 @@ async fn setup() -> TransferOwnershipFixture {
 
     // Create Exchange
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) =
-        get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
@@ -333,12 +329,14 @@ async fn test_transfer_user_ownership_success() {
         .get_accesspass()
         .unwrap();
     let old_connection_count = old_ap.connection_count;
-    assert!(old_connection_count > 0, "Old access pass should have connections");
+    assert!(
+        old_connection_count > 0,
+        "Old access pass should have connections"
+    );
 
     // Create a new access pass with a different user_payer for the same client_ip
     let new_owner = Pubkey::new_unique();
-    let (new_accesspass_pubkey, _) =
-        get_accesspass_pda(&f.program_id, &f.user_ip, &new_owner);
+    let (new_accesspass_pubkey, _) = get_accesspass_pda(&f.program_id, &f.user_ip, &new_owner);
 
     execute_transaction(
         &mut f.banks_client,
@@ -432,8 +430,7 @@ async fn test_transfer_user_ownership_foundation_member_bypasses_feed_authority_
 
     // Create new access pass for transfer target
     let new_owner = Pubkey::new_unique();
-    let (new_accesspass_pubkey, _) =
-        get_accesspass_pda(&f.program_id, &f.user_ip, &new_owner);
+    let (new_accesspass_pubkey, _) = get_accesspass_pda(&f.program_id, &f.user_ip, &new_owner);
 
     execute_transaction(
         &mut f.banks_client,
@@ -481,14 +478,82 @@ async fn test_transfer_user_ownership_foundation_member_bypasses_feed_authority_
 }
 
 #[tokio::test]
+async fn test_transfer_user_ownership_old_accesspass_wrong_client_ip() {
+    let mut f = setup().await;
+
+    // Create an old access pass with feed authority as user_payer but wrong client_ip
+    let wrong_ip: Ipv4Addr = [100, 0, 0, 99].into();
+    let (wrong_old_accesspass_pubkey, _) =
+        get_accesspass_pda(&f.program_id, &wrong_ip, &f.feed_authority);
+
+    execute_transaction(
+        &mut f.banks_client,
+        f.recent_blockhash,
+        f.program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: wrong_ip,
+            last_access_epoch: 9999,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(wrong_old_accesspass_pubkey, false),
+            AccountMeta::new(f.globalstate_pubkey, false),
+            AccountMeta::new(f.feed_authority, false),
+        ],
+        &f.payer,
+    )
+    .await;
+
+    // Create new access pass with correct client_ip
+    let new_owner = Pubkey::new_unique();
+    let (new_accesspass_pubkey, _) = get_accesspass_pda(&f.program_id, &f.user_ip, &new_owner);
+
+    execute_transaction(
+        &mut f.banks_client,
+        f.recent_blockhash,
+        f.program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: f.user_ip,
+            last_access_epoch: 9999,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(new_accesspass_pubkey, false),
+            AccountMeta::new(f.globalstate_pubkey, false),
+            AccountMeta::new(new_owner, false),
+        ],
+        &f.payer,
+    )
+    .await;
+
+    // Attempt transfer — should fail because old access pass client_ip doesn't match user
+    let result = execute_transaction_expect_failure(
+        &mut f.banks_client,
+        f.recent_blockhash,
+        f.program_id,
+        DoubleZeroInstruction::TransferUserOwnership(TransferUserOwnershipArgs {}),
+        vec![
+            AccountMeta::new(f.user_pubkey, false),
+            AccountMeta::new(f.globalstate_pubkey, false),
+            AccountMeta::new(wrong_old_accesspass_pubkey, false),
+            AccountMeta::new(new_accesspass_pubkey, false),
+        ],
+        &f.payer,
+    )
+    .await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
 async fn test_transfer_user_ownership_new_accesspass_wrong_client_ip() {
     let mut f = setup().await;
 
     // Create a new access pass with a different client_ip
     let new_owner = Pubkey::new_unique();
     let wrong_ip: Ipv4Addr = [100, 0, 0, 99].into();
-    let (new_accesspass_pubkey, _) =
-        get_accesspass_pda(&f.program_id, &wrong_ip, &new_owner);
+    let (new_accesspass_pubkey, _) = get_accesspass_pda(&f.program_id, &wrong_ip, &new_owner);
 
     execute_transaction(
         &mut f.banks_client,
@@ -541,8 +606,7 @@ async fn test_transfer_user_ownership_merges_multicast_allowlists() {
     // to the old access pass. For now, verify the basic merge path works.
 
     let new_owner = Pubkey::new_unique();
-    let (new_accesspass_pubkey, _) =
-        get_accesspass_pda(&f.program_id, &f.user_ip, &new_owner);
+    let (new_accesspass_pubkey, _) = get_accesspass_pda(&f.program_id, &f.user_ip, &new_owner);
 
     execute_transaction(
         &mut f.banks_client,
@@ -611,8 +675,7 @@ async fn test_transfer_user_ownership_old_accesspass_disconnected_after_transfer
     assert_eq!(old_ap.connection_count, 1);
 
     let new_owner = Pubkey::new_unique();
-    let (new_accesspass_pubkey, _) =
-        get_accesspass_pda(&f.program_id, &f.user_ip, &new_owner);
+    let (new_accesspass_pubkey, _) = get_accesspass_pda(&f.program_id, &f.user_ip, &new_owner);
 
     execute_transaction(
         &mut f.banks_client,
@@ -689,8 +752,7 @@ async fn test_transfer_user_ownership_unauthorized_non_foundation_non_feed_autho
 
     // Create new access pass for transfer target
     let new_owner = Pubkey::new_unique();
-    let (new_accesspass_pubkey, _) =
-        get_accesspass_pda(&f.program_id, &f.user_ip, &new_owner);
+    let (new_accesspass_pubkey, _) = get_accesspass_pda(&f.program_id, &f.user_ip, &new_owner);
 
     execute_transaction(
         &mut f.banks_client,

@@ -1621,7 +1621,7 @@ func TestStateCache_DuplicateTunnelId(t *testing.T) {
 	m := &mockServiceabilityProgramClient{
 		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 			return &serviceability.ProgramData{
-				Config: serviceability.Config{
+				GlobalConfig: &serviceability.GlobalConfig{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				Exchanges: []serviceability.Exchange{

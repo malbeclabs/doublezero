@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Controller
+  - Log an error when duplicate tunnel-id assignments are detected on the same device during state cache update, instead of silently overwriting
 - Onchain Programs
   - Serviceability: add `feed_authority` to `RemoveMulticastGroupSubAllowlist` auth check, matching `AddMulticastGroupSubAllowlist`
 - Client

@@ -75,7 +75,6 @@ impl AcceptLinkCliCommand {
         let signature = client.accept_link(AcceptLinkCommand {
             link_pubkey: pubkey,
             side_z_iface_name: self.side_z_interface.clone(),
-            use_onchain_allocation: false,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 

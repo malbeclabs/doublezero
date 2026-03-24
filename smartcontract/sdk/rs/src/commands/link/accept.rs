@@ -6,8 +6,14 @@ use crate::{
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
-    processors::link::accept::LinkAcceptArgs, resource::ResourceType, state::link::LinkStatus,
+    instructions::DoubleZeroInstruction,
+    pda::get_resource_extension_pda,
+    processors::link::accept::LinkAcceptArgs,
+    resource::ResourceType,
+    state::{
+        feature_flags::{is_feature_enabled, FeatureFlag},
+        link::LinkStatus,
+    },
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -15,17 +21,16 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 pub struct AcceptLinkCommand {
     pub link_pubkey: Pubkey,
     pub side_z_iface_name: String,
-    /// When true, SDK includes side_a_device and ResourceExtension accounts
-    /// for combined accept+activate with onchain allocation.
-    /// When false, uses legacy behavior (accept only, link moves to Pending).
-    pub use_onchain_allocation: bool,
 }
 
 impl AcceptLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
+        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
+
+        let use_onchain_allocation =
+            is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation);
 
         let (_, link) = GetLinkCommand {
             pubkey_or_code: self.link_pubkey.to_string(),
@@ -50,7 +55,7 @@ impl AcceptLinkCommand {
             AccountMeta::new(globalstate_pubkey, false),
         ];
 
-        if self.use_onchain_allocation {
+        if use_onchain_allocation {
             accounts.push(AccountMeta::new(link.side_a_pk, false));
 
             let (device_tunnel_block_ext, _, _) = get_resource_extension_pda(
@@ -67,7 +72,7 @@ impl AcceptLinkCommand {
         client.execute_transaction(
             DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
                 side_z_iface_name: self.side_z_iface_name.clone(),
-                use_onchain_allocation: self.use_onchain_allocation,
+                use_onchain_allocation: use_onchain_allocation,
             }),
             accounts,
         )

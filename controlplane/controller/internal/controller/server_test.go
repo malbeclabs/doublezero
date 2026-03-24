@@ -1608,6 +1608,128 @@ func TestStateCache(t *testing.T) {
 	}
 }
 
+func TestStateCache_DuplicateTunnelId(t *testing.T) {
+	// Two users assigned the same tunnel ID on the same device.
+	// The second user should overwrite the first (last writer wins)
+	// and an error should be logged.
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+
+	var logBuf bytes.Buffer
+	m := &mockServiceabilityProgramClient{
+		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				Exchanges: []serviceability.Exchange{
+					{
+						PubKey:       [32]uint8{2},
+						Code:         "tst",
+						BgpCommunity: 10050,
+					},
+				},
+				Users: []serviceability.User{
+					{
+						PubKey:       [32]uint8{10},
+						DevicePubKey: [32]uint8{1},
+						UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+						CyoaType:     serviceability.CyoaTypeGREOverDIA,
+						ClientIp:     [4]uint8{1, 1, 1, 1},
+						DzIp:         [4]uint8{147, 100, 100, 100},
+						TunnelId:     uint16(500),
+						TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
+						Status:       serviceability.UserStatusActivated,
+					},
+					{
+						PubKey:       [32]uint8{20},
+						DevicePubKey: [32]uint8{1},
+						UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+						CyoaType:     serviceability.CyoaTypeGREOverDIA,
+						ClientIp:     [4]uint8{3, 3, 3, 3},
+						DzIp:         [4]uint8{147, 100, 100, 101},
+						TunnelId:     uint16(500), // Duplicate tunnel ID
+						TunnelNet:    [5]uint8{10, 1, 1, 2, 31},
+						Status:       serviceability.UserStatusActivated,
+					},
+				},
+				Devices: []serviceability.Device{
+					{
+						PubKey:         [32]byte{1},
+						ExchangePubKey: [32]uint8{2},
+						PublicIp:       [4]uint8{2, 2, 2, 2},
+						Interfaces: []serviceability.Interface{
+							{
+								Name:          "Loopback255",
+								InterfaceType: serviceability.InterfaceTypeLoopback,
+								LoopbackType:  serviceability.LoopbackTypeVpnv4,
+								IpNet:         [5]uint8{14, 14, 14, 14, 32},
+							},
+							{
+								Name:          "Loopback256",
+								InterfaceType: serviceability.InterfaceTypeLoopback,
+								LoopbackType:  serviceability.LoopbackTypeIpv4,
+								IpNet:         [5]uint8{12, 12, 12, 12, 32},
+							},
+						},
+						Status: serviceability.DeviceStatusActivated,
+						Code:   "abc01",
+					},
+				},
+			}, nil
+		},
+		ProgramIDFunc: func() solana.PublicKey {
+			return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+		},
+	}
+
+	controller, err := NewController(
+		WithLogger(slog.New(slog.NewTextHandler(&logBuf, nil))),
+		WithServiceabilityProgramClient(m),
+		WithListener(lis),
+		WithDeviceLocalASN(65342),
+	)
+	if err != nil {
+		t.Fatalf("error creating controller: %v", err)
+	}
+	if err := controller.updateStateCache(context.Background()); err != nil {
+		t.Fatalf("error populating state cache: %v", err)
+	}
+
+	// Verify the second user's data overwrote the first (last writer wins)
+	device := controller.cache.Devices["4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM"]
+	if device == nil {
+		t.Fatal("expected device in cache")
+	}
+	tunnel := device.findTunnel(500)
+	if tunnel == nil {
+		t.Fatal("expected tunnel 500 in device")
+	}
+	if !tunnel.Allocated {
+		t.Fatal("expected tunnel 500 to be allocated")
+	}
+
+	// Second user (pubkey [32]uint8{20}) should have overwritten the first.
+	// base58("2M59v...") == base58.Encode([20, 0, ..., 0])
+	if tunnel.PubKey != "2M59vuWgsiuHAqQVB6KvuXuaBCJR8138gMAm4uCuR6Du" {
+		t.Errorf("expected tunnel to be owned by second user, got pubkey %s", tunnel.PubKey)
+	}
+	if !tunnel.UnderlayDstIP.Equal(net.IP{3, 3, 3, 3}) {
+		t.Errorf("expected UnderlayDstIP 3.3.3.3 (second user), got %s", tunnel.UnderlayDstIP)
+	}
+	if !tunnel.DzIp.Equal(net.IP{147, 100, 100, 101}) {
+		t.Errorf("expected DzIp 147.100.100.101 (second user), got %s", tunnel.DzIp)
+	}
+
+	// Verify error was logged about the duplicate
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "duplicate tunnel id on device") {
+		t.Errorf("expected duplicate tunnel id error in log, got: %s", logOutput)
+	}
+}
+
 func TestServiceabilityProgramClientArg(t *testing.T) {
 	tests := []struct {
 		name                 string

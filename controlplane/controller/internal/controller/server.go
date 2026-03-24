@@ -476,6 +476,14 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				"user pubkey", userPubKey)
 			continue
 		}
+		if tunnel.Allocated {
+			c.log.Error("duplicate tunnel id on device, overwriting previous user",
+				"tunnel_id", user.TunnelId,
+				"device_pubkey", devicePubKey,
+				"new_user_pubkey", userPubKey,
+				"existing_user_pubkey", tunnel.PubKey,
+			)
+		}
 		tunnel.UnderlayDstIP = net.IP(user.ClientIp[:])
 
 		// Use user's tunnel_endpoint if set, otherwise fall back to device PublicIP.

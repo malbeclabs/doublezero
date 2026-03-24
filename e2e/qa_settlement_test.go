@@ -28,9 +28,7 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)
 	require.NoError(t, err, "failed to create test")
 
-	require.Len(t, hostsArg, 1, "settlement test requires exactly one host via -hosts")
-	client := test.GetClient(hostsArg[0])
-	require.NotNil(t, client, "host %q not found", hostsArg[0])
+	client := test.RandomClient()
 	if *keypairFlag != "" {
 		client.Keypair = *keypairFlag
 	}

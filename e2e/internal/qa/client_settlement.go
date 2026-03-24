@@ -60,10 +60,10 @@ func (c *Client) ClosestDevice(ctx context.Context) (*Device, error) {
 func (c *Client) FeedSeatPrice(ctx context.Context) ([]*pb.DevicePrice, error) {
 	c.log.Debug("Querying seat prices", "host", c.Host)
 	resp, err := c.grpcClient.FeedSeatPrice(ctx, &pb.FeedSeatPriceRequest{
-		SolanaRpcUrl:         c.SolanaRPCURL,
-		DzLedgerUrl:          c.DZLedgerURL,
-		UsdcMint:             c.USDCMint,
-		Keypair:              c.Keypair,
+		SolanaRpcUrl:               c.SolanaRPCURL,
+		DzLedgerUrl:                c.DZLedgerURL,
+		UsdcMint:                   c.USDCMint,
+		Keypair:                    c.Keypair,
 		ShredSubscriptionProgramId: c.ShredSubscriptionProgramID,
 	})
 	if err != nil {
@@ -78,14 +78,14 @@ func (c *Client) FeedSeatPrice(ctx context.Context) ([]*pb.DevicePrice, error) {
 func (c *Client) FeedSeatPay(ctx context.Context, devicePubkey string, amount string) error {
 	c.log.Debug("Paying for seat", "host", c.Host, "device", devicePubkey, "amount", amount)
 	resp, err := c.grpcClient.FeedSeatPay(ctx, &pb.FeedSeatPayRequest{
-		DevicePubkey:         devicePubkey,
-		ClientIp:             c.publicIP.To4().String(),
-		Amount:               amount,
-		SolanaRpcUrl:         c.SolanaRPCURL,
+		DevicePubkey:               devicePubkey,
+		ClientIp:                   c.publicIP.To4().String(),
+		Amount:                     amount,
+		SolanaRpcUrl:               c.SolanaRPCURL,
 		ShredSubscriptionProgramId: c.ShredSubscriptionProgramID,
-		DzLedgerUrl:          c.DZLedgerURL,
-		UsdcMint:             c.USDCMint,
-		Keypair:              c.Keypair,
+		DzLedgerUrl:                c.DZLedgerURL,
+		UsdcMint:                   c.USDCMint,
+		Keypair:                    c.Keypair,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to pay for seat on host %s: %w", c.Host, err)
@@ -103,13 +103,13 @@ func (c *Client) FeedSeatPay(ctx context.Context, devicePubkey string, amount st
 func (c *Client) FeedSeatWithdraw(ctx context.Context, devicePubkey string) error {
 	c.log.Debug("Withdrawing seat", "host", c.Host, "device", devicePubkey)
 	resp, err := c.grpcClient.FeedSeatWithdraw(ctx, &pb.FeedSeatWithdrawRequest{
-		DevicePubkey:         devicePubkey,
-		ClientIp:             c.publicIP.To4().String(),
-		SolanaRpcUrl:         c.SolanaRPCURL,
+		DevicePubkey:               devicePubkey,
+		ClientIp:                   c.publicIP.To4().String(),
+		SolanaRpcUrl:               c.SolanaRPCURL,
 		ShredSubscriptionProgramId: c.ShredSubscriptionProgramID,
-		DzLedgerUrl:          c.DZLedgerURL,
-		UsdcMint:             c.USDCMint,
-		Keypair:              c.Keypair,
+		DzLedgerUrl:                c.DZLedgerURL,
+		UsdcMint:                   c.USDCMint,
+		Keypair:                    c.Keypair,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to withdraw seat on host %s: %w", c.Host, err)

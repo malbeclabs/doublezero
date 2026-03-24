@@ -105,11 +105,11 @@ type Client struct {
 	// Settlement config passed to doublezero-solana shreds commands.
 	// SolanaRPCURL is the Solana RPC endpoint for settlement transactions (--url).
 	// On testnet this is the DZ ledger URL; on mainnet it's the public Solana RPC.
-	SolanaRPCURL         string
+	SolanaRPCURL               string
 	ShredSubscriptionProgramID string
-	DZLedgerURL          string
-	USDCMint             string
-	Keypair              string
+	DZLedgerURL                string
+	USDCMint                   string
+	Keypair                    string
 }
 
 func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int, networkConfig *config.NetworkConfig, devices map[string]*Device, allocateAddr bool) (*Client, error) {
@@ -150,12 +150,12 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 		serviceability: serviceabilityClient,
 		devices:        devices,
 
-		Host:                 hostname,
-		AllocateAddr:         allocateAddr,
-		SolanaRPCURL:         solanaRPCURL,
+		Host:                       hostname,
+		AllocateAddr:               allocateAddr,
+		SolanaRPCURL:               solanaRPCURL,
 		ShredSubscriptionProgramID: networkConfig.ShredSubscriptionProgramID,
-		DZLedgerURL:          networkConfig.LedgerPublicRPCURL,
-		USDCMint:             networkConfig.USDCMint,
+		DZLedgerURL:                networkConfig.LedgerPublicRPCURL,
+		USDCMint:                   networkConfig.USDCMint,
 	}, nil
 }
 

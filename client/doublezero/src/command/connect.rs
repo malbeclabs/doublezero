@@ -670,7 +670,7 @@ impl ProvisioningCliCommand {
 
                 // If user.owner is the feed authority and an access pass exists for this
                 // client's payer, transfer ownership so the user is owned by the client
-                self.maybe_transfer_user_ownership(client, user_pk, &user, client_ip, spinner)?;
+                self.maybe_transfer_user_ownership(client, user_pk, user, client_ip, spinner)?;
 
                 // Subscribe to any pub groups not already subscribed
                 for group_pk in pub_group_pks {
@@ -1055,6 +1055,7 @@ mod tests {
             accounttype::AccountType,
             device::{Device, DeviceStatus, DeviceType},
             globalconfig::GlobalConfig,
+            globalstate::GlobalState,
             multicastgroup::{MulticastGroup, MulticastGroupStatus},
             tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
         },
@@ -1184,6 +1185,23 @@ mod tests {
                 .client
                 .expect_get_environment()
                 .returning_st(Environment::default);
+
+            // Mock get_globalstate for maybe_transfer_user_ownership.
+            // feed_authority_pk is set to default (won't match any user.owner),
+            // so transfers won't be attempted unless a test explicitly overrides this.
+            let globalstate_pubkey = Pubkey::new_unique();
+            fixture
+                .client
+                .expect_get_globalstate()
+                .returning(move |_| {
+                    Ok((
+                        globalstate_pubkey,
+                        GlobalState {
+                            account_type: AccountType::GlobalState,
+                            ..Default::default()
+                        },
+                    ))
+                });
 
             fixture
                 .controller

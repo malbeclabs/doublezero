@@ -254,6 +254,7 @@ async fn main() -> eyre::Result<()> {
             UserCommands::Get(args) => args.execute(&client, &mut handle),
             UserCommands::Delete(args) => args.execute(&client, &mut handle),
             UserCommands::RequestBan(args) => args.execute(&client, &mut handle),
+            UserCommands::TransferOwnership(args) => args.execute(&client, &mut handle),
         },
         Command::Multicast(args) => match args.command {
             cli::multicast::MulticastCommands::Group(args) => match args.command {

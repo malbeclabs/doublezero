@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,8 @@ const (
 	ProbesPerWorker     = 512
 	DefaultStaggerDelay = 100 * time.Millisecond
 	DefaultWarmupDelay  = 2 * time.Millisecond
+	senderRetries       = 3
+	senderRetryMin      = 50 * time.Millisecond
 )
 
 type PingerConfig struct {
@@ -47,6 +50,36 @@ func NewPinger(cfg *PingerConfig) *Pinger {
 	}
 }
 
+func isBindError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "bind:")
+}
+
+func newSenderWithRetry(ctx context.Context, log *slog.Logger, iface string, local, remote *net.UDPAddr) (twamplight.Sender, error) {
+	var lastErr error
+	for attempt := range senderRetries {
+		sender, err := twamplight.NewSender(ctx, log, iface, local, remote)
+		if err == nil {
+			return sender, nil
+		}
+		lastErr = err
+		if !isBindError(err) {
+			return nil, err
+		}
+		delay := senderRetryMin * time.Duration(1<<attempt)
+		log.Warn("Bind failed, retrying", "attempt", attempt+1, "delay", delay, "error", err)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+	return nil, lastErr
+}
+
 func (p *Pinger) AddProbe(ctx context.Context, addr ProbeAddress) error {
 	p.sendersMu.Lock()
 	defer p.sendersMu.Unlock()
@@ -74,13 +107,13 @@ func (p *Pinger) AddProbe(ctx context.Context, addr ProbeAddress) error {
 		iface = p.cfg.ManagementNamespace
 	}
 
-	sender, err := twamplight.NewSender(ctx, p.log, iface, sourceAddr, resolvedAddr)
+	sender, err := newSenderWithRetry(ctx, p.log, iface, sourceAddr, resolvedAddr)
 	if err != nil {
 		return fmt.Errorf("failed to create TWAMP sender for %s: %w", addr.String(), err)
 	}
 
 	warmupSourceAddr := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
-	warmupSender, err := twamplight.NewSender(ctx, p.log, iface, warmupSourceAddr, resolvedAddr)
+	warmupSender, err := newSenderWithRetry(ctx, p.log, iface, warmupSourceAddr, resolvedAddr)
 	if err != nil {
 		sender.Close()
 		return fmt.Errorf("failed to create warmup TWAMP sender for %s: %w", addr.String(), err)

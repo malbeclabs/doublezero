@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Device agents
+  - Reduce agent CPU usage by continuing to fetch the full config every 5 seconds but only applying when it has changed or after 60s timeout
+
 ## [v0.14.0](https://github.com/malbeclabs/doublezero/compare/client/v0.13.0...client/v0.14.0) - 2026-03-24
 
 ### Breaking

@@ -83,7 +83,7 @@ impl AcceptLinkCommand {
 mod tests {
     use crate::{
         commands::link::accept::AcceptLinkCommand, tests::utils::create_test_client,
-        DoubleZeroClient,
+        DoubleZeroClient, MockDoubleZeroClient,
     };
     use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
@@ -94,6 +94,8 @@ mod tests {
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
+            feature_flags::FeatureFlag,
+            globalstate::GlobalState,
             link::{Link, LinkDesiredStatus, LinkHealth, LinkLinkType, LinkStatus},
         },
     };
@@ -178,9 +180,34 @@ mod tests {
 
     #[test]
     fn test_commands_link_accept_with_onchain_allocation() {
-        let mut client = create_test_client();
+        let mut client = MockDoubleZeroClient::new();
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let payer = Pubkey::new_unique();
+        client.expect_get_payer().returning(move || payer);
+        let program_id = Pubkey::new_unique();
+        client.expect_get_program_id().returning(move || program_id);
+
+        let (globalstate_pubkey, bump_seed) = get_globalstate_pda(&program_id);
+        let globalstate = GlobalState {
+            account_type: AccountType::GlobalState,
+            bump_seed,
+            account_index: 0,
+            foundation_allowlist: vec![],
+            _device_allowlist: vec![],
+            _user_allowlist: vec![],
+            activator_authority_pk: Pubkey::new_unique(),
+            sentinel_authority_pk: Pubkey::new_unique(),
+            contributor_airdrop_lamports: 1_000_000_000,
+            user_airdrop_lamports: 40_000,
+            health_oracle_pk: Pubkey::new_unique(),
+            qa_allowlist: vec![],
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feed_authority_pk: Pubkey::default(),
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(globalstate_pubkey))
+            .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
         let link_pubkey = Pubkey::new_unique();
         let side_a_pk = Pubkey::new_unique();
         let side_z_pk = Pubkey::new_unique();

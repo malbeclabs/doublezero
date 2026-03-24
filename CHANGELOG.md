@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
   - Add `TargetUpdateCount` field to Go GeoProbe struct with backward-compatible deserialization
 - Telemetry
   - Skip expensive `GetGeolocationUsers` RPC scan in geoprobe-agent when the probe's `target_update_count` is unchanged, with a forced full refresh every ~5 minutes as safety net
+  - Add Prometheus metrics to geoprobe-agent: build info, error counters by type, discovery/measurement cycle durations, offset send/receive/reject counters, and discovered target/parent gauges; exposed via optional `--metrics-enable` flag
 
 ## [v0.13.0](https://github.com/malbeclabs/doublezero/compare/client/v0.12.0...client/v0.13.0) - 2026-03-20
 

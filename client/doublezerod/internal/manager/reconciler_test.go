@@ -1311,7 +1311,7 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fetcher := &mockFetcher{
 				data: &serviceability.ProgramData{
-					Config:          testConfig(),
+					GlobalConfig:    &globalCfg,
 					Devices:         []serviceability.Device{device},
 					Users:           tt.users,
 					MulticastGroups: []serviceability.MulticastGroup{mcastGroup},

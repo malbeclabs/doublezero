@@ -5,11 +5,7 @@ use std::sync::LazyLock;
 
 use solana_sdk::pubkey::Pubkey;
 
-/// Placeholder program ID — used when `SHRED_SUBSCRIPTION_PROGRAM_ID` env var is not set.
-const DEFAULT_ID: Pubkey = Pubkey::new_from_array([
-    0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0,
-]);
+const DEFAULT_ID: Pubkey = solana_sdk::pubkey!("dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE");
 
 /// Shred subscription program ID.
 pub static ID: LazyLock<Pubkey> = LazyLock::new(|| {

@@ -29,7 +29,7 @@ type NetworkConfig struct {
 	TelemetryStateIngestURL       string
 	TelemetryGNMITunnelServerAddr string
 	GeolocationProgramID          solana.PublicKey
-	ShredSubscriptionProgramID          string
+	ShredSubscriptionProgramID    string
 	USDCMint                      string
 }
 
@@ -65,7 +65,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			RevenueDistributionProgramID:  revenueDistributionProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
-			ShredSubscriptionProgramID:          MainnetShredSubscriptionProgramID,
+			ShredSubscriptionProgramID:    MainnetShredSubscriptionProgramID,
 			USDCMint:                      MainnetUSDCMint,
 			DeviceLocalASN:                MainnetDeviceLocalASN,
 			TwoZOracleURL:                 MainnetTwoZOracleURL,
@@ -98,7 +98,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
-			ShredSubscriptionProgramID:          TestnetShredSubscriptionProgramID,
+			ShredSubscriptionProgramID:    TestnetShredSubscriptionProgramID,
 			USDCMint:                      TestnetUSDCMint,
 			DeviceLocalASN:                TestnetDeviceLocalASN,
 			TwoZOracleURL:                 TestnetTwoZOracleURL,
@@ -131,7 +131,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
-			ShredSubscriptionProgramID:          DevnetShredSubscriptionProgramID,
+			ShredSubscriptionProgramID:    DevnetShredSubscriptionProgramID,
 			USDCMint:                      DevnetUSDCMint,
 			DeviceLocalASN:                DevnetDeviceLocalASN,
 			TwoZOracleURL:                 DevnetTwoZOracleURL,
@@ -164,7 +164,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TelemetryProgramID:            telemetryProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			GeolocationProgramID:          geolocationProgramID,
-			ShredSubscriptionProgramID:          LocalnetShredSubscriptionProgramID,
+			ShredSubscriptionProgramID:    LocalnetShredSubscriptionProgramID,
 			USDCMint:                      LocalnetUSDCMint,
 			DeviceLocalASN:                LocalnetDeviceLocalASN,
 			TwoZOracleURL:                 LocalnetTwoZOracleURL,

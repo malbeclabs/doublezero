@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
   - Log an error when duplicate tunnel-id assignments are detected on the same device during state cache update, instead of silently overwriting
 - Onchain Programs
   - Serviceability: update device interface IPs when `tunnel_net` is changed via `UpdateLink`, matching the existing `ActivateLink` behavior ([#3365](https://github.com/malbeclabs/doublezero/pull/3365))
+  - Serviceability: `AcceptLink` supports combined accept+activate via `use_onchain_allocation` flag, gated on `OnChainAllocation` feature flag ([#3369](https://github.com/malbeclabs/doublezero/pull/3369))
   - Serviceability: add `feed_authority` to `RemoveMulticastGroupSubAllowlist` auth check, matching `AddMulticastGroupSubAllowlist`
 - Client
   - Get client IP from the daemon in the disconnect command, matching the connect command's behavior, to avoid IP mismatches behind NAT

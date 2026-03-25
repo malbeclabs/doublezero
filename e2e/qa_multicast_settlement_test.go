@@ -16,6 +16,7 @@ import (
 var (
 	enableSettlementTests = flag.Bool("enable-multicast-settlement-tests", false, "enable multicast settlement tests")
 	keypairFlag           = flag.String("keypair", "$HOME/.config/doublezero/id.json", "path to keypair file for settlement commands")
+	settlementClientFlag  = flag.String("multicast-settlement-client", "", "host of the client to use for settlement tests (overrides random selection)")
 )
 
 func TestQA_MulticastSettlement(t *testing.T) {
@@ -28,7 +29,14 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)
 	require.NoError(t, err, "failed to create test")
 
-	client := test.RandomClient()
+	var client *qa.Client
+	if *settlementClientFlag != "" {
+		var ok bool
+		client, ok = test.ClientByHost(*settlementClientFlag)
+		require.True(t, ok, "client %q not found in hosts", *settlementClientFlag)
+	} else {
+		client = test.RandomClient()
+	}
 	if *keypairFlag != "" {
 		client.Keypair = *keypairFlag
 	}

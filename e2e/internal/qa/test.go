@@ -69,6 +69,15 @@ func (t *Test) RandomClient() *Client {
 	return clients[t.rand.Intn(len(clients))]
 }
 
+func (t *Test) ClientByHost(host string) (*Client, bool) {
+	for _, client := range t.clients {
+		if client.Host == host {
+			return client, true
+		}
+	}
+	return nil, false
+}
+
 func (t *Test) RandomMulticastGroupCode() string {
 	suffix := t.rand.Intn(1000000)
 	return fmt.Sprintf("qa-test-group-%06d", suffix)

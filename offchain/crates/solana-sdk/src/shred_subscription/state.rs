@@ -123,6 +123,10 @@ pub fn find_payment_escrow_address(
 //   [56..64)  funded_epoch: u64
 //   [64..72)  active_epoch: u64
 //   [72..80)  funding_index: u64
+//   [80..112) new_settlement_sort_key: Hash
+//   [112..144) funding_authority_key: Pubkey
+//   [144..148) escrow_count: u32
+//   [148..150) override_usdc_price_dollars: u16
 // ---------------------------------------------------------------------------
 
 pub const CLIENT_SEAT_DISCRIMINATOR: Discriminator<DISCRIMINATOR_LEN> =
@@ -133,7 +137,9 @@ pub const CLIENT_SEAT_CLIENT_IP_OFFSET: usize = DISCRIMINATOR_LEN + 32;
 pub const CLIENT_SEAT_TENURE_OFFSET: usize = DISCRIMINATOR_LEN + 38;
 pub const CLIENT_SEAT_FUNDED_EPOCH_OFFSET: usize = DISCRIMINATOR_LEN + 48;
 pub const CLIENT_SEAT_ACTIVE_EPOCH_OFFSET: usize = DISCRIMINATOR_LEN + 56;
+pub const CLIENT_SEAT_FLAGS_OFFSET: usize = DISCRIMINATOR_LEN + 40;
 pub const CLIENT_SEAT_FUNDING_INDEX_OFFSET: usize = DISCRIMINATOR_LEN + 64;
+pub const CLIENT_SEAT_OVERRIDE_USDC_PRICE_OFFSET: usize = DISCRIMINATOR_LEN + 140;
 
 /// Parse a `ClientSeat` from raw account data. Returns
 /// `(device_key, client_ip, tenure_epochs, funded_epoch, active_epoch)`.
@@ -173,6 +179,30 @@ pub fn parse_client_seat(data: &[u8]) -> Option<(Pubkey, Ipv4Addr, u16, u64, u64
         funded_epoch,
         active_epoch,
     ))
+}
+
+const CLIENT_SEAT_FLAG_HAS_PRICE_OVERRIDE_BIT: u64 = 1 << 0;
+
+/// If the `ClientSeat` has a price override, returns the override amount in
+/// micro-USDC. Otherwise returns `None`.
+pub fn parse_client_seat_price_override(data: &[u8]) -> Option<u64> {
+    if data.len() < CLIENT_SEAT_OVERRIDE_USDC_PRICE_OFFSET + 2 {
+        return None;
+    }
+    let flags = u64::from_le_bytes(
+        data[CLIENT_SEAT_FLAGS_OFFSET..CLIENT_SEAT_FLAGS_OFFSET + 8]
+            .try_into()
+            .ok()?,
+    );
+    if flags & CLIENT_SEAT_FLAG_HAS_PRICE_OVERRIDE_BIT == 0 {
+        return None;
+    }
+    let override_dollars = u16::from_le_bytes(
+        data[CLIENT_SEAT_OVERRIDE_USDC_PRICE_OFFSET..CLIENT_SEAT_OVERRIDE_USDC_PRICE_OFFSET + 2]
+            .try_into()
+            .ok()?,
+    );
+    Some(override_dollars as u64 * 1_000_000)
 }
 
 // ---------------------------------------------------------------------------

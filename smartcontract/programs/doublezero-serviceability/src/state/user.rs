@@ -140,6 +140,29 @@ impl fmt::Display for UserStatus {
     }
 }
 
+/// Bitflags stored in [`User::tunnel_flags`] to record durable tunnel
+/// properties that cannot be derived from mutable state at delete time.
+#[repr(u8)]
+pub enum TunnelFlags {
+    /// The user was activated as a multicast publisher (had non-empty
+    /// publishers list at activation time). Used at delete/close time to
+    /// correctly decrement device counters, since the publishers list is
+    /// always empty by then.
+    CreatedAsPublisher = 1,
+}
+
+impl TunnelFlags {
+    /// Returns `true` if `flag` is set in `flags`.
+    pub fn is_set(flags: u8, flag: TunnelFlags) -> bool {
+        flags & (flag as u8) != 0
+    }
+
+    /// Returns `flags` with `flag` set.
+    pub fn set(flags: u8, flag: TunnelFlags) -> u8 {
+        flags | (flag as u8)
+    }
+}
+
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct User {
@@ -203,6 +226,8 @@ pub struct User {
     pub validator_pubkey: Pubkey, // 32
     /// Tunnel endpoint IP (device-side GRE endpoint). 0.0.0.0 means use device.public_ip for backwards compatibility.
     pub tunnel_endpoint: Ipv4Addr, // 4
+    /// Bitflags recording durable tunnel properties. See [`TunnelFlags`].
+    pub tunnel_flags: u8, // 1
 }
 
 impl fmt::Display for User {
@@ -250,6 +275,7 @@ impl TryFrom<&[u8]> for User {
             // Tunnel endpoint - defaults to 0.0.0.0 for backwards compatibility (use device.public_ip)
             tunnel_endpoint: BorshDeserialize::deserialize(&mut data)
                 .unwrap_or([0, 0, 0, 0].into()),
+            tunnel_flags: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::User {
@@ -457,6 +483,7 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -504,6 +531,7 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
         };
 
         let err = val.validate();
@@ -531,6 +559,7 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -557,6 +586,7 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -583,6 +613,7 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -609,6 +640,7 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -635,6 +667,7 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -662,6 +695,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 1), // Private IP - invalid
+            tunnel_flags: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -670,6 +704,7 @@ mod tests {
         // Test with loopback IP (should fail validation)
         let val_loopback = User {
             tunnel_endpoint: Ipv4Addr::new(127, 0, 0, 1), // Loopback - invalid
+            tunnel_flags: 0,
             ..val.clone()
         };
         let err = val_loopback.validate();
@@ -679,6 +714,7 @@ mod tests {
         // Test with link-local IP (should fail validation)
         let val_link_local = User {
             tunnel_endpoint: Ipv4Addr::new(169, 254, 1, 1), // Link-local - invalid
+            tunnel_flags: 0,
             ..val.clone()
         };
         let err = val_link_local.validate();
@@ -688,6 +724,7 @@ mod tests {
         // Test with UNSPECIFIED (0.0.0.0) - should pass (backwards compat)
         let val_unspecified = User {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
             ..val.clone()
         };
         assert!(val_unspecified.validate().is_ok());
@@ -695,6 +732,7 @@ mod tests {
         // Test with global IP - should pass
         let val_global = User {
             tunnel_endpoint: Ipv4Addr::new(8, 8, 8, 8), // Global IP - valid
+            tunnel_flags: 0,
             ..val
         };
         assert!(val_global.validate().is_ok());
@@ -724,6 +762,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
         }
     }
 
@@ -862,6 +901,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 1), // invalid: private IP
+            tunnel_flags: 0,
         };
 
         assert!(val.validate().is_ok());
@@ -890,5 +930,70 @@ mod tests {
         // But if they're also a subscriber, they DO need multicast
         user.subscribers.push(Pubkey::new_unique());
         assert!(user.needs_multicast());
+    }
+
+    #[test]
+    fn test_tunnel_flags_defaults_to_zero_for_old_accounts() {
+        // Simulate an old serialized User account that does not have the tunnel_flags byte.
+        // Build a User, serialize it, strip the last byte (the new field), then deserialize.
+        // The field must default to 0.
+        let user = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::Multicast,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::None,
+            client_ip: [1, 2, 3, 4].into(),
+            dz_ip: [1, 2, 3, 4].into(),
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: TunnelFlags::CreatedAsPublisher as u8,
+        };
+        let mut data = borsh::to_vec(&user).unwrap();
+        // Remove the last byte (tunnel_flags) to simulate an old account
+        data.pop();
+        let deserialized = User::try_from(&data[..]).unwrap();
+        assert_eq!(
+            deserialized.tunnel_flags, 0,
+            "Old accounts must default tunnel_flags to 0"
+        );
+    }
+
+    #[test]
+    fn test_tunnel_flags_roundtrip() {
+        let user = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::Multicast,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::None,
+            client_ip: [1, 2, 3, 4].into(),
+            dz_ip: [5, 6, 7, 8].into(),
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: TunnelFlags::CreatedAsPublisher as u8,
+        };
+        let data = borsh::to_vec(&user).unwrap();
+        let deserialized = User::try_from(&data[..]).unwrap();
+        assert!(TunnelFlags::is_set(
+            deserialized.tunnel_flags,
+            TunnelFlags::CreatedAsPublisher
+        ));
     }
 }

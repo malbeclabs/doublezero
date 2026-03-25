@@ -74,6 +74,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
         };
 
         client

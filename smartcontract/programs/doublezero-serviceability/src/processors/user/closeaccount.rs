@@ -311,7 +311,7 @@ pub fn process_closeaccount_user(
     // Decrement per-type counter based on user type
     match user.user_type {
         UserType::Multicast => {
-            if !user.publishers.is_empty() {
+            if TunnelFlags::is_set(user.tunnel_flags, TunnelFlags::CreatedAsPublisher) {
                 device.multicast_publishers_count =
                     device.multicast_publishers_count.saturating_sub(1);
             } else {
@@ -375,6 +375,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
         };
 
         let device = Device {

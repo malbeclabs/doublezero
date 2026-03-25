@@ -255,6 +255,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
         };
 
         client

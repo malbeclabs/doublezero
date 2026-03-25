@@ -7,7 +7,7 @@ use crate::{
     state::{
         accesspass::AccessPass,
         globalstate::GlobalState,
-        user::{User, UserStatus, UserType},
+        user::{TunnelFlags, User, UserStatus, UserType},
     },
 };
 use borsh::BorshSerialize;
@@ -294,6 +294,17 @@ pub fn process_activate_user(
         user.tunnel_net = value.tunnel_net;
         user.dz_ip = value.dz_ip;
         user.tunnel_endpoint = value.tunnel_endpoint;
+    }
+
+    // Record publisher role on FIRST activation only (Pending → Activated).
+    // On re-activation (Updating → Activated), leave the flag unchanged: the publishers list
+    // may be empty after an unsubscribe, but the device counter that was incremented at
+    // creation time hasn't changed and must still be decremented at delete time.
+    if user.status == UserStatus::Pending
+        && user.user_type == UserType::Multicast
+        && !user.publishers.is_empty()
+    {
+        user.tunnel_flags = TunnelFlags::set(user.tunnel_flags, TunnelFlags::CreatedAsPublisher);
     }
 
     user.try_activate(&mut accesspass)?;

@@ -1448,6 +1448,7 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::new_unique(),
                 tunnel_endpoint,
+                tunnel_flags: 0,
             }
         }
 

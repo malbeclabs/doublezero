@@ -248,6 +248,16 @@ impl PayCommand {
             }
         }
 
+        if !seat_already_active
+            && device_info.granted_seat_count >= device_info.total_available_seats
+        {
+            bail!(
+                "Device has no available seats ({}/{} granted). Choose another device.",
+                device_info.granted_seat_count,
+                device_info.total_available_seats,
+            );
+        }
+
         let mut instructions = Vec::new();
         let mut compute_unit_limit = 0u32;
 

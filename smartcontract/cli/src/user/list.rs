@@ -631,7 +631,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         let (accesspass1_pubkey, _) =
@@ -670,7 +670,7 @@ mod tests {
             subscribers: vec![mgroup1_pubkey],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         let (accesspass2_pubkey, _) =
@@ -792,7 +792,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         let user2 = User {
@@ -813,7 +813,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -895,7 +895,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         let user2 = User {
@@ -916,7 +916,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -998,7 +998,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         let user2 = User {
@@ -1019,7 +1019,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1101,7 +1101,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         let user2 = User {
@@ -1122,7 +1122,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1204,7 +1204,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         let user2 = User {
@@ -1225,7 +1225,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1322,7 +1322,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         let user2 = User {
@@ -1343,7 +1343,7 @@ mod tests {
             subscribers: vec![mgroup1_pubkey],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1461,7 +1461,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         let user2 = User {
@@ -1482,7 +1482,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1630,7 +1630,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         let user2 = User {
@@ -1651,7 +1651,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         client.expect_list_user().returning(move |_| {

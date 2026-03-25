@@ -494,7 +494,7 @@ fn generate_user(dir: &Path) {
         subscribers: vec![subscriber_pk],
         validator_pubkey,
         tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        multicast_publisher: false,
+        tunnel_flags: 0,
     };
 
     let data = borsh::to_vec(&val).unwrap();

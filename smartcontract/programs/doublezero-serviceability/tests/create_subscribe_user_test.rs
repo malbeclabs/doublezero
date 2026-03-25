@@ -46,7 +46,7 @@ use doublezero_serviceability::{
         accesspass::AccessPassType,
         device::DeviceType,
         feature_flags::FeatureFlag,
-        user::{UserCYOA, UserStatus, UserType},
+        user::{TunnelFlags, UserCYOA, UserStatus, UserType},
     },
 };
 use solana_program_test::*;
@@ -1078,16 +1078,16 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
 }
 
 // ============================================================================
-// Regression Tests: multicast_publisher flag and counter lifecycle
+// Regression Tests: tunnel_flags (CreatedAsPublisher) and counter lifecycle
 // ============================================================================
 
-/// Regression test: verify `multicast_publisher` is set at creation time (via create_user_core)
+/// Regression test: verify `tunnel_flags` is set at creation time (via create_user_core)
 /// and confirmed on first Pending activation, then PRESERVED through re-activation after
 /// unsubscribing (the Updating→Activated path must NOT reset the flag).
 ///
 /// This covers the exact E2E failure scenario: publisher connects (CreateSubscribeUser →
 /// ActivateUser), then disconnects (SubscribeMulticastGroup publisher=false → ActivateUser).
-/// After disconnect, multicast_publisher must still be true so delete decrements publishers_count.
+/// After disconnect, CreatedAsPublisher flag must still be set so delete decrements publishers_count.
 #[tokio::test]
 async fn test_publisher_multicast_publisher_persists_through_disconnect() {
     let client_ip = [100, 0, 0, 90];
@@ -1111,7 +1111,7 @@ async fn test_publisher_multicast_publisher_persists_through_disconnect() {
 
     // Step 1: CreateSubscribeUser with publisher=true (legacy, non-atomic)
     // create_user_core sets is_publisher=true → device.publishers_count++
-    // and user.multicast_publisher=true at creation.
+    // and TunnelFlags::CreatedAsPublisher set at creation.
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     execute_transaction(
         &mut banks_client,
@@ -1145,8 +1145,8 @@ async fn test_publisher_multicast_publisher_persists_through_disconnect() {
     assert_eq!(user_created.status, UserStatus::Pending);
     assert_eq!(user_created.publishers, vec![mgroup_pubkey]);
     assert!(
-        user_created.multicast_publisher,
-        "multicast_publisher must be true at creation (create_user_core sets is_publisher)"
+        TunnelFlags::is_set(user_created.tunnel_flags, TunnelFlags::CreatedAsPublisher),
+        "CreatedAsPublisher flag must be set at creation (create_user_core sets is_publisher)"
     );
 
     // Verify device counter incremented at creation
@@ -1197,8 +1197,8 @@ async fn test_publisher_multicast_publisher_persists_through_disconnect() {
         .unwrap();
     assert_eq!(user_activated.status, UserStatus::Activated);
     assert!(
-        user_activated.multicast_publisher,
-        "multicast_publisher must be true after first (Pending) activation with publishers non-empty"
+        TunnelFlags::is_set(user_activated.tunnel_flags, TunnelFlags::CreatedAsPublisher),
+        "CreatedAsPublisher flag must be set after first (Pending) activation with publishers non-empty"
     );
 
     // Step 3: Disconnect — unsubscribe as publisher (legacy path → status=Updating, publishers=[])
@@ -1229,14 +1229,14 @@ async fn test_publisher_multicast_publisher_persists_through_disconnect() {
         .unwrap();
     assert_eq!(user_updating.status, UserStatus::Updating);
     assert!(user_updating.publishers.is_empty());
-    // multicast_publisher should still be true (SubscribeMulticastGroup doesn't touch it)
+    // CreatedAsPublisher flag should still be set (SubscribeMulticastGroup doesn't touch it)
     assert!(
-        user_updating.multicast_publisher,
-        "multicast_publisher must still be true after unsubscribing (only activate.rs touches it)"
+        TunnelFlags::is_set(user_updating.tunnel_flags, TunnelFlags::CreatedAsPublisher),
+        "CreatedAsPublisher flag must still be set after unsubscribing (only activate.rs touches tunnel_flags)"
     );
 
     // Step 4: Re-activation (Updating → Activated) — THE KEY REGRESSION CHECK
-    // activate.rs must NOT reset multicast_publisher to false when publishers is empty.
+    // activate.rs must NOT reset CreatedAsPublisher flag when publishers is empty.
     // "only on Pending" approach: Updating activations never change the flag.
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction(
@@ -1274,8 +1274,11 @@ async fn test_publisher_multicast_publisher_persists_through_disconnect() {
         "publishers list should be empty after unsubscribing"
     );
     assert!(
-        user_reactivated.multicast_publisher,
-        "REGRESSION: multicast_publisher must STAY true after re-activation (Updating) with \
+        TunnelFlags::is_set(
+            user_reactivated.tunnel_flags,
+            TunnelFlags::CreatedAsPublisher
+        ),
+        "REGRESSION: CreatedAsPublisher flag must STAY set after re-activation (Updating) with \
          empty publishers. This is the core fix — activate.rs must not reset the flag on \
          re-activation, only set it on first Pending activation."
     );
@@ -1416,8 +1419,11 @@ async fn test_publisher_disconnect_delete_decrements_publishers_count() {
         .unwrap();
     assert_eq!(user_after_disconnect.status, UserStatus::Activated);
     assert!(
-        user_after_disconnect.multicast_publisher,
-        "multicast_publisher must be true after disconnect re-activation"
+        TunnelFlags::is_set(
+            user_after_disconnect.tunnel_flags,
+            TunnelFlags::CreatedAsPublisher
+        ),
+        "CreatedAsPublisher flag must be set after disconnect re-activation"
     );
 
     let user_owner = user_after_disconnect.owner;
@@ -1487,7 +1493,7 @@ async fn test_publisher_disconnect_delete_decrements_publishers_count() {
     assert_eq!(
         device_after.multicast_publishers_count, 0,
         "REGRESSION: publishers_count must be decremented from 1 to 0. \
-         Bug: was never decremented because multicast_publisher was reset to false on re-activation."
+         Bug: was never decremented because tunnel_flags was reset on re-activation on re-activation."
     );
     assert_eq!(
         device_after.multicast_subscribers_count, 0,

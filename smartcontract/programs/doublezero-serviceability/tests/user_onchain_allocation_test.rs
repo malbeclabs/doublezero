@@ -46,7 +46,7 @@ use doublezero_serviceability::{
         accesspass::AccessPassType,
         device::DeviceType,
         feature_flags::FeatureFlag,
-        user::{UserCYOA, UserStatus, UserType},
+        user::{TunnelFlags, UserCYOA, UserStatus, UserType},
     },
 };
 use solana_program_test::*;
@@ -3580,7 +3580,7 @@ async fn test_update_user_backward_compat() {
     println!("[PASS] test_update_user_backward_compat");
 }
 
-/// Verify that `multicast_publisher` stays `false` for a user created via CreateUser
+/// Verify that `tunnel_flags` stays `false` for a user created via CreateUser
 /// (is_publisher=false) even when the user later subscribes as a publisher and is
 /// re-activated (Updating status). The flag is only set on first activation (Pending),
 /// and reflects which device counter was incremented at creation time (subscribers_count).
@@ -3717,7 +3717,7 @@ async fn test_activate_updating_does_not_set_multicast_publisher_for_non_publish
     .await;
 
     // Step 5: Re-activate user (Updating → Activated). publishers non-empty, but re-activation
-    //         does NOT set multicast_publisher — only first Pending activation does.
+    //         does NOT set tunnel_flags — only first Pending activation does.
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
     execute_transaction(
@@ -3744,7 +3744,7 @@ async fn test_activate_updating_does_not_set_multicast_publisher_for_non_publish
     )
     .await;
 
-    // Verify multicast_publisher stays false: user was created as non-publisher (CreateUser,
+    // Verify tunnel_flags stays clear: user was created as non-publisher (CreateUser,
     // is_publisher=false). Re-activation (Updating) never sets the flag.
     let user = get_account_data(&mut banks_client, user_pubkey)
         .await
@@ -3754,15 +3754,15 @@ async fn test_activate_updating_does_not_set_multicast_publisher_for_non_publish
 
     assert_eq!(user.status, UserStatus::Activated);
     assert!(
-        !user.multicast_publisher,
-        "multicast_publisher must stay false: user created via CreateUser (is_publisher=false); \
+        !TunnelFlags::is_set(user.tunnel_flags, TunnelFlags::CreatedAsPublisher),
+        "CreatedAsPublisher must stay unset: user created via CreateUser (is_publisher=false); \
          re-activation (Updating) does not set the flag"
     );
 
     println!("[PASS] test_activate_updating_does_not_set_multicast_publisher_for_non_publisher");
 }
 
-/// Verify that `multicast_publisher` is set to `false` after activating a multicast user
+/// Verify that `tunnel_flags` is set to `false` after activating a multicast user
 /// who has no publisher subscriptions (publishers list is empty). This covers both a
 /// brand-new multicast user and a subscriber-only user.
 #[tokio::test]
@@ -3787,7 +3787,7 @@ async fn test_activate_sets_multicast_publisher_false_for_subscriber() {
     ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
 
     // Activate the user with no publisher subscriptions (publishers list is empty).
-    // multicast_publisher should be false because publishers.is_empty() == true.
+    // CreatedAsPublisher should be unset because publishers.is_empty() == true.
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
     execute_transaction(
@@ -3814,7 +3814,7 @@ async fn test_activate_sets_multicast_publisher_false_for_subscriber() {
     )
     .await;
 
-    // Verify multicast_publisher is false
+    // Verify CreatedAsPublisher is unset
     let user = get_account_data(&mut banks_client, user_pubkey)
         .await
         .expect("User should exist")
@@ -3823,8 +3823,8 @@ async fn test_activate_sets_multicast_publisher_false_for_subscriber() {
 
     assert_eq!(user.status, UserStatus::Activated);
     assert!(
-        !user.multicast_publisher,
-        "multicast_publisher must be false after activating a user with no publisher subscriptions"
+        !TunnelFlags::is_set(user.tunnel_flags, TunnelFlags::CreatedAsPublisher),
+        "CreatedAsPublisher must be unset after activating a user with no publisher subscriptions"
     );
 
     println!("[PASS] test_activate_sets_multicast_publisher_false_for_subscriber");
@@ -3833,7 +3833,7 @@ async fn test_activate_sets_multicast_publisher_false_for_subscriber() {
 /// Verify that atomic DeleteUser decrements `multicast_subscribers_count` (not
 /// `multicast_publishers_count`) when the user was created as a non-publisher via
 /// CreateUser (is_publisher=false → subscribers_count++). Even after the user subscribes
-/// as a publisher via SubscribeMulticastGroup and is re-activated, multicast_publisher stays
+/// as a publisher via SubscribeMulticastGroup and is re-activated, tunnel_flags stays
 /// false (re-activation/Updating does not set the flag), so the correct counter is decremented.
 #[tokio::test]
 async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher() {
@@ -3856,7 +3856,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
         ),
     ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
 
-    // Step 1: Initial activation (no publishers yet → multicast_publisher=false,
+    // Step 1: Initial activation (no publishers yet → CreatedAsPublisher unset,
     //         multicast_subscribers_count incremented)
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
@@ -3969,7 +3969,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
     .await;
 
     // Step 5: Re-activate (Updating → Activated). publishers non-empty, but re-activation
-    //         does NOT set multicast_publisher (only first Pending activation does).
+    //         does NOT set tunnel_flags (only first Pending activation does).
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
     execute_transaction(
@@ -3996,7 +3996,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
     )
     .await;
 
-    // Confirm that multicast_publisher stays false: user was created as non-publisher (CreateUser).
+    // Confirm that tunnel_flags stays clear: user was created as non-publisher (CreateUser).
     let user_mid = get_account_data(&mut banks_client, user_pubkey)
         .await
         .expect("User should exist")
@@ -4004,14 +4004,14 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
         .unwrap();
     assert_eq!(user_mid.status, UserStatus::Activated);
     assert!(
-        !user_mid.multicast_publisher,
-        "multicast_publisher must stay false: re-activation (Updating) does not set the flag; \
+        !TunnelFlags::is_set(user_mid.tunnel_flags, TunnelFlags::CreatedAsPublisher),
+        "CreatedAsPublisher must stay unset: re-activation (Updating) does not set the flag; \
          user was created as non-publisher (CreateUser, is_publisher=false)"
     );
 
     // Step 6: Unsubscribe from publisher role → publishers becomes empty, status→Updating.
-    // Do NOT re-activate: atomic delete works on Updating status, and we want multicast_publisher
-    // to remain true (it was set at the previous activation).
+    // Do NOT re-activate: atomic delete works on Updating status, and we want CreatedAsPublisher
+    // to remain set (it was set at the previous activation).
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
     execute_transaction(
@@ -4033,7 +4033,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
     )
     .await;
 
-    // Confirm state before delete: multicast_publisher=false (created via CreateUser),
+    // Confirm state before delete: CreatedAsPublisher unset (created via CreateUser),
     // publishers empty, status=Updating.
     let user_before_delete = get_account_data(&mut banks_client, user_pubkey)
         .await
@@ -4042,8 +4042,11 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
         .unwrap();
     assert_eq!(user_before_delete.status, UserStatus::Updating);
     assert!(
-        !user_before_delete.multicast_publisher,
-        "multicast_publisher should be false: user was created as non-publisher (CreateUser)"
+        !TunnelFlags::is_set(
+            user_before_delete.tunnel_flags,
+            TunnelFlags::CreatedAsPublisher
+        ),
+        "CreatedAsPublisher should be unset: user was created as non-publisher (CreateUser)"
     );
     assert!(
         user_before_delete.publishers.is_empty(),
@@ -4108,7 +4111,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
         "User account should be closed after atomic delete"
     );
 
-    // Because multicast_publisher=false (non-publisher created via CreateUser), the delete
+    // Because CreatedAsPublisher unset (non-publisher created via CreateUser), the delete
     // decrements subscribers_count. publishers_count is unchanged.
     let device_after = get_account_data(&mut banks_client, device_pubkey)
         .await
@@ -4193,7 +4196,7 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
     )
     .await;
 
-    // Step 2: Activate user (moves from Pending to Activated, sets multicast_publisher=false)
+    // Step 2: Activate user (moves from Pending to Activated, sets CreatedAsPublisher unset)
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
     execute_transaction(
@@ -4309,8 +4312,11 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
         .unwrap();
     assert_eq!(user_before_delete.status, UserStatus::Activated);
     assert!(
-        !user_before_delete.multicast_publisher,
-        "multicast_publisher should be false for subscriber"
+        !TunnelFlags::is_set(
+            user_before_delete.tunnel_flags,
+            TunnelFlags::CreatedAsPublisher
+        ),
+        "CreatedAsPublisher should be unset for subscriber"
     );
     assert!(
         user_before_delete.subscribers.is_empty(),
@@ -4386,18 +4392,18 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
 // ============================================================================
 
 /// Verify that legacy CloseAccountUser decrements `multicast_subscribers_count`
-/// (not `multicast_publishers_count`) when `multicast_publisher=false` at closeaccount time.
+/// (not `multicast_publishers_count`) when `CreatedAsPublisher unset` at closeaccount time.
 ///
 /// This test exercises the scenario where a user was once a publisher but unsubscribed via
-/// the legacy path (status→Updating), then re-activated (which resets multicast_publisher=false
-/// because publishers list is empty). At closeaccount time, multicast_publisher=false so the
+/// the legacy path (status→Updating), then re-activated (which resets CreatedAsPublisher unset
+/// because publishers list is empty). At closeaccount time, CreatedAsPublisher unset so the
 /// subscribers counter should be decremented.
 ///
 /// Verify that legacy CloseAccountUser correctly decrements `multicast_subscribers_count`
 /// when the user was created as a non-publisher (via CreateUser, is_publisher=false).
 /// Even though the user later subscribed as a publisher via SubscribeMulticastGroup,
 /// the device counter that was incremented at creation time (subscribers_count) is what
-/// must be decremented at delete time. multicast_publisher stays false throughout.
+/// must be decremented at delete time. tunnel_flags stays clear throughout.
 #[tokio::test]
 async fn test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_subscribers_count() {
     println!("[TEST] test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_subscribers_count");
@@ -4419,7 +4425,7 @@ async fn test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_s
         ),
     ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
 
-    // Step 1: Initial activation (no publishers → multicast_publisher=false)
+    // Step 1: Initial activation (no publishers → CreatedAsPublisher unset)
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
     execute_transaction(
@@ -4562,12 +4568,12 @@ async fn test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_s
         .get_user()
         .unwrap();
     assert_eq!(user_mid.status, UserStatus::Activated);
-    // multicast_publisher stays false: this user was created via CreateUser (is_publisher=false),
+    // tunnel_flags stays clear: this user was created via CreateUser (is_publisher=false),
     // so subscribers_count was incremented at creation. The flag is only set on first activation
     // (Pending → Activated). Re-activation (Updating → Activated) leaves it unchanged.
     assert!(
-        !user_mid.multicast_publisher,
-        "multicast_publisher must stay false: re-activation (Updating) does not set the flag; \
+        !TunnelFlags::is_set(user_mid.tunnel_flags, TunnelFlags::CreatedAsPublisher),
+        "CreatedAsPublisher must stay unset: re-activation (Updating) does not set the flag; \
          it was false from Pending activation because user was created as non-publisher"
     );
 
@@ -4620,7 +4626,7 @@ async fn test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_s
     )
     .await;
 
-    // After re-activation with empty publishers, multicast_publisher is still false.
+    // After re-activation with empty publishers, CreatedAsPublisher is still unset.
     // It was false from the start: CreateUser always uses is_publisher=false (subscribers_count++),
     // and the flag is only set on Pending activation (which also saw empty publishers).
     // Re-activation (Updating → Activated) never changes the flag.
@@ -4632,8 +4638,11 @@ async fn test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_s
         .unwrap();
     assert_eq!(user_after_reactivate.status, UserStatus::Activated);
     assert!(
-        !user_after_reactivate.multicast_publisher,
-        "multicast_publisher must be false: user was created as non-publisher (CreateUser) \
+        !TunnelFlags::is_set(
+            user_after_reactivate.tunnel_flags,
+            TunnelFlags::CreatedAsPublisher
+        ),
+        "CreatedAsPublisher must be unset: user was created as non-publisher (CreateUser) \
          and the flag is never changed on re-activation"
     );
 
@@ -4704,7 +4713,7 @@ async fn test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_s
     let user_after = get_account_data(&mut banks_client, user_pubkey).await;
     assert!(user_after.is_none(), "User account should be closed");
 
-    // Because multicast_publisher=false at closeaccount time (user was created as non-publisher),
+    // Because CreatedAsPublisher unset at closeaccount time (user was created as non-publisher),
     // subscribers_count should be decremented.
     let device_after = get_account_data(&mut banks_client, device_pubkey)
         .await
@@ -4726,7 +4735,7 @@ async fn test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_s
 
 /// Verify that legacy CloseAccountUser decrements `multicast_subscribers_count` for a user
 /// created via CreateUser (is_publisher=false → subscribers_count++).
-/// Even after the user subscribes as a publisher and re-activates, multicast_publisher stays
+/// Even after the user subscribes as a publisher and re-activates, tunnel_flags stays
 /// false (re-activation/Updating does not set the flag), so subscribers_count is decremented.
 ///
 /// Also exercises the onchain unsubscribe path which returns dz_ip to MulticastPublisherBlock.
@@ -4751,7 +4760,7 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
         ),
     ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
 
-    // Step 1: Initial activation (no publishers → multicast_publisher=false)
+    // Step 1: Initial activation (no publishers → CreatedAsPublisher unset)
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
     execute_transaction(
@@ -4871,7 +4880,7 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
     assert_eq!(user_updating.status, UserStatus::Updating);
 
     // Step 5: Re-activate (Updating → Activated). publishers non-empty, so dz_ip allocated
-    //         from MulticastPublisherBlock. But re-activation does NOT set multicast_publisher
+    //         from MulticastPublisherBlock. But re-activation does NOT set tunnel_flags
     //         (only first Pending activation does — which had empty publishers).
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
@@ -4906,8 +4915,11 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
         .unwrap();
     assert_eq!(user_as_publisher.status, UserStatus::Activated);
     assert!(
-        !user_as_publisher.multicast_publisher,
-        "multicast_publisher must stay false: user was created as non-publisher (CreateUser); \
+        !TunnelFlags::is_set(
+            user_as_publisher.tunnel_flags,
+            TunnelFlags::CreatedAsPublisher
+        ),
+        "CreatedAsPublisher must stay unset: user was created as non-publisher (CreateUser); \
          re-activation (Updating) does not set the flag"
     );
     assert_ne!(
@@ -4937,7 +4949,7 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
 
     // Step 7: Unsubscribe via ONCHAIN path (publisher=false, use_onchain_allocation=true)
     // → status stays Activated, dz_ip returned to MulticastPublisherBlock,
-    // → multicast_publisher remains false (was never set for non-publisher)
+    // → CreatedAsPublisher remains unset (was never set for non-publisher)
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
     execute_transaction(
@@ -4961,7 +4973,7 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
     )
     .await;
 
-    // Confirm status is still Activated and multicast_publisher is still true
+    // Confirm status is still Activated and CreatedAsPublisher is still set
     let user_after_onchain_unsub = get_account_data(&mut banks_client, user_pubkey)
         .await
         .expect("User should exist")
@@ -4973,8 +4985,11 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
         "Onchain unsubscribe should keep user Activated (no Updating round-trip)"
     );
     assert!(
-        !user_after_onchain_unsub.multicast_publisher,
-        "multicast_publisher should still be false — user was created as non-publisher"
+        !TunnelFlags::is_set(
+            user_after_onchain_unsub.tunnel_flags,
+            TunnelFlags::CreatedAsPublisher
+        ),
+        "CreatedAsPublisher should still be unset — user was created as non-publisher"
     );
     assert!(
         user_after_onchain_unsub.publishers.is_empty(),
@@ -5024,12 +5039,12 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
         "User should be in Deleting status after legacy DeleteUser"
     );
     assert!(
-        !user_deleting.multicast_publisher,
-        "multicast_publisher should still be false at Deleting stage (non-publisher user)"
+        !TunnelFlags::is_set(user_deleting.tunnel_flags, TunnelFlags::CreatedAsPublisher),
+        "CreatedAsPublisher should still be unset at Deleting stage (non-publisher user)"
     );
 
     // Step 9: Legacy CloseAccountUser (dz_prefix_count=0)
-    // → user.multicast_publisher=true → decrements multicast_publishers_count
+    // → TunnelFlags::is_set(user.tunnel_flags, TunnelFlags::CreatedAsPublisher)=true → decrements multicast_publishers_count
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
     execute_transaction(
@@ -5054,7 +5069,7 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
     let user_after = get_account_data(&mut banks_client, user_pubkey).await;
     assert!(user_after.is_none(), "User account should be closed");
 
-    // multicast_publisher=false at closeaccount → subscribers_count decremented, publishers_count unchanged
+    // CreatedAsPublisher unset at closeaccount → subscribers_count decremented, publishers_count unchanged
     let device_after = get_account_data(&mut banks_client, device_pubkey)
         .await
         .expect("Device should exist")
@@ -5076,7 +5091,7 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
 /// Verify that legacy CloseAccountUser decrements `multicast_subscribers_count`
 /// for a subscriber-only multicast user.
 ///
-/// Simpler path: user is activated as a subscriber (multicast_publisher=false),
+/// Simpler path: user is activated as a subscriber (CreatedAsPublisher unset),
 /// then legacy deleted and closed. Verifies the common subscriber path.
 #[tokio::test]
 async fn test_closeaccount_user_legacy_decrements_multicast_subscribers_count() {
@@ -5124,8 +5139,8 @@ async fn test_closeaccount_user_legacy_decrements_multicast_subscribers_count() 
         .unwrap();
     assert_eq!(user_activated.status, UserStatus::Activated);
     assert!(
-        !user_activated.multicast_publisher,
-        "multicast_publisher must be false for subscriber"
+        !TunnelFlags::is_set(user_activated.tunnel_flags, TunnelFlags::CreatedAsPublisher),
+        "CreatedAsPublisher must be unset for subscriber"
     );
     let user_owner = user_activated.owner;
 

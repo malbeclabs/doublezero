@@ -334,7 +334,11 @@ pub fn create_user_core(
         subscribers: vec![],
         validator_pubkey,
         tunnel_endpoint,
-        multicast_publisher: is_publisher,
+        tunnel_flags: if is_publisher {
+            TunnelFlags::CreatedAsPublisher as u8
+        } else {
+            0
+        },
     };
 
     Ok(CreateUserCoreResult {

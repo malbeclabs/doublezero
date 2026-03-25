@@ -351,7 +351,7 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         // User with 1 subscriber only (publisher use case)
@@ -373,7 +373,7 @@ mod tests {
             subscribers: vec![Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         // User with both 1 publisher and 1 subscriber (future simultaneous pub/sub)
@@ -395,7 +395,7 @@ mod tests {
             subscribers: vec![Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            multicast_publisher: false,
+            tunnel_flags: 0,
         };
 
         let size_with_publisher = borsh::object_length(&user_with_publisher).unwrap();
@@ -403,7 +403,7 @@ mod tests {
         let size_with_both = borsh::object_length(&user_with_both).unwrap();
 
         // Verify our understanding of the sizes
-        // Base User size (empty vecs) = 177 bytes (includes multicast_publisher bool)
+        // Base User size (empty vecs) = 177 bytes (includes tunnel_flags u8)
         // Each Pubkey in publishers/subscribers adds 32 bytes
         assert_eq!(
             size_with_publisher, 209,

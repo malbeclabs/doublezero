@@ -31,7 +31,7 @@ pub struct PollingSentinel {
     processed_cache: Arc<Cache<Pubkey, Instant>>,
     poll_interval: Duration,
     previous_leader_epochs: u8,
-    multicast_group_pdas: Vec<Pubkey>,
+    multicast_group_pubkeys: Vec<Pubkey>,
 }
 
 impl PollingSentinel {
@@ -42,7 +42,7 @@ impl PollingSentinel {
         serviceability_id: Pubkey,
         poll_interval_secs: u64,
         previous_leader_epochs: u8,
-        multicast_group_pdas: Vec<Pubkey>,
+        multicast_group_pubkeys: Vec<Pubkey>,
     ) -> Result<Self> {
         // Create cache with automatic background cleanup
         let processed_cache = Arc::new(Cache::new());
@@ -60,7 +60,7 @@ impl PollingSentinel {
             processed_cache,
             poll_interval: Duration::from_secs(poll_interval_secs),
             previous_leader_epochs,
-            multicast_group_pdas,
+            multicast_group_pubkeys,
         })
     }
 
@@ -178,10 +178,10 @@ impl PollingSentinel {
                     }
                 };
 
-                for mgroup_pda in &self.multicast_group_pdas {
-                    if existing_mgroup_pubs.contains(mgroup_pda) {
+                for mgroup_pubkey in &self.multicast_group_pubkeys {
+                    if existing_mgroup_pubs.contains(mgroup_pubkey) {
                         info!(
-                            %validator_id, %validator_ip, %mgroup_pda,
+                            %validator_id, %validator_ip, %mgroup_pubkey,
                             "validator already in multicast publisher allowlist; skipping"
                         );
                         metrics::counter!("doublezero_sentinel_multicast_allowlist_skipped")
@@ -193,7 +193,7 @@ impl PollingSentinel {
                         || async {
                             self.dz_rpc_client
                                 .add_multicast_publisher_allowlist(
-                                    mgroup_pda,
+                                    mgroup_pubkey,
                                     &service_key,
                                     &validator_ip,
                                 )
@@ -205,7 +205,7 @@ impl PollingSentinel {
                     {
                         Ok(_) => {
                             info!(
-                                %validator_id, %validator_ip, %mgroup_pda,
+                                %validator_id, %validator_ip, %mgroup_pubkey,
                                 "multicast publisher allowlist added"
                             );
                             metrics::counter!("doublezero_sentinel_multicast_allowlist_success")
@@ -213,7 +213,7 @@ impl PollingSentinel {
                         }
                         Err(err) => {
                             error!(
-                                ?err, %validator_id, %validator_ip, %mgroup_pda,
+                                ?err, %validator_id, %validator_ip, %mgroup_pubkey,
                                 "multicast allowlist failed; continuing"
                             );
                             metrics::counter!("doublezero_sentinel_multicast_allowlist_failed")
@@ -346,7 +346,7 @@ mod tests {
             processed_cache: Arc::new(Cache::new()),
             poll_interval: Duration::from_secs(15),
             previous_leader_epochs: 0,
-            multicast_group_pdas: vec![],
+            multicast_group_pubkeys: vec![],
         };
 
         // Invalid signature -> verify_access_request(...) should return Error::SignatureVerify

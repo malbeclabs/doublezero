@@ -10,7 +10,10 @@ use clap::Parser;
 use config::{Config, Environment, File};
 use doublezero_serviceability::addresses::{devnet, mainnet, testnet};
 use serde::{Deserialize, Serialize};
-use solana_sdk::{pubkey::Pubkey, signer::keypair::Keypair};
+use solana_sdk::{
+    pubkey::{ParsePubkeyError, Pubkey},
+    signer::keypair::Keypair,
+};
 use url::Url;
 
 #[derive(Debug, Parser)]
@@ -63,10 +66,10 @@ pub struct Settings {
     #[serde(default = "default_metrics_addr")]
     metrics_addr: String,
 
-    /// Comma-separated multicast group codes for publisher allowlisting on
+    /// Comma-separated multicast group pubkeys for publisher allowlisting on
     /// validator onboarding. When empty (default), allowlisting is disabled.
     #[serde(default)]
-    multicast_group_codes: Option<String>,
+    multicast_group_pubkeys: Option<String>,
 }
 
 impl Settings {
@@ -116,16 +119,17 @@ impl Settings {
             .expect("invalid metrics network address and port")
     }
 
-    pub fn multicast_group_codes(&self) -> Vec<String> {
-        self.multicast_group_codes
+    pub fn multicast_group_pubkeys(&self) -> std::result::Result<Vec<Pubkey>, ParsePubkeyError> {
+        self.multicast_group_pubkeys
             .as_deref()
             .map(|s| {
                 s.split(',')
-                    .map(|s| s.trim().to_string())
+                    .map(|s| s.trim())
                     .filter(|s| !s.is_empty())
+                    .map(Pubkey::from_str)
                     .collect()
             })
-            .unwrap_or_default()
+            .unwrap_or(Ok(vec![]))
     }
 
     pub fn serviceability_program_id(
@@ -161,10 +165,10 @@ impl Settings {
     }
 }
 
-/// Helper to build a `Settings` with only `multicast_group_codes` set.
+/// Helper to build a `Settings` with only `multicast_group_pubkeys` set.
 /// All other fields use placeholder values (not relevant for the test).
 #[cfg(test)]
-fn settings_with_mcast_codes(codes: Option<&str>) -> Settings {
+fn settings_with_mcast_pubkeys(pubkeys: Option<&str>) -> Settings {
     Settings {
         log: default_log(),
         env: "devnet".into(),
@@ -172,7 +176,7 @@ fn settings_with_mcast_codes(codes: Option<&str>) -> Settings {
         sol_rpc: "localhost".into(),
         keypair: "/dev/null".into(),
         metrics_addr: default_metrics_addr(),
-        multicast_group_codes: codes.map(String::from),
+        multicast_group_pubkeys: pubkeys.map(String::from),
     }
 }
 
@@ -189,35 +193,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn multicast_group_codes_none() {
-        let settings = settings_with_mcast_codes(None);
-        assert!(settings.multicast_group_codes().is_empty());
+    fn multicast_group_pubkeys_none() {
+        let settings = settings_with_mcast_pubkeys(None);
+        assert!(settings.multicast_group_pubkeys().unwrap().is_empty());
     }
 
     #[test]
-    fn multicast_group_codes_empty_string() {
-        let settings = settings_with_mcast_codes(Some(""));
-        assert!(settings.multicast_group_codes().is_empty());
+    fn multicast_group_pubkeys_empty_string() {
+        let settings = settings_with_mcast_pubkeys(Some(""));
+        assert!(settings.multicast_group_pubkeys().unwrap().is_empty());
     }
 
     #[test]
-    fn multicast_group_codes_single() {
-        let settings = settings_with_mcast_codes(Some("ALPHA"));
-        assert_eq!(settings.multicast_group_codes(), vec!["ALPHA"]);
+    fn multicast_group_pubkeys_single() {
+        let pk = Pubkey::new_unique();
+        let settings = settings_with_mcast_pubkeys(Some(&pk.to_string()));
+        assert_eq!(settings.multicast_group_pubkeys().unwrap(), vec![pk]);
     }
 
     #[test]
-    fn multicast_group_codes_multiple_with_whitespace() {
-        let settings = settings_with_mcast_codes(Some(" ALPHA , BETA , GAMMA "));
+    fn multicast_group_pubkeys_multiple_with_whitespace() {
+        let pk1 = Pubkey::new_unique();
+        let pk2 = Pubkey::new_unique();
+        let pk3 = Pubkey::new_unique();
+        let input = format!(" {} , {} , {} ", pk1, pk2, pk3);
+        let settings = settings_with_mcast_pubkeys(Some(&input));
         assert_eq!(
-            settings.multicast_group_codes(),
-            vec!["ALPHA", "BETA", "GAMMA"]
+            settings.multicast_group_pubkeys().unwrap(),
+            vec![pk1, pk2, pk3]
         );
     }
 
     #[test]
-    fn multicast_group_codes_trailing_comma() {
-        let settings = settings_with_mcast_codes(Some("ALPHA,BETA,"));
-        assert_eq!(settings.multicast_group_codes(), vec!["ALPHA", "BETA"]);
+    fn multicast_group_pubkeys_trailing_comma() {
+        let pk1 = Pubkey::new_unique();
+        let pk2 = Pubkey::new_unique();
+        let input = format!("{},{},", pk1, pk2);
+        let settings = settings_with_mcast_pubkeys(Some(&input));
+        assert_eq!(settings.multicast_group_pubkeys().unwrap(), vec![pk1, pk2]);
+    }
+
+    #[test]
+    fn multicast_group_pubkeys_invalid_returns_error() {
+        let settings = settings_with_mcast_pubkeys(Some("not-a-pubkey"));
+        assert!(settings.multicast_group_pubkeys().is_err());
     }
 }

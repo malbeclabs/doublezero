@@ -107,14 +107,22 @@ echo ""
 # --- Build in Docker ---
 
 RELEASE_IMAGE="doublezero-release"
+DOCKERFILE="release/Dockerfile.release"
+DOCKERFILE_HASH=$(shasum -a 256 "$DOCKERFILE" | cut -d' ' -f1 | head -c 12)
 
-# Build the release Docker image if it doesn't exist.
-if ! docker image inspect "$RELEASE_IMAGE" >/dev/null 2>&1; then
-    echo -e "${BOLD}${CYAN}[0/1]${RESET} ${BOLD}Building release Docker image${RESET}"
+# Rebuild the Docker image if it doesn't exist or the Dockerfile has changed.
+EXISTING_HASH=$(docker image inspect "$RELEASE_IMAGE" --format '{{index .Config.Labels "dockerfile.hash"}}' 2>/dev/null || true)
+if [[ "$EXISTING_HASH" != "$DOCKERFILE_HASH" ]]; then
+    if [[ -n "$EXISTING_HASH" ]]; then
+        echo -e "${BOLD}${CYAN}[0/1]${RESET} ${BOLD}Rebuilding release Docker image (Dockerfile changed)${RESET}"
+    else
+        echo -e "${BOLD}${CYAN}[0/1]${RESET} ${BOLD}Building release Docker image${RESET}"
+    fi
     echo ""
     docker build --platform linux/amd64 \
         -t "$RELEASE_IMAGE" \
-        -f release/Dockerfile.release \
+        --label "dockerfile.hash=$DOCKERFILE_HASH" \
+        -f "$DOCKERFILE" \
         release/
     echo ""
 fi

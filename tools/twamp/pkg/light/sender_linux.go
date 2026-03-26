@@ -65,10 +65,14 @@ func NewLinuxSender(ctx context.Context, iface string, local *net.UDPAddr, remot
 		return nil, fmt.Errorf("epoll_ctl: %w", err)
 	}
 
-	if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPNS, 1); err != nil {
+	tsFlags := unix.SOF_TIMESTAMPING_TX_SCHED |
+		unix.SOF_TIMESTAMPING_RX_SOFTWARE |
+		unix.SOF_TIMESTAMPING_SOFTWARE |
+		unix.SOF_TIMESTAMPING_OPT_TSONLY
+	if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPING, tsFlags); err != nil {
 		unix.Close(fd)
 		unix.Close(epfd)
-		return nil, fmt.Errorf("SO_TIMESTAMPNS: %w", err)
+		return nil, fmt.Errorf("SO_TIMESTAMPING: %w", err)
 	}
 
 	ip4 := remote.IP.To4()
@@ -111,10 +115,15 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, error) {
 		return 0, fmt.Errorf("marshal packet: %w", err)
 	}
 
-	// Send the packet.
-	sendTime := time.Now()
+	// Send the packet and retrieve the kernel TX timestamp from the error queue.
+	// Capture userspace time before Sendto as fallback, matching pre-SO_TIMESTAMPING behavior.
+	fallbackSendTime := time.Now()
 	if err := unix.Sendto(s.fd, s.buf[:PacketSize], 0, s.remote); err != nil {
 		return 0, fmt.Errorf("sendto: %w", err)
+	}
+	sendTime, err := s.recvTxTimestamp()
+	if err != nil {
+		sendTime = fallbackSendTime
 	}
 
 	// Use the context deadline if set, otherwise use a default timeout.
@@ -186,14 +195,13 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, error) {
 			return 0, fmt.Errorf("parse cmsg: %w", err)
 		}
 
-		// Parse timestamp from control message.
+		// Parse RX timestamp from control message.
 		for _, cmsg := range cmsgs {
-			if cmsg.Header.Level == syscall.SOL_SOCKET && cmsg.Header.Type == syscall.SO_TIMESTAMPNS {
-				if len(cmsg.Data) < int(unsafe.Sizeof(syscall.Timespec{})) {
+			if cmsg.Header.Level == unix.SOL_SOCKET && cmsg.Header.Type == unix.SO_TIMESTAMPING {
+				kernelRecvTime, ok := parseSOTimestamping(cmsg.Data)
+				if !ok {
 					continue
 				}
-				ts := *(*syscall.Timespec)(unsafe.Pointer(&cmsg.Data[0]))
-				kernelRecvTime := time.Unix(int64(ts.Sec), int64(ts.Nsec))
 				rtt := decideRTT(sendTime, kernelRecvTime, fallbackRecvTime)
 
 				// Verify that the seq and timestamp match the sent packet.
@@ -254,14 +262,10 @@ func (s *LinuxSender) cleanUpReceived(ctx context.Context) {
 	}
 }
 
-// decideRTT chooses RTT from userspace send time, kernel recv timestamp, or userspace recv fallback.
-// Rules:
-//   - kernel RTT < -100µs: use userspace recv (interface misconfigured)
-//   - -100µs ≤ kernel RTT < 0: clamp to 0 (clock drift/syscall latency)
-//   - else: use kernel RTT
-//
-// Kernel timestamps via SO_TIMESTAMPNS can appear earlier than userspace CLOCK_REALTIME
-// due to clock sampling, syscall latency, or NTP adjustments.
+// decideRTT chooses RTT from kernel send time, kernel recv timestamp, or userspace recv fallback.
+// Both sendTime and kernelRecvTime are kernel SO_TIMESTAMPING timestamps on the same clock,
+// so the clock-skew window is narrow. The fallback path handles the case where the TX
+// timestamp could not be retrieved and sendTime is userspace time.Now().
 func decideRTT(sendTime, kernelRecvTime, fallbackRecvTime time.Time) time.Duration {
 	rtt := kernelRecvTime.Sub(sendTime)
 	if rtt < -100*time.Microsecond {
@@ -270,4 +274,45 @@ func decideRTT(sendTime, kernelRecvTime, fallbackRecvTime time.Time) time.Durati
 	rtt = max(rtt, 0)
 
 	return rtt
+}
+
+// recvTxTimestamp reads the kernel TX timestamp from the socket error queue.
+// SO_TIMESTAMPING delivers TX timestamps as cmsg on MSG_ERRQUEUE after the
+// packet is handed to the NIC driver.
+func (s *LinuxSender) recvTxTimestamp() (time.Time, error) {
+	oob := make([]byte, 512)
+	for range 50 {
+		_, oobn, _, _, err := unix.Recvmsg(s.fd, nil, oob, unix.MSG_ERRQUEUE)
+		if err != nil {
+			runtime.Gosched()
+			continue
+		}
+		cmsgs, err := syscall.ParseSocketControlMessage(oob[:oobn])
+		if err != nil {
+			return time.Time{}, fmt.Errorf("parse cmsg: %w", err)
+		}
+		for _, cmsg := range cmsgs {
+			if cmsg.Header.Level == unix.SOL_SOCKET && cmsg.Header.Type == unix.SO_TIMESTAMPING {
+				if t, ok := parseSOTimestamping(cmsg.Data); ok {
+					return t, nil
+				}
+			}
+		}
+	}
+	return time.Time{}, fmt.Errorf("no TX timestamp on error queue")
+}
+
+// parseSOTimestamping extracts the software timestamp from an SO_TIMESTAMPING
+// control message. The message contains three consecutive Timespecs:
+// [0] software, [1] hw-transformed, [2] hw-raw. We use [0].
+func parseSOTimestamping(data []byte) (time.Time, bool) {
+	tsSize := int(unsafe.Sizeof(unix.Timespec{}))
+	if len(data) < tsSize {
+		return time.Time{}, false
+	}
+	ts := *(*unix.Timespec)(unsafe.Pointer(&data[0]))
+	if ts.Sec == 0 && ts.Nsec == 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(ts.Sec, ts.Nsec), true
 }

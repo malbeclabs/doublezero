@@ -19,7 +19,10 @@ func GetRecipients(
 		return nil, fmt.Errorf("failed to load serviceability state: %w", err)
 	}
 
-	seen := make(map[solana.PublicKey]struct{})
+	seen := make(map[solana.PublicKey]struct{}, len(recipients))
+	for _, r := range recipients {
+		seen[r.PubKey] = struct{}{}
+	}
 	add := func(name string, pk solana.PublicKey) {
 		if _, ok := seen[pk]; ok {
 			return

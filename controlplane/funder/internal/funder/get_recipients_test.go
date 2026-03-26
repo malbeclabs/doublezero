@@ -98,6 +98,36 @@ func TestGetRecipients_Dedup(t *testing.T) {
 	assert.Equal(t, "internet-latency-collector", result[1].Name)
 }
 
+func TestGetRecipients_DedupWithPreloaded(t *testing.T) {
+	sharedOwner := [32]byte{7}
+	mockData := &serviceability.ProgramData{
+		Contributors: []serviceability.Contributor{
+			{
+				PubKey: [32]byte{6},
+				Owner:  sharedOwner,
+			},
+		},
+	}
+	client := &MockServiceabilityClient{
+		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return mockData, nil
+		},
+	}
+	pk := [32]byte{5}
+	internetLatencyCollectorPK := solana.PublicKeyFromBytes(pk[:])
+
+	// Pre-load a recipient with the same pubkey as the contributor owner.
+	preloaded := []Recipient{
+		NewRecipient("preloaded", solana.PublicKeyFromBytes(sharedOwner[:])),
+	}
+
+	result, err := GetRecipients(context.Background(), client, preloaded, internetLatencyCollectorPK)
+	assert.NoError(t, err)
+	assert.Len(t, result, 2) // preloaded + internet-latency-collector, contributor deduped
+	assert.Equal(t, "preloaded", result[0].Name)
+	assert.Equal(t, "internet-latency-collector", result[1].Name)
+}
+
 func TestGetRecipients_Error(t *testing.T) {
 	client := &MockServiceabilityClient{
 		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {

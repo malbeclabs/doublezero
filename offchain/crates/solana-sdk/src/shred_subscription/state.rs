@@ -14,15 +14,19 @@ pub const INSTANT_ALLOCATION_REQUEST_SEED_PREFIX: &[u8] = b"instant_seat_allocat
 pub const WITHDRAW_SEAT_REQUEST_SEED_PREFIX: &[u8] = b"withdraw_seat_request";
 
 /// Mainnet USDC mint address.
-const DEFAULT_USDC_MINT_KEY: Pubkey =
+pub const MAINNET_USDC_MINT_KEY: Pubkey =
     solana_sdk::pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
-/// USDC mint address.
+/// Development/testnet USDC mint address.
+pub const DEVELOPMENT_USDC_MINT_KEY: Pubkey =
+    solana_sdk::pubkey!("uSDZq2RMuxrEf7gqgDjR8wJCtCyaDAQk2e5jLAaoeeM");
+
+/// USDC mint address (defaults to mainnet, overridable via env var).
 pub static USDC_MINT_KEY: LazyLock<Pubkey> = LazyLock::new(|| {
     std::env::var("SHRED_SUBSCRIPTION_USDC_MINT")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(DEFAULT_USDC_MINT_KEY)
+        .unwrap_or(MAINNET_USDC_MINT_KEY)
 });
 
 pub fn find_program_config_address() -> (Pubkey, u8) {

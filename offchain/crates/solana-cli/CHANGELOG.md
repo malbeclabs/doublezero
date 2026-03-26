@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - `shreds pay`: block payment when device has no available seats
 - `shreds pay`: use per-seat price override in client-side price floor check, and allow `--amount 0` ([#314](https://github.com/doublezerofoundation/doublezero-offchain/pull/314))
+- derive network defaults from `-u` moniker: resolve DZ Ledger URLs, USDC mint, and keypair path automatically ([#313](https://github.com/doublezerofoundation/doublezero-offchain/pull/313))
 - add `shreds payments` command to show chronological fund/withdrawal history for a client seat escrow
 - `shreds pay`: skip instant seat allocation when re-funding an already-active seat ([#306](https://github.com/doublezerofoundation/doublezero-offchain/pull/306))
 - `shreds pay`: warn when <10% of the Solana epoch remains, with `--accept-partial-epoch` flag to suppress ([#302](https://github.com/doublezerofoundation/doublezero-offchain/pull/302))

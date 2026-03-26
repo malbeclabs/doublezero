@@ -3,7 +3,7 @@ use std::net::Ipv4Addr;
 use anyhow::Result;
 use borsh::BorshDeserialize;
 use clap::Args;
-use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_solana_client_tools::rpc::SolanaConnectionOptions;
 use doublezero_solana_sdk::shred_subscription::{
     self as shred_subscription, instruction::ShredSubscriptionInstructionData, state,
 };
@@ -84,8 +84,12 @@ impl std::fmt::Display for EventType {
 
 impl PaymentsCommand {
     pub async fn try_into_execute(self, dz_ledger_url: Option<String>) -> Result<()> {
-        let connection = SolanaConnection::from(self.connection_options);
-        let network_env = connection.try_network_environment().await?;
+        let moniker_env = self.connection_options.moniker_env();
+        let connection = self.connection_options.into_shred_subscription_connection();
+        let network_env = match moniker_env {
+            Some(env) => env,
+            None => connection.try_network_environment().await?,
+        };
 
         let device = self
             .device_args

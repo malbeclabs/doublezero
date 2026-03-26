@@ -29,7 +29,7 @@ pub struct WithdrawCommand {
     /// Client IPv4 address
     #[arg(long)]
     client_ip: Ipv4Addr,
-    /// USDC mint (defaults to mainnet USDC)
+    /// USDC mint (auto-detected from network: mainnet or development)
     #[arg(long, hide = true)]
     usdc_mint: Option<Pubkey>,
     /// USDC token account to receive the refund (defaults to your ATA)
@@ -41,19 +41,35 @@ pub struct WithdrawCommand {
 
 impl WithdrawCommand {
     pub async fn try_into_execute(self, dz_ledger_url: Option<String>) -> Result<()> {
-        let wallet = Wallet::try_from(self.solana_payer_options)?;
+        let moniker_env = self.solana_payer_options.connection_options.moniker_env();
+        let dz_connection = self
+            .solana_payer_options
+            .connection_options
+            .clone()
+            .into_shred_subscription_connection();
+        let mut wallet = Wallet::try_from(self.solana_payer_options)?;
+        wallet.connection = dz_connection;
         let wallet_key = wallet.pubkey();
 
         println!("Shred subscription - Withdraw (Close Payment Escrow)");
 
-        let network_env = wallet.connection.try_network_environment().await?;
+        let network_env = match moniker_env {
+            Some(env) => env,
+            None => wallet.connection.try_network_environment().await?,
+        };
         println!("Connected to Solana: {network_env:?}");
 
         let device = self
             .device_args
             .resolve(network_env, &dz_ledger_url)
             .await?;
-        let usdc_mint_key = self.usdc_mint.unwrap_or(*state::USDC_MINT_KEY);
+        let usdc_mint_key = self.usdc_mint.unwrap_or_else(|| {
+            if network_env.is_mainnet_beta() {
+                state::MAINNET_USDC_MINT_KEY
+            } else {
+                state::DEVELOPMENT_USDC_MINT_KEY
+            }
+        });
         let client_ip_bits = u32::from(self.client_ip);
         let (client_seat_key, _) = state::find_client_seat_address(&device, client_ip_bits);
 

@@ -8,8 +8,10 @@ use solana_sdk::signature::Keypair;
 
 use crate::keypair::{error::KeypairLoadError, source::KeypairSource};
 
-/// Default keypair path relative to HOME
+/// Default keypair path relative to HOME (standard Solana location).
 const DEFAULT_KEYPAIR_PATH: &str = ".config/solana/id.json";
+/// Fallback keypair path relative to HOME.
+const FALLBACK_KEYPAIR_PATH: &str = ".config/doublezero/id.json";
 
 /// Result of loading a keypair, including provenance information
 pub struct KeypairLoadResult {
@@ -70,10 +72,12 @@ fn read_keypair_from_stdin() -> Result<Keypair, KeypairLoadError> {
 /// 1. CLI argument (--keypair)
 /// 2. Stdin (if not a TTY)
 /// 3. Default path (~/.config/solana/id.json)
+/// 4. Fallback path (~/.config/doublezero/id.json)
 ///
 /// # Arguments
 /// * `cli_path` - Optional path from CLI --keypair argument
 /// * `default_path` - Default path if no other source available
+/// * `fallback_path` - Fallback path if default path fails
 ///
 /// # Returns
 /// * `Ok(KeypairLoadResult)` - Successfully loaded keypair with source
@@ -81,6 +85,7 @@ fn read_keypair_from_stdin() -> Result<Keypair, KeypairLoadError> {
 pub fn load_keypair(
     cli_path: Option<PathBuf>,
     default_path: PathBuf,
+    fallback_path: PathBuf,
 ) -> Result<KeypairLoadResult, KeypairLoadError> {
     let mut attempted: Vec<String> = Vec::new();
 
@@ -117,7 +122,7 @@ pub fn load_keypair(
         }
     }
 
-    // 3. Try default path
+    // 3. Try default path (~/.config/solana/id.json)
     match read_keypair_from_path(&default_path) {
         Ok(keypair) => {
             return Ok(KeypairLoadResult {
@@ -130,6 +135,23 @@ pub fn load_keypair(
         }
     }
 
+    // 4. Try fallback path (~/.config/doublezero/id.json)
+    match read_keypair_from_path(&fallback_path) {
+        Ok(keypair) => {
+            return Ok(KeypairLoadResult {
+                keypair,
+                source: KeypairSource::DefaultPath(fallback_path),
+            });
+        }
+        Err(e) => {
+            attempted.push(format!(
+                "Fallback path ({}): {}",
+                fallback_path.display(),
+                e
+            ));
+        }
+    }
+
     Err(KeypairLoadError::NoSourceAvailable { attempted })
 }
 
@@ -137,6 +159,7 @@ pub fn load_keypair(
 /// 1. CLI argument (--keypair)
 /// 2. Stdin (if not a TTY)
 /// 3. Default path (~/.config/solana/id.json)
+/// 4. Fallback path (~/.config/doublezero/id.json)
 ///
 /// This is a convenience wrapper around [`load_keypair`] that automatically
 /// computes the default path from the HOME environment variable.
@@ -150,7 +173,8 @@ pub fn load_keypair(
 pub fn try_load_keypair(cli_path: Option<PathBuf>) -> Result<Keypair, KeypairLoadError> {
     let home = home::home_dir().ok_or(KeypairLoadError::HomeDirNotFound)?;
     let default_path = home.join(DEFAULT_KEYPAIR_PATH);
-    let result = load_keypair(cli_path, default_path)?;
+    let fallback_path = home.join(FALLBACK_KEYPAIR_PATH);
+    let result = load_keypair(cli_path, default_path, fallback_path)?;
     Ok(result.keypair)
 }
 
@@ -214,8 +238,9 @@ mod tests {
         let (cli_path, cli_keypair) = create_test_keypair_file(&tmp);
 
         let default_path = tmp.path().join("default-keypair.json");
+        let fallback_path = tmp.path().join("fallback-keypair.json");
 
-        let result = load_keypair(Some(cli_path.clone()), default_path).unwrap();
+        let result = load_keypair(Some(cli_path.clone()), default_path, fallback_path).unwrap();
 
         assert_eq!(result.keypair.pubkey(), cli_keypair.pubkey());
         assert!(matches!(result.source, KeypairSource::CliArgument(_)));
@@ -226,9 +251,24 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let (default_path, default_keypair) = create_test_keypair_file(&tmp);
 
-        let result = load_keypair(None, default_path).unwrap();
+        let fallback_path = tmp.path().join("fallback-keypair.json");
+
+        let result = load_keypair(None, default_path, fallback_path).unwrap();
 
         assert_eq!(result.keypair.pubkey(), default_keypair.pubkey());
+        assert!(matches!(result.source, KeypairSource::DefaultPath(_)));
+    }
+
+    #[test]
+    fn test_load_keypair_solana_fallback() {
+        let tmp = TempDir::new().unwrap();
+        let (fallback_path, fallback_keypair) = create_test_keypair_file(&tmp);
+
+        let default_path = tmp.path().join("nonexistent-default.json");
+
+        let result = load_keypair(None, default_path, fallback_path).unwrap();
+
+        assert_eq!(result.keypair.pubkey(), fallback_keypair.pubkey());
         assert!(matches!(result.source, KeypairSource::DefaultPath(_)));
     }
 
@@ -237,7 +277,8 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         let nonexistent = tmp.path().join("nonexistent.json");
-        let result = load_keypair(None, nonexistent);
+        let fallback = tmp.path().join("nonexistent-fallback.json");
+        let result = load_keypair(None, nonexistent, fallback);
 
         assert!(matches!(
             result,

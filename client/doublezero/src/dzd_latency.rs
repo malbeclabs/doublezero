@@ -1,5 +1,4 @@
 use crate::servicecontroller::{LatencyRecord, ServiceController};
-use backon::{ExponentialBuilder, Retryable};
 use doublezero_sdk::{Device, DeviceStatus};
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, net::Ipv4Addr, str::FromStr, time::Duration};
@@ -75,9 +74,15 @@ pub async fn retrieve_latencies<T: ServiceController>(
         spinner.set_message("Retrieving latency stats...");
     }
 
-    let get_latencies = || async {
-        let mut latencies = controller.latency().await.map_err(|e| eyre::eyre!(e))?;
-        latencies.retain(|l| {
+    let max_wait = Duration::from_secs(60);
+    let poll_interval = Duration::from_secs(1);
+    let start = std::time::Instant::now();
+
+    let mut latencies = loop {
+        let response = controller.latency().await.map_err(|e| eyre::eyre!(e))?;
+
+        let mut results = response.results;
+        results.retain(|l| {
             Pubkey::from_str(&l.device_pk)
                 .ok()
                 .and_then(|pubkey| devices.get(&pubkey))
@@ -85,30 +90,39 @@ pub async fn retrieve_latencies<T: ServiceController>(
                 .unwrap_or(false)
         });
 
+        let activated_count = results.len();
+
         if reachable_only {
-            latencies.retain(|l| l.reachable);
+            results.retain(|l| l.reachable);
         }
 
-        match latencies.len() {
-            0 => Err(eyre::eyre!("No devices found")),
-            _ => Ok(latencies),
+        // Only return results once the daemon has completed its first probe pass.
+        if response.ready && !results.is_empty() {
+            break results;
         }
-    };
 
-    let builder = ExponentialBuilder::new()
-        .with_max_times(5)
-        .with_min_delay(Duration::from_secs(1))
-        .with_max_delay(Duration::from_secs(10));
-
-    let mut latencies = get_latencies
-        .retry(builder)
-        .when(|e| e.to_string() == "No devices found")
-        .notify(|_, dur| {
-            if let Some(spinner) = spinner {
-                spinner.set_message(format!("Waiting for latency stats after {dur:?}"));
+        if !response.ready {
+            if start.elapsed() >= max_wait {
+                eyre::bail!(
+                    "Timed out waiting for daemon to finish probing devices. \
+                     The daemon may still be starting up — try again in a few seconds."
+                );
             }
-        })
-        .await?;
+            if let Some(spinner) = spinner {
+                spinner.set_message("Waiting for daemon to finish probing devices...");
+            }
+            tokio::time::sleep(poll_interval).await;
+            continue;
+        }
+
+        // Daemon is ready but no results — tailor error to the actual cause
+        if reachable_only && activated_count > 0 {
+            eyre::bail!(
+                "No reachable devices found ({activated_count} activated devices were unreachable)"
+            );
+        }
+        eyre::bail!("No activated devices found");
+    };
 
     latencies.sort_by(|a, b| {
         let reachable_cmp = b.reachable.cmp(&a.reachable);
@@ -220,7 +234,7 @@ pub async fn best_latency<T: ServiceController>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::servicecontroller::{LatencyRecord, MockServiceController};
+    use crate::servicecontroller::{LatencyRecord, LatencyResponse, MockServiceController};
     use doublezero_program_common::types::{NetworkV4, NetworkV4List};
     use doublezero_sdk::{
         AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType, Interface,
@@ -329,9 +343,12 @@ mod tests {
         ];
 
         let mut controller = MockServiceController::new();
-        controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
 
         let result = retrieve_latencies(&controller, &devices, true, None)
             .await
@@ -364,9 +381,12 @@ mod tests {
         ];
 
         let mut controller = MockServiceController::new();
-        controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
 
         let result = best_latency(&controller, &devices, true, None, Some(&pk2), &[])
             .await
@@ -393,9 +413,12 @@ mod tests {
         ];
 
         let mut controller = MockServiceController::new();
-        controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
 
         let result = best_latency(&controller, &devices, true, None, None, &[])
             .await
@@ -422,9 +445,12 @@ mod tests {
         ];
 
         let mut controller = MockServiceController::new();
-        controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
 
         let result = best_latency(&controller, &devices, true, None, None, &[])
             .await
@@ -448,9 +474,12 @@ mod tests {
         ];
 
         let mut controller = MockServiceController::new();
-        controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
 
         let result = best_latency(&controller, &devices, true, None, Some(&pk2), &[])
             .await
@@ -474,9 +503,12 @@ mod tests {
         ];
 
         let mut controller = MockServiceController::new();
-        controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
 
         let result = best_latency(&controller, &devices, true, None, Some(&pk2), &[])
             .await
@@ -507,9 +539,12 @@ mod tests {
         ];
 
         let mut controller = MockServiceController::new();
-        controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
 
         // Exclude all device IPs - all devices should be excluded
         let result = best_latency(&controller, &devices, true, None, None, &[ip1, ip2, ip3]).await;
@@ -552,9 +587,12 @@ mod tests {
         ];
 
         let mut controller = MockServiceController::new();
-        controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
 
         // Exclude 10.0.0.1 (pk1's IP), so pk2 should be selected even though it's slower
         let excluded_ip: Ipv4Addr = "10.0.0.1".parse().unwrap();
@@ -601,9 +639,12 @@ mod tests {
         ];
 
         let mut controller = MockServiceController::new();
-        controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
 
         // Exclude 10.0.0.1 (pk1's public_ip), but pk1 still has 10.0.0.11 available
         // So pk1 should still be selected (lowest latency, still has available endpoint)
@@ -650,9 +691,12 @@ mod tests {
         ];
 
         let mut controller = MockServiceController::new();
-        controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
 
         // Exclude BOTH of pk1's endpoints (public_ip and tunnel endpoint)
         // Now pk1 should be excluded and pk2 selected
@@ -698,9 +742,12 @@ mod tests {
         ];
 
         let mut controller = MockServiceController::new();
-        controller
-            .expect_latency()
-            .returning(move || Ok(latencies.clone()));
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
 
         // The public_ip of device 1 is already in use (excluded), but it has another endpoint
         // With current_device set to pk1 and within tolerance, it should still prefer pk1
@@ -897,5 +944,85 @@ mod tests {
         let result = select_tunnel_endpoint(&[], &pk.to_string(), Ipv4Addr::new(10, 0, 0, 1), &[]);
         // No latency data, fall back to public IP
         assert_eq!(result, Ipv4Addr::new(10, 0, 0, 1));
+    }
+
+    #[tokio::test]
+    async fn test_retrieve_latencies_waits_for_daemon_ready() {
+        let (pk1, dev1) = make_device(DeviceStatus::Activated, 0);
+        let mut devices = HashMap::new();
+        devices.insert(pk1, dev1);
+
+        let latencies = vec![make_latency(&pk1.to_string(), 10000000, true)];
+        let call_count = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let call_count_clone = call_count.clone();
+        let latencies_clone = latencies.clone();
+
+        let mut controller = MockServiceController::new();
+        controller.expect_latency().returning(move || {
+            let count = call_count_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if count < 2 {
+                Ok(LatencyResponse {
+                    ready: false,
+                    results: vec![],
+                })
+            } else {
+                Ok(LatencyResponse {
+                    ready: true,
+                    results: latencies_clone.clone(),
+                })
+            }
+        });
+
+        let result = retrieve_latencies(&controller, &devices, false, None)
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].device_pk, pk1.to_string());
+        assert!(call_count.load(std::sync::atomic::Ordering::SeqCst) >= 3);
+    }
+
+    #[tokio::test]
+    async fn test_retrieve_latencies_ready_but_empty_returns_error() {
+        let devices = HashMap::new();
+
+        let mut controller = MockServiceController::new();
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: vec![],
+            })
+        });
+
+        let result = retrieve_latencies(&controller, &devices, false, None).await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "No activated devices found"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_retrieve_latencies_reachable_only_error_distinguishes_cause() {
+        let (pk1, dev1) = make_device(DeviceStatus::Activated, 0);
+        let mut devices = HashMap::new();
+        devices.insert(pk1, dev1);
+
+        // Device exists and is activated, but unreachable
+        let latencies = vec![make_latency(&pk1.to_string(), 10000000, false)];
+
+        let mut controller = MockServiceController::new();
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
+
+        let result = retrieve_latencies(&controller, &devices, true, None).await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "No reachable devices found (1 activated devices were unreachable)"
+        );
     }
 }

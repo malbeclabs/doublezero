@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -96,6 +97,7 @@ func GetProbeTargets(d serviceability.Device, probeTunnelEndpoints bool) []Probe
 }
 
 type ProberFunc func(context.Context, ProbeTarget) LatencyResult
+type BatchProberFunc func(context.Context, []ProbeTarget) []LatencyResult
 
 func UdpPing(ctx context.Context, target ProbeTarget) LatencyResult {
 	pinger, err := probing.NewPinger(target.IP.String())
@@ -193,12 +195,16 @@ type LatencyManager struct {
 	SmartContractFunc    SmartContractorFunc
 	fetcher              Fetcher
 	proberFunc           ProberFunc
+	batchProberFunc      BatchProberFunc
 	DeviceCache          *DeviceCache
 	ResultsCache         *LatencyResults
 	probeInterval        time.Duration
 	cacheUpdateInterval  time.Duration
 	metricsEnabled       bool
-	probeTunnelEndpoints bool // when true, also probe UserTunnelEndpoint interfaces
+	probeTunnelEndpoints bool          // when true, also probe UserTunnelEndpoint interfaces
+	maxConcurrentProbes  int           // limits concurrent ICMP probes to avoid socket/rate-limit contention
+	devicesFetched       chan struct{} // closed after first successful fetch
+	probeReady           atomic.Bool   // true after first probe completes
 }
 
 type Option func(*LatencyManager)
@@ -212,6 +218,8 @@ func NewLatencyManager(options ...Option) *LatencyManager {
 		probeInterval:       10 * time.Second,
 		cacheUpdateInterval: 300 * time.Second,
 		metricsEnabled:      false,
+		maxConcurrentProbes: 5,
+		devicesFetched:      make(chan struct{}),
 	}
 	for _, o := range options {
 		o(lm)
@@ -255,17 +263,36 @@ func WithProbeTunnelEndpoints(enabled bool) Option {
 	}
 }
 
+func WithBatchProberFunc(f BatchProberFunc) Option {
+	return func(l *LatencyManager) {
+		l.batchProberFunc = f
+	}
+}
+
+func WithMaxConcurrentProbes(n int) Option {
+	return func(l *LatencyManager) {
+		if n < 1 {
+			n = 1
+		}
+		l.maxConcurrentProbes = n
+	}
+}
+
 func WithFetcher(f Fetcher) Option {
 	return func(l *LatencyManager) {
 		l.fetcher = f
 	}
 }
 
+func (l *LatencyManager) IsProbeReady() bool {
+	return l.probeReady.Load()
+}
+
 func (l *LatencyManager) Start(ctx context.Context) error {
 
 	// start goroutine for fetching smartcontract devices
 	go func() {
-		fetch := func() {
+		fetch := func() bool {
 			var devices []serviceability.Device
 			if l.fetcher != nil {
 				ctx, cancel := context.WithTimeout(ctx, serviceabilityProgramDataFetchTimeout)
@@ -273,7 +300,7 @@ func (l *LatencyManager) Start(ctx context.Context) error {
 				data, err := l.fetcher.GetProgramData(ctx)
 				if err != nil {
 					slog.Error("latency: error fetching program data", "error", err)
-					return
+					return false
 				}
 				devices = data.Devices
 			} else {
@@ -282,22 +309,25 @@ func (l *LatencyManager) Start(ctx context.Context) error {
 				contractData, err := l.SmartContractFunc(ctx)
 				if err != nil {
 					slog.Error("latency: error fetching smart contract data", "error", err)
-					return
+					return false
 				}
 				devices = contractData.Devices
 			}
 
 			if len(devices) == 0 {
 				slog.Warn("latency: smartcontract data contained 0 devices")
-				return
+				return false
 			}
 			slog.Debug("latency: updating cache", "number of devices updated", len(devices))
 			l.DeviceCache.Lock.Lock()
 			l.DeviceCache.Devices = devices
 			l.DeviceCache.Lock.Unlock()
+			return true
 		}
 		// don't wait for first tick and populate cache
-		fetch()
+		if fetch() {
+			close(l.devicesFetched)
+		}
 
 		ticker := time.NewTicker(l.cacheUpdateInterval)
 		for {
@@ -305,7 +335,13 @@ func (l *LatencyManager) Start(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				fetch()
+				if fetch() {
+					select {
+					case <-l.devicesFetched:
+					default:
+						close(l.devicesFetched)
+					}
+				}
 			}
 		}
 	}()
@@ -327,16 +363,29 @@ func (l *LatencyManager) Start(ctx context.Context) error {
 				targets = append(targets, GetProbeTargets(device, l.probeTunnelEndpoints)...)
 			}
 
-			// Probe each target
-			for _, target := range targets {
-				wg.Go(func() {
-					resultsChan <- l.proberFunc(ctx, target)
-				})
+			// Use batch prober (single socket) if configured, otherwise fall
+			// back to per-target probing with capped concurrency.
+			if l.batchProberFunc != nil {
+				go func() {
+					for _, r := range l.batchProberFunc(ctx, targets) {
+						resultsChan <- r
+					}
+					close(resultsChan)
+				}()
+			} else {
+				sem := make(chan struct{}, l.maxConcurrentProbes)
+				for _, target := range targets { // target is per-iteration in Go 1.22+
+					wg.Go(func() {
+						sem <- struct{}{}
+						defer func() { <-sem }()
+						resultsChan <- l.proberFunc(ctx, target)
+					})
+				}
+				go func() {
+					wg.Wait()
+					close(resultsChan)
+				}()
 			}
-			go func() {
-				wg.Wait()
-				close(resultsChan)
-			}()
 
 			for result := range resultsChan {
 				resultsCache = append(resultsCache, result)
@@ -364,8 +413,16 @@ func (l *LatencyManager) Start(ctx context.Context) error {
 			l.ResultsCache.Lock.Unlock()
 		}
 
+		// Wait for initial device fetch before first probe
+		select {
+		case <-l.devicesFetched:
+		case <-ctx.Done():
+			return
+		}
+
 		// don't wait for first tick to ping stuff
 		probe()
+		l.probeReady.Store(true)
 
 		ticker := time.NewTicker(l.probeInterval)
 		for {
@@ -385,6 +442,26 @@ func (l *LatencyManager) Start(ctx context.Context) error {
 
 func (l *LatencyManager) ServeLatency(w http.ResponseWriter, r *http.Request) {
 	data, err := json.Marshal(l.ResultsCache)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, "error generating latency: %v", err)
+		return
+	}
+	_, _ = w.Write(data)
+}
+
+// v2LatencyResponse is the wire format for the /v2/latency endpoint.
+type v2LatencyResponse struct {
+	Ready   bool            `json:"ready"`
+	Results *LatencyResults `json:"results"`
+}
+
+func (l *LatencyManager) ServeV2Latency(w http.ResponseWriter, r *http.Request) {
+	resp := v2LatencyResponse{
+		Ready:   l.probeReady.Load(),
+		Results: l.ResultsCache,
+	}
+	data, err := json.Marshal(resp)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = fmt.Fprintf(w, "error generating latency: %v", err)

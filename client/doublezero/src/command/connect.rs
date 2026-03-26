@@ -980,7 +980,8 @@ fn exclude_ips(
 mod tests {
     use super::*;
     use crate::servicecontroller::{
-        DoubleZeroStatus, LatencyRecord, MockServiceController, StatusResponse, V2StatusResponse,
+        DoubleZeroStatus, LatencyRecord, LatencyResponse, MockServiceController, StatusResponse,
+        V2StatusResponse,
     };
     use doublezero_cli::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
     use doublezero_config::Environment;
@@ -1200,10 +1201,11 @@ mod tests {
             });
 
             let latencies = fixture.latencies.clone();
-            fixture
-                .controller
-                .expect_latency()
-                .returning_st(move || Ok(latencies.lock().unwrap().clone()));
+            fixture.controller.expect_latency().returning_st(move || {
+                let results = latencies.lock().unwrap().clone();
+                let ready = !results.is_empty();
+                Ok(LatencyResponse { ready, results })
+            });
 
             let global_cfg = fixture.global_cfg.clone();
             fixture

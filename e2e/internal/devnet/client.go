@@ -673,41 +673,76 @@ func (c *Client) DumpDiagnostics() {
 	fmt.Fprint(os.Stderr, buf.String())
 }
 
+// daemonLatencyResponse is the JSON shape returned by the daemon's /latency endpoint.
+type daemonLatencyResponse struct {
+	Ready   bool             `json:"ready"`
+	Results []map[string]any `json:"results"`
+}
+
 func (c *Client) WaitForLatencyResults(ctx context.Context, wantDevicePK string, timeout time.Duration) error {
 	c.log.Debug("==> Waiting for latency results (timeout " + timeout.String() + ")")
 
-	attempts := 0
 	start := time.Now()
+
+	// Wait for the daemon's latency probe to finish its first pass.
+	if err := c.WaitForLatencyReady(ctx, timeout); err != nil {
+		return fmt.Errorf("failed waiting for latency readiness: %w", err)
+	}
+
+	remaining := timeout - time.Since(start)
+	if remaining <= 0 {
+		return fmt.Errorf("no time remaining after waiting for latency readiness")
+	}
+
+	// Now poll for the specific device result.
+	attempts := 0
 	err := poll.Until(ctx, func() (bool, error) {
-		results, err := c.ExecReturnJSONList(ctx, []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/latency"})
+		resp, err := docker.ExecReturnObject[daemonLatencyResponse](ctx, c.dn.dockerClient, c.ContainerID, []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/v2/latency"})
 		if err != nil {
-			if attempts == 1 || attempts%5 == 0 {
-				c.log.Debug("--> Waiting for latency results (curl not ready yet)", "wantDevicePK", wantDevicePK, "err", err, "attempts", attempts)
-			}
 			attempts++
 			return false, nil
 		}
 
-		if len(results) > 0 {
-			for _, result := range results {
-				if result["device_pk"] == wantDevicePK && result["reachable"] == true {
-					c.log.Debug("✅ Got expected latency results", "wantDevicePK", wantDevicePK, "duration", time.Since(start))
-					return true, nil
-				}
+		for _, result := range resp.Results {
+			if result["device_pk"] == wantDevicePK && result["reachable"] == true {
+				c.log.Debug("✅ Got expected latency results", "wantDevicePK", wantDevicePK, "duration", time.Since(start))
+				return true, nil
 			}
 		}
 
 		if attempts == 1 || attempts%5 == 0 {
-			c.log.Debug("--> Waiting for latency results", "wantDevicePK", wantDevicePK, "results", results, "attempts", attempts)
+			c.log.Debug("--> Waiting for latency results", "wantDevicePK", wantDevicePK, "results", resp.Results, "attempts", attempts)
 		}
 		attempts++
 
 		return false, nil
-	}, timeout, 1*time.Second)
+	}, remaining, 1*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to wait for latency results: %w", err)
 	}
 
+	return nil
+}
+
+// WaitForLatencyReady waits until the daemon's latency probe reports ready=true.
+func (c *Client) WaitForLatencyReady(ctx context.Context, timeout time.Duration) error {
+	c.log.Debug("==> Waiting for latency readiness (timeout " + timeout.String() + ")")
+
+	start := time.Now()
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := docker.ExecReturnObject[daemonLatencyResponse](ctx, c.dn.dockerClient, c.ContainerID, []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/v2/latency"})
+		if err != nil {
+			return false, nil
+		}
+		if resp.Ready {
+			c.log.Debug("✅ Latency probe ready", "duration", time.Since(start))
+			return true, nil
+		}
+		return false, nil
+	}, timeout, 1*time.Second)
+	if err != nil {
+		return fmt.Errorf("daemon latency probe did not become ready within %s: %w", timeout, err)
+	}
 	return nil
 }
 

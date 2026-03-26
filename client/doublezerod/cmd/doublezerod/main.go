@@ -34,6 +34,7 @@ var (
 	enableVerboseLogging        = flag.Bool("v", false, "enables verbose logging")
 	enableLatencyMetrics        = flag.Bool("enable-latency-metrics", false, "enables latency metrics")
 	latencyProbeTunnelEndpoints = flag.Bool("latency-probe-tunnel-endpoints", true, "also probe UserTunnelEndpoint interfaces in addition to PublicIp")
+	latencySingleSocket         = flag.Bool("latency-single-socket", false, "use a single ICMP socket for all probes instead of per-target sockets")
 	metricsEnable               = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
 	metricsAddr                 = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
 	routeConfigPath             = flag.String("route-config", "/var/lib/doublezerod/route-config.json", "path to route config file (unstable)")
@@ -185,7 +186,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, networkConfig, *probeInterval, *cacheUpdateInterval, lmc, *clientIP, *reconcilerPollInterval, *reconcilerFetchTimeout, *stateDir); err != nil {
+	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, *latencySingleSocket, networkConfig, *probeInterval, *cacheUpdateInterval, lmc, *clientIP, *reconcilerPollInterval, *reconcilerFetchTimeout, *stateDir); err != nil {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}

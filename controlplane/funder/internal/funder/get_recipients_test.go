@@ -66,6 +66,38 @@ func TestGetRecipients_Success(t *testing.T) {
 	assert.Equal(t, internetLatencyCollectorPK, result[3].PubKey)
 }
 
+func TestGetRecipients_Dedup(t *testing.T) {
+	sharedOwner := [32]byte{7}
+	mockData := &serviceability.ProgramData{
+		Contributors: []serviceability.Contributor{
+			{
+				PubKey: [32]byte{6},
+				Owner:  sharedOwner,
+			},
+		},
+		MulticastGroups: []serviceability.MulticastGroup{
+			{
+				PubKey: [32]byte{3},
+				Owner:  sharedOwner, // same key as contributor owner
+			},
+		},
+	}
+	client := &MockServiceabilityClient{
+		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return mockData, nil
+		},
+	}
+	pk := [32]byte{5}
+	internetLatencyCollectorPK := solana.PublicKeyFromBytes(pk[:])
+
+	result, err := GetRecipients(context.Background(), client, nil, internetLatencyCollectorPK)
+	assert.NoError(t, err)
+	assert.Len(t, result, 2) // contributor + internet-latency-collector, mcastgroup deduped
+	assert.Equal(t, "contributor-"+solana.PublicKeyFromBytes(mockData.Contributors[0].PubKey[:]).String(), result[0].Name)
+	assert.Equal(t, solana.PublicKeyFromBytes(sharedOwner[:]), result[0].PubKey)
+	assert.Equal(t, "internet-latency-collector", result[1].Name)
+}
+
 func TestGetRecipients_Error(t *testing.T) {
 	client := &MockServiceabilityClient{
 		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {

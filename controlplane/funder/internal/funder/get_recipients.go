@@ -19,25 +19,34 @@ func GetRecipients(
 		return nil, fmt.Errorf("failed to load serviceability state: %w", err)
 	}
 
+	seen := make(map[solana.PublicKey]struct{})
+	add := func(name string, pk solana.PublicKey) {
+		if _, ok := seen[pk]; ok {
+			return
+		}
+		seen[pk] = struct{}{}
+		recipients = append(recipients, NewRecipient(name, pk))
+	}
+
 	for _, device := range data.Devices {
 		devicePK := solana.PublicKeyFromBytes(device.PubKey[:])
 		name := fmt.Sprintf("device-%s", devicePK.String())
-		recipients = append(recipients, NewRecipient(name, solana.PublicKeyFromBytes(device.MetricsPublisherPubKey[:])))
+		add(name, solana.PublicKeyFromBytes(device.MetricsPublisherPubKey[:]))
 	}
 
 	for _, contributor := range data.Contributors {
 		contributorPK := solana.PublicKeyFromBytes(contributor.PubKey[:])
 		name := fmt.Sprintf("contributor-%s", contributorPK.String())
-		recipients = append(recipients, NewRecipient(name, solana.PublicKeyFromBytes(contributor.Owner[:])))
+		add(name, solana.PublicKeyFromBytes(contributor.Owner[:]))
 	}
 
 	for _, mcastgroup := range data.MulticastGroups {
 		mcastgroupPK := solana.PublicKeyFromBytes(mcastgroup.PubKey[:])
 		name := fmt.Sprintf("mcastgroup-%s", mcastgroupPK.String())
-		recipients = append(recipients, NewRecipient(name, solana.PublicKeyFromBytes(mcastgroup.Owner[:])))
+		add(name, solana.PublicKeyFromBytes(mcastgroup.Owner[:]))
 	}
 
-	recipients = append(recipients, NewRecipient("internet-latency-collector", internetLatencyCollectorPK))
+	add("internet-latency-collector", internetLatencyCollectorPK)
 
 	return recipients, nil
 }

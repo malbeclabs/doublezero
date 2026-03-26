@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -107,6 +110,13 @@ func main() {
 		fmt.Printf("version: %s, commit: %s, date: %s\n", version, commit, date)
 		os.Exit(0)
 	}
+
+	// Raise scheduling priority for all threads to reduce latency measurement
+	// jitter caused by the Linux CFS scheduler preempting TWAMP probe goroutines.
+	// Linux setpriority(PRIO_PROCESS) only affects the calling thread, so we
+	// iterate /proc/self/task/ to renice all existing Go runtime threads, and
+	// set the main thread so new threads inherit the priority.
+	setProcessPriority(-20)
 
 	logLevel := slog.LevelInfo
 	if *verbose {
@@ -493,4 +503,40 @@ func startGNMITunnelClient(ctx context.Context, cancel context.CancelFunc, log *
 	}
 
 	return gnmiTunnelClient.Start(ctx, cancel)
+}
+
+// setProcessPriority sets the nice value for all threads in the current process.
+// On Linux, setpriority(PRIO_PROCESS, 0) only affects the calling thread, so we
+// iterate /proc/self/task/ to renice every existing Go runtime thread.
+func setProcessPriority(nice int) {
+	entries, err := os.ReadDir("/proc/self/task")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to read /proc/self/task: %v\n", err)
+		return
+	}
+	for _, entry := range entries {
+		tid, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+		if err := syscall.Setpriority(syscall.PRIO_PROCESS, tid, nice); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to set priority for tid %d: %v\n", tid, err)
+		}
+	}
+
+	// Verify by reading back.
+	var reniced, total int
+	entries, _ = os.ReadDir("/proc/self/task")
+	for _, entry := range entries {
+		total++
+		stat, err := os.ReadFile(filepath.Join("/proc/self/task", entry.Name(), "stat"))
+		if err != nil {
+			continue
+		}
+		fields := strings.Fields(string(stat))
+		if len(fields) > 18 && fields[18] == strconv.Itoa(nice) {
+			reniced++
+		}
+	}
+	fmt.Fprintf(os.Stderr, "process priority: set nice %d on %d/%d threads\n", nice, reniced, total)
 }

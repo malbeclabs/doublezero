@@ -25,6 +25,12 @@ func GetRecipients(
 		recipients = append(recipients, NewRecipient(name, solana.PublicKeyFromBytes(device.MetricsPublisherPubKey[:])))
 	}
 
+	for _, contributor := range data.Contributors {
+		contributorPK := solana.PublicKeyFromBytes(contributor.PubKey[:])
+		name := fmt.Sprintf("contributor-%s", contributorPK.String())
+		recipients = append(recipients, NewRecipient(name, solana.PublicKeyFromBytes(contributor.Owner[:])))
+	}
+
 	for _, mcastgroup := range data.MulticastGroups {
 		mcastgroupPK := solana.PublicKeyFromBytes(mcastgroup.PubKey[:])
 		name := fmt.Sprintf("mcastgroup-%s", mcastgroupPK.String())

@@ -1,0 +1,23 @@
+FROM golang:1.25.0
+
+# Rust toolchain (matches rust-toolchain.toml)
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --default-toolchain 1.90.0 \
+    && rustup target add x86_64-unknown-linux-gnu
+
+# Cross-compiler for Rust linux builds + rpm packaging
+RUN apt-get update -qq \
+    && apt-get install -y -qq gcc-x86-64-linux-gnu rpm > /dev/null 2>&1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# goreleaser-pro
+RUN echo "deb [trusted=yes] https://repo.goreleaser.com/apt/ /" \
+        > /etc/apt/sources.list.d/goreleaser.list \
+    && apt-get update -qq \
+    && apt-get install -y -qq goreleaser-pro=2.14.3 > /dev/null 2>&1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace

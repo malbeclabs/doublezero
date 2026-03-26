@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Funder
+  - Top up contributor owner keys alongside device metrics publishers, multicast group owners, and the internet latency collector
 - Smartcontract
   - Fix multicast publisher/subscriber device counter divergence: `multicast_publishers_count` never decremented and `multicast_subscribers_count` over-decremented on user disconnect because the decrement logic checked `!publishers.is_empty()`, which is always false at delete time. Add a durable `tunnel_flags` field to the `User` struct with a `CreatedAsPublisher` bit, set at activation, and use it in the delete and closeaccount instructions.
 

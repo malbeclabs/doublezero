@@ -138,7 +138,7 @@ pub async fn retrieve_latencies<T: ServiceController>(
 //     choose alternate devices when needed.
 //
 // The value is expressed in nanoseconds to match avg_latency_ns.
-const LATENCY_TOLERANCE_NS: i32 = 5_000_000; // 5 ms
+const LATENCY_TOLERANCE_NS: i64 = 5_000_000; // 5 ms
 
 /// Find the best device based on latency.
 ///
@@ -181,7 +181,7 @@ pub async fn best_latency<T: ServiceController>(
         return Err(eyre::eyre!("No suitable device found after filtering"));
     }
     let mut best: Option<&LatencyRecord> = None;
-    let mut best_latency = i32::MAX;
+    let mut best_latency = i64::MAX;
 
     if let Some(current_device) = current_device {
         if let Some(current) = latencies
@@ -299,7 +299,7 @@ mod tests {
         )
     }
 
-    fn make_latency(pk: &str, avg_latency_ns: i32, reachable: bool) -> LatencyRecord {
+    fn make_latency(pk: &str, avg_latency_ns: i64, reachable: bool) -> LatencyRecord {
         LatencyRecord {
             device_pk: pk.to_string(),
             device_code: "device".to_string(),

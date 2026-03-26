@@ -1319,7 +1319,7 @@ mod tests {
         pub fn add_device(
             &mut self,
             device_type: DeviceType,
-            latency_ns: i32,
+            latency_ns: i64,
             reachable: bool,
         ) -> (Pubkey, Device) {
             let mut devices = self.devices.lock().unwrap();

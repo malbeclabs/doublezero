@@ -67,6 +67,7 @@ pub fn create_user_core(
     client_ip: Ipv4Addr,
     tunnel_endpoint: Ipv4Addr,
     is_publisher: bool,
+    owner_override: Option<Pubkey>,
 ) -> Result<CreateUserCoreResult, ProgramError> {
     // Check if the payer is a signer
     assert!(core.payer_account.is_signer, "Payer must be a signer");
@@ -105,6 +106,25 @@ pub fn create_user_core(
     }
 
     let mut globalstate = GlobalState::try_from(core.globalstate_account)?;
+
+    // Determine effective owner: foundation allowlist members or sentinel can set a custom owner
+    let effective_owner = match owner_override {
+        Some(pk) if pk != Pubkey::default() => {
+            let is_foundation = globalstate
+                .foundation_allowlist
+                .contains(core.payer_account.key);
+            let is_sentinel = globalstate.sentinel_authority_pk == *core.payer_account.key;
+            if !is_foundation && !is_sentinel {
+                msg!(
+                    "Only foundation allowlist members or sentinel can set a custom owner, payer: {}",
+                    core.payer_account.key
+                );
+                return Err(DoubleZeroError::NotAllowed.into());
+            }
+            pk
+        }
+        _ => *core.payer_account.key,
+    };
     globalstate.account_index += 1;
 
     let (expected_old_pda_account, bump_old_seed) =
@@ -135,9 +155,9 @@ pub fn create_user_core(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let (accesspass_pda, _) = get_accesspass_pda(program_id, &client_ip, core.payer_account.key);
+    let (accesspass_pda, _) = get_accesspass_pda(program_id, &client_ip, &effective_owner);
     let (accesspass_dynamic_pda, _) =
-        get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, core.payer_account.key);
+        get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &effective_owner);
     assert!(
         core.accesspass_account.key == &accesspass_pda
             || core.accesspass_account.key == &accesspass_dynamic_pda,
@@ -146,7 +166,7 @@ pub fn create_user_core(
 
     // Read Access Pass
     let mut accesspass = AccessPass::try_from(core.accesspass_account)?;
-    if accesspass.user_payer != *core.payer_account.key {
+    if accesspass.user_payer != effective_owner {
         msg!(
             "Invalid user_payer accesspass.{{user_payer: {}}} = {{ user_payer: {} }}",
             accesspass.user_payer,
@@ -310,7 +330,7 @@ pub fn create_user_core(
 
     let user = User {
         account_type: AccountType::User,
-        owner: *core.payer_account.key,
+        owner: effective_owner,
         bump_seed: if pda_ver == PDAVersion::V1 {
             bump_old_seed
         } else {

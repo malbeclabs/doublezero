@@ -625,6 +625,7 @@ impl ProvisioningCliCommand {
                     publisher: pub_group_pks.contains(first_group_pk),
                     subscriber: sub_group_pks.contains(first_group_pk),
                     tunnel_endpoint,
+                    owner: None,
                 });
 
                 let user_pk = match res {
@@ -763,6 +764,7 @@ impl ProvisioningCliCommand {
                     publisher: pub_group_pks.contains(first_group_pk),
                     subscriber: sub_group_pks.contains(first_group_pk),
                     tunnel_endpoint,
+                    owner: None,
                 });
 
                 let user_pk = match res {
@@ -1515,6 +1517,7 @@ mod tests {
                 publisher,
                 subscriber,
                 tunnel_endpoint: user.tunnel_endpoint,
+                owner: None,
             };
 
             let users = self.users.clone();

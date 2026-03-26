@@ -316,9 +316,9 @@ func (l *LatencyManager) Start(ctx context.Context) error {
 
 			if len(devices) == 0 {
 				slog.Warn("latency: smartcontract data contained 0 devices")
-				return false
+			} else {
+				slog.Debug("latency: updating cache", "number of devices updated", len(devices))
 			}
-			slog.Debug("latency: updating cache", "number of devices updated", len(devices))
 			l.DeviceCache.Lock.Lock()
 			l.DeviceCache.Devices = devices
 			l.DeviceCache.Lock.Unlock()
@@ -350,7 +350,6 @@ func (l *LatencyManager) Start(ctx context.Context) error {
 	go func() {
 		probe := func() {
 			resultsCache := []LatencyResult{}
-			wg := sync.WaitGroup{}
 			resultsChan := make(chan LatencyResult)
 
 			l.DeviceCache.Lock.Lock()
@@ -373,6 +372,7 @@ func (l *LatencyManager) Start(ctx context.Context) error {
 					close(resultsChan)
 				}()
 			} else {
+				wg := sync.WaitGroup{}
 				sem := make(chan struct{}, l.maxConcurrentProbes)
 				for _, target := range targets { // target is per-iteration in Go 1.22+
 					wg.Go(func() {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/icmp"
@@ -52,14 +52,67 @@ func SingleSocketPing(ctx context.Context, targets []ProbeTarget) []LatencyResul
 
 	payload := make([]byte, pingPayload)
 
-	// Send all pings in rounds: round 0, wait 1s, round 1, wait 1s, round 2.
+	// Set read deadline for the entire probe session.
+	conn.SetReadDeadline(time.Now().Add(pingTimeout)) //nolint:errcheck
+
+	totalExpected := len(targets) * pingCount
+	var totalReceived atomic.Int32
+
+	// Start reader goroutine BEFORE sending so replies are timestamped
+	// on arrival, not when dequeued after all sends complete.
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		buf := make([]byte, 1500)
+		for totalReceived.Load() < int32(totalExpected) {
+			n, peer, err := conn.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			receiveTime := time.Now()
+
+			msg, err := icmp.ParseMessage(icmpProtoNum, buf[:n])
+			if err != nil {
+				continue
+			}
+			if msg.Type != ipv4.ICMPTypeEchoReply {
+				continue
+			}
+
+			echo, ok := msg.Body.(*icmp.Echo)
+			if !ok {
+				continue
+			}
+
+			seq := echo.Seq
+			if seq < 0 || seq >= pingCount {
+				continue
+			}
+
+			peerIP := peer.String()
+			indices, ok := ipToIndices[peerIP]
+			if !ok {
+				continue
+			}
+
+			for _, idx := range indices {
+				if !states[idx].rtts[seq].got {
+					states[idx].rtts[seq].got = true
+					states[idx].rtts[seq].rtt = receiveTime.Sub(states[idx].rtts[seq].sent)
+					totalReceived.Add(1)
+				}
+			}
+		}
+	}()
+
+	// Send pings in rounds with interval between each round.
 	for seq := 0; seq < pingCount; seq++ {
 		for i, t := range targets {
 			msg := &icmp.Message{
 				Type: ipv4.ICMPTypeEcho,
 				Code: 0,
 				Body: &icmp.Echo{
-					ID:   i, // encode target index
+					ID:   i,
 					Seq:  seq,
 					Data: payload,
 				},
@@ -79,65 +132,16 @@ func SingleSocketPing(ctx context.Context, targets []ProbeTarget) []LatencyResul
 		if seq < pingCount-1 {
 			select {
 			case <-ctx.Done():
+				conn.Close()
+				<-readerDone
 				return buildResults(states)
 			case <-time.After(pingInterval):
 			}
 		}
 	}
 
-	// Collect responses until timeout or all received.
-	deadline := time.Now().Add(pingTimeout)
-	conn.SetReadDeadline(deadline) //nolint:errcheck
-
-	totalExpected := len(targets) * pingCount
-	totalReceived := 0
-
-	buf := make([]byte, 1500)
-	var mu sync.Mutex
-
-	// Read responses in a loop.
-	for totalReceived < totalExpected && time.Now().Before(deadline) {
-		n, peer, err := conn.ReadFrom(buf)
-		if err != nil {
-			// Timeout or closed — done reading.
-			break
-		}
-
-		msg, err := icmp.ParseMessage(icmpProtoNum, buf[:n])
-		if err != nil {
-			continue
-		}
-		if msg.Type != ipv4.ICMPTypeEchoReply {
-			continue
-		}
-
-		echo, ok := msg.Body.(*icmp.Echo)
-		if !ok {
-			continue
-		}
-
-		seq := echo.Seq
-		if seq < 0 || seq >= pingCount {
-			continue
-		}
-
-		// Route reply by source IP to the matching target(s).
-		peerIP := peer.String()
-		indices, ok := ipToIndices[peerIP]
-		if !ok {
-			continue
-		}
-
-		mu.Lock()
-		for _, idx := range indices {
-			if !states[idx].rtts[seq].got {
-				states[idx].rtts[seq].got = true
-				states[idx].rtts[seq].rtt = time.Since(states[idx].rtts[seq].sent)
-				totalReceived++
-			}
-		}
-		mu.Unlock()
-	}
+	// Wait for reader to finish (hits read deadline or all received).
+	<-readerDone
 
 	return buildResults(states)
 }

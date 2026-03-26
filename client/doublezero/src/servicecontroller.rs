@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, fs::File, path::Path};
 use tabled::{derive::display, Tabled};
 
-const NANOS_TO_MS: f32 = 1000000.0;
+const NANOS_TO_MS: f64 = 1000000.0;
 
 #[derive(Clone, Tabled, Deserialize, Serialize, Debug)]
 pub struct LatencyRecord {
@@ -21,16 +21,16 @@ pub struct LatencyRecord {
     #[tabled(rename = "IP")]
     pub device_ip: String,
     #[tabled(display = "display_as_ms", rename = "Min")]
-    pub min_latency_ns: i32,
+    pub min_latency_ns: i64,
     #[tabled(display = "display_as_ms", rename = "Max")]
-    pub max_latency_ns: i32,
+    pub max_latency_ns: i64,
     #[tabled(display = "display_as_ms", rename = "Avg")]
-    pub avg_latency_ns: i32,
+    pub avg_latency_ns: i64,
     pub reachable: bool,
 }
 
-fn display_as_ms(latency: &i32) -> String {
-    format!("{:.2}ms", (*latency as f32 / NANOS_TO_MS))
+fn display_as_ms(latency: &i64) -> String {
+    format!("{:.2}ms", (*latency as f64 / NANOS_TO_MS))
 }
 
 impl fmt::Display for LatencyRecord {

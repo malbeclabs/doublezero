@@ -4,9 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Client
+  - fix(client): fix latency field overflow by changing i32 to i64 ([#3382](https://github.com/malbeclabs/doublezero/pull/3382))
+
 ### Breaking
 
 ### Changes
+
 - Smartcontract
   - Fix multicast publisher/subscriber device counter divergence: `multicast_publishers_count` never decremented and `multicast_subscribers_count` over-decremented on user disconnect because the decrement logic checked `!publishers.is_empty()`, which is always false at delete time. Add a durable `tunnel_flags` field to the `User` struct with a `CreatedAsPublisher` bit, set at activation, and use it in the delete and closeaccount instructions.
 
@@ -53,7 +57,7 @@ All notable changes to this project will be documented in this file.
   - Include feed authority in `global-config authority get` output
   - Add `geolocation user` subcommands to manage GeolocationUser accounts and targets: `create`, `delete`, `get`, `list`, `add-target`, `remove-target`, and `update-payment-status`
 - Monitor
-  - Fix slack user reporting 
+  - Fix slack user reporting
 - SDK
   - Add GeolocationUser types, Borsh deserialization, PDA derivation, and read-only client methods (`GetGeolocationUserByCode`, `GetGeolocationUsers`) to the Go geolocation SDK
 - Telemetry

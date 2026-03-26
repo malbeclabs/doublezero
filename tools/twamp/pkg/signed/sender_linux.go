@@ -74,10 +74,14 @@ func NewLinuxSender(ctx context.Context, iface string, local *net.UDPAddr, remot
 		return nil, fmt.Errorf("epoll_ctl: %w", err)
 	}
 
-	if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPNS, 1); err != nil {
+	tsFlags := unix.SOF_TIMESTAMPING_TX_SCHED |
+		unix.SOF_TIMESTAMPING_RX_SOFTWARE |
+		unix.SOF_TIMESTAMPING_SOFTWARE |
+		unix.SOF_TIMESTAMPING_OPT_TSONLY
+	if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPING, tsFlags); err != nil {
 		unix.Close(fd)
 		unix.Close(epfd)
-		return nil, fmt.Errorf("SO_TIMESTAMPNS: %w", err)
+		return nil, fmt.Errorf("SO_TIMESTAMPING: %w", err)
 	}
 
 	ip4 := remote.IP.To4()
@@ -154,9 +158,13 @@ func (s *LinuxSender) ProbePair(ctx context.Context) (ProbePairResult, error) {
 	}
 
 	// --- Send probe 0 and wait for reply 0 ---
-	send0Time := time.Now()
+	fallback0SendTime := time.Now()
 	if err := unix.Sendto(s.fd, buf0[:], 0, s.remote); err != nil {
 		return ProbePairResult{}, fmt.Errorf("sendto probe 0: %w", err)
+	}
+	send0Time, err := s.recvTxTimestamp()
+	if err != nil {
+		send0Time = fallback0SendTime
 	}
 
 	events := make([]unix.EpollEvent, 1)
@@ -190,9 +198,14 @@ func (s *LinuxSender) ProbePair(ctx context.Context) (ProbePairResult, error) {
 		reply0Len = n
 		reply0CtlLen = oobn
 		copy(reply0Ctl[:oobn], s.oob[:oobn])
-		send1Time = time.Now()
+		fallback1SendTime := time.Now()
 		if err := unix.Sendto(s.fd, buf1[:], 0, s.remote); err != nil {
 			return false, fmt.Errorf("sendto probe 1: %w", err)
+		}
+		if t, txErr := s.recvTxTimestamp(); txErr == nil {
+			send1Time = t
+		} else {
+			send1Time = fallback1SendTime
 		}
 		probe1Sent = true
 		return true, nil
@@ -257,13 +270,13 @@ func (s *LinuxSender) ProbePair(ctx context.Context) (ProbePairResult, error) {
 	}
 	var rtt0 time.Duration
 	for _, cmsg := range cmsgs0 {
-		if cmsg.Header.Level == syscall.SOL_SOCKET && cmsg.Header.Type == syscall.SO_TIMESTAMPNS {
-			if len(cmsg.Data) >= int(unsafe.Sizeof(syscall.Timespec{})) {
-				ts := *(*syscall.Timespec)(unsafe.Pointer(&cmsg.Data[0]))
-				kernelRecvTime := time.Unix(int64(ts.Sec), int64(ts.Nsec))
-				rtt0 = decideRTT(send0Time, kernelRecvTime, fallback0Time)
-				break
+		if cmsg.Header.Level == unix.SOL_SOCKET && cmsg.Header.Type == unix.SO_TIMESTAMPING {
+			kernelRecvTime, ok := parseSOTimestamping(cmsg.Data)
+			if !ok {
+				continue
 			}
+			rtt0 = decideRTT(send0Time, kernelRecvTime, fallback0Time)
+			break
 		}
 	}
 
@@ -302,9 +315,13 @@ func (s *LinuxSender) ProbePair(ctx context.Context) (ProbePairResult, error) {
 // sendAndRecv sends a probe and waits for the matching reply.
 // Caller must hold s.mu and have called runtime.LockOSThread().
 func (s *LinuxSender) sendAndRecv(ctx context.Context, probeBuf []byte, probe *ProbePacket, verify bool, busyPollDuration time.Duration) (time.Duration, *ReplyPacket, error) {
-	sendTime := time.Now()
+	fallbackSendTime := time.Now()
 	if err := unix.Sendto(s.fd, probeBuf, 0, s.remote); err != nil {
 		return 0, nil, fmt.Errorf("sendto: %w", err)
+	}
+	sendTime, err := s.recvTxTimestamp()
+	if err != nil {
+		sendTime = fallbackSendTime
 	}
 
 	deadline, ok := ctx.Deadline()
@@ -410,12 +427,11 @@ func (s *LinuxSender) tryRecv(sendTime time.Time, probe *ProbePacket, verify boo
 		return 0, nil, fmt.Errorf("parse cmsg: %w", err), true
 	}
 	for _, cmsg := range cmsgs {
-		if cmsg.Header.Level == syscall.SOL_SOCKET && cmsg.Header.Type == syscall.SO_TIMESTAMPNS {
-			if len(cmsg.Data) < int(unsafe.Sizeof(syscall.Timespec{})) {
+		if cmsg.Header.Level == unix.SOL_SOCKET && cmsg.Header.Type == unix.SO_TIMESTAMPING {
+			kernelRecvTime, ok := parseSOTimestamping(cmsg.Data)
+			if !ok {
 				continue
 			}
-			ts := *(*syscall.Timespec)(unsafe.Pointer(&cmsg.Data[0]))
-			kernelRecvTime := time.Unix(int64(ts.Sec), int64(ts.Nsec))
 			rtt := decideRTT(sendTime, kernelRecvTime, fallbackRecvTime)
 			return rtt, reply, nil, true
 		}
@@ -436,4 +452,39 @@ func decideRTT(sendTime, kernelRecvTime, fallbackRecvTime time.Time) time.Durati
 		rtt = fallbackRecvTime.Sub(sendTime)
 	}
 	return max(rtt, 0)
+}
+
+func (s *LinuxSender) recvTxTimestamp() (time.Time, error) {
+	oob := make([]byte, 512)
+	for range 50 {
+		_, oobn, _, _, err := unix.Recvmsg(s.fd, nil, oob, unix.MSG_ERRQUEUE)
+		if err != nil {
+			runtime.Gosched()
+			continue
+		}
+		cmsgs, err := syscall.ParseSocketControlMessage(oob[:oobn])
+		if err != nil {
+			return time.Time{}, fmt.Errorf("parse cmsg: %w", err)
+		}
+		for _, cmsg := range cmsgs {
+			if cmsg.Header.Level == unix.SOL_SOCKET && cmsg.Header.Type == unix.SO_TIMESTAMPING {
+				if t, ok := parseSOTimestamping(cmsg.Data); ok {
+					return t, nil
+				}
+			}
+		}
+	}
+	return time.Time{}, fmt.Errorf("no TX timestamp on error queue")
+}
+
+func parseSOTimestamping(data []byte) (time.Time, bool) {
+	tsSize := int(unsafe.Sizeof(unix.Timespec{}))
+	if len(data) < tsSize {
+		return time.Time{}, false
+	}
+	ts := *(*unix.Timespec)(unsafe.Pointer(&data[0]))
+	if ts.Sec == 0 && ts.Nsec == 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(ts.Sec, ts.Nsec), true
 }

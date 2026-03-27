@@ -54,6 +54,10 @@ struct App {
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let app = App::parse();
 
     if let Some(keypair) = &app.keypair {

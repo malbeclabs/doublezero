@@ -34,6 +34,10 @@ struct App {
 }
 
 fn main() -> eyre::Result<()> {
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let app = App::parse();
 
     let stdout = std::io::stdout();

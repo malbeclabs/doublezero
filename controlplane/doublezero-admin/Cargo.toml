@@ -20,6 +20,7 @@ console.workspace = true
 eyre.workspace = true
 futures.workspace = true
 futures-util.workspace = true
+libc.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true

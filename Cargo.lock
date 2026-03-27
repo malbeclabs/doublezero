@@ -1540,6 +1540,7 @@ dependencies = [
  "hyper-util",
  "hyperlocal",
  "indicatif",
+ "libc",
  "mockall",
  "serde",
  "serde_json",
@@ -1610,6 +1611,7 @@ dependencies = [
  "hyper-util",
  "hyperlocal",
  "indicatif",
+ "libc",
  "mockall",
  "serde",
  "serde_json",
@@ -1663,6 +1665,7 @@ dependencies = [
  "doublezero_cli",
  "doublezero_sdk",
  "eyre",
+ "libc",
  "solana-sdk",
 ]
 

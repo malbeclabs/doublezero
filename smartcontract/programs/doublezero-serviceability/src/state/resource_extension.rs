@@ -423,6 +423,54 @@ mod tests {
     }
 
     #[test]
+    fn test_admin_group_bits_resource_extension() {
+        let range = ResourceExtensionRange::IdRange(0, 32);
+        let mut buffer = vec![0u8; ResourceExtensionBorrowed::size(&range)];
+        let account_pk = Pubkey::new_unique();
+        let owner_pk = Pubkey::new_unique();
+        ResourceExtensionBorrowed::construct_resource(
+            &AccountInfo::new(
+                &account_pk,
+                false,
+                true,
+                &mut 0,
+                &mut buffer,
+                &owner_pk,
+                false,
+                0,
+            ),
+            &owner_pk,
+            1,
+            &Pubkey::default(),
+            &range,
+        )
+        .unwrap();
+
+        // Allocate first 3 bits
+        let mut resext = ResourceExtensionBorrowed::inplace_from(&mut buffer[..]).unwrap();
+        assert_eq!(resext.allocate(1).unwrap(), IdOrIp::Id(0));
+        assert_eq!(resext.allocate(1).unwrap(), IdOrIp::Id(1));
+        assert_eq!(resext.allocate(1).unwrap(), IdOrIp::Id(2));
+
+        // Verify allocated state persists through re-parse
+        let resext_owned = ResourceExtensionOwned::try_from(&buffer[..]).unwrap();
+        assert_eq!(
+            resext_owned.iter_allocated(),
+            vec![IdOrIp::Id(0), IdOrIp::Id(1), IdOrIp::Id(2)]
+        );
+
+        // Exhaust remaining bits
+        let mut resext = ResourceExtensionBorrowed::inplace_from(&mut buffer[..]).unwrap();
+        for _ in 3..32 {
+            assert!(resext.allocate(1).is_ok());
+        }
+        assert_eq!(
+            resext.allocate(1).unwrap_err(),
+            DoubleZeroError::AllocationFailed
+        );
+    }
+
+    #[test]
     fn test_resource_extension_borrowed_display_trait() {
         let mut buffer =
             vec![0u8; ResourceExtensionBorrowed::size(&ResourceExtensionRange::IdRange(0, 10))];

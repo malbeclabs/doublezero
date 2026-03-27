@@ -15,6 +15,7 @@ pub enum ResourceType {
     LinkIds,
     SegmentRoutingIds,
     VrfIds,
+    AdminGroupBits,
 }
 
 impl fmt::Display for ResourceType {
@@ -29,6 +30,7 @@ impl fmt::Display for ResourceType {
             ResourceType::LinkIds => write!(f, "LinkIds"),
             ResourceType::SegmentRoutingIds => write!(f, "SegmentRoutingIds"),
             ResourceType::VrfIds => write!(f, "VrfIds"),
+            ResourceType::AdminGroupBits => write!(f, "AdminGroupBits"),
         }
     }
 }

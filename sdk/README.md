@@ -5,7 +5,8 @@ Read-only SDKs for deserializing DoubleZero onchain program accounts in Go, Pyth
 - **serviceability** -- Serviceability program (contributors, access passes, devices, etc.)
 - **telemetry** -- Telemetry program (metrics, reporting)
 - **revdist** -- Revenue distribution program (epochs, claim tickets, etc.)
-- **borsh-incremental** -- Shared Borsh deserialization library used by all three SDKs, implemented in each language
+- **shreds** -- Shred subscription program (seats, pricing, settlement, rewards)
+- **borsh-incremental** -- Shared Borsh deserialization library used by the SDKs, implemented in each language
 
 ## Running Examples
 
@@ -38,6 +39,7 @@ Available targets:
 - `example-serviceability-go`, `example-serviceability-python`, `example-serviceability-typescript`
 - `example-telemetry-go`, `example-telemetry-python`, `example-telemetry-typescript`
 - `example-revdist-go`, `example-revdist-python`, `example-revdist-typescript`
+- `example-shreds-go`
 
 ### Direct Commands
 
@@ -83,6 +85,13 @@ cd sdk/revdist/python && python examples/fetch.py --env mainnet-beta
 cd sdk/revdist/typescript && bun run examples/fetch.ts --env mainnet-beta
 ```
 
+### Shred Subscription (seats, pricing, settlement, rewards)
+
+```bash
+# Go
+go run ./sdk/shreds/go/examples/fetch --env mainnet-beta --epoch 42
+```
+
 ## Running Tests
 
 ```
@@ -97,6 +106,7 @@ Per-SDK test commands:
 | serviceability | `go test ./sdk/serviceability/go/...` | `cd sdk/serviceability/python && uv run pytest` | `cd sdk/serviceability/typescript && bun test` |
 | telemetry | `go test ./sdk/telemetry/go/...` | `cd sdk/telemetry/python && uv run pytest` | `cd sdk/telemetry/typescript && bun test` |
 | revdist | `go test ./sdk/revdist/go/...` | `cd sdk/revdist/python && uv run pytest` | `cd sdk/revdist/typescript && bun test` |
+| shreds | `go test ./sdk/shreds/go/...` | -- | -- |
 
 ## Regenerating Fixtures
 
@@ -162,11 +172,13 @@ sdk/
 │   ├── python/examples/
 │   ├── typescript/examples/
 │   └── testdata/fixtures/
-└── revdist/               # Revenue distribution program SDK
-    ├── go/examples/
-    ├── python/examples/
-    ├── typescript/examples/
-    └── testdata/fixtures/
+├── revdist/               # Revenue distribution program SDK
+│   ├── go/examples/
+│   ├── python/examples/
+│   ├── typescript/examples/
+│   └── testdata/fixtures/
+└── shreds/                # Shred subscription program SDK
+    └── go/examples/
 ```
 
 Each SDK follows the same layout with `go/`, `python/`, `typescript/` subdirectories containing example CLIs, and a shared `testdata/fixtures/` directory containing the Rust-generated test data.

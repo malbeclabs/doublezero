@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - Reset SIGPIPE to SIG_DFL at the start of main() in all 3 CLI binaries (doublezero, doublezero-geolocation, doublezero-admin) so the process exits silently like standard CLI tools
+- SDK
+  - Add Go SDK for shred subscription program with read-only account deserialization (epoch state, seat assignments, pricing, settlement, validator client rewards), PDA derivation helpers, RPC fetchers, compatibility tests, and a fetch example CLI
 
 ## [v0.15.0](https://github.com/malbeclabs/doublezero/compare/client/v0.14.0...client/v0.15.0) - 2026-03-27
 

@@ -10,7 +10,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 
 # Cross-compiler for Rust linux builds + rpm packaging
 RUN apt-get update -qq \
-    && apt-get install -y -qq gcc-x86-64-linux-gnu rpm > /dev/null 2>&1 \
+    && apt-get install -y -qq gcc-x86-64-linux-gnu rpm pkg-config libssl-dev > /dev/null 2>&1 \
     && rm -rf /var/lib/apt/lists/*
 
 # goreleaser-pro

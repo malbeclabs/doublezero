@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Breaking
+
+### Changes
+
+## [v0.15.0](https://github.com/malbeclabs/doublezero/compare/client/v0.14.0...client/v0.15.0) - 2026-03-27
+
 - Client
   - fix(client): fix latency field overflow by changing i32 to i64 ([#3382](https://github.com/malbeclabs/doublezero/pull/3382))
   - fix(client): add user feedback to latency, add flag to limit icmp probe concurrency ([#3385](https://github.com/malbeclabs/doublezero/pull/3385))

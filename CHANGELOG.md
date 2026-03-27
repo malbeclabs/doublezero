@@ -15,6 +15,9 @@ All notable changes to this project will be documented in this file.
   - Top up contributor owner keys alongside device metrics publishers, multicast group owners, and the internet latency collector
 - Smartcontract
   - Fix multicast publisher/subscriber device counter divergence: `multicast_publishers_count` never decremented and `multicast_subscribers_count` over-decremented on user disconnect because the decrement logic checked `!publishers.is_empty()`, which is always false at delete time. Add a durable `tunnel_flags` field to the `User` struct with a `CreatedAsPublisher` bit, set at activation, and use it in the delete and closeaccount instructions.
+  - Allow foundation allowlist members and the sentinel to create multicast users with a custom `owner` via a new `owner` field on `CreateSubscribeUser`, enabling user creation on behalf of another identity's access pass
+- CLI
+  - Add `--owner` flag to `doublezero user create-subscribe` for specifying a custom user owner (foundation/sentinel only)
 
 ## [v0.14.0](https://github.com/malbeclabs/doublezero/compare/client/v0.13.0...client/v0.14.0) - 2026-03-24
 

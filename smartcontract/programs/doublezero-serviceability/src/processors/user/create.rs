@@ -104,6 +104,7 @@ pub fn process_create_user(
         value.client_ip,
         value.tunnel_endpoint,
         false,
+        None,
     )?;
 
     // Atomic create+allocate+activate if on-chain allocation is requested

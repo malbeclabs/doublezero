@@ -7,16 +7,16 @@ import (
 )
 
 var (
-	seedProgramConfig              = []byte("program_config")
-	seedExecutionController        = []byte("execution_controller")
-	seedClientSeat                 = []byte("client_seat")
-	seedPaymentEscrow              = []byte("payment_escrow")
-	seedShredDistribution          = []byte("shred_distribution")
-	seedValidatorClientRewards     = []byte("validator_client_rewards")
+	seedProgramConfig                = []byte("program_config")
+	seedExecutionController          = []byte("execution_controller")
+	seedClientSeat                   = []byte("client_seat")
+	seedPaymentEscrow                = []byte("payment_escrow")
+	seedShredDistribution            = []byte("shred_distribution")
+	seedValidatorClientRewards       = []byte("validator_client_rewards")
 	seedInstantSeatAllocationRequest = []byte("instant_seat_allocation_request")
-	seedWithdrawSeatRequest        = []byte("withdraw_seat_request")
-	seedMetroHistory               = []byte("metro_history")
-	seedDeviceHistory              = []byte("device_history")
+	seedWithdrawSeatRequest          = []byte("withdraw_seat_request")
+	seedMetroHistory                 = []byte("metro_history")
+	seedDeviceHistory                = []byte("device_history")
 )
 
 func DeriveProgramConfigPDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {

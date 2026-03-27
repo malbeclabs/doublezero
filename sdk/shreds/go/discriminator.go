@@ -9,16 +9,16 @@ import (
 const discriminatorSize = 8
 
 var (
-	DiscriminatorProgramConfig              = sha256First8("dz::account::program_config")
-	DiscriminatorExecutionController        = sha256First8("dz::account::execution_controller")
-	DiscriminatorClientSeat                 = sha256First8("dz::account::client_seat")
-	DiscriminatorPaymentEscrow              = sha256First8("dz::account::payment_escrow")
-	DiscriminatorShredDistribution          = sha256First8("dz::account::shred_distribution")
-	DiscriminatorValidatorClientRewards     = sha256First8("dz::account::validator_client_rewards")
+	DiscriminatorProgramConfig                = sha256First8("dz::account::program_config")
+	DiscriminatorExecutionController          = sha256First8("dz::account::execution_controller")
+	DiscriminatorClientSeat                   = sha256First8("dz::account::client_seat")
+	DiscriminatorPaymentEscrow                = sha256First8("dz::account::payment_escrow")
+	DiscriminatorShredDistribution            = sha256First8("dz::account::shred_distribution")
+	DiscriminatorValidatorClientRewards       = sha256First8("dz::account::validator_client_rewards")
 	DiscriminatorInstantSeatAllocationRequest = sha256First8("dz::account::instant_seat_allocation_request")
-	DiscriminatorWithdrawSeatRequest        = sha256First8("dz::account::withdraw_seat_request")
-	DiscriminatorMetroHistory               = sha256First8("dz::account::metro_history")
-	DiscriminatorDeviceHistory              = sha256First8("dz::account::device_history")
+	DiscriminatorWithdrawSeatRequest          = sha256First8("dz::account::withdraw_seat_request")
+	DiscriminatorMetroHistory                 = sha256First8("dz::account::metro_history")
+	DiscriminatorDeviceHistory                = sha256First8("dz::account::device_history")
 
 	ErrInvalidDiscriminator = errors.New("invalid account discriminator")
 )

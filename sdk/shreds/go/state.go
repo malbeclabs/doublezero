@@ -13,8 +13,8 @@ type ExecutionPhase uint8
 
 const (
 	ExecutionPhaseClosedForRequests ExecutionPhase = 0
-	ExecutionPhaseUpdatingPrices   ExecutionPhase = 1
-	ExecutionPhaseOpenForRequests  ExecutionPhase = 2
+	ExecutionPhaseUpdatingPrices    ExecutionPhase = 1
+	ExecutionPhaseOpenForRequests   ExecutionPhase = 2
 )
 
 func (p ExecutionPhase) String() string {
@@ -44,48 +44,48 @@ type ValidatorClientRewardProportionsArray [MaxValidatorClientRewardProportions]
 // ValidatorClientRewardsConfig configures how rewards are split across
 // validator clients.
 type ValidatorClientRewardsConfig struct {
-	DefaultProportion uint16   // UnitShare16
-	Padding0          [6]byte  // alignment
+	DefaultProportion uint16  // UnitShare16
+	Padding0          [6]byte // alignment
 	Proportions       ValidatorClientRewardProportionsArray
 }
 
 // ProgramConfig is the global program configuration account.
 type ProgramConfig struct {
-	Flags                                uint64             // Flags
-	AdminKey                             solana.PublicKey    // 32 bytes
-	ClosedForRequestsGracePeriodSlots    uint32
-	USDC2ZMaxSlippageBps                 uint16             // UnitShare16
-	USDC2ZConversionGracePeriodEpochs    uint8
-	Padding0                             [1]byte
-	ShredOracleKey                       solana.PublicKey
-	USDC2ZOracleKey                      solana.PublicKey
-	ValidatorClientRewardsConfig         ValidatorClientRewardsConfig
+	Flags                             uint64           // Flags
+	AdminKey                          solana.PublicKey // 32 bytes
+	ClosedForRequestsGracePeriodSlots uint32
+	USDC2ZMaxSlippageBps              uint16 // UnitShare16
+	USDC2ZConversionGracePeriodEpochs uint8
+	Padding0                          [1]byte
+	ShredOracleKey                    solana.PublicKey
+	USDC2ZOracleKey                   solana.PublicKey
+	ValidatorClientRewardsConfig      ValidatorClientRewardsConfig
 }
 
 // ExecutionController tracks the epoch state machine and settlement progress.
 type ExecutionController struct {
-	Phase                    uint8  // ExecutionPhase
-	BumpSeed                 uint8
-	Padding0                 [2]byte
-	TotalMetros              uint16
-	TotalEnabledDevices      uint16
-	TotalClientSeats         uint32
+	Phase                     uint8 // ExecutionPhase
+	BumpSeed                  uint8
+	Padding0                  [2]byte
+	TotalMetros               uint16
+	TotalEnabledDevices       uint16
+	TotalClientSeats          uint32
 	OracleInstantRequestCount uint16
-	ValidatorClientIDsCount  uint8
-	Padding1                 [1]byte
-	Flags                    uint64 // Flags
-	CurrentSubscriptionEpoch uint64
-	UpdatedDevicePricesCount uint16
-	SettledDevicesCount      uint16
-	SettledClientSeatsCount  uint16
-	Padding2                 [2]byte
-	LastSettledSlot          uint64
-	LastUpdatingPricesSlot   uint64
-	LastOpenForRequestsSlot  uint64
+	ValidatorClientIDsCount   uint8
+	Padding1                  [1]byte
+	Flags                     uint64 // Flags
+	CurrentSubscriptionEpoch  uint64
+	UpdatedDevicePricesCount  uint16
+	SettledDevicesCount       uint16
+	SettledClientSeatsCount   uint16
+	Padding2                  [2]byte
+	LastSettledSlot           uint64
+	LastUpdatingPricesSlot    uint64
+	LastOpenForRequestsSlot   uint64
 	LastClosedForRequestsSlot uint64
-	EpochRoundCommitment     [32]byte
-	EpochRoundReveal         [32]byte
-	NextSeatFundingIndex     uint64
+	EpochRoundCommitment      [32]byte
+	EpochRoundReveal          [32]byte
+	NextSeatFundingIndex      uint64
 }
 
 // GetPhase returns the execution phase as a typed enum.
@@ -95,20 +95,20 @@ func (e *ExecutionController) GetPhase() ExecutionPhase {
 
 // ClientSeat represents one client's subscription seat on a device.
 type ClientSeat struct {
-	DeviceKey              solana.PublicKey
-	ClientIPBits           uint32
-	Padding0               [2]byte
-	TenureEpochs           uint16
-	Flags                  uint64
-	FundedEpoch            uint64
-	ActiveEpoch            uint64
-	NewFundingIndex        uint64
-	NewSettlementSortKey   [32]byte
-	FundingAuthorityKey    solana.PublicKey
-	EscrowCount            uint32
+	DeviceKey                solana.PublicKey
+	ClientIPBits             uint32
+	Padding0                 [2]byte
+	TenureEpochs             uint16
+	Flags                    uint64
+	FundedEpoch              uint64
+	ActiveEpoch              uint64
+	NewFundingIndex          uint64
+	NewSettlementSortKey     [32]byte
+	FundingAuthorityKey      solana.PublicKey
+	EscrowCount              uint32
 	OverrideUSDCPriceDollars uint16
-	Padding1               [26]byte
-	Gap                    [2][32]byte // StorageGap<2>
+	Padding1                 [26]byte
+	Gap                      [2][32]byte // StorageGap<2>
 }
 
 // HasPriceOverride returns true if a flat price override is active.
@@ -127,42 +127,42 @@ type PaymentEscrow struct {
 // ShredDistribution tracks payment collection and reward distribution for a
 // single subscription epoch.
 type ShredDistribution struct {
-	SubscriptionEpoch                    uint64
-	Flags                                uint64
-	AssociatedDZEpoch                    uint64
-	BumpSeed                             uint8
-	ATAUSDBumpSeed                       uint8
-	ATA2ZBumpSeed                        uint8
-	Padding0                             [1]byte
-	DeviceCount                          uint16
-	ClientSeatCount                      uint16
-	Padding1                             [2]byte
-	ValidatorRewardsProportion           uint16 // UnitShare16
-	TotalPublishingValidators            uint32
-	ValidatorRewardsMerkleRoot           [32]byte
-	CollectedUSDCPayments                uint64
-	Collected2ZConvertedFromUSDC         uint64
-	DistributedValidatorRewardsCount     uint32
-	DistributedContributorRewardsCount   uint32
-	DistributedValidator2ZAmount         uint64
-	DistributedContributor2ZAmount       uint64
-	Burned2ZAmount                       uint64
-	ProcessedValidatorRewardsStartIndex  uint32
-	ProcessedValidatorRewardsEndIndex    uint32
+	SubscriptionEpoch                     uint64
+	Flags                                 uint64
+	AssociatedDZEpoch                     uint64
+	BumpSeed                              uint8
+	ATAUSDBumpSeed                        uint8
+	ATA2ZBumpSeed                         uint8
+	Padding0                              [1]byte
+	DeviceCount                           uint16
+	ClientSeatCount                       uint16
+	Padding1                              [2]byte
+	ValidatorRewardsProportion            uint16 // UnitShare16
+	TotalPublishingValidators             uint32
+	ValidatorRewardsMerkleRoot            [32]byte
+	CollectedUSDCPayments                 uint64
+	Collected2ZConvertedFromUSDC          uint64
+	DistributedValidatorRewardsCount      uint32
+	DistributedContributorRewardsCount    uint32
+	DistributedValidator2ZAmount          uint64
+	DistributedContributor2ZAmount        uint64
+	Burned2ZAmount                        uint64
+	ProcessedValidatorRewardsStartIndex   uint32
+	ProcessedValidatorRewardsEndIndex     uint32
 	ProcessedContributorRewardsStartIndex uint32
-	ProcessedContributorRewardsEndIndex  uint32
-	ValidatorClientRewardProportions     ValidatorClientRewardProportionsArray
-	Gap                                  [4][32]byte // StorageGap<4>
+	ProcessedContributorRewardsEndIndex   uint32
+	ValidatorClientRewardProportions      ValidatorClientRewardProportionsArray
+	Gap                                   [4][32]byte // StorageGap<4>
 }
 
 // ValidatorClientRewards is a registered validator client eligible for reward
 // distribution.
 type ValidatorClientRewards struct {
-	ClientID             uint16
-	Padding0             [6]byte
-	ManagerKey           solana.PublicKey
+	ClientID              uint16
+	Padding0              [6]byte
+	ManagerKey            solana.PublicKey
 	ShortDescriptionBytes [64]byte
-	Gap                  [2][32]byte // StorageGap<2>
+	Gap                   [2][32]byte // StorageGap<2>
 }
 
 // ShortDescription returns the UTF-8 description with trailing nulls trimmed.
@@ -253,17 +253,17 @@ type DeviceSubscriptionRingBuffer struct {
 
 // DeviceHistory tracks subscription history for a device.
 type DeviceHistory struct {
-	DeviceKey               solana.PublicKey
-	Flags                   uint64
-	BumpSeed                uint8
-	USDCTokenPDABumpSeed    uint8
-	Padding0                [6]byte
-	MetroExchangeKey        solana.PublicKey
-	ActiveGrantedSeats      uint16
+	DeviceKey                 solana.PublicKey
+	Flags                     uint64
+	BumpSeed                  uint8
+	USDCTokenPDABumpSeed      uint8
+	Padding0                  [6]byte
+	MetroExchangeKey          solana.PublicKey
+	ActiveGrantedSeats        uint16
 	ActiveTotalAvailableSeats uint16
-	ActiveSeatsPadding      [28]byte
-	Gap                     [3][32]byte // StorageGap<3>
-	Subscriptions           DeviceSubscriptionRingBuffer
+	ActiveSeatsPadding        [28]byte
+	Gap                       [3][32]byte // StorageGap<3>
+	Subscriptions             DeviceSubscriptionRingBuffer
 }
 
 // IsEnabled returns true if this device is enabled for subscriptions.

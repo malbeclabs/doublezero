@@ -231,6 +231,38 @@ mod tests {
     }
 
     #[test]
+    fn test_admin_group_bits_exhaustion() {
+        let mut aligned_data = AlignedBitmap([0u8; 8]);
+        let mut allocator = IdAllocator::new((0, 32)).unwrap();
+
+        for expected in 0..32 {
+            let id = allocator.allocate(&mut aligned_data.0);
+            assert_eq!(id, Some(expected));
+        }
+        assert!(
+            allocator.allocate(&mut aligned_data.0).is_none(),
+            "allocation must fail when all 32 bits are exhausted"
+        );
+    }
+
+    #[test]
+    fn test_admin_group_bits_lowest_available() {
+        let mut aligned_data = AlignedBitmap([0u8; 8]);
+        let mut allocator = IdAllocator::new((0, 32)).unwrap();
+
+        assert_eq!(allocator.allocate(&mut aligned_data.0), Some(0));
+        assert_eq!(allocator.allocate(&mut aligned_data.0), Some(1));
+        assert_eq!(allocator.allocate(&mut aligned_data.0), Some(2));
+
+        // Allocate a specific higher bit, then verify next auto-allocate
+        // still returns the lowest free bit
+        allocator
+            .allocate_specific(&mut aligned_data.0, 10)
+            .unwrap();
+        assert_eq!(allocator.allocate(&mut aligned_data.0), Some(3));
+    }
+
+    #[test]
     fn test_iter_allocated() {
         let mut aligned_data = AlignedBitmap([0u8; 8]);
         let mut allocator = IdAllocator::new((500, 600)).unwrap();

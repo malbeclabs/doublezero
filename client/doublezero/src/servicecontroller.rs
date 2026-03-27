@@ -49,6 +49,12 @@ impl fmt::Display for LatencyRecord {
     }
 }
 
+#[derive(Deserialize, Debug)]
+pub struct LatencyResponse {
+    pub ready: bool,
+    pub results: Vec<LatencyRecord>,
+}
+
 #[derive(Tabled, Serialize, Deserialize, Debug, Clone)]
 #[tabled(display(Option, "display::option", ""))]
 pub struct StatusResponse {
@@ -170,7 +176,7 @@ pub trait ServiceController {
     fn service_controller_can_open(&self) -> bool;
     async fn get_config(&self) -> eyre::Result<GetConfigResponse>;
     async fn get_env(&self) -> eyre::Result<Environment>;
-    async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>>;
+    async fn latency(&self) -> eyre::Result<LatencyResponse>;
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>>;
     async fn v2_status(&self) -> eyre::Result<V2StatusResponse>;
     async fn enable(&self) -> eyre::Result<()>;
@@ -230,8 +236,8 @@ impl ServiceController for ServiceControllerImpl {
         Ok(Environment::from_program_id(&config.program_id).unwrap_or_default())
     }
 
-    async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>> {
-        let uri = Uri::new(&self.socket_path, "/latency").into();
+    async fn latency(&self) -> eyre::Result<LatencyResponse> {
+        let uri = Uri::new(&self.socket_path, "/v2/latency").into();
         let client: Client<UnixConnector, Full<Bytes>> =
             Client::builder(TokioExecutor::new()).build(UnixConnector);
         let res = client
@@ -246,7 +252,7 @@ impl ServiceController for ServiceControllerImpl {
             .map_err(|e| eyre!("Unable to read response body: {e}"))?
             .to_bytes();
 
-        parse_daemon_response::<Vec<LatencyRecord>>(&data, "/latency")
+        parse_daemon_response::<LatencyResponse>(&data, "/v2/latency")
     }
 
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>> {

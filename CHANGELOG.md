@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 - Client
   - fix(client): fix latency field overflow by changing i32 to i64 ([#3382](https://github.com/malbeclabs/doublezero/pull/3382))
+  - fix(client): add user feedback to latency, add flag to limit icmp probe concurrency ([#3385](https://github.com/malbeclabs/doublezero/pull/3385))
 
 ### Breaking
 

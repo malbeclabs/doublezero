@@ -23,6 +23,8 @@ All notable changes to this project will be documented in this file.
 
 - Funder
   - Top up contributor owner keys alongside device metrics publishers, multicast group owners, and the internet latency collector
+- SDK
+  - Add Go SDK for shred subscription program with read-only account deserialization (epoch state, seat assignments, pricing, settlement, validator client rewards), PDA derivation helpers, RPC fetchers, compatibility tests, and a fetch example CLI
 - Smartcontract
   - Fix multicast publisher/subscriber device counter divergence: `multicast_publishers_count` never decremented and `multicast_subscribers_count` over-decremented on user disconnect because the decrement logic checked `!publishers.is_empty()`, which is always false at delete time. Add a durable `tunnel_flags` field to the `User` struct with a `CreatedAsPublisher` bit, set at activation, and use it in the delete and closeaccount instructions.
   - Allow foundation allowlist members and the sentinel to create multicast users with a custom `owner` via a new `owner` field on `CreateSubscribeUser`, enabling user creation on behalf of another identity's access pass

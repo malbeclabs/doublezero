@@ -8,8 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Smartcontract
+  - Add `TransferUserOwnership` instruction (variant 104) to transfer user ownership between access passes, updating connection counters and merging multicast allowlists; authorized by feed authority ownership or foundation allowlist membership
+  - Add `feed_authority` to `RemoveMulticastGroupSubAllowlist` auth check, matching `AddMulticastGroupSubAllowlist`
 - CLI
   - Reset SIGPIPE to SIG_DFL at the start of main() in all 3 CLI binaries (doublezero, doublezero-geolocation, doublezero-admin) so the process exits silently like standard CLI tools
+  - Automatically transfer user ownership from feed authority to client payer on `connect multicast` when the client has an access pass for the same IP
 - SDK
   - Add Go SDK for shred subscription program with read-only account deserialization (epoch state, seat assignments, pricing, settlement, validator client rewards), PDA derivation helpers, RPC fetchers, compatibility tests, and a fetch example CLI
 
@@ -42,7 +46,6 @@ All notable changes to this project will be documented in this file.
 - Onchain Programs
   - Serviceability: update device interface IPs when `tunnel_net` is changed via `UpdateLink`, matching the existing `ActivateLink` behavior ([#3365](https://github.com/malbeclabs/doublezero/pull/3365))
   - Serviceability: `AcceptLink` supports combined accept+activate via `use_onchain_allocation` flag, gated on `OnChainAllocation` feature flag ([#3369](https://github.com/malbeclabs/doublezero/pull/3369))
-  - Serviceability: add `feed_authority` to `RemoveMulticastGroupSubAllowlist` auth check, matching `AddMulticastGroupSubAllowlist`
 - Client
   - Get client IP from the daemon in the disconnect command, matching the connect command's behavior, to avoid IP mismatches behind NAT
 - Onchain Programs

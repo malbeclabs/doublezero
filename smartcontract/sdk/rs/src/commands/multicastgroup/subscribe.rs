@@ -74,11 +74,15 @@ impl SubscribeMulticastGroupCommand {
         })
         .ok_or_else(|| eyre::eyre!("AccessPass not found"))?;
 
-        if self.publisher && !accesspass.mgroup_pub_allowlist.contains(&self.group_pk) {
-            eyre::bail!("User not allowed to publish multicast group");
-        }
-        if self.subscriber && !accesspass.mgroup_sub_allowlist.contains(&self.group_pk) {
-            eyre::bail!("User not allowed to subscribe multicast group");
+        // Feed authority bypasses allowlist checks
+        let is_feed_authority = client.get_payer() == globalstate.feed_authority_pk;
+        if !is_feed_authority {
+            if self.publisher && !accesspass.mgroup_pub_allowlist.contains(&self.group_pk) {
+                eyre::bail!("User not allowed to publish multicast group");
+            }
+            if self.subscriber && !accesspass.mgroup_sub_allowlist.contains(&self.group_pk) {
+                eyre::bail!("User not allowed to subscribe multicast group");
+            }
         }
 
         let mut accounts = vec![

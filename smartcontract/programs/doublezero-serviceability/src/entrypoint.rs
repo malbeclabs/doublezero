@@ -102,7 +102,7 @@ use crate::{
             closeaccount::process_closeaccount_user, create::process_create_user,
             create_subscribe::process_create_subscribe_user, delete::process_delete_user,
             reject::process_reject_user, requestban::process_request_ban_user,
-            update::process_update_user,
+            transfer_ownership::process_transfer_user_ownership, update::process_update_user,
         },
     },
 };
@@ -405,6 +405,9 @@ pub fn process_instruction(
         | DoubleZeroInstruction::Deprecated102()
         | DoubleZeroInstruction::Deprecated103() => {
             return Err(ProgramError::InvalidInstructionData);
+        }
+        DoubleZeroInstruction::TransferUserOwnership(value) => {
+            process_transfer_user_ownership(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CreatePermission(value) => {
             process_create_permission(program_id, accounts, &value)?

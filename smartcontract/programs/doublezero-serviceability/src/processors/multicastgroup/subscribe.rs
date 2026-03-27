@@ -67,12 +67,6 @@ pub fn subscribe_user_to_multicastgroup(
     publisher: bool,
     subscriber: bool,
 ) -> Result<SubscribeUserResult, ProgramError> {
-    let mut mgroup = MulticastGroup::try_from(mgroup_account)?;
-    if mgroup.status != MulticastGroupStatus::Activated {
-        msg!("MulticastGroupStatus: {:?}", mgroup.status);
-        return Err(DoubleZeroError::InvalidStatus.into());
-    }
-
     // Check allowlists for additions
     if publisher && !accesspass.mgroup_pub_allowlist.contains(mgroup_account.key) {
         msg!("{:?}", accesspass);
@@ -81,6 +75,23 @@ pub fn subscribe_user_to_multicastgroup(
     if subscriber && !accesspass.mgroup_sub_allowlist.contains(mgroup_account.key) {
         msg!("{:?}", accesspass);
         return Err(DoubleZeroError::NotAllowed.into());
+    }
+
+    subscribe_user_to_multicastgroup_unchecked(mgroup_account, user, publisher, subscriber)
+}
+
+/// Same as `subscribe_user_to_multicastgroup` but skips the access pass allowlist
+/// checks. Used when the feed authority is the payer.
+pub fn subscribe_user_to_multicastgroup_unchecked(
+    mgroup_account: &AccountInfo,
+    user: &mut User,
+    publisher: bool,
+    subscriber: bool,
+) -> Result<SubscribeUserResult, ProgramError> {
+    let mut mgroup = MulticastGroup::try_from(mgroup_account)?;
+    if mgroup.status != MulticastGroupStatus::Activated {
+        msg!("MulticastGroupStatus: {:?}", mgroup.status);
+        return Err(DoubleZeroError::InvalidStatus.into());
     }
 
     let mut publisher_list_transitioned = false;
@@ -214,13 +225,32 @@ pub fn process_subscribe_multicastgroup(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
-    let result = subscribe_user_to_multicastgroup(
-        mgroup_account,
-        &accesspass,
-        &mut user,
-        value.publisher,
-        value.subscriber,
-    )?;
+    // Check if payer is the feed authority (requires globalstate, available in onchain path).
+    // Feed authority can update subscriptions without the access pass allowlist check.
+    let is_feed_authority = if let Some((globalstate_account, _)) = &onchain_accounts {
+        let globalstate = GlobalState::try_from(*globalstate_account)?;
+        *payer_account.key == globalstate.feed_authority_pk
+    } else {
+        false
+    };
+
+    let result = if is_feed_authority {
+        // Feed authority bypasses allowlist checks — directly manage subscriptions
+        subscribe_user_to_multicastgroup_unchecked(
+            mgroup_account,
+            &mut user,
+            value.publisher,
+            value.subscriber,
+        )?
+    } else {
+        subscribe_user_to_multicastgroup(
+            mgroup_account,
+            &accesspass,
+            &mut user,
+            value.publisher,
+            value.subscriber,
+        )?
+    };
 
     if let Some((globalstate_account, multicast_publisher_block_ext)) = onchain_accounts {
         // Onchain allocation path: allocate dz_ip directly, skip Updating status

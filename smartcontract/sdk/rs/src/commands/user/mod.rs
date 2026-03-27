@@ -9,4 +9,5 @@ pub mod get;
 pub mod list;
 pub mod reject;
 pub mod requestban;
+pub mod transfer_ownership;
 pub mod update;

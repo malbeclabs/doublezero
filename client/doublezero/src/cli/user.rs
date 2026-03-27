@@ -4,7 +4,7 @@ use doublezero_cli::user::{
     create::CreateUserCliCommand, create_subscribe::CreateSubscribeUserCliCommand,
     delete::DeleteUserCliCommand, get::GetUserCliCommand, list::ListUserCliCommand,
     request_ban::RequestBanUserCliCommand, subscribe::SubscribeUserCliCommand,
-    update::UpdateUserCliCommand,
+    transfer_ownership::TransferUserOwnershipCliCommand, update::UpdateUserCliCommand,
 };
 
 #[derive(Args, Debug)]
@@ -39,4 +39,7 @@ pub enum UserCommands {
     /// Request a ban for a user
     #[command(hide = true)]
     RequestBan(RequestBanUserCliCommand),
+    /// Transfer ownership of a user to a new payer
+    #[command(hide = true)]
+    TransferOwnership(TransferUserOwnershipCliCommand),
 }

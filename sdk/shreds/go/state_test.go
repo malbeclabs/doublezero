@@ -43,10 +43,10 @@ func TestStructSizes(t *testing.T) {
 
 func TestExecutionControllerDeserialization(t *testing.T) {
 	data := make([]byte, unsafe.Sizeof(ExecutionController{}))
-	data[0] = 2 // Phase = OpenForRequests
-	data[1] = 42 // BumpSeed
-	binary.LittleEndian.PutUint16(data[4:], 5)    // TotalMetros
-	binary.LittleEndian.PutUint16(data[6:], 10)   // TotalEnabledDevices
+	data[0] = 2                                    // Phase = OpenForRequests
+	data[1] = 42                                   // BumpSeed
+	binary.LittleEndian.PutUint16(data[4:], 5)     // TotalMetros
+	binary.LittleEndian.PutUint16(data[6:], 10)    // TotalEnabledDevices
 	binary.LittleEndian.PutUint32(data[8:], 100)   // TotalClientSeats
 	binary.LittleEndian.PutUint64(data[24:], 42)   // CurrentSubscriptionEpoch
 	binary.LittleEndian.PutUint64(data[136:], 999) // NextSeatFundingIndex
@@ -85,10 +85,10 @@ func TestClientSeatDeserialization(t *testing.T) {
 		data[i] = byte(i + 1)
 	}
 	binary.LittleEndian.PutUint32(data[32:], 0x0A000001) // ClientIPBits = 10.0.0.1
-	binary.LittleEndian.PutUint16(data[38:], 7)           // TenureEpochs
-	binary.LittleEndian.PutUint64(data[40:], 1)           // Flags = HAS_PRICE_OVERRIDE
-	binary.LittleEndian.PutUint32(data[136:], 3)          // EscrowCount
-	binary.LittleEndian.PutUint16(data[140:], 500)        // OverrideUSDCPriceDollars
+	binary.LittleEndian.PutUint16(data[38:], 7)          // TenureEpochs
+	binary.LittleEndian.PutUint64(data[40:], 1)          // Flags = HAS_PRICE_OVERRIDE
+	binary.LittleEndian.PutUint32(data[136:], 3)         // EscrowCount
+	binary.LittleEndian.PutUint16(data[140:], 500)       // OverrideUSDCPriceDollars
 
 	var seat ClientSeat
 	if err := binary.Read(bytes.NewReader(data), binary.LittleEndian, &seat); err != nil {
@@ -141,7 +141,7 @@ func TestPaymentEscrowDeserialization(t *testing.T) {
 
 func TestShredDistributionDeserialization(t *testing.T) {
 	data := make([]byte, unsafe.Sizeof(ShredDistribution{}))
-	binary.LittleEndian.PutUint64(data[0:], 42)        // SubscriptionEpoch
+	binary.LittleEndian.PutUint64(data[0:], 42)         // SubscriptionEpoch
 	binary.LittleEndian.PutUint64(data[16:], 100)       // AssociatedDZEpoch
 	binary.LittleEndian.PutUint16(data[28:], 5)         // DeviceCount
 	binary.LittleEndian.PutUint16(data[30:], 20)        // ClientSeatCount
@@ -236,8 +236,8 @@ func TestMetroHistoryDeserialization(t *testing.T) {
 
 	// First entry at ringOffset + 8
 	entryOffset := ringOffset + 8
-	binary.LittleEndian.PutUint64(data[entryOffset:], 100)     // Epoch
-	binary.LittleEndian.PutUint16(data[entryOffset+8:], 5000)  // USDCPriceDollars
+	binary.LittleEndian.PutUint64(data[entryOffset:], 100)    // Epoch
+	binary.LittleEndian.PutUint16(data[entryOffset+8:], 5000) // USDCPriceDollars
 
 	var mh MetroHistory
 	if err := binary.Read(bytes.NewReader(data), binary.LittleEndian, &mh); err != nil {
@@ -288,14 +288,14 @@ func TestDeviceHistoryDeserialization(t *testing.T) {
 
 	// First entry at ringOffset + 8
 	entryOffset := ringOffset + 8
-	binary.LittleEndian.PutUint64(data[entryOffset:], 50)         // Epoch
+	binary.LittleEndian.PutUint64(data[entryOffset:], 50) // Epoch
 	// DeviceSubscription starts at entryOffset + 8
 	subOffset := entryOffset + 8
 	neg100 := int16(-100)
 	binary.LittleEndian.PutUint16(data[subOffset:], uint16(neg100)) // USDCMetroPremiumDollars = -100
-	binary.LittleEndian.PutUint16(data[subOffset+2:], 20)                       // RequestedSeatCount
-	binary.LittleEndian.PutUint16(data[subOffset+4:], 15)                       // TotalAvailableSeats
-	binary.LittleEndian.PutUint16(data[subOffset+6:], 10)                       // GrantedSeatCount
+	binary.LittleEndian.PutUint16(data[subOffset+2:], 20)           // RequestedSeatCount
+	binary.LittleEndian.PutUint16(data[subOffset+4:], 15)           // TotalAvailableSeats
+	binary.LittleEndian.PutUint16(data[subOffset+6:], 10)           // GrantedSeatCount
 
 	var dh DeviceHistory
 	if err := binary.Read(bytes.NewReader(data), binary.LittleEndian, &dh); err != nil {

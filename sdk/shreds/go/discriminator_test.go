@@ -6,16 +6,16 @@ import (
 
 func TestDiscriminatorsAreUnique(t *testing.T) {
 	discs := map[string][8]byte{
-		"ProgramConfig":              DiscriminatorProgramConfig,
-		"ExecutionController":        DiscriminatorExecutionController,
-		"ClientSeat":                 DiscriminatorClientSeat,
-		"PaymentEscrow":              DiscriminatorPaymentEscrow,
-		"ShredDistribution":          DiscriminatorShredDistribution,
-		"ValidatorClientRewards":     DiscriminatorValidatorClientRewards,
+		"ProgramConfig":                DiscriminatorProgramConfig,
+		"ExecutionController":          DiscriminatorExecutionController,
+		"ClientSeat":                   DiscriminatorClientSeat,
+		"PaymentEscrow":                DiscriminatorPaymentEscrow,
+		"ShredDistribution":            DiscriminatorShredDistribution,
+		"ValidatorClientRewards":       DiscriminatorValidatorClientRewards,
 		"InstantSeatAllocationRequest": DiscriminatorInstantSeatAllocationRequest,
-		"WithdrawSeatRequest":        DiscriminatorWithdrawSeatRequest,
-		"MetroHistory":               DiscriminatorMetroHistory,
-		"DeviceHistory":              DiscriminatorDeviceHistory,
+		"WithdrawSeatRequest":          DiscriminatorWithdrawSeatRequest,
+		"MetroHistory":                 DiscriminatorMetroHistory,
+		"DeviceHistory":                DiscriminatorDeviceHistory,
 	}
 
 	seen := make(map[[8]byte]string)

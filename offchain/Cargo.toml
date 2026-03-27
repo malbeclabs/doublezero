@@ -50,6 +50,7 @@ governor = "0.6"
 home = "0.5"
 indexmap = { version = "2", features = ["serde"] }
 itertools = "0.14"
+libc = "0.2"
 leaky-bucket = "1"
 metrics = "0.24"
 metrics-exporter-prometheus = "0.17"

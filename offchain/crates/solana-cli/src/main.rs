@@ -14,6 +14,10 @@ struct DoubleZeroSolanaApp {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .with(

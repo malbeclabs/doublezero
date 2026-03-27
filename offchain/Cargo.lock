@@ -2647,6 +2647,7 @@ dependencies = [
  "doublezero-solana-validator-debt",
  "doublezero_sdk",
  "itertools 0.14.0",
+ "libc",
  "reqwest",
  "serde",
  "serde_json",

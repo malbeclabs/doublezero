@@ -70,6 +70,7 @@ mod tests {
         let activator_authority = Pubkey::new_unique();
         let sentinel_authority = Pubkey::new_unique();
         let feed_authority = Pubkey::new_unique();
+        let health_oracle = Pubkey::new_unique();
         let globalstate = GlobalState {
             account_type: AccountType::GlobalState,
             bump_seed: 0,
@@ -81,7 +82,7 @@ mod tests {
             sentinel_authority_pk: sentinel_authority,
             contributor_airdrop_lamports: 0,
             user_airdrop_lamports: 0,
-            health_oracle_pk: Pubkey::default(),
+            health_oracle_pk: health_oracle,
             qa_allowlist: vec![],
             feature_flags: 0,
             feed_authority_pk: feed_authority,
@@ -115,7 +116,7 @@ mod tests {
             "feed_authority row should contain value"
         );
         assert!(
-            has_row("health_oracle", &Pubkey::default().to_string()),
+            has_row("health_oracle", &health_oracle.to_string()),
             "health_oracle row should contain value"
         );
 
@@ -139,7 +140,7 @@ mod tests {
         );
         assert_eq!(
             json["health_oracle"].as_str().unwrap(),
-            Pubkey::default().to_string()
+            health_oracle.to_string()
         );
     }
 }

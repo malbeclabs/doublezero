@@ -10,17 +10,12 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
-// Processing in batches greatly speeds up e2e tests since large numbers of link and devices records are created at the same time.
-// We set maxBatchSize to 8 because Solana transactions are limited to 1232 bytes:
-// Transaction overhead:
-//   - Blockhash: 32 bytes
-//   - Signatures: 64 bytes per signer (we have 1)
-//   - Message header: ~3 bytes
-//   - Account keys array (deduplicated)
-//   - Compact-u16 length prefixes
-//
-// Calculation: With the accounts being partially deduplicated (globalState, signer, and systemProgram are shared across all instructions), each additional instruction adds roughly ~100-120 bytes.
-// With transaction overhead of ~200-300 bytes, we can fit approximately 8-10 instructions before hitting Solana's 1232-byte limit.
+// Processing in batches greatly speeds up e2e tests since large numbers of link and device records are created at the same time.
+// Transaction wire cost per instruction is only ~9 bytes (accounts are deduplicated as 1-byte indices),
+// so transaction size is not the bottleneck. The limiting factor is compute units: each instruction
+// deserializes GlobalState (which contains variable-length allowlists) plus the device/link account,
+// costing roughly 10,000-20,000 CUs per instruction. With Solana's default 200,000 CU budget per
+// transaction, 8 instructions is a conservative limit that avoids compute budget failures.
 const maxBatchSize = 8
 
 type Worker struct {

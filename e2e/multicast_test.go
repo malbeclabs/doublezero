@@ -192,13 +192,23 @@ func TestE2E_Multicast(t *testing.T) {
 	createMulticastGroupForBothClients(t, tdn, publisherClient, subscriberClient, "mg02")
 
 	if !t.Run("connect", func(t *testing.T) {
-		// Connect publisher.
-		tdn.ConnectMulticastPublisherSkipAccessPass(t, publisherClient, "mg01", "mg02")
+		// Connect publisher to first group only.
+		tdn.ConnectMulticastPublisherSkipAccessPass(t, publisherClient, "mg01")
 		err = publisherClient.WaitForTunnelUp(t.Context(), 90*time.Second)
 		require.NoError(t, err)
 
-		// Connect subscriber.
-		tdn.ConnectMulticastSubscriberSkipAccessPass(t, subscriberClient, "mg01", "mg02")
+		// Incrementally add second publish group without disconnecting.
+		tdn.AddMulticastPublisherGroupSkipAccessPass(t, publisherClient, "mg02")
+		err = publisherClient.WaitForTunnelUp(t.Context(), 90*time.Second)
+		require.NoError(t, err)
+
+		// Connect subscriber to first group only.
+		tdn.ConnectMulticastSubscriberSkipAccessPass(t, subscriberClient, "mg01")
+		err = subscriberClient.WaitForTunnelUp(t.Context(), 90*time.Second)
+		require.NoError(t, err)
+
+		// Incrementally add second subscribe group without disconnecting.
+		tdn.AddMulticastSubscriberGroupSkipAccessPass(t, subscriberClient, "mg02")
 		err = subscriberClient.WaitForTunnelUp(t.Context(), 90*time.Second)
 		require.NoError(t, err)
 

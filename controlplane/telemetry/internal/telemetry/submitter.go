@@ -114,6 +114,25 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 			}
 		}
 
+		// Derive the samples PDA so we can derive the timestamp index PDA from it.
+		samplesPDA, _, err := telemetry.DeriveDeviceLatencySamplesPDA(
+			s.cfg.ProgramClient.ProgramID(),
+			partitionKey.OriginDevicePK,
+			partitionKey.TargetDevicePK,
+			partitionKey.LinkPK,
+			partitionKey.Epoch,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to derive device latency samples PDA: %w", err)
+		}
+		timestampIndexPDA, _, err := telemetry.DeriveTimestampIndexPDA(
+			s.cfg.ProgramClient.ProgramID(),
+			samplesPDA,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to derive timestamp index PDA: %w", err)
+		}
+
 		writeConfig := telemetry.WriteDeviceLatencySamplesInstructionConfig{
 			AgentPK:                    s.cfg.MetricsPublisherPK,
 			OriginDevicePK:             partitionKey.OriginDevicePK,
@@ -122,11 +141,29 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 			Epoch:                      &partitionKey.Epoch,
 			StartTimestampMicroseconds: uint64(minTimestamp.UnixMicro()),
 			Samples:                    rtts,
+			TimestampIndexPK:           &timestampIndexPDA,
 		}
 
-		_, _, err := s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
+		_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
 		if err != nil {
-			if errors.Is(err, telemetry.ErrAccountNotFound) {
+			if errors.Is(err, telemetry.ErrTimestampIndexNotFound) {
+				log.Info("Timestamp index account not found, initializing")
+				_, _, err = s.cfg.ProgramClient.InitializeTimestampIndex(ctx, samplesPDA)
+				if err != nil {
+					log.Warn("Failed to initialize timestamp index, writes will proceed without it", "error", err)
+					writeConfig.TimestampIndexPK = nil
+				}
+				_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
+				if err != nil {
+					if errors.Is(err, telemetry.ErrSamplesAccountFull) {
+						log.Warn("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
+						s.cfg.Buffer.Remove(partitionKey)
+						return nil
+					}
+					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToWriteSamples).Inc()
+					return fmt.Errorf("failed to write device latency samples after timestamp index init: %w", err)
+				}
+			} else if errors.Is(err, telemetry.ErrAccountNotFound) {
 				log.Info("Account not found, initializing new account")
 				_, _, err = s.cfg.ProgramClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
 					AgentPK:                      s.cfg.MetricsPublisherPK,
@@ -139,6 +176,12 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 				if err != nil {
 					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToInitializeAccount).Inc()
 					return fmt.Errorf("failed to initialize device latency samples: %w", err)
+				}
+				// Initialize the companion timestamp index account.
+				_, _, err = s.cfg.ProgramClient.InitializeTimestampIndex(ctx, samplesPDA)
+				if err != nil {
+					log.Warn("Failed to initialize timestamp index, writes will proceed without it", "error", err)
+					writeConfig.TimestampIndexPK = nil
 				}
 				_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
 				if err != nil {

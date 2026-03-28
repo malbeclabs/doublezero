@@ -6,6 +6,9 @@ import { DefensiveReader } from "borsh-incremental";
 const DEVICE_LATENCY_HEADER_SIZE = 1 + 8 + 32 * 6 + 8 + 8 + 4 + 128;
 const MAX_DEVICE_LATENCY_SAMPLES = 35_000;
 const MAX_INTERNET_LATENCY_SAMPLES = 3_000;
+const TIMESTAMP_INDEX_HEADER_SIZE = 1 + 32 + 4 + 64;
+const TIMESTAMP_INDEX_ENTRY_SIZE = 4 + 8;
+const MAX_TIMESTAMP_INDEX_ENTRIES = 10_000;
 
 export interface DeviceLatencySamples {
   accountType: number;
@@ -127,4 +130,129 @@ export function deserializeInternetLatencySamples(
     nextSampleIndex,
     samples,
   };
+}
+
+export interface TimestampIndexEntry {
+  sampleIndex: number;
+  timestampMicroseconds: bigint;
+}
+
+export interface TimestampIndex {
+  accountType: number;
+  samplesAccountPK: PublicKey;
+  nextEntryIndex: number;
+  entries: TimestampIndexEntry[];
+}
+
+export function deserializeTimestampIndex(
+  data: Uint8Array,
+): TimestampIndex {
+  if (data.length < TIMESTAMP_INDEX_HEADER_SIZE) {
+    throw new Error(
+      `data too short for timestamp index header: ${data.length} < ${TIMESTAMP_INDEX_HEADER_SIZE}`,
+    );
+  }
+
+  const r = new DefensiveReader(data);
+
+  const accountType = r.readU8();
+  const samplesAccountPK = readPubkey(r);
+  const nextEntryIndex = r.readU32();
+
+  r.readBytes(64); // _unused
+
+  if (nextEntryIndex > MAX_TIMESTAMP_INDEX_ENTRIES) {
+    throw new Error(
+      `next_entry_index ${nextEntryIndex} exceeds max ${MAX_TIMESTAMP_INDEX_ENTRIES}`,
+    );
+  }
+
+  const count = nextEntryIndex;
+  if (r.remaining < count * TIMESTAMP_INDEX_ENTRY_SIZE) {
+    throw new Error(
+      `data too short for ${count} timestamp index entries: ${r.remaining} < ${count * TIMESTAMP_INDEX_ENTRY_SIZE}`,
+    );
+  }
+
+  const entries: TimestampIndexEntry[] = [];
+  for (let i = 0; i < count; i++) {
+    entries.push({
+      sampleIndex: r.readU32(),
+      timestampMicroseconds: r.readU64(),
+    });
+  }
+
+  return {
+    accountType,
+    samplesAccountPK,
+    nextEntryIndex,
+    entries,
+  };
+}
+
+/**
+ * Returns the wall-clock timestamp (microseconds) for a sample at the given
+ * index. Uses binary search over entries — O(log m). Falls back to the
+ * implicit model when no entries are available.
+ */
+export function reconstructTimestamp(
+  entries: TimestampIndexEntry[],
+  sampleIndex: number,
+  startTimestampMicroseconds: bigint,
+  samplingIntervalMicroseconds: bigint,
+): bigint {
+  if (entries.length === 0) {
+    return startTimestampMicroseconds + BigInt(sampleIndex) * samplingIntervalMicroseconds;
+  }
+
+  // Binary search: find the last entry where sampleIndex <= target.
+  let lo = 0;
+  let hi = entries.length - 1;
+  while (lo < hi) {
+    const mid = lo + Math.ceil((hi - lo) / 2);
+    if (entries[mid].sampleIndex <= sampleIndex) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  const entry = entries[lo];
+  if (entry.sampleIndex > sampleIndex) {
+    return startTimestampMicroseconds + BigInt(sampleIndex) * samplingIntervalMicroseconds;
+  }
+  return entry.timestampMicroseconds + BigInt(sampleIndex - entry.sampleIndex) * samplingIntervalMicroseconds;
+}
+
+/**
+ * Returns wall-clock timestamps (microseconds) for all samples.
+ * Single-pass O(n + m) where n is sampleCount and m is the number of entries.
+ */
+export function reconstructTimestamps(
+  sampleCount: number,
+  entries: TimestampIndexEntry[],
+  startTimestampMicroseconds: bigint,
+  samplingIntervalMicroseconds: bigint,
+): bigint[] {
+  const timestamps: bigint[] = [];
+  if (entries.length === 0) {
+    for (let i = 0; i < sampleCount; i++) {
+      timestamps.push(startTimestampMicroseconds + BigInt(i) * samplingIntervalMicroseconds);
+    }
+    return timestamps;
+  }
+
+  let entryIdx = 0;
+  for (let i = 0; i < sampleCount; i++) {
+    while (entryIdx + 1 < entries.length && entries[entryIdx + 1].sampleIndex <= i) {
+      entryIdx++;
+    }
+    const e = entries[entryIdx];
+    if (e.sampleIndex > i) {
+      timestamps.push(startTimestampMicroseconds + BigInt(i) * samplingIntervalMicroseconds);
+    } else {
+      timestamps.push(e.timestampMicroseconds + BigInt(i - e.sampleIndex) * samplingIntervalMicroseconds);
+    }
+  }
+  return timestamps;
 }

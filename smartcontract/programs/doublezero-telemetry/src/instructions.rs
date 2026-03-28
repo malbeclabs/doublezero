@@ -4,6 +4,7 @@ use crate::processors::telemetry::{
     write_device_latency_samples::WriteDeviceLatencySamplesArgs,
     write_internet_latency_samples::WriteInternetLatencySamplesArgs,
 };
+// InitializeTimestampIndex has no args, so no import needed.
 use borsh::BorshSerialize;
 use solana_program::program_error::ProgramError;
 use std::cmp::PartialEq;
@@ -18,12 +19,15 @@ pub enum TelemetryInstruction {
     InitializeInternetLatencySamples(InitializeInternetLatencySamplesArgs),
     /// Write internet latency samples to chain
     WriteInternetLatencySamples(WriteInternetLatencySamplesArgs),
+    /// Initialize a timestamp index companion account for a latency samples account
+    InitializeTimestampIndex,
 }
 
 pub const INITIALIZE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 0;
 pub const WRITE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 1;
 pub const INITIALIZE_INTERNET_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 2;
 pub const WRITE_INTERNET_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 3;
+pub const INITIALIZE_TIMESTAMP_INDEX_INSTRUCTION_INDEX: u8 = 4;
 
 impl TelemetryInstruction {
     pub fn pack(&self) -> Result<Vec<u8>, ProgramError> {
@@ -62,6 +66,9 @@ impl TelemetryInstruction {
                 TelemetryInstruction::WriteInternetLatencySamples(
                     WriteInternetLatencySamplesArgs::try_from(rest)?,
                 )
+            }
+            INITIALIZE_TIMESTAMP_INDEX_INSTRUCTION_INDEX => {
+                TelemetryInstruction::InitializeTimestampIndex
             }
             _ => return Err(ProgramError::InvalidInstructionData),
         };
@@ -106,5 +113,6 @@ mod tests {
                 samples: vec![],
             },
         ));
+        test_instruction(TelemetryInstruction::InitializeTimestampIndex);
     }
 }

@@ -5,7 +5,6 @@ package e2e_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -23,7 +22,6 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	telemetrysdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -568,39 +566,43 @@ func waitForDeviceLatencySamples(t *testing.T, dn *devnet.Devnet, originDevicePK
 	client, err := dn.Ledger.GetTelemetryClient(nil)
 	require.NoError(t, err)
 
-	var lastErr error
-	var lastAccount *telemetrysdk.DeviceLatencySamples
-
 	start := time.Now()
-	if !assert.Eventually(t, func() bool {
-		account, err := client.GetDeviceLatencySamples(t.Context(), originDevicePK, targetDevicePK, linkPK, epoch)
-		lastErr = err
-		lastAccount = account
-		if err != nil && !errors.Is(err, telemetrysdk.ErrAccountNotFound) {
-			t.Fatalf("failed to get device latency samples: %v", err)
-		}
-		if account == nil || len(account.Samples) <= waitForMinSamples {
-			return false
-		}
-		if waitForNonZeroSample {
-			for _, rtt := range account.Samples {
-				if rtt > 0 {
-					return true
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	var lastErr error
+	for {
+		select {
+		case <-t.Context().Done():
+			require.FailNow(t, "test context canceled while waiting for device latency samples", "lastErr: %v", lastErr)
+		case <-deadline.C:
+			require.FailNow(t, fmt.Sprintf("timed out after %s waiting for device latency samples", timeout), "lastErr: %v", lastErr)
+		case <-ticker.C:
+			account, err := client.GetDeviceLatencySamples(t.Context(), originDevicePK, targetDevicePK, linkPK, epoch)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			if account == nil || len(account.Samples) <= waitForMinSamples {
+				continue
+			}
+			if waitForNonZeroSample {
+				hasNonZero := false
+				for _, rtt := range account.Samples {
+					if rtt > 0 {
+						hasNonZero = true
+						break
+					}
+				}
+				if !hasNonZero {
+					continue
 				}
 			}
-			return false
+			return account, time.Since(start)
 		}
-		return true
-	}, timeout, 3*time.Second) {
-		t.Fatalf("waitForDeviceLatencySamples timed out after %s: origin=%s target=%s link=%s epoch=%d waitForMinSamples=%d waitForNonZeroSample=%v lastErr=%v lastAccount=%+v",
-			timeout, originDevicePK, targetDevicePK, linkPK, epoch, waitForMinSamples, waitForNonZeroSample, lastErr, lastAccount)
 	}
-
-	account, err := client.GetDeviceLatencySamples(t.Context(), originDevicePK, targetDevicePK, linkPK, epoch)
-	require.NoError(t, err)
-	require.NotNil(t, account)
-
-	return account, time.Since(start)
 }
 
 func waitForDevicesAndLinks(t *testing.T, dn *devnet.Devnet, expectedDevices, expectedLinks int, timeout time.Duration) (map[string]*serviceability.Device, map[string]*serviceability.Link, time.Duration) {

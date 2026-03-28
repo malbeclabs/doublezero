@@ -93,13 +93,14 @@ func (d DeviceDeviceType) String() string {
 type DeviceStatus uint8
 
 const (
-	DeviceStatusPending            DeviceStatus = 0
-	DeviceStatusActivated          DeviceStatus = 1
-	DeviceStatusDeleting           DeviceStatus = 2
-	DeviceStatusRejected           DeviceStatus = 3
-	DeviceStatusDrained            DeviceStatus = 4
-	DeviceStatusDeviceProvisioning DeviceStatus = 5
-	DeviceStatusLinkProvisioning   DeviceStatus = 6
+	DeviceStatusPending   DeviceStatus = 0
+	DeviceStatusActivated DeviceStatus = 1
+	// DeviceStatusSuspended was 2 but is no longer used
+	DeviceStatusDeleting           DeviceStatus = 3
+	DeviceStatusRejected           DeviceStatus = 4
+	DeviceStatusDrained            DeviceStatus = 5
+	DeviceStatusDeviceProvisioning DeviceStatus = 6
+	DeviceStatusLinkProvisioning   DeviceStatus = 7
 )
 
 func (d DeviceStatus) String() string {
@@ -125,6 +126,10 @@ func (d DeviceStatus) String() string {
 
 func (d DeviceStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.String())
+}
+
+func (d DeviceStatus) IsDrained() bool {
+	return d == DeviceStatusDrained
 }
 
 type DeviceHealth uint8
@@ -485,8 +490,9 @@ func (l LinkLinkType) MarshalJSON() ([]byte, error) {
 type LinkStatus uint8
 
 const (
-	LinkStatusPending      LinkStatus = 0
-	LinkStatusActivated    LinkStatus = 1
+	LinkStatusPending   LinkStatus = 0
+	LinkStatusActivated LinkStatus = 1
+	// LinkStatusSuspended was 2 but is no longer used
 	LinkStatusDeleting     LinkStatus = 3
 	LinkStatusRejected     LinkStatus = 4
 	LinkStatusRequested    LinkStatus = 5
@@ -520,6 +526,10 @@ func (l LinkStatus) String() string {
 
 func (l LinkStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(l.String())
+}
+
+func (l LinkStatus) IsHardDrained() bool {
+	return l == LinkStatusHardDrained
 }
 
 type LinkHealth uint8
@@ -754,6 +764,7 @@ type User struct {
 	Publishers      [][32]byte
 	Subscribers     [][32]byte
 	ValidatorPubKey [32]byte
+	TunnelEndpoint  [4]uint8
 	PubKey          [32]byte
 }
 

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -290,7 +290,7 @@ func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_DuplicateClientIP_Pr
 				ClientIp:        clientIP,
 				DzIp:            ibrlDZIP,
 				DevicePubKey:    ibrlDevicePK,
-				UserType:        serviceability.UserTypeIBRLWithAllocatedIP,
+				UserType:        serviceability.UserTypeIBRLWithAllocIP,
 			},
 		},
 	}

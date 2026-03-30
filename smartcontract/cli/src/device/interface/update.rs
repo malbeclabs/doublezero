@@ -98,27 +98,40 @@ impl UpdateDeviceInterfaceCliCommand {
             .transpose()
             .map_err(|e| eyre::eyre!("Invalid IP network: {}", e))?;
 
+        // Determine post-update CYOA/DIA state
+        let post_cyoa = if self.interface_cyoa.is_some() {
+            true // CLI types::InterfaceCYOA only has non-None variants
+        } else {
+            interface.interface_cyoa
+                != doublezero_serviceability::state::interface::InterfaceCYOA::None
+        };
+        let post_dia = if let Some(ref d) = self.interface_dia {
+            matches!(d, types::InterfaceDIA::DIA)
+        } else {
+            interface.interface_dia
+                != doublezero_serviceability::state::interface::InterfaceDIA::None
+        };
+        let is_cyoa_or_dia = post_cyoa || post_dia;
+        let required_mtu: u16 = if is_cyoa_or_dia { 1500 } else { 9000 };
+
         if let Some(mtu) = self.mtu {
-            // Use post-update CYOA/DIA state: CLI args if provided, otherwise existing values
-            let post_cyoa = if self.interface_cyoa.is_some() {
-                true // CLI types::InterfaceCYOA only has non-None variants
-            } else {
-                interface.interface_cyoa
-                    != doublezero_serviceability::state::interface::InterfaceCYOA::None
-            };
-            let post_dia = if let Some(ref d) = self.interface_dia {
-                matches!(d, types::InterfaceDIA::DIA)
-            } else {
-                interface.interface_dia
-                    != doublezero_serviceability::state::interface::InterfaceDIA::None
-            };
-            let is_cyoa_or_dia = post_cyoa || post_dia;
-            if is_cyoa_or_dia && mtu != 1500 {
-                return Err(eyre::eyre!("CYOA/DIA interfaces must have MTU of 1500"));
-            } else if !is_cyoa_or_dia && mtu != 9000 {
-                return Err(eyre::eyre!("WAN/DZX interfaces must have MTU of 9000"));
+            if mtu != required_mtu {
+                if is_cyoa_or_dia {
+                    return Err(eyre::eyre!("CYOA/DIA interfaces must have MTU of 1500"));
+                } else {
+                    return Err(eyre::eyre!("WAN/DZX interfaces must have MTU of 9000"));
+                }
             }
         }
+
+        // Auto-set MTU when CYOA/DIA type changes and --mtu is not explicitly provided
+        let mtu = if self.mtu.is_some() {
+            self.mtu
+        } else if interface.mtu != required_mtu {
+            Some(required_mtu)
+        } else {
+            None
+        };
 
         if let Some(ref ip_net) = parsed_ip_net {
             let devices = client.list_device(ListDeviceCommand)?;
@@ -159,7 +172,7 @@ impl UpdateDeviceInterfaceCliCommand {
             interface_dia: self.interface_dia.map(|id| id.into()),
             bandwidth: self.bandwidth,
             cir: self.cir,
-            mtu: self.mtu,
+            mtu,
             routing_mode: self.routing_mode.map(|rm| rm.into()),
             vlan_id: self.vlan_id,
             user_tunnel_endpoint: self.user_tunnel_endpoint,

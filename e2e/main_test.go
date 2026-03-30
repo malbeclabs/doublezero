@@ -76,7 +76,7 @@ func TestMain(m *testing.M) {
 	if vFlag := flag.Lookup("test.v"); vFlag != nil && vFlag.Value.String() == "true" {
 		verbose = true
 	}
-	if os.Getenv("DZ_E2E_DEBUG") != "" {
+	if os.Getenv("DEBUG") != "" {
 		debug = true
 	}
 
@@ -765,7 +765,7 @@ func (dn *TestDevnet) BuildAgentConfigData(t *testing.T, deviceCode string, extr
 
 // newTestLoggerForTest creates a logger for individual test runs.
 // Logs are written to t.Log() so they only appear on test failure (unless -v is passed).
-// With DZ_E2E_DEBUG=1, shows DEBUG level logs; otherwise shows INFO level.
+// With DEBUG=1, shows DEBUG level logs; otherwise shows INFO level.
 func newTestLoggerForTest(t *testing.T) *slog.Logger {
 	w := &testWriter{t: t}
 	logLevel := slog.LevelInfo

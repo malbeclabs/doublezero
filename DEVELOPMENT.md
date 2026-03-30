@@ -55,23 +55,31 @@ The required image (`ghcr.io/malbeclabs/ceos:4.33.1F`) will be pulled automatica
 End-to-end tests exercise the full DoubleZero stack — smartcontracts, controller, activator, client, and device agents — all running in isolated Docker containers.
 
 ```bash
-# Run a specific E2E test directly
-cd e2e/
-go test -tags e2e -v -run TestE2E_MultiClient
+# Run a specific test
+make e2e-test RUN=TestE2E_MultiClient
 
-# Or use the helper script
-dev/e2e-test.sh TestE2E_MultiClient
+# Run with debug logging
+make e2e-test-debug RUN=TestE2E_MultiClient
+
+# Skip docker image rebuild (faster iteration)
+make e2e-test-nobuild RUN=TestE2E_MultiClient
+
+# Keep containers after test for debugging
+make e2e-test-keep RUN=TestE2E_MultiClient
+
+# Both: skip rebuild + keep containers
+make e2e-test-keep-nobuild RUN=TestE2E_MultiClient
+
+# Clean up leftover containers from previous runs
+make e2e-test-cleanup
+
+# Run all tests (requires high-memory machine)
+make e2e-test
 ```
 
 > ⚠️ Note:
 >
->
-> E2E tests are resource-intensive. It’s recommended to run them individually or with low parallelism:
->
-> ```bash
-> go test -tags e2e -v -parallel=1 -timeout=20m
-> ```
->
+> E2E tests are resource-intensive. It’s recommended to run them individually.
 > Running all tests together may require at least 64 GB of memory available to Docker.
 >
 

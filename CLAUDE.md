@@ -257,11 +257,20 @@ Only use `dev/dzctl destroy -y` when you need a completely clean slate (e.g., le
 
 ```bash
 # Run a specific test (preferred)
-go test -tags e2e -run TestE2E_Multicast_Publisher -v -count=1 ./e2e/...
+make e2e-test RUN=TestE2E_Multicast_Publisher
 
-# Run all tests (requires high-memory machine)
-dev/e2e-test.sh
+# Run with debug logging
+make e2e-test-debug RUN=TestE2E_Multicast_Publisher
+
+# Skip docker image rebuild
+make e2e-test-nobuild RUN=TestE2E_Multicast_Publisher
 
 # Keep containers after test completion/failure for debugging
-TESTCONTAINERS_RYUK_DISABLED=true go test -tags e2e -run TestE2E_Multicast_Publisher -v -count=1 ./e2e/...
+make e2e-test-keep RUN=TestE2E_Multicast_Publisher
+
+# Run all tests (requires high-memory machine)
+make e2e-test
+
+# Clean up leftover containers
+make e2e-test-cleanup
 ```

@@ -99,10 +99,20 @@ impl UpdateDeviceInterfaceCliCommand {
             .map_err(|e| eyre::eyre!("Invalid IP network: {}", e))?;
 
         if let Some(mtu) = self.mtu {
-            let is_cyoa_or_dia = interface.interface_cyoa
-                != doublezero_serviceability::state::interface::InterfaceCYOA::None
-                || interface.interface_dia
-                    != doublezero_serviceability::state::interface::InterfaceDIA::None;
+            // Use post-update CYOA/DIA state: CLI args if provided, otherwise existing values
+            let post_cyoa = if self.interface_cyoa.is_some() {
+                true // CLI types::InterfaceCYOA only has non-None variants
+            } else {
+                interface.interface_cyoa
+                    != doublezero_serviceability::state::interface::InterfaceCYOA::None
+            };
+            let post_dia = if let Some(ref d) = self.interface_dia {
+                matches!(d, types::InterfaceDIA::DIA)
+            } else {
+                interface.interface_dia
+                    != doublezero_serviceability::state::interface::InterfaceDIA::None
+            };
+            let is_cyoa_or_dia = post_cyoa || post_dia;
             if is_cyoa_or_dia && mtu != 1500 {
                 return Err(eyre::eyre!("CYOA/DIA interfaces must have MTU of 1500"));
             } else if !is_cyoa_or_dia && mtu != 9000 {

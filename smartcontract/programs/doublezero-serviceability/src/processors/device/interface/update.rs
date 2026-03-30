@@ -171,15 +171,6 @@ pub fn process_update_device_interface(
         iface.cir = cir;
     }
     if let Some(mtu) = value.mtu {
-        let is_cyoa_or_dia = iface.interface_cyoa != InterfaceCYOA::None
-            || iface.interface_dia != InterfaceDIA::None;
-        if is_cyoa_or_dia {
-            if mtu != CYOA_DIA_INTERFACE_MTU {
-                return Err(DoubleZeroError::InvalidMtu.into());
-            }
-        } else if mtu != INTERFACE_MTU {
-            return Err(DoubleZeroError::InvalidMtu.into());
-        }
         iface.mtu = mtu;
     }
     if let Some(routing_mode) = value.routing_mode {
@@ -240,6 +231,18 @@ pub fn process_update_device_interface(
     // or clearing ip_net from a CYOA interface via update
     if iface.interface_cyoa != InterfaceCYOA::None && iface.ip_net == NetworkV4::default() {
         return Err(DoubleZeroError::InvalidInterfaceIp.into());
+    }
+
+    // Validate MTU against the resulting CYOA/DIA state after all updates
+    let is_cyoa_or_dia =
+        iface.interface_cyoa != InterfaceCYOA::None || iface.interface_dia != InterfaceDIA::None;
+    let expected_mtu = if is_cyoa_or_dia {
+        CYOA_DIA_INTERFACE_MTU
+    } else {
+        INTERFACE_MTU
+    };
+    if iface.mtu != expected_mtu {
+        return Err(DoubleZeroError::InvalidMtu.into());
     }
 
     // until we have release V2 version for interfaces, always convert to v1

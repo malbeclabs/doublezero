@@ -276,6 +276,13 @@ impl DoubleZeroLedgerConnection {
         try_fetch_borsh_record_with_commitment(&self.0, payer_key, record_seeds, commitment_config)
             .await
     }
+
+    pub async fn try_fetch_multiple_accounts(
+        &self,
+        keys: &[Pubkey],
+    ) -> Result<Vec<Option<Account>>> {
+        try_fetch_multiple_accounts(&self.0, keys).await
+    }
 }
 
 impl Deref for DoubleZeroLedgerConnection {

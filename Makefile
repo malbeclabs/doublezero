@@ -198,14 +198,47 @@ generate-fixtures:
 
 # -----------------------------------------------------------------------------
 # E2E targets
+#
+# Usage:
+#   make e2e-test                           # run all tests
+#   make e2e-test RUN=TestE2E_Multicast     # run a specific test
+#   make e2e-test-debug RUN=TestE2E_Multicast # with debug logging
+#   make e2e-test-nobuild                   # skip docker image build
+#   make e2e-test-keep                      # keep containers after test
+#   make e2e-test-keep-nobuild              # both
+#   make e2e-test-cleanup                   # remove leftover containers
 # -----------------------------------------------------------------------------
-.PHONY: e2e-test
-e2e-test:
-	cd e2e && $(MAKE) test
-
 .PHONY: e2e-build
 e2e-build:
 	cd e2e && $(MAKE) build
+
+.PHONY: e2e-build-debug
+e2e-build-debug:
+	cd e2e && $(MAKE) build-debug
+
+.PHONY: e2e-test
+e2e-test:
+	cd e2e && $(MAKE) test $(if $(RUN),RUN=$(RUN))
+
+.PHONY: e2e-test-debug
+e2e-test-debug:
+	cd e2e && $(MAKE) test-debug $(if $(RUN),RUN=$(RUN))
+
+.PHONY: e2e-test-nobuild
+e2e-test-nobuild:
+	cd e2e && $(MAKE) test-nobuild $(if $(RUN),RUN=$(RUN))
+
+.PHONY: e2e-test-keep
+e2e-test-keep:
+	cd e2e && $(MAKE) test-keep $(if $(RUN),RUN=$(RUN))
+
+.PHONY: e2e-test-keep-nobuild
+e2e-test-keep-nobuild:
+	cd e2e && $(MAKE) test-keep-nobuild $(if $(RUN),RUN=$(RUN))
+
+.PHONY: e2e-test-cleanup
+e2e-test-cleanup:
+	cd e2e && $(MAKE) test-cleanup
 
 # -----------------------------------------------------------------------------
 # Build programs for specific environments

@@ -534,6 +534,30 @@ func (dn *TestDevnet) ConnectMulticastSubscriberSkipAccessPass(t *testing.T, cli
 	dn.log.Debug("--> Multicast subscriber connected")
 }
 
+// AddMulticastPublisherGroupSkipAccessPass incrementally adds publish groups to
+// an existing multicast service without disconnecting.
+func (dn *TestDevnet) AddMulticastPublisherGroupSkipAccessPass(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
+	dn.log.Debug("==> Adding multicast publisher groups incrementally", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+
+	groupArgs := strings.Join(multicastGroupCodes, " ")
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast --publish " + groupArgs})
+	require.NoError(t, err)
+
+	dn.log.Debug("--> Multicast publisher groups added incrementally")
+}
+
+// AddMulticastSubscriberGroupSkipAccessPass incrementally adds subscribe groups to
+// an existing multicast service without disconnecting.
+func (dn *TestDevnet) AddMulticastSubscriberGroupSkipAccessPass(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
+	dn.log.Debug("==> Adding multicast subscriber groups incrementally", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+
+	groupArgs := strings.Join(multicastGroupCodes, " ")
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast --subscribe " + groupArgs})
+	require.NoError(t, err)
+
+	dn.log.Debug("--> Multicast subscriber groups added incrementally")
+}
+
 func (dn *TestDevnet) DisconnectMulticastSubscriber(t *testing.T, client *devnet.Client) {
 	dn.log.Debug("==> Disconnecting multicast subscriber", "clientIP", client.CYOANetworkIP)
 

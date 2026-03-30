@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Smartcontract
+  - Enforce 9000-byte MTU on links and non-CYOA/non-DIA device interfaces; CYOA/DIA interfaces must be 1500. Onchain validation now returns `InvalidMtu` (error 46) for non-conforming values.
+  - CLI `--mtu` flag is now optional for `link create` commands (defaults to 9000)
+
 ### Changes
 
 - Smartcontract

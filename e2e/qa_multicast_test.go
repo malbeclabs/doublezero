@@ -393,9 +393,9 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 		"groupA_packets", reportA.PacketCount, "groupB_packets", reportB.PacketCount)
 
 	// --- Phase 3: Incremental publish after subscribe (cross-role) ---
-	// SubA adds a publisher role on group A without disconnecting. This triggers a
-	// full reprovision in the daemon (publisher role transition) but should still
-	// converge to a working pub+sub state.
+	// SubA adds a publisher role on group A without disconnecting. Both roles use
+	// UserTypeMulticast so InfraEqual returns true and the incremental UpdateGroups
+	// path is taken (no full reprovision).
 	log.Debug("Phase 3: incremental publish after subscribe (cross-role)")
 
 	log.Debug("SubscriberA adding publisher role on group A incrementally", "code", groupA.Code)

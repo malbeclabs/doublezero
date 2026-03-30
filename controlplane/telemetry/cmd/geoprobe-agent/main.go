@@ -764,8 +764,8 @@ func runOffsetListener(
 			continue
 		}
 
-		senderPK := solana.PublicKeyFromBytes(offset.SenderPubkey[:])
-		authorityPK := solana.PublicKeyFromBytes(offset.AuthorityPubkey[:])
+		senderPK := solana.PublicKeyFromBytes(offset.SenderPubkey[:]).String()
+		authorityPK := solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String()
 
 		log.Debug("received UDP offset packet", "from", addr, "sender_pubkey", senderPK, "authority_pubkey", authorityPK)
 
@@ -779,7 +779,7 @@ func runOffsetListener(
 		if expectedAuthority != offset.AuthorityPubkey {
 			log.Warn("Rejecting offset with wrong authority for parent",
 				"sender_pubkey", senderPK,
-				"expected_authority", solana.PublicKeyFromBytes(expectedAuthority[:]),
+				"expected_authority", solana.PublicKeyFromBytes(expectedAuthority[:]).String(),
 				"actual_authority", authorityPK,
 				"addr", addr)
 			metrics.GeoProbeOffsetsRejected.WithLabelValues(metrics.GeoProbeRejectWrongAuthority).Inc()
@@ -998,8 +998,8 @@ func sendCompositeOffsets(
 			"total_rtt_ns", compositeOffset.RttNs,
 			"lat", compositeOffset.Lat,
 			"lng", compositeOffset.Lng,
-			"ref_authority_pubkey", solana.PublicKeyFromBytes(dzdOffset.AuthorityPubkey[:]),
-			"ref_sender_pubkey", solana.PublicKeyFromBytes(dzdOffset.SenderPubkey[:]))
+			"ref_authority_pubkey", solana.PublicKeyFromBytes(dzdOffset.AuthorityPubkey[:]).String(),
+			"ref_sender_pubkey", solana.PublicKeyFromBytes(dzdOffset.SenderPubkey[:]).String())
 	}
 
 	return sentCount

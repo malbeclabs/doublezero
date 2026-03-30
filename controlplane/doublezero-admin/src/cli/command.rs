@@ -1,4 +1,4 @@
-use super::multicast::MulticastCliCommand;
+use super::{multicast::MulticastCliCommand, sentinel::SentinelCliCommand};
 use crate::cli::{
     accesspass::AccessPassCliCommand, config::ConfigCliCommand, contributor::ContributorCliCommand,
     device::DeviceCliCommand, exchange::ExchangeCliCommand, globalconfig::GlobalConfigCliCommand,
@@ -66,6 +66,9 @@ pub enum Command {
     /// Manage multicast
     #[command()]
     Multicast(MulticastCliCommand),
+    /// Sentinel admin commands
+    #[command()]
+    Sentinel(SentinelCliCommand),
     /// Export all data to files
     #[command()]
     Export(ExportCliCommand),

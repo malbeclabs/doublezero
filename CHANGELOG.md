@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
   - Allow incremental multicast group addition without disconnecting
   - Reset SIGPIPE to SIG_DFL at the start of main() in all 3 CLI binaries (doublezero, doublezero-geolocation, doublezero-admin) so the process exits silently like standard CLI tools
   - Support `--type outbound-icmp` in geolocation `user add-target`, `remove-target`, and `get` commands
+  - Add sentinel admin commands to find and create multicast publishers for IBRL validators
 - SDK
   - Add Go SDK for shred subscription program with read-only account deserialization (epoch state, seat assignments, pricing, settlement, validator client rewards), PDA derivation helpers, RPC fetchers, compatibility tests, and a fetch example CLI
   - Add `GeoLocationTargetTypeOutboundIcmp` to Go geolocation SDK with deserialization and round-trip test support

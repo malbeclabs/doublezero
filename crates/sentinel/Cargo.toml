@@ -1,0 +1,28 @@
+[package]
+name = "doublezero-sentinel"
+version = "0.0.1"
+
+# Workspace inherited keys
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+borsh.workspace = true
+clap.workspace = true
+doublezero_sdk.workspace = true
+doublezero-serviceability.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+solana-account-decoder.workspace = true
+solana-client.workspace = true
+solana-sdk.workspace = true
+tabled.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+mockall.workspace = true

@@ -105,8 +105,8 @@ impl UpdateDeviceInterfaceCliCommand {
                     != doublezero_serviceability::state::interface::InterfaceDIA::None;
             if is_cyoa_or_dia && mtu != 1500 {
                 return Err(eyre::eyre!("CYOA/DIA interfaces must have MTU of 1500"));
-            } else if !is_cyoa_or_dia && mtu != 2048 {
-                return Err(eyre::eyre!("WAN/DZX interfaces must have MTU of 2048"));
+            } else if !is_cyoa_or_dia && mtu != 9000 {
+                return Err(eyre::eyre!("WAN/DZX interfaces must have MTU of 9000"));
             }
         }
 
@@ -213,7 +213,7 @@ mod tests {
                     interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
                     bandwidth: 1000,
                     cir: 500,
-                    mtu: 1500,
+                    mtu: 9000,
                     routing_mode: RoutingMode::Static,
                     vlan_id: 0,
                     ip_net: "10.0.0.1/24".parse().unwrap(),
@@ -230,7 +230,7 @@ mod tests {
                     interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
                     bandwidth: 1000,
                     cir: 500,
-                    mtu: 1500,
+                    mtu: 9000,
                     routing_mode: RoutingMode::Static,
                     vlan_id: 16,
                     ip_net: "10.0.1.1/24".parse().unwrap(),
@@ -347,7 +347,7 @@ mod tests {
                 interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
                 bandwidth: 0,
                 cir: 0,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 ip_net: "10.0.0.1/32".parse().unwrap(),
@@ -395,7 +395,7 @@ mod tests {
                 interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
                 bandwidth: 0,
                 cir: 0,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 ip_net: "185.189.47.80/32".parse().unwrap(),
@@ -462,7 +462,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_device_interface_update_rejects_wan_non_2048_mtu() {
+    fn test_cli_device_interface_update_rejects_wan_non_9000_mtu() {
         let mut client = create_test_client();
 
         let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
@@ -491,7 +491,7 @@ mod tests {
                 interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
                 bandwidth: 1000,
                 cir: 500,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 ip_net: "10.0.0.1/24".parse().unwrap(),
@@ -533,7 +533,7 @@ mod tests {
             interface_dia: None,
             bandwidth: None,
             cir: None,
-            mtu: Some(9000),
+            mtu: Some(2048),
             routing_mode: None,
             vlan_id: None,
             user_tunnel_endpoint: None,
@@ -546,7 +546,7 @@ mod tests {
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
-            "WAN/DZX interfaces must have MTU of 2048"
+            "WAN/DZX interfaces must have MTU of 9000"
         );
     }
 }

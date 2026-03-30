@@ -17,6 +17,7 @@ use crate::{
         globalstate::GlobalState,
         interface::{
             InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
+            CYOA_DIA_INTERFACE_MTU, INTERFACE_MTU,
         },
     },
 };
@@ -170,6 +171,15 @@ pub fn process_update_device_interface(
         iface.cir = cir;
     }
     if let Some(mtu) = value.mtu {
+        let is_cyoa_or_dia = iface.interface_cyoa != InterfaceCYOA::None
+            || iface.interface_dia != InterfaceDIA::None;
+        if is_cyoa_or_dia {
+            if mtu != CYOA_DIA_INTERFACE_MTU {
+                return Err(DoubleZeroError::InvalidMtu.into());
+            }
+        } else if mtu != INTERFACE_MTU {
+            return Err(DoubleZeroError::InvalidMtu.into());
+        }
         iface.mtu = mtu;
     }
     if let Some(routing_mode) = value.routing_mode {

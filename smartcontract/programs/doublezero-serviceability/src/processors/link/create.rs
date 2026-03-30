@@ -8,7 +8,7 @@ use crate::{
         contributor::Contributor,
         device::Device,
         globalstate::GlobalState,
-        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus},
+        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LINK_MTU},
         link::*,
     },
 };
@@ -188,6 +188,10 @@ pub fn process_create_link(
     }
     if value.link_type == LinkLinkType::DZX && value.side_z_iface_name.is_some() {
         return Err(DoubleZeroError::InvalidInterfaceZForExternal.into());
+    }
+
+    if value.mtu != LINK_MTU {
+        return Err(DoubleZeroError::InvalidMtu.into());
     }
 
     let status = if value.link_type == LinkLinkType::DZX {

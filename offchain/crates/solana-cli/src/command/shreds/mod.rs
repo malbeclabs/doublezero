@@ -106,7 +106,7 @@ pub(super) fn make_dz_connection(
     }
 }
 
-fn serviceability_program_id(env: NetworkEnvironment) -> Result<Pubkey> {
+pub(super) fn serviceability_program_id(env: NetworkEnvironment) -> Result<Pubkey> {
     match env {
         NetworkEnvironment::MainnetBeta => {
             Ok(doublezero_serviceability::addresses::mainnet::program_id::id())

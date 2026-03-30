@@ -4,19 +4,19 @@ use anyhow::Result;
 use clap::Args;
 use doublezero_serviceability::state::{device::Device, exchange::Exchange};
 use doublezero_solana_client_tools::rpc::SolanaConnectionOptions;
-use doublezero_solana_sdk::shred_subscription::{self, state};
+use doublezero_solana_sdk::shred_subscription::state;
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
     rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
     rpc_filter::{Memcmp, RpcFilterType},
 };
-use solana_sdk::{account::Account, pubkey::Pubkey};
+use solana_sdk::pubkey::Pubkey;
 use tabled::{
     Table, Tabled,
     settings::{Remove, Style, location::ByColumnName},
 };
 
-use super::make_dz_connection;
+use super::{make_dz_connection, serviceability_program_id};
 
 /*
    doublezero-solana shreds price [--device <PUBKEY> | --device-code <CODE> | --metro <PUBKEY>]
@@ -77,75 +77,66 @@ impl PriceCommand {
             None => connection.try_network_environment().await?,
         };
 
-        // Fetch all MetroHistory accounts
-        let metro_disc_bytes = borsh::to_vec(&state::METRO_HISTORY_DISCRIMINATOR)
-            .expect("discriminator serialization");
-        let metro_filters = vec![RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
-            0,
-            metro_disc_bytes,
-        ))];
+        let dz_connection = make_dz_connection(&dz_ledger_url, network_env);
 
-        let metro_config = RpcProgramAccountsConfig {
-            filters: Some(metro_filters),
-            account_config: RpcAccountInfoConfig {
-                encoding: Some(UiAccountEncoding::Base64),
-                ..Default::default()
-            },
-            ..Default::default()
+        // Fetch Device accounts from DZ Ledger.
+        let (device_keys, device_map): (Vec<Pubkey>, HashMap<Pubkey, Device>) =
+            if self.device_args.device.is_some() || self.device_args.device_code.is_some() {
+                let device_key = self
+                    .device_args
+                    .resolve(network_env, &dz_ledger_url)
+                    .await?;
+                let accounts = dz_connection.get_multiple_accounts(&[device_key]).await?;
+                let mut map = HashMap::new();
+                if let Some(Some(account)) = accounts.first()
+                    && let Ok(device) = Device::try_from(account.data.as_slice())
+                {
+                    map.insert(device_key, device);
+                }
+                (vec![device_key], map)
+            } else {
+                let program_id = serviceability_program_id(network_env)?;
+                let config = RpcProgramAccountsConfig {
+                    filters: Some(vec![RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
+                        0,
+                        vec![5], // AccountType::Device
+                    ))]),
+                    account_config: RpcAccountInfoConfig {
+                        encoding: Some(UiAccountEncoding::Base64),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                };
+                let accounts = dz_connection
+                    .get_program_accounts_with_config(&program_id, config)
+                    .await?;
+                let mut keys = Vec::new();
+                let mut map = HashMap::new();
+                for (key, account) in &accounts {
+                    if let Ok(device) = Device::try_from(account.data.as_slice()) {
+                        keys.push(*key);
+                        map.insert(*key, device);
+                    }
+                }
+                (keys, map)
+            };
+
+        // Apply --metro filter client-side.
+        let (device_keys, device_map) = if let Some(metro) = self.metro {
+            let filtered: HashMap<Pubkey, Device> = device_map
+                .into_iter()
+                .filter(|(_, d)| d.exchange_pk == metro)
+                .collect();
+            let keys: Vec<Pubkey> = device_keys
+                .into_iter()
+                .filter(|k| filtered.contains_key(k))
+                .collect();
+            (keys, filtered)
+        } else {
+            (device_keys, device_map)
         };
 
-        let metro_accounts: Vec<(Pubkey, Account)> = connection
-            .get_program_accounts_with_config(&shred_subscription::ID, metro_config)
-            .await?;
-
-        let metro_map: HashMap<Pubkey, state::MetroHistoryInfo> = metro_accounts
-            .iter()
-            .filter_map(|(_key, account)| {
-                let info = state::parse_metro_history(&account.data)?;
-                Some((info.exchange_key, info))
-            })
-            .collect();
-
-        // Fetch DeviceHistory accounts
-        let device_disc_bytes = borsh::to_vec(&state::DEVICE_HISTORY_DISCRIMINATOR)
-            .expect("discriminator serialization");
-        let mut device_filters = vec![RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
-            0,
-            device_disc_bytes,
-        ))];
-
-        if self.device_args.device.is_some() || self.device_args.device_code.is_some() {
-            let device = self
-                .device_args
-                .resolve(network_env, &dz_ledger_url)
-                .await?;
-            device_filters.push(RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
-                state::DEVICE_HISTORY_DEVICE_KEY_OFFSET,
-                device.to_bytes().to_vec(),
-            )));
-        }
-
-        if let Some(metro) = self.metro {
-            device_filters.push(RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
-                state::DEVICE_HISTORY_EXCHANGE_KEY_OFFSET,
-                metro.to_bytes().to_vec(),
-            )));
-        }
-
-        let device_config = RpcProgramAccountsConfig {
-            filters: Some(device_filters),
-            account_config: RpcAccountInfoConfig {
-                encoding: Some(UiAccountEncoding::Base64),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-
-        let device_accounts: Vec<(Pubkey, Account)> = connection
-            .get_program_accounts_with_config(&shred_subscription::ID, device_config)
-            .await?;
-
-        if device_accounts.is_empty() {
+        if device_keys.is_empty() {
             if self.json {
                 println!("[]");
             } else {
@@ -154,34 +145,57 @@ impl PriceCommand {
             return Ok(());
         }
 
-        // Parse DeviceHistory accounts and collect device keys
-        let device_infos: Vec<state::DeviceHistoryInfo> = device_accounts
-            .iter()
-            .filter_map(|(_key, account)| state::parse_device_history(&account.data))
+        // Derive DeviceHistory + MetroHistory PDA addresses.
+        let exchange_keys: Vec<Pubkey> = device_map
+            .values()
+            .map(|d| d.exchange_pk)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
             .collect();
 
-        // Fetch Device accounts from DZ Ledger for code, status, etc.
-        let device_keys: Vec<Pubkey> = device_infos.iter().map(|d| d.device_key).collect();
-        let dz_connection = make_dz_connection(&dz_ledger_url, network_env);
-        let dz_device_accounts = dz_connection.get_multiple_accounts(&device_keys).await?;
-
-        let device_map: HashMap<Pubkey, Device> = device_keys
+        let dh_keys: Vec<Pubkey> = device_keys
             .iter()
-            .zip(dz_device_accounts.iter())
-            .filter_map(|(key, account)| {
-                let account = account.as_ref()?;
-                let device = Device::try_from(account.data.as_slice()).ok()?;
-                Some((*key, device))
+            .map(|dk| state::find_device_history_address(dk).0)
+            .collect();
+        let mh_keys: Vec<Pubkey> = exchange_keys
+            .iter()
+            .map(|ek| state::find_metro_history_address(ek).0)
+            .collect();
+
+        // Fetch all histories (one call) + exchanges (one call) in parallel.
+        let mut all_history_keys = Vec::with_capacity(dh_keys.len() + mh_keys.len());
+        all_history_keys.extend_from_slice(&dh_keys);
+        all_history_keys.extend_from_slice(&mh_keys);
+
+        let exchange_fut = async {
+            dz_connection
+                .get_multiple_accounts(&exchange_keys)
+                .await
+                .map_err(Into::into)
+        };
+        let (history_accounts, exchange_accounts): (_, Vec<Option<_>>) = tokio::try_join!(
+            connection.try_fetch_multiple_accounts(&all_history_keys),
+            exchange_fut
+        )?;
+
+        let (dh_data, mh_data) = history_accounts.split_at(dh_keys.len());
+
+        let device_infos: Vec<state::DeviceHistoryInfo> = dh_data
+            .iter()
+            .filter_map(|account| state::parse_device_history(&account.data))
+            .collect();
+
+        let metro_map: HashMap<Pubkey, state::MetroHistoryInfo> = mh_data
+            .iter()
+            .filter_map(|account| {
+                let info = state::parse_metro_history(&account.data)?;
+                Some((info.exchange_key, info))
             })
             .collect();
 
-        // Fetch Exchange accounts from DZ Ledger for metro code/name
-        let exchange_keys: Vec<Pubkey> = metro_map.keys().copied().collect();
-        let dz_exchange_accounts = dz_connection.get_multiple_accounts(&exchange_keys).await?;
-
         let exchange_map: HashMap<Pubkey, Exchange> = exchange_keys
             .iter()
-            .zip(dz_exchange_accounts.iter())
+            .zip(exchange_accounts.iter())
             .filter_map(|(key, account)| {
                 let account = account.as_ref()?;
                 let exchange = Exchange::try_from(account.data.as_slice()).ok()?;
@@ -189,7 +203,16 @@ impl PriceCommand {
             })
             .collect();
 
-        // Join: compute epoch price per device
+        if device_infos.is_empty() {
+            if self.json {
+                println!("[]");
+            } else {
+                println!("No devices found.");
+            }
+            return Ok(());
+        }
+
+        // Join: compute epoch price per device.
         let mut rows: Vec<PriceRow> = device_infos
             .iter()
             .filter_map(|device_info| {

@@ -11,12 +11,12 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Allow incremental multicast group addition without disconnecting
   - Reset SIGPIPE to SIG_DFL at the start of main() in all 3 CLI binaries (doublezero, doublezero-geolocation, doublezero-admin) so the process exits silently like standard CLI tools
-  - Support `--type outbound-icmp` in `geolocation user add-target`, `remove-target`, and `get` commands
+  - Support `--type outbound-icmp` in geolocation `user add-target`, `remove-target`, and `get` commands
 - SDK
   - Add Go SDK for shred subscription program with read-only account deserialization (epoch state, seat assignments, pricing, settlement, validator client rewards), PDA derivation helpers, RPC fetchers, compatibility tests, and a fetch example CLI
+  - Add `GeoLocationTargetTypeOutboundIcmp` to Go geolocation SDK with deserialization and round-trip test support
 - Device Health Oracle
   - Update link.health and device.health to `ready-for-service` and `ready-for-users` when they are not already in that state
-- Add `GeoLocationTargetTypeOutboundIcmp` to Go geolocation SDK with deserialization and round-trip test support
 - Smartcontract
   - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
 - Tools

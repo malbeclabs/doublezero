@@ -342,6 +342,69 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_add_target_outbound_icmp_via_probe() {
+        let mut client = MockGeoCliCommand::new();
+
+        let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
+        let exchange_pk = Pubkey::new_unique();
+        let probe = make_probe(exchange_pk);
+        let signature = Signature::new_unique();
+
+        client
+            .expect_get_geo_probe()
+            .with(predicate::eq(GetGeoProbeCommand {
+                pubkey_or_code: "ams-probe-01".to_string(),
+            }))
+            .returning(move |_| Ok((probe_pk, probe.clone())));
+
+        client
+            .expect_add_target()
+            .with(predicate::eq(AddTargetCommand {
+                code: "geo-user-01".to_string(),
+                probe_pk,
+                target_type: GeoLocationTargetType::OutboundIcmp,
+                ip_address: Ipv4Addr::new(8, 8, 8, 8),
+                location_offset_port: 8923,
+                target_pk: Pubkey::default(),
+            }))
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let res = AddTargetCliCommand {
+            user: "geo-user-01".to_string(),
+            target_type: TargetType::OutboundIcmp,
+            target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
+            target_port: 8923,
+            target_pk: None,
+            probe: Some("ams-probe-01".to_string()),
+            exchange: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("Signature:"));
+    }
+
+    #[test]
+    fn test_cli_add_target_outbound_icmp_missing_ip() {
+        let client = MockGeoCliCommand::new();
+
+        let mut output = Vec::new();
+        let res = AddTargetCliCommand {
+            user: "geo-user-01".to_string(),
+            target_type: TargetType::OutboundIcmp,
+            target_ip: None,
+            target_port: 8923,
+            target_pk: None,
+            probe: Some("ams-probe-01".to_string()),
+            exchange: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("--target-ip"));
+    }
+
+    #[test]
     fn test_cli_add_target_outbound_missing_ip() {
         let mut client = MockGeoCliCommand::new();
 

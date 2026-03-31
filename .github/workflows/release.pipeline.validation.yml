@@ -4,7 +4,6 @@ on:
   push:
     branches: [ main, 'hotfix/**' ]
   pull_request:
-    branches: [ main, 'hotfix/**' ]
 
 permissions:
   contents: write

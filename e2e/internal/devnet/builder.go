@@ -118,6 +118,18 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 			dockerfile: filepath.Join(dockerfilesDir, "geoprobe", "Dockerfile"),
 			args:       append([]string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "geoprobe")}, extraArgs...),
 		},
+		{
+			name:       "sentinel",
+			image:      os.Getenv("DZ_SENTINEL_IMAGE"),
+			dockerfile: filepath.Join(dockerfilesDir, "sentinel", "Dockerfile"),
+			args:       append([]string{"--build-arg", baseImageArg}, extraArgs...),
+		},
+		{
+			name:       "validator-metadata-service-mock",
+			image:      os.Getenv("DZ_VALIDATOR_METADATA_SERVICE_MOCK_IMAGE"),
+			dockerfile: filepath.Join(dockerfilesDir, "validator-metadata-service-mock", "Dockerfile"),
+			args:       append([]string{"--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "validator-metadata-service-mock")}, extraArgs...),
+		},
 	}
 
 	if verbose {

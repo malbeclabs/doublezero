@@ -92,6 +92,11 @@ type Ledger struct {
 	InternalIPRPCURL string
 }
 
+// ExternalRPCURL returns the RPC URL accessible from the host.
+func (l *Ledger) ExternalRPCURL() string {
+	return fmt.Sprintf("http://%s:%d", l.dn.ExternalHost, l.ExternalRPCPort)
+}
+
 // dockerContainerName returns the name of the deterministic activator container based on the
 // deployID and component name.
 func (l *Ledger) dockerContainerName() string {

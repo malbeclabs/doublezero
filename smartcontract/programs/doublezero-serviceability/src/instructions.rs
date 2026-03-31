@@ -80,6 +80,7 @@ use crate::processors::{
         delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
         update::TenantUpdateArgs, update_payment_status::UpdatePaymentStatusArgs,
     },
+    topology::{clear::TopologyClearArgs, create::TopologyCreateArgs, delete::TopologyDeleteArgs},
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
         closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
@@ -224,6 +225,9 @@ pub enum DoubleZeroInstruction {
     CreateIndex(IndexCreateArgs),           // variant 104
     DeleteIndex(IndexDeleteArgs),           // variant 105
     SetUserBGPStatus(SetUserBGPStatusArgs), // variant 106
+    CreateTopology(TopologyCreateArgs),     // variant 107
+    DeleteTopology(TopologyDeleteArgs),     // variant 108
+    ClearTopology(TopologyClearArgs),       // variant 109
 }
 
 impl DoubleZeroInstruction {
@@ -355,10 +359,12 @@ impl DoubleZeroInstruction {
             100 => Ok(Self::ResumePermission(PermissionResumeArgs::try_from(rest).unwrap())),
             101 => Ok(Self::DeletePermission(PermissionDeleteArgs::try_from(rest).unwrap())),
 
-
             104 => Ok(Self::CreateIndex(IndexCreateArgs::try_from(rest).unwrap())),
             105 => Ok(Self::DeleteIndex(IndexDeleteArgs::try_from(rest).unwrap())),
             106 => Ok(Self::SetUserBGPStatus(SetUserBGPStatusArgs::try_from(rest).unwrap())),
+            107 => Ok(Self::CreateTopology(TopologyCreateArgs::try_from(rest).unwrap())),
+            108 => Ok(Self::DeleteTopology(TopologyDeleteArgs::try_from(rest).unwrap())),
+            109 => Ok(Self::ClearTopology(TopologyClearArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -497,6 +503,9 @@ impl DoubleZeroInstruction {
             Self::CreateIndex(_) => "CreateIndex".to_string(), // variant 104
             Self::DeleteIndex(_) => "DeleteIndex".to_string(), // variant 105
             Self::SetUserBGPStatus(_) => "SetUserBGPStatus".to_string(), // variant 106
+            Self::CreateTopology(_) => "CreateTopology".to_string(), // variant 107
+            Self::DeleteTopology(_) => "DeleteTopology".to_string(), // variant 108
+            Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 109
         }
     }
 
@@ -627,6 +636,9 @@ impl DoubleZeroInstruction {
             Self::CreateIndex(args) => format!("{args:?}"), // variant 104
             Self::DeleteIndex(args) => format!("{args:?}"), // variant 105
             Self::SetUserBGPStatus(args) => format!("{args:?}"), // variant 106
+            Self::CreateTopology(args) => format!("{args:?}"), // variant 107
+            Self::DeleteTopology(args) => format!("{args:?}"), // variant 108
+            Self::ClearTopology(args) => format!("{args:?}"),  // variant 109
         }
     }
 }
@@ -1321,6 +1333,25 @@ mod tests {
                 bgp_status: BGPStatus::Up,
             }),
             "SetUserBGPStatus",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+                name: "unicast-default".to_string(),
+                constraint: crate::state::topology::TopologyConstraint::IncludeAny,
+            }),
+            "CreateTopology",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteTopology(TopologyDeleteArgs {
+                name: "unicast-default".to_string(),
+            }),
+            "DeleteTopology",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
+                name: "unicast-default".to_string(),
+            }),
+            "ClearTopology",
         );
     }
 }

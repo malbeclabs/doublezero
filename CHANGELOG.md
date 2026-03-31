@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Allow incremental multicast group addition without disconnecting
   - Reset SIGPIPE to SIG_DFL at the start of main() in all 3 CLI binaries (doublezero, doublezero-geolocation, doublezero-admin) so the process exits silently like standard CLI tools
+- Smartcontract
+  - Add Index account for multicast group code uniqueness — PDA derived from entity type + lowercased code enforces unique codes onchain and enables O(1) code-to-pubkey lookup
 - SDK
   - Add Go SDK for shred subscription program with read-only account deserialization (epoch state, seat assignments, pricing, settlement, validator client rewards), PDA derivation helpers, RPC fetchers, compatibility tests, and a fetch example CLI
 - Tools

@@ -21,6 +21,7 @@ use doublezero_serviceability::{
         user::{activate::UserActivateArgs, create::UserCreateArgs},
     },
     resource::ResourceType,
+    seeds::SEED_MULTICAST_GROUP,
     state::{
         accesspass::AccessPassType,
         device::DeviceType,
@@ -261,7 +262,9 @@ async fn setup_fixture() -> TestFixture {
     // 7. Create two multicast groups and activate them
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (mgroup1_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
-    execute_transaction(
+    let (index_pda_group1, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "group1");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -274,8 +277,10 @@ async fn setup_fixture() -> TestFixture {
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_group1, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -296,7 +301,9 @@ async fn setup_fixture() -> TestFixture {
 
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (mgroup2_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
-    execute_transaction(
+    let (index_pda_group2, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "group2");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -309,8 +316,10 @@ async fn setup_fixture() -> TestFixture {
         vec![
             AccountMeta::new(mgroup2_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_group2, false),
         ],
         &payer,
+        &[],
     )
     .await;
 

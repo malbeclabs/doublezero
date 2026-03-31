@@ -32,6 +32,7 @@ export const ACCOUNT_TYPE_CONTRIBUTOR = 10;
 export const ACCOUNT_TYPE_ACCESS_PASS = 11;
 export const ACCOUNT_TYPE_TENANT = 13;
 export const ACCOUNT_TYPE_PERMISSION = 15;
+export const ACCOUNT_TYPE_INDEX = 16;
 
 // ---------------------------------------------------------------------------
 // Enum string mappings

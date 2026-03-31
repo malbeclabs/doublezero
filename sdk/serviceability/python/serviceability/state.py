@@ -42,6 +42,7 @@ class AccountTypeEnum(IntEnum):
     ACCESS_PASS = 11
     TENANT = 13
     PERMISSION = 15
+    INDEX = 16
 
 
 # ---------------------------------------------------------------------------

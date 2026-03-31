@@ -25,6 +25,7 @@ const (
 	ResourceExtensionType AccountType = 12
 	TenantType            AccountType = 13
 	PermissionType        AccountType = 15
+	IndexType             AccountType = 16
 )
 
 type LocationStatus uint8

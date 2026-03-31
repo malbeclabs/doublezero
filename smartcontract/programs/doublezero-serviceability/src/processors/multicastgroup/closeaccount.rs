@@ -1,10 +1,11 @@
 use crate::{
     error::DoubleZeroError,
-    pda::get_resource_extension_pda,
+    pda::{get_index_pda, get_resource_extension_pda},
     processors::resource::deallocate_ip,
     resource::ResourceType,
+    seeds::SEED_MULTICAST_GROUP,
     serializer::try_acc_close,
-    state::{globalstate::GlobalState, multicastgroup::*},
+    state::{globalstate::GlobalState, index::Index, multicastgroup::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -24,14 +25,17 @@ pub struct MulticastGroupDeactivateArgs {
     /// When false, legacy behavior is used (no deallocation).
     #[incremental(default = false)]
     pub use_onchain_deallocation: bool,
+    /// When true, close the associated Index account alongside the multicast group.
+    #[incremental(default = false)]
+    pub close_index: bool,
 }
 
 impl fmt::Debug for MulticastGroupDeactivateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "use_onchain_deallocation: {}",
-            self.use_onchain_deallocation
+            "use_onchain_deallocation: {}, close_index: {}",
+            self.use_onchain_deallocation, self.close_index
         )
     }
 }
@@ -47,14 +51,22 @@ pub fn process_closeaccount_multicastgroup(
     let owner_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension account for on-chain deallocation (before payer)
-    // Account layout WITH ResourceExtension (use_onchain_deallocation = true):
-    //   [multicastgroup, owner, globalstate, multicast_group_block, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_deallocation = false):
+    // Optional accounts (before payer/system):
+    // Account layout WITH deallocation + index:
+    //   [multicastgroup, owner, globalstate, multicast_group_block, index, payer, system]
+    // Account layout WITHOUT deallocation, with index:
+    //   [multicastgroup, owner, globalstate, index, payer, system]
+    // Legacy (no deallocation, no index):
     //   [multicastgroup, owner, globalstate, payer, system]
     let resource_extension_account = if value.use_onchain_deallocation {
         let multicast_group_block_ext = next_account_info(accounts_iter)?;
         Some(multicast_group_block_ext)
+    } else {
+        None
+    };
+
+    let index_account = if value.close_index {
+        Some(next_account_info(accounts_iter)?)
     } else {
         None
     };
@@ -136,6 +148,24 @@ pub fn process_closeaccount_multicastgroup(
     }
 
     try_acc_close(multicastgroup_account, owner_account)?;
+
+    // Close the Index account if provided
+    if let Some(index_acc) = index_account {
+        assert_eq!(index_acc.owner, program_id, "Invalid Index Account Owner");
+        assert!(index_acc.is_writable, "Index Account is not writable");
+
+        let (expected_index_pda, _) =
+            get_index_pda(program_id, SEED_MULTICAST_GROUP, &multicastgroup.code);
+        assert_eq!(index_acc.key, &expected_index_pda, "Invalid Index Pubkey");
+
+        let index = Index::try_from(index_acc)?;
+        assert_eq!(
+            index.pk, *multicastgroup_account.key,
+            "Index does not point to this MulticastGroup"
+        );
+
+        try_acc_close(index_acc, payer_account)?;
+    }
 
     #[cfg(test)]
     msg!("Deactivated: MulticastGroup closed");

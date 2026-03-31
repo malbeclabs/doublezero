@@ -22,13 +22,74 @@ use solana_program::msg;
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct IndexCreateArgs {
     pub entity_seed: String,
-    pub code: String,
+    pub key: String,
 }
 
 impl fmt::Debug for IndexCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "entity_seed: {}, code: {}", self.entity_seed, self.code)
+        write!(f, "entity_seed: {}, key: {}", self.entity_seed, self.key)
     }
+}
+
+/// Core logic for validating and creating an Index account.
+///
+/// This is extracted so it can be called from standalone `process_create_index`
+/// as well as from other processors (e.g., `process_create_multicastgroup`) that
+/// want to atomically create an index alongside the entity.
+pub fn create_index_account<'a>(
+    program_id: &Pubkey,
+    index_account: &AccountInfo<'a>,
+    entity_account: &AccountInfo<'a>,
+    payer_account: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+    entity_seed: &[u8],
+    key: &str,
+) -> ProgramResult {
+    // Validate and normalize key
+    let key = validate_account_code(key).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+    let lowercase_key = key.to_ascii_lowercase();
+
+    // Derive and verify the Index PDA
+    let (expected_pda, bump_seed) = get_index_pda(program_id, entity_seed, &key);
+    assert_eq!(index_account.key, &expected_pda, "Invalid Index Pubkey");
+
+    // Uniqueness: account must not already exist
+    if !index_account.data_is_empty() {
+        return Err(ProgramError::AccountAlreadyInitialized);
+    }
+
+    // Verify the entity account is a valid, non-Index program account
+    assert!(!entity_account.data_is_empty(), "Entity Account is empty");
+    let entity_type = AccountType::from(entity_account.try_borrow_data()?[0]);
+    assert!(
+        entity_type != AccountType::None && entity_type != AccountType::Index,
+        "Entity Account has invalid type for indexing: {entity_type}"
+    );
+
+    let index = Index {
+        account_type: AccountType::Index,
+        pk: *entity_account.key,
+        entity_account_type: entity_type,
+        key: lowercase_key.clone(),
+        bump_seed,
+    };
+
+    try_acc_create(
+        &index,
+        index_account,
+        payer_account,
+        system_program,
+        program_id,
+        &[
+            SEED_PREFIX,
+            SEED_INDEX,
+            entity_seed,
+            lowercase_key.as_bytes(),
+            &[bump_seed],
+        ],
+    )?;
+
+    Ok(())
 }
 
 pub fn process_create_index(
@@ -71,48 +132,13 @@ pub fn process_create_index(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    // Validate and normalize code
-    let code =
-        validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
-    let lowercase_code = code.to_ascii_lowercase();
-
-    // Derive and verify the Index PDA
-    let (expected_pda, bump_seed) = get_index_pda(program_id, value.entity_seed.as_bytes(), &code);
-    assert_eq!(index_account.key, &expected_pda, "Invalid Index Pubkey");
-
-    // Uniqueness: account must not already exist
-    if !index_account.data_is_empty() {
-        return Err(ProgramError::AccountAlreadyInitialized);
-    }
-
-    // Verify the entity account is a valid, non-Index program account
-    assert!(!entity_account.data_is_empty(), "Entity Account is empty");
-    let entity_type = AccountType::from(entity_account.try_borrow_data()?[0]);
-    assert!(
-        entity_type != AccountType::None && entity_type != AccountType::Index,
-        "Entity Account has invalid type for indexing: {entity_type}"
-    );
-
-    let index = Index {
-        account_type: AccountType::Index,
-        pk: *entity_account.key,
-        bump_seed,
-    };
-
-    try_acc_create(
-        &index,
+    create_index_account(
+        program_id,
         index_account,
+        entity_account,
         payer_account,
         system_program,
-        program_id,
-        &[
-            SEED_PREFIX,
-            SEED_INDEX,
-            value.entity_seed.as_bytes(),
-            lowercase_code.as_bytes(),
-            &[bump_seed],
-        ],
-    )?;
-
-    Ok(())
+        value.entity_seed.as_bytes(),
+        &value.key,
+    )
 }

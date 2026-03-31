@@ -18,6 +18,8 @@ pub struct Index {
         )
     )]
     pub pk: Pubkey, // 32
+    pub entity_account_type: AccountType, // 1
+    pub key: String,               // 4 + len
     pub bump_seed: u8,             // 1
 }
 
@@ -25,8 +27,8 @@ impl fmt::Display for Index {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Index {{ account_type: {}, pk: {}, bump_seed: {} }}",
-            self.account_type, self.pk, self.bump_seed
+            "Index {{ account_type: {}, pk: {}, entity_account_type: {}, key: {}, bump_seed: {} }}",
+            self.account_type, self.pk, self.entity_account_type, self.key, self.bump_seed
         )
     }
 }
@@ -36,6 +38,8 @@ impl Default for Index {
         Self {
             account_type: AccountType::Index,
             pk: Pubkey::default(),
+            entity_account_type: AccountType::None,
+            key: String::new(),
             bump_seed: 0,
         }
     }
@@ -48,6 +52,8 @@ impl TryFrom<&[u8]> for Index {
         let out = Self {
             account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            entity_account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            key: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
@@ -92,6 +98,8 @@ mod tests {
         let val = Index::try_from(&data[..]).unwrap();
 
         assert_eq!(val.pk, Pubkey::default());
+        assert_eq!(val.entity_account_type, AccountType::None);
+        assert_eq!(val.key, "");
         assert_eq!(val.bump_seed, 0);
     }
 
@@ -100,6 +108,8 @@ mod tests {
         let val = Index {
             account_type: AccountType::Index,
             pk: Pubkey::new_unique(),
+            entity_account_type: AccountType::MulticastGroup,
+            key: "my-key".to_string(),
             bump_seed: 254,
         };
 
@@ -119,6 +129,8 @@ mod tests {
         let val = Index {
             account_type: AccountType::Device,
             pk: Pubkey::new_unique(),
+            entity_account_type: AccountType::MulticastGroup,
+            key: "test".to_string(),
             bump_seed: 1,
         };
         assert_eq!(

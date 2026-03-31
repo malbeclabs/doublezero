@@ -103,14 +103,14 @@ pub fn get_accesspass_pda(
     )
 }
 
-pub fn get_index_pda(program_id: &Pubkey, entity_seed: &[u8], code: &str) -> (Pubkey, u8) {
-    let lowercase_code = code.to_ascii_lowercase();
+pub fn get_index_pda(program_id: &Pubkey, entity_seed: &[u8], key: &str) -> (Pubkey, u8) {
+    let lowercase_key = key.to_ascii_lowercase();
     Pubkey::find_program_address(
         &[
             SEED_PREFIX,
             SEED_INDEX,
             entity_seed,
-            lowercase_code.as_bytes(),
+            lowercase_key.as_bytes(),
         ],
         program_id,
     )

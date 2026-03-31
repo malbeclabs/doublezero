@@ -79,7 +79,7 @@ async fn test_create_index() {
         program_id,
         DoubleZeroInstruction::CreateIndex(IndexCreateArgs {
             entity_seed: String::from_utf8(SEED_MULTICAST_GROUP.to_vec()).unwrap(),
-            code: code.to_string(),
+            key: code.to_string(),
         }),
         vec![
             AccountMeta::new(index_pda, false),
@@ -100,6 +100,8 @@ async fn test_create_index() {
         index.pk, mgroup_pubkey,
         "Index should point to the multicast group"
     );
+    assert_eq!(index.entity_account_type, AccountType::MulticastGroup);
+    assert_eq!(index.key, code);
 }
 
 #[tokio::test]
@@ -128,7 +130,7 @@ async fn test_create_index_duplicate_fails() {
         program_id,
         DoubleZeroInstruction::CreateIndex(IndexCreateArgs {
             entity_seed: String::from_utf8(SEED_MULTICAST_GROUP.to_vec()).unwrap(),
-            code: code.to_string(),
+            key: code.to_string(),
         }),
         vec![
             AccountMeta::new(index_pda, false),
@@ -142,14 +144,14 @@ async fn test_create_index_duplicate_fails() {
     // Wait for a new blockhash to avoid transaction deduplication
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
-    // Second CreateIndex with the same entity_seed+code should fail
+    // Second CreateIndex with the same entity_seed+key should fail
     let result = execute_transaction_expect_failure(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateIndex(IndexCreateArgs {
             entity_seed: String::from_utf8(SEED_MULTICAST_GROUP.to_vec()).unwrap(),
-            code: code.to_string(),
+            key: code.to_string(),
         }),
         vec![
             AccountMeta::new(index_pda, false),
@@ -204,7 +206,7 @@ async fn test_create_index_unauthorized_fails() {
         program_id,
         DoubleZeroInstruction::CreateIndex(IndexCreateArgs {
             entity_seed: String::from_utf8(SEED_MULTICAST_GROUP.to_vec()).unwrap(),
-            code: code.to_string(),
+            key: code.to_string(),
         }),
         vec![
             AccountMeta::new(index_pda, false),
@@ -248,7 +250,7 @@ async fn test_delete_index() {
         program_id,
         DoubleZeroInstruction::CreateIndex(IndexCreateArgs {
             entity_seed: String::from_utf8(SEED_MULTICAST_GROUP.to_vec()).unwrap(),
-            code: code.to_string(),
+            key: code.to_string(),
         }),
         vec![
             AccountMeta::new(index_pda, false),
@@ -314,7 +316,7 @@ async fn test_delete_index_unauthorized_fails() {
         program_id,
         DoubleZeroInstruction::CreateIndex(IndexCreateArgs {
             entity_seed: String::from_utf8(SEED_MULTICAST_GROUP.to_vec()).unwrap(),
-            code: code.to_string(),
+            key: code.to_string(),
         }),
         vec![
             AccountMeta::new(index_pda, false),

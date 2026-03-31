@@ -9,7 +9,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 DoubleZero contributors operate links with different physical characteristics — low latency, high bandwidth, or both. Today all traffic uses the same IS-IS topology, so every service follows the same paths regardless of what those paths are optimized for. This RFC introduces a link classification model that allows DZF to assign named topology labels to links onchain and use IS-IS Flexible Algorithm (flex-algo) to compute separate constraint-based forwarding topologies per label. Different traffic classes — VPN unicast and IP multicast — can then use different topologies.
 
 **Deliverables:**
-- `TopologyInfo` onchain account — DZF creates this to define a topology, with auto-assigned admin-group bit (from the `AdminGroupBits` `ResourceExtension`), flex-algo number, and derived EOS color value
+- `TopologyInfo` onchain account — DZF creates this to define a topology, with auto-assigned admin-group bit (from the `AdminGroupBits` `ResourceExtension`), flex-algo number, and derived color
 - `link_topologies: Vec<Pubkey>` field on the serviceability link account — references assigned topologies; capped at 8 entries; only the first entry is used by the controller in this RFC
 - Controller feature config file (`features.yaml`) — loaded at startup; gates flex-algo topology config, link admin-group tagging, and BGP color community stamping independently; replaces any onchain feature flag for this capability
 - Controller logic — translates topologies into IS-IS TE admin-groups on interfaces, generates flex-algo topology definitions, configures `system-colored-tunnel-rib` as the BGP next-hop resolution source, and applies BGP color extended community route-maps per tunnel; all conditioned on the controller config
@@ -43,7 +43,8 @@ IS-IS Flexible Algorithm provides the routing mechanism: each flex-algo defines 
 - **Topology constraint** — Each `TopologyInfo` defines either an `IncludeAny` or `Exclude` constraint. `IncludeAny`: only links explicitly tagged with this topology participate. `Exclude`: all links except those tagged with this topology participate. UNICAST-DEFAULT uses `IncludeAny`.
 - **system-colored-tunnel-rib** — An EOS system RIB auto-populated when flex-algo definitions carry a `color` field. Keyed by (endpoint, color). Used by BGP next-hop resolution to steer VPN routes onto constrained topologies based on the BGP color extended community carried on the route.
 - **Topology vs color** — In this RFC, *topology* refers to a DZF-defined constrained IS-IS forwarding plane (a `TopologyInfo` account). *Color* refers to the EOS/BGP mechanism used to steer traffic onto a topology: the `color` field in an EOS flex-algo definition, the `EOS color value` derived as `admin_group_bit + 1`, and the BGP color extended community (`Color:CO(00):<N>`) stamped on VPN routes. Every DZF topology has a corresponding EOS color, but the two concepts are distinct.
-- **UNICAST-DEFAULT** — The reserved default topology. MUST be the first topology created by DZF and MUST be assigned admin-group bit 0, flex-algo 128, and EOS color value 1. These values are protocol invariants — the controller resolves the default tenant topology by looking up the `TopologyInfo` where `admin_group_bit == 0`, not by creation order. Applied to all links eligible for the default unicast topology. Flex-algo 128 uses `include-any UNICAST-DEFAULT`, so only explicitly tagged links participate in the unicast topology. Untagged links are excluded from unicast but remain available to multicast via IS-IS algo 0.
+- **UNICAST-DEFAULT** — The reserved default topology. MUST be the first topology created by DZF and MUST be assigned admin-group bit 0, flex-algo 128, and color 1. These values are protocol invariants — the controller resolves the default tenant topology by looking up the `TopologyInfo` where `admin_group_bit == 0`, not by creation order. Applied to all links eligible for the default unicast topology. Flex-algo 128 uses `include-any UNICAST-DEFAULT`, so only explicitly tagged links participate in the unicast topology. Untagged links are excluded from unicast but remain available to multicast via IS-IS algo 0.
+- **UNICAST-DRAINED** — The reserved drain topology. MUST be the second topology created by DZF and MUST be assigned admin-group bit 1, flex-algo 129, and color 2. These values are protocol invariants — the controller resolves the drained topology by looking up the `TopologyInfo` where `admin_group_bit == 1`. Constraint MUST be `Exclude`: only links tagged with UNICAST-DRAINED are excluded from each topology's constrained SPF. Drain is additive — adding UNICAST-DRAINED to `link_topologies` does not remove other topology assignments; the link's permanent tags remain unchanged. The controller injects `exclude {{ $drainBit }}` into every `include-any` flex-algo definition, so a drained link is pruned from all include-any topologies unconditionally (RFC 9350 §5.2.1: `exclude` is evaluated before `include-any` and MUST take precedence). To drain a link, add the UNICAST-DRAINED pubkey to `link_topologies`; to restore, remove it.
 
 ---
 
@@ -93,15 +94,15 @@ An `exclude_topologies: Vec<Pubkey>` field on `Tenant` is a natural extension of
 
 #### TopologyInfo account
 
-DZF creates a `TopologyInfo` PDA per topology. It stores the topology name and auto-assigned routing parameters. The program MUST auto-assign the lowest available admin-group bit from the `AdminGroupBits` `ResourceExtension` account, and derive the corresponding flex-algo number and EOS color value using the formula:
+DZF creates a `TopologyInfo` PDA per topology. It stores the topology name and auto-assigned routing parameters. The program MUST auto-assign the lowest available admin-group bit from the `AdminGroupBits` `ResourceExtension` account, and derive the corresponding flex-algo number and color using the formula:
 
 ```
 admin_group_bit  = next available bit from AdminGroupBits ResourceExtension (0–127)
 flex_algo_number = 128 + admin_group_bit
-eos_color_value  = admin_group_bit + 1   (derived, not stored)
+color            = admin_group_bit + 1   (derived, not stored)
 ```
 
-This formula ensures the admin-group bit, flex-algo number, and EOS color value are always in the EOS-supported ranges (bits 0–127, algos 128–255, color 1–4294967295) and are derived consistently from each other. The EOS color value is not stored onchain — it is computed by the controller wherever needed.
+This formula ensures the admin-group bit, flex-algo number, and color are always in the EOS-supported ranges (bits 0–127, algos 128–255, color 1–4294967295) and are derived consistently from each other. The color is not stored onchain — it is computed by the controller wherever needed.
 
 The `AdminGroupBits` `ResourceExtension` is a persistent bitmap on `GlobalState` that tracks allocated admin-group bits across the lifetime of the program, including bits from deleted topologies. This ensures bits are never reused after deletion — reusing a bit before all devices have had their config updated would cause those devices to apply the new topology's constraints to interfaces still carrying the old bit's admin-group. The bitmap survives PDA deletion, which a PDA-scan approach cannot guarantee.
 
@@ -158,14 +159,14 @@ doublezero link topology clear  --name <NAME>
 doublezero link topology list
 ```
 
-- `create` — creates a `TopologyInfo` PDA; allocates the lowest available admin-group bit from the `AdminGroupBits` `ResourceExtension`; derives and stores flex-algo number; stores the specified constraint (`include-any` or `exclude`). MUST fail if the name already exists. The first topology created MUST be named `unicast-default` and will be allocated bit 0 — this is a protocol invariant and the program MUST enforce it by rejecting any `create` instruction where the `AdminGroupBits` bitmap is empty and the name is not `unicast-default`. Device impact is controlled entirely by the controller feature config — no device config is generated until `flex_algo.enabled: true` is set in the config file.
+- `create` — creates a `TopologyInfo` PDA; allocates the lowest available admin-group bit from the `AdminGroupBits` `ResourceExtension`; derives and stores flex-algo number; stores the specified constraint (`include-any` or `exclude`). MUST fail if the name already exists. The first topology created MUST be named `unicast-default` and will be allocated bit 0 — this is a protocol invariant and the program MUST enforce it by rejecting any `create` instruction where the `AdminGroupBits` bitmap is empty and the name is not `unicast-default`. The second topology created MUST be named `unicast-drained` and will be allocated bit 1 — this is a protocol invariant and the program MUST enforce it by rejecting any `create` instruction where only bit 0 is allocated and the name is not `unicast-drained`. Device impact is controlled entirely by the controller feature config — no device config is generated until `flex_algo.enabled: true` is set in the config file.
 - `update` — reserved for future use; all fields are immutable after creation. No device config change.
 - `delete` — removes the `TopologyInfo` PDA onchain. MUST fail if any link still references this topology (use `clear` first). On the next reconciliation cycle, the controller removes the deleted topology's admin-group alias and flex-algo definition from all devices. Admin-group bits from deleted topologies MUST NOT be reused — the `AdminGroupBits` `ResourceExtension` bitmap persists allocated bits permanently.
 - `clear` — removes this topology from all links currently assigned to it, setting `link_topologies` to an empty vector on each. This is a multi-transaction sweep — one `LinkUpdateArgs` instruction is submitted per assigned link; it is not atomic. If the sweep fails partway through, the operator MUST re-run `clear`; the operation is idempotent and will only submit instructions for links that still reference the topology. The `delete` guard (which rejects if any link still references the topology) is the safety net — partial completion is safe because a re-run will clear the remaining references before deletion is attempted. On the next reconciliation cycle, the controller re-applies only the remaining topologies on each affected interface — if other topologies remain, `traffic-engineering administrative-group <remaining>` is applied; if no topologies remain, `no traffic-engineering administrative-group` is applied.
 - `list` — fetches all `TopologyInfo` accounts and all `Link` accounts and groups links by topology. SHOULD emit a warning if any topology has fewer links tagged than the minimum required for a connected topology.
 
 ```
-NAME               CONSTRAINT    FLEX-ALGO   ADMIN-GROUP BIT   EOS COLOR   LINKS
+NAME               CONSTRAINT    FLEX-ALGO   ADMIN-GROUP BIT   COLOR   LINKS
 default            —             —           —                 —           link-abc123, link-def456
 unicast-default    include-any   128         0                 1           link-xyz789
 ```
@@ -182,6 +183,19 @@ doublezero link update --code  <CODE>   --link-topology <NAME>
 - `--link-topology default` sets `link_topologies` to an empty vector, removing any topology assignment. Use with caution — an untagged link will not participate in the unicast topology.
 - `doublezero link get` and `doublezero link list` MUST include `link_topologies` in their output, showing the resolved topology names (or "default"). A link activated after UNICAST-DEFAULT is created will immediately display `link-topology: unicast-default` — no additional operator action is required.
 
+**Link drain and restore:**
+
+```
+doublezero link drain   --pubkey <PUBKEY>
+doublezero link drain   --code   <CODE>
+doublezero link restore --pubkey <PUBKEY>
+doublezero link restore --code   <CODE>
+```
+
+- `drain` appends the UNICAST-DRAINED `TopologyInfo` pubkey to `link_topologies`. The link's existing topology assignments are unchanged. On the next reconciliation cycle, the controller detects the UNICAST-DRAINED entry and EOS applies `exclude <drained-bit>` in each include-any flex-algo definition, pruning the link from all constrained topologies.
+- `restore` removes the UNICAST-DRAINED pubkey from `link_topologies`. The link's permanent topology assignments remain in place and are immediately re-eligible in constrained SPF on the next reconciliation cycle.
+- Both commands MUST be restricted to foundation keys. `drain` MUST be idempotent — if the link is already drained, it MUST succeed silently.
+
 #### Tenant topology assignment
 
 An `include_topologies: Vec<Pubkey>` field is added to the serviceability `Tenant` account. Each entry holds the pubkey of a `TopologyInfo` PDA. All unicast tenants receive color 1 (UNICAST-DEFAULT) by default; setting `include_topologies` overrides this to assign specific topologies based on business requirements. The field appends to the end of the serialized layout, defaulting to an empty vector on existing accounts.
@@ -196,7 +210,7 @@ pub struct Tenant {
 
 `include_topologies` MUST only be set by foundation keys. This is a routing policy decision — contributors MUST NOT be able to steer their own traffic onto a different topology by modifying this field.
 
-When a tenant has one entry in `include_topologies`, the controller resolves the `TopologyInfo` PDA and stamps its EOS color value on inbound routes for that tenant. When a tenant has multiple entries, the controller stamps all corresponding color values — EOS then selects the best available colored tunnel by IGP metric (lowest metric wins; highest color number breaks ties). This enables a fallback chain: if the preferred topology's tunnel becomes unavailable, EOS automatically falls back to the next-best color on the same prefix without the route going unresolved. This behavior has been verified in lab testing.
+When a tenant has one entry in `include_topologies`, the controller resolves the `TopologyInfo` PDA and stamps its color on inbound routes for that tenant. When a tenant has multiple entries, the controller stamps all corresponding color values — EOS then selects the best available colored tunnel by IGP metric (lowest metric wins; highest color number breaks ties). This enables a fallback chain: if the preferred topology's tunnel becomes unavailable, EOS automatically falls back to the next-best color on the same prefix without the route going unresolved. This behavior has been verified in lab testing.
 
 **CLI:**
 
@@ -264,11 +278,11 @@ The config file decouples onchain state preparation from device deployment. DZF 
 
 Each link topology maps to an IS-IS TE admin-group bit via the `TopologyInfo` account. The controller MUST read `link.link_topologies[0]`, resolve the `TopologyInfo` PDA, and apply the corresponding admin-group to the physical interface — unless the link's pubkey is in `link_tagging.exclude.links`.
 
-| Topology | Constraint | Admin-group bit | Flex-algo number | EOS color value | Forwarding scope |
+| Topology | Constraint | Admin-group bit | Flex-algo number | Color | Forwarding scope |
 |---|---|---|---|---|---|
 | (untagged) | — | — | — (algo 0) | — | All links |
 | unicast-default | include-any | 0 | 128 | 1 | Only UNICAST-DEFAULT tagged links |
-| (future topology) | include-any or exclude | 1 | 129 | 2 | Defined by constraint |
+| unicast-drained | exclude | 1 | 129 | 2 | All links except UNICAST-DRAINED tagged links |
 
 The flex-algo definition MUST be configured on each DZD by the controller. The `color` field MUST be included and set to `admin_group_bit + 1`. The constraint type determines whether `include any` or `exclude` is used. Using UNICAST-DEFAULT as an example:
 
@@ -332,7 +346,7 @@ route-map RM-USER-{{ .Id }}-IN permit 10
 
 `.TenantTopologyEosColorValues` is resolved by the controller from the tunnel's tenant:
 - If `tenant.include_topologies` is non-empty, resolve each `TopologyInfo` PDA and compute `AdminGroupBit + 1` for each. All resolved color values are stamped in a single `set extcommunity color` statement (e.g., `set extcommunity color 1 color 2`).
-- If `tenant.include_topologies` is empty, use the default unicast color: resolve the `TopologyInfo` where `admin_group_bit == 0` (UNICAST-DEFAULT, EOS color value 1).
+- If `tenant.include_topologies` is empty, use the default unicast color: resolve the `TopologyInfo` where `admin_group_bit == 0` (UNICAST-DEFAULT, color 1).
 
 When multiple colors are stamped, EOS selects the colored tunnel with the lowest IGP metric to the next-hop. If two colors tie on metric, the highest color number wins. If a preferred color's tunnel becomes unavailable (e.g., the destination withdraws its node-segment for that algorithm), EOS automatically falls back to the next-best available color — the route remains installed throughout with no disruption. This fallback behavior has been verified in lab testing.
 
@@ -381,19 +395,20 @@ router traffic-engineering
    {{- end }}
    !
    flex-algo
+   {{- $drainBit := $.DrainedAdminGroupBit }}
    {{- range .LinkTopologies }}
       flex-algo {{ .FlexAlgoNumber }} {{ .Name }}
          {{- if eq .Constraint "include-any" }}
-         administrative-group include any {{ .AdminGroupBit }}
+         administrative-group include any {{ .AdminGroupBit }} exclude {{ $drainBit }}
          {{- else }}
          administrative-group exclude {{ .AdminGroupBit }}
          {{- end }}
-         color {{ .EosColorValue }}
+         color {{ .Color }}
    {{- end }}
 {{- end }}
 ```
 
-`.LinkTopologies` is the ordered list of `TopologyInfo` accounts, sorted by `AdminGroupBit`. `.EosColorValue` is computed as `AdminGroupBit + 1`. The flex-algo name (e.g., `unicast-default`) is the topology name stored in `TopologyInfo`.
+`.LinkTopologies` is the ordered list of `TopologyInfo` accounts, sorted by `AdminGroupBit`. `.Color` is computed as `AdminGroupBit + 1`. `$.DrainedAdminGroupBit` is the `AdminGroupBit` of the UNICAST-DRAINED `TopologyInfo`, resolved by PDA seeds `[b"topology", b"unicast-drained"]`. The flex-algo name (e.g., `unicast-default`) is the topology name stored in `TopologyInfo`.
 
 When `$.Config.FlexAlgo.Enabled` is false, the controller generates `no router traffic-engineering` to remove any previously-pushed config.
 
@@ -496,6 +511,8 @@ Interface admin-group blocks are conditional on `.LinkTopologies` being non-empt
 **TopologyInfo lifecycle:**
 - A foundation key MUST be able to create a `TopologyInfo` account with a name; admin-group bit MUST be allocated from the `AdminGroupBits` `ResourceExtension` starting at 0, and flex-algo number MUST be 128.
 - Creating a second topology MUST allocate bit 1 from the `ResourceExtension` and flex-algo 129.
+- Creating any topology before `unicast-default` (bitmap empty) with a name other than `unicast-default` MUST be rejected.
+- Creating any topology as the second topology (only bit 0 allocated) with a name other than `unicast-drained` MUST be rejected.
 - A non-foundation key MUST NOT be able to create a `TopologyInfo` account; the instruction MUST be rejected with an authorization error.
 - All `TopologyInfo` fields are immutable after creation; an `update` instruction MUST be rejected or be a no-op.
 - A non-foundation key MUST NOT be able to update a `TopologyInfo` account.
@@ -530,6 +547,10 @@ Interface admin-group blocks are conditional on `.LinkTopologies` being non-empt
 - Transitioning a link from a topology to default MUST produce a `no traffic-engineering administrative-group` diff.
 - Transitioning a link from one topology to another MUST produce the correct remove/add diff.
 - The `router traffic-engineering` block MUST include `color <admin_group_bit + 1>` on each flex-algo definition.
+- Each `include-any` flex-algo definition MUST include `exclude <unicast-drained-bit>` in addition to `include any <topology-bit>`. An `exclude`-constraint topology MUST NOT have the drained-bit injected.
+- A link with UNICAST-DRAINED in `link_topologies` alongside UNICAST-DEFAULT MUST produce interface config with `traffic-engineering administrative-group UNICAST-DEFAULT UNICAST-DRAINED`.
+- Draining a link (adding UNICAST-DRAINED to `link_topologies`) MUST NOT remove other topology assignments from the interface config.
+- Restoring a link (removing UNICAST-DRAINED from `link_topologies`) MUST produce interface config identical to a never-drained link with the same permanent topology assignments.
 - The BGP `next-hop resolution ribs tunnel-rib colored system-colored-tunnel-rib tunnel-rib system-tunnel-rib` config MUST be generated correctly when `enabled: true`.
 - A per-tunnel inbound route-map MUST include `set extcommunity color 1` for a unicast tenant with empty `include_topologies` when the tenant or device is in the `community_stamping` config and `.LinkTopologies` is non-empty.
 - A per-tunnel inbound route-map MUST include `set extcommunity color 1 color 2` for a unicast tenant with `include_topologies` referencing two `TopologyInfo` accounts (bits 0 and 1).
@@ -544,7 +565,7 @@ Interface admin-group blocks are conditional on `.LinkTopologies` being non-empt
 - `TopologyInfo` account MUST serialize and deserialize correctly via Borsh for all fields.
 - `TopologyInfo` account MUST deserialize correctly from a binary fixture.
 - `link_topologies` pubkey vector MUST be included in `link get` and `link list` output in all three SDKs, showing the topology names (resolved from `TopologyInfo`) or "default".
-- The `list` command MUST display the derived EOS color value (`admin_group_bit + 1`) in output.
+- The `list` command MUST display the derived color (`admin_group_bit + 1`) in output.
 
 #### End-to-end (cEOS testcontainers)
 
@@ -561,6 +582,9 @@ Interface admin-group blocks are conditional on `.LinkTopologies` being non-empt
 - **Community stamping — exclude**: A device in `community_stamping.exclude.devices` MUST NOT have `set extcommunity color` applied regardless of `all` or `tenants` settings.
 - **Multicast path isolation**: PIM RPF for a multicast source MUST continue to resolve via IS-IS algo 0 (all links, including both tagged and untagged) regardless of BGP next-hop resolution config.
 - **Topology clear**: After `link topology clear --name unicast-default` removes the topology from all links, the controller MUST generate `no traffic-engineering administrative-group UNICAST-DEFAULT` on all previously-tagged interfaces on the next reconciliation cycle.
+- **Link drain**: After `doublezero link drain` on a UNICAST-DEFAULT tagged link, `show traffic-engineering database` MUST show both `UNICAST-DEFAULT` and `UNICAST-DRAINED` admin-groups on the interface. `show isis flex-algo` MUST show the link absent from the algo-128 (unicast-default) constrained topology. The link MUST remain visible in algo-0.
+- **Link restore**: After `doublezero link restore` on a drained link, `show traffic-engineering database` MUST show only the permanent topology tags. `show isis flex-algo` MUST show the link restored to the constrained topology.
+- **Drain exclude precedence**: The `exclude UNICAST-DRAINED` constraint in each `include-any` flex-algo definition MUST take precedence over `include any <topology-bit>` — a link tagged with both UNICAST-DEFAULT and UNICAST-DRAINED MUST NOT appear in the algo-128 SPF (verified per RFC 9350 §5.2.1 exclude-before-include evaluation).
 - **Revert**: Setting `enabled: false` and restarting the controller MUST result in all flex-algo config being removed from all devices on the next reconciliation cycle.
 
 #### EOS Verification
@@ -621,7 +645,7 @@ MUST confirm PIM RPF resolves via the IS-IS unicast RIB (algo 0). The incoming i
 
 - **serviceability** — new `TopologyInfo` PDA (foundation-managed, one per topology); new `AdminGroupBits` `ResourceExtension` account for persistent bit allocation; new `link_topologies: Vec<Pubkey>` field (cap 8) on `Link`; new `link_topologies: Option<Vec<Pubkey>>` field on `LinkUpdateArgs` with foundation-only write restriction; new `flex_algo_node_segments: Vec<FlexAlgoNodeSegment>` field on `Interface` (one entry per `TopologyInfo` topology, each with its own allocated node segment index); new `include_topologies: Vec<Pubkey>` field on `Tenant` with foundation-only write restriction.
 - **controller** — new `-features-config` flag and `features.yaml` config file; reads `link.link_topologies[0]`, resolves `TopologyInfo` PDAs, generates IS-IS TE admin-group config on interfaces (respecting `link_tagging.exclude.links`), flex-algo definitions with `color` field, `system-colored-tunnel-rib` BGP resolution profile, and adds `set extcommunity color` to the existing per-tunnel inbound route-maps (`RM-USER-{{ .Id }}-IN`) for stamping-eligible tunnels; generates `no` commands for full revert when `enabled: false`.
-- **CLI** — full topology lifecycle commands (`create`, `update`, `delete`, `clear`, `list`); `link update` gains `--link-topology`; `link get` / `link list` display the field including derived EOS color value; `link topology list` warns on disconnected topologies.
+- **CLI** — full topology lifecycle commands (`create`, `update`, `delete`, `clear`, `list`); `link update` gains `--link-topology`; `link get` / `link list` display the field including derived color; `link topology list` warns on disconnected topologies.
 - **SDKs** — `TopologyInfo` added to all three language SDKs; `link_topologies` field added to link deserialization structs.
 
 ### Operational
@@ -632,10 +656,11 @@ The following sequence MUST be followed when deploying this RFC to any environme
 
 1. Deploy the smart contract code update
 2. Immediately create the UNICAST-DEFAULT topology via CLI: `doublezero link topology create --name unicast-default --constraint include-any` — this MUST happen before any new link activations are accepted. Link activation MUST fail with an explicit error (`"UNICAST-DEFAULT topology not found"`) if this step is skipped
-3. Run the migration command to tag existing links and allocate loopback node segments for pre-existing accounts
-4. Resume normal link activation workflow — new links will be auto-tagged at activation from this point
+3. Immediately create the UNICAST-DRAINED topology via CLI: `doublezero link topology create --name unicast-drained --constraint exclude` — this MUST happen before any additional topologies are created. The program enforces that the second topology is named `unicast-drained` and rejects any other name until this invariant is satisfied
+4. Run the migration command to tag existing links and allocate loopback node segments for pre-existing accounts
+5. Resume normal link activation workflow — new links will be auto-tagged at activation from this point
 
-Attempting to activate a link between steps 1 and 2 will fail with a clear error. There is no silent partial state.
+Attempting to activate a link between steps 1 and 2 will fail with a clear error. There is no silent partial state. Attempting to create a third topology before step 3 is complete will fail with a clear error enforcing the UNICAST-DRAINED invariant.
 
 - Adding a new topology MUST NOT require a code change or deploy — DZF creates the `TopologyInfo` account via the CLI and the controller picks it up on the next reconciliation cycle once `enabled: true`.
 - `link_topologies` appends to the serialized layout and defaults to an empty vector on existing accounts. Existing links activated before this RFC will have `link_topologies = []` and MUST be tagged with UNICAST-DEFAULT as part of the testnet rollout migration before `enabled: true` is set.
@@ -647,7 +672,7 @@ Attempting to activate a link between steps 1 and 2 will fail with a clear error
 |---|---|
 | Smart contract | `TopologyInfo` create/update/delete lifecycle; `AdminGroupBits` `ResourceExtension` allocation and no-reuse after deletion; foundation-only authorization; `link_topologies` assignment and clearing; delete blocked when links assigned; `clear` removes topology from all links; `link_topologies` cap at 8 enforced; `include_topologies` assignment on tenant; foundation-only authorization |
 | Controller (unit) | Interface config with and without topology; link tagging exclude list respected; remove/add diff on topology change; `router traffic-engineering` block with `color` field; `system-colored-tunnel-rib` BGP resolution config; single-topology and multi-topology per-tenant stamping; community stamping per-tenant and per-device; stamping exclude respected; full revert on `enabled: false`; new topology triggers config push to all devices |
-| SDK (unit) | `TopologyInfo` Borsh round-trip; `link_topologies` field in `link get` / `link list` output; `include_topologies` field in `tenant get` / `tenant list` output across Go, Python, and TypeScript; EOS color value displayed correctly |
+| SDK (unit) | `TopologyInfo` Borsh round-trip; `link_topologies` field in `link get` / `link list` output; `include_topologies` field in `tenant get` / `tenant list` output across Go, Python, and TypeScript; color displayed correctly |
 | End-to-end (cEOS) | Topology create → controller config push verified; admin-group applied and removed on interface; link tagging exclude list verified; flex-algo 128 topology includes only UNICAST-DEFAULT links; `system-colored-tunnel-rib` populated; VPN unicast resolves via color-1 tunnel; per-tenant single and multi-topology stamping verified; topology fallback verified; community stamping per-device verified; stamping exclude verified; multicast RPF unchanged; topology clear removes admin-groups; full revert on `enabled: false` verified |
 
 ---

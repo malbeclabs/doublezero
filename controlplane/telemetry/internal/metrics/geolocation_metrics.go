@@ -7,14 +7,14 @@ import (
 
 const (
 	// GeoProbe agent metric names.
-	GeoProbeMetricNameBuildInfo                = "doublezero_device_geoprobe_agent_build_info"
-	GeoProbeMetricNameErrors                   = "doublezero_device_geoprobe_agent_errors_total"
-	GeoProbeMetricNameParentDiscoveryDuration  = "doublezero_device_geoprobe_agent_parent_discovery_duration_seconds"
-	GeoProbeMetricNameTargetDiscoveryDuration  = "doublezero_device_geoprobe_agent_target_discovery_duration_seconds"
-	GeoProbeMetricNameMeasurementCycleDuration = "doublezero_device_geoprobe_agent_measurement_cycle_duration_seconds"
-	GeoProbeMetricNameOffsetsReceived          = "doublezero_device_geoprobe_agent_offsets_received_total"
-	GeoProbeMetricNameOffsetsRejected          = "doublezero_device_geoprobe_agent_offsets_rejected_total"
-	GeoProbeMetricNameCompositeOffsetsSent     = "doublezero_device_geoprobe_agent_composite_offsets_sent_total"
+	GeoProbeMetricNameBuildInfo                    = "doublezero_device_geoprobe_agent_build_info"
+	GeoProbeMetricNameErrors                       = "doublezero_device_geoprobe_agent_errors_total"
+	GeoProbeMetricNameParentDiscoveryDuration      = "doublezero_device_geoprobe_agent_parent_discovery_duration_seconds"
+	GeoProbeMetricNameTargetDiscoveryDuration      = "doublezero_device_geoprobe_agent_target_discovery_duration_seconds"
+	GeoProbeMetricNameMeasurementCycleDuration     = "doublezero_device_geoprobe_agent_measurement_cycle_duration_seconds"
+	GeoProbeMetricNameOffsetsReceived              = "doublezero_device_geoprobe_agent_offsets_received_total"
+	GeoProbeMetricNameOffsetsRejected              = "doublezero_device_geoprobe_agent_offsets_rejected_total"
+	GeoProbeMetricNameCompositeOffsetsSent         = "doublezero_device_geoprobe_agent_composite_offsets_sent_total"
 	GeoProbeMetricNameTargetsDiscovered            = "doublezero_device_geoprobe_agent_targets_discovered"
 	GeoProbeMetricNameParentsDiscovered            = "doublezero_device_geoprobe_agent_parents_discovered"
 	GeoProbeMetricNameIcmpTargetsDiscovered        = "doublezero_device_geoprobe_agent_icmp_targets_discovered"
@@ -24,10 +24,10 @@ const (
 	GeoProbeMetricLabelReason = "reason"
 
 	// GeoProbe agent error types.
-	GeoProbeErrorTypeMeasurementCycle = "measurement_cycle"
-	GeoProbeErrorTypeSlotFetch        = "slot_fetch"
-	GeoProbeErrorTypeSignOffset       = "sign_offset"
-	GeoProbeErrorTypeSendOffset       = "send_offset"
+	GeoProbeErrorTypeMeasurementCycle     = "measurement_cycle"
+	GeoProbeErrorTypeSlotFetch            = "slot_fetch"
+	GeoProbeErrorTypeSignOffset           = "sign_offset"
+	GeoProbeErrorTypeSendOffset           = "send_offset"
 	GeoProbeErrorTypeOffsetReceive        = "offset_receive"
 	GeoProbeErrorTypeIcmpMeasurementCycle = "icmp_measurement_cycle"
 

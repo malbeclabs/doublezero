@@ -15,8 +15,10 @@ const (
 	GeoProbeMetricNameOffsetsReceived          = "doublezero_device_geoprobe_agent_offsets_received_total"
 	GeoProbeMetricNameOffsetsRejected          = "doublezero_device_geoprobe_agent_offsets_rejected_total"
 	GeoProbeMetricNameCompositeOffsetsSent     = "doublezero_device_geoprobe_agent_composite_offsets_sent_total"
-	GeoProbeMetricNameTargetsDiscovered        = "doublezero_device_geoprobe_agent_targets_discovered"
-	GeoProbeMetricNameParentsDiscovered        = "doublezero_device_geoprobe_agent_parents_discovered"
+	GeoProbeMetricNameTargetsDiscovered            = "doublezero_device_geoprobe_agent_targets_discovered"
+	GeoProbeMetricNameParentsDiscovered            = "doublezero_device_geoprobe_agent_parents_discovered"
+	GeoProbeMetricNameIcmpTargetsDiscovered        = "doublezero_device_geoprobe_agent_icmp_targets_discovered"
+	GeoProbeMetricNameIcmpMeasurementCycleDuration = "doublezero_device_geoprobe_agent_icmp_measurement_cycle_duration_seconds"
 
 	// GeoProbe agent labels.
 	GeoProbeMetricLabelReason = "reason"
@@ -26,7 +28,8 @@ const (
 	GeoProbeErrorTypeSlotFetch        = "slot_fetch"
 	GeoProbeErrorTypeSignOffset       = "sign_offset"
 	GeoProbeErrorTypeSendOffset       = "send_offset"
-	GeoProbeErrorTypeOffsetReceive    = "offset_receive"
+	GeoProbeErrorTypeOffsetReceive        = "offset_receive"
+	GeoProbeErrorTypeIcmpMeasurementCycle = "icmp_measurement_cycle"
 
 	// Offset rejection reasons.
 	GeoProbeRejectUnknownParent    = "unknown_parent"
@@ -116,6 +119,21 @@ var (
 		prometheus.GaugeOpts{
 			Name: GeoProbeMetricNameParentsDiscovered,
 			Help: "Current number of discovered parents",
+		},
+	)
+
+	GeoProbeIcmpTargetsDiscovered = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: GeoProbeMetricNameIcmpTargetsDiscovered,
+			Help: "Current number of discovered ICMP targets",
+		},
+	)
+
+	GeoProbeIcmpMeasurementCycleDuration = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    GeoProbeMetricNameIcmpMeasurementCycleDuration,
+			Help:    "Duration of ICMP measurement cycles in seconds",
+			Buckets: geoProbeMeasurementBuckets,
 		},
 	)
 )

@@ -193,8 +193,9 @@ func (s GeolocationUserStatus) String() string {
 type GeoLocationTargetType uint8
 
 const (
-	GeoLocationTargetTypeOutbound GeoLocationTargetType = 0
-	GeoLocationTargetTypeInbound  GeoLocationTargetType = 1
+	GeoLocationTargetTypeOutbound     GeoLocationTargetType = 0
+	GeoLocationTargetTypeInbound      GeoLocationTargetType = 1
+	GeoLocationTargetTypeOutboundIcmp GeoLocationTargetType = 2
 )
 
 func (t GeoLocationTargetType) String() string {
@@ -203,6 +204,8 @@ func (t GeoLocationTargetType) String() string {
 		return "outbound"
 	case GeoLocationTargetTypeInbound:
 		return "inbound"
+	case GeoLocationTargetTypeOutboundIcmp:
+		return "outbound-icmp"
 	default:
 		return fmt.Sprintf("unknown(%d)", t)
 	}
@@ -300,7 +303,7 @@ func (t *GeolocationTarget) Deserialize(dec *bin.Decoder) error {
 	if err := dec.Decode(&t.TargetType); err != nil {
 		return err
 	}
-	if t.TargetType > GeoLocationTargetTypeInbound {
+	if t.TargetType > GeoLocationTargetTypeOutboundIcmp {
 		return fmt.Errorf("invalid target type: %d", t.TargetType)
 	}
 	if err := dec.Decode(&t.IPAddress); err != nil {

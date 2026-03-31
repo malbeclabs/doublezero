@@ -79,7 +79,7 @@ pub fn process_add_target(
     let geoprobe_pk = *probe_account.key;
 
     match args.target_type {
-        GeoLocationTargetType::Outbound => {
+        GeoLocationTargetType::Outbound | GeoLocationTargetType::OutboundIcmp => {
             validate_public_ip(&args.ip_address)?;
         }
         GeoLocationTargetType::Inbound => {

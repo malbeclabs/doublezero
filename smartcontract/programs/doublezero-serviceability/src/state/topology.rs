@@ -1,10 +1,11 @@
-use crate::state::accounttype::AccountType;
+use crate::{error::Validate, state::accounttype::AccountType};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
 
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TopologyConstraint {
     #[default]
     IncludeAny = 0,
@@ -12,6 +13,7 @@ pub enum TopologyConstraint {
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TopologyInfo {
     pub account_type: AccountType,
     pub owner: Pubkey,
@@ -60,8 +62,21 @@ impl TryFrom<&solana_program::account_info::AccountInfo<'_>> for TopologyInfo {
     }
 }
 
+impl Validate for TopologyInfo {
+    fn validate(&self) -> Result<(), crate::error::DoubleZeroError> {
+        if self.account_type != AccountType::Topology {
+            return Err(crate::error::DoubleZeroError::InvalidAccountType);
+        }
+        if self.name.len() > 32 {
+            return Err(crate::error::DoubleZeroError::NameTooLong);
+        }
+        Ok(())
+    }
+}
+
 /// Flex-algo node segment entry on a Vpnv4 loopback Interface account.
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FlexAlgoNodeSegment {
     pub topology: Pubkey,      // TopologyInfo PDA pubkey
     pub node_segment_idx: u16, // allocated from SegmentRoutingIds ResourceExtension

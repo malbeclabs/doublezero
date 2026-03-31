@@ -96,6 +96,10 @@ use crate::{
             remove_administrator::process_remove_administrator_tenant,
             update::process_update_tenant, update_payment_status::process_update_payment_status,
         },
+        topology::{
+            clear::process_topology_clear, create::process_topology_create,
+            delete::process_topology_delete,
+        },
         user::{
             activate::process_activate_user, ban::process_ban_user,
             check_access_pass::process_check_access_pass_user,
@@ -420,6 +424,15 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::DeletePermission(value) => {
             process_delete_permission(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CreateTopology(value) => {
+            process_topology_create(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeleteTopology(value) => {
+            process_topology_delete(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::ClearTopology(value) => {
+            process_topology_clear(program_id, accounts, &value)?
         }
     };
     Ok(())

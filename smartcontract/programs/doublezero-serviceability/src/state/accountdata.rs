@@ -186,6 +186,14 @@ impl AccountData {
             Err(DoubleZeroError::InvalidAccountType)
         }
     }
+
+    pub fn get_topology(&self) -> Result<crate::state::topology::TopologyInfo, DoubleZeroError> {
+        if let AccountData::Topology(topology) = self {
+            Ok(topology.clone())
+        } else {
+            Err(DoubleZeroError::InvalidAccountType)
+        }
+    }
 }
 
 impl TryFrom<&[u8]> for AccountData {

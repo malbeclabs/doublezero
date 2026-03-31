@@ -79,6 +79,7 @@ use crate::processors::{
         delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
         update::TenantUpdateArgs, update_payment_status::UpdatePaymentStatusArgs,
     },
+    topology::{clear::TopologyClearArgs, create::TopologyCreateArgs, delete::TopologyDeleteArgs},
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
         closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
@@ -218,6 +219,10 @@ pub enum DoubleZeroInstruction {
 
     Deprecated102(), // variant 102 (was CreateReservedSubscribeUser)
     Deprecated103(), // variant 103 (was DeleteReservedSubscribeUser)
+
+    CreateTopology(TopologyCreateArgs), // variant 104
+    DeleteTopology(TopologyDeleteArgs), // variant 105
+    ClearTopology(TopologyClearArgs),   // variant 106
 }
 
 impl DoubleZeroInstruction {
@@ -349,6 +354,9 @@ impl DoubleZeroInstruction {
             100 => Ok(Self::ResumePermission(PermissionResumeArgs::try_from(rest).unwrap())),
             101 => Ok(Self::DeletePermission(PermissionDeleteArgs::try_from(rest).unwrap())),
 
+            104 => Ok(Self::CreateTopology(TopologyCreateArgs::try_from(rest).unwrap())),
+            105 => Ok(Self::DeleteTopology(TopologyDeleteArgs::try_from(rest).unwrap())),
+            106 => Ok(Self::ClearTopology(TopologyClearArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -483,6 +491,10 @@ impl DoubleZeroInstruction {
 
             Self::Deprecated102() => "Deprecated102".to_string(),
             Self::Deprecated103() => "Deprecated103".to_string(),
+
+            Self::CreateTopology(_) => "CreateTopology".to_string(), // variant 104
+            Self::DeleteTopology(_) => "DeleteTopology".to_string(), // variant 105
+            Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 106
         }
     }
 
@@ -609,6 +621,10 @@ impl DoubleZeroInstruction {
 
             Self::Deprecated102() => String::new(),
             Self::Deprecated103() => String::new(),
+
+            Self::CreateTopology(args) => format!("{args:?}"), // variant 104
+            Self::DeleteTopology(args) => format!("{args:?}"), // variant 105
+            Self::ClearTopology(args) => format!("{args:?}"),  // variant 106
         }
     }
 }
@@ -1297,6 +1313,25 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::DeletePermission(PermissionDeleteArgs {}),
             "DeletePermission",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+                name: "unicast-default".to_string(),
+                constraint: crate::state::topology::TopologyConstraint::IncludeAny,
+            }),
+            "CreateTopology",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteTopology(TopologyDeleteArgs {
+                name: "unicast-default".to_string(),
+            }),
+            "DeleteTopology",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
+                name: "unicast-default".to_string(),
+            }),
+            "ClearTopology",
         );
     }
 }

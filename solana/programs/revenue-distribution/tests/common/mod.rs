@@ -13,7 +13,8 @@ use doublezero_revenue_distribution::{
             InitializeContributorRewardsAccounts, InitializeDistributionAccounts,
             InitializeJournalAccounts, InitializeProgramAccounts,
             InitializeSolanaValidatorDepositAccounts, InitializeSwapDestinationAccounts,
-            PaySolanaValidatorDebtAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
+            PaySolanaValidatorDebtAccounts, SetAdminAccounts,
+            SetDistributionEconomicBurnRateAccounts, SetRewardsManagerAccounts,
             SweepDistributionTokensAccounts, VerifyDistributionMerkleRootAccounts,
             WriteOffSolanaValidatorDebtAccounts,
         },
@@ -552,6 +553,32 @@ impl ProgramTestWithOwner {
             &mut self.context.banks_client,
             &self.context.last_blockhash,
             &[configure_distribution_rewards_ix],
+            &[payer_signer, accountant_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
+    pub async fn set_distribution_economic_burn_rate(
+        &mut self,
+        dz_epoch: DoubleZeroEpoch,
+        accountant_signer: &Keypair,
+        burn_rate_value: u32,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.context.payer;
+
+        let set_distribution_economic_burn_rate_ix = try_build_instruction(
+            &ID,
+            SetDistributionEconomicBurnRateAccounts::new(&accountant_signer.pubkey(), dz_epoch),
+            &RevenueDistributionInstructionData::SetDistributionEconomicBurnRate(burn_rate_value),
+        )
+        .unwrap();
+
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
+            &[set_distribution_economic_burn_rate_ix],
             &[payer_signer, accountant_signer],
         )
         .await?;

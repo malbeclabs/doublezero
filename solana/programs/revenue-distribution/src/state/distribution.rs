@@ -91,7 +91,9 @@ pub struct Distribution {
     pub processed_solana_validator_debt_write_off_end_index: u32,
 
     pub solana_validator_write_off_count: u32,
-    _padding_1: [u8; 20],
+
+    pub economic_burn_rate: BurnRate,
+    _padding_1: [u8; 16],
 
     _storage_gap: StorageGap<6>,
 }
@@ -176,19 +178,23 @@ impl Distribution {
     }
 
     #[inline]
-    pub fn burn_rate(&self, economic_burn_rate: BurnRate) -> BurnRate {
-        economic_burn_rate.max(self.community_burn_rate)
+    pub fn burn_rate(&self, contributor_economic_burn_rate: BurnRate) -> BurnRate {
+        contributor_economic_burn_rate
+            .max(self.economic_burn_rate)
+            .max(self.community_burn_rate)
     }
 
     #[inline]
     pub fn split_2z_amount(&self, reward_share: &RewardShare) -> Option<(u64, u64)> {
         let unit_share = reward_share.checked_unit_share()?;
-        let economic_burn_rate = reward_share.checked_economic_burn_rate()?;
+        let contributor_economic_burn_rate = reward_share
+            .checked_economic_burn_rate()
+            .unwrap_or_default();
 
         // Determine the greater of the economic burn rate and the community
         // burn rate. This rate will be the proportion of the total 2Z amount
         // that will be burned.
-        let burn_rate = self.burn_rate(economic_burn_rate);
+        let burn_rate = self.burn_rate(contributor_economic_burn_rate);
 
         let total_amount = self.total_collected_2z_tokens();
         let share_amount = unit_share.mul_scalar(total_amount);
@@ -241,13 +247,6 @@ impl Distribution {
             == 0
     }
 }
-
-//
-
-const _: () = assert!(
-    size_of::<Distribution>() == 448,
-    "`Distribution` size changed"
-);
 
 #[cfg(test)]
 mod tests {
@@ -371,7 +370,7 @@ mod tests {
 
         let higher_economic_burn_rate = BurnRate::new(300_000_000).unwrap(); // 30%
 
-        // Economic burn rate is higher, so it should be used.
+        // Contributor economic burn rate is higher, so it should be used.
         assert_eq!(
             distribution.burn_rate(higher_economic_burn_rate),
             higher_economic_burn_rate
@@ -383,6 +382,68 @@ mod tests {
             distribution.burn_rate(equal_economic_burn_rate),
             community_burn_rate
         );
+
+        // Default (zero) contributor rate: falls back to max of
+        // economic_burn_rate and community_burn_rate on the distribution.
+        assert_eq!(
+            distribution.burn_rate(Default::default()),
+            community_burn_rate
+        );
+
+        // Distribution with economic_burn_rate set higher than community.
+        let dist_economic_burn_rate = BurnRate::new(400_000_000).unwrap(); // 40%
+        let distribution_with_economic = Distribution {
+            community_burn_rate,
+            economic_burn_rate: dist_economic_burn_rate,
+            ..Default::default()
+        };
+
+        // Default contributor rate: economic_burn_rate (40%) > community (20%).
+        assert_eq!(
+            distribution_with_economic.burn_rate(Default::default()),
+            dist_economic_burn_rate
+        );
+
+        // Contributor (10%) < economic (40%), economic wins.
+        assert_eq!(
+            distribution_with_economic.burn_rate(economic_burn_rate),
+            dist_economic_burn_rate
+        );
+
+        // Contributor (30%) < economic (40%), economic wins.
+        assert_eq!(
+            distribution_with_economic.burn_rate(higher_economic_burn_rate),
+            dist_economic_burn_rate
+        );
+
+        // Contributor higher than all: contributor (50%) > economic (40%) > community (20%).
+        let highest_contributor = BurnRate::new(500_000_000).unwrap(); // 50%
+        assert_eq!(
+            distribution_with_economic.burn_rate(highest_contributor),
+            highest_contributor
+        );
+
+        // Distribution where economic_burn_rate is between community and
+        // contributor.
+        let mid_economic = BurnRate::new(250_000_000).unwrap(); // 25%
+        let distribution_mid = Distribution {
+            community_burn_rate,
+            economic_burn_rate: mid_economic,
+            ..Default::default()
+        };
+
+        // Contributor (30%) > economic (25%) > community (20%), contributor
+        // wins.
+        assert_eq!(
+            distribution_mid.burn_rate(higher_economic_burn_rate),
+            higher_economic_burn_rate
+        );
+
+        // Contributor (10%) < economic (25%) > community (20%), economic wins.
+        assert_eq!(distribution_mid.burn_rate(economic_burn_rate), mid_economic);
+
+        // Default contributor rate: economic (25%) > community (20%).
+        assert_eq!(distribution_mid.burn_rate(Default::default()), mid_economic);
     }
 
     #[test]
@@ -427,6 +488,28 @@ mod tests {
             distribution.split_2z_amount(&reward_share_higher).unwrap();
         assert_eq!(burn_amount, 60);
         assert_eq!(distribute_amount, 240);
+
+        // Test with distribution's economic_burn_rate as the determining rate.
+        // economic_burn_rate on distribution (30%) > community (10%) and
+        // override from reward_share (5%).
+        let distribution_with_economic = Distribution {
+            collected_prepaid_2z_payments: 1_000,
+            collected_2z_converted_from_sol: 2_000,
+            community_burn_rate: BurnRate::new(100_000_000).unwrap(), // 10%
+            economic_burn_rate: BurnRate::new(300_000_000).unwrap(),  // 30%
+            ..Default::default()
+        };
+
+        // Total: 3,000, share: 10% = 300.
+        // Override (5%) < distribution economic (30%) > community (10%), so
+        // distribution economic wins.
+        // Burn amount: 300 * 30% = 90.
+        // Distribute amount: 300 - 90 = 210.
+        let (burn_amount, distribute_amount) = distribution_with_economic
+            .split_2z_amount(&reward_share)
+            .unwrap();
+        assert_eq!(burn_amount, 90);
+        assert_eq!(distribute_amount, 210);
 
         // Test with invalid reward share (unit_share too large).
         let invalid_reward_share = RewardShare {

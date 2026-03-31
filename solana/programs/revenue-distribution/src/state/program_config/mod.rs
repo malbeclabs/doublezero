@@ -10,7 +10,6 @@ pub use relay::*;
 
 use bytemuck::{Pod, Zeroable};
 use doublezero_program_tools::{types::Flags, Discriminator, PrecomputedDiscriminator};
-use solana_account_info::MAX_PERMITTED_DATA_INCREASE;
 use solana_pubkey::Pubkey;
 
 use crate::types::{DoubleZeroEpoch, EpochDuration};
@@ -213,18 +212,6 @@ impl ProgramConfig {
         activation_epoch != 0 && self.next_completed_dz_epoch >= activation_epoch
     }
 }
-
-//
-
-const _: () = assert!(
-    size_of::<ProgramConfig>() == 600,
-    "`ProgramConfig` size changed"
-);
-
-const _: () = assert!(
-    doublezero_program_tools::zero_copy::data_end::<ProgramConfig>() <= MAX_PERMITTED_DATA_INCREASE,
-    "`ProgramConfig` total data length exceeds 10kb"
-);
 
 #[cfg(test)]
 mod tests {

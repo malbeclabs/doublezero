@@ -13,7 +13,7 @@ use doublezero_revenue_distribution::{
     },
     state::{self, Distribution, Journal, SolanaValidatorDeposit},
     types::{BurnRate, DoubleZeroEpoch, RewardShare, SolanaValidatorDebt, ValidatorFee},
-    DOUBLEZERO_MINT_KEY, ID,
+    DOUBLEZERO_MINT_DECIMALS, DOUBLEZERO_MINT_KEY, ID,
 };
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
@@ -780,4 +780,330 @@ async fn test_distribute_rewards() {
             "Program log: All rewards have already been distributed"
         );
     }
+}
+
+//
+// Distribute rewards with economic burn rate.
+//
+// This test uses only direct 2Z payments (no SOL debt or swaps) to verify that
+// the economic burn rate on a distribution correctly overrides the community
+// burn rate when higher.
+//
+
+#[tokio::test]
+async fn test_distribute_rewards_with_economic_burn_rate() {
+    let mut test_setup = common::start_test().await;
+
+    let admin_signer = Keypair::new();
+
+    let contributor_manager_signer = Keypair::new();
+    let debt_accountant_signer = Keypair::new();
+    let rewards_accountant_signer = Keypair::new();
+
+    // Community burn rate.
+    let initial_cbr = 100_000_000; // 10%.
+    let cbr_limit = 500_000_000; // 50%.
+    let dz_epochs_to_increasing_cbr = 10;
+    let dz_epochs_to_cbr_limit = 20;
+
+    // Economic burn rate set on the distribution (higher than CBR).
+    let distribution_economic_burn_rate = 250_000_000; // 25%.
+
+    // Relay settings.
+    let distribute_rewards_relay_lamports = 128 * 6_960;
+
+    let direct_2z_payment_amount = 10_000 * u64::pow(10, DOUBLEZERO_MINT_DECIMALS as u32); // 10,000 2Z tokens.
+
+    // Distribution rewards.
+    let minimum_epoch_duration_to_finalize_rewards = 1;
+
+    // Target epoch.
+    let dz_epoch = DoubleZeroEpoch::new(1);
+
+    let (journal_key, _) = Journal::find_address();
+    let journal_ata_key = get_associated_token_address(&journal_key, &DOUBLEZERO_MINT_KEY);
+
+    test_setup
+        .initialize_program()
+        .await
+        .unwrap()
+        .initialize_journal()
+        .await
+        .unwrap()
+        .create_2z_ata(&journal_key)
+        .await
+        .unwrap()
+        .set_admin(&admin_signer.pubkey())
+        .await
+        .unwrap()
+        .configure_program(
+            &admin_signer,
+            [
+                ProgramConfiguration::ContributorManager(contributor_manager_signer.pubkey()),
+                ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
+                ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
+                ProgramConfiguration::CommunityBurnRateParameters {
+                    limit: cbr_limit,
+                    dz_epochs_to_increasing: dz_epochs_to_increasing_cbr,
+                    dz_epochs_to_limit: dz_epochs_to_cbr_limit,
+                    initial_rate: Some(initial_cbr),
+                },
+                ProgramConfiguration::DistributeRewardsRelayLamports(
+                    distribute_rewards_relay_lamports,
+                ),
+                ProgramConfiguration::MinimumEpochDurationToFinalizeRewards(
+                    minimum_epoch_duration_to_finalize_rewards,
+                ),
+                ProgramConfiguration::CalculationGracePeriodMinutes(1),
+                ProgramConfiguration::DistributionInitializationGracePeriodMinutes(1),
+                ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
+            ],
+        )
+        .await
+        .unwrap()
+        .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap()
+        .transfer_2z(&journal_ata_key, direct_2z_payment_amount)
+        .await
+        .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
+        .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
+        .finalize_distribution_debt(DoubleZeroEpoch::default(), &debt_accountant_signer)
+        .await
+        .unwrap()
+        .finalize_distribution_debt(dz_epoch, &debt_accountant_signer)
+        .await
+        .unwrap()
+        .finalize_distribution_rewards(Default::default())
+        .await
+        .unwrap()
+        .sweep_distribution_tokens(Default::default())
+        .await
+        .unwrap();
+
+    // Set up network contributor data.
+
+    let rewards_manager_signer = Keypair::new();
+
+    let rewards_data = [
+        RewardShare::new(Pubkey::new_unique(), 400_000_000, false, 0).unwrap(), // 40.0%
+        RewardShare::new(Pubkey::new_unique(), 250_000_000, false, 0).unwrap(), // 25.0%
+        RewardShare::new(Pubkey::new_unique(), 100_000_000, false, 0).unwrap(), // 10.0%
+        RewardShare::new(Pubkey::new_unique(), 50_000_000, false, 0).unwrap(),  // 5.0%
+        RewardShare::new(Pubkey::new_unique(), 50_000_000, false, 0).unwrap(),  // 5.0%
+        RewardShare::new(Pubkey::new_unique(), 50_000_000, false, 0).unwrap(),  // 5.0%
+        RewardShare::new(Pubkey::new_unique(), 40_000_000, false, 0).unwrap(),  // 4.0%
+        RewardShare::new(Pubkey::new_unique(), 30_000_000, false, 0).unwrap(),  // 3.0%
+        RewardShare::new(Pubkey::new_unique(), 20_000_000, false, 0).unwrap(),  // 2.0%
+        RewardShare::new(Pubkey::new_unique(), 5_000_000, false, 0).unwrap(),   // 0.5%
+        RewardShare::new(Pubkey::new_unique(), 3_000_000, false, 0).unwrap(),   // 0.3%
+        RewardShare::new(Pubkey::new_unique(), 2_000_000, false, 0).unwrap(),   // 0.2%
+    ];
+    assert_eq!(
+        rewards_data.iter().map(|r| r.unit_share).sum::<u32>(),
+        1_000_000_000
+    );
+
+    let total_contributors = rewards_data.len() as u32;
+    let rewards_merkle_root =
+        merkle_root_from_indexed_pod_leaves(&rewards_data, Some(RewardShare::LEAF_PREFIX)).unwrap();
+
+    // Cache computed recipient proportions to check 2Z token distribution later
+    // in the test.
+    let mut recipient_shares = HashMap::new();
+
+    for (
+        i,
+        RewardShare {
+            contributor_key, ..
+        },
+    ) in rewards_data.iter().enumerate()
+    {
+        let recipients_with_abs_shares = (0..(i + 1).min(8))
+            .map(|j| (j as u16 + 1, Pubkey::new_unique()))
+            .collect::<Vec<_>>();
+
+        // Attempt to normalize the shares to 10,000.
+        let sum_shares = recipients_with_abs_shares
+            .iter()
+            .map(|(share, _)| share)
+            .copied()
+            .map(u32::from)
+            .sum::<u32>();
+
+        let mut recipients = recipients_with_abs_shares
+            .iter()
+            .copied()
+            .map(|(share, recipient)| (recipient, (u32::from(share) * 10_000 / sum_shares) as u16))
+            .collect::<Vec<_>>();
+
+        // Adjust the first element to ensure the sum of shares equals 10,000.
+        recipients[0].1 += 10_000 - recipients.iter().map(|(_, share)| share).sum::<u16>();
+        assert_eq!(
+            recipients.iter().map(|(_, share)| share).sum::<u16>(),
+            10_000
+        );
+
+        recipient_shares.insert(contributor_key, recipients.clone());
+
+        let recipient_keys = recipients
+            .iter()
+            .map(|(recipient, _)| recipient)
+            .collect::<Vec<_>>();
+
+        for recipient_key in recipient_keys.iter() {
+            test_setup.create_2z_ata(recipient_key).await.unwrap();
+        }
+
+        test_setup
+            .initialize_contributor_rewards(contributor_key)
+            .await
+            .unwrap()
+            .set_rewards_manager(
+                contributor_key,
+                &contributor_manager_signer,
+                &rewards_manager_signer.pubkey(),
+            )
+            .await
+            .unwrap()
+            .configure_contributor_rewards(
+                contributor_key,
+                &rewards_manager_signer,
+                [ContributorRewardsConfiguration::Recipients(recipients)],
+            )
+            .await
+            .unwrap();
+    }
+
+    // Set economic burn rate on the distribution before finalizing rewards.
+    test_setup
+        .set_distribution_economic_burn_rate(
+            dz_epoch,
+            &rewards_accountant_signer,
+            distribution_economic_burn_rate,
+        )
+        .await
+        .unwrap();
+
+    // Post rewards merkle root, verify each reward share, and finalize.
+
+    let proofs = rewards_data
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            MerkleProof::from_indexed_pod_leaves(
+                &rewards_data,
+                i.try_into().unwrap(),
+                Some(RewardShare::LEAF_PREFIX),
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+
+    test_setup
+        .configure_distribution_rewards(
+            dz_epoch,
+            &rewards_accountant_signer,
+            total_contributors,
+            rewards_merkle_root,
+        )
+        .await
+        .unwrap();
+
+    let kinds_and_proofs = rewards_data
+        .iter()
+        .copied()
+        .zip(proofs.iter())
+        .map(|(reward_share, proof)| {
+            let kind = DistributionMerkleRootKind::RewardShare(reward_share);
+
+            (kind, proof.clone())
+        })
+        .collect::<Vec<_>>();
+
+    test_setup
+        .verify_distribution_merkle_root(dz_epoch, kinds_and_proofs)
+        .await
+        .unwrap()
+        .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap()
+        .finalize_distribution_rewards(dz_epoch)
+        .await
+        .unwrap()
+        .sweep_distribution_tokens(dz_epoch)
+        .await
+        .unwrap();
+
+    for (share, proof) in rewards_data.iter().copied().zip(proofs.iter()) {
+        let contributor_key = &share.contributor_key;
+        let recipient_keys = recipient_shares[contributor_key]
+            .iter()
+            .map(|(key, _)| key)
+            .collect::<Vec<_>>();
+
+        let relayer_key = Pubkey::new_unique();
+
+        test_setup
+            .distribute_rewards(
+                dz_epoch,
+                &share,
+                &DOUBLEZERO_MINT_KEY,
+                &relayer_key,
+                &recipient_keys,
+                proof.clone(),
+            )
+            .await
+            .unwrap();
+    }
+
+    // Check the distribution.
+
+    let (
+        distribution_key,
+        distribution,
+        _remaining_distribution_data,
+        _distribution_lamports,
+        distribution_2z_token_pda,
+    ) = test_setup.fetch_distribution(dz_epoch).await;
+
+    let mut expected_distribution = Distribution::default();
+    expected_distribution.set_is_debt_calculation_finalized(true);
+    expected_distribution.set_is_rewards_calculation_finalized(true);
+    expected_distribution.set_has_swept_2z_tokens(true);
+    expected_distribution.bump_seed = Distribution::find_address(dz_epoch).1;
+    expected_distribution.token_2z_pda_bump_seed =
+        state::find_2z_token_pda_address(&distribution_key).1;
+    expected_distribution.dz_epoch = dz_epoch;
+    expected_distribution.community_burn_rate = BurnRate::new(initial_cbr).unwrap();
+    expected_distribution.economic_burn_rate =
+        BurnRate::new(distribution_economic_burn_rate).unwrap();
+    expected_distribution.collected_prepaid_2z_payments = direct_2z_payment_amount;
+    expected_distribution.total_contributors = total_contributors;
+    expected_distribution.rewards_merkle_root = rewards_merkle_root;
+    expected_distribution.distributed_rewards_count = total_contributors;
+    // With 25% economic burn rate (higher than 10% CBR), burn is 25% of total.
+    // Total: 1_000_000_000_000. Burned: 250_000_000_000. Distributed: 750_000_000_000.
+    expected_distribution.distributed_2z_amount = 750_000_000_000;
+    expected_distribution.burned_2z_amount = 250_000_000_000;
+    expected_distribution.processed_rewards_end_index = total_contributors / 8 + 1;
+    expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
+    expected_distribution.calculation_allowed_timestamp =
+        test_setup.get_clock().await.unix_timestamp as u32;
+    assert_eq!(distribution, expected_distribution);
+    assert_eq!(
+        distribution.distributed_2z_amount + distribution.burned_2z_amount,
+        direct_2z_payment_amount
+    );
+
+    // All tokens should have been transferred to all recipients.
+    assert_eq!(distribution_2z_token_pda.amount, 0);
 }

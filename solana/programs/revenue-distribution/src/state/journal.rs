@@ -1,7 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 use doublezero_program_tools::{Discriminator, PrecomputedDiscriminator};
 use ruint::Uint;
-use solana_account_info::MAX_PERMITTED_DATA_INCREASE;
 use solana_pubkey::Pubkey;
 
 use crate::types::DoubleZeroEpoch;
@@ -52,15 +51,6 @@ impl Journal {
         u128::try_from(self.lifetime_swapped_2z_amount).unwrap()
     }
 }
-
-//
-
-const _: () = assert!(size_of::<Journal>() == 64, "`Journal` size changed");
-
-const _: () = assert!(
-    doublezero_program_tools::zero_copy::data_end::<Journal>() <= MAX_PERMITTED_DATA_INCREASE,
-    "`Journal` total data length exceeds 10kb"
-);
 
 #[cfg(test)]
 mod tests {

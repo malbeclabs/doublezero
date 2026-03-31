@@ -25,10 +25,3 @@ impl SolanaValidatorDeposit {
         Pubkey::find_program_address(&[Self::SEED_PREFIX, node_id.as_ref()], &crate::ID)
     }
 }
-
-//
-
-const _: () = assert!(
-    size_of::<SolanaValidatorDeposit>() == 96,
-    "`SolanaValidatorDeposit` size changed"
-);

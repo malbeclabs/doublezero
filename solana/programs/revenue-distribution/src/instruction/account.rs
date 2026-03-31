@@ -944,6 +944,39 @@ impl From<WithdrawSolAccounts> for Vec<AccountMeta> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetDistributionEconomicBurnRateAccounts {
+    pub program_config_key: Pubkey,
+    pub rewards_accountant_key: Pubkey,
+    pub distribution_key: Pubkey,
+}
+
+impl SetDistributionEconomicBurnRateAccounts {
+    pub fn new(rewards_accountant_key: &Pubkey, dz_epoch: DoubleZeroEpoch) -> Self {
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            rewards_accountant_key: *rewards_accountant_key,
+            distribution_key: Distribution::find_address(dz_epoch).0,
+        }
+    }
+}
+
+impl From<SetDistributionEconomicBurnRateAccounts> for Vec<AccountMeta> {
+    fn from(accounts: SetDistributionEconomicBurnRateAccounts) -> Self {
+        let SetDistributionEconomicBurnRateAccounts {
+            program_config_key,
+            rewards_accountant_key,
+            distribution_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new_readonly(rewards_accountant_key, true),
+            AccountMeta::new(distribution_key, false),
+        ]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

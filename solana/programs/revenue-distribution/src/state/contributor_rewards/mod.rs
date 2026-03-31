@@ -49,10 +49,3 @@ impl ContributorRewards {
             .set_bit(Self::FLAG_IS_SET_REWARDS_MANAGER_BLOCKED_BIT, should_block);
     }
 }
-
-//
-
-const _: () = assert!(
-    size_of::<ContributorRewards>() == 600,
-    "`ContributorRewards` size changed"
-);

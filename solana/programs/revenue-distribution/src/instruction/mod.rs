@@ -110,6 +110,7 @@ pub enum RevenueDistributionInstructionData {
     InitializeSwapDestination,
     SweepDistributionTokens,
     WithdrawSol(u64),
+    SetDistributionEconomicBurnRate(u32),
 }
 
 impl RevenueDistributionInstructionData {
@@ -155,6 +156,8 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::initialize_swap_destination");
     pub const WITHDRAW_SOL: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::withdraw_sol");
+    pub const SET_DISTRIBUTION_ECONOMIC_BURN_RATE: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::set_distribution_economic_burn_rate");
 
     //
     // Versioned instruction selectors.
@@ -247,6 +250,10 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
             Self::SWEEP_DISTRIBUTION_TOKENS_V1 => Ok(Self::SweepDistributionTokens),
             Self::WITHDRAW_SOL => {
                 BorshDeserialize::deserialize_reader(reader).map(Self::WithdrawSol)
+            }
+            Self::SET_DISTRIBUTION_ECONOMIC_BURN_RATE => {
+                BorshDeserialize::deserialize_reader(reader)
+                    .map(Self::SetDistributionEconomicBurnRate)
             }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -342,6 +349,10 @@ impl BorshSerialize for RevenueDistributionInstructionData {
             Self::WithdrawSol(amount) => {
                 Self::WITHDRAW_SOL.serialize(writer)?;
                 amount.serialize(writer)
+            }
+            Self::SetDistributionEconomicBurnRate(burn_rate_value) => {
+                Self::SET_DISTRIBUTION_ECONOMIC_BURN_RATE.serialize(writer)?;
+                burn_rate_value.serialize(writer)
             }
         }
     }

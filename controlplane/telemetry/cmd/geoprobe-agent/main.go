@@ -32,7 +32,7 @@ const (
 	defaultTWAMPListenPort       = 8925
 	defaultSignedTWAMPListenPort = 8924
 	defaultUDPListenPort         = 8923
-	defaultProbeInterval         = 5 * time.Minute
+	defaultProbeInterval         = 30 * time.Second
 	defaultTWAMPSenderTimeout    = 1 * time.Second
 	defaultTWAMPReflectorTimeout = 1 * time.Second
 	defaultMaxOffsetAge          = 1 * time.Hour

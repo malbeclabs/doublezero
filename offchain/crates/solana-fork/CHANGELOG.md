@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- revert: seed journal and fills registry in localnet fork ([#322](https://github.com/doublezerofoundation/doublezero-offchain/pull/322))
+- seed journal and fills registry in localnet fork ([#309](https://github.com/doublezerofoundation/doublezero-offchain/pull/309))
+
 ## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana-fork-cli/v0.0.1) - 2025-10-22
 
 - fetch journal ATA ([#266](https://github.com/doublezerofoundation/doublezero-offchain/pull/266))

@@ -167,34 +167,51 @@ pub async fn try_initialize_distribution(
             compute_unit_limit += 5_000;
         }
 
-        let finalize_rewards_ix = try_build_instruction(
-            &ID,
-            FinalizeDistributionRewardsAccounts::new(&wallet_key, rewards_dz_epoch),
-            &RevenueDistributionInstructionData::FinalizeDistributionRewards,
-        )?;
-        instructions.push(finalize_rewards_ix);
-
         let SolConversionState {
             program_state: (_, sol_conversion_program_state),
             configuration_registry: _,
-            journal: _,
+            journal: (_, journal),
             fixed_fill_quantity,
         } = SolConversionState::try_fetch(&wallet.connection).await?;
 
-        let expected_fill_count =
-            rewards_distribution.checked_total_sol_debt().unwrap() / fixed_fill_quantity + 1;
+        let sweep_dz_epoch = journal.next_dz_epoch_to_sweep_tokens;
 
-        let sweep_distribution_tokens_ix = try_build_instruction(
-            &ID,
-            SweepDistributionTokensAccounts::new(
-                rewards_dz_epoch,
-                &config.sol_2z_swap_program_id,
-                &sol_conversion_program_state.fills_registry_key,
-            ),
-            &RevenueDistributionInstructionData::SweepDistributionTokens,
-        )?;
-        instructions.push(sweep_distribution_tokens_ix);
-        compute_unit_limit += 80 * expected_fill_count as u32;
+        let sweep_distribution = wallet
+            .connection
+            .try_fetch_zero_copy_data::<Distribution>(&Distribution::find_address(sweep_dz_epoch).0)
+            .await?;
+        let total_sol_debt = sweep_distribution.checked_total_sol_debt().unwrap();
+        let journal_swapped_sol_amount = journal.swapped_sol_amount;
+        tracing::info!("Total SOL debt to sweep: {total_sol_debt}");
+        tracing::info!("Journal swapped SOL amount: {journal_swapped_sol_amount}");
+
+        if total_sol_debt > journal_swapped_sol_amount {
+            tracing::warn!(
+                "Total SOL debt to sweep is greater than journal swapped SOL amount. Skipping sweep"
+            );
+        } else {
+            let finalize_rewards_ix = try_build_instruction(
+                &ID,
+                FinalizeDistributionRewardsAccounts::new(&wallet_key, sweep_dz_epoch),
+                &RevenueDistributionInstructionData::FinalizeDistributionRewards,
+            )?;
+            instructions.push(finalize_rewards_ix);
+
+            let expected_fill_count =
+                rewards_distribution.checked_total_sol_debt().unwrap() / fixed_fill_quantity + 1;
+
+            let sweep_distribution_tokens_ix = try_build_instruction(
+                &ID,
+                SweepDistributionTokensAccounts::new(
+                    sweep_dz_epoch,
+                    &config.sol_2z_swap_program_id,
+                    &sol_conversion_program_state.fills_registry_key,
+                ),
+                &RevenueDistributionInstructionData::SweepDistributionTokens,
+            )?;
+            instructions.push(sweep_distribution_tokens_ix);
+            compute_unit_limit += 10_000 + 80 * expected_fill_count as u32;
+        }
     }
 
     instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(

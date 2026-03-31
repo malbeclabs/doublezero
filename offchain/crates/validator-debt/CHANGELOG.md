@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- conditionally sweep 2Z based on balance ([#322](https://github.com/doublezerofoundation/doublezero-offchain/pull/322))
 - feat(validator-debt): abort calculation if fees are zero ([#286](https://github.com/doublezerofoundation/doublezero-offchain/pull/286))
 - feat(contributor-rewards): add on-chain reward distribution ([#269](https://github.com/doublezerofoundation/doublezero-offchain/pull/269))
 - ensure debt is finalized before collection ([#268](https://github.com/doublezerofoundation/doublezero-offchain/pull/268))

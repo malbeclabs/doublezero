@@ -76,7 +76,7 @@ func TestMain(m *testing.M) {
 	if vFlag := flag.Lookup("test.v"); vFlag != nil && vFlag.Value.String() == "true" {
 		verbose = true
 	}
-	if os.Getenv("DZ_E2E_DEBUG") != "" {
+	if os.Getenv("DEBUG") != "" {
 		debug = true
 	}
 
@@ -534,6 +534,30 @@ func (dn *TestDevnet) ConnectMulticastSubscriberSkipAccessPass(t *testing.T, cli
 	dn.log.Debug("--> Multicast subscriber connected")
 }
 
+// AddMulticastPublisherGroupSkipAccessPass incrementally adds publish groups to
+// an existing multicast service without disconnecting.
+func (dn *TestDevnet) AddMulticastPublisherGroupSkipAccessPass(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
+	dn.log.Debug("==> Adding multicast publisher groups incrementally", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+
+	groupArgs := strings.Join(multicastGroupCodes, " ")
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast --publish " + groupArgs})
+	require.NoError(t, err)
+
+	dn.log.Debug("--> Multicast publisher groups added incrementally")
+}
+
+// AddMulticastSubscriberGroupSkipAccessPass incrementally adds subscribe groups to
+// an existing multicast service without disconnecting.
+func (dn *TestDevnet) AddMulticastSubscriberGroupSkipAccessPass(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
+	dn.log.Debug("==> Adding multicast subscriber groups incrementally", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+
+	groupArgs := strings.Join(multicastGroupCodes, " ")
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast --subscribe " + groupArgs})
+	require.NoError(t, err)
+
+	dn.log.Debug("--> Multicast subscriber groups added incrementally")
+}
+
 func (dn *TestDevnet) DisconnectMulticastSubscriber(t *testing.T, client *devnet.Client) {
 	dn.log.Debug("==> Disconnecting multicast subscriber", "clientIP", client.CYOANetworkIP)
 
@@ -765,7 +789,7 @@ func (dn *TestDevnet) BuildAgentConfigData(t *testing.T, deviceCode string, extr
 
 // newTestLoggerForTest creates a logger for individual test runs.
 // Logs are written to t.Log() so they only appear on test failure (unless -v is passed).
-// With DZ_E2E_DEBUG=1, shows DEBUG level logs; otherwise shows INFO level.
+// With DEBUG=1, shows DEBUG level logs; otherwise shows INFO level.
 func newTestLoggerForTest(t *testing.T) *slog.Logger {
 	w := &testWriter{t: t}
 	logLevel := slog.LevelInfo

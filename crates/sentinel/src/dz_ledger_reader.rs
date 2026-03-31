@@ -6,6 +6,7 @@ use doublezero_sdk::{
 };
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
+    nonblocking::rpc_client::RpcClient as NonblockingRpcClient,
     rpc_client::RpcClient,
     rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
     rpc_filter::{Memcmp, RpcFilterType},
@@ -52,12 +53,12 @@ pub trait DzLedgerReader: Send + Sync {
 // ---------------------------------------------------------------------------
 
 pub struct RpcDzLedgerReader {
-    client: RpcClient,
+    client: NonblockingRpcClient,
     program_id: Pubkey,
 }
 
 impl RpcDzLedgerReader {
-    pub fn new(client: RpcClient, program_id: Pubkey) -> Self {
+    pub fn new(client: NonblockingRpcClient, program_id: Pubkey) -> Self {
         Self { client, program_id }
     }
 }
@@ -82,6 +83,7 @@ impl DzLedgerReader for RpcDzLedgerReader {
                     ..Default::default()
                 },
             )
+            .await
             .context("failed to fetch User accounts from DZ Ledger")?;
 
         let mut users = Vec::new();
@@ -126,6 +128,7 @@ impl DzLedgerReader for RpcDzLedgerReader {
                     ..Default::default()
                 },
             )
+            .await
             .context("failed to fetch MulticastGroup accounts from DZ Ledger")?;
 
         for (pk, account) in accounts {

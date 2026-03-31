@@ -14,7 +14,9 @@ use doublezero_sentinel::{
 };
 use doublezero_serviceability::pda::get_tenant_pda;
 use serde::Serialize;
-use solana_client::rpc_client::RpcClient;
+use solana_client::{
+    nonblocking::rpc_client::RpcClient as NonblockingRpcClient, rpc_client::RpcClient,
+};
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     instruction::Instruction,
@@ -132,7 +134,7 @@ impl FindValidatorMulticastPublishersCommand {
             api_url: self.validator_metadata_url.clone(),
         };
         let dz_ledger = RpcDzLedgerReader::new(
-            RpcClient::new_with_commitment(
+            NonblockingRpcClient::new_with_commitment(
                 dzclient.get_rpc().clone(),
                 CommitmentConfig::confirmed(),
             ),
@@ -428,7 +430,7 @@ impl CreateValidatorMulticastPublishersCommand {
             api_url: self.validator_metadata_url.clone(),
         };
         let dz_ledger = RpcDzLedgerReader::new(
-            RpcClient::new_with_commitment(
+            NonblockingRpcClient::new_with_commitment(
                 dzclient.get_rpc().clone(),
                 CommitmentConfig::confirmed(),
             ),
@@ -445,9 +447,13 @@ impl CreateValidatorMulticastPublishersCommand {
             multicast_group_pk, self.multicast_group
         );
 
+        // Derive the solana tenant PDA to scope user queries.
+        let (solana_tenant_pk, _) = get_tenant_pda(&program_id, "solana");
+        let default_tenant_pk = Pubkey::default();
+
         // Fetch users and validator data.
         eprintln!("Fetching DZ Ledger users and validator metadata...");
-        let (all_users, validators) = tokio::try_join!(
+        let (all_users_unfiltered, validators) = tokio::try_join!(
             async {
                 dz_ledger
                     .fetch_all_dz_users()
@@ -461,6 +467,12 @@ impl CreateValidatorMulticastPublishersCommand {
                     .map_err(|e| eyre::eyre!(e))
             },
         )?;
+
+        // Scope to solana tenant (or default/unset tenant).
+        let all_users: Vec<_> = all_users_unfiltered
+            .into_iter()
+            .filter(|u| u.tenant_pk == solana_tenant_pk || u.tenant_pk == default_tenant_pk)
+            .collect();
 
         let device_labels: HashMap<Pubkey, String> = codes
             .as_ref()

@@ -786,6 +786,133 @@ async fn test_add_target_duplicate_rejected() {
     }
 }
 
+#[tokio::test]
+async fn test_add_target_outbound_icmp_success() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-add-icmp",
+    )
+    .await;
+
+    let user_code = "user-add-icmp";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+    let add_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::OutboundIcmp,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            location_offset_port: 8923,
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[add_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert_eq!(user.targets.len(), 1);
+    assert_eq!(
+        user.targets[0].target_type,
+        GeoLocationTargetType::OutboundIcmp
+    );
+    assert_eq!(user.targets[0].ip_address, Ipv4Addr::new(8, 8, 8, 8));
+    assert_eq!(user.targets[0].location_offset_port, 8923);
+    assert_eq!(user.targets[0].geoprobe_pk, probe_pda);
+
+    let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
+    let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
+    assert_eq!(probe.reference_count, 1);
+    assert_eq!(probe.target_update_count, 1);
+}
+
+#[tokio::test]
+async fn test_add_target_outbound_icmp_invalid_ip() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-icmp-bad",
+    )
+    .await;
+
+    let user_code = "user-icmp-bad";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+    let add_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::OutboundIcmp,
+            ip_address: Ipv4Addr::new(10, 0, 0, 1),
+            location_offset_port: 8923,
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[add_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    let result = banks_client.process_transaction(tx).await;
+    let err = result.unwrap_err().unwrap();
+    match err {
+        TransactionError::InstructionError(0, InstructionError::Custom(code)) => {
+            assert_eq!(code, GeolocationError::InvalidIpAddress as u32);
+        }
+        _ => panic!("Expected InvalidIpAddress error, got: {:?}", err),
+    }
+}
+
 // --- RemoveTarget tests ---
 
 #[tokio::test]
@@ -876,6 +1003,91 @@ async fn test_remove_target_success() {
     let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
     assert_eq!(probe.reference_count, 0);
     assert_eq!(probe.target_update_count, 2); // 1 from add + 1 from remove
+}
+
+#[tokio::test]
+async fn test_remove_target_outbound_icmp_success() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-rm-icmp",
+    )
+    .await;
+
+    let user_code = "user-rm-icmp";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+
+    let add_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::OutboundIcmp,
+            ip_address: Ipv4Addr::new(8, 8, 4, 4),
+            location_offset_port: 8923,
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[add_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
+    let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
+    assert_eq!(probe.reference_count, 1);
+
+    let rm_ix = build_remove_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        RemoveTargetArgs {
+            target_type: GeoLocationTargetType::OutboundIcmp,
+            ip_address: Ipv4Addr::new(8, 8, 4, 4),
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[rm_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert!(user.targets.is_empty());
+
+    let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
+    let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
+    assert_eq!(probe.reference_count, 0);
+    assert_eq!(probe.target_update_count, 2);
 }
 
 #[tokio::test]

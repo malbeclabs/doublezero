@@ -30,6 +30,7 @@ func (m *mockNetlinker) RouteDelete(*routing.Route) error                 { retu
 func (m *mockNetlinker) RuleAdd(*routing.IPRule) error                    { return nil }
 func (m *mockNetlinker) RuleDel(*routing.IPRule) error                    { return nil }
 func (m *mockNetlinker) RouteByProtocol(int) ([]*routing.Route, error)    { return nil, nil }
+func (m *mockNetlinker) SetIPv4Sysctl(iface, param string, value int) error { return nil }
 
 func (m *mockNetlinker) RouteGet(ip net.IP) ([]*routing.Route, error) {
 	m.mu.Lock()

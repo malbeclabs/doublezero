@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"syscall"
 
 	nl "github.com/vishvananda/netlink"
@@ -24,6 +25,7 @@ type Netlinker interface {
 	RuleAdd(*IPRule) error
 	RuleDel(*IPRule) error
 	RouteByProtocol(int) ([]*Route, error)
+	SetIPv4Sysctl(iface, param string, value int) error
 }
 
 func (n Netlink) TunnelAdd(t *Tunnel) error {
@@ -191,6 +193,11 @@ func (n Netlink) RuleDel(r *IPRule) error {
 	// see https://github.com/malbeclabs/doublezero/issues/159
 	rule.Protocol = syscall.RTPROT_KERNEL
 	return nl.RuleDel(rule)
+}
+
+func (n Netlink) SetIPv4Sysctl(iface, param string, value int) error {
+	path := fmt.Sprintf("/proc/sys/net/ipv4/conf/%s/%s", iface, param)
+	return os.WriteFile(path, []byte(fmt.Sprintf("%d\n", value)), 0644)
 }
 
 func (n Netlink) RuleGet(r *IPRule) error { return nil }

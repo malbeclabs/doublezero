@@ -333,3 +333,4 @@ func (m *MockNetlinker) RouteByProtocol(protocol int) ([]*Route, error) {
 	defer m.mu.Unlock()
 	return m.RouteByProtocolFunc(protocol)
 }
+func (m *MockNetlinker) SetIPv4Sysctl(iface, param string, value int) error { return nil }

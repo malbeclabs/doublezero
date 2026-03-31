@@ -553,3 +553,4 @@ func (m *MockNetlink) RuleDel(n *routing.IPRule) error {
 func (m *MockNetlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return m.routes, nil
 }
+func (m *MockNetlink) SetIPv4Sysctl(iface, param string, value int) error { return nil }

@@ -103,3 +103,16 @@ func createTunnelWithIP(nl routing.Netlinker, tun *routing.Tunnel, dzIp net.IP) 
 	}
 	return nil
 }
+
+// disableRPFilter sets rp_filter=0 on the given interface. With rp_filter=1
+// (strict mode), the kernel drops packets whose source address is not reachable
+// via the interface they arrived on. GRE multicast tunnels use overlay
+// addressing that does not satisfy this check, causing silent packet loss on
+// both ingress and egress paths.
+func disableRPFilter(nl routing.Netlinker, iface string) error {
+	slog.Info("tunnel: disabling rp_filter", "interface", iface)
+	if err := nl.SetIPv4Sysctl(iface, "rp_filter", 0); err != nil {
+		return fmt.Errorf("error setting rp_filter on %s: %v", iface, err)
+	}
+	return nil
+}

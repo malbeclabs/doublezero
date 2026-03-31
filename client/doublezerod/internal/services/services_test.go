@@ -46,6 +46,13 @@ type MockNetlink struct {
 	ruleAdded     []*routing.IPRule
 	ruleRemoved   []*routing.IPRule
 	callLog       []string
+	sysctlsSet    []MockSysctl
+}
+
+type MockSysctl struct {
+	Iface string
+	Param string
+	Value int
 }
 
 type MockTunAddr struct {
@@ -109,6 +116,11 @@ func (m *MockNetlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return m.routes, nil
 }
 
+func (m *MockNetlink) SetIPv4Sysctl(iface, param string, value int) error {
+	m.sysctlsSet = append(m.sysctlsSet, MockSysctl{Iface: iface, Param: param, Value: value})
+	return nil
+}
+
 type MockPIMServer struct{}
 
 func (m *MockPIMServer) Start(conn pim.RawConner, iface string, tunnelAddr net.IP, group []net.IP) error {
@@ -169,6 +181,7 @@ func TestServices(t *testing.T) {
 		wantTunRemoved      *routing.Tunnel
 		wantPeerConfig      *bgp.PeerConfig
 		wantPeerRemoved     net.IP
+		wantSysctlsSet      []MockSysctl
 	}{
 		{
 			name: "provision_ibrl",
@@ -425,6 +438,7 @@ func TestServices(t *testing.T) {
 				MTU:            routing.GREMTU,
 			},
 			wantPeerRemoved: net.IP{169, 254, 0, 0},
+			wantSysctlsSet:  []MockSysctl{{Iface: "doublezero1", Param: "rp_filter", Value: 0}},
 		},
 		{
 			name: "provision_multicast_publisher_and_subscriber",
@@ -490,6 +504,7 @@ func TestServices(t *testing.T) {
 				MTU:            routing.GREMTU,
 			},
 			wantPeerRemoved: net.IP{169, 254, 0, 0},
+			wantSysctlsSet:  []MockSysctl{{Iface: "doublezero1", Param: "rp_filter", Value: 0}},
 		},
 		{
 			name: "provision_multicast_publisher_and_subscriber_same_group",
@@ -550,6 +565,7 @@ func TestServices(t *testing.T) {
 				MTU:            routing.GREMTU,
 			},
 			wantPeerRemoved: net.IP{169, 254, 0, 0},
+			wantSysctlsSet:  []MockSysctl{{Iface: "doublezero1", Param: "rp_filter", Value: 0}},
 		},
 		{
 			name: "provision_multicast_publisher",
@@ -607,6 +623,7 @@ func TestServices(t *testing.T) {
 				MTU:            routing.GREMTU,
 			},
 			wantPeerRemoved: net.IP{169, 254, 0, 0},
+			wantSysctlsSet:  []MockSysctl{{Iface: "doublezero1", Param: "rp_filter", Value: 0}},
 		},
 	}
 
@@ -661,6 +678,11 @@ func TestServices(t *testing.T) {
 			t.Run("check_peer_added", func(t *testing.T) {
 				if diff := cmp.Diff(mockBgp.addPeer, tt.wantPeerConfig); diff != "" {
 					t.Errorf("unexpected peer added (-want +got):\n%s", diff)
+				}
+			})
+			t.Run("check_sysctls_set", func(t *testing.T) {
+				if diff := cmp.Diff(tt.wantSysctlsSet, mockNetlink.sysctlsSet); diff != "" {
+					t.Errorf("unexpected sysctls set (-want +got):\n%s", diff)
 				}
 			})
 

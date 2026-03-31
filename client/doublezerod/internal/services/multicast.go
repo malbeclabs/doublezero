@@ -67,6 +67,9 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 		if err = createTunnelWithIP(s.nl, tun, p.DoubleZeroIP); err != nil {
 			return fmt.Errorf("error creating tunnel interface: %v", err)
 		}
+		if err = disableRPFilter(s.nl, tun.Name); err != nil {
+			return err
+		}
 		s.DoubleZeroAddr = p.DoubleZeroIP
 		s.MulticastPubGroups = p.MulticastPubGroups
 		// advertise DZ IP over session
@@ -98,6 +101,9 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 		if !isPublisher {
 			if err = createBaseTunnel(s.nl, tun); err != nil {
 				return fmt.Errorf("error creating tunnel interface: %v", err)
+			}
+			if err = disableRPFilter(s.nl, tun.Name); err != nil {
+				return err
 			}
 		}
 		s.MulticastSubGroups = p.MulticastSubGroups

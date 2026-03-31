@@ -59,6 +59,7 @@ func (m *mockNetlink) RuleDel(*routing.IPRule) error                    { return
 func (m *mockNetlink) RouteByProtocol(int) ([]*routing.Route, error) {
 	return m.routes, nil
 }
+func (m *mockNetlink) SetIPv4Sysctl(iface, param string, value int) error { return nil }
 
 type mockBgpServer struct{}
 

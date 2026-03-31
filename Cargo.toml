@@ -13,6 +13,7 @@ members = [
     "smartcontract/programs/doublezero-geolocation",
     "smartcontract/programs/common",
     "e2e/docker/ledger/fork-accounts",
+    "crates/sentinel",
 ]
 default-members = []
 exclude = [
@@ -69,6 +70,7 @@ log = "0"
 metrics = "0"
 metrics-util = "0"
 mockall = "0"
+reqwest = "0"
 regex = "1"
 serde = "1"
 serde_bytes = "0"
@@ -98,6 +100,7 @@ tokio = { version = "1", default-features = false, features = [
     "signal",
 ] }
 doublezero-config = { path = "config" }
+doublezero-sentinel = { path = "crates/sentinel" }
 doublezero_cli = { path = "smartcontract/cli" }
 doublezero-program-common = { path = "smartcontract/programs/common" }
 doublezero_sdk = { path = "smartcontract/sdk/rs" }

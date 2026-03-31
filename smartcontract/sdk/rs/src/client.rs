@@ -105,6 +105,14 @@ impl DZClient {
         &self.rpc_url
     }
 
+    pub fn rpc_client(&self) -> &RpcClient {
+        &self.client
+    }
+
+    pub fn payer_keypair(&self) -> Option<&Keypair> {
+        self.payer.as_ref()
+    }
+
     pub fn get_ws(&self) -> &String {
         &self.rpc_ws_url
     }

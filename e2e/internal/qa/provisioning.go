@@ -376,7 +376,6 @@ func (p *ProvisioningTest) CreateInterface(ctx context.Context, deviceCode, ifac
 		"device", "interface", "create",
 		deviceCode, ifaceName,
 		"--bandwidth", "10G",
-		"--mtu", "2048",
 		"-w", // wait for completion
 	}
 
@@ -504,7 +503,6 @@ func (p *ProvisioningTest) CreateLink(ctx context.Context, link *LinkInfo) error
 		"--side-z", link.SideZCode,
 		"--side-z-interface", link.SideZIfaceName,
 		"--bandwidth", formatBandwidth(link.Bandwidth),
-		"--mtu", fmt.Sprintf("%d", link.Mtu),
 		"--delay-ms", fmt.Sprintf("%d", link.DelayMs),
 		"--jitter-ms", fmt.Sprintf("%d", link.JitterMs),
 		"-w", // wait for completion

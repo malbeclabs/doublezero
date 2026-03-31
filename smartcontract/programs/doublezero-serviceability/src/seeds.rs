@@ -22,3 +22,4 @@ pub const SEED_SEGMENT_ROUTING_IDS: &[u8] = b"segmentroutingids";
 pub const SEED_VRF_IDS: &[u8] = b"vrfids";
 pub const SEED_PERMISSION: &[u8] = b"permission";
 pub const SEED_ADMIN_GROUP_BITS: &[u8] = b"admingroupbits";
+pub const SEED_TOPOLOGY: &[u8] = b"topology";

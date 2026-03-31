@@ -390,6 +390,113 @@ impl Default for InterfaceV2 {
     }
 }
 
+#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct InterfaceV3 {
+    pub status: InterfaceStatus,       // 1
+    pub name: String,                  // 4 + len
+    pub interface_type: InterfaceType, // 1
+    pub interface_cyoa: InterfaceCYOA, // 1
+    pub interface_dia: InterfaceDIA,   // 1
+    pub loopback_type: LoopbackType,   // 1
+    pub bandwidth: u64,                // 8
+    pub cir: u64,                      // 8
+    pub mtu: u16,                      // 2
+    pub routing_mode: RoutingMode,     // 1
+    pub vlan_id: u16,                  // 2
+    pub ip_net: NetworkV4,             // 4 IPv4 address + 1 subnet mask
+    pub node_segment_idx: u16,         // 2
+    pub user_tunnel_endpoint: bool,    // 1
+    pub flex_algo_node_segments: Vec<crate::state::topology::FlexAlgoNodeSegment>,
+}
+
+impl InterfaceV3 {
+    pub fn size(&self) -> usize {
+        Self::size_given_name_len(self.name.len())
+    }
+
+    pub fn to_interface(&self) -> Interface {
+        Interface::V3(self.clone())
+    }
+
+    pub fn size_given_name_len(name_len: usize) -> usize {
+        1 + 4 + name_len + 1 + 1 + 1 + 1 + 8 + 8 + 2 + 1 + 2 + 5 + 2 + 1 + 4 // +4 for empty flex_algo_node_segments vec (Borsh length prefix)
+    }
+}
+
+impl TryFrom<&[u8]> for InterfaceV3 {
+    type Error = ProgramError;
+
+    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self {
+            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            interface_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            interface_cyoa: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            interface_dia: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            loopback_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bandwidth: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            cir: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            mtu: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            routing_mode: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            vlan_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            ip_net: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            node_segment_idx: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            user_tunnel_endpoint: {
+                let val: u8 = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
+                val != 0
+            },
+            flex_algo_node_segments: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+        })
+    }
+}
+
+impl TryFrom<&InterfaceV2> for InterfaceV3 {
+    type Error = ProgramError;
+
+    fn try_from(data: &InterfaceV2) -> Result<Self, Self::Error> {
+        Ok(Self {
+            status: data.status,
+            name: data.name.clone(),
+            interface_type: data.interface_type,
+            interface_cyoa: data.interface_cyoa,
+            interface_dia: data.interface_dia,
+            loopback_type: data.loopback_type,
+            bandwidth: data.bandwidth,
+            cir: data.cir,
+            mtu: data.mtu,
+            routing_mode: data.routing_mode,
+            vlan_id: data.vlan_id,
+            ip_net: data.ip_net,
+            node_segment_idx: data.node_segment_idx,
+            user_tunnel_endpoint: data.user_tunnel_endpoint,
+            flex_algo_node_segments: vec![],
+        })
+    }
+}
+
+impl Default for InterfaceV3 {
+    fn default() -> Self {
+        Self {
+            status: InterfaceStatus::Pending,
+            name: String::default(),
+            interface_type: InterfaceType::Invalid,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::None,
+            bandwidth: 0,
+            cir: 0,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            ip_net: NetworkV4::default(),
+            node_segment_idx: 0,
+            user_tunnel_endpoint: false,
+            flex_algo_node_segments: vec![],
+        }
+    }
+}
+
 #[repr(u8)]
 #[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -397,15 +504,20 @@ impl Default for InterfaceV2 {
 pub enum Interface {
     V1(InterfaceV1),
     V2(InterfaceV2),
+    V3(InterfaceV3),
 }
 
-pub type CurrentInterfaceVersion = InterfaceV2;
+pub type CurrentInterfaceVersion = InterfaceV3;
 
 impl Interface {
     pub fn into_current_version(&self) -> CurrentInterfaceVersion {
         match self {
-            Interface::V1(v1) => v1.try_into().unwrap_or_default(),
-            Interface::V2(v2) => v2.clone(),
+            Interface::V1(v1) => {
+                let v2: InterfaceV2 = v1.try_into().unwrap_or_default();
+                InterfaceV3::try_from(&v2).unwrap_or_default()
+            }
+            Interface::V2(v2) => InterfaceV3::try_from(v2).unwrap_or_default(),
+            Interface::V3(v3) => v3.clone(),
         }
     }
 
@@ -413,6 +525,7 @@ impl Interface {
         let base_size = match self {
             Interface::V1(v1) => v1.size(),
             Interface::V2(v2) => v2.size(),
+            Interface::V3(v3) => v3.size(),
         };
         base_size + 1 // +1 for the enum discriminant
     }
@@ -476,8 +589,10 @@ impl TryFrom<&[u8]> for Interface {
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         match BorshDeserialize::deserialize(&mut data) {
-            Ok(0) => Ok(Interface::V1(InterfaceV1::try_from(data)?)),
-            _ => Ok(Interface::V1(InterfaceV1::default())), // Default case
+            Ok(0u8) => Ok(Interface::V1(InterfaceV1::try_from(data)?)),
+            Ok(1u8) => Ok(Interface::V2(InterfaceV2::try_from(data)?)),
+            Ok(2u8) => Ok(Interface::V3(InterfaceV3::try_from(data)?)),
+            _ => Ok(Interface::V3(InterfaceV3::default())),
         }
     }
 }

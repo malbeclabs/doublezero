@@ -4,8 +4,9 @@ use solana_program::pubkey::Pubkey;
 
 use crate::{
     seeds::{
-        SEED_ACCESS_PASS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE, SEED_DEVICE_TUNNEL_BLOCK,
-        SEED_DZ_PREFIX_BLOCK, SEED_EXCHANGE, SEED_GLOBALSTATE, SEED_INDEX, SEED_LINK,
+        SEED_ACCESS_PASS, SEED_ADMIN_GROUP_BITS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE,
+        SEED_DEVICE_TUNNEL_BLOCK, SEED_DZ_PREFIX_BLOCK, SEED_EXCHANGE, SEED_GLOBALSTATE,
+        SEED_INDEX, SEED_LINK,
         SEED_LINK_IDS, SEED_LOCATION, SEED_MULTICASTGROUP_BLOCK, SEED_MULTICAST_GROUP,
         SEED_MULTICAST_PUBLISHER_BLOCK, SEED_PERMISSION, SEED_PREFIX, SEED_PROGRAM_CONFIG,
         SEED_SEGMENT_ROUTING_IDS, SEED_TENANT, SEED_TUNNEL_IDS, SEED_USER, SEED_USER_TUNNEL_BLOCK,
@@ -181,6 +182,11 @@ pub fn get_resource_extension_pda(
             let (pda, bump_seed) =
                 Pubkey::find_program_address(&[SEED_PREFIX, SEED_VRF_IDS], program_id);
             (pda, bump_seed, SEED_VRF_IDS)
+        }
+        crate::resource::ResourceType::AdminGroupBits => {
+            let (pda, bump_seed) =
+                Pubkey::find_program_address(&[SEED_PREFIX, SEED_ADMIN_GROUP_BITS], program_id);
+            (pda, bump_seed, SEED_ADMIN_GROUP_BITS)
         }
     }
 }

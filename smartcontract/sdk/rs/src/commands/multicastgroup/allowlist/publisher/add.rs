@@ -93,6 +93,11 @@ mod tests {
                 map.insert(pubkey, AccountData::MulticastGroup(cloned_mgroup.clone()));
                 Ok(map)
             });
+        // Catch-all for Index PDA lookups
+        client
+            .expect_get()
+            .with(predicate::always())
+            .returning(|_| Err(eyre::eyre!("Account not found")));
         client
             .expect_execute_transaction()
             .with(

@@ -1,6 +1,8 @@
 use crate::{utils::parse_pubkey, DoubleZeroClient};
-use doublezero_serviceability::state::{
-    accountdata::AccountData, accounttype::AccountType, multicastgroup::MulticastGroup,
+use doublezero_serviceability::{
+    pda::get_index_pda,
+    seeds::SEED_MULTICAST_GROUP,
+    state::{accountdata::AccountData, accounttype::AccountType, multicastgroup::MulticastGroup},
 };
 use solana_sdk::pubkey::Pubkey;
 
@@ -16,25 +18,43 @@ impl GetMulticastGroupCommand {
                 AccountData::MulticastGroup(multicastgroup) => Ok((pk, multicastgroup)),
                 _ => Err(eyre::eyre!("Invalid Account Type")),
             },
-            None => client
-                .gets(AccountType::MulticastGroup)?
-                .into_iter()
-                .find(|(_, v)| match v {
-                    AccountData::MulticastGroup(multicastgroup) => multicastgroup
-                        .code
-                        .eq_ignore_ascii_case(&self.pubkey_or_code),
-                    _ => false,
-                })
-                .map(|(pk, v)| match v {
-                    AccountData::MulticastGroup(multicastgroup) => Ok((pk, multicastgroup)),
-                    _ => Err(eyre::eyre!("Invalid Account Type")),
-                })
-                .unwrap_or_else(|| {
-                    Err(eyre::eyre!(
-                        "MulticastGroup with code {} not found",
-                        self.pubkey_or_code
-                    ))
-                }),
+            None => {
+                // Try O(1) lookup via Index PDA first
+                let (index_pda, _) = get_index_pda(
+                    &client.get_program_id(),
+                    SEED_MULTICAST_GROUP,
+                    &self.pubkey_or_code,
+                );
+                if let Ok(AccountData::Index(index)) = client.get(index_pda) {
+                    return match client.get(index.pk)? {
+                        AccountData::MulticastGroup(multicastgroup) => {
+                            Ok((index.pk, multicastgroup))
+                        }
+                        _ => Err(eyre::eyre!("Invalid Account Type")),
+                    };
+                }
+
+                // Fallback: scan all multicast groups (for pre-migration accounts)
+                client
+                    .gets(AccountType::MulticastGroup)?
+                    .into_iter()
+                    .find(|(_, v)| match v {
+                        AccountData::MulticastGroup(multicastgroup) => multicastgroup
+                            .code
+                            .eq_ignore_ascii_case(&self.pubkey_or_code),
+                        _ => false,
+                    })
+                    .map(|(pk, v)| match v {
+                        AccountData::MulticastGroup(multicastgroup) => Ok((pk, multicastgroup)),
+                        _ => Err(eyre::eyre!("Invalid Account Type")),
+                    })
+                    .unwrap_or_else(|| {
+                        Err(eyre::eyre!(
+                            "MulticastGroup with code {} not found",
+                            self.pubkey_or_code
+                        ))
+                    })
+            }
         }
     }
 }
@@ -82,6 +102,13 @@ mod tests {
                     AccountData::MulticastGroup(multicastgroup2.clone()),
                 )]))
             });
+
+        // Catch-all for Index PDA lookups (added last so it has highest LIFO priority,
+        // but uses predicate::always which only matches after specific predicates fail)
+        client
+            .expect_get()
+            .with(predicate::always())
+            .returning(|_| Err(eyre::eyre!("Account not found")));
 
         // Search by pubkey
         let res = GetMulticastGroupCommand {

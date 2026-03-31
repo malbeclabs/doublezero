@@ -993,6 +993,7 @@ mod tests {
                 publisher_count: None,
                 subscriber_count: None,
                 use_onchain_allocation: false,
+                rename_index: false,
             }),
             "UpdateMulticastGroup",
         );
@@ -1010,6 +1011,7 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
                 use_onchain_deallocation: false,
+                close_index: false,
             }),
             "DeleteMulticastGroup",
         );
@@ -1017,6 +1019,7 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
                 use_onchain_deallocation: false,
+                close_index: false,
             }),
             "DeactivateMulticastGroup",
         );

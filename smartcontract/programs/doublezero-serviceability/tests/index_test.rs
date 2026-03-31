@@ -18,7 +18,7 @@ use solana_sdk::{
 mod test_helpers;
 use test_helpers::*;
 
-/// Helper: create a multicast group and return its pubkey.
+/// Helper: create a multicast group and return its pubkey + the new globalstate index.
 /// The multicast group is created without onchain allocation (Pending status).
 async fn create_multicast_group(
     banks_client: &mut BanksClient,
@@ -30,8 +30,9 @@ async fn create_multicast_group(
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     let globalstate = get_globalstate(banks_client, globalstate_pubkey).await;
     let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, code);
 
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         banks_client,
         recent_blockhash,
         program_id,
@@ -44,8 +45,10 @@ async fn create_multicast_group(
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         payer,
+        &[],
     )
     .await;
 

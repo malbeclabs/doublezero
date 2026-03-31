@@ -50,9 +50,9 @@ impl RemoveTargetCliCommand {
                 (GeoLocationTargetType::Inbound, Ipv4Addr::UNSPECIFIED, pk)
             }
             TargetType::OutboundIcmp => {
-                let ip = self
-                    .target_ip
-                    .ok_or_else(|| eyre::eyre!("--target-ip is required for outbound-icmp targets"))?;
+                let ip = self.target_ip.ok_or_else(|| {
+                    eyre::eyre!("--target-ip is required for outbound-icmp targets")
+                })?;
                 (GeoLocationTargetType::OutboundIcmp, ip, Pubkey::default())
             }
         };

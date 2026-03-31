@@ -1,4 +1,4 @@
-//! Integration tests for AdminGroupBits ResourceExtension (RFC-18 / Link Classification).
+//! Tests for TopologyInfo, FlexAlgoNodeSegment, and InterfaceV3 (RFC-18 / Link Classification).
 
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
@@ -68,4 +68,45 @@ async fn test_admin_group_bits_create_and_pre_mark() {
     );
 
     println!("[PASS] test_admin_group_bits_create_and_pre_mark");
+}
+
+#[test]
+fn test_topology_info_roundtrip() {
+    use doublezero_serviceability::state::{
+        accounttype::AccountType,
+        topology::{TopologyConstraint, TopologyInfo},
+    };
+
+    let info = TopologyInfo {
+        account_type: AccountType::Topology,
+        owner: solana_sdk::pubkey::Pubkey::new_unique(),
+        bump_seed: 42,
+        name: "unicast-default".to_string(),
+        admin_group_bit: 0,
+        flex_algo_number: 128,
+        constraint: TopologyConstraint::IncludeAny,
+    };
+    let bytes = borsh::to_vec(&info).unwrap();
+    let decoded = TopologyInfo::try_from(bytes.as_slice()).unwrap();
+    assert_eq!(decoded, info);
+}
+
+#[test]
+fn test_flex_algo_node_segment_roundtrip() {
+    use doublezero_serviceability::state::topology::FlexAlgoNodeSegment;
+
+    let seg = FlexAlgoNodeSegment {
+        topology: solana_sdk::pubkey::Pubkey::new_unique(),
+        node_segment_idx: 1001,
+    };
+    let bytes = borsh::to_vec(&seg).unwrap();
+    let decoded: FlexAlgoNodeSegment = borsh::from_slice(&bytes).unwrap();
+    assert_eq!(decoded.node_segment_idx, 1001);
+}
+
+#[test]
+fn test_interface_v3_defaults_flex_algo_node_segments_empty() {
+    use doublezero_serviceability::state::interface::InterfaceV3;
+    let iface = InterfaceV3::default();
+    assert!(iface.flex_algo_node_segments.is_empty());
 }

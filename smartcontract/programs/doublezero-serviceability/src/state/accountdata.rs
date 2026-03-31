@@ -5,7 +5,7 @@ use crate::{
         exchange::Exchange, globalconfig::GlobalConfig, globalstate::GlobalState, index::Index,
         link::Link, location::Location, multicastgroup::MulticastGroup, permission::Permission,
         programconfig::ProgramConfig, resource_extension::ResourceExtensionOwned, tenant::Tenant,
-        user::User,
+        topology::TopologyInfo, user::User,
     },
 };
 use solana_program::program_error::ProgramError;
@@ -30,6 +30,7 @@ pub enum AccountData {
     Tenant(Tenant),
     Permission(Permission),
     Index(Index),
+    Topology(TopologyInfo),
 }
 
 impl AccountData {
@@ -51,6 +52,7 @@ impl AccountData {
             AccountData::Tenant(_) => "Tenant",
             AccountData::Permission(_) => "Permission",
             AccountData::Index(_) => "Index",
+            AccountData::Topology(_) => "Topology",
         }
     }
 
@@ -72,6 +74,7 @@ impl AccountData {
             AccountData::Tenant(tenant) => tenant.to_string(),
             AccountData::Permission(permission) => permission.to_string(),
             AccountData::Index(index) => index.to_string(),
+            AccountData::Topology(topology) => topology.to_string(),
         }
     }
 
@@ -236,6 +239,9 @@ impl TryFrom<&[u8]> for AccountData {
                 bytes as &[u8],
             )?)),
             AccountType::Index => Ok(AccountData::Index(Index::try_from(bytes as &[u8])?)),
+            AccountType::Topology => Ok(AccountData::Topology(TopologyInfo::try_from(
+                bytes as &[u8],
+            )?)),
         }
     }
 }

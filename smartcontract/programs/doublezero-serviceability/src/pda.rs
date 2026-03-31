@@ -9,8 +9,8 @@ use crate::{
         SEED_INDEX, SEED_LINK,
         SEED_LINK_IDS, SEED_LOCATION, SEED_MULTICASTGROUP_BLOCK, SEED_MULTICAST_GROUP,
         SEED_MULTICAST_PUBLISHER_BLOCK, SEED_PERMISSION, SEED_PREFIX, SEED_PROGRAM_CONFIG,
-        SEED_SEGMENT_ROUTING_IDS, SEED_TENANT, SEED_TUNNEL_IDS, SEED_USER, SEED_USER_TUNNEL_BLOCK,
-        SEED_VRF_IDS,
+        SEED_SEGMENT_ROUTING_IDS, SEED_TENANT, SEED_TOPOLOGY, SEED_TUNNEL_IDS, SEED_USER,
+        SEED_USER_TUNNEL_BLOCK, SEED_VRF_IDS,
     },
     state::user::UserType,
 };
@@ -115,6 +115,10 @@ pub fn get_index_pda(program_id: &Pubkey, entity_seed: &[u8], key: &str) -> (Pub
         ],
         program_id,
     )
+}
+
+pub fn get_topology_pda(program_id: &Pubkey, name: &str) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_PREFIX, SEED_TOPOLOGY, name.as_bytes()], program_id)
 }
 
 pub fn get_resource_extension_pda(

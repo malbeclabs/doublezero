@@ -5,8 +5,8 @@ use solana_program::pubkey::Pubkey;
 use crate::{
     seeds::{
         SEED_ACCESS_PASS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE, SEED_DEVICE_TUNNEL_BLOCK,
-        SEED_DZ_PREFIX_BLOCK, SEED_EXCHANGE, SEED_GLOBALSTATE, SEED_LINK, SEED_LINK_IDS,
-        SEED_LOCATION, SEED_MULTICASTGROUP_BLOCK, SEED_MULTICAST_GROUP,
+        SEED_DZ_PREFIX_BLOCK, SEED_EXCHANGE, SEED_GLOBALSTATE, SEED_INDEX, SEED_LINK,
+        SEED_LINK_IDS, SEED_LOCATION, SEED_MULTICASTGROUP_BLOCK, SEED_MULTICAST_GROUP,
         SEED_MULTICAST_PUBLISHER_BLOCK, SEED_PERMISSION, SEED_PREFIX, SEED_PROGRAM_CONFIG,
         SEED_SEGMENT_ROUTING_IDS, SEED_TENANT, SEED_TUNNEL_IDS, SEED_USER, SEED_USER_TUNNEL_BLOCK,
         SEED_VRF_IDS,
@@ -98,6 +98,19 @@ pub fn get_accesspass_pda(
             SEED_ACCESS_PASS,
             &client_ip.octets(),
             &user_payer.to_bytes(),
+        ],
+        program_id,
+    )
+}
+
+pub fn get_index_pda(program_id: &Pubkey, entity_seed: &[u8], code: &str) -> (Pubkey, u8) {
+    let lowercase_code = code.to_ascii_lowercase();
+    Pubkey::find_program_address(
+        &[
+            SEED_PREFIX,
+            SEED_INDEX,
+            entity_seed,
+            lowercase_code.as_bytes(),
         ],
         program_id,
     )

@@ -5,6 +5,7 @@ pub mod device;
 pub mod exchange;
 pub mod globalconfig;
 pub mod globalstate;
+pub mod index;
 pub mod link;
 pub mod location;
 pub mod migrate;

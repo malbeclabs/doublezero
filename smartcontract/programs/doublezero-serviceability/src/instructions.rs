@@ -35,6 +35,7 @@ use crate::processors::{
         setairdrop::SetAirdropArgs, setauthority::SetAuthorityArgs,
         setfeatureflags::SetFeatureFlagsArgs, setversion::SetVersionArgs,
     },
+    index::{create::IndexCreateArgs, delete::IndexDeleteArgs},
     link::{
         accept::LinkAcceptArgs, activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
         create::LinkCreateArgs, delete::LinkDeleteArgs, reject::LinkRejectArgs,
@@ -218,6 +219,9 @@ pub enum DoubleZeroInstruction {
 
     Deprecated102(), // variant 102 (was CreateReservedSubscribeUser)
     Deprecated103(), // variant 103 (was DeleteReservedSubscribeUser)
+
+    CreateIndex(IndexCreateArgs), // variant 104
+    DeleteIndex(IndexDeleteArgs), // variant 105
 }
 
 impl DoubleZeroInstruction {
@@ -349,6 +353,9 @@ impl DoubleZeroInstruction {
             100 => Ok(Self::ResumePermission(PermissionResumeArgs::try_from(rest).unwrap())),
             101 => Ok(Self::DeletePermission(PermissionDeleteArgs::try_from(rest).unwrap())),
 
+
+            104 => Ok(Self::CreateIndex(IndexCreateArgs::try_from(rest).unwrap())),
+            105 => Ok(Self::DeleteIndex(IndexDeleteArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -483,6 +490,9 @@ impl DoubleZeroInstruction {
 
             Self::Deprecated102() => "Deprecated102".to_string(),
             Self::Deprecated103() => "Deprecated103".to_string(),
+
+            Self::CreateIndex(_) => "CreateIndex".to_string(), // variant 104
+            Self::DeleteIndex(_) => "DeleteIndex".to_string(), // variant 105
         }
     }
 
@@ -609,6 +619,9 @@ impl DoubleZeroInstruction {
 
             Self::Deprecated102() => String::new(),
             Self::Deprecated103() => String::new(),
+
+            Self::CreateIndex(args) => format!("{args:?}"), // variant 104
+            Self::DeleteIndex(args) => format!("{args:?}"), // variant 105
         }
     }
 }

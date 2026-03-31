@@ -29,8 +29,20 @@ func (p ProbeAddress) String() string {
 	return fmt.Sprintf("%s:%d:%d", p.Host, p.Port, p.TWAMPPort)
 }
 
-// Validate checks if the ProbeAddress has valid Host and Port values.
+// Validate checks if the ProbeAddress has valid Host, Port, and TWAMPPort values.
 func (p ProbeAddress) Validate() error {
+	if err := p.ValidateICMP(); err != nil {
+		return err
+	}
+	if p.TWAMPPort == 0 {
+		return fmt.Errorf("twamp port cannot be zero")
+	}
+	return nil
+}
+
+// ValidateICMP checks if the ProbeAddress is valid for ICMP probing.
+// Unlike Validate(), it does not require TWAMPPort to be set.
+func (p ProbeAddress) ValidateICMP() error {
 	if p.Host == "" {
 		return fmt.Errorf("host cannot be empty")
 	}
@@ -39,9 +51,6 @@ func (p ProbeAddress) Validate() error {
 	}
 	if p.Port == 0 {
 		return fmt.Errorf("port cannot be zero")
-	}
-	if p.TWAMPPort == 0 {
-		return fmt.Errorf("twamp port cannot be zero")
 	}
 	return nil
 }
@@ -67,6 +76,53 @@ func (p ProbeAddress) ValidateScope() error {
 		return fmt.Errorf("host %s is not a public unicast address", p.Host)
 	}
 	return nil
+}
+
+// ParseICMPProbeAddresses parses a comma-separated list of ICMP probe addresses.
+// Each entry must be host:offset_port. TWAMPPort is always 0 for ICMP targets.
+func ParseICMPProbeAddresses(s string) ([]ProbeAddress, error) {
+	if s == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(s, ",")
+	probes := make([]ProbeAddress, 0, len(parts))
+	seen := make(map[string]bool)
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		fields := strings.Split(part, ":")
+		if len(fields) != 2 {
+			return nil, fmt.Errorf("invalid ICMP probe address %q: expected host:offset_port", part)
+		}
+
+		host := fields[0]
+		if net.ParseIP(host) == nil {
+			return nil, fmt.Errorf("invalid ICMP probe address %q: invalid IP address", part)
+		}
+
+		port, err := strconv.ParseUint(fields[1], 10, 16)
+		if err != nil {
+			return nil, fmt.Errorf("invalid port in %q: %w", part, err)
+		}
+		if port == 0 {
+			return nil, fmt.Errorf("invalid port 0 in %q", part)
+		}
+
+		addr := ProbeAddress{Host: host, Port: uint16(port), TWAMPPort: 0}
+		key := addr.String()
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		probes = append(probes, addr)
+	}
+
+	return probes, nil
 }
 
 // ParseProbeAddresses parses a comma-separated list of probe addresses.

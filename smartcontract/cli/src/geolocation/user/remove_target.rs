@@ -49,6 +49,12 @@ impl RemoveTargetCliCommand {
                 let pk: Pubkey = pk_str.parse().expect("validated by clap");
                 (GeoLocationTargetType::Inbound, Ipv4Addr::UNSPECIFIED, pk)
             }
+            TargetType::OutboundIcmp => {
+                let ip = self
+                    .target_ip
+                    .ok_or_else(|| eyre::eyre!("--target-ip is required for outbound-icmp targets"))?;
+                (GeoLocationTargetType::OutboundIcmp, ip, Pubkey::default())
+            }
         };
 
         let probe_pk = super::add_target::resolve_probe(client, self.probe, self.exchange)?;

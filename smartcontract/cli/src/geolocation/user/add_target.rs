@@ -15,6 +15,7 @@ use std::{io::Write, net::Ipv4Addr};
 pub enum TargetType {
     Outbound,
     Inbound,
+    OutboundIcmp,
 }
 
 #[derive(Args, Debug)]
@@ -63,6 +64,17 @@ impl AddTargetCliCommand {
                     .ok_or_else(|| eyre::eyre!("--target-pk is required for inbound targets"))?;
                 let pk: Pubkey = pk_str.parse().expect("validated by clap");
                 (GeoLocationTargetType::Inbound, Ipv4Addr::UNSPECIFIED, 0, pk)
+            }
+            TargetType::OutboundIcmp => {
+                let ip = self
+                    .target_ip
+                    .ok_or_else(|| eyre::eyre!("--target-ip is required for outbound-icmp targets"))?;
+                (
+                    GeoLocationTargetType::OutboundIcmp,
+                    ip,
+                    self.target_port,
+                    Pubkey::default(),
+                )
             }
         };
 

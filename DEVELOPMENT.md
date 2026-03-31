@@ -140,3 +140,32 @@ docker exec -it dz-local-manager bash
 # Tear down containers, networks, and volumes
 dev/dzctl destroy
 ```
+
+## Snapshot builds and deploys
+
+Build a snapshot `.deb` package for a given environment and component:
+
+```bash
+./scripts/build-snapshot.sh devnet controller
+./scripts/build-snapshot.sh testnet client --quiet
+```
+
+Artifacts are written to `dist/`. Requires `GORELEASER_KEY` to be set.
+
+Deploy a snapshot to remote nodes (builds, copies, and optionally installs):
+
+```bash
+# Build and scp the deb to nodes
+./scripts/deploy-snapshot.sh devnet controller ubuntu 10.0.1.1 10.0.1.2
+
+# Build, scp, and install via dpkg
+./scripts/deploy-snapshot.sh devnet controller ubuntu 10.0.1.1 10.0.1.2 --install
+
+# Build, install, and tail service logs in a synchronized tmux session
+./scripts/deploy-snapshot.sh devnet controller ubuntu 10.0.1.1 10.0.1.2 --tail doublezero-controller
+
+# Skip the build step and use existing artifacts in dist/
+./scripts/deploy-snapshot.sh devnet controller ubuntu 10.0.1.1 10.0.1.2 --tail doublezero-controller --skip-build
+```
+
+Run `./scripts/build-snapshot.sh --help` or `./scripts/deploy-snapshot.sh --help` for all options.

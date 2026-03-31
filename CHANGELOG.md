@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Client
+  - Disable `rp_filter` on `doublezero1` at multicast tunnel setup to prevent silent packet loss caused by the kernel's reverse-path check rejecting GRE overlay addresses
 - CLI
   - Allow incremental multicast group addition without disconnecting
   - Reset SIGPIPE to SIG_DFL at the start of main() in all 3 CLI binaries (doublezero, doublezero-geolocation, doublezero-admin) so the process exits silently like standard CLI tools

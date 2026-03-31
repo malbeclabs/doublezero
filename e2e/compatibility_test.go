@@ -1094,10 +1094,10 @@ func runWriteWorkflows(
 
 		// Interface creates use counter-based PDA derivation — must be sequential.
 		{name: "create_interfaces", parallel: false, steps: []writeStep{
-			{name: "device_interface_create", cmd: cli + " device interface create " + deviceCode + " " + ifaceName + " --bandwidth 10G"},
-			{name: "device_interface_create_2", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName + " --bandwidth 10G"},
-			{name: "device_interface_create_3", cmd: cli + " device interface create " + deviceCode + " " + ifaceName2 + " --bandwidth 10G"},
-			{name: "device_interface_create_4", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName2 + " --bandwidth 10G"},
+			{name: "device_interface_create", cmd: cli + " device interface create " + deviceCode + " " + ifaceName + " --bandwidth 10G --mtu 9000"},
+			{name: "device_interface_create_2", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName + " --bandwidth 10G --mtu 9000"},
+			{name: "device_interface_create_3", cmd: cli + " device interface create " + deviceCode + " " + ifaceName2 + " --bandwidth 10G --mtu 9000"},
+			{name: "device_interface_create_4", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName2 + " --bandwidth 10G --mtu 9000"},
 		}},
 
 		// Transition all 4 interfaces to "unlinked" (required before link creation).
@@ -1119,13 +1119,13 @@ func runWriteWorkflows(
 				" --contributor " + contributorCode +
 				" --side-a " + deviceCode + " --side-a-interface " + ifaceName +
 				" --side-z " + deviceCode2 + " --side-z-interface " + ifaceName +
-				` --bandwidth "10 Gbps" --delay-ms 1 --jitter-ms 0.01`},
+				` --bandwidth "10 Gbps" --mtu 9000 --delay-ms 1 --jitter-ms 0.01`},
 			{name: "link_create_dzx", cmd: cli + " link create dzx" +
 				" --code " + dzxLinkCode +
 				" --contributor " + contributorCode +
 				" --side-a " + deviceCode + " --side-a-interface " + ifaceName2 +
 				" --side-z " + deviceCode2 +
-				` --bandwidth "10 Gbps" --delay-ms 1 --jitter-ms 0.01`},
+				` --bandwidth "10 Gbps" --mtu 9000 --delay-ms 1 --jitter-ms 0.01`},
 			{name: "multicast_group_create", cmd: cli + " multicast group create --code " + multicastCode +
 				" --max-bandwidth 100Mbps --owner me", noCascade: true},
 			{name: "accesspass_set", cmd: cli + " access-pass set --accesspass-type prepaid --client-ip " + userClientIP +

@@ -283,7 +283,7 @@ func TestParseICMPProbeAddresses(t *testing.T) {
 		{
 			name:    "Invalid IP",
 			input:   "notanip:9000",
-			wantErr: "invalid IP address",
+			wantErr: "expected host:offset_port",
 		},
 		{
 			name:    "Zero port",

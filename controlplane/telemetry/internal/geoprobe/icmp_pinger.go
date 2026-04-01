@@ -151,6 +151,7 @@ func (p *ICMPPinger) readReplies(pending map[uint16]*pendingProbe, results map[P
 		n, rxTime, err := p.conn.recvEcho(buf)
 		if err != nil {
 			if err == syscall.EAGAIN {
+				// Spurious epoll wakeup; re-enter recvEcho with remaining deadline.
 				continue
 			}
 			return
@@ -214,6 +215,7 @@ func (p *ICMPPinger) MeasureOne(ctx context.Context, addr ProbeAddress) (uint64,
 		n, rxTime, err := p.conn.recvEcho(buf)
 		if err != nil {
 			if err == syscall.EAGAIN {
+				// Spurious epoll wakeup; re-enter recvEcho with remaining deadline.
 				continue
 			}
 			return 0, false

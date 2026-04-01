@@ -80,3 +80,47 @@ func TestDecideRxTimestamp(t *testing.T) {
 		assert.Equal(t, kernel, result)
 	})
 }
+
+func TestStripIPv4Header(t *testing.T) {
+	tests := []struct {
+		name  string
+		buf   []byte
+		wantN int
+	}{
+		{
+			name:  "standard 20-byte header",
+			buf:   append([]byte{0x45, 0, 0, 28, 0, 0, 0, 0, 64, 1, 0, 0, 127, 0, 0, 1, 127, 0, 0, 1}, []byte("icmpdata")...),
+			wantN: 20,
+		},
+		{
+			name:  "header with options (IHL=6, 24 bytes)",
+			buf:   append(make([]byte, 24), []byte("icmp")...),
+			wantN: 24,
+		},
+		{
+			name:  "too short for minimum header",
+			buf:   nil,
+			wantN: 0,
+		},
+		{
+			name:  "IHL too small",
+			buf:   make([]byte, 20),
+			wantN: 0,
+		},
+		{
+			name:  "IHL larger than packet",
+			buf:   append([]byte{0x49}, make([]byte, 19)...),
+			wantN: 0,
+		},
+	}
+
+	// Set IHL=6 for the "header with options" case.
+	tests[1].buf[0] = 0x46
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n := stripIPv4Header(tt.buf)
+			assert.Equal(t, tt.wantN, n)
+		})
+	}
+}

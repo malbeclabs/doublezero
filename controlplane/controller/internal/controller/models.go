@@ -45,6 +45,9 @@ type Interface struct {
 	LinkStatus           serviceability.LinkStatus
 	IsCYOA               bool
 	IsDIA                bool
+	// RFC-18: set when the interface is an activated link with topology assignments
+	LinkTopologies []string // topology names (resolved from link.link_topologies pubkeys)
+	UnicastDrained bool
 }
 
 // toInterface validates onchain data for a serviceability interface and converts it to a controller interface.
@@ -242,6 +245,9 @@ type Tunnel struct {
 	MulticastBoundaryList []net.IP
 	MulticastSubscribers  []net.IP
 	MulticastPublishers   []net.IP
+	// RFC-18: tenant identification and topology color stamping
+	TenantPubKey         string
+	TenantTopologyColors string // e.g. "color 1" or "color 1 color 3", empty if flex-algo disabled
 }
 
 // bgpMartianNets contains the standard BGP martian prefixes — addresses that
@@ -303,4 +309,20 @@ type templateData struct {
 	LocalASN                 uint32
 	UnicastVrfs              []uint16
 	Strings                  StringsHelper
+	AllTopologies            []TopologyModel
+	Config                   *FeaturesConfig // nil when no features config is loaded
+}
+
+// FlexAlgoEnabled returns true if a features config is loaded and flex_algo.enabled is set.
+func (d templateData) FlexAlgoEnabled() bool {
+	return d.Config != nil && d.Config.Features.FlexAlgo.Enabled
+}
+
+// TopologyModel holds pre-computed topology data for template rendering.
+type TopologyModel struct {
+	Name           string
+	AdminGroupBit  uint8
+	FlexAlgoNumber uint8
+	Color          int    // AdminGroupBit + 1
+	ConstraintStr  string // "include-any" or "exclude"
 }

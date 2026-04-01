@@ -26,6 +26,7 @@ const (
 	TenantType            // 13
 	// 14 is reserved
 	PermissionType AccountType = 15
+	TopologyType   AccountType = 16
 )
 
 type LocationStatus uint8
@@ -611,6 +612,8 @@ type Link struct {
 	LinkHealth        LinkHealth        `influx:"field,link_health"`
 	LinkDesiredStatus LinkDesiredStatus `influx:"tag,link_desired_status"`
 	PubKey            [32]byte          `influx:"tag,pubkey,pubkey"`
+	LinkTopologies    [][32]byte
+	UnicastDrained    bool
 }
 
 func (l Link) MarshalJSON() ([]byte, error) {
@@ -731,6 +734,7 @@ type Tenant struct {
 	BillingRate                 uint64              `influx:"field,billing_rate"`
 	BillingLastDeductionDzEpoch uint64              `influx:"field,billing_last_deduction_dz_epoch"`
 	PubKey                      [32]byte            `influx:"tag,pubkey,pubkey"`
+	IncludeTopologies           [][32]byte
 }
 
 func (t Tenant) MarshalJSON() ([]byte, error) {
@@ -1167,4 +1171,33 @@ func (r ResourceExtension) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(jsonExt)
+}
+
+type TopologyConstraint uint8
+
+const (
+	TopologyConstraintIncludeAny TopologyConstraint = 0
+	TopologyConstraintExclude    TopologyConstraint = 1
+)
+
+func (c TopologyConstraint) String() string {
+	switch c {
+	case TopologyConstraintIncludeAny:
+		return "include-any"
+	case TopologyConstraintExclude:
+		return "exclude"
+	default:
+		return "unknown"
+	}
+}
+
+type TopologyInfo struct {
+	AccountType    AccountType
+	Owner          [32]byte
+	BumpSeed       uint8
+	Name           string
+	AdminGroupBit  uint8
+	FlexAlgoNumber uint8
+	Constraint     TopologyConstraint
+	PubKey         [32]byte
 }

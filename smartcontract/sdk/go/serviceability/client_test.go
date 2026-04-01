@@ -59,7 +59,7 @@ f8198607689246e25c9403fba46e89122ff5d0fcc1febb51d4b
 00007479322d647a30313a6c61322d647a30310001020304050
 60708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
 0b000000737769746368312f312f31030000006c6f30ffc99a3
-b00000000ad2570a0cf27761cab55a3f26d85fb20
+b0000000000000000000000
 `
 
 var userPayload = `
@@ -199,6 +199,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -231,6 +232,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -294,6 +296,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -327,6 +330,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -363,6 +367,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -404,6 +409,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -437,6 +443,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -475,6 +482,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ProgramConfig:      ProgramConfig{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -501,6 +509,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 	}

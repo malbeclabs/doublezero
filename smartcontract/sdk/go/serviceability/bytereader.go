@@ -44,6 +44,10 @@ func (br *ByteReader) ReadU8() uint8 {
 	return val
 }
 
+func (br *ByteReader) ReadBool() bool {
+	return br.ReadU8() != 0
+}
+
 func (br *ByteReader) ReadU16() uint16 {
 	if br.offset+2 > len(br.data) {
 		return 0

@@ -48,8 +48,8 @@ func main() {
 		log.Fatalf("both -src and -rewrite-src are required")
 	}
 	if len(dsts) == 0 {
-		flag.Usage()
-		log.Fatalf("at least one -dst is required")
+		addr, _ := net.ResolveUDPAddr("udp4", "233.84.178.1:7733")
+		dsts = addrList{addr}
 	}
 
 	origIP := net.ParseIP(*src).To4()

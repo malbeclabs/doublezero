@@ -43,6 +43,7 @@ pub struct LinkUpdateArgs {
     pub tunnel_net: Option<NetworkV4>,
     #[incremental(default = false)]
     pub use_onchain_allocation: bool,
+    pub link_topologies: Option<Vec<Pubkey>>,
 }
 
 impl fmt::Debug for LinkUpdateArgs {
@@ -86,6 +87,9 @@ impl fmt::Debug for LinkUpdateArgs {
         }
         if self.use_onchain_allocation {
             parts.push("use_onchain_allocation: true".to_string());
+        }
+        if let Some(ref link_topologies) = self.link_topologies {
+            parts.push(format!("link_topologies: {:?}", link_topologies));
         }
         write!(f, "{}", parts.join(", "))
     }
@@ -361,6 +365,15 @@ pub fn process_update_link(
         try_acc_write(&side_z_dev, device_z_account, payer_account, accounts)?;
     }
 
+    // link_topologies is foundation-only
+    if let Some(link_topologies) = &value.link_topologies {
+        if !globalstate.foundation_allowlist.contains(payer_account.key) {
+            msg!("link_topologies update requires foundation allowlist");
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+        link.link_topologies = link_topologies.clone();
+    }
+
     link.check_status_transition();
 
     try_acc_write(&link, link_account, payer_account, accounts)?;
@@ -416,6 +429,7 @@ mod tests {
             tunnel_id: None,
             tunnel_net: None,
             use_onchain_allocation: false,
+            link_topologies: None,
         };
 
         let serialized = borsh::to_vec(&args_before).unwrap();
@@ -469,6 +483,7 @@ mod tests {
             tunnel_id: None,
             tunnel_net: None,
             use_onchain_allocation: false,
+            link_topologies: None,
         };
 
         let serialized = borsh::to_vec(&args_before).unwrap();

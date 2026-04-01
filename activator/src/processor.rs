@@ -761,6 +761,8 @@ mod tests {
             side_z_iface_name: "Ethernet1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::Pending,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
         };
 
         let mut existing_links: HashMap<Pubkey, Link> = HashMap::new();
@@ -795,6 +797,8 @@ mod tests {
             side_z_iface_name: "Ethernet3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::Pending,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
         };
 
         let new_link_cloned = new_link.clone();

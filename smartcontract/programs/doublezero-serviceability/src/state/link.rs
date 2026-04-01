@@ -264,14 +264,15 @@ pub struct Link {
     pub delay_override_ns: u64,    // 8
     pub link_health: LinkHealth,   // 1
     pub desired_status: LinkDesiredStatus, // 1
+    pub link_topologies: Vec<Pubkey>, // 4 + 32 * len
 }
 
 impl fmt::Display for Link {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, tunnel_id: {}, tunnel_net: {}, status: {}, code: {}, contributor_pk: {}, link_health: {}, desired_status: {}",
-            self.account_type, self.owner, self.index, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.tunnel_id, &self.tunnel_net, self.status, self.code, self.contributor_pk, self.link_health, self.desired_status
+            "account_type: {}, owner: {}, index: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, tunnel_id: {}, tunnel_net: {}, status: {}, code: {}, contributor_pk: {}, link_health: {}, desired_status: {}, link_topologies: {:?}",
+            self.account_type, self.owner, self.index, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.tunnel_id, &self.tunnel_net, self.status, self.code, self.contributor_pk, self.link_health, self.desired_status, self.link_topologies
         )
     }
 }
@@ -300,6 +301,7 @@ impl Default for Link {
             delay_override_ns: 0,
             link_health: LinkHealth::Pending,
             desired_status: LinkDesiredStatus::Pending,
+            link_topologies: Vec::new(),
         }
     }
 }
@@ -330,6 +332,7 @@ impl TryFrom<&[u8]> for Link {
             delay_override_ns: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             link_health: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             desired_status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            link_topologies: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Link {
@@ -549,6 +552,7 @@ mod tests {
             delay_override_ns: 0,
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
+            link_topologies: Vec::new(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -602,6 +606,7 @@ mod tests {
             delay_override_ns: 0,
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
+            link_topologies: Vec::new(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -632,6 +637,7 @@ mod tests {
             delay_override_ns: 0,
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
+            link_topologies: Vec::new(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -662,6 +668,7 @@ mod tests {
             delay_override_ns: 0,
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
+            link_topologies: Vec::new(),
         };
 
         // For Rejected status, tunnel_net is not validated and should succeed
@@ -692,6 +699,7 @@ mod tests {
             delay_override_ns: 0,
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
+            link_topologies: Vec::new(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -722,6 +730,7 @@ mod tests {
             delay_override_ns: 0,
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
+            link_topologies: Vec::new(),
         };
         let err_low = val_low.validate();
         assert!(err_low.is_err());
@@ -760,6 +769,7 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
+            link_topologies: Vec::new(),
         };
         let err_low = val_low.validate();
         assert!(err_low.is_err());
@@ -799,6 +809,7 @@ mod tests {
             delay_override_ns: 0,
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
+            link_topologies: Vec::new(),
         };
 
         let err = val.validate();
@@ -830,6 +841,7 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
+            link_topologies: Vec::new(),
         };
         let err_low = val_low.validate();
         assert!(err_low.is_err());
@@ -868,6 +880,7 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
+            link_topologies: Vec::new(),
         };
         let err_low = val_low.validate();
         assert!(err_low.is_err());
@@ -906,6 +919,7 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
+            link_topologies: Vec::new(),
         };
         assert!(bad_link.validate().is_ok());
     }

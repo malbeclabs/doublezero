@@ -126,6 +126,8 @@ mod tests {
             jitter_ns: 100000,
             status: LinkStatus::Pending,
             desired_status: LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
         };
 
         // Mock Link fetch
@@ -195,6 +197,8 @@ mod tests {
             jitter_ns: 100000,
             status: LinkStatus::Pending,
             desired_status: LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
         };
 
         // Compute ResourceExtension PDAs

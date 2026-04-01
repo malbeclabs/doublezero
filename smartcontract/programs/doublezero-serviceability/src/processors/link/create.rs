@@ -224,6 +224,7 @@ pub fn process_create_link(
         // link_health: LinkHealth::Pending,
         link_health: LinkHealth::ReadyForService, // Force the link to be ready for service until the health oracle is implemented,
         desired_status: value.desired_status.unwrap_or(LinkDesiredStatus::Activated),
+        link_topologies: Vec::new(),
     };
 
     link.check_status_transition();

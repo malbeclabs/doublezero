@@ -433,6 +433,7 @@ fn generate_link(dir: &Path) {
         delay_override_ns: 0,
         link_health: LinkHealth::ReadyForService,
         desired_status: LinkDesiredStatus::Activated,
+        link_topologies: Vec::new(),
     };
 
     let data = borsh::to_vec(&val).unwrap();

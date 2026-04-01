@@ -17,7 +17,7 @@ use crate::cli::{
         AirdropCommands, AuthorityCommands, FeatureFlagsCommands, FoundationAllowlistCommands,
         GlobalConfigCommands, QaAllowlistCommands,
     },
-    link::LinkCommands,
+    link::{LinkCommands, TopologyCommands},
     location::LocationCommands,
     user::UserCommands,
 };
@@ -232,6 +232,12 @@ async fn main() -> eyre::Result<()> {
             LinkCommands::Latency(args) => args.execute(&client, &mut handle),
             LinkCommands::Delete(args) => args.execute(&client, &mut handle),
             LinkCommands::SetHealth(args) => args.execute(&client, &mut handle),
+            LinkCommands::Topology(args) => match args.command {
+                TopologyCommands::Create(args) => args.execute(&client, &mut handle),
+                TopologyCommands::Delete(args) => args.execute(&client, &mut handle),
+                TopologyCommands::Clear(args) => args.execute(&client, &mut handle),
+                TopologyCommands::List(args) => args.execute(&client, &mut handle),
+            },
         },
         Command::AccessPass(command) => match command.command {
             cli::accesspass::AccessPassCommands::Set(args) => args.execute(&client, &mut handle),

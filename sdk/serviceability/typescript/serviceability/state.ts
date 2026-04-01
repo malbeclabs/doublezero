@@ -32,6 +32,7 @@ export const ACCOUNT_TYPE_CONTRIBUTOR = 10;
 export const ACCOUNT_TYPE_ACCESS_PASS = 11;
 export const ACCOUNT_TYPE_TENANT = 13;
 export const ACCOUNT_TYPE_PERMISSION = 15;
+export const ACCOUNT_TYPE_TOPOLOGY = 16;
 
 // ---------------------------------------------------------------------------
 // Enum string mappings
@@ -457,6 +458,11 @@ export function deserializeExchange(data: Uint8Array): Exchange {
 // Interface (versioned, embedded in Device)
 // ---------------------------------------------------------------------------
 
+export interface FlexAlgoNodeSegment {
+  topology: PublicKey;
+  nodeSegmentIdx: number;
+}
+
 export interface DeviceInterface {
   version: number;
   status: number;
@@ -473,6 +479,7 @@ export interface DeviceInterface {
   ipNet: Uint8Array;
   nodeSegmentIdx: number;
   userTunnelEndpoint: boolean;
+  flexAlgoNodeSegments: FlexAlgoNodeSegment[];
 }
 
 const CURRENT_INTERFACE_VERSION = 2;
@@ -494,6 +501,7 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     ipNet: new Uint8Array(5),
     nodeSegmentIdx: 0,
     userTunnelEndpoint: false,
+    flexAlgoNodeSegments: [],
   };
 
   iface.version = r.readU8();
@@ -527,6 +535,8 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
+    // flexAlgoNodeSegments reading will be enabled once the fixture binary is
+    // regenerated from the updated Rust struct (requires M1 branch merge).
   }
 
   return iface;
@@ -659,6 +669,8 @@ export interface Link {
   delayOverrideNs: bigint;
   linkHealth: number;
   linkDesiredStatus: number;
+  linkTopologies: PublicKey[];
+  unicastDrained: boolean;
 }
 
 export function deserializeLink(data: Uint8Array): Link {
@@ -685,6 +697,8 @@ export function deserializeLink(data: Uint8Array): Link {
     delayOverrideNs: r.readU64(),
     linkHealth: r.readU8(),
     linkDesiredStatus: r.readU8(),
+    linkTopologies: readPubkeyVec(r),
+    unicastDrained: r.readBool(),
   };
 }
 
@@ -851,6 +865,7 @@ export interface Tenant {
   billingDiscriminant: number;
   billingRate: bigint;
   billingLastDeductionDzEpoch: bigint;
+  includeTopologies: PublicKey[];
 }
 
 const TENANT_PAYMENT_STATUS_NAMES: Record<number, string> = {
@@ -878,6 +893,7 @@ export function deserializeTenant(data: Uint8Array): Tenant {
     billingDiscriminant: r.readU8(),
     billingRate: r.readU64(),
     billingLastDeductionDzEpoch: r.readU64(),
+    includeTopologies: readPubkeyVec(r),
   };
 }
 
@@ -1017,5 +1033,37 @@ export function deserializePermission(data: Uint8Array): Permission {
     status,
     userPayer,
     permissions,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// TopologyInfo
+// ---------------------------------------------------------------------------
+
+export const TOPOLOGY_CONSTRAINT_INCLUDE_ANY = 0;
+export const TOPOLOGY_CONSTRAINT_EXCLUDE = 1;
+
+export interface TopologyInfo {
+  accountType: number;
+  owner: PublicKey;
+  bumpSeed: number;
+  name: string;
+  adminGroupBit: number;
+  flexAlgoNumber: number;
+  constraint: number;
+  pubKey: PublicKey; // set from account address after deserialization
+}
+
+export function deserializeTopologyInfo(data: Uint8Array): TopologyInfo {
+  const r = new DefensiveReader(data);
+  return {
+    accountType: r.readU8(),
+    owner: readPubkey(r),
+    bumpSeed: r.readU8(),
+    name: r.readString(),
+    adminGroupBit: r.readU8(),
+    flexAlgoNumber: r.readU8(),
+    constraint: r.readU8(),
+    pubKey: new PublicKey(new Uint8Array(32)),
   };
 }

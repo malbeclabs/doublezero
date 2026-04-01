@@ -8,7 +8,7 @@ use doublezero_program_tools::PrecomputedDiscriminator;
 use doublezero_sdk::record::pubkey::create_record_key;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
-use solana_sdk::{account::Account, pubkey::Pubkey, sysvar::Sysvar};
+use solana_sdk::{account::Account, pubkey, pubkey::Pubkey, sysvar::Sysvar};
 
 use crate::account::{record::BorshRecordAccountData, zero_copy::ZeroCopyAccountOwnedData};
 
@@ -155,10 +155,12 @@ impl SolanaConnectionOptions {
 pub struct SolanaConnection(pub RpcClient);
 
 impl SolanaConnection {
-    pub const MAINNET_BETA_GENESIS_HASH: Pubkey =
-        solana_sdk::pubkey!("5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d");
-    pub const TESTNET_GENESIS_HASH: Pubkey =
-        solana_sdk::pubkey!("4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY");
+    pub const SOLANA_MAINNET_BETA_GENESIS_HASH: Pubkey =
+        pubkey!("5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d");
+    pub const SOLANA_TESTNET_GENESIS_HASH: Pubkey =
+        pubkey!("4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY");
+    pub const DZ_LEDGER_TESTNET_GENESIS_HASH: Pubkey =
+        pubkey!("GG2A8FHDoSH3cbQrTsxmMYZ6iy2yyRh7NY1yP7sXSH3v");
 
     pub fn new(url: String) -> Self {
         Self::new_with_commitment(url, CommitmentConfig::confirmed())
@@ -172,8 +174,10 @@ impl SolanaConnection {
         let genesis_hash = self.0.get_genesis_hash().await?;
 
         match Pubkey::from(genesis_hash.to_bytes()) {
-            Self::MAINNET_BETA_GENESIS_HASH => Ok(NetworkEnvironment::MainnetBeta),
-            Self::TESTNET_GENESIS_HASH => Ok(NetworkEnvironment::Testnet),
+            Self::SOLANA_MAINNET_BETA_GENESIS_HASH => Ok(NetworkEnvironment::MainnetBeta),
+            Self::SOLANA_TESTNET_GENESIS_HASH | Self::DZ_LEDGER_TESTNET_GENESIS_HASH => {
+                Ok(NetworkEnvironment::Testnet)
+            }
             _ => Ok(NetworkEnvironment::Localnet),
         }
     }

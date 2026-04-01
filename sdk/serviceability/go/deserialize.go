@@ -170,6 +170,8 @@ func DeserializeLink(reader *ByteReader, link *Link) {
 	link.DelayOverrideNs = reader.ReadU64()
 	link.LinkHealth = LinkHealth(reader.ReadU8())
 	link.LinkDesiredStatus = LinkDesiredStatus(reader.ReadU8())
+	link.LinkTopologies = reader.ReadPubkeySlice()
+	link.UnicastDrained = reader.ReadBool()
 }
 
 func DeserializeUser(reader *ByteReader, user *User) {
@@ -324,6 +326,16 @@ func DeserializePermission(reader *ByteReader, perm *Permission) {
 	perm.PermissionsHi = u128.High
 }
 
+func DeserializeTopologyInfo(reader *ByteReader, t *TopologyInfo) {
+	t.AccountType = AccountType(reader.ReadU8())
+	t.Owner = reader.ReadPubkey()
+	t.BumpSeed = reader.ReadU8()
+	t.Name = reader.ReadString()
+	t.AdminGroupBit = reader.ReadU8()
+	t.FlexAlgoNumber = reader.ReadU8()
+	t.Constraint = TopologyConstraint(reader.ReadU8())
+}
+
 func DeserializeTenant(reader *ByteReader, tenant *Tenant) {
 	tenant.AccountType = AccountType(reader.ReadU8())
 	tenant.Owner = reader.ReadPubkey()
@@ -339,5 +351,6 @@ func DeserializeTenant(reader *ByteReader, tenant *Tenant) {
 	tenant.BillingDiscriminant = reader.ReadU8()
 	tenant.BillingRate = reader.ReadU64()
 	tenant.BillingLastDeductionDzEpoch = reader.ReadU64()
+	tenant.IncludeTopologies = reader.ReadPubkeySlice()
 	// Note: tenant.PubKey is set separately in client.go after deserialization
 }

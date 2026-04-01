@@ -78,6 +78,27 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	var chWriter *geoprobe.ClickhouseWriter
+	if chCfg := geoprobe.ClickhouseConfigFromEnv(); chCfg != nil {
+		log.Info("clickhouse enabled", "addr", chCfg.Addr, "db", chCfg.Database)
+
+		if err := geoprobe.RunMigrations(*chCfg, log); err != nil {
+			fmt.Fprintf(os.Stderr, "clickhouse migration failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		chConn, err := geoprobe.NewClickhouseConn(*chCfg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "clickhouse connect failed: %v\n", err)
+			os.Exit(1)
+		}
+		defer chConn.Close()
+
+		chWriter = geoprobe.NewClickhouseWriter(chConn, chCfg.Database, log)
+		go chWriter.Run(ctx)
+		log.Info("clickhouse writer started")
+	}
+
 	errCh := make(chan error, 2)
 
 	limiter := newRateLimiter(*rateLimit)
@@ -86,7 +107,7 @@ func main() {
 	}
 
 	go runTWAMPReflector(ctx, log, *twampPort, errCh)
-	go runUDPListener(ctx, log, *udpPort, *verifySignature, limiter, errCh)
+	go runUDPListener(ctx, log, *udpPort, *verifySignature, limiter, chWriter, errCh)
 
 	select {
 	case err := <-errCh:
@@ -214,7 +235,7 @@ func runTWAMPReflector(ctx context.Context, log *slog.Logger, port uint, errCh c
 	}
 }
 
-func runUDPListener(ctx context.Context, log *slog.Logger, port uint, verifySignatures bool, limiter *rateLimiter, errCh chan<- error) {
+func runUDPListener(ctx context.Context, log *slog.Logger, port uint, verifySignatures bool, limiter *rateLimiter, chWriter *geoprobe.ClickhouseWriter, errCh chan<- error) {
 	conn, err := geoprobe.NewUDPListener(int(port))
 	if err != nil {
 		errCh <- fmt.Errorf("failed to create UDP listener: %w", err)
@@ -276,7 +297,7 @@ func runUDPListener(ctx context.Context, log *slog.Logger, port uint, verifySign
 			continue
 		}
 
-		handleOffset(log, offset, addr, verifySignatures)
+		handleOffset(log, offset, addr, verifySignatures, chWriter)
 	}
 }
 
@@ -294,7 +315,7 @@ func countReferenceDepth(offset *geoprobe.LocationOffset) int {
 	return maxDepth + 1
 }
 
-func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.UDPAddr, verifySignatures bool) {
+func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.UDPAddr, verifySignatures bool, chWriter *geoprobe.ClickhouseWriter) {
 	signatureValid := true
 	var verifyError error
 
@@ -302,6 +323,20 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 		verifyError = geoprobe.VerifyOffsetChain(offset)
 		signatureValid = verifyError == nil
 		log.Debug("signature verification complete", "authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(), "valid", signatureValid)
+	}
+
+	if chWriter != nil {
+		rawBytes, err := offset.Marshal()
+		if err != nil {
+			log.Error("failed to marshal offset for clickhouse", "error", err)
+		} else {
+			sigErrStr := ""
+			if verifyError != nil {
+				sigErrStr = verifyError.Error()
+			}
+			row := geoprobe.OffsetRowFromLocationOffset(offset, addr.String(), signatureValid, sigErrStr, rawBytes)
+			chWriter.Record(row)
+		}
 	}
 
 	output := formatLocationOffset(offset, addr, signatureValid, verifyError)

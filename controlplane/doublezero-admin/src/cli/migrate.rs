@@ -21,7 +21,7 @@ impl MigrateCliCommand {
         let program_id = client.get_program_id();
 
         // Verify UNICAST-DEFAULT topology PDA exists on chain.
-        let (unicast_default_pda, _) = get_topology_pda(&program_id, "UNICAST-DEFAULT");
+        let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
         client
             .get_account(unicast_default_pda)
             .map_err(|_| eyre::eyre!("UNICAST-DEFAULT topology PDA {unicast_default_pda} not found on chain — cannot proceed"))?;
@@ -30,6 +30,7 @@ impl MigrateCliCommand {
 
         let links = client.list_link(ListLinkCommand)?;
         let mut links_tagged = 0u32;
+        let mut links_needing_tag = 0u32;
         let mut links_skipped = 0u32;
 
         let mut link_entries: Vec<(Pubkey, _)> = links.into_iter().collect();
@@ -37,6 +38,7 @@ impl MigrateCliCommand {
 
         for (pubkey, link) in &link_entries {
             if link.link_topologies.is_empty() {
+                links_needing_tag += 1;
                 writeln!(
                     out,
                     "  [link] {pubkey} ({}) — would tag UNICAST-DEFAULT",
@@ -69,8 +71,6 @@ impl MigrateCliCommand {
                             writeln!(out, "    WARNING: failed to tag {pubkey}: {e}")?;
                         }
                     }
-                } else {
-                    links_tagged += 1;
                 }
             } else {
                 links_skipped += 1;
@@ -120,9 +120,14 @@ impl MigrateCliCommand {
         } else {
             ""
         };
+        let tagged_summary = if self.dry_run {
+            format!("{links_needing_tag} link(s) would be tagged")
+        } else {
+            format!("{links_tagged} link(s) tagged")
+        };
         writeln!(
             out,
-            "\nMigration complete: {links_tagged} links tagged, {links_skipped} links skipped, {loopbacks_with_gaps} loopbacks with gaps{dry_run_suffix}"
+            "\nMigration complete: {tagged_summary}, {links_skipped} link(s) skipped, {loopbacks_with_gaps} loopback(s) with gaps{dry_run_suffix}"
         )?;
 
         Ok(())

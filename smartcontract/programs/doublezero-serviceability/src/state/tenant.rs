@@ -205,6 +205,7 @@ mod tests {
         assert_eq!(val.administrators, Vec::<Pubkey>::new());
         assert_eq!(val.payment_status, TenantPaymentStatus::Delinquent);
         assert_eq!(val.token_account, Pubkey::default());
+        assert_eq!(val.include_topologies, Vec::<Pubkey>::new());
     }
 
     #[test]

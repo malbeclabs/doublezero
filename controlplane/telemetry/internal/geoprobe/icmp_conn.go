@@ -97,12 +97,18 @@ func (c *icmpConn) recvEcho(buf []byte) (int, time.Time, error) {
 	}
 	fallbackTime := time.Now()
 
+	// Raw ICMP sockets include the IPv4 header; strip it so callers
+	// see only the ICMP payload (matching icmp.PacketConn.ReadFrom behavior).
+	hdrLen := stripIPv4Header(buf[:msgN])
+	icmpLen := msgN - hdrLen
+	copy(buf, buf[hdrLen:msgN])
+
 	if !c.hasKernelTS {
-		return msgN, fallbackTime, nil
+		return icmpLen, fallbackTime, nil
 	}
 
 	rxTime := parseKernelTimestamp(c.oob[:oobn], fallbackTime)
-	return msgN, rxTime, nil
+	return icmpLen, rxTime, nil
 }
 
 func parseKernelTimestamp(oob []byte, fallback time.Time) time.Time {
@@ -130,6 +136,18 @@ func decideRxTimestamp(kernel, fallback time.Time) time.Time {
 		return fallback
 	}
 	return kernel
+}
+
+// stripIPv4Header returns the length of the IPv4 header in buf.
+func stripIPv4Header(buf []byte) int {
+	if len(buf) < 1 {
+		return 0
+	}
+	ihl := int(buf[0]&0x0f) * 4
+	if ihl < 20 || ihl > len(buf) {
+		return 0
+	}
+	return ihl
 }
 
 func (c *icmpConn) setReadDeadline(t time.Time) error {

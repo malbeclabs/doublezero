@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/binary"
 	"log/slog"
-	"math"
 	"net"
 	"os"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"golang.org/x/net/icmp"
@@ -17,9 +17,9 @@ import (
 
 const (
 	ICMPDefaultBatchSize    = 512
-	ICMPDefaultStaggerDelay = 1 * time.Millisecond
+	ICMPDefaultStaggerDelay = 200 * time.Microsecond
 	ICMPDefaultProbeTimeout = 1 * time.Second
-	ICMPMeasureOneTimeout   = 200 * time.Millisecond
+	ICMPMeasureOneTimeout   = 100 * time.Millisecond
 
 	icmpProtocol    = 1  // IANA protocol number for ICMP
 	icmpPayloadSize = 56 // standard ping payload size
@@ -33,7 +33,7 @@ type ICMPPingerConfig struct {
 }
 
 type ICMPPinger struct {
-	conn   *icmp.PacketConn
+	conn   *icmpConn
 	probes map[string]*icmpProbeEntry
 	cfg    *ICMPPingerConfig
 	seq    atomic.Uint32
@@ -66,7 +66,7 @@ func NewICMPPinger(cfg *ICMPPingerConfig) (*ICMPPinger, error) {
 		cfg.StaggerDelay = ICMPDefaultStaggerDelay
 	}
 
-	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
+	conn, err := newICMPConn(cfg.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -119,10 +119,6 @@ func (p *ICMPPinger) RemoveProbe(addr ProbeAddress) error {
 	return nil
 }
 
-func (p *ICMPPinger) nextSeq() uint16 {
-	return uint16(p.seq.Add(1) % math.MaxUint16)
-}
-
 func (p *ICMPPinger) buildEchoRequest(seq uint16) ([]byte, error) {
 	payload := make([]byte, icmpPayloadSize)
 	binary.BigEndian.PutUint16(payload[0:2], seq)
@@ -144,11 +140,7 @@ func (p *ICMPPinger) sendEcho(entry *icmpProbeEntry, seq uint16) (time.Time, err
 	if err != nil {
 		return time.Time{}, err
 	}
-
-	dst := &net.IPAddr{IP: entry.ip}
-	txTime := time.Now()
-	_, err = p.conn.WriteTo(b, dst)
-	return txTime, err
+	return p.conn.sendEcho(entry.ip, b)
 }
 
 // readReplies reads ICMP echo replies until the deadline, matching against the pending map.
@@ -156,13 +148,14 @@ func (p *ICMPPinger) sendEcho(entry *icmpProbeEntry, seq uint16) (time.Time, err
 func (p *ICMPPinger) readReplies(pending map[uint16]*pendingProbe, results map[ProbeAddress]uint64) {
 	buf := make([]byte, 1500)
 	for len(pending) > 0 {
-		n, _, err := p.conn.ReadFrom(buf)
+		n, rxTime, err := p.conn.recvEcho(buf)
 		if err != nil {
-			// Deadline exceeded or connection closed — stop reading.
+			if err == syscall.EAGAIN {
+				continue
+			}
 			return
 		}
 
-		rxTime := time.Now()
 		msg, err := icmp.ParseMessage(icmpProtocol, buf[:n])
 		if err != nil {
 			continue
@@ -198,7 +191,7 @@ func (p *ICMPPinger) MeasureOne(ctx context.Context, addr ProbeAddress) (uint64,
 		return 0, false
 	}
 
-	seq := p.nextSeq()
+	seq := uint16(p.seq.Add(1))
 	txTime, err := p.sendEcho(entry, seq)
 	if err != nil {
 		p.log.Debug("MeasureOne send failed", "host", addr.Host, "error", err)
@@ -212,18 +205,20 @@ func (p *ICMPPinger) MeasureOne(ctx context.Context, addr ProbeAddress) (uint64,
 		}
 	}
 
-	if err := p.conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+	if err := p.conn.setReadDeadline(time.Now().Add(timeout)); err != nil {
 		return 0, false
 	}
 
 	buf := make([]byte, 1500)
 	for {
-		n, _, err := p.conn.ReadFrom(buf)
+		n, rxTime, err := p.conn.recvEcho(buf)
 		if err != nil {
+			if err == syscall.EAGAIN {
+				continue
+			}
 			return 0, false
 		}
 
-		rxTime := time.Now()
 		msg, err := icmp.ParseMessage(icmpProtocol, buf[:n])
 		if err != nil {
 			continue
@@ -274,7 +269,7 @@ func (p *ICMPPinger) MeasureAll(ctx context.Context) (map[ProbeAddress]uint64, e
 			default:
 			}
 
-			seq := p.nextSeq()
+			seq := uint16(p.seq.Add(1))
 			txTime, err := p.sendEcho(entry, seq)
 			if err != nil {
 				p.log.Debug("MeasureAll send failed", "host", entry.addr.Host, "error", err)
@@ -288,9 +283,9 @@ func (p *ICMPPinger) MeasureAll(ctx context.Context) (map[ProbeAddress]uint64, e
 		}
 
 		if isLast {
-			_ = p.conn.SetReadDeadline(time.Now().Add(p.cfg.ProbeTimeout))
+			_ = p.conn.setReadDeadline(time.Now().Add(p.cfg.ProbeTimeout))
 		} else {
-			_ = p.conn.SetReadDeadline(time.Now().Add(5 * time.Millisecond))
+			_ = p.conn.setReadDeadline(time.Now().Add(5 * time.Millisecond))
 		}
 		p.readReplies(pending, results)
 	}
@@ -310,7 +305,7 @@ func (p *ICMPPinger) Close() error {
 
 	p.probes = make(map[string]*icmpProbeEntry)
 	if p.conn != nil {
-		return p.conn.Close()
+		return p.conn.close()
 	}
 	return nil
 }

@@ -161,12 +161,24 @@ echo -e "${BOLD}${CYAN}[${STEP}/${TOTAL_STEPS}]${RESET} ${BOLD}Copying deb to ${
 echo ""
 
 REMOTE_PATH="/tmp/${DEB_BASENAME}"
+SCP_PIDS=()
 for node in "${NODES[@]}"; do
     echo -e "  ${DIM}${node}${RESET} ..."
-    scp -o StrictHostKeyChecking=no -q "$DEB_FILE" "${SSH_USER}@${node}:${REMOTE_PATH}"
-    echo -e "  ${GREEN}✓${RESET} ${node}"
+    scp -o StrictHostKeyChecking=no -q "$DEB_FILE" "${SSH_USER}@${node}:${REMOTE_PATH}" &
+    SCP_PIDS+=("$! $node")
+done
+SCP_FAILED=false
+for pid_node in "${SCP_PIDS[@]}"; do
+    pid="${pid_node%% *}"; node="${pid_node#* }"
+    if wait "$pid"; then
+        echo -e "  ${GREEN}✓${RESET} ${node}"
+    else
+        echo -e "  ${RED}✗${RESET} ${node}" >&2
+        SCP_FAILED=true
+    fi
 done
 echo ""
+[[ "$SCP_FAILED" == false ]] || die "scp failed on one or more nodes"
 
 # --- Step 3: Install ---
 
@@ -175,12 +187,24 @@ if [[ "$INSTALL" == true ]]; then
     echo -e "${BOLD}${CYAN}[${STEP}/${TOTAL_STEPS}]${RESET} ${BOLD}Installing on ${#NODES[@]} node(s)${RESET}"
     echo ""
 
+    INSTALL_PIDS=()
     for node in "${NODES[@]}"; do
         echo -e "  ${DIM}${node}${RESET} ..."
-        ssh -o StrictHostKeyChecking=no "${SSH_USER}@${node}" "sudo dpkg -i ${REMOTE_PATH}"
-        echo -e "  ${GREEN}✓${RESET} ${node}"
+        ssh -o StrictHostKeyChecking=no "${SSH_USER}@${node}" "sudo dpkg -i ${REMOTE_PATH}" &
+        INSTALL_PIDS+=("$! $node")
+    done
+    INSTALL_FAILED=false
+    for pid_node in "${INSTALL_PIDS[@]}"; do
+        pid="${pid_node%% *}"; node="${pid_node#* }"
+        if wait "$pid"; then
+            echo -e "  ${GREEN}✓${RESET} ${node}"
+        else
+            echo -e "  ${RED}✗${RESET} ${node}" >&2
+            INSTALL_FAILED=true
+        fi
     done
     echo ""
+    [[ "$INSTALL_FAILED" == false ]] || die "install failed on one or more nodes"
 fi
 
 # --- Step 4: Tail logs in tmux ---

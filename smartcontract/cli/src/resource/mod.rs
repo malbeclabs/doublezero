@@ -11,7 +11,6 @@ pub mod verify;
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum ResourceType {
-    AdminGroupBits,
     DeviceTunnelBlock,
     UserTunnelBlock,
     MulticastGroupBlock,
@@ -29,7 +28,6 @@ pub fn resource_type_from(
     index: Option<usize>,
 ) -> SdkResourceType {
     match ext {
-        ResourceType::AdminGroupBits => SdkResourceType::AdminGroupBits,
         ResourceType::DeviceTunnelBlock => SdkResourceType::DeviceTunnelBlock,
         ResourceType::UserTunnelBlock => SdkResourceType::UserTunnelBlock,
         ResourceType::MulticastGroupBlock => SdkResourceType::MulticastGroupBlock,
@@ -76,12 +74,6 @@ fn check_device_if_needed(
 mod tests {
     use super::*;
     use solana_program::pubkey::Pubkey;
-
-    #[test]
-    fn test_admin_group_bits() {
-        let result = resource_type_from(ResourceType::AdminGroupBits, None, None);
-        assert_eq!(result, SdkResourceType::AdminGroupBits);
-    }
 
     #[test]
     fn test_device_tunnel_block() {

@@ -42,8 +42,7 @@ impl From<DeallocateResourceCliCommand> for DeallocateResourceCommand {
                     .parse::<NetworkV4>()
                     .expect("Failed to parse IP address"),
             ),
-            ResourceType::AdminGroupBits
-            | ResourceType::TunnelIds
+            ResourceType::TunnelIds
             | ResourceType::LinkIds
             | ResourceType::SegmentRoutingIds
             | ResourceType::VrfIds => {

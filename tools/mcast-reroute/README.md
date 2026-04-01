@@ -9,7 +9,12 @@ The eBPF program is automatically detached on shutdown (SIGINT/SIGTERM) or if th
 ```bash
 go build -o mcast-reroute ./tools/mcast-reroute
 
-# Rewrite source 137.174.145.145 → 147.51.126.1 for multicast to 233.84.178.0:7733
+# Default destination (233.84.178.1:7733)
+./mcast-reroute \
+  -src 137.174.145.145 \
+  -rewrite-src 147.51.126.1
+
+# Explicit destination
 ./mcast-reroute \
   -src 137.174.145.145 \
   -rewrite-src 147.51.126.1 \
@@ -29,7 +34,7 @@ go build -o mcast-reroute ./tools/mcast-reroute
 |------|----------|-------------|
 | `-src` | yes | Source IP to match on outgoing packets |
 | `-rewrite-src` | yes | New source IP to substitute |
-| `-dst` | yes | Multicast destination `group:port` to match (repeatable) |
+| `-dst` | no | Multicast destination `group:port` to match (repeatable, default `233.84.178.1:7733`) |
 
 ## Requirements
 

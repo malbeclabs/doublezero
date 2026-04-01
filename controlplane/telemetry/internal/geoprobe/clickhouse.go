@@ -116,6 +116,7 @@ func OffsetRowFromLocationOffset(offset *LocationOffset, sourceAddr string, sigV
 		row.RefSenderPubkeys = append(row.RefSenderPubkeys, solana.PublicKeyFromBytes(ref.SenderPubkey[:]).String())
 		row.RefMeasuredRttNs = append(row.RefMeasuredRttNs, ref.MeasuredRttNs)
 		row.RefRttNs = append(row.RefRttNs, ref.RttNs)
+		row.TotalRttNs += ref.RttNs
 	}
 
 	return row

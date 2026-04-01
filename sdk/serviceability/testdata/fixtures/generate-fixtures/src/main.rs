@@ -761,6 +761,7 @@ fn generate_tenant(dir: &Path) {
         metro_routing: true,
         route_liveness: false,
         billing: TenantBillingConfig::default(),
+        include_topologies: vec![],
     };
 
     let data = borsh::to_vec(&val).unwrap();

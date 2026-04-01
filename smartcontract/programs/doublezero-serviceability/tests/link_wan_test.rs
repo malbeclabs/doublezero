@@ -2609,52 +2609,20 @@ async fn test_link_activation_auto_tags_unicast_default() {
         tunnel_pubkey,
     ) = setup_link_env().await;
 
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     let recent_blockhash = banks_client
         .get_latest_blockhash()
         .await
         .expect("Failed to get blockhash");
-
-    // Create AdminGroupBits resource extension (required before creating topology)
-    let (admin_group_bits_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
-    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_type: ResourceType::AdminGroupBits,
-        }),
-        vec![
-            AccountMeta::new(admin_group_bits_pda, false),
-            AccountMeta::new(solana_sdk::pubkey::Pubkey::default(), false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Create the "unicast-default" topology
-    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
-            name: "unicast-default".to_string(),
-            constraint: TopologyConstraint::IncludeAny,
-        }),
-        vec![
-            AccountMeta::new(unicast_default_pda, false),
-            AccountMeta::new(admin_group_bits_pda, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
 
     // Activate the link — it should auto-tag with UNICAST-DEFAULT
     execute_transaction(
@@ -2712,7 +2680,8 @@ async fn test_link_activation_fails_without_unicast_default() {
     // Derive the unicast-default PDA without creating it
     let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
 
-    // Attempt to activate — should fail with InvalidArgument (Custom(65))
+    // Attempt to activate — should fail because the unicast-default account is
+    // system-owned (not created), triggering the owner check before key validation.
     let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -2735,8 +2704,8 @@ async fn test_link_activation_fails_without_unicast_default() {
 
     let error_string = format!("{:?}", result.unwrap_err());
     assert!(
-        error_string.contains("Custom(65)"),
-        "Expected InvalidArgument (Custom(65)), got: {}",
+        error_string.contains("ProgramFailedToComplete"),
+        "Expected ProgramFailedToComplete (owner check), got: {}",
         error_string
     );
 }

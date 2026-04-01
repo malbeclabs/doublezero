@@ -606,6 +606,7 @@ async fn test_wan_link() {
             tunnel_id: None,
             tunnel_net: None,
             use_onchain_allocation: false,
+            link_topologies: None,
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),

@@ -3,25 +3,33 @@
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
-        get_contributor_pda, get_device_pda, get_exchange_pda, get_globalconfig_pda,
+        get_contributor_pda, get_device_pda, get_exchange_pda, get_globalconfig_pda, get_link_pda,
         get_location_pda, get_resource_extension_pda, get_topology_pda,
     },
     processors::{
         contributor::create::ContributorCreateArgs,
         device::{
-            activate::DeviceActivateArgs, create::DeviceCreateArgs,
-            interface::create::DeviceInterfaceCreateArgs,
+            activate::DeviceActivateArgs,
+            create::DeviceCreateArgs,
+            interface::{
+                activate::DeviceInterfaceActivateArgs, create::DeviceInterfaceCreateArgs,
+                unlink::DeviceInterfaceUnlinkArgs,
+            },
         },
         exchange::create::ExchangeCreateArgs,
+        link::{activate::LinkActivateArgs, create::LinkCreateArgs, update::LinkUpdateArgs},
         location::create::LocationCreateArgs,
         resource::create::ResourceCreateArgs,
-        topology::create::TopologyCreateArgs,
+        topology::{
+            clear::TopologyClearArgs, create::TopologyCreateArgs, delete::TopologyDeleteArgs,
+        },
     },
     resource::{IdOrIp, ResourceType},
     state::{
         accounttype::AccountType,
         device::{DeviceDesiredStatus, DeviceType},
         interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
+        link::{Link, LinkDesiredStatus, LinkLinkType},
         topology::{TopologyConstraint, TopologyInfo},
     },
 };
@@ -711,7 +719,7 @@ async fn test_topology_create_backfills_vpnv4_loopbacks() {
 
     // Step 9: Idempotency — call CreateTopology for unicast-secondary again with the same device.
     // The segment for unicast-secondary must not be duplicated.
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let _recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     // We need a new topology PDA since unicast-secondary already exists;
     // instead use unicast-secondary's PDA but re-create a third topology and pass the device twice.
     // Actually the simplest idempotency check: use a third unique topology but re-pass the device —
@@ -743,4 +751,867 @@ async fn test_topology_create_backfills_vpnv4_loopbacks() {
     }
 
     println!("[PASS] test_topology_create_backfills_vpnv4_loopbacks");
+}
+
+// ============================================================================
+// Helpers for delete/clear tests
+// ============================================================================
+
+/// Creates a delete topology instruction.
+async fn delete_topology(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    name: &str,
+    extra_link_accounts: Vec<AccountMeta>,
+    payer: &Keypair,
+) -> Result<(), BanksClientError> {
+    let (topology_pda, _) = get_topology_pda(&program_id, name);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let base_accounts = vec![
+        AccountMeta::new(topology_pda, false),
+        AccountMeta::new_readonly(globalstate_pubkey, false),
+    ];
+    let extra_accounts: Vec<AccountMeta> = extra_link_accounts;
+    let mut tx = create_transaction_with_extra_accounts(
+        program_id,
+        &DoubleZeroInstruction::DeleteTopology(TopologyDeleteArgs {
+            name: name.to_string(),
+        }),
+        &base_accounts,
+        payer,
+        &extra_accounts,
+    );
+    tx.try_sign(&[&payer], recent_blockhash).unwrap();
+    banks_client.process_transaction(tx).await
+}
+
+/// Creates a clear topology instruction, passing the given link accounts as writable.
+async fn clear_topology(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    name: &str,
+    link_accounts: Vec<AccountMeta>,
+    payer: &Keypair,
+) {
+    let (topology_pda, _) = get_topology_pda(&program_id, name);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let base_accounts = vec![
+        AccountMeta::new_readonly(topology_pda, false),
+        AccountMeta::new_readonly(globalstate_pubkey, false),
+    ];
+    let mut tx = create_transaction_with_extra_accounts(
+        program_id,
+        &DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
+            name: name.to_string(),
+        }),
+        &base_accounts,
+        payer,
+        &link_accounts,
+    );
+    tx.try_sign(&[&payer], recent_blockhash).unwrap();
+    banks_client.process_transaction(tx).await.unwrap();
+}
+
+/// Gets a Link account (panics if not found or not deserializable).
+async fn get_link(banks_client: &mut BanksClient, pubkey: Pubkey) -> Link {
+    let account = banks_client
+        .get_account(pubkey)
+        .await
+        .unwrap()
+        .expect("Link account should exist");
+    Link::try_from(&account.data[..]).expect("Should deserialize as Link")
+}
+
+/// Sets up a minimal WAN link (two devices, contributor, location, exchange, one link).
+/// Returns (link_pubkey, contributor_pubkey, device_a_pubkey, device_z_pubkey).
+#[allow(clippy::too_many_arguments)]
+async fn setup_wan_link(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    payer: &Keypair,
+) -> (Pubkey, Pubkey, Pubkey, Pubkey) {
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Location
+    let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
+    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            country: "us".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            loc_id: 0,
+        }),
+        vec![
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    // Exchange
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            reserved: 0,
+        }),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    // Contributor
+    let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
+    let (contributor_pubkey, _) =
+        get_contributor_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "cont".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    // Device A
+    let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
+    let (device_a_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
+            code: "dza".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [8, 8, 8, 8].into(),
+            dz_prefixes: "110.1.0.0/23".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
+        }),
+        vec![
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    // Device A interface
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "Ethernet0".to_string(),
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::None,
+            interface_cyoa: InterfaceCYOA::None,
+            bandwidth: 0,
+            ip_net: None,
+            cir: 0,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
+            name: "Ethernet0".to_string(),
+            ip_net: "10.0.0.0/31".parse().unwrap(),
+            node_segment_idx: 0,
+        }),
+        vec![
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    // Device Z
+    let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
+    let (device_z_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
+            code: "dzb".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [9, 9, 9, 9].into(),
+            dz_prefixes: "111.1.0.0/23".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
+        }),
+        vec![
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    // Device Z interface
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "Ethernet1".to_string(),
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::None,
+            interface_cyoa: InterfaceCYOA::None,
+            bandwidth: 0,
+            ip_net: None,
+            cir: 0,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
+            name: "Ethernet1".to_string(),
+            ip_net: "10.0.0.1/31".parse().unwrap(),
+            node_segment_idx: 0,
+        }),
+        vec![
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    // Unlink interfaces (make them available for linking)
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
+            name: "Ethernet0".to_string(),
+        }),
+        vec![
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
+            name: "Ethernet1".to_string(),
+        }),
+        vec![
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    // Create link
+    let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
+    let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
+            code: "dza-dzb".to_string(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 20_000_000_000,
+            mtu: 9000,
+            delay_ns: 1_000_000,
+            jitter_ns: 100_000,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: Some("Ethernet1".to_string()),
+            desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    // Activate link
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
+            tunnel_id: 500,
+            tunnel_net: "10.100.0.0/30".parse().unwrap(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    (
+        link_pubkey,
+        contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+    )
+}
+
+/// Assigns link_topologies on a link via LinkUpdate (foundation-only).
+async fn assign_link_topology(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    link_pubkey: Pubkey,
+    contributor_pubkey: Pubkey,
+    topology_pubkeys: Vec<Pubkey>,
+    payer: &Keypair,
+) {
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            link_topologies: Some(topology_pubkeys),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+}
+
+// ============================================================================
+// TopologyDelete tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_topology_delete_succeeds_when_no_links() {
+    println!("[TEST] test_topology_delete_succeeds_when_no_links");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let admin_group_bits_pda = create_admin_group_bits(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    let topology_pda = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "test-topology",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // Verify it exists
+    let topology = get_topology(&mut banks_client, topology_pda).await;
+    assert_eq!(topology.name, "test-topology");
+
+    // Delete it with no link accounts
+    delete_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "test-topology",
+        vec![],
+        &payer,
+    )
+    .await
+    .expect("Delete should succeed with no referencing links");
+
+    // Verify account data is zeroed (closed)
+    let account = banks_client.get_account(topology_pda).await.unwrap();
+    assert!(
+        account.is_none() || account.unwrap().data.is_empty(),
+        "Topology account should be closed after delete"
+    );
+
+    println!("[PASS] test_topology_delete_succeeds_when_no_links");
+}
+
+#[tokio::test]
+async fn test_topology_delete_fails_when_link_references_it() {
+    println!("[TEST] test_topology_delete_fails_when_link_references_it");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let admin_group_bits_pda = create_admin_group_bits(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    let topology_pda = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "test-topology",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // Set up a WAN link and assign the topology to it
+    let (link_pubkey, contributor_pubkey, _, _) =
+        setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    assign_link_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        link_pubkey,
+        contributor_pubkey,
+        vec![topology_pda],
+        &payer,
+    )
+    .await;
+
+    // Verify the link references the topology
+    let link = get_link(&mut banks_client, link_pubkey).await;
+    assert!(link.link_topologies.contains(&topology_pda));
+
+    // Attempt to delete — should fail because the link still references it
+    let result = delete_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "test-topology",
+        vec![AccountMeta::new_readonly(link_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // DoubleZeroError::ReferenceCountNotZero = Custom(13)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(13),
+        ))) => {}
+        _ => panic!(
+            "Expected ReferenceCountNotZero error (Custom(13)), got {:?}",
+            result
+        ),
+    }
+
+    println!("[PASS] test_topology_delete_fails_when_link_references_it");
+}
+
+#[tokio::test]
+async fn test_topology_delete_bit_not_reused() {
+    println!("[TEST] test_topology_delete_bit_not_reused");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let admin_group_bits_pda = create_admin_group_bits(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    // Create "topology-a" — gets bit 0
+    create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "topology-a",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // Delete "topology-a"
+    delete_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topology-a",
+        vec![],
+        &payer,
+    )
+    .await
+    .expect("Delete should succeed");
+
+    // Create "topology-b" — must NOT get bit 0 (permanently marked) or bit 1 (UNICAST-DRAINED)
+    // so it should get bit 2
+    let topology_b_pda = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "topology-b",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    let topology_b = get_topology(&mut banks_client, topology_b_pda).await;
+    assert_eq!(
+        topology_b.admin_group_bit, 2,
+        "topology-b should get bit 2 (bit 0 permanently marked even after delete, bit 1 is UNICAST-DRAINED)"
+    );
+
+    println!("[PASS] test_topology_delete_bit_not_reused");
+}
+
+// ============================================================================
+// TopologyClear tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_topology_clear_removes_from_links() {
+    println!("[TEST] test_topology_clear_removes_from_links");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let admin_group_bits_pda = create_admin_group_bits(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    let topology_pda = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "test-topology",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // Set up a WAN link and assign the topology to it
+    let (link_pubkey, contributor_pubkey, _, _) =
+        setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    assign_link_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        link_pubkey,
+        contributor_pubkey,
+        vec![topology_pda],
+        &payer,
+    )
+    .await;
+
+    // Verify assignment
+    let link = get_link(&mut banks_client, link_pubkey).await;
+    assert!(link.link_topologies.contains(&topology_pda));
+
+    // Clear topology from the link
+    clear_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "test-topology",
+        vec![AccountMeta::new(link_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // Verify the link no longer references the topology
+    let link = get_link(&mut banks_client, link_pubkey).await;
+    assert!(
+        !link.link_topologies.contains(&topology_pda),
+        "link_topologies should be empty after clear"
+    );
+    assert!(link.link_topologies.is_empty());
+
+    println!("[PASS] test_topology_clear_removes_from_links");
+}
+
+#[tokio::test]
+async fn test_topology_clear_is_idempotent() {
+    println!("[TEST] test_topology_clear_is_idempotent");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let admin_group_bits_pda = create_admin_group_bits(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "test-topology",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // Set up a WAN link but do NOT assign the topology
+    let (link_pubkey, _, _, _) =
+        setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    // Verify link has no topology assignment
+    let link = get_link(&mut banks_client, link_pubkey).await;
+    assert!(link.link_topologies.is_empty());
+
+    // Call clear — link does not reference topology, so nothing should change, no error
+    clear_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "test-topology",
+        vec![AccountMeta::new(link_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // Verify link is still empty
+    let link = get_link(&mut banks_client, link_pubkey).await;
+    assert!(
+        link.link_topologies.is_empty(),
+        "link_topologies should still be empty"
+    );
+
+    println!("[PASS] test_topology_clear_is_idempotent");
+}
+
+#[tokio::test]
+async fn test_topology_delete_non_foundation_rejected() {
+    println!("[TEST] test_topology_delete_non_foundation_rejected");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let admin_group_bits_pda = create_admin_group_bits(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    // Create topology with foundation payer
+    create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // Use a keypair that is NOT in the foundation allowlist
+    let non_foundation = Keypair::new();
+    // Fund the non-foundation keypair so it can sign transactions
+    transfer(
+        &mut banks_client,
+        &payer,
+        &non_foundation.pubkey(),
+        10_000_000,
+    )
+    .await;
+
+    let result = delete_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "unicast-default",
+        vec![],
+        &non_foundation,
+    )
+    .await;
+
+    // DoubleZeroError::Unauthorized = Custom(22)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(22),
+        ))) => {}
+        _ => panic!("Expected Unauthorized error (Custom(22)), got {:?}", result),
+    }
+
+    println!("[PASS] test_topology_delete_non_foundation_rejected");
+}
+
+#[tokio::test]
+async fn test_topology_clear_non_foundation_rejected() {
+    println!("[TEST] test_topology_clear_non_foundation_rejected");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let admin_group_bits_pda = create_admin_group_bits(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    // Create topology with foundation payer
+    create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // Use a keypair that is NOT in the foundation allowlist
+    let non_foundation = Keypair::new();
+    // Fund the non-foundation keypair so it can sign transactions
+    transfer(
+        &mut banks_client,
+        &payer,
+        &non_foundation.pubkey(),
+        10_000_000,
+    )
+    .await;
+
+    // Attempt ClearTopology with non-foundation payer
+    let (topology_pda, _) = get_topology_pda(&program_id, "unicast-default");
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
+            name: "unicast-default".to_string(),
+        }),
+        vec![
+            AccountMeta::new_readonly(topology_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &non_foundation,
+    )
+    .await;
+
+    // DoubleZeroError::Unauthorized = Custom(22)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(22),
+        ))) => {}
+        _ => panic!("Expected Unauthorized error (Custom(22)), got {:?}", result),
+    }
+
+    println!("[PASS] test_topology_clear_non_foundation_rejected");
 }

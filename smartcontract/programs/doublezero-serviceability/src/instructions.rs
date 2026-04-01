@@ -838,6 +838,7 @@ mod tests {
                 tunnel_id: None,
                 tunnel_net: None,
                 use_onchain_allocation: false,
+                link_topologies: None,
             }),
             "UpdateLink",
         );

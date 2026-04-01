@@ -693,6 +693,15 @@ async fn test_doublezero_program() {
         use_onchain_allocation: false,
     };
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -703,6 +712,7 @@ async fn test_doublezero_program() {
             AccountMeta::new(device_la_pubkey, false),
             AccountMeta::new(device_ny_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
         ],
         &payer,
     )

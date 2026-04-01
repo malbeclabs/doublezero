@@ -4,13 +4,17 @@ use doublezero_serviceability::{
     instructions::*,
     pda::{
         get_globalconfig_pda, get_globalstate_pda, get_program_config_pda,
-        get_resource_extension_pda,
+        get_resource_extension_pda, get_topology_pda,
     },
-    processors::globalconfig::set::SetGlobalConfigArgs,
+    processors::{
+        globalconfig::set::SetGlobalConfigArgs, resource::create::ResourceCreateArgs,
+        topology::create::TopologyCreateArgs,
+    },
     resource::ResourceType,
     state::{
         accountdata::AccountData, accounttype::AccountType, device::Device,
         globalstate::GlobalState, resource_extension::ResourceExtensionOwned,
+        topology::TopologyConstraint,
     },
 };
 use solana_program_test::*;
@@ -552,4 +556,59 @@ pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey,
         globalstate_pubkey,
         globalconfig_pubkey,
     )
+}
+
+/// Create the AdminGroupBits resource extension and the "unicast-default" topology.
+/// Returns the PDA of the "unicast-default" topology.
+/// Requires that global state + global config are already initialized.
+#[allow(dead_code)]
+pub async fn create_unicast_default_topology(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    globalconfig_pubkey: Pubkey,
+    payer: &Keypair,
+) -> Pubkey {
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
+            resource_type: ResourceType::AdminGroupBits,
+        }),
+        vec![
+            AccountMeta::new(admin_group_bits_pda, false),
+            AccountMeta::new(Pubkey::default(), false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+            name: "unicast-default".to_string(),
+            constraint: TopologyConstraint::IncludeAny,
+        }),
+        vec![
+            AccountMeta::new(unicast_default_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    unicast_default_pda
 }

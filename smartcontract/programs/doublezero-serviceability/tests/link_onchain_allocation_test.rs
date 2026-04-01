@@ -38,7 +38,7 @@ use test_helpers::*;
 /// Test that ActivateLink works with onchain allocation from ResourceExtension
 #[tokio::test]
 async fn test_activate_link_with_onchain_allocation() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
@@ -382,6 +382,15 @@ async fn test_activate_link_with_onchain_allocation() {
 
     // Activate Link with onchain allocation
     println!("Activating Link with onchain allocation...");
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -398,6 +407,7 @@ async fn test_activate_link_with_onchain_allocation() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -441,7 +451,7 @@ async fn test_activate_link_with_onchain_allocation() {
 /// Test that the legacy ActivateLink path (without onchain allocation) still works
 #[tokio::test]
 async fn test_activate_link_legacy_path() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
@@ -725,6 +735,15 @@ async fn test_activate_link_legacy_path() {
     let expected_tunnel_net: doublezero_program_common::types::NetworkV4 =
         "10.0.0.0/21".parse().unwrap();
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -739,6 +758,7 @@ async fn test_activate_link_legacy_path() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1036,6 +1056,16 @@ async fn test_closeaccount_link_with_deallocation() {
         get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
     let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
 
+    // Create unicast-default topology (required for link activation)
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     // Activate Link with onchain allocation
     execute_transaction(
         &mut banks_client,
@@ -1053,6 +1083,7 @@ async fn test_closeaccount_link_with_deallocation() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
         ],
         &payer,
     )

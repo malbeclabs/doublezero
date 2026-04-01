@@ -870,6 +870,16 @@ func TestRenderFlexAlgoEnabled(t *testing.T) {
 					LinkStatus:     serviceability.LinkStatusActivated,
 					LinkTopologies: []string{"unicast-default"},
 				},
+				{
+					Name:          "Loopback255",
+					Ip:            netip.MustParsePrefix("14.14.14.14/32"),
+					NodeSegmentIdx: 100,
+					InterfaceType: InterfaceTypeLoopback,
+					LoopbackType:  LoopbackTypeVpnv4,
+					FlexAlgoNodeSegments: []FlexAlgoNodeSegmentModel{
+						{NodeSegmentIdx: 200, TopologyName: "unicast-default"},
+					},
+				},
 			},
 			Tunnels: []*Tunnel{
 				{
@@ -899,14 +909,29 @@ func TestRenderFlexAlgoEnabled(t *testing.T) {
 		present bool
 		substr  string
 	}{
-		{"admin-group on interface", true, "traffic-engineering administrative-group unicast-default"},
-		{"router traffic-engineering block", true, "router traffic-engineering"},
-		{"admin-group alias definition", true, "administrative-group alias unicast-default group 0"},
-		{"UNICAST-DRAINED alias", true, "administrative-group alias UNICAST-DRAINED group 1"},
-		{"flex-algo definition in TE block", true, "flex-algo 128 unicast-default"},
-		{"IS-IS flex-algo advertisement", true, "flex-algo 128"},
+		// Change 1: interface admin-group (uppercase)
+		{"traffic-engineering enable on interface", true, "   traffic-engineering\n   traffic-engineering administrative-group UNICAST-DEFAULT"},
+		// Change 3: BGP next-hop
 		{"next-hop resolution ribs in vpn-ipv4", true, "next-hop resolution ribs tunnel-rib colored system-colored-tunnel-rib"},
+		// Change 4: IS-IS flex-algo advertisement inside segment-routing mpls
+		{"IS-IS flex-algo advertisement", true, "flex-algo unicast-default level-2 advertised"},
+		{"IS-IS traffic-engineering block", true, "   traffic-engineering\n      no shutdown\n      is-type level-2"},
+		// Change 5: router traffic-engineering block (correct structure)
+		{"router traffic-engineering block", true, "router traffic-engineering"},
+		{"router-id in TE block", true, "   router-id ipv4 14.14.14.14"},
+		{"UNICAST-DRAINED alias first", true, "   administrative-group alias UNICAST-DRAINED group 1"},
+		{"UNICAST-DEFAULT alias uppercase", true, "   administrative-group alias UNICAST-DEFAULT group 0"},
+		{"flex-algo TE definition", true, "      flex-algo 128 unicast-default"},
+		{"flex-algo admin-group include-any", true, "         administrative-group include any 0 exclude 1"},
+		{"flex-algo color", true, "         color 1"},
+		// Community stamping
 		{"extcommunity color in route-map", true, "set extcommunity color color 1"},
+		// Change 2: loopback node-segments
+		{"loopback base node-segment", true, "   node-segment ipv4 index 100"},
+		{"loopback flex-algo node-segment", true, "   node-segment ipv4 index 200 flex-algo unicast-default"},
+		// Negative: wrong patterns must not appear
+		{"no metric-type igp", false, "metric-type igp"},
+		{"no topology standard", false, "topology standard"},
 	}
 
 	for _, c := range checks {

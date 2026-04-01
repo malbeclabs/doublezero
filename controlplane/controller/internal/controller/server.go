@@ -413,6 +413,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			d.Interfaces[i].IsLink = true
 			d.Interfaces[i].LinkStatus = link.Status
 			d.Interfaces[i].UnicastDrained = link.UnicastDrained
+			d.Interfaces[i].PubKey = base58.Encode(link.PubKey[:])
 
 			// Resolve topology names from link_topologies pubkeys
 			for _, topoKey := range link.LinkTopologies {
@@ -423,6 +424,29 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 
 			linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))
+		}
+
+		// Populate flex-algo node-segment data for VPNv4 loopback interfaces
+		if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled {
+			for i, intf := range d.Interfaces {
+				if !intf.IsVpnv4Loopback() {
+					continue
+				}
+				for _, onchainIface := range device.Interfaces {
+					if onchainIface.Name == intf.Name {
+						for _, seg := range onchainIface.FlexAlgoNodeSegments {
+							pk := base58.Encode(seg.Topology[:])
+							if topo, ok := cache.Topologies[pk]; ok {
+								d.Interfaces[i].FlexAlgoNodeSegments = append(d.Interfaces[i].FlexAlgoNodeSegments, FlexAlgoNodeSegmentModel{
+									NodeSegmentIdx: seg.NodeSegmentIdx,
+									TopologyName:   topo.Name,
+								})
+							}
+						}
+						break
+					}
+				}
+			}
 		}
 
 		cache.Devices[devicePubKey] = d
@@ -584,6 +608,22 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			sort.Slice(tunnel.MulticastBoundaryList, func(i, j int) bool {
 				return tunnel.MulticastBoundaryList[i].String() < tunnel.MulticastBoundaryList[j].String()
 			})
+		}
+	}
+
+	// Check for VPNv4 loopbacks missing flex-algo node-segment data when flex-algo is enabled
+	if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled && len(cache.Topologies) > 0 {
+		for devicePubKey, d := range cache.Devices {
+			if len(d.DevicePathologies) > 0 {
+				continue
+			}
+			for _, intf := range d.Interfaces {
+				if intf.IsVpnv4Loopback() && len(intf.FlexAlgoNodeSegments) == 0 {
+					c.log.Error("flex_algo.enabled=true but VPNv4 loopback has no flex_algo_node_segments — run 'doublezero-admin migrate' and restart",
+						"device_pubkey", devicePubKey,
+						"interface", intf.Name)
+				}
+			}
 		}
 	}
 

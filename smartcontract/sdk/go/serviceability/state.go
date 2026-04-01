@@ -352,22 +352,28 @@ func (l RoutingMode) MarshalJSON() ([]byte, error) {
 	return json.Marshal(l.String())
 }
 
+type FlexAlgoNodeSegment struct {
+	Topology       [32]byte
+	NodeSegmentIdx uint16
+}
+
 type Interface struct {
-	Version            uint8
-	Status             InterfaceStatus
-	Name               string
-	InterfaceType      InterfaceType
-	InterfaceCYOA      InterfaceCYOA
-	InterfaceDIA       InterfaceDIA
-	LoopbackType       LoopbackType
-	Bandwidth          uint64
-	Cir                uint64
-	Mtu                uint16
-	RoutingMode        RoutingMode
-	VlanId             uint16
-	IpNet              [5]uint8
-	NodeSegmentIdx     uint16
-	UserTunnelEndpoint bool
+	Version               uint8
+	Status                InterfaceStatus
+	Name                  string
+	InterfaceType         InterfaceType
+	InterfaceCYOA         InterfaceCYOA
+	InterfaceDIA          InterfaceDIA
+	LoopbackType          LoopbackType
+	Bandwidth             uint64
+	Cir                   uint64
+	Mtu                   uint16
+	RoutingMode           RoutingMode
+	VlanId                uint16
+	IpNet                 [5]uint8
+	NodeSegmentIdx       uint16
+	UserTunnelEndpoint   bool
+	FlexAlgoNodeSegments []FlexAlgoNodeSegment `json:",omitempty"`
 }
 
 func (i Interface) MarshalJSON() ([]byte, error) {

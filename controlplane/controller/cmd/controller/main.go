@@ -129,24 +129,26 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.StringVar(&c.tlsKeyFile, "tls-key", "", "path to tls key file")
 	c.fs.BoolVar(&c.enablePprof, "enable-pprof", false, "enable pprof server")
 	c.fs.StringVar(&c.tlsListenPort, "tls-listen-port", "", "listening port for controller grpc server")
+	c.fs.StringVar(&c.featuresConfigPath, "features-config", "", "path to features.yaml config file (optional)")
 	return c
 }
 
 type ControllerCommand struct {
-	fs             *flag.FlagSet
-	description    string
-	listenAddr     string
-	listenPort     string
-	env            string
-	programID      string
-	rpcEndpoint    string
-	deviceLocalASN uint64
-	noHardware     bool
-	showVersion    bool
-	tlsCertFile    string
-	tlsKeyFile     string
-	tlsListenPort  string
-	enablePprof    bool
+	fs                 *flag.FlagSet
+	description        string
+	listenAddr         string
+	listenPort         string
+	env                string
+	programID          string
+	rpcEndpoint        string
+	deviceLocalASN     uint64
+	noHardware         bool
+	showVersion        bool
+	tlsCertFile        string
+	tlsKeyFile         string
+	tlsListenPort      string
+	enablePprof        bool
+	featuresConfigPath string
 }
 
 func (c *ControllerCommand) Fs() *flag.FlagSet {
@@ -247,6 +249,22 @@ func (c *ControllerCommand) Run() error {
 		}
 	} else {
 		log.Info("clickhouse disabled (CLICKHOUSE_ADDR not set)")
+	}
+
+	if c.featuresConfigPath != "" {
+		f, err := os.Open(c.featuresConfigPath)
+		if err != nil {
+			log.Error("failed to open features config", "path", c.featuresConfigPath, "error", err)
+			os.Exit(1)
+		}
+		featuresConfig, err := controller.LoadFeaturesConfig(f)
+		f.Close()
+		if err != nil {
+			log.Error("failed to parse features config", "path", c.featuresConfigPath, "error", err)
+			os.Exit(1)
+		}
+		options = append(options, controller.WithFeaturesConfig(featuresConfig))
+		log.Info("features config loaded", "path", c.featuresConfigPath, "flex_algo_enabled", featuresConfig.Features.FlexAlgo.Enabled)
 	}
 
 	if c.noHardware {

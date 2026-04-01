@@ -63,6 +63,8 @@ async fn test_wan_link() {
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     execute_transaction(
         &mut banks_client,
@@ -87,6 +89,7 @@ async fn test_wan_link() {
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )
@@ -910,6 +913,8 @@ async fn test_wan_link_rejects_cyoa_interface() {
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     execute_transaction(
         &mut banks_client,
@@ -934,6 +939,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )
@@ -1480,6 +1486,8 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     execute_transaction(
         &mut banks_client,
@@ -1504,6 +1512,7 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )
@@ -1941,6 +1950,8 @@ async fn setup_link_env() -> (
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     execute_transaction(
         &mut banks_client,
@@ -1965,6 +1976,7 @@ async fn setup_link_env() -> (
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )

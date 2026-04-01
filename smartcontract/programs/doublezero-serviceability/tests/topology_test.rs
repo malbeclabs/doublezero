@@ -19,7 +19,6 @@ use doublezero_serviceability::{
         exchange::create::ExchangeCreateArgs,
         link::{activate::LinkActivateArgs, create::LinkCreateArgs, update::LinkUpdateArgs},
         location::create::LocationCreateArgs,
-        resource::create::ResourceCreateArgs,
         topology::{
             clear::TopologyClearArgs, create::TopologyCreateArgs, delete::TopologyDeleteArgs,
         },
@@ -42,37 +41,6 @@ use solana_sdk::{
 
 mod test_helpers;
 use test_helpers::*;
-
-/// Creates the AdminGroupBits resource extension.
-/// Requires that global state + global config are already initialized.
-async fn create_admin_group_bits(
-    banks_client: &mut BanksClient,
-    program_id: Pubkey,
-    globalstate_pubkey: Pubkey,
-    globalconfig_pubkey: Pubkey,
-    payer: &Keypair,
-) -> Pubkey {
-    let (resource_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_type: ResourceType::AdminGroupBits,
-        }),
-        vec![
-            AccountMeta::new(resource_pubkey, false),
-            AccountMeta::new(Pubkey::default(), false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-    resource_pubkey
-}
 
 /// Helper that creates the topology using the standard account layout.
 async fn create_topology(
@@ -117,31 +85,12 @@ async fn get_topology(banks_client: &mut BanksClient, pubkey: Pubkey) -> Topolog
 async fn test_admin_group_bits_create_and_pre_mark() {
     println!("[TEST] test_admin_group_bits_create_and_pre_mark");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+    // AdminGroupBits is created automatically by SetGlobalConfig (via setup_program_with_globalconfig).
+    let (mut banks_client, _payer, program_id, _globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
-
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let (resource_pubkey, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
-
-    // Create the AdminGroupBits resource extension
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_type: ResourceType::AdminGroupBits,
-        }),
-        vec![
-            AccountMeta::new(resource_pubkey, false),
-            AccountMeta::new(Pubkey::default(), false), // associated_account (not used)
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
 
     // Verify the account was created and has data
     let account = banks_client
@@ -213,17 +162,11 @@ fn test_flex_algo_node_segment_roundtrip() {
 async fn test_topology_create_bit_0_first() {
     println!("[TEST] test_topology_create_bit_0_first");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    let admin_group_bits_pda = create_admin_group_bits(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     let topology_pda = create_topology(
         &mut banks_client,
@@ -251,17 +194,11 @@ async fn test_topology_create_bit_0_first() {
 async fn test_topology_create_second_skips_bit_1() {
     println!("[TEST] test_topology_create_second_skips_bit_1");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    let admin_group_bits_pda = create_admin_group_bits(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // First topology gets bit 0
     create_topology(
@@ -303,17 +240,11 @@ async fn test_topology_create_second_skips_bit_1() {
 async fn test_topology_create_non_foundation_rejected() {
     println!("[TEST] test_topology_create_non_foundation_rejected");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    let admin_group_bits_pda = create_admin_group_bits(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Use a keypair that is NOT in the foundation allowlist
     let non_foundation = Keypair::new();
@@ -362,17 +293,11 @@ async fn test_topology_create_non_foundation_rejected() {
 async fn test_topology_create_name_too_long_rejected() {
     println!("[TEST] test_topology_create_name_too_long_rejected");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    let admin_group_bits_pda = create_admin_group_bits(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // 33-char name exceeds MAX_TOPOLOGY_NAME_LEN=32
     // We use a dummy pubkey for the topology PDA since the name validation fires
@@ -417,17 +342,11 @@ async fn test_topology_create_name_too_long_rejected() {
 async fn test_topology_create_duplicate_rejected() {
     println!("[TEST] test_topology_create_duplicate_rejected");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    let admin_group_bits_pda = create_admin_group_bits(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // First creation succeeds
     create_topology(
@@ -484,14 +403,8 @@ async fn test_topology_create_backfills_vpnv4_loopbacks() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     // Create AdminGroupBits and SegmentRoutingIds resources
-    let admin_group_bits_pda = create_admin_group_bits(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     let (segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
@@ -1176,17 +1089,11 @@ async fn assign_link_topology(
 async fn test_topology_delete_succeeds_when_no_links() {
     println!("[TEST] test_topology_delete_succeeds_when_no_links");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    let admin_group_bits_pda = create_admin_group_bits(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     let topology_pda = create_topology(
         &mut banks_client,
@@ -1229,17 +1136,11 @@ async fn test_topology_delete_succeeds_when_no_links() {
 async fn test_topology_delete_fails_when_link_references_it() {
     println!("[TEST] test_topology_delete_fails_when_link_references_it");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    let admin_group_bits_pda = create_admin_group_bits(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     let topology_pda = create_topology(
         &mut banks_client,
@@ -1313,17 +1214,11 @@ async fn test_topology_delete_fails_when_link_references_it() {
 async fn test_topology_delete_bit_not_reused() {
     println!("[TEST] test_topology_delete_bit_not_reused");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    let admin_group_bits_pda = create_admin_group_bits(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Create "topology-a" — gets bit 0
     create_topology(
@@ -1379,17 +1274,11 @@ async fn test_topology_delete_bit_not_reused() {
 async fn test_topology_clear_removes_from_links() {
     println!("[TEST] test_topology_clear_removes_from_links");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    let admin_group_bits_pda = create_admin_group_bits(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     let topology_pda = create_topology(
         &mut banks_client,
@@ -1459,17 +1348,11 @@ async fn test_topology_clear_removes_from_links() {
 async fn test_topology_clear_is_idempotent() {
     println!("[TEST] test_topology_clear_is_idempotent");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    let admin_group_bits_pda = create_admin_group_bits(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     let test_topology_pda = create_topology(
         &mut banks_client,
@@ -1538,17 +1421,11 @@ async fn test_topology_clear_is_idempotent() {
 async fn test_topology_delete_non_foundation_rejected() {
     println!("[TEST] test_topology_delete_non_foundation_rejected");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    let admin_group_bits_pda = create_admin_group_bits(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Create topology with foundation payer
     create_topology(
@@ -1599,17 +1476,11 @@ async fn test_topology_delete_non_foundation_rejected() {
 async fn test_topology_clear_non_foundation_rejected() {
     println!("[TEST] test_topology_clear_non_foundation_rejected");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    let admin_group_bits_pda = create_admin_group_bits(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Create topology with foundation payer
     create_topology(
@@ -1842,17 +1713,11 @@ async fn test_link_unicast_drained_foundation_can_set_any_link() {
 async fn test_link_unicast_drained_orthogonal_to_status_and_topologies() {
     println!("[TEST] test_link_unicast_drained_orthogonal_to_status_and_topologies");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    let admin_group_bits_pda = create_admin_group_bits(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     let topology_pda = create_topology(
         &mut banks_client,

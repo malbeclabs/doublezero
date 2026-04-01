@@ -213,10 +213,32 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 	require.NoError(t, err)
 	targetIPStr := targetIP.To4().String()
 
+	log.Debug("==> Starting ClickHouse container")
+	chContainerID := startClickhouseContainer(t, log, dn)
+	log.Debug("==> ClickHouse started")
+
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		output, err := docker.Exec(ctx, dockerClient, chContainerID, []string{
+			"clickhouse-client", "--password", "test",
+			"--query", "SELECT * FROM default.location_offsets FORMAT Vertical",
+		})
+		if err == nil {
+			fmt.Fprintf(os.Stderr, "\n--- ClickHouse location_offsets ---\n%s\n", string(output))
+		}
+	})
+
 	// Start the geoprobe target container before creating onchain targets,
 	// since we need to generate the sender keypair inside it.
 	log.Debug("==> Starting geoprobe target container")
-	targetContainerID := startGeoprobeTarget(t, log, dn, targetIPStr)
+	targetContainerID := startGeoprobeTarget(t, log, dn, targetIPStr, &geoprobeTargetOpts{
+		clickhouseAddr: "clickhouse:9000",
+		clickhousePass: "test",
+	})
 
 	senderKeypairPath := "/tmp/target-sender-keypair.json"
 	senderPubkey := generateKeypairInContainer(t, targetContainerID, senderKeypairPath)
@@ -253,6 +275,10 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 	log.Debug("==> Waiting for geoprobe target to receive composite offset")
 	waitForTargetOffsetReceived(t, targetContainerID, 120*time.Second)
 	log.Debug("==> Geoprobe target received valid composite offset")
+
+	log.Debug("==> Verifying offsets in ClickHouse")
+	verifyClickhouseOffsets(t, chContainerID)
+	log.Debug("==> ClickHouse verification passed")
 
 	// --- Inbound flow ---
 	// Run target-sender from the target container to send signed TWAMP probes to the agent.
@@ -504,11 +530,19 @@ func dumpContainerLogs(ctx context.Context, containerID, label string) {
 
 // startGeoprobeTarget creates and starts a geoprobe-target container with the binary
 // as its entrypoint. Returns the container ID.
-func startGeoprobeTarget(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoaIP string) string {
+func startGeoprobeTarget(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoaIP string, opts *geoprobeTargetOpts) string {
 	t.Helper()
 
 	geoprobeImage := os.Getenv("DZ_GEOPROBE_IMAGE")
 	require.NotEmpty(t, geoprobeImage, "DZ_GEOPROBE_IMAGE must be set")
+
+	env := map[string]string{}
+	if opts != nil && opts.clickhouseAddr != "" {
+		env["CLICKHOUSE_ADDR"] = opts.clickhouseAddr
+		env["CLICKHOUSE_USER"] = "default"
+		env["CLICKHOUSE_PASS"] = opts.clickhousePass
+		env["CLICKHOUSE_TLS_DISABLED"] = "true"
+	}
 
 	req := testcontainers.ContainerRequest{
 		Image: geoprobeImage,
@@ -517,6 +551,7 @@ func startGeoprobeTarget(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoa
 			cfg.Hostname = "geoprobe-target"
 		},
 		Cmd:        []string{"doublezero-geoprobe-target", "-twamp-port", "8925", "-udp-port", "8923"},
+		Env:        env,
 		Networks:   []string{dn.DefaultNetwork.Name},
 		WaitingFor: wait.ForLog("UDP listener started").WithStartupTimeout(30 * time.Second),
 		Resources: dockercontainer.Resources{
@@ -552,6 +587,11 @@ func startGeoprobeTarget(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoa
 	})
 
 	return containerID
+}
+
+type geoprobeTargetOpts struct {
+	clickhouseAddr string
+	clickhousePass string
 }
 
 // waitForTargetOffsetReceived polls the geoprobe-target container logs until they show
@@ -785,7 +825,7 @@ func TestE2E_GeoprobeIcmpTargets(t *testing.T) {
 
 	// Start the target container (receives offsets via UDP; TWAMP reflector is unused).
 	log.Debug("==> Starting geoprobe target container")
-	targetContainerID := startGeoprobeTarget(t, log, dn, targetIPStr)
+	targetContainerID := startGeoprobeTarget(t, log, dn, targetIPStr, nil)
 
 	// Create a GeolocationUser with a single outbound-icmp target.
 	tokenAccount := solana.NewWallet().PublicKey().String()
@@ -876,6 +916,73 @@ func addGeolocationInboundTarget(t *testing.T, dn *devnet.Devnet, userCode, targ
 		"--probe", probeCode,
 	})
 	require.NoError(t, err, "user add-target inbound failed: %s", string(output))
+}
+
+func startClickhouseContainer(t *testing.T, log *slog.Logger, dn *devnet.Devnet) string {
+	t.Helper()
+
+	req := testcontainers.ContainerRequest{
+		Image: "clickhouse/clickhouse-server:latest",
+		Name:  dn.Spec.DeployID + "-clickhouse",
+		ConfigModifier: func(cfg *dockercontainer.Config) {
+			cfg.Hostname = "clickhouse"
+		},
+		Env: map[string]string{
+			"CLICKHOUSE_USER":     "default",
+			"CLICKHOUSE_PASSWORD": "test",
+		},
+		Networks: []string{dn.DefaultNetwork.Name},
+		NetworkAliases: map[string][]string{
+			dn.DefaultNetwork.Name: {"clickhouse"},
+		},
+	}
+
+	container, err := testcontainers.GenericContainer(t.Context(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+		Logger:           logging.NewTestcontainersAdapter(log),
+	})
+	require.NoError(t, err)
+
+	containerID := container.GetContainerID()
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = container.Terminate(ctx)
+	})
+
+	require.Eventually(t, func() bool {
+		output, err := docker.Exec(t.Context(), dockerClient, containerID, []string{
+			"clickhouse-client", "--query", "SELECT 1",
+		})
+		return err == nil && strings.TrimSpace(string(output)) == "1"
+	}, 30*time.Second, 1*time.Second, "ClickHouse should be ready")
+
+	return containerID
+}
+
+func verifyClickhouseOffsets(t *testing.T, chContainerID string) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		output, err := docker.Exec(t.Context(), dockerClient, chContainerID, []string{
+			"clickhouse-client",
+			"--password", "test",
+			"--query", "SELECT count(), sum(signature_valid), min(total_rtt_ns) FROM default.location_offsets FORMAT TabSeparated",
+		})
+		if err != nil {
+			return false
+		}
+		parts := strings.Fields(strings.TrimSpace(string(output)))
+		if len(parts) < 3 {
+			return false
+		}
+		count := parts[0]
+		sigValidSum := parts[1]
+		minTotalRtt := parts[2]
+		return count != "0" && count == sigValidSum && minTotalRtt != "0"
+	}, 60*time.Second, 5*time.Second, "Expected location_offsets to contain rows with valid signatures and non-zero total_rtt_ns")
 }
 
 // waitForInboundProbeSuccess polls the target-sender log for a successful probe pair

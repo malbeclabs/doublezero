@@ -371,9 +371,9 @@ type Interface struct {
 	RoutingMode           RoutingMode
 	VlanId                uint16
 	IpNet                 [5]uint8
-	NodeSegmentIdx        uint16
-	UserTunnelEndpoint    bool
-	FlexAlgoNodeSegments  []FlexAlgoNodeSegment `json:",omitempty"`
+	NodeSegmentIdx       uint16
+	UserTunnelEndpoint   bool
+	FlexAlgoNodeSegments []FlexAlgoNodeSegment `json:",omitempty"`
 }
 
 func (i Interface) MarshalJSON() ([]byte, error) {

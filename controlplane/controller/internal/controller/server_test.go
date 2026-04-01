@@ -992,6 +992,7 @@ func TestStateCache(t *testing.T) {
 								IsLink:        true,
 								Metric:        400000,
 								LinkStatus:    serviceability.LinkStatusActivated,
+								PubKey:        "11111111111111111111111111111111",
 							},
 							{
 								InterfaceType: InterfaceTypePhysical,
@@ -1001,6 +1002,7 @@ func TestStateCache(t *testing.T) {
 								IsLink:        true,
 								Metric:        1,
 								LinkStatus:    serviceability.LinkStatusActivated,
+								PubKey:        "11111111111111111111111111111111",
 							},
 							{
 								InterfaceType: InterfaceTypePhysical,
@@ -1010,6 +1012,7 @@ func TestStateCache(t *testing.T) {
 								IsLink:        true,
 								Metric:        50,
 								LinkStatus:    serviceability.LinkStatusActivated,
+								PubKey:        "11111111111111111111111111111111",
 							},
 							{
 								InterfaceType: InterfaceTypeLoopback,

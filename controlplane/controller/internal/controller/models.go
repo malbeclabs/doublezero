@@ -48,11 +48,14 @@ type Interface struct {
 	// RFC-18: set when the interface is an activated link with topology assignments
 	LinkTopologies []string // topology names (resolved from link.link_topologies pubkeys)
 	UnicastDrained bool
+	PubKey         string // base58-encoded link pubkey (set when IsLink is true)
+	// RFC-18: flex-algo node-segment data for VPNv4 loopback interfaces
+	FlexAlgoNodeSegments []FlexAlgoNodeSegmentModel
 }
 
 // toInterface validates onchain data for a serviceability interface and converts it to a controller interface.
 func toInterface(iface serviceability.Interface) (Interface, error) {
-	if iface.IpNet == ([5]byte{}) && iface.Name == "" {
+	if iface.Name == "" {
 		return Interface{}, errors.New("serviceability interface cannot be nil")
 	}
 
@@ -298,6 +301,18 @@ func (StringsHelper) ToUpper(s string) string {
 	return strings.ToUpper(s)
 }
 
+func (StringsHelper) Join(sep string, parts []string) string {
+	return strings.Join(parts, sep)
+}
+
+func (StringsHelper) ToUpperEach(parts []string) []string {
+	result := make([]string, len(parts))
+	for i, s := range parts {
+		result[i] = strings.ToUpper(s)
+	}
+	return result
+}
+
 type templateData struct {
 	Device                   *Device
 	Vpnv4BgpPeers            []BgpPeer
@@ -325,4 +340,10 @@ type TopologyModel struct {
 	FlexAlgoNumber uint8
 	Color          int    // AdminGroupBit + 1
 	ConstraintStr  string // "include-any" or "exclude"
+}
+
+// FlexAlgoNodeSegmentModel holds pre-computed flex-algo node-segment data for template rendering.
+type FlexAlgoNodeSegmentModel struct {
+	NodeSegmentIdx uint16
+	TopologyName   string
 }

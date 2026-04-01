@@ -120,6 +120,7 @@ func DeserializeInterfaceV2(reader *ByteReader, iface *Interface) {
 	iface.IpNet = reader.ReadNetworkV4()
 	iface.NodeSegmentIdx = reader.ReadU16()
 	iface.UserTunnelEndpoint = (reader.ReadU8() != 0)
+	iface.FlexAlgoNodeSegments = reader.ReadFlexAlgoNodeSegmentSlice()
 }
 
 func DeserializeDevice(reader *ByteReader, dev *Device) {

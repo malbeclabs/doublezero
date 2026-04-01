@@ -107,6 +107,11 @@ interface {{ .Name }}
    {{- end }}
    {{- if and .IsVpnv4Loopback .NodeSegmentIdx}}
    node-segment ipv4 index {{ .NodeSegmentIdx }}
+   {{- if $.FlexAlgoEnabled }}
+   {{- range .FlexAlgoNodeSegments }}
+   node-segment ipv4 index {{ .NodeSegmentIdx }} flex-algo {{ .TopologyName }}
+   {{- end }}
+   {{- end }}
    {{- end }}
    {{- if and .Ip.IsValid .IsLoopback }}
    isis enable 1
@@ -123,10 +128,15 @@ interface {{ .Name }}
    {{- end }}
    isis hello padding
    isis network point-to-point
-   {{- if and $.FlexAlgoEnabled .IsLink .LinkTopologies }}
-   traffic-engineering administrative-group {{ range $i, $name := .LinkTopologies }}{{ if $i }} {{ end }}{{ $name }}{{ end }}{{ if .UnicastDrained }} UNICAST-DRAINED{{ end }}
-   {{- else if and $.FlexAlgoEnabled .IsLink .UnicastDrained }}
+   {{- if and $.FlexAlgoEnabled .Ip.IsValid .IsPhysical .Metric .IsLink (not .IsSubInterfaceParent) (not .IsCYOA) (not .IsDIA) }}
+   traffic-engineering
+   {{- if and .LinkTopologies (not ($.Config.Features.FlexAlgo.LinkTagging.IsExcluded .PubKey)) }}
+   traffic-engineering administrative-group {{ $.Strings.Join " " ($.Strings.ToUpperEach .LinkTopologies) }}{{ if .UnicastDrained }} UNICAST-DRAINED{{ end }}
+   {{- else if .UnicastDrained }}
    traffic-engineering administrative-group UNICAST-DRAINED
+   {{- else }}
+   no traffic-engineering administrative-group
+   {{- end }}
    {{- end }}
    {{- end }}
 !
@@ -292,15 +302,16 @@ router isis 1
    !
    segment-routing mpls
       no shutdown
-{{- if $.FlexAlgoEnabled }}
-   flex-algo
-   {{- range $.AllTopologies }}
-      {{- if eq .ConstraintStr "include-any" }}
-      flex-algo {{ .FlexAlgoNumber }}
-      !
+      {{- if $.FlexAlgoEnabled }}
+      {{- range $.AllTopologies }}
+      flex-algo {{ .Name }} level-2 advertised
       {{- end }}
+      {{- end }}
+   {{- if $.FlexAlgoEnabled }}
+   traffic-engineering
+      no shutdown
+      is-type level-2
    {{- end }}
-{{- end }}
 {{- if $.Device.Status.IsDrained }}
    set-overload-bit
 {{- else }}
@@ -309,18 +320,17 @@ router isis 1
 !
 {{- if $.FlexAlgoEnabled }}
 router traffic-engineering
-   {{- range $.AllTopologies }}
-   administrative-group alias {{ .Name }} group {{ .AdminGroupBit }}
-   {{- end }}
+   router-id ipv4 {{ $.Device.Vpn4vLoopbackIP }}
    administrative-group alias UNICAST-DRAINED group 1
+   {{- range $.AllTopologies }}
+   administrative-group alias {{ $.Strings.ToUpper .Name }} group {{ .AdminGroupBit }}
+   {{- end }}
    flex-algo
    {{- range $.AllTopologies }}
       {{- if eq .ConstraintStr "include-any" }}
       flex-algo {{ .FlexAlgoNumber }} {{ .Name }}
-         metric-type igp
+         administrative-group include any {{ .AdminGroupBit }} exclude 1
          color {{ .Color }}
-         topology standard
-         exclude 1
       !
       {{- end }}
    {{- end }}

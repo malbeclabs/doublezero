@@ -1,10 +1,10 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
 use doublezero_program_common::serializer;
-use doublezero_sdk::commands::tenant::get::GetTenantCommand;
+use doublezero_sdk::{commands::tenant::get::GetTenantCommand, TopologyInfo};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::io::Write;
+use std::{collections::HashMap, io::Write};
 use tabled::Tabled;
 
 #[derive(Args, Debug)]
@@ -35,11 +35,35 @@ struct TenantDisplay {
     pub owner: Pubkey,
 }
 
+fn resolve_topology_names(
+    pubkeys: &[Pubkey],
+    topology_map: &HashMap<Pubkey, TopologyInfo>,
+) -> String {
+    if pubkeys.is_empty() {
+        "default".to_string()
+    } else {
+        pubkeys
+            .iter()
+            .map(|pk| {
+                topology_map
+                    .get(pk)
+                    .map(|t| t.name.clone())
+                    .unwrap_or_else(|| pk.to_string())
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
 impl GetTenantCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let (pubkey, tenant) = client.get_tenant(GetTenantCommand {
             pubkey_or_code: self.code,
         })?;
+
+        let topology_map = client
+            .list_topology(doublezero_sdk::commands::topology::list::ListTopologyCommand)
+            .unwrap_or_default();
 
         let display = TenantDisplay {
             account: pubkey,
@@ -57,12 +81,7 @@ impl GetTenantCliCommand {
                 .join(", "),
             token_account: tenant.token_account.to_string(),
             reference_count: tenant.reference_count,
-            include_topologies: tenant
-                .include_topologies
-                .iter()
-                .map(|pk| pk.to_string())
-                .collect::<Vec<_>>()
-                .join(", "),
+            include_topologies: resolve_topology_names(&tenant.include_topologies, &topology_map),
             owner: tenant.owner,
         };
 
@@ -91,6 +110,7 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
+    use std::collections::HashMap;
 
     #[test]
     fn test_cli_tenant_get() {
@@ -130,6 +150,9 @@ mod tests {
         client
             .expect_get_tenant()
             .returning(move |_| Err(eyre::eyre!("not found")));
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
 
         /*****************************************************************************************************/
         // Expected failure

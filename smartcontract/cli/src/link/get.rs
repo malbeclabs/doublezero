@@ -47,6 +47,8 @@ struct LinkDisplay {
     pub status: String,
     pub health: String,
     pub owner: String,
+    pub link_topologies: String,
+    pub unicast_drained: bool,
 }
 
 impl GetLinkCliCommand {
@@ -92,6 +94,13 @@ impl GetLinkCliCommand {
             status: link.status.to_string(),
             health: link.link_health.to_string(),
             owner: link.owner.to_string(),
+            link_topologies: link
+                .link_topologies
+                .iter()
+                .map(|pk| pk.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            unicast_drained: link.unicast_drained,
         };
 
         if self.json {

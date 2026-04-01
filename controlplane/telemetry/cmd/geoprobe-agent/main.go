@@ -1001,7 +1001,7 @@ func runMeasurementCycle(
 		}
 	}
 
-	if icmpPinger != nil && len(icmpTargets) > 0 {
+	if len(icmpTargets) > 0 {
 		icmpStart := time.Now()
 		icmpResults, err := icmpPinger.MeasureAll(ctx)
 		metrics.GeoProbeIcmpMeasurementCycleDuration.Observe(time.Since(icmpStart).Seconds())

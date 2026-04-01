@@ -2650,8 +2650,8 @@ async fn test_link_activation_fails_without_unicast_default() {
 
     let error_string = format!("{:?}", result.unwrap_err());
     assert!(
-        error_string.contains("ProgramFailedToComplete"),
-        "Expected ProgramFailedToComplete (owner check), got: {}",
+        error_string.contains("Custom(65)"),
+        "Expected InvalidArgument error (Custom(65)), got: {}",
         error_string
     );
 }

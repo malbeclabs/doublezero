@@ -526,22 +526,20 @@ func main() {
 	}
 
 	// Set up ICMP pinger for outbound ICMP targets.
-	var icmpPinger *geoprobe.ICMPPinger
-	icmpPingerInstance, icmpErr := geoprobe.NewICMPPinger(&geoprobe.ICMPPingerConfig{
+	icmpPinger, err := geoprobe.NewICMPPinger(&geoprobe.ICMPPingerConfig{
 		Logger:       log,
 		ProbeTimeout: *twampSenderTimeout,
 		BatchSize:    geoprobe.ICMPDefaultBatchSize,
 		StaggerDelay: geoprobe.ICMPDefaultStaggerDelay,
 	})
-	if icmpErr != nil {
-		log.Warn("Failed to create ICMP pinger (CAP_NET_RAW may be missing)", "error", icmpErr)
-	} else {
-		icmpPinger = icmpPingerInstance
-		defer icmpPinger.Close()
-		for _, target := range icmpTargets {
-			if err := icmpPinger.AddProbe(target); err != nil {
-				log.Warn("Failed to add ICMP target probe", "target", target, "error", err)
-			}
+	if err != nil {
+		log.Error("Failed to create ICMP pinger (CAP_NET_RAW may be missing)", "error", err)
+		os.Exit(1)
+	}
+	defer icmpPinger.Close()
+	for _, target := range icmpTargets {
+		if err := icmpPinger.AddProbe(target); err != nil {
+			log.Warn("Failed to add ICMP target probe", "target", target, "error", err)
 		}
 	}
 
@@ -915,10 +913,6 @@ func runMeasurementLoop(
 			}
 
 		case icmpUpdate := <-icmpTargetUpdateCh:
-			if icmpPinger == nil {
-				log.Warn("Received ICMP target update but ICMP pinger is not available")
-				break
-			}
 			oldSet := make(map[string]geoprobe.ProbeAddress, len(icmpTargets))
 			for _, t := range icmpTargets {
 				oldSet[t.String()] = t

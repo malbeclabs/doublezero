@@ -271,11 +271,13 @@ fn new_transaction(
     instructions: &[Instruction],
     signers: &[&Keypair],
     recent_blockhash: Hash,
-) -> VersionedTransaction {
+) -> Result<VersionedTransaction> {
     let message =
-        Message::try_compile(&signers[0].pubkey(), instructions, &[], recent_blockhash).unwrap();
+        Message::try_compile(&signers[0].pubkey(), instructions, &[], recent_blockhash)
+            .map_err(|e| SentinelError::Deserialize(format!("compile transaction message: {e}")))?;
 
-    VersionedTransaction::try_new(VersionedMessage::V0(message), signers).unwrap()
+    VersionedTransaction::try_new(VersionedMessage::V0(message), signers)
+        .map_err(|e| SentinelError::Deserialize(format!("sign transaction: {e}")))
 }
 
 /// Fetch software_client info from the validator metadata service for enrichment.
@@ -414,7 +416,7 @@ impl MulticastDzLedgerClient for RpcMulticastDzLedgerClient {
                     std::slice::from_ref(&ixs.set_access_pass),
                     &[&self.payer],
                     blockhash,
-                );
+                )?;
                 let sig = self.rpc_client.send_and_confirm_transaction(&tx).await?;
                 info!(ip = %user.client_ip, %sig, "set_access_pass");
                 Ok(())
@@ -427,7 +429,7 @@ impl MulticastDzLedgerClient for RpcMulticastDzLedgerClient {
         rpc_with_retry(
             || async {
                 let blockhash = self.rpc_client.get_latest_blockhash().await?;
-                let tx = new_transaction(std::slice::from_ref(&ixs.add_allowlist), &[&self.payer], blockhash);
+                let tx = new_transaction(std::slice::from_ref(&ixs.add_allowlist), &[&self.payer], blockhash)?;
                 let sig = self.rpc_client.send_and_confirm_transaction(&tx).await?;
                 info!(ip = %user.client_ip, group = %mgroup_pk, %sig, "add_multicast_pub_allowlist");
                 Ok(())
@@ -440,7 +442,7 @@ impl MulticastDzLedgerClient for RpcMulticastDzLedgerClient {
         rpc_with_retry(
             || async {
                 let blockhash = self.rpc_client.get_latest_blockhash().await?;
-                let tx = new_transaction(std::slice::from_ref(&ixs.create_user), &[&self.payer], blockhash);
+                let tx = new_transaction(std::slice::from_ref(&ixs.create_user), &[&self.payer], blockhash)?;
                 let sig = self.rpc_client.send_and_confirm_transaction(&tx).await?;
                 info!(ip = %user.client_ip, device = %user.device_pk, %sig, "create_multicast_publisher");
                 Ok(())

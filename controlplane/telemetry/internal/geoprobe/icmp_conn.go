@@ -15,6 +15,7 @@ type icmpConn struct {
 	fd          int
 	epfd        int
 	oob         []byte
+	events      []unix.EpollEvent
 	deadline    time.Time
 	hasKernelTS bool
 }
@@ -48,6 +49,7 @@ func newICMPConn(log *slog.Logger) (*icmpConn, error) {
 		fd:          fd,
 		epfd:        epfd,
 		oob:         make([]byte, 512),
+		events:      make([]unix.EpollEvent, 1),
 		hasKernelTS: hasKernelTS,
 	}, nil
 }
@@ -73,8 +75,7 @@ func (c *icmpConn) recvEcho(buf []byte) (int, time.Time, error) {
 		return 0, time.Time{}, syscall.ETIMEDOUT
 	}
 
-	events := make([]unix.EpollEvent, 1)
-	n, err := unix.EpollWait(c.epfd, events, remaining)
+	n, err := unix.EpollWait(c.epfd, c.events, remaining)
 	if err != nil && err != syscall.EINTR {
 		return 0, time.Time{}, fmt.Errorf("epoll_wait: %w", err)
 	}
@@ -89,6 +90,9 @@ func (c *icmpConn) recvEcho(buf []byte) (int, time.Time, error) {
 
 	msgN, oobn, _, _, err := unix.Recvmsg(c.fd, buf, oob, 0)
 	if err != nil {
+		if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
+			return 0, time.Time{}, syscall.EAGAIN
+		}
 		return 0, time.Time{}, err
 	}
 	fallbackTime := time.Now()
@@ -119,10 +123,10 @@ func parseKernelTimestamp(oob []byte, fallback time.Time) time.Time {
 }
 
 // decideRxTimestamp picks the best receive timestamp. If the kernel timestamp
-// is wildly before the fallback (>100us), the kernel clock is misconfigured
-// and we use the fallback. Small negative deltas are normal (clock sampling jitter).
+// is >10ms behind userspace, the kernel clock is likely misconfigured and we
+// fall back. Scheduler preemption can add 200-500µs, so small deltas are normal.
 func decideRxTimestamp(kernel, fallback time.Time) time.Time {
-	if fallback.Sub(kernel) > 100*time.Microsecond {
+	if fallback.Sub(kernel) > 10*time.Millisecond {
 		return fallback
 	}
 	return kernel

@@ -3,6 +3,7 @@ package geoprobe
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 
@@ -95,25 +96,15 @@ func ParseICMPProbeAddresses(s string) ([]ProbeAddress, error) {
 			continue
 		}
 
-		fields := strings.Split(part, ":")
-		if len(fields) != 2 {
+		ap, err := netip.ParseAddrPort(part)
+		if err != nil {
 			return nil, fmt.Errorf("invalid ICMP probe address %q: expected host:offset_port", part)
 		}
-
-		host := fields[0]
-		if net.ParseIP(host) == nil {
-			return nil, fmt.Errorf("invalid ICMP probe address %q: invalid IP address", part)
-		}
-
-		port, err := strconv.ParseUint(fields[1], 10, 16)
-		if err != nil {
-			return nil, fmt.Errorf("invalid port in %q: %w", part, err)
-		}
-		if port == 0 {
+		if ap.Port() == 0 {
 			return nil, fmt.Errorf("invalid port 0 in %q", part)
 		}
 
-		addr := ProbeAddress{Host: host, Port: uint16(port), TWAMPPort: 0}
+		addr := ProbeAddress{Host: ap.Addr().String(), Port: ap.Port()}
 		key := addr.String()
 		if seen[key] {
 			continue

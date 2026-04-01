@@ -1109,7 +1109,8 @@ async fn setup_wan_link(
     )
     .await;
 
-    // Activate link
+    // Activate link (unicast-default topology must already exist at this point)
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
     execute_transaction(
         banks_client,
         recent_blockhash,
@@ -1124,6 +1125,7 @@ async fn setup_wan_link(
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
         ],
         payer,
     )
@@ -1245,6 +1247,18 @@ async fn test_topology_delete_fails_when_link_references_it() {
         globalstate_pubkey,
         admin_group_bits_pda,
         "test-topology",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // Create unicast-default topology (required for link activation)
+    create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
         TopologyConstraint::IncludeAny,
         &payer,
     )
@@ -1388,6 +1402,18 @@ async fn test_topology_clear_removes_from_links() {
     )
     .await;
 
+    // Create unicast-default topology (required for link activation)
+    create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
     // Set up a WAN link and assign the topology to it
     let (link_pubkey, contributor_pubkey, _, _) =
         setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
@@ -1445,7 +1471,7 @@ async fn test_topology_clear_is_idempotent() {
     )
     .await;
 
-    create_topology(
+    let test_topology_pda = create_topology(
         &mut banks_client,
         program_id,
         globalstate_pubkey,
@@ -1456,15 +1482,37 @@ async fn test_topology_clear_is_idempotent() {
     )
     .await;
 
-    // Set up a WAN link but do NOT assign the topology
+    // Create unicast-default topology (required for link activation)
+    create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
+
+    // Set up a WAN link but do NOT assign the "test-topology" topology
     let (link_pubkey, _, _, _) =
         setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
 
-    // Verify link has no topology assignment
+    // Verify link has only the unicast-default topology (auto-tagged at activation),
+    // NOT the "test-topology" topology
     let link = get_link(&mut banks_client, link_pubkey).await;
-    assert!(link.link_topologies.is_empty());
+    assert_eq!(
+        link.link_topologies,
+        vec![unicast_default_pda],
+        "link_topologies should only contain unicast-default after activation"
+    );
+    assert!(
+        !link.link_topologies.contains(&test_topology_pda),
+        "link_topologies should not contain test-topology"
+    );
 
-    // Call clear — link does not reference topology, so nothing should change, no error
+    // Call clear — link does not reference "test-topology", so nothing should change, no error
     clear_topology(
         &mut banks_client,
         program_id,
@@ -1475,11 +1523,12 @@ async fn test_topology_clear_is_idempotent() {
     )
     .await;
 
-    // Verify link is still empty
+    // Verify link_topologies is unchanged (still only unicast-default)
     let link = get_link(&mut banks_client, link_pubkey).await;
-    assert!(
-        link.link_topologies.is_empty(),
-        "link_topologies should still be empty"
+    assert_eq!(
+        link.link_topologies,
+        vec![unicast_default_pda],
+        "link_topologies should still only contain unicast-default after no-op clear"
     );
 
     println!("[PASS] test_topology_clear_is_idempotent");
@@ -1624,8 +1673,17 @@ async fn test_topology_clear_non_foundation_rejected() {
 async fn test_link_unicast_drained_contributor_can_set_own_link() {
     println!("[TEST] test_link_unicast_drained_contributor_can_set_own_link");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
+
+    create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
 
     let (link_pubkey, contributor_pubkey, _, _) =
         setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
@@ -1664,8 +1722,17 @@ async fn test_link_unicast_drained_contributor_can_set_own_link() {
 async fn test_link_unicast_drained_contributor_cannot_set_other_link() {
     println!("[TEST] test_link_unicast_drained_contributor_cannot_set_other_link");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
+
+    create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
 
     // Create the link owned by payer (contributor A)
     let (link_pubkey, _contributor_a_pubkey, _, _) =
@@ -1731,8 +1798,17 @@ async fn test_link_unicast_drained_contributor_cannot_set_other_link() {
 async fn test_link_unicast_drained_foundation_can_set_any_link() {
     println!("[TEST] test_link_unicast_drained_foundation_can_set_any_link");
 
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
+
+    create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
 
     let (link_pubkey, contributor_pubkey, _, _) =
         setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
@@ -1789,10 +1865,22 @@ async fn test_link_unicast_drained_orthogonal_to_status_and_topologies() {
     )
     .await;
 
+    // Create unicast-default topology (required for link activation)
+    create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
     let (link_pubkey, contributor_pubkey, _, _) =
         setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
 
-    // Assign a topology to the link (foundation-only)
+    // Assign a topology to the link (foundation-only), replacing the unicast-default auto-tag
     assign_link_topology(
         &mut banks_client,
         program_id,

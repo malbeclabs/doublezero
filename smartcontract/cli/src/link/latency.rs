@@ -191,6 +191,7 @@ mod tests {
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
             link_topologies: Vec::new(),
+            unicast_drained: false,
         }
     }
 

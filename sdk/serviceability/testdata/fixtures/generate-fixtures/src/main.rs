@@ -434,6 +434,7 @@ fn generate_link(dir: &Path) {
         link_health: LinkHealth::ReadyForService,
         desired_status: LinkDesiredStatus::Activated,
         link_topologies: Vec::new(),
+            unicast_drained: false,
     };
 
     let data = borsh::to_vec(&val).unwrap();

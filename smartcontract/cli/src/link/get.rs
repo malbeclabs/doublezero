@@ -160,6 +160,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
+            unicast_drained: false,
         };
 
         let contributor = Contributor {

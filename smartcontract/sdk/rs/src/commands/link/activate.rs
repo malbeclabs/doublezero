@@ -4,8 +4,11 @@ use crate::{
 };
 use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
-    processors::link::activate::LinkActivateArgs, resource::ResourceType, state::link::LinkStatus,
+    instructions::DoubleZeroInstruction,
+    pda::{get_resource_extension_pda, get_topology_pda},
+    processors::link::activate::LinkActivateArgs,
+    resource::ResourceType,
+    state::link::LinkStatus,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -61,6 +64,11 @@ impl ActivateLinkCommand {
             accounts.push(AccountMeta::new(link_ids_ext, false));
         }
 
+        // Always include the unicast-default topology account (required by the on-chain program)
+        let (unicast_default_pda, _) =
+            get_topology_pda(&client.get_program_id(), "unicast-default");
+        accounts.push(AccountMeta::new_readonly(unicast_default_pda, false));
+
         client.execute_transaction(
             DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                 tunnel_id: self.tunnel_id,
@@ -81,7 +89,7 @@ mod tests {
     use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_resource_extension_pda},
+        pda::{get_globalstate_pda, get_resource_extension_pda, get_topology_pda},
         processors::link::activate::LinkActivateArgs,
         resource::ResourceType,
         state::{
@@ -98,6 +106,8 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let (unicast_default_pda, _) =
+            get_topology_pda(&client.get_program_id(), "unicast-default");
         let link_pubkey = Pubkey::new_unique();
         let side_a_pk = Pubkey::new_unique();
         let side_z_pk = Pubkey::new_unique();
@@ -150,6 +160,7 @@ mod tests {
                     AccountMeta::new(side_a_pk, false),
                     AccountMeta::new(side_z_pk, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new_readonly(unicast_default_pda, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
@@ -172,6 +183,8 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let (unicast_default_pda, _) =
+            get_topology_pda(&client.get_program_id(), "unicast-default");
         let link_pubkey = Pubkey::new_unique();
         let side_a_pk = Pubkey::new_unique();
         let side_z_pk = Pubkey::new_unique();
@@ -230,6 +243,7 @@ mod tests {
                     AccountMeta::new(globalstate_pubkey, false),
                     AccountMeta::new(device_tunnel_block_ext, false),
                     AccountMeta::new(link_ids_ext, false),
+                    AccountMeta::new_readonly(unicast_default_pda, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));

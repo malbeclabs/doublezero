@@ -99,6 +99,10 @@ use doublezero_sdk::{
             remove_administrator::RemoveAdministratorTenantCommand, update::UpdateTenantCommand,
             update_payment_status::UpdatePaymentStatusCommand,
         },
+        topology::{
+            clear::ClearTopologyCommand, create::CreateTopologyCommand,
+            delete::DeleteTopologyCommand, list::ListTopologyCommand,
+        },
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
             delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand,
@@ -107,7 +111,8 @@ use doublezero_sdk::{
     },
     telemetry::LinkLatencyStats,
     DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GetGlobalStateCommand,
-    GlobalConfig, GlobalState, Link, Location, MulticastGroup, ResourceExtensionOwned, User,
+    GlobalConfig, GlobalState, Link, Location, MulticastGroup, ResourceExtensionOwned,
+    TopologyInfo, User,
 };
 use doublezero_serviceability::state::{
     accesspass::AccessPass, accountdata::AccountData, contributor::Contributor,
@@ -336,6 +341,14 @@ pub trait CliCommand {
         cmd: GetResourceCommand,
     ) -> eyre::Result<(Pubkey, ResourceExtensionOwned)>;
     fn close_resource(&self, cmd: CloseResourceCommand) -> eyre::Result<Signature>;
+
+    fn create_topology(&self, cmd: CreateTopologyCommand) -> eyre::Result<(Signature, Pubkey)>;
+    fn delete_topology(&self, cmd: DeleteTopologyCommand) -> eyre::Result<Signature>;
+    fn clear_topology(&self, cmd: ClearTopologyCommand) -> eyre::Result<Signature>;
+    fn list_topology(
+        &self,
+        cmd: ListTopologyCommand,
+    ) -> eyre::Result<HashMap<Pubkey, TopologyInfo>>;
 }
 
 pub struct CliCommandImpl<'a> {
@@ -797,6 +810,21 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn close_resource(&self, cmd: CloseResourceCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn create_topology(&self, cmd: CreateTopologyCommand) -> eyre::Result<(Signature, Pubkey)> {
+        cmd.execute(self.client)
+    }
+    fn delete_topology(&self, cmd: DeleteTopologyCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn clear_topology(&self, cmd: ClearTopologyCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn list_topology(
+        &self,
+        cmd: ListTopologyCommand,
+    ) -> eyre::Result<HashMap<Pubkey, TopologyInfo>> {
         cmd.execute(self.client)
     }
 }

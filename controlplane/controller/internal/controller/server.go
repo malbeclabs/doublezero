@@ -72,6 +72,7 @@ type Controller struct {
 	environment    string
 	deviceLocalASN uint32
 	clickhouse     *ClickhouseWriter
+	featuresConfig *FeaturesConfig
 }
 
 type Option func(*Controller)
@@ -157,6 +158,13 @@ func WithDeviceLocalASN(asn uint32) Option {
 func WithClickhouse(cw *ClickhouseWriter) Option {
 	return func(c *Controller) {
 		c.clickhouse = cw
+	}
+}
+
+// WithFeaturesConfig provides a loaded FeaturesConfig to the controller.
+func WithFeaturesConfig(cfg *FeaturesConfig) Option {
+	return func(c *Controller) {
+		c.featuresConfig = cfg
 	}
 }
 

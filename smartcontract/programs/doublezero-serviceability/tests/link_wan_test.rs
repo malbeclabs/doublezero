@@ -5,8 +5,6 @@ use doublezero_serviceability::{
         contributor::create::ContributorCreateArgs,
         device::interface::{update::DeviceInterfaceUpdateArgs, DeviceInterfaceUnlinkArgs},
         link::{activate::*, create::*, delete::*, sethealth::LinkSetHealthArgs, update::*},
-        resource::create::ResourceCreateArgs,
-        topology::create::TopologyCreateArgs,
         *,
     },
     resource::ResourceType,
@@ -18,7 +16,6 @@ use doublezero_serviceability::{
             InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
         },
         link::*,
-        topology::TopologyConstraint,
     },
 };
 use globalconfig::set::SetGlobalConfigArgs;

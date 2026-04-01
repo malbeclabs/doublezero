@@ -1290,6 +1290,7 @@ mod tests {
                 metro_routing: Some(true),
                 route_liveness: Some(false),
                 billing: None,
+                include_topologies: None,
             }),
             "UpdateTenant",
         );

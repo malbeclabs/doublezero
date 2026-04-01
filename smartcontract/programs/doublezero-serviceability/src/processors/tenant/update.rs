@@ -11,12 +11,10 @@ use borsh_incremental::BorshDeserializeIncremental;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 use std::fmt;
-
-#[cfg(test)]
-use solana_program::msg;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct TenantUpdateArgs {
@@ -25,14 +23,16 @@ pub struct TenantUpdateArgs {
     pub metro_routing: Option<bool>,
     pub route_liveness: Option<bool>,
     pub billing: Option<TenantBillingConfig>,
+    #[incremental(default = None)]
+    pub include_topologies: Option<Vec<Pubkey>>,
 }
 
 impl fmt::Debug for TenantUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "vrf_id: {:?}, token_account: {:?}, metro_routing: {:?}, route_liveness: {:?}, billing: {:?}",
-            self.vrf_id, self.token_account, self.metro_routing, self.route_liveness, self.billing
+            "vrf_id: {:?}, token_account: {:?}, metro_routing: {:?}, route_liveness: {:?}, billing: {:?}, include_topologies: {:?}",
+            self.vrf_id, self.token_account, self.metro_routing, self.route_liveness, self.billing, self.include_topologies
         )
     }
 }
@@ -93,6 +93,13 @@ pub fn process_update_tenant(
     }
     if let Some(billing) = value.billing {
         tenant.billing = billing;
+    }
+    if let Some(ref topologies) = value.include_topologies {
+        if !globalstate.foundation_allowlist.contains(payer_account.key) {
+            msg!("TenantUpdate: include_topologies requires foundation key");
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+        tenant.include_topologies = topologies.clone();
     }
     try_acc_write(&tenant, tenant_account, payer_account, accounts)?;
 

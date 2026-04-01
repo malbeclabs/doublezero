@@ -247,6 +247,7 @@ async fn main() -> eyre::Result<()> {
             },
         },
 
+        Command::Migrate(args) => args.execute(&client, &mut handle),
         Command::Export(args) => args.execute(&client, &mut handle),
         Command::Keygen(args) => args.execute(&client, &mut handle),
         Command::Log(args) => args.execute(&dzclient, &mut handle),

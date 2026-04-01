@@ -161,6 +161,7 @@ mod tests {
             metro_routing: false,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
 
         let mgroup_pubkey = Pubkey::new_unique();

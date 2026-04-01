@@ -28,7 +28,7 @@ import (
 const (
 	disconnectTimeout                = 150 * time.Second
 	waitForStatusUpTimeout           = 90 * time.Second
-	waitForStatusDisconnectedTimeout = 90 * time.Second
+	waitForStatusDisconnectedTimeout = 120 * time.Second
 	waitForUserDeletionTimeout       = 90 * time.Second
 
 	// NOTE: This needs to be longer than 1m since BGP can sometimes throttle activity for that

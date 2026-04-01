@@ -130,7 +130,8 @@ func parseKernelTimestamp(oob []byte, fallback time.Time) time.Time {
 
 // decideRxTimestamp picks the best receive timestamp. If the kernel timestamp
 // is >10ms behind userspace, the kernel clock is likely misconfigured and we
-// fall back. Scheduler preemption can add 200-500µs, so small deltas are normal.
+// fall back. The 10ms threshold gives generous headroom over normal scheduler
+// preemption jitter (hundreds of µs) to avoid false fallbacks under load.
 func decideRxTimestamp(kernel, fallback time.Time) time.Time {
 	if fallback.Sub(kernel) > 10*time.Millisecond {
 		return fallback

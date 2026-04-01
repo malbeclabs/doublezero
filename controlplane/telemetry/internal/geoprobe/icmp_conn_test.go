@@ -27,7 +27,7 @@ func TestICMPConn_RoundTrip(t *testing.T) {
 	payload, err := msg.Marshal(nil)
 	require.NoError(t, err)
 
-	_, err = conn.sendEcho(net.IPv4(127, 0, 0, 1), payload)
+	txTime, err := conn.sendEcho(net.IPv4(127, 0, 0, 1), payload)
 	require.NoError(t, err)
 
 	require.NoError(t, conn.setReadDeadline(time.Now().Add(2*time.Second)))
@@ -37,7 +37,7 @@ func TestICMPConn_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Greater(t, n, 0)
 
-	rtt := time.Since(rxTime)
+	rtt := rxTime.Sub(txTime)
 	assert.GreaterOrEqual(t, rtt, time.Duration(0))
 	assert.Less(t, rtt, 10*time.Millisecond)
 }

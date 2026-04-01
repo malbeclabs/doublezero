@@ -371,9 +371,9 @@ type Interface struct {
 	RoutingMode           RoutingMode
 	VlanId                uint16
 	IpNet                 [5]uint8
-	NodeSegmentIdx       uint16
-	UserTunnelEndpoint   bool
-	FlexAlgoNodeSegments []FlexAlgoNodeSegment `json:",omitempty"`
+	NodeSegmentIdx        uint16
+	UserTunnelEndpoint    bool
+	FlexAlgoNodeSegments  []FlexAlgoNodeSegment `json:",omitempty"`
 }
 
 func (i Interface) MarshalJSON() ([]byte, error) {
@@ -398,7 +398,7 @@ func (i Interface) MarshalJSON() ([]byte, error) {
 	return json.Marshal(jsonIface)
 }
 
-const CurrentInterfaceVersion = 3
+const CurrentInterfaceVersion = 2
 
 type Device struct {
 	AccountType               AccountType
@@ -619,7 +619,7 @@ type Link struct {
 	LinkDesiredStatus LinkDesiredStatus `influx:"tag,link_desired_status"`
 	PubKey            [32]byte          `influx:"tag,pubkey,pubkey"`
 	LinkTopologies    [][32]byte
-	LinkFlags         uint8
+	UnicastDrained    bool
 }
 
 func (l Link) MarshalJSON() ([]byte, error) {

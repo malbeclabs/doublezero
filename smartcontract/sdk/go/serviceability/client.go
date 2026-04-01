@@ -25,6 +25,7 @@ type ProgramData struct {
 	ProgramConfig      ProgramConfig
 	ResourceExtensions []ResourceExtension
 	Permissions        []Permission
+	Topologies         []TopologyInfo
 }
 
 func New(rpc RPCClient, programID solana.PublicKey) *Client {
@@ -59,6 +60,7 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 	programConfig := ProgramConfig{}
 	resourceExtensions := []ResourceExtension{}
 	permissions := []Permission{}
+	topologies := []TopologyInfo{}
 
 	var errs error
 	for _, element := range out {
@@ -125,6 +127,11 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 			DeserializePermission(reader, &permission)
 			permission.PubKey = element.Pubkey
 			permissions = append(permissions, permission)
+		case byte(TopologyType):
+			var topology TopologyInfo
+			DeserializeTopologyInfo(reader, &topology)
+			topology.PubKey = element.Pubkey
+			topologies = append(topologies, topology)
 		}
 	}
 
@@ -141,6 +148,7 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 		ProgramConfig:      programConfig,
 		ResourceExtensions: resourceExtensions,
 		Permissions:        permissions,
+		Topologies:         topologies,
 	}, errs
 }
 

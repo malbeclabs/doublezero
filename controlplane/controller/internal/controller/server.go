@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,6 +54,7 @@ type stateCache struct {
 	Devices         map[string]*Device
 	MulticastGroups map[string]serviceability.MulticastGroup
 	Tenants         map[string]serviceability.Tenant
+	Topologies      map[string]serviceability.TopologyInfo // keyed by base58 pubkey
 	UnicastVrfs     []uint16
 	Vpnv4BgpPeers   []BgpPeer
 	Ipv4BgpPeers    []BgpPeer
@@ -268,6 +270,11 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		Config:          data.Config,
 		Devices:         make(map[string]*Device),
 		MulticastGroups: make(map[string]serviceability.MulticastGroup),
+		Topologies:      make(map[string]serviceability.TopologyInfo),
+	}
+
+	for _, t := range data.Topologies {
+		cache.Topologies[base58.Encode(t.PubKey[:])] = t
 	}
 
 	// TODO: valid interface checks:
@@ -356,22 +363,22 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		cache.Ipv4BgpPeers = append(cache.Ipv4BgpPeers, candidateIpv4BgpPeer)
 
 		// determine if interface is in an onchain link and assign metrics
-		findLink := func(intf Interface) *serviceability.Link {
-			for i, link := range links {
+		findLink := func(intf Interface) (serviceability.Link, bool) {
+			for _, link := range links {
 				if d.PubKey == base58.Encode(link.SideAPubKey[:]) && intf.Name == link.SideAIfaceName {
-					return &links[i]
+					return link, true
 				}
 				if d.PubKey == base58.Encode(link.SideZPubKey[:]) && intf.Name == link.SideZIfaceName {
-					return &links[i]
+					return link, true
 				}
 			}
-			return nil
+			return serviceability.Link{}, false
 		}
 
 		for i, iface := range d.Interfaces {
-			link := findLink(iface)
+			link, linkFound := findLink(iface)
 
-			if link == nil || (link.Status != serviceability.LinkStatusActivated && link.Status != serviceability.LinkStatusSoftDrained && link.Status != serviceability.LinkStatusHardDrained) {
+			if !linkFound || (link.Status != serviceability.LinkStatusActivated && link.Status != serviceability.LinkStatusSoftDrained && link.Status != serviceability.LinkStatusHardDrained) {
 				d.Interfaces[i].IsLink = false
 				d.Interfaces[i].Metric = 0
 				d.Interfaces[i].LinkStatus = serviceability.LinkStatusPending
@@ -405,6 +412,16 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 			d.Interfaces[i].IsLink = true
 			d.Interfaces[i].LinkStatus = link.Status
+			d.Interfaces[i].UnicastDrained = link.UnicastDrained
+
+			// Resolve topology names from link_topologies pubkeys
+			for _, topoKey := range link.LinkTopologies {
+				pk := base58.Encode(topoKey[:])
+				if topo, ok := cache.Topologies[pk]; ok {
+					d.Interfaces[i].LinkTopologies = append(d.Interfaces[i].LinkTopologies, topo.Name)
+				}
+			}
+
 			linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))
 		}
 
@@ -520,6 +537,8 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		tunnel.PubKey = userPubKey
 		tunnel.Allocated = true
 
+		tunnel.TenantPubKey = base58.Encode(user.TenantPubKey[:])
+
 		if user.UserType != serviceability.UserTypeMulticast {
 			// Set the VRF ID and metro routing from the user's tenant. Default to VRF 1 with metro routing enabled.
 			tunnel.VrfId = 1
@@ -527,6 +546,10 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			if tenant, ok := cache.Tenants[base58.Encode(user.TenantPubKey[:])]; ok {
 				tunnel.VrfId = tenant.VrfId
 				tunnel.MetroRouting = tenant.MetroRouting
+
+				if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled {
+					tunnel.TenantTopologyColors = resolveTenantColors(tenant.IncludeTopologies, cache.Topologies)
+				}
 			}
 		}
 
@@ -608,6 +631,13 @@ func (c *Controller) Run(ctx context.Context) error {
 			c.log.Error("error fetching accounts", "error", err)
 		}
 		cacheUpdateOps.Inc()
+		if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled {
+			c.mu.RLock()
+			if len(c.cache.Topologies) == 0 {
+				c.log.Warn("flex_algo.enabled=true but no topology accounts found on-chain — verify doublezero-admin migrate has been run")
+			}
+			c.mu.RUnlock()
+		}
 		ticker := time.NewTicker(10 * time.Second)
 		for {
 			select {
@@ -700,6 +730,29 @@ func (c *Controller) deduplicateTunnels(device *Device) []*Tunnel {
 	}
 
 	return unique
+}
+
+// resolveTenantColors computes the "color N color M ..." string for a tenant's include_topologies.
+// If include_topologies is empty, uses UNICAST-DEFAULT (the first topology with name "unicast-default").
+// Returns empty string if no topologies can be resolved.
+func resolveTenantColors(includeTopologies [][32]byte, topologyMap map[string]serviceability.TopologyInfo) string {
+	var colors []string
+	if len(includeTopologies) > 0 {
+		for _, pk := range includeTopologies {
+			if topo, ok := topologyMap[base58.Encode(pk[:])]; ok {
+				colors = append(colors, fmt.Sprintf("color %d", int(topo.AdminGroupBit)+1))
+			}
+		}
+	} else {
+		// default: use unicast-default topology
+		for _, topo := range topologyMap {
+			if topo.Name == "unicast-default" {
+				colors = append(colors, fmt.Sprintf("color %d", int(topo.AdminGroupBit)+1))
+				break
+			}
+		}
+	}
+	return strings.Join(colors, " ")
 }
 
 // GetConfig renders the latest device configuration based on cached device data
@@ -805,6 +858,20 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		return nil, err
 	}
 
+	var allTopologies []TopologyModel
+	for _, topo := range c.cache.Topologies {
+		allTopologies = append(allTopologies, TopologyModel{
+			Name:           topo.Name,
+			AdminGroupBit:  topo.AdminGroupBit,
+			FlexAlgoNumber: topo.FlexAlgoNumber,
+			Color:          int(topo.AdminGroupBit) + 1,
+			ConstraintStr:  topo.Constraint.String(),
+		})
+	}
+	sort.Slice(allTopologies, func(i, j int) bool {
+		return allTopologies[i].AdminGroupBit < allTopologies[j].AdminGroupBit
+	})
+
 	data := templateData{
 		MulticastGroupBlock:      multicastGroupBlock,
 		Device:                   &deviceForRender,
@@ -816,6 +883,8 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		LocalASN:                 localASN,
 		UnicastVrfs:              c.cache.UnicastVrfs,
 		Strings:                  StringsHelper{},
+		AllTopologies:            allTopologies,
+		Config:                   c.featuresConfig,
 	}
 
 	config, err := renderConfig(data)

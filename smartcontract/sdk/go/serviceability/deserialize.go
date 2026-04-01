@@ -90,8 +90,6 @@ func DeserializeInterface(reader *ByteReader, iface *Interface) {
 		DeserializeInterfaceV1(reader, iface)
 	case 1: // version 2
 		DeserializeInterfaceV2(reader, iface)
-	case 2: // version 3
-		DeserializeInterfaceV3(reader, iface)
 	}
 }
 
@@ -122,16 +120,6 @@ func DeserializeInterfaceV2(reader *ByteReader, iface *Interface) {
 	iface.IpNet = reader.ReadNetworkV4()
 	iface.NodeSegmentIdx = reader.ReadU16()
 	iface.UserTunnelEndpoint = (reader.ReadU8() != 0)
-	// flex_algo_node_segments was merged into V2 from the old V3.
-	// Old V2 accounts (written before this field existed) will have no trailing
-	// bytes — ReadFlexAlgoNodeSegmentSlice returns nil/empty in that case.
-	iface.FlexAlgoNodeSegments = reader.ReadFlexAlgoNodeSegmentSlice()
-}
-
-// DeserializeInterfaceV3 handles legacy on-chain accounts written with
-// discriminant 2 (the old V3). Their layout is identical to the current V2.
-func DeserializeInterfaceV3(reader *ByteReader, iface *Interface) {
-	DeserializeInterfaceV2(reader, iface)
 }
 
 func DeserializeDevice(reader *ByteReader, dev *Device) {
@@ -198,7 +186,7 @@ func DeserializeLink(reader *ByteReader, link *Link) {
 	link.LinkHealth = LinkHealth(reader.ReadU8())
 	link.LinkDesiredStatus = LinkDesiredStatus(reader.ReadU8())
 	link.LinkTopologies = reader.ReadPubkeySlice()
-	link.LinkFlags = reader.ReadU8()
+	link.UnicastDrained = reader.ReadBool()
 }
 
 func DeserializeUser(reader *ByteReader, user *User) {

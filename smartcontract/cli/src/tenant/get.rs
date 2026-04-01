@@ -30,6 +30,7 @@ struct TenantDisplay {
     pub administrators: String,
     pub token_account: String,
     pub reference_count: u32,
+    pub include_topologies: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
@@ -56,6 +57,12 @@ impl GetTenantCliCommand {
                 .join(", "),
             token_account: tenant.token_account.to_string(),
             reference_count: tenant.reference_count,
+            include_topologies: tenant
+                .include_topologies
+                .iter()
+                .map(|pk| pk.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
             owner: tenant.owner,
         };
 

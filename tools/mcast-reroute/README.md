@@ -53,4 +53,4 @@ When a process binds a UDP socket to a specific source IP (e.g. `137.174.145.145
 
 This tool intercepts `sendmsg()` via eBPF before the routing decision and rewrites the source IP to one that belongs to the desired egress interface. The kernel then naturally routes the packet over that interface. Checksums are recalculated by the kernel after the rewrite.
 
-Only packets matching all three criteria are rewritten: source IP, multicast destination range (224.0.0.0/4), and specific destination IP/port. All other traffic passes through unchanged.
+Only packets matching both the source IP and a specific destination IP/port from `-dst` are rewritten. All other traffic passes through unchanged.

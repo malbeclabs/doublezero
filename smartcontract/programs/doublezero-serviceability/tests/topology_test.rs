@@ -1615,3 +1615,228 @@ async fn test_topology_clear_non_foundation_rejected() {
 
     println!("[PASS] test_topology_clear_non_foundation_rejected");
 }
+
+// ============================================================================
+// unicast_drained tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_link_unicast_drained_contributor_can_set_own_link() {
+    println!("[TEST] test_link_unicast_drained_contributor_can_set_own_link");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+        setup_program_with_globalconfig().await;
+
+    let (link_pubkey, contributor_pubkey, _, _) =
+        setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    // Verify unicast_drained starts as false
+    let link = get_link(&mut banks_client, link_pubkey).await;
+    assert!(!link.unicast_drained);
+
+    // Contributor A (payer) sets unicast_drained = true
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            unicast_drained: Some(true),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Read back: unicast_drained must be true
+    let link = get_link(&mut banks_client, link_pubkey).await;
+    assert!(link.unicast_drained);
+
+    println!("[PASS] test_link_unicast_drained_contributor_can_set_own_link");
+}
+
+#[tokio::test]
+async fn test_link_unicast_drained_contributor_cannot_set_other_link() {
+    println!("[TEST] test_link_unicast_drained_contributor_cannot_set_other_link");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+        setup_program_with_globalconfig().await;
+
+    // Create the link owned by payer (contributor A)
+    let (link_pubkey, _contributor_a_pubkey, _, _) =
+        setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    // Create a second contributor owned by a different keypair (bad_actor)
+    let bad_actor = Keypair::new();
+    transfer(&mut banks_client, &payer, &bad_actor.pubkey(), 10_000_000).await;
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (contributor_b_pubkey, _) =
+        get_contributor_pda(&program_id, globalstate_account.account_index + 1);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    // Foundation (payer) creates contributor B, owned by bad_actor
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "bad".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor_b_pubkey, false),
+            AccountMeta::new(bad_actor.pubkey(), false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // bad_actor tries to set unicast_drained on contributor A's link using contributor B
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            unicast_drained: Some(true),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_b_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &bad_actor,
+    )
+    .await;
+
+    // DoubleZeroError::NotAllowed = Custom(8)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(8),
+        ))) => {}
+        _ => panic!("Expected NotAllowed error (Custom(8)), got {:?}", result),
+    }
+
+    println!("[PASS] test_link_unicast_drained_contributor_cannot_set_other_link");
+}
+
+#[tokio::test]
+async fn test_link_unicast_drained_foundation_can_set_any_link() {
+    println!("[TEST] test_link_unicast_drained_foundation_can_set_any_link");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+        setup_program_with_globalconfig().await;
+
+    let (link_pubkey, contributor_pubkey, _, _) =
+        setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    // payer is in the foundation allowlist; it sets unicast_drained on a contributor's link
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            unicast_drained: Some(true),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let link = get_link(&mut banks_client, link_pubkey).await;
+    assert!(link.unicast_drained);
+
+    println!("[PASS] test_link_unicast_drained_foundation_can_set_any_link");
+}
+
+#[tokio::test]
+async fn test_link_unicast_drained_orthogonal_to_status_and_topologies() {
+    println!("[TEST] test_link_unicast_drained_orthogonal_to_status_and_topologies");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let admin_group_bits_pda = create_admin_group_bits(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    let topology_pda = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "test-topology",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    let (link_pubkey, contributor_pubkey, _, _) =
+        setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    // Assign a topology to the link (foundation-only)
+    assign_link_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        link_pubkey,
+        contributor_pubkey,
+        vec![topology_pda],
+        &payer,
+    )
+    .await;
+
+    let link_before = get_link(&mut banks_client, link_pubkey).await;
+    assert!(link_before.link_topologies.contains(&topology_pda));
+    assert!(!link_before.unicast_drained);
+
+    // Set unicast_drained = true
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            unicast_drained: Some(true),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let link_after = get_link(&mut banks_client, link_pubkey).await;
+    assert!(link_after.unicast_drained, "unicast_drained should be true");
+    assert_eq!(
+        link_after.status, link_before.status,
+        "status should be unchanged"
+    );
+    assert_eq!(
+        link_after.link_topologies, link_before.link_topologies,
+        "link_topologies should be unchanged"
+    );
+
+    println!("[PASS] test_link_unicast_drained_orthogonal_to_status_and_topologies");
+}

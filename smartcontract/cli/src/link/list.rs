@@ -379,6 +379,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
+            unicast_drained: false,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -575,6 +576,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
+            unicast_drained: false,
         };
         let tunnel2_pubkey = Pubkey::new_unique();
         let tunnel2 = Link {
@@ -601,6 +603,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
+            unicast_drained: false,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -751,6 +754,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
+            unicast_drained: false,
         };
 
         let link2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPS");
@@ -778,6 +782,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
+            unicast_drained: false,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -928,6 +933,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
+            unicast_drained: false,
         };
 
         let link2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPS");
@@ -955,6 +961,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
+            unicast_drained: false,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -1072,6 +1079,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
+            unicast_drained: false,
         };
 
         let link2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPS");
@@ -1099,6 +1107,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
+            unicast_drained: false,
         };
 
         client.expect_list_link().returning(move |_| {

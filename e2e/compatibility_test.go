@@ -100,17 +100,40 @@ var knownIncompatibilities = map[string]knownIncompat{
 	// The next mainnet-beta release after 0.8.2 is 0.8.6, so that's its first version with it.
 	"write/device_set_health":   {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
 	"write/device_set_health_2": {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
-	"write/link_set_health":     {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
-	"write/link_set_health_dzx": {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
-
-	// link drain: --status soft-drained was supported since v0.7.2. v0.7.1 and older
-	// fail with "Invalid LinkStatus: soft-drained".
-	"write/link_drain":     {minVersion: "0.7.2"},
-	"write/link_drain_dzx": {minVersion: "0.7.2"},
 
 	// device drain: --status drained (DeviceStatus) was added in v0.8.1.
 	"write/device_drain":   {minVersion: "0.8.1"},
 	"write/device_drain_2": {minVersion: "0.8.1"},
+
+	// device interface create: --mtu requirement changed from 2048 to 9000
+	// link create: --mtu requirement changed from 2048 to 9000
+	// And because the link can't be created, no operations on it can succeed
+	"write/device_interface_create":         {minVersion: "0.16.0"},
+	"write/device_interface_create_2":       {minVersion: "0.16.0"},
+	"write/device_interface_create_3":       {minVersion: "0.16.0"},
+	"write/device_interface_create_4":       {minVersion: "0.16.0"},
+	"write/device_interface_set_unlinked":   {minVersion: "0.16.0"},
+	"write/device_interface_set_unlinked_2": {minVersion: "0.16.0"},
+	"write/device_interface_set_unlinked_3": {minVersion: "0.16.0"},
+	"write/device_interface_set_unlinked_4": {minVersion: "0.16.0"},
+	"write/link_create_wan":                 {minVersion: "0.16.0"},
+	"write/link_create_dzx":                 {minVersion: "0.16.0"},
+	"write/link_accept_dzx":                 {minVersion: "0.16.0"},
+	"write/link_update":                     {minVersion: "0.16.0"},
+	"write/link_set_health":                 {minVersion: "0.16.0"},
+	"write/link_set_health_dzx":             {minVersion: "0.16.0"},
+	"write/link_get":                        {minVersion: "0.16.0"},
+	"write/link_latency":                    {minVersion: "0.16.0"},
+	"write/link_wait_activated":             {minVersion: "0.16.0"},
+	"write/link_wait_activated_dzx":         {minVersion: "0.16.0"},
+	"write/link_drain":                      {minVersion: "0.16.0"},
+	"write/link_drain_dzx":                  {minVersion: "0.16.0"},
+	"write/link_delete":                     {minVersion: "0.16.0"},
+	"write/link_delete_dzx":                 {minVersion: "0.16.0"},
+	"write/device_interface_delete":         {minVersion: "0.16.0"},
+	"write/device_interface_delete_2":       {minVersion: "0.16.0"},
+	"write/device_interface_delete_3":       {minVersion: "0.16.0"},
+	"write/device_interface_delete_4":       {minVersion: "0.16.0"},
 }
 
 // =============================================================================

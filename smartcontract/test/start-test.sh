@@ -12,18 +12,22 @@ mkdir -p ./logs ./target
 
 export OPENSSL_NO_VENDOR=1
 
+if [ "${CARGO_TARGET_DIR}" == "" ]; then
+    CARGO_TARGET_DIR="../../target"
+fi
+
 # Build the program
 echo "Build the program"
-cargo build-sbf --manifest-path ../programs/doublezero-serviceability/Cargo.toml -- -Znext-lockfile-bump --target-dir ../../target/
-cp ../../target/deploy/doublezero_serviceability.so ./target/doublezero_serviceability.so
+cargo build-sbf --manifest-path ../programs/doublezero-serviceability/Cargo.toml -- -Znext-lockfile-bump --target-dir ${CARGO_TARGET_DIR}
+cp ${CARGO_TARGET_DIR}/deploy/doublezero_serviceability.so ./target/doublezero_serviceability.so
 
 #Build the activator
 echo "Build the activator"
-cargo build --manifest-path ../../activator/Cargo.toml  --target-dir ../../target/ ; cp ../../target/debug/doublezero-activator ./target/
+cargo build --manifest-path ../../activator/Cargo.toml  --target-dir ${CARGO_TARGET_DIR} ; cp ${CARGO_TARGET_DIR}/debug/doublezero-activator ./target/
 
 #Build the activator
 echo "Build the client"
-cargo build --manifest-path ../../client/doublezero/Cargo.toml --target-dir ../../target/ ; cp ../../target/debug/doublezero ./target/
+cargo build --manifest-path ../../client/doublezero/Cargo.toml --target-dir ${CARGO_TARGET_DIR} ; cp ${CARGO_TARGET_DIR}/debug/doublezero ./target/
 
 # Configure to connect to localnet
 solana config set --url http://127.0.0.1:8899

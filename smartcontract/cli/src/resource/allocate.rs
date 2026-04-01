@@ -40,8 +40,7 @@ impl From<AllocateResourceCliCommand> for AllocateResourceCommand {
             | ResourceType::DzPrefixBlock => {
                 IdOrIp::Ip(x.parse::<NetworkV4>().expect("Failed to parse IP address"))
             }
-            ResourceType::AdminGroupBits
-            | ResourceType::TunnelIds
+            ResourceType::TunnelIds
             | ResourceType::LinkIds
             | ResourceType::SegmentRoutingIds
             | ResourceType::VrfIds => IdOrIp::Id(x.parse::<u16>().expect("Failed to parse ID")),

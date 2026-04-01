@@ -88,11 +88,11 @@ pub struct FindValidatorMulticastPublishersCommand {
     multicast_group: Option<String>,
 
     /// Only show validators that are already a publisher.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "not_publisher")]
     is_publisher: bool,
 
     /// Only show validators that are NOT a publisher.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "is_publisher")]
     not_publisher: bool,
 
     /// Minimum activated stake in SOL to include.

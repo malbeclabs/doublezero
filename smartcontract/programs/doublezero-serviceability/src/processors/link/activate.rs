@@ -234,6 +234,11 @@ pub fn process_activate_link(
     link.check_status_transition();
 
     // Auto-tag with UNICAST-DEFAULT topology at activation
+    assert_eq!(
+        unicast_default_topology_account.owner,
+        program_id,
+        "Invalid UNICAST-DEFAULT topology account owner"
+    );
     let (expected_unicast_default_pda, _) = get_topology_pda(program_id, "unicast-default");
     if unicast_default_topology_account.key != &expected_unicast_default_pda
         || unicast_default_topology_account.data_is_empty()

@@ -11,18 +11,32 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+backon.workspace = true
 borsh.workspace = true
 clap.workspace = true
 doublezero_sdk.workspace = true
 doublezero-serviceability.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 solana-account-decoder.workspace = true
 solana-client.workspace = true
 solana-sdk.workspace = true
+strum.workspace = true
+strum_macros.workspace = true
 tabled.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
 
 [dev-dependencies]
 mockall.workspace = true
+
+[[bin]]
+name = "doublezero-sentinel"
+path = "src/main.rs"

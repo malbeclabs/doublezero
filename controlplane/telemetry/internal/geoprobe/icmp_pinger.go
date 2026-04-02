@@ -176,7 +176,7 @@ func (p *ICMPPinger) readReplies(pending map[uint16]*pendingProbe, results map[P
 			continue
 		}
 
-		rtt := uint64(rxTime.Sub(pp.txTime).Nanoseconds())
+		rtt := uint64(max(rxTime.Sub(pp.txTime).Nanoseconds(), 0))
 		results[pp.addr] = rtt
 		delete(pending, seq)
 	}
@@ -237,7 +237,7 @@ func (p *ICMPPinger) MeasureOne(ctx context.Context, addr ProbeAddress) (uint64,
 			continue
 		}
 
-		rtt := uint64(rxTime.Sub(txTime).Nanoseconds())
+		rtt := uint64(max(rxTime.Sub(txTime).Nanoseconds(), 0))
 		p.log.Debug("MeasureOne succeeded", "host", addr.Host, "rtt_ns", rtt)
 		return rtt, true
 	}

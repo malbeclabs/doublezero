@@ -231,6 +231,26 @@ func TestICMPPinger_MeasureOne_IgnoresMismatchedSeq(t *testing.T) {
 	assert.Greater(t, rtt, uint64(0))
 }
 
+func TestICMPPinger_MeasureOne_NegativeRTTClampsToZero(t *testing.T) {
+	mock := &mockICMPSocket{}
+	p := newMockICMPPinger(mock)
+	defer p.Close()
+	addr := localhostProbeAddr()
+	require.NoError(t, p.AddProbe(addr))
+
+	// Reply with rxTime before txTime (simulates clock skew).
+	mock.mu.Lock()
+	mock.replies = append(mock.replies, mockReply{
+		data:   buildEchoReply(0xBEEF, 1),
+		rxTime: time.Now().Add(-1 * time.Second),
+	})
+	mock.mu.Unlock()
+
+	rtt, ok := p.MeasureOne(context.Background(), addr)
+	require.True(t, ok)
+	assert.Equal(t, uint64(0), rtt)
+}
+
 func TestICMPPinger_MeasureOne_IgnoresMismatchedID(t *testing.T) {
 	mock := &mockICMPSocket{}
 	p := newMockICMPPinger(mock)

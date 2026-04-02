@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Smartcontract
+  - Require that the access pass provided to `SubscribeMulticastGroup` belongs to the payer; foundation allowlist members may use any access pass.
   - Add Index account for onchain key uniqueness enforcement and O(1) key-to-pubkey lookup, with standalone CreateIndex/DeleteIndex instructions for migration backfill
   - minimum client version to 0.10.0
   - Enforce 9000-byte MTU on links and non-CYOA/non-DIA device interfaces; CYOA/DIA interfaces must be 1500. Onchain validation now returns `InvalidMtu` (error 46) for non-conforming values.

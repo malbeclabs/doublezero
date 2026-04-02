@@ -524,8 +524,8 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
-  } else if (iface.version === 1) {
-    // V2
+  } else if (iface.version === 1 || iface.version === 2) {
+    // V2 or V3
     iface.status = r.readU8();
     iface.name = r.readString();
     iface.interfaceType = r.readU8();
@@ -540,31 +540,18 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
-  } else if (iface.version === 2) {
-    // V3
-    iface.status = r.readU8();
-    iface.name = r.readString();
-    iface.interfaceType = r.readU8();
-    iface.interfaceCyoa = r.readU8();
-    iface.interfaceDia = r.readU8();
-    iface.loopbackType = r.readU8();
-    iface.bandwidth = r.readU64();
-    iface.cir = r.readU64();
-    iface.mtu = r.readU16();
-    iface.routingMode = r.readU8();
-    iface.vlanId = r.readU16();
-    iface.ipNet = r.readNetworkV4();
-    iface.nodeSegmentIdx = r.readU16();
-    iface.userTunnelEndpoint = r.readBool();
-    const segCount = r.readU32();
-    const flexAlgoNodeSegments: FlexAlgoNodeSegment[] = [];
-    for (let i = 0; i < segCount; i++) {
-      flexAlgoNodeSegments.push({
-        topology: readPubkey(r),
-        nodeSegmentIdx: r.readU16(),
-      });
+    if (iface.version === 2) {
+      // V3
+      const segCount = r.readU32();
+      const flexAlgoNodeSegments: FlexAlgoNodeSegment[] = [];
+      for (let i = 0; i < segCount; i++) {
+        flexAlgoNodeSegments.push({
+          topology: readPubkey(r),
+          nodeSegmentIdx: r.readU16(),
+        });
+      }
+      iface.flexAlgoNodeSegments = flexAlgoNodeSegments;
     }
-    iface.flexAlgoNodeSegments = flexAlgoNodeSegments;
   }
 
   return iface;

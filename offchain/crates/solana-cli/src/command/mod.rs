@@ -1,6 +1,5 @@
 mod passport;
 mod revenue_distribution;
-#[cfg(feature = "experimental")]
 mod shreds;
 
 //
@@ -16,8 +15,7 @@ pub enum DoubleZeroSolanaCommand {
     /// Revenue distribution program commands.
     RevenueDistribution(revenue_distribution::RevenueDistributionCommand),
 
-    /// Shred subscription program commands (experimental).
-    #[cfg(feature = "experimental")]
+    /// Shred subscription program commands.
     Shreds(shreds::ShredsCommand),
 }
 
@@ -28,7 +26,6 @@ impl DoubleZeroSolanaCommand {
             Self::RevenueDistribution(revenue_distribution) => {
                 revenue_distribution.command.try_into_execute().await
             }
-            #[cfg(feature = "experimental")]
             Self::Shreds(shreds) => shreds.try_into_execute().await,
         }
     }

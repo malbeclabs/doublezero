@@ -16,7 +16,6 @@ builds:
     command: build
     flags:
       - --package=doublezero-solana-cli
-      - --features=experimental
       - --release
     targets:
       - x86_64-unknown-linux-gnu

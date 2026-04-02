@@ -475,7 +475,7 @@ export interface DeviceInterface {
   userTunnelEndpoint: boolean;
 }
 
-const CURRENT_INTERFACE_VERSION = 2;
+const CURRENT_INTERFACE_VERSION = 3;
 
 function deserializeInterface(r: DefensiveReader): DeviceInterface {
   const iface: DeviceInterface = {
@@ -527,6 +527,31 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
+  } else if (iface.version === 2) {
+    // V3
+    iface.status = r.readU8();
+    iface.name = r.readString();
+    iface.interfaceType = r.readU8();
+    iface.interfaceCyoa = r.readU8();
+    iface.interfaceDia = r.readU8();
+    iface.loopbackType = r.readU8();
+    iface.bandwidth = r.readU64();
+    iface.cir = r.readU64();
+    iface.mtu = r.readU16();
+    iface.routingMode = r.readU8();
+    iface.vlanId = r.readU16();
+    iface.ipNet = r.readNetworkV4();
+    iface.nodeSegmentIdx = r.readU16();
+    iface.userTunnelEndpoint = r.readBool();
+    const segCount = r.readU32();
+    const flexAlgoNodeSegments: FlexAlgoNodeSegment[] = [];
+    for (let i = 0; i < segCount; i++) {
+      flexAlgoNodeSegments.push({
+        topology: readPubkey(r),
+        nodeSegmentIdx: r.readU16(),
+      });
+    }
+    iface.flexAlgoNodeSegments = flexAlgoNodeSegments;
   }
 
   return iface;

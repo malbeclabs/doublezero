@@ -87,6 +87,7 @@ fn main() {
     generate_access_pass(&fixtures_dir);
     generate_access_pass_validator(&fixtures_dir);
     generate_tenant(&fixtures_dir);
+    generate_topology(&fixtures_dir);
     generate_resource_extension_id(&fixtures_dir);
     generate_resource_extension_ip(&fixtures_dir);
 
@@ -410,6 +411,7 @@ fn generate_link(dir: &Path) {
     let side_a_pk = pubkey_from_byte(0x51);
     let side_z_pk = pubkey_from_byte(0x52);
     let contributor_pk = pubkey_from_byte(0x53);
+    let topology_pk = pubkey_from_byte(0x54);
 
     let val = Link {
         account_type: AccountType::Link,
@@ -433,8 +435,8 @@ fn generate_link(dir: &Path) {
         delay_override_ns: 0,
         link_health: LinkHealth::ReadyForService,
         desired_status: LinkDesiredStatus::Activated,
-        link_topologies: Vec::new(),
-            unicast_drained: false,
+        link_topologies: vec![topology_pk],
+        unicast_drained: true,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -464,6 +466,9 @@ fn generate_link(dir: &Path) {
             FieldValue { name: "DelayOverrideNs".into(), value: "0".into(), typ: "u64".into() },
             FieldValue { name: "LinkHealth".into(), value: "2".into(), typ: "u8".into() },
             FieldValue { name: "DesiredStatus".into(), value: "1".into(), typ: "u8".into() },
+            FieldValue { name: "LinkTopologiesLen".into(), value: "1".into(), typ: "u32".into() },
+            FieldValue { name: "LinkTopologies0".into(), value: pubkey_bs58(&topology_pk), typ: "pubkey".into() },
+            FieldValue { name: "UnicastDrained".into(), value: "true".into(), typ: "bool".into() },
         ],
     };
 
@@ -740,6 +745,7 @@ fn generate_tenant(dir: &Path) {
     let owner = pubkey_from_byte(0xD0);
     let admin_pk = pubkey_from_byte(0xD1);
     let token_account = pubkey_from_byte(0xD2);
+    let topology_pk = pubkey_from_byte(0xD3);
 
     let val = Tenant {
         account_type: AccountType::Tenant,
@@ -754,7 +760,7 @@ fn generate_tenant(dir: &Path) {
         metro_routing: true,
         route_liveness: false,
         billing: TenantBillingConfig::default(),
-        include_topologies: vec![],
+        include_topologies: vec![topology_pk],
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -778,10 +784,44 @@ fn generate_tenant(dir: &Path) {
             FieldValue { name: "BillingDiscriminant".into(), value: "0".into(), typ: "u8".into() },
             FieldValue { name: "BillingRate".into(), value: "0".into(), typ: "u64".into() },
             FieldValue { name: "BillingLastDeductionDzEpoch".into(), value: "0".into(), typ: "u64".into() },
+            FieldValue { name: "IncludeTopologiesLen".into(), value: "1".into(), typ: "u32".into() },
+            FieldValue { name: "IncludeTopologies0".into(), value: pubkey_bs58(&topology_pk), typ: "pubkey".into() },
         ],
     };
 
     write_fixture(dir, "tenant", &data, &meta);
+}
+
+fn generate_topology(dir: &Path) {
+    let owner = pubkey_from_byte(0xE0);
+
+    let val = doublezero_serviceability::state::topology::TopologyInfo {
+        account_type: AccountType::Topology,
+        owner,
+        bump_seed: 250,
+        name: "unicast-default".into(),
+        admin_group_bit: 0,
+        flex_algo_number: 128,
+        constraint: doublezero_serviceability::state::topology::TopologyConstraint::IncludeAny,
+    };
+
+    let data = borsh::to_vec(&val).unwrap();
+
+    let meta = FixtureMeta {
+        name: "TopologyInfo".into(),
+        account_type: 16,
+        fields: vec![
+            FieldValue { name: "AccountType".into(), value: "16".into(), typ: "u8".into() },
+            FieldValue { name: "Owner".into(), value: pubkey_bs58(&owner), typ: "pubkey".into() },
+            FieldValue { name: "BumpSeed".into(), value: "250".into(), typ: "u8".into() },
+            FieldValue { name: "Name".into(), value: "unicast-default".into(), typ: "string".into() },
+            FieldValue { name: "AdminGroupBit".into(), value: "0".into(), typ: "u8".into() },
+            FieldValue { name: "FlexAlgoNumber".into(), value: "128".into(), typ: "u8".into() },
+            FieldValue { name: "Constraint".into(), value: "0".into(), typ: "u8".into() },
+        ],
+    };
+
+    write_fixture(dir, "topology_info", &data, &meta);
 }
 
 /// ResourceExtension uses a fixed binary layout with bitmap at offset 88,

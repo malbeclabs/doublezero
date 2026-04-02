@@ -363,6 +363,9 @@ mod tests {
             side_z_iface_name: "Ethernet1/2".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
+            unicast_drained: false,
         };
 
         client

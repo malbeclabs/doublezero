@@ -59,6 +59,12 @@ pub struct UpdateLinkCliCommand {
     /// Reassign tunnel network (foundation-only, e.g. 172.16.1.100/31)
     #[arg(long)]
     pub tunnel_net: Option<NetworkV4>,
+    /// Topology name to tag this link with (foundation-only). Use "default" to clear.
+    #[arg(long)]
+    pub link_topology: Option<String>,
+    /// Mark this link as unicast-drained (contributor or foundation)
+    #[arg(long)]
+    pub unicast_drained: Option<bool>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -115,6 +121,21 @@ impl UpdateLinkCliCommand {
             }
         }
 
+        let link_topologies = if let Some(ref topology_name) = self.link_topology {
+            if topology_name == "default" {
+                Some(vec![])
+            } else {
+                let (topology_pda, _) =
+                    doublezero_sdk::get_topology_pda(&client.get_program_id(), topology_name);
+                client
+                    .get_account(topology_pda)
+                    .map_err(|_| eyre::eyre!("Topology '{}' not found", topology_name))?;
+                Some(vec![topology_pda])
+            }
+        } else {
+            None
+        };
+
         let signature = client.update_link(UpdateLinkCommand {
             pubkey,
             code: self.code.clone(),
@@ -133,6 +154,8 @@ impl UpdateLinkCliCommand {
             desired_status: self.desired_status,
             tunnel_id: self.tunnel_id,
             tunnel_net: self.tunnel_net,
+            link_topologies,
+            unicast_drained: self.unicast_drained,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -212,6 +235,9 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
+            unicast_drained: false,
         };
 
         let link2 = Link {
@@ -236,6 +262,9 @@ mod tests {
             side_z_iface_name: "eth3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
+            unicast_drained: false,
         };
 
         client
@@ -282,6 +311,8 @@ mod tests {
                 desired_status: None,
                 tunnel_id: None,
                 tunnel_net: None,
+                link_topologies: None,
+                unicast_drained: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -301,6 +332,8 @@ mod tests {
             desired_status: None,
             tunnel_id: None,
             tunnel_net: None,
+            link_topology: None,
+            unicast_drained: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -326,6 +359,8 @@ mod tests {
             desired_status: None,
             tunnel_id: None,
             tunnel_net: None,
+            link_topology: None,
+            unicast_drained: None,
             wait: false,
         }
         .execute(&client, &mut output);

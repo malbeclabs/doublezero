@@ -1,10 +1,10 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
 use doublezero_program_common::serializer;
-use doublezero_sdk::commands::link::get::GetLinkCommand;
+use doublezero_sdk::{commands::link::get::GetLinkCommand, TopologyInfo};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::io::Write;
+use std::{collections::HashMap, io::Write};
 use tabled::Tabled;
 
 #[derive(Args, Debug)]
@@ -47,6 +47,28 @@ struct LinkDisplay {
     pub status: String,
     pub health: String,
     pub owner: String,
+    pub link_topologies: String,
+    pub unicast_drained: bool,
+}
+
+fn resolve_topology_names(
+    pubkeys: &[Pubkey],
+    topology_map: &HashMap<Pubkey, TopologyInfo>,
+) -> String {
+    if pubkeys.is_empty() {
+        "default".to_string()
+    } else {
+        pubkeys
+            .iter()
+            .map(|pk| {
+                topology_map
+                    .get(pk)
+                    .map(|t| t.name.clone())
+                    .unwrap_or_else(|| pk.to_string())
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
 }
 
 impl GetLinkCliCommand {
@@ -54,6 +76,10 @@ impl GetLinkCliCommand {
         let (pubkey, link) = client.get_link(GetLinkCommand {
             pubkey_or_code: self.code,
         })?;
+
+        let topology_map = client
+            .list_topology(doublezero_sdk::commands::topology::list::ListTopologyCommand)
+            .unwrap_or_default();
 
         let display = LinkDisplay {
             account: pubkey.to_string(),
@@ -92,6 +118,8 @@ impl GetLinkCliCommand {
             status: link.status.to_string(),
             health: link.link_health.to_string(),
             owner: link.owner.to_string(),
+            link_topologies: resolve_topology_names(&link.link_topologies, &topology_map),
+            unicast_drained: link.unicast_drained,
         };
 
         if self.json {
@@ -126,6 +154,7 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
+    use std::collections::HashMap;
 
     #[test]
     fn test_cli_link_get() {
@@ -158,6 +187,9 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
+            unicast_drained: false,
         };
 
         let contributor = Contributor {
@@ -240,6 +272,9 @@ mod tests {
                 pubkey_or_code: device2_pk.to_string(),
             }))
             .returning(move |_| Ok((device2_pk, device2.clone())));
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
 
         // Expected failure
         let mut output = Vec::new();

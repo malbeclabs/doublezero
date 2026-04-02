@@ -1,10 +1,13 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_program_common::serializer;
-use doublezero_sdk::commands::tenant::list::ListTenantCommand;
+use doublezero_sdk::{
+    commands::{tenant::list::ListTenantCommand, topology::list::ListTopologyCommand},
+    TopologyInfo,
+};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::io::Write;
+use std::{collections::HashMap, io::Write};
 use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
@@ -25,13 +28,37 @@ pub struct TenantDisplay {
     pub vrf_id: u16,
     pub metro_routing: bool,
     pub route_liveness: bool,
+    pub include_topologies: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
+}
+
+fn resolve_topology_names(
+    pubkeys: &[Pubkey],
+    topology_map: &HashMap<Pubkey, TopologyInfo>,
+) -> String {
+    if pubkeys.is_empty() {
+        "default".to_string()
+    } else {
+        pubkeys
+            .iter()
+            .map(|pk| {
+                topology_map
+                    .get(pk)
+                    .map(|t| t.name.clone())
+                    .unwrap_or_else(|| pk.to_string())
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
 }
 
 impl ListTenantCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let tenants = client.list_tenant(ListTenantCommand {})?;
+        let topology_map = client
+            .list_topology(ListTopologyCommand)
+            .unwrap_or_default();
 
         let mut tenant_displays: Vec<TenantDisplay> = tenants
             .into_iter()
@@ -41,6 +68,10 @@ impl ListTenantCliCommand {
                 vrf_id: tenant.vrf_id,
                 metro_routing: tenant.metro_routing,
                 route_liveness: tenant.route_liveness,
+                include_topologies: resolve_topology_names(
+                    &tenant.include_topologies,
+                    &topology_map,
+                ),
                 owner: tenant.owner,
             })
             .collect();
@@ -91,11 +122,15 @@ mod tests {
             metro_routing: true,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
 
         client
             .expect_list_tenant()
             .returning(move |_| Ok(HashMap::from([(tenant1_pubkey, tenant1.clone())])));
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
@@ -108,7 +143,7 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,
-            " account                                   | code     | vrf_id | metro_routing | route_liveness | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n"
+            " account                                   | code     | vrf_id | metro_routing | route_liveness | include_topologies | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | default            | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n"
         );
 
         let mut output = Vec::new();
@@ -121,7 +156,7 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,
-            "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"tenant-a\",\"vrf_id\":100,\"metro_routing\":true,\"route_liveness\":false,\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n"
+            "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"tenant-a\",\"vrf_id\":100,\"metro_routing\":true,\"route_liveness\":false,\"include_topologies\":\"default\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n"
         );
     }
 }

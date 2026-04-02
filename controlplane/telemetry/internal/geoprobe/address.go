@@ -47,8 +47,12 @@ func (p ProbeAddress) ValidateICMP() error {
 	if p.Host == "" {
 		return fmt.Errorf("host cannot be empty")
 	}
-	if net.ParseIP(p.Host) == nil {
+	ip := net.ParseIP(p.Host)
+	if ip == nil {
 		return fmt.Errorf("host must be a valid IP address")
+	}
+	if ip.To4() == nil {
+		return fmt.Errorf("host %s must be an IPv4 address", p.Host)
 	}
 	if p.Port == 0 {
 		return fmt.Errorf("port cannot be zero")

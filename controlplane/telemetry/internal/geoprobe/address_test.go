@@ -226,6 +226,11 @@ func TestProbeAddress_ValidateICMP(t *testing.T) {
 			addr:    ProbeAddress{Host: "8.8.8.8", Port: 9000, TWAMPPort: 8925},
 			wantErr: "",
 		},
+		{
+			name:    "IPv6 rejected",
+			addr:    ProbeAddress{Host: "::1", Port: 9000, TWAMPPort: 0},
+			wantErr: "must be an IPv4 address",
+		},
 	}
 
 	for _, tt := range tests {

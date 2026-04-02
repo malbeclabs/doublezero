@@ -40,7 +40,8 @@ type ICMPPinger struct {
 	cfg    *ICMPPingerConfig
 	seq    atomic.Uint32
 	id     int
-	mu     sync.RWMutex
+	mu     sync.RWMutex // protects probes map
+	measMu sync.Mutex   // serializes socket operations (send/recv/deadline)
 	log    *slog.Logger
 }
 
@@ -194,6 +195,9 @@ func (p *ICMPPinger) MeasureOne(ctx context.Context, addr ProbeAddress) (uint64,
 		return 0, false
 	}
 
+	p.measMu.Lock()
+	defer p.measMu.Unlock()
+
 	seq := uint16(p.seq.Add(1))
 	txTime, err := p.sendEcho(entry, seq)
 	if err != nil {
@@ -249,6 +253,9 @@ func (p *ICMPPinger) MeasureAll(ctx context.Context) (map[ProbeAddress]uint64, e
 		entries = append(entries, e)
 	}
 	p.mu.RUnlock()
+
+	p.measMu.Lock()
+	defer p.measMu.Unlock()
 
 	results := make(map[ProbeAddress]uint64, len(entries))
 	if len(entries) == 0 {

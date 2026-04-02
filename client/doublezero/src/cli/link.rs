@@ -6,8 +6,9 @@ use doublezero_cli::{
         wan_create::*,
     },
     topology::{
-        clear::ClearTopologyCliCommand, create::CreateTopologyCliCommand,
-        delete::DeleteTopologyCliCommand, list::ListTopologyCliCommand,
+        backfill::BackfillTopologyCliCommand, clear::ClearTopologyCliCommand,
+        create::CreateTopologyCliCommand, delete::DeleteTopologyCliCommand,
+        list::ListTopologyCliCommand,
     },
 };
 
@@ -78,6 +79,8 @@ pub enum TopologyCommands {
     Delete(DeleteTopologyCliCommand),
     /// Clear a topology from links
     Clear(ClearTopologyCliCommand),
+    /// Backfill FlexAlgoNodeSegment entries on existing Vpnv4 loopbacks
+    Backfill(BackfillTopologyCliCommand),
     /// List all topologies
     List(ListTopologyCliCommand),
 }

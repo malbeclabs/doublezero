@@ -100,8 +100,9 @@ use doublezero_sdk::{
             update_payment_status::UpdatePaymentStatusCommand,
         },
         topology::{
-            clear::ClearTopologyCommand, create::CreateTopologyCommand,
-            delete::DeleteTopologyCommand, list::ListTopologyCommand,
+            backfill::BackfillTopologyCommand, clear::ClearTopologyCommand,
+            create::CreateTopologyCommand, delete::DeleteTopologyCommand,
+            list::ListTopologyCommand,
         },
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
@@ -345,6 +346,7 @@ pub trait CliCommand {
     fn create_topology(&self, cmd: CreateTopologyCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn delete_topology(&self, cmd: DeleteTopologyCommand) -> eyre::Result<Signature>;
     fn clear_topology(&self, cmd: ClearTopologyCommand) -> eyre::Result<Signature>;
+    fn backfill_topology(&self, cmd: BackfillTopologyCommand) -> eyre::Result<Signature>;
     fn list_topology(
         &self,
         cmd: ListTopologyCommand,
@@ -819,6 +821,9 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn clear_topology(&self, cmd: ClearTopologyCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn backfill_topology(&self, cmd: BackfillTopologyCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn list_topology(

@@ -236,6 +236,7 @@ async fn main() -> eyre::Result<()> {
                 TopologyCommands::Create(args) => args.execute(&client, &mut handle),
                 TopologyCommands::Delete(args) => args.execute(&client, &mut handle),
                 TopologyCommands::Clear(args) => args.execute(&client, &mut handle),
+                TopologyCommands::Backfill(args) => args.execute(&client, &mut handle),
                 TopologyCommands::List(args) => args.execute(&client, &mut handle),
             },
         },

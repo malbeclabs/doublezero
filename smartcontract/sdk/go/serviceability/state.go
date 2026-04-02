@@ -377,7 +377,7 @@ func (i Interface) MarshalJSON() ([]byte, error) {
 	return json.Marshal(jsonIface)
 }
 
-const CurrentInterfaceVersion = 2
+const CurrentInterfaceVersion = 3
 
 type Device struct {
 	AccountType               AccountType

@@ -63,6 +63,19 @@ func (br *ByteReader) ReadBytes(n int) []byte {
 	return v
 }
 
+func (br *ByteReader) ReadFlexAlgoNodeSegmentSlice() []FlexAlgoNodeSegment {
+	length := br.ReadU32()
+	if length == 0 {
+		return nil
+	}
+	result := make([]FlexAlgoNodeSegment, length)
+	for i := uint32(0); i < length; i++ {
+		result[i].Topology = br.ReadPubkey()
+		result[i].NodeSegmentIdx = br.ReadU16()
+	}
+	return result
+}
+
 func (br *ByteReader) DumpBytes(n int) string {
 	// Preserved for compatibility but uses offset from underlying reader.
 	return ""

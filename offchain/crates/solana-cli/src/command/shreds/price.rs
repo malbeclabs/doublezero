@@ -38,6 +38,10 @@ pub struct PriceCommand {
     #[arg(long)]
     json: bool,
 
+    /// Show all devices, including those with no remaining seats.
+    #[arg(long)]
+    all: bool,
+
     #[command(flatten)]
     connection_options: SolanaConnectionOptions,
 }
@@ -247,6 +251,25 @@ impl PriceCommand {
             })
             .collect();
 
+        let total_count = rows.len();
+        if !self.all {
+            rows.retain(|row| row.settled_seats < row.available_seats);
+        }
+        let hidden_count = total_count - rows.len();
+
+        if rows.is_empty() {
+            if self.json {
+                println!("[]");
+            } else if hidden_count > 0 {
+                println!(
+                    "No devices with remaining seats found ({hidden_count} device(s) hidden, use --all to show)."
+                );
+            } else {
+                println!("No devices found.");
+            }
+            return Ok(());
+        }
+
         rows.sort_by(|a, b| {
             a.metro_code
                 .cmp(&b.metro_code)
@@ -256,7 +279,15 @@ impl PriceCommand {
         if self.json {
             println!("{}", serde_json::to_string_pretty(&rows)?);
         } else {
-            println!("{} device(s) found:\n", rows.len());
+            if hidden_count > 0 {
+                println!(
+                    "{} device(s) found ({} with no remaining seats hidden, use --all to show):\n",
+                    rows.len(),
+                    hidden_count,
+                );
+            } else {
+                println!("{} device(s) found:\n", rows.len());
+            }
 
             let mut table = Table::new(rows);
             if !self.wide {

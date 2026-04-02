@@ -19,9 +19,12 @@ impl ClearTopologyCommand {
 
         let (topology_pda, _) = get_topology_pda(&client.get_program_id(), &self.name);
 
+        let payer = client.get_payer();
+
         let mut accounts = vec![
             AccountMeta::new_readonly(topology_pda, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
+            AccountMeta::new(payer, true),
         ];
 
         for link_pk in &self.link_pubkeys {
@@ -57,6 +60,7 @@ mod tests {
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
         let (topology_pda, _) = get_topology_pda(&client.get_program_id(), "my-topology");
+        let payer = client.get_payer();
 
         client
             .expect_execute_transaction()
@@ -67,6 +71,7 @@ mod tests {
                 predicate::eq(vec![
                     AccountMeta::new_readonly(topology_pda, false),
                     AccountMeta::new_readonly(globalstate_pubkey, false),
+                    AccountMeta::new(payer, true),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
@@ -86,6 +91,7 @@ mod tests {
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
         let (topology_pda, _) = get_topology_pda(&client.get_program_id(), "my-topology");
+        let payer = client.get_payer();
         let link1 = Pubkey::new_unique();
         let link2 = Pubkey::new_unique();
 
@@ -98,6 +104,7 @@ mod tests {
                 predicate::eq(vec![
                     AccountMeta::new_readonly(topology_pda, false),
                     AccountMeta::new_readonly(globalstate_pubkey, false),
+                    AccountMeta::new(payer, true),
                     AccountMeta::new(link1, false),
                     AccountMeta::new(link2, false),
                 ]),

@@ -38,7 +38,10 @@ pub fn process_topology_clear(
     msg!("process_topology_clear(name={})", value.name);
 
     // Payer must be a signer
-    assert!(payer_account.is_signer, "Payer must be a signer");
+    if !payer_account.is_signer {
+        msg!("TopologyClear: payer must be a signer");
+        return Err(DoubleZeroError::Unauthorized.into());
+    }
 
     // Authorization: foundation keys only
     let globalstate = GlobalState::try_from(globalstate_account)?;

@@ -108,16 +108,27 @@ pub fn process_create_device_interface(
 
     let name = validate_iface(&value.name).map_err(|_| DoubleZeroError::InvalidInterfaceName)?;
 
-    assert_eq!(
-        contributor_account.owner, program_id,
-        "Invalid Contributor Account Owner"
+    validate_program_account!(
+        device_account,
+        program_id,
+        writable = true,
+        pda = None::<&Pubkey>,
+        "Device"
     );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        contributor_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "Contributor"
     );
-
-    assert!(device_account.is_writable, "PDA Account is not writable");
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "GlobalState"
+    );
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);

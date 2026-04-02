@@ -1,5 +1,6 @@
 use crate::{
     error::DoubleZeroError,
+    processors::validation::validate_program_account,
     serializer::try_acc_close,
     state::{globalstate::GlobalState, index::Index},
 };
@@ -41,15 +42,20 @@ pub fn process_delete_index(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    assert_eq!(
-        index_account.owner, program_id,
-        "Invalid Index Account Owner"
+    validate_program_account!(
+        index_account,
+        program_id,
+        writable = true,
+        pda = None::<&Pubkey>,
+        "Index"
     );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "GlobalState"
     );
-    assert!(index_account.is_writable, "Index Account is not writable");
 
     // Check foundation allowlist
     let globalstate = GlobalState::try_from(globalstate_account)?;

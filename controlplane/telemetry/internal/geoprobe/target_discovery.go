@@ -102,7 +102,7 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 	}
 
 	// nil targets means the scan was skipped (target_update_count unchanged).
-	if targets == nil && inboundKeys == nil {
+	if targets == nil && inboundKeys == nil && icmpTargets == nil {
 		return
 	}
 

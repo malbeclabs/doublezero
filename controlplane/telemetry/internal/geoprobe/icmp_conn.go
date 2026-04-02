@@ -14,6 +14,7 @@ import (
 )
 
 // icmpSocket abstracts raw ICMP socket operations for testing.
+// Implementations are not safe for concurrent use; callers must serialize access.
 type icmpSocket interface {
 	sendEcho(dst net.IP, payload []byte) (time.Time, error)
 	recvEcho(buf []byte) (int, time.Time, error)
@@ -21,6 +22,8 @@ type icmpSocket interface {
 	close() error
 }
 
+// icmpConn is not safe for concurrent use. The caller (ICMPPinger) must
+// hold measMu to serialize all send/recv/deadline operations.
 type icmpConn struct {
 	fd          int
 	epfd        int

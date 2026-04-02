@@ -335,7 +335,10 @@ pub async fn try_fetch_debt_records_and_distributions(
         .iter()
         .flatten()
         .filter_map(ZeroCopyAccountOwnedData::<Distribution>::from_account)
-        .filter(|distribution| distribution.is_debt_calculation_finalized())
+        .filter(|distribution| {
+            distribution.solana_validator_debt_merkle_root != Default::default()
+                && distribution.is_debt_calculation_finalized()
+        })
         .collect::<Vec<_>>();
 
     let network_env = solana_connection.try_network_environment().await?;

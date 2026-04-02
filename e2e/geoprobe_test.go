@@ -453,12 +453,12 @@ func startGeoprobeAgent(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoaI
 	require.NoError(t, err, "failed to connect geoprobe to CYOA network with IP %s", cyoaIP)
 
 	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if t.Failed() {
-			dumpContainerLogs(ctx, containerID, "geoprobe-agent")
-		}
-		_ = container.Terminate(ctx)
+		dumpContainerLogs(ctx, containerID, "geoprobe-agent")
 	})
 
 	return geoprobeAgentResult{
@@ -578,12 +578,12 @@ func startGeoprobeTarget(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoa
 	require.NoError(t, err, "failed to connect geoprobe-target to CYOA network with IP %s", cyoaIP)
 
 	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if t.Failed() {
-			dumpContainerLogs(ctx, containerID, "geoprobe-target")
-		}
-		_ = container.Terminate(ctx)
+		dumpContainerLogs(ctx, containerID, "geoprobe-target")
 	})
 
 	return containerID
@@ -945,12 +945,6 @@ func startClickhouseContainer(t *testing.T, log *slog.Logger, dn *devnet.Devnet)
 	require.NoError(t, err)
 
 	containerID := container.GetContainerID()
-
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		_ = container.Terminate(ctx)
-	})
 
 	require.Eventually(t, func() bool {
 		output, err := docker.Exec(t.Context(), dockerClient, containerID, []string{

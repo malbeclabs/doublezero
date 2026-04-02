@@ -106,6 +106,21 @@
       "name": "DesiredStatus",
       "value": "1",
       "typ": "u8"
+    },
+    {
+      "name": "LinkTopologiesLen",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "LinkTopologies0",
+      "value": "6euFJbx65EayK76qjPNWCqcCjpTkJoZA3rubHP4bYaXy",
+      "typ": "pubkey"
+    },
+    {
+      "name": "UnicastDrained",
+      "value": "true",
+      "typ": "bool"
     }
   ]
 }

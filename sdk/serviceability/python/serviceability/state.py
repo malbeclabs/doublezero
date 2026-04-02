@@ -400,7 +400,7 @@ class AccessPassStatus(IntEnum):
 # Account dataclasses
 # ---------------------------------------------------------------------------
 
-CURRENT_INTERFACE_VERSION = 2
+CURRENT_INTERFACE_VERSION = 3
 
 
 @dataclass
@@ -451,6 +451,27 @@ class Interface:
             iface.ip_net = r.read_network_v4()
             iface.node_segment_idx = r.read_u16()
             iface.user_tunnel_endpoint = r.read_bool()
+        elif iface.version == 2:  # V3
+            iface.status = InterfaceStatus(r.read_u8())
+            iface.name = r.read_string()
+            iface.interface_type = InterfaceType(r.read_u8())
+            iface.interface_cyoa = InterfaceCYOA(r.read_u8())
+            iface.interface_dia = InterfaceDIA(r.read_u8())
+            iface.loopback_type = LoopbackType(r.read_u8())
+            iface.bandwidth = r.read_u64()
+            iface.cir = r.read_u64()
+            iface.mtu = r.read_u16()
+            iface.routing_mode = RoutingMode(r.read_u8())
+            iface.vlan_id = r.read_u16()
+            iface.ip_net = r.read_network_v4()
+            iface.node_segment_idx = r.read_u16()
+            iface.user_tunnel_endpoint = r.read_bool()
+            count = r.read_u32()
+            for _ in range(count):
+                seg = FlexAlgoNodeSegment()
+                seg.topology = _read_pubkey(r)
+                seg.node_segment_idx = r.read_u16()
+                iface.flex_algo_node_segments.append(seg)
         return iface
 
 

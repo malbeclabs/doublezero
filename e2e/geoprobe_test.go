@@ -922,7 +922,7 @@ func startClickhouseContainer(t *testing.T, log *slog.Logger, dn *devnet.Devnet)
 	t.Helper()
 
 	req := testcontainers.ContainerRequest{
-		Image: "clickhouse/clickhouse-server:latest",
+		Image: "clickhouse/clickhouse-server:24.12",
 		Name:  dn.Spec.DeployID + "-clickhouse",
 		ConfigModifier: func(cfg *dockercontainer.Config) {
 			cfg.Hostname = "clickhouse"
@@ -948,7 +948,7 @@ func startClickhouseContainer(t *testing.T, log *slog.Logger, dn *devnet.Devnet)
 
 	require.Eventually(t, func() bool {
 		output, err := docker.Exec(t.Context(), dockerClient, containerID, []string{
-			"clickhouse-client", "--query", "SELECT 1",
+			"clickhouse-client", "--password", "test", "--query", "SELECT 1",
 		})
 		return err == nil && strings.TrimSpace(string(output)) == "1"
 	}, 30*time.Second, 1*time.Second, "ClickHouse should be ready")

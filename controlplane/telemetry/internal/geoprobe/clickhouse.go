@@ -171,7 +171,7 @@ func (w *ClickhouseWriter) flush(ctx context.Context) {
 		`INSERT INTO "%s".location_offsets`, w.db,
 	))
 	if err != nil {
-		w.log.Error("failed to prepare batch", "error", err)
+		w.log.Error("failed to prepare batch", "error", err, "dropped_rows", len(rows))
 		return
 	}
 
@@ -196,16 +196,17 @@ func (w *ClickhouseWriter) flush(ctx context.Context) {
 			r.RefMeasuredRttNs,
 			r.RefRttNs,
 		); err != nil {
-			w.log.Error("failed to append row", "error", err)
+			w.log.Error("failed to append row", "error", err, "dropped_rows", len(rows))
 			_ = batch.Abort()
 			return
 		}
 	}
 
 	if err := batch.Send(); err != nil {
-		w.log.Error("failed to send batch", "error", err)
+		w.log.Error("failed to send batch", "error", err, "dropped_rows", len(rows))
 		return
 	}
+	_ = batch.Close()
 
 	w.log.Debug("flushed offsets to clickhouse", "count", len(rows))
 }

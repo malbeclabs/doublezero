@@ -404,6 +404,12 @@ CURRENT_INTERFACE_VERSION = 3
 
 
 @dataclass
+class FlexAlgoNodeSegment:
+    topology: bytes = b"\x00" * 32
+    node_segment_idx: int = 0
+
+
+@dataclass
 class Interface:
     version: int = 0
     status: InterfaceStatus = InterfaceStatus.INVALID
@@ -420,6 +426,7 @@ class Interface:
     ip_net: bytes = b"\x00" * 5
     node_segment_idx: int = 0
     user_tunnel_endpoint: bool = False
+    flex_algo_node_segments: list["FlexAlgoNodeSegment"] = field(default_factory=list)
 
     @classmethod
     def from_reader(cls, r: IncrementalReader) -> Interface:

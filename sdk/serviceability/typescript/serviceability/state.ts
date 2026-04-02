@@ -470,6 +470,11 @@ export function deserializeExchange(data: Uint8Array): Exchange {
 // Interface (versioned, embedded in Device)
 // ---------------------------------------------------------------------------
 
+export interface FlexAlgoNodeSegment {
+  topology: PublicKey;
+  nodeSegmentIdx: number;
+}
+
 export interface DeviceInterface {
   version: number;
   status: number;
@@ -486,6 +491,7 @@ export interface DeviceInterface {
   ipNet: Uint8Array;
   nodeSegmentIdx: number;
   userTunnelEndpoint: boolean;
+  flexAlgoNodeSegments?: FlexAlgoNodeSegment[];
 }
 
 const CURRENT_INTERFACE_VERSION = 3;
@@ -507,6 +513,7 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     ipNet: new Uint8Array(5),
     nodeSegmentIdx: 0,
     userTunnelEndpoint: false,
+    flexAlgoNodeSegments: [],
   };
 
   iface.version = r.readU8();

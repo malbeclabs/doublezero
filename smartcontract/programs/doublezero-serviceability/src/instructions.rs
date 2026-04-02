@@ -80,6 +80,10 @@ use crate::processors::{
         delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
         update::TenantUpdateArgs, update_payment_status::UpdatePaymentStatusArgs,
     },
+    topology::{
+        backfill::TopologyBackfillArgs, clear::TopologyClearArgs, create::TopologyCreateArgs,
+        delete::TopologyDeleteArgs,
+    },
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
         closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
@@ -220,8 +224,12 @@ pub enum DoubleZeroInstruction {
     Deprecated102(), // variant 102 (was CreateReservedSubscribeUser)
     Deprecated103(), // variant 103 (was DeleteReservedSubscribeUser)
 
-    CreateIndex(IndexCreateArgs), // variant 104
-    DeleteIndex(IndexDeleteArgs), // variant 105
+    CreateIndex(IndexCreateArgs),           // variant 104
+    DeleteIndex(IndexDeleteArgs),           // variant 105
+    CreateTopology(TopologyCreateArgs),     // variant 106
+    DeleteTopology(TopologyDeleteArgs),     // variant 107
+    ClearTopology(TopologyClearArgs),       // variant 108
+    BackfillTopology(TopologyBackfillArgs), // variant 109
 }
 
 impl DoubleZeroInstruction {
@@ -353,9 +361,12 @@ impl DoubleZeroInstruction {
             100 => Ok(Self::ResumePermission(PermissionResumeArgs::try_from(rest).unwrap())),
             101 => Ok(Self::DeletePermission(PermissionDeleteArgs::try_from(rest).unwrap())),
 
-
             104 => Ok(Self::CreateIndex(IndexCreateArgs::try_from(rest).unwrap())),
             105 => Ok(Self::DeleteIndex(IndexDeleteArgs::try_from(rest).unwrap())),
+            106 => Ok(Self::CreateTopology(TopologyCreateArgs::try_from(rest).unwrap())),
+            107 => Ok(Self::DeleteTopology(TopologyDeleteArgs::try_from(rest).unwrap())),
+            108 => Ok(Self::ClearTopology(TopologyClearArgs::try_from(rest).unwrap())),
+            109 => Ok(Self::BackfillTopology(TopologyBackfillArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -491,8 +502,12 @@ impl DoubleZeroInstruction {
             Self::Deprecated102() => "Deprecated102".to_string(),
             Self::Deprecated103() => "Deprecated103".to_string(),
 
-            Self::CreateIndex(_) => "CreateIndex".to_string(), // variant 104
-            Self::DeleteIndex(_) => "DeleteIndex".to_string(), // variant 105
+            Self::CreateIndex(_) => "CreateIndex".to_string(),     // variant 104
+            Self::DeleteIndex(_) => "DeleteIndex".to_string(),     // variant 105
+            Self::CreateTopology(_) => "CreateTopology".to_string(), // variant 106
+            Self::DeleteTopology(_) => "DeleteTopology".to_string(), // variant 107
+            Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 108
+            Self::BackfillTopology(_) => "BackfillTopology".to_string(), // variant 109
         }
     }
 
@@ -620,8 +635,12 @@ impl DoubleZeroInstruction {
             Self::Deprecated102() => String::new(),
             Self::Deprecated103() => String::new(),
 
-            Self::CreateIndex(args) => format!("{args:?}"), // variant 104
-            Self::DeleteIndex(args) => format!("{args:?}"), // variant 105
+            Self::CreateIndex(args) => format!("{args:?}"),   // variant 104
+            Self::DeleteIndex(args) => format!("{args:?}"),   // variant 105
+            Self::CreateTopology(args) => format!("{args:?}"), // variant 106
+            Self::DeleteTopology(args) => format!("{args:?}"), // variant 107
+            Self::ClearTopology(args) => format!("{args:?}"),  // variant 108
+            Self::BackfillTopology(args) => format!("{args:?}"), // variant 109
         }
     }
 }
@@ -821,6 +840,8 @@ mod tests {
                 tunnel_id: None,
                 tunnel_net: None,
                 use_onchain_allocation: false,
+                link_topologies: None,
+                unicast_drained: None,
             }),
             "UpdateLink",
         );
@@ -1271,6 +1292,7 @@ mod tests {
                 metro_routing: Some(true),
                 route_liveness: Some(false),
                 billing: None,
+                include_topologies: None,
             }),
             "UpdateTenant",
         );
@@ -1310,6 +1332,25 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::DeletePermission(PermissionDeleteArgs {}),
             "DeletePermission",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+                name: "unicast-default".to_string(),
+                constraint: crate::state::topology::TopologyConstraint::IncludeAny,
+            }),
+            "CreateTopology",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteTopology(TopologyDeleteArgs {
+                name: "unicast-default".to_string(),
+            }),
+            "DeleteTopology",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
+                name: "unicast-default".to_string(),
+            }),
+            "ClearTopology",
         );
     }
 }

@@ -69,6 +69,7 @@ pub fn get_resource_extension_range(
         ResourceType::LinkIds => ResourceExtensionRange::IdRange(0, 65535),
         ResourceType::SegmentRoutingIds => ResourceExtensionRange::IdRange(1, 65535),
         ResourceType::VrfIds => ResourceExtensionRange::IdRange(1, 1024),
+        ResourceType::AdminGroupBits => ResourceExtensionRange::IdRange(0, 127),
     }
 }
 
@@ -169,6 +170,15 @@ pub fn create_resource(
         let mut buffer = resource_account.data.borrow_mut();
         let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
         resource.allocate(1)?; // Allocates index 0
+    }
+
+    // Pre-mark bit 1 (UNICAST-DRAINED) so it is never allocated to a user topology.
+    // IS-IS flex-algo admin-group bit 1 is reserved for the UNICAST-DRAINED topology
+    // and must never be reused.
+    if let ResourceType::AdminGroupBits = resource_type {
+        let mut buffer = resource_account.data.borrow_mut();
+        let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+        resource.allocate_specific(&crate::resource::IdOrIp::Id(1))?;
     }
 
     Ok(())

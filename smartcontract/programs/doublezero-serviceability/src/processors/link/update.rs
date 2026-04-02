@@ -43,6 +43,9 @@ pub struct LinkUpdateArgs {
     pub tunnel_net: Option<NetworkV4>,
     #[incremental(default = false)]
     pub use_onchain_allocation: bool,
+    pub link_topologies: Option<Vec<Pubkey>>,
+    #[incremental(default = None)]
+    pub unicast_drained: Option<bool>,
 }
 
 impl fmt::Debug for LinkUpdateArgs {
@@ -86,6 +89,12 @@ impl fmt::Debug for LinkUpdateArgs {
         }
         if self.use_onchain_allocation {
             parts.push("use_onchain_allocation: true".to_string());
+        }
+        if let Some(ref link_topologies) = self.link_topologies {
+            parts.push(format!("link_topologies: {:?}", link_topologies));
+        }
+        if let Some(unicast_drained) = self.unicast_drained {
+            parts.push(format!("unicast_drained: {:?}", unicast_drained));
         }
         write!(f, "{}", parts.join(", "))
     }
@@ -364,6 +373,26 @@ pub fn process_update_link(
         try_acc_write(&side_z_dev, device_z_account, payer_account, accounts)?;
     }
 
+    // link_topologies is foundation-only
+    if let Some(link_topologies) = &value.link_topologies {
+        if !globalstate.foundation_allowlist.contains(payer_account.key) {
+            msg!("link_topologies update requires foundation allowlist");
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+        link.link_topologies = link_topologies.clone();
+    }
+
+    // unicast_drained: contributor A or foundation
+    if let Some(unicast_drained) = value.unicast_drained {
+        if link.contributor_pk != *contributor_account.key
+            && !globalstate.foundation_allowlist.contains(payer_account.key)
+        {
+            msg!("unicast_drained update requires contributor A or foundation allowlist");
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+        link.unicast_drained = unicast_drained;
+    }
+
     link.check_status_transition();
 
     try_acc_write(&link, link_account, payer_account, accounts)?;
@@ -419,6 +448,8 @@ mod tests {
             tunnel_id: None,
             tunnel_net: None,
             use_onchain_allocation: false,
+            link_topologies: None,
+            unicast_drained: None,
         };
 
         let serialized = borsh::to_vec(&args_before).unwrap();
@@ -472,6 +503,8 @@ mod tests {
             tunnel_id: None,
             tunnel_net: None,
             use_onchain_allocation: false,
+            link_topologies: None,
+            unicast_drained: None,
         };
 
         let serialized = borsh::to_vec(&args_before).unwrap();

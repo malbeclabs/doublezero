@@ -27,6 +27,8 @@ pub struct UpdateLinkCommand {
     pub desired_status: Option<LinkDesiredStatus>,
     pub tunnel_id: Option<u16>,
     pub tunnel_net: Option<NetworkV4>,
+    pub link_topologies: Option<Vec<Pubkey>>,
+    pub unicast_drained: Option<bool>,
 }
 
 impl UpdateLinkCommand {
@@ -100,6 +102,8 @@ impl UpdateLinkCommand {
                 tunnel_id: self.tunnel_id,
                 tunnel_net: self.tunnel_net,
                 use_onchain_allocation,
+                link_topologies: self.link_topologies.clone(),
+                unicast_drained: self.unicast_drained,
             }),
             accounts,
         )

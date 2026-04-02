@@ -4,13 +4,14 @@ use doublezero_serviceability::{
     instructions::*,
     pda::{
         get_globalconfig_pda, get_globalstate_pda, get_program_config_pda,
-        get_resource_extension_pda,
+        get_resource_extension_pda, get_topology_pda,
     },
-    processors::globalconfig::set::SetGlobalConfigArgs,
+    processors::{globalconfig::set::SetGlobalConfigArgs, topology::create::TopologyCreateArgs},
     resource::ResourceType,
     state::{
         accountdata::AccountData, accounttype::AccountType, device::Device,
         globalstate::GlobalState, resource_extension::ResourceExtensionOwned,
+        topology::TopologyConstraint,
     },
 };
 use solana_program_test::*;
@@ -501,6 +502,8 @@ pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey,
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Initialize global state
     execute_transaction(
@@ -540,6 +543,7 @@ pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey,
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )
@@ -552,4 +556,42 @@ pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey,
         globalstate_pubkey,
         globalconfig_pubkey,
     )
+}
+
+/// Create the "unicast-default" topology.
+/// Returns the PDA of the "unicast-default" topology.
+/// Requires that global state + global config are already initialized (AdminGroupBits is
+/// created by SetGlobalConfig).
+#[allow(dead_code)]
+pub async fn create_unicast_default_topology(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    _globalconfig_pubkey: Pubkey,
+    payer: &Keypair,
+) -> Pubkey {
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+            name: "unicast-default".to_string(),
+            constraint: TopologyConstraint::IncludeAny,
+        }),
+        vec![
+            AccountMeta::new(unicast_default_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    unicast_default_pda
 }

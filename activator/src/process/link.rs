@@ -271,6 +271,9 @@ mod tests {
                 link_health: doublezero_serviceability::state::link::LinkHealth::Pending,
                 desired_status:
                     doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+                link_topologies: Vec::new(),
+                unicast_drained: false,
             };
 
             let tunnel_cloned = tunnel.clone();
@@ -397,6 +400,9 @@ mod tests {
             side_z_iface_name: "Ethernet1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::Pending,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
+            unicast_drained: false,
         };
 
         let link_cloned = link.clone();
@@ -457,6 +463,9 @@ mod tests {
                 link_health: doublezero_serviceability::state::link::LinkHealth::Pending,
                 desired_status:
                     doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+                link_topologies: Vec::new(),
+                unicast_drained: false,
             };
 
             let tunnel_clone = tunnel.clone();
@@ -544,6 +553,9 @@ mod tests {
                 link_health: doublezero_serviceability::state::link::LinkHealth::Pending,
                 desired_status:
                     doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+                link_topologies: Vec::new(),
+                unicast_drained: false,
             };
 
             // SDK command fetches the link internally
@@ -623,6 +635,9 @@ mod tests {
                 link_health: doublezero_serviceability::state::link::LinkHealth::Pending,
                 desired_status:
                     doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+                link_topologies: Vec::new(),
+                unicast_drained: false,
             };
 
             // SDK command fetches the link internally

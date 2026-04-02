@@ -710,6 +710,8 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
         side_z_iface_name: "Ethernet1".to_string(),
         link_health: LinkHealth::ReadyForService,
         desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+        link_topologies: Vec::new(),
+        unicast_drained: false,
     };
 
     let mut data = Vec::new();

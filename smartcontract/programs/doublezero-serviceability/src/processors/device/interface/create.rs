@@ -233,6 +233,7 @@ pub fn process_create_device_interface(
             ip_net,
             node_segment_idx,
             user_tunnel_endpoint: value.user_tunnel_endpoint,
+            flex_algo_node_segments: vec![],
         }
         .to_interface(),
     );

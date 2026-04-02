@@ -82,7 +82,6 @@ type OffsetRow struct {
 	RttNs               uint64
 	TargetIP            string
 	NumReferences       uint8
-	TotalRttNs          uint64
 	SignatureValid      bool
 	SignatureError      string
 	RawOffset           string
@@ -105,7 +104,6 @@ func OffsetRowFromLocationOffset(offset *LocationOffset, sourceAddr string, sigV
 		RttNs:           offset.RttNs,
 		TargetIP:        FormatTargetIP(offset.TargetIP),
 		NumReferences:   offset.NumReferences,
-		TotalRttNs:      offset.RttNs,
 		SignatureValid:  sigValid,
 		SignatureError:  sigError,
 		RawOffset:       hex.EncodeToString(rawBytes),
@@ -116,7 +114,6 @@ func OffsetRowFromLocationOffset(offset *LocationOffset, sourceAddr string, sigV
 		row.RefSenderPubkeys = append(row.RefSenderPubkeys, solana.PublicKeyFromBytes(ref.SenderPubkey[:]).String())
 		row.RefMeasuredRttNs = append(row.RefMeasuredRttNs, ref.MeasuredRttNs)
 		row.RefRttNs = append(row.RefRttNs, ref.RttNs)
-		row.TotalRttNs += ref.RttNs
 	}
 
 	return row
@@ -191,7 +188,6 @@ func (w *ClickhouseWriter) flush(ctx context.Context) {
 			r.RttNs,
 			r.TargetIP,
 			r.NumReferences,
-			r.TotalRttNs,
 			r.SignatureValid,
 			r.SignatureError,
 			r.RawOffset,

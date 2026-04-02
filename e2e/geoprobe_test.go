@@ -963,7 +963,7 @@ func verifyClickhouseOffsets(t *testing.T, chContainerID string) {
 		output, err := docker.Exec(t.Context(), dockerClient, chContainerID, []string{
 			"clickhouse-client",
 			"--password", "test",
-			"--query", "SELECT count(), sum(signature_valid), min(total_rtt_ns) FROM default.location_offsets FORMAT TabSeparated",
+			"--query", "SELECT count(), sum(signature_valid), min(rtt_ns) FROM default.location_offsets FORMAT TabSeparated",
 		})
 		if err != nil {
 			return false
@@ -974,9 +974,9 @@ func verifyClickhouseOffsets(t *testing.T, chContainerID string) {
 		}
 		count := parts[0]
 		sigValidSum := parts[1]
-		minTotalRtt := parts[2]
-		return count != "0" && count == sigValidSum && minTotalRtt != "0"
-	}, 60*time.Second, 5*time.Second, "Expected location_offsets to contain rows with valid signatures and non-zero total_rtt_ns")
+		minRttNs := parts[2]
+		return count != "0" && count == sigValidSum && minRttNs != "0"
+	}, 60*time.Second, 5*time.Second, "Expected location_offsets to contain rows with valid signatures and non-zero rtt_ns")
 }
 
 // waitForInboundProbeSuccess polls the target-sender log for a successful probe pair

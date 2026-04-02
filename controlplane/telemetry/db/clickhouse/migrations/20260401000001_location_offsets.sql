@@ -11,7 +11,6 @@ CREATE TABLE IF NOT EXISTS location_offsets (
     rtt_ns                UInt64,
     target_ip             String,
     num_references        UInt8,
-    total_rtt_ns          UInt64,
     signature_valid       Bool,
     signature_error       String,
     raw_offset            String,

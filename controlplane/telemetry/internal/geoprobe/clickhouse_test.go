@@ -50,7 +50,6 @@ func TestOffsetRowFromLocationOffset(t *testing.T) {
 	require.Equal(t, "192.168.1.1:8923", row.SourceAddr)
 	require.True(t, row.SignatureValid)
 	require.Empty(t, row.SignatureError)
-	require.Equal(t, uint64(2_500_000), row.TotalRttNs)
 	require.Equal(t, uint8(1), row.NumReferences)
 	require.Len(t, row.RefAuthorityPubkeys, 1)
 	require.Len(t, row.RefSenderPubkeys, 1)

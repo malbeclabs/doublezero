@@ -646,7 +646,7 @@ func main() {
 	targetUpdateCh := make(chan geoprobe.TargetUpdate, 1)
 	inboundKeyCh := make(chan geoprobe.InboundKeyUpdate, 1)
 	parentUpdateCh := make(chan geoprobe.ParentUpdate, 1)
-	icmpTargetUpdateCh := make(chan geoprobe.IcmpTargetUpdate, 1)
+	icmpTargetUpdateCh := make(chan geoprobe.ICMPTargetUpdate, 1)
 
 	// Build parent discovery if program IDs are configured.
 	var pd *geoprobe.ParentDiscovery
@@ -696,6 +696,7 @@ func main() {
 			GeoProbePubkey:         geoProbePubkey,
 			Client:                 geolocationUserClient,
 			CLITargets:             targets,
+			CLIIcmpTargets:         icmpTargets,
 			CLIAllowedKeys:         allowedKeys,
 			Logger:                 log,
 			ProbeTargetUpdateCount: &probeTargetUpdateCount,
@@ -854,7 +855,7 @@ func runMeasurementLoop(
 	cliAllowedKeys [][32]byte,
 	icmpPinger *geoprobe.ICMPPinger,
 	icmpTargets []geoprobe.ProbeAddress,
-	icmpTargetUpdateCh <-chan geoprobe.IcmpTargetUpdate,
+	icmpTargetUpdateCh <-chan geoprobe.ICMPTargetUpdate,
 ) error {
 	measureTicker := time.NewTicker(*probeInterval)
 	defer measureTicker.Stop()

@@ -316,7 +316,7 @@ func TestTargetDiscovery_DiffDetection(t *testing.T) {
 	td := newTestTargetDiscovery(client, nil, nil)
 	targetCh := make(chan TargetUpdate, 2)
 	keyCh := make(chan InboundKeyUpdate, 2)
-	icmpTargetCh := make(chan IcmpTargetUpdate, 2)
+	icmpTargetCh := make(chan ICMPTargetUpdate, 2)
 
 	ctx := context.Background()
 	// First call should send update.
@@ -341,7 +341,7 @@ func TestTargetDiscovery_RPCError(t *testing.T) {
 	td := newTestTargetDiscovery(client, nil, nil)
 	targetCh := make(chan TargetUpdate, 1)
 	keyCh := make(chan InboundKeyUpdate, 1)
-	icmpTargetCh := make(chan IcmpTargetUpdate, 1)
+	icmpTargetCh := make(chan ICMPTargetUpdate, 1)
 
 	td.discoverAndSend(context.Background(), targetCh, keyCh, icmpTargetCh)
 	if len(targetCh) != 0 {

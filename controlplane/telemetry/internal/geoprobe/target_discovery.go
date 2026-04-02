@@ -27,8 +27,8 @@ type InboundKeyUpdate struct {
 	Keys [][32]byte
 }
 
-// IcmpTargetUpdate contains outbound ICMP probe targets discovered from onchain data.
-type IcmpTargetUpdate struct {
+// ICMPTargetUpdate contains outbound ICMP probe targets discovered from onchain data.
+type ICMPTargetUpdate struct {
 	Targets []ProbeAddress
 }
 
@@ -90,11 +90,11 @@ func NewTargetDiscovery(cfg *TargetDiscoveryConfig) (*TargetDiscovery, error) {
 }
 
 // Tick performs a single target discovery cycle and sends updates to the channels.
-func (d *TargetDiscovery) Tick(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate, icmpTargetCh chan<- IcmpTargetUpdate) {
+func (d *TargetDiscovery) Tick(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate, icmpTargetCh chan<- ICMPTargetUpdate) {
 	d.discoverAndSend(ctx, targetCh, keyCh, icmpTargetCh)
 }
 
-func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate, icmpTargetCh chan<- IcmpTargetUpdate) {
+func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate, icmpTargetCh chan<- ICMPTargetUpdate) {
 	targets, icmpTargets, inboundKeys, err := d.discover(ctx)
 	if err != nil {
 		d.log.Warn("Target discovery tick failed", "error", err)
@@ -127,7 +127,7 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 	if !probeAddressSlicesEqual(icmpTargets, d.cachedIcmpTargets) {
 		d.cachedIcmpTargets = icmpTargets
 		select {
-		case icmpTargetCh <- IcmpTargetUpdate{Targets: icmpTargets}:
+		case icmpTargetCh <- ICMPTargetUpdate{Targets: icmpTargets}:
 		default:
 			d.log.Warn("ICMP target update channel full, skipping update")
 		}

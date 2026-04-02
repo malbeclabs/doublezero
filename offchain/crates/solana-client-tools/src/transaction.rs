@@ -1,4 +1,6 @@
-use anyhow::{Context, Result, ensure};
+pub const MAX_TRANSACTION_SIZE: usize = 1_232;
+
+use anyhow::{Context, Result};
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction,
     hash::Hash,
@@ -34,21 +36,6 @@ pub fn try_batch_instructions_with_common_signers(
 ) -> Result<Vec<Vec<Instruction>>> {
     const TRANSACTION_CU_BUFFER: u32 = 5_000;
 
-    // These adjustments may be too conservative. But we want to err on the side
-    // of caution to avoid an accidental RPC revert with a transaction being
-    // too large.
-    let transaction_size_limit = if allow_compute_price_instruction {
-        // Only account for the instruction data size, which is 9 bytes.
-        1_232
-         - 32 // Compute Budget program ID.
-         - 5 // Compute Budget limit instruction (1 + 4).
-         - 9 // Compute Budget price instruction (1 + 8).
-    } else {
-        1_232
-        - 32 // Compute Budget program ID.
-        - 5 // Compute Budget limit instruction (1 + 4).
-    };
-
     instructions_and_compute_units.reverse();
 
     let mut batches = Vec::new();
@@ -60,25 +47,26 @@ pub fn try_batch_instructions_with_common_signers(
         last_batch.push(instruction);
         last_compute_units += compute_units;
 
-        let transaction = try_new_transaction(
+        // Build a trial transaction with all compute budget instructions included
+        // so the size check accounts for the full final transaction size.
+        let trial_size = trial_transaction_size(
             &last_batch,
             signers,
             address_lookup_table_accounts,
-            Default::default(),
+            last_compute_units,
+            allow_compute_price_instruction,
         )?;
 
-        if bincode::serialize(&transaction).unwrap().len() > transaction_size_limit {
+        if trial_size > MAX_TRANSACTION_SIZE {
             let instruction = last_batch.pop().unwrap();
             let batch_compute_units = last_compute_units - compute_units;
 
             let mut batch = std::mem::replace(&mut last_batch, vec![instruction]);
-            try_complete_instructions_batch(
-                &mut batch,
-                signers,
-                address_lookup_table_accounts,
-                transaction_size_limit,
+            // Only append the CU limit instruction; the caller is responsible
+            // for appending the price instruction if needed.
+            batch.push(ComputeBudgetInstruction::set_compute_unit_limit(
                 batch_compute_units,
-            )?;
+            ));
 
             batches.push(batch);
             last_compute_units = TRANSACTION_CU_BUFFER + compute_units;
@@ -86,13 +74,9 @@ pub fn try_batch_instructions_with_common_signers(
     }
 
     if !last_batch.is_empty() {
-        try_complete_instructions_batch(
-            &mut last_batch,
-            signers,
-            address_lookup_table_accounts,
-            transaction_size_limit,
+        last_batch.push(ComputeBudgetInstruction::set_compute_unit_limit(
             last_compute_units,
-        )?;
+        ));
 
         batches.push(last_batch);
     }
@@ -100,28 +84,150 @@ pub fn try_batch_instructions_with_common_signers(
     Ok(batches)
 }
 
-fn try_complete_instructions_batch(
-    batch: &mut Vec<Instruction>,
+/// Build a trial transaction including compute budget instructions and return
+/// its serialized size. This gives an accurate measurement of the final
+/// transaction size, avoiding the need to estimate CU instruction overhead.
+fn trial_transaction_size(
+    batch: &[Instruction],
     signers: &[&Keypair],
     address_lookup_table_accounts: &[AddressLookupTableAccount],
-    transaction_size_limit: usize,
-    current_compute_units: u32,
-) -> Result<()> {
-    batch.push(ComputeBudgetInstruction::set_compute_unit_limit(
-        current_compute_units,
+    compute_units: u32,
+    include_price_ix: bool,
+) -> Result<usize> {
+    let mut instructions = batch.to_vec();
+    instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
+        compute_units,
     ));
+    if include_price_ix {
+        // Use a placeholder price; the actual value doesn't affect serialized size.
+        instructions.push(ComputeBudgetInstruction::set_compute_unit_price(0));
+    }
 
-    // Out of paranoia, try to serialize the transaction again.
     let transaction = try_new_transaction(
-        batch,
+        &instructions,
         signers,
         address_lookup_table_accounts,
         Default::default(),
     )?;
-    ensure!(
-        bincode::serialize(&transaction).unwrap().len() <= transaction_size_limit,
-        "Transaction is too large"
-    );
 
-    Ok(())
+    Ok(bincode::serialize(&transaction).unwrap().len())
+}
+
+#[cfg(test)]
+mod tests {
+    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
+
+    use super::*;
+
+    /// Build a fake instruction that mimics InitializeDeviceHistory:
+    /// 10 account metas (some shared, some unique per device), ~33 bytes of data.
+    fn fake_device_history_ix(
+        program_id: &Pubkey,
+        oracle_key: &Pubkey,
+        payer_key: &Pubkey,
+        shared_keys: &[Pubkey],
+        metro_history: &Pubkey,
+    ) -> Instruction {
+        let device_history = Pubkey::new_unique();
+        let device_history_token = Pubkey::new_unique();
+
+        Instruction {
+            program_id: *program_id,
+            accounts: vec![
+                AccountMeta::new_readonly(shared_keys[0], false),
+                AccountMeta::new_readonly(*oracle_key, true),
+                AccountMeta::new(shared_keys[1], false),
+                AccountMeta::new(*metro_history, false),
+                AccountMeta::new(*payer_key, true),
+                AccountMeta::new(device_history, false),
+                AccountMeta::new(device_history_token, false),
+                AccountMeta::new_readonly(shared_keys[2], false),
+                AccountMeta::new_readonly(shared_keys[3], false),
+                AccountMeta::new_readonly(shared_keys[4], false),
+            ],
+            data: vec![0u8; 33],
+        }
+    }
+
+    fn make_ixs(count: usize) -> (Vec<(Instruction, u32)>, Vec<Keypair>) {
+        let oracle = Keypair::new();
+        let payer = Keypair::new();
+        let program_id = Pubkey::new_unique();
+        let shared_keys: Vec<Pubkey> = (0..5).map(|_| Pubkey::new_unique()).collect();
+        let metro_history = Pubkey::new_unique();
+        let oracle_pk = oracle.pubkey();
+        let payer_pk = payer.pubkey();
+
+        let instructions = (0..count)
+            .map(|_| {
+                let ix = fake_device_history_ix(
+                    &program_id,
+                    &oracle_pk,
+                    &payer_pk,
+                    &shared_keys,
+                    &metro_history,
+                );
+                (ix, 50_000u32)
+            })
+            .collect();
+
+        (instructions, vec![payer, oracle])
+    }
+
+    /// All batched transactions must fit within 1232 bytes, even after the
+    /// caller appends a compute unit price instruction.
+    fn assert_batches_fit(batches: &[Vec<Instruction>], signers: &[&Keypair], with_price: bool) {
+        for (i, batch) in batches.iter().enumerate() {
+            let mut final_batch = batch.clone();
+            if with_price {
+                final_batch.push(ComputeBudgetInstruction::set_compute_unit_price(1_000));
+            }
+            let tx = try_new_transaction(&final_batch, signers, &[], Default::default()).unwrap();
+            let size = bincode::serialize(&tx).unwrap().len();
+            assert!(
+                size <= 1_232,
+                "batch {i}: {size} bytes exceeds 1232-byte limit"
+            );
+        }
+    }
+
+    #[test]
+    fn test_batching_128_instructions_with_price() {
+        let (instructions, keys) = make_ixs(128);
+        let signers: Vec<&Keypair> = keys.iter().collect();
+
+        let batches = try_batch_instructions_with_common_signers(instructions, &signers, &[], true)
+            .expect("batching should succeed");
+
+        assert!(
+            batches.len() > 1,
+            "128 instructions should require multiple batches"
+        );
+        assert_batches_fit(&batches, &signers, true);
+    }
+
+    #[test]
+    fn test_batching_128_instructions_without_price() {
+        let (instructions, keys) = make_ixs(128);
+        let signers: Vec<&Keypair> = keys.iter().collect();
+
+        let batches =
+            try_batch_instructions_with_common_signers(instructions, &signers, &[], false)
+                .expect("batching should succeed");
+
+        assert!(batches.len() > 1);
+        assert_batches_fit(&batches, &signers, false);
+    }
+
+    #[test]
+    fn test_batching_single_instruction() {
+        let (instructions, keys) = make_ixs(1);
+        let signers: Vec<&Keypair> = keys.iter().collect();
+
+        let batches = try_batch_instructions_with_common_signers(instructions, &signers, &[], true)
+            .expect("single instruction should batch");
+
+        assert_eq!(batches.len(), 1);
+        assert_batches_fit(&batches, &signers, true);
+    }
 }

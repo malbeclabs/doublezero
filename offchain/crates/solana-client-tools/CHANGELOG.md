@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- fix transaction batch size checks to include compute budget instructions ([#331](https://github.com/doublezerofoundation/doublezero-offchain/pull/331))
 - provide meaningful keypair error if invalid or missing ([#329](https://github.com/doublezerofoundation/doublezero-offchain/pull/329))
 - match DZ ledger testnet genesis hash ([#323](https://github.com/doublezerofoundation/doublezero-offchain/pull/323))
 - derive `Default` for command structs ([#243](https://github.com/doublezerofoundation/doublezero-offchain/pull/243))

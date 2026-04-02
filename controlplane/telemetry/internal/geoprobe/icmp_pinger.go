@@ -88,10 +88,7 @@ func (p *ICMPPinger) AddProbe(addr ProbeAddress) error {
 		return err
 	}
 
-	ip := net.ParseIP(addr.Host)
-	if ip == nil {
-		return net.InvalidAddrError(addr.Host)
-	}
+	ip := net.ParseIP(addr.Host).To4()
 
 	p.mu.Lock()
 	defer p.mu.Unlock()

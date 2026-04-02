@@ -1470,7 +1470,7 @@ async fn create_loopback_interface(
             interface_dia: InterfaceDIA::None,
             bandwidth: 0,
             cir: 0,
-            mtu: 1500,
+            mtu: 9000,
             routing_mode: RoutingMode::Static,
         }),
         vec![

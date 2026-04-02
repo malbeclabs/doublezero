@@ -13,6 +13,7 @@ COPY --from=base /doublezero/bin/doublezero_serviceability.so /doublezero/bin/.
 COPY --from=base /doublezero/bin/doublezero_telemetry.so /doublezero/bin/.
 COPY --from=base /doublezero/bin/doublezero_geolocation.so /doublezero/bin/.
 COPY --from=base /doublezero/bin/doublezero-geolocation /doublezero/bin/.
+COPY --from=base /doublezero/bin/doublezero-admin /doublezero/bin/.
 
 COPY --from=base /usr/local/bin/solana /usr/local/bin/.
 COPY --from=base /usr/local/bin/solana-keygen /usr/local/bin/.

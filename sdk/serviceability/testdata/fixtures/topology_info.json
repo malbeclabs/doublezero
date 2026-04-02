@@ -1,0 +1,41 @@
+{
+  "name": "TopologyInfo",
+  "account_type": 16,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "16",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "G5QKowXuCHtvVwwEx2f1YZxCyBZf9op5oJ5ukgVvTD6F",
+      "typ": "pubkey"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "250",
+      "typ": "u8"
+    },
+    {
+      "name": "Name",
+      "value": "unicast-default",
+      "typ": "string"
+    },
+    {
+      "name": "AdminGroupBit",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "FlexAlgoNumber",
+      "value": "128",
+      "typ": "u8"
+    },
+    {
+      "name": "Constraint",
+      "value": "0",
+      "typ": "u8"
+    }
+  ]
+}

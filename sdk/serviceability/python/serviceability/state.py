@@ -390,7 +390,13 @@ class AccessPassStatus(IntEnum):
 # Account dataclasses
 # ---------------------------------------------------------------------------
 
-CURRENT_INTERFACE_VERSION = 2
+CURRENT_INTERFACE_VERSION = 3
+
+
+@dataclass
+class FlexAlgoNodeSegment:
+    topology: bytes = b"\x00" * 32
+    node_segment_idx: int = 0
 
 
 @dataclass
@@ -410,6 +416,7 @@ class Interface:
     ip_net: bytes = b"\x00" * 5
     node_segment_idx: int = 0
     user_tunnel_endpoint: bool = False
+    flex_algo_node_segments: list["FlexAlgoNodeSegment"] = field(default_factory=list)
 
     @classmethod
     def from_reader(cls, r: IncrementalReader) -> Interface:
@@ -426,7 +433,7 @@ class Interface:
             iface.ip_net = r.read_network_v4()
             iface.node_segment_idx = r.read_u16()
             iface.user_tunnel_endpoint = r.read_bool()
-        elif iface.version == 1:  # V2
+        elif iface.version in (1, 2):  # V2 or V3
             iface.status = InterfaceStatus(r.read_u8())
             iface.name = r.read_string()
             iface.interface_type = InterfaceType(r.read_u8())
@@ -441,6 +448,13 @@ class Interface:
             iface.ip_net = r.read_network_v4()
             iface.node_segment_idx = r.read_u16()
             iface.user_tunnel_endpoint = r.read_bool()
+            if iface.version == 2:  # V3
+                count = r.read_u32()
+                for _ in range(count):
+                    seg = FlexAlgoNodeSegment()
+                    seg.topology = _read_pubkey(r)
+                    seg.node_segment_idx = r.read_u16()
+                    iface.flex_algo_node_segments.append(seg)
         return iface
 
 

@@ -301,25 +301,31 @@ const (
 	RoutingModeBGP    RoutingMode = 1
 )
 
-type Interface struct {
-	Version            uint8
-	Status             InterfaceStatus
-	Name               string
-	InterfaceType      InterfaceType
-	InterfaceCYOA      InterfaceCYOA
-	InterfaceDIA       InterfaceDIA
-	LoopbackType       LoopbackType
-	Bandwidth          uint64
-	Cir                uint64
-	Mtu                uint16
-	RoutingMode        RoutingMode
-	VlanId             uint16
-	IpNet              [5]uint8
-	NodeSegmentIdx     uint16
-	UserTunnelEndpoint bool
+type FlexAlgoNodeSegment struct {
+	Topology       [32]byte
+	NodeSegmentIdx uint16
 }
 
-const CurrentInterfaceVersion = 2
+type Interface struct {
+	Version              uint8
+	Status               InterfaceStatus
+	Name                 string
+	InterfaceType        InterfaceType
+	InterfaceCYOA        InterfaceCYOA
+	InterfaceDIA         InterfaceDIA
+	LoopbackType         LoopbackType
+	Bandwidth            uint64
+	Cir                  uint64
+	Mtu                  uint16
+	RoutingMode          RoutingMode
+	VlanId               uint16
+	IpNet                [5]uint8
+	NodeSegmentIdx       uint16
+	UserTunnelEndpoint   bool
+	FlexAlgoNodeSegments []FlexAlgoNodeSegment
+}
+
+const CurrentInterfaceVersion = 3
 
 type Uint128 struct {
 	Low  uint64

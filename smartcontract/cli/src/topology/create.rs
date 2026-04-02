@@ -31,7 +31,10 @@ fn parse_constraint(s: &str) -> Result<TopologyConstraint, String> {
 impl CreateTopologyCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         if self.name.len() > 32 {
-            eyre::bail!("topology name must be 32 characters or fewer (got {})", self.name.len());
+            eyre::bail!(
+                "topology name must be 32 characters or fewer (got {})",
+                self.name.len()
+            );
         }
 
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
@@ -112,6 +115,9 @@ mod tests {
         let mut out = Cursor::new(Vec::new());
         let result = cmd.execute(&mock, &mut out);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("32 characters or fewer"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("32 characters or fewer"));
     }
 }

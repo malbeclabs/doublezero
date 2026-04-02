@@ -141,15 +141,14 @@ pub fn process_subscribe_multicastgroup(
     let accesspass_account = next_account_info(accounts_iter)?;
     let user_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for onchain allocation
     // Account layout WITH onchain allocation (use_onchain_allocation=true):
     //   [mgroup, accesspass, user, globalstate, multicast_publisher_block, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_allocation=false):
-    //   [mgroup, accesspass, user, payer, system]
+    // Account layout WITHOUT onchain allocation (use_onchain_allocation=false):
+    //   [mgroup, accesspass, user, globalstate, payer, system]
+    let globalstate_account = next_account_info(accounts_iter)?;
     let onchain_accounts = if value.use_onchain_allocation {
-        let globalstate_account = next_account_info(accounts_iter)?;
         let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
-        Some((globalstate_account, multicast_publisher_block_ext))
+        Some(multicast_publisher_block_ext)
     } else {
         None
     };
@@ -214,6 +213,27 @@ pub fn process_subscribe_multicastgroup(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
+    let (expected_globalstate_pda, _) = get_globalstate_pda(program_id);
+    assert_eq!(
+        globalstate_account.key, &expected_globalstate_pda,
+        "Invalid GlobalState PDA",
+    );
+    let globalstate = GlobalState::try_from(globalstate_account)?;
+
+    // The access pass must belong to the payer, unless the payer is in the foundation allowlist.
+    if !globalstate
+        .foundation_allowlist
+        .contains(payer_account.key)
+        && accesspass.user_payer != *payer_account.key
+    {
+        msg!(
+            "AccessPass user_payer {:?} does not match payer {:?}",
+            accesspass.user_payer,
+            payer_account.key
+        );
+        return Err(DoubleZeroError::Unauthorized.into());
+    }
+
     let result = subscribe_user_to_multicastgroup(
         mgroup_account,
         &accesspass,
@@ -222,18 +242,11 @@ pub fn process_subscribe_multicastgroup(
         value.subscriber,
     )?;
 
-    if let Some((globalstate_account, multicast_publisher_block_ext)) = onchain_accounts {
+    if let Some(multicast_publisher_block_ext) = onchain_accounts {
         // Onchain allocation path: allocate dz_ip directly, skip Updating status
-        let globalstate = GlobalState::try_from(globalstate_account)?;
         if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
             return Err(DoubleZeroError::FeatureNotEnabled.into());
         }
-
-        let (expected_globalstate_pda, _) = get_globalstate_pda(program_id);
-        assert_eq!(
-            globalstate_account.key, &expected_globalstate_pda,
-            "Invalid GlobalState PDA",
-        );
 
         // Allocate dz_ip when gaining first publisher
         if result.publisher_list_transitioned

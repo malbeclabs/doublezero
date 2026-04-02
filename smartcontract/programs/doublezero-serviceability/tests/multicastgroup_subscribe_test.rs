@@ -3,11 +3,11 @@ use doublezero_serviceability::{
     pda::*,
     processors::{
         accesspass::set::SetAccessPassArgs,
+        allowlist::foundation::add::AddFoundationAllowlistArgs,
         contributor::create::ContributorCreateArgs,
         device::{
             activate::DeviceActivateArgs, create::DeviceCreateArgs, update::DeviceUpdateArgs,
         },
-        allowlist::foundation::add::AddFoundationAllowlistArgs,
         globalconfig::set::SetGlobalConfigArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         multicastgroup::{

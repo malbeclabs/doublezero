@@ -221,9 +221,7 @@ pub fn process_subscribe_multicastgroup(
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
     // The access pass must belong to the payer, unless the payer is in the foundation allowlist.
-    if !globalstate
-        .foundation_allowlist
-        .contains(payer_account.key)
+    if !globalstate.foundation_allowlist.contains(payer_account.key)
         && accesspass.user_payer != *payer_account.key
     {
         msg!(

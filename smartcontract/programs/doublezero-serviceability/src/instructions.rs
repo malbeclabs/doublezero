@@ -508,9 +508,9 @@ impl DoubleZeroInstruction {
             Self::CreateIndex(_) => "CreateIndex".to_string(), // variant 104
             Self::DeleteIndex(_) => "DeleteIndex".to_string(), // variant 105
             Self::SetUserBGPStatus(_) => "SetUserBGPStatus".to_string(), // variant 106
-            Self::CreateTopology(_) => "CreateTopology".to_string(),     // variant 107
-            Self::DeleteTopology(_) => "DeleteTopology".to_string(),     // variant 108
-            Self::ClearTopology(_) => "ClearTopology".to_string(),       // variant 109
+            Self::CreateTopology(_) => "CreateTopology".to_string(), // variant 107
+            Self::DeleteTopology(_) => "DeleteTopology".to_string(), // variant 108
+            Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 109
             Self::BackfillTopology(_) => "BackfillTopology".to_string(), // variant 110
         }
     }
@@ -642,10 +642,10 @@ impl DoubleZeroInstruction {
             Self::CreateIndex(args) => format!("{args:?}"), // variant 104
             Self::DeleteIndex(args) => format!("{args:?}"), // variant 105
             Self::SetUserBGPStatus(args) => format!("{args:?}"), // variant 106
-            Self::CreateTopology(args) => format!("{args:?}"),     // variant 107
-            Self::DeleteTopology(args) => format!("{args:?}"),     // variant 108
-            Self::ClearTopology(args) => format!("{args:?}"),      // variant 109
-            Self::BackfillTopology(args) => format!("{args:?}"),   // variant 110
+            Self::CreateTopology(args) => format!("{args:?}"), // variant 107
+            Self::DeleteTopology(args) => format!("{args:?}"), // variant 108
+            Self::ClearTopology(args) => format!("{args:?}"),  // variant 109
+            Self::BackfillTopology(args) => format!("{args:?}"), // variant 110
         }
     }
 }

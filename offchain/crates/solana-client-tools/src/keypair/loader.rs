@@ -8,12 +8,11 @@ use solana_sdk::signature::Keypair;
 
 use crate::keypair::{error::KeypairLoadError, source::KeypairSource};
 
-/// Default keypair path relative to HOME (standard Solana location).
+/// Default keypair path relative to HOME
 const DEFAULT_KEYPAIR_PATH: &str = ".config/solana/id.json";
-/// Fallback keypair path relative to HOME.
-const FALLBACK_KEYPAIR_PATH: &str = ".config/doublezero/id.json";
 
 /// Result of loading a keypair, including provenance information
+#[derive(Debug)]
 pub struct KeypairLoadResult {
     /// The loaded keypair
     pub keypair: Keypair,
@@ -72,12 +71,10 @@ fn read_keypair_from_stdin() -> Result<Keypair, KeypairLoadError> {
 /// 1. CLI argument (--keypair)
 /// 2. Stdin (if not a TTY)
 /// 3. Default path (~/.config/solana/id.json)
-/// 4. Fallback path (~/.config/doublezero/id.json)
 ///
 /// # Arguments
 /// * `cli_path` - Optional path from CLI --keypair argument
 /// * `default_path` - Default path if no other source available
-/// * `fallback_path` - Fallback path if default path fails
 ///
 /// # Returns
 /// * `Ok(KeypairLoadResult)` - Successfully loaded keypair with source
@@ -85,26 +82,19 @@ fn read_keypair_from_stdin() -> Result<Keypair, KeypairLoadError> {
 pub fn load_keypair(
     cli_path: Option<PathBuf>,
     default_path: PathBuf,
-    fallback_path: PathBuf,
 ) -> Result<KeypairLoadResult, KeypairLoadError> {
-    let mut attempted: Vec<String> = Vec::new();
-
     // 1. Try CLI argument (highest precedence)
+    // If explicitly provided, fail immediately on error rather than silently
+    // falling through to other sources (which could sign with the wrong key).
     if let Some(path) = cli_path {
-        match read_keypair_from_path(&path) {
-            Ok(keypair) => {
-                return Ok(KeypairLoadResult {
-                    keypair,
-                    source: KeypairSource::CliArgument(path),
-                });
-            }
-            Err(e) => {
-                attempted.push(format!("CLI --keypair ({}): {}", path.display(), e));
-            }
-        }
-    } else {
-        attempted.push("CLI --keypair: not provided".to_string());
+        let keypair = read_keypair_from_path(&path)?;
+        return Ok(KeypairLoadResult {
+            keypair,
+            source: KeypairSource::CliArgument(path),
+        });
     }
+    let mut attempted: Vec<String> = Vec::new();
+    attempted.push("CLI --keypair: not provided".to_string());
 
     // 2. Try stdin (if not a TTY)
     match read_keypair_from_stdin() {
@@ -122,7 +112,7 @@ pub fn load_keypair(
         }
     }
 
-    // 3. Try default path (~/.config/solana/id.json)
+    // 3. Try default path
     match read_keypair_from_path(&default_path) {
         Ok(keypair) => {
             return Ok(KeypairLoadResult {
@@ -135,23 +125,6 @@ pub fn load_keypair(
         }
     }
 
-    // 4. Try fallback path (~/.config/doublezero/id.json)
-    match read_keypair_from_path(&fallback_path) {
-        Ok(keypair) => {
-            return Ok(KeypairLoadResult {
-                keypair,
-                source: KeypairSource::DefaultPath(fallback_path),
-            });
-        }
-        Err(e) => {
-            attempted.push(format!(
-                "Fallback path ({}): {}",
-                fallback_path.display(),
-                e
-            ));
-        }
-    }
-
     Err(KeypairLoadError::NoSourceAvailable { attempted })
 }
 
@@ -159,7 +132,6 @@ pub fn load_keypair(
 /// 1. CLI argument (--keypair)
 /// 2. Stdin (if not a TTY)
 /// 3. Default path (~/.config/solana/id.json)
-/// 4. Fallback path (~/.config/doublezero/id.json)
 ///
 /// This is a convenience wrapper around [`load_keypair`] that automatically
 /// computes the default path from the HOME environment variable.
@@ -173,8 +145,7 @@ pub fn load_keypair(
 pub fn try_load_keypair(cli_path: Option<PathBuf>) -> Result<Keypair, KeypairLoadError> {
     let home = home::home_dir().ok_or(KeypairLoadError::HomeDirNotFound)?;
     let default_path = home.join(DEFAULT_KEYPAIR_PATH);
-    let fallback_path = home.join(FALLBACK_KEYPAIR_PATH);
-    let result = load_keypair(cli_path, default_path, fallback_path)?;
+    let result = load_keypair(cli_path, default_path)?;
     Ok(result.keypair)
 }
 
@@ -183,106 +154,95 @@ mod tests {
     use std::io::Write;
 
     use solana_sdk::signer::Signer;
-    use tempfile::TempDir;
+    use tempfile::NamedTempFile;
 
     use super::*;
 
-    fn create_test_keypair_file(dir: &TempDir) -> (PathBuf, Keypair) {
+    fn write_keypair_file(keypair: &Keypair) -> NamedTempFile {
+        let mut file = NamedTempFile::new().unwrap();
+        let bytes: Vec<u8> = keypair.to_bytes().to_vec();
+        write!(file, "{}", serde_json::to_string(&bytes).unwrap()).unwrap();
+        file
+    }
+
+    #[test]
+    fn cli_path_valid_keypair_succeeds() {
         let keypair = Keypair::new();
-        let path = dir.path().join("test-keypair.json");
-        let json = serde_json::to_string(&keypair.to_bytes().to_vec()).unwrap();
-        let mut file = fs::File::create(&path).unwrap();
-        file.write_all(json.as_bytes()).unwrap();
-        (path, keypair)
+        let file = write_keypair_file(&keypair);
+
+        let result = load_keypair(Some(file.path().into()), PathBuf::from("/nonexistent")).unwrap();
+
+        assert_eq!(result.keypair.pubkey(), keypair.pubkey());
+        assert_eq!(
+            result.source,
+            KeypairSource::CliArgument(file.path().into())
+        );
     }
 
     #[test]
-    fn test_parse_keypair_json_valid() {
+    fn cli_path_missing_file_fails_immediately() {
+        let valid_keypair = Keypair::new();
+        let valid_file = write_keypair_file(&valid_keypair);
+
+        // Even though default_path is a valid keypair, specifying a missing
+        // --keypair must fail rather than falling through to the default.
+        let result = load_keypair(
+            Some(PathBuf::from("/nonexistent/keypair.json")),
+            valid_file.path().into(),
+        );
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            KeypairLoadError::FileReadError { .. }
+        ));
+    }
+
+    #[test]
+    fn cli_path_invalid_json_fails_immediately() {
+        let mut bad_file = NamedTempFile::new().unwrap();
+        write!(bad_file, "not json").unwrap();
+
+        let valid_keypair = Keypair::new();
+        let valid_default = write_keypair_file(&valid_keypair);
+
+        let result = load_keypair(Some(bad_file.path().into()), valid_default.path().into());
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            KeypairLoadError::InvalidJsonFormat { .. }
+        ));
+    }
+
+    #[test]
+    fn cli_path_wrong_byte_length_fails_immediately() {
+        let mut bad_file = NamedTempFile::new().unwrap();
+        write!(bad_file, "[1, 2, 3]").unwrap();
+
+        let valid_keypair = Keypair::new();
+        let valid_default = write_keypair_file(&valid_keypair);
+
+        let result = load_keypair(Some(bad_file.path().into()), valid_default.path().into());
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            KeypairLoadError::InvalidKeypairBytes { .. }
+        ));
+    }
+
+    #[test]
+    fn no_cli_path_falls_back_to_default() {
         let keypair = Keypair::new();
-        let json = serde_json::to_string(&keypair.to_bytes().to_vec()).unwrap();
-        let parsed = parse_keypair_json(&json, "test").unwrap();
-        assert_eq!(parsed.pubkey(), keypair.pubkey());
-    }
+        let file = write_keypair_file(&keypair);
 
-    #[test]
-    fn test_parse_keypair_json_invalid() {
-        let result = parse_keypair_json("not json", "test");
-        assert!(matches!(
-            result,
-            Err(KeypairLoadError::InvalidJsonFormat { .. })
-        ));
-    }
+        let result = load_keypair(None, file.path().into()).unwrap();
 
-    #[test]
-    fn test_read_keypair_from_path() {
-        let tmp = TempDir::new().unwrap();
-        let (path, original) = create_test_keypair_file(&tmp);
-
-        let loaded = read_keypair_from_path(&path).unwrap();
-        assert_eq!(loaded.pubkey(), original.pubkey());
-    }
-
-    #[test]
-    fn test_read_keypair_from_path_not_found() {
-        let path = PathBuf::from("/nonexistent/path/keypair.json");
-        let result = read_keypair_from_path(&path);
-        assert!(matches!(
-            result,
-            Err(KeypairLoadError::FileReadError { .. })
-        ));
-    }
-
-    #[test]
-    fn test_load_keypair_cli_path_precedence() {
-        let tmp = TempDir::new().unwrap();
-        let (cli_path, cli_keypair) = create_test_keypair_file(&tmp);
-
-        let default_path = tmp.path().join("default-keypair.json");
-        let fallback_path = tmp.path().join("fallback-keypair.json");
-
-        let result = load_keypair(Some(cli_path.clone()), default_path, fallback_path).unwrap();
-
-        assert_eq!(result.keypair.pubkey(), cli_keypair.pubkey());
-        assert!(matches!(result.source, KeypairSource::CliArgument(_)));
-    }
-
-    #[test]
-    fn test_load_keypair_default_fallback() {
-        let tmp = TempDir::new().unwrap();
-        let (default_path, default_keypair) = create_test_keypair_file(&tmp);
-
-        let fallback_path = tmp.path().join("fallback-keypair.json");
-
-        let result = load_keypair(None, default_path, fallback_path).unwrap();
-
-        assert_eq!(result.keypair.pubkey(), default_keypair.pubkey());
-        assert!(matches!(result.source, KeypairSource::DefaultPath(_)));
-    }
-
-    #[test]
-    fn test_load_keypair_solana_fallback() {
-        let tmp = TempDir::new().unwrap();
-        let (fallback_path, fallback_keypair) = create_test_keypair_file(&tmp);
-
-        let default_path = tmp.path().join("nonexistent-default.json");
-
-        let result = load_keypair(None, default_path, fallback_path).unwrap();
-
-        assert_eq!(result.keypair.pubkey(), fallback_keypair.pubkey());
-        assert!(matches!(result.source, KeypairSource::DefaultPath(_)));
-    }
-
-    #[test]
-    fn test_load_keypair_no_source_available() {
-        let tmp = TempDir::new().unwrap();
-
-        let nonexistent = tmp.path().join("nonexistent.json");
-        let fallback = tmp.path().join("nonexistent-fallback.json");
-        let result = load_keypair(None, nonexistent, fallback);
-
-        assert!(matches!(
-            result,
-            Err(KeypairLoadError::NoSourceAvailable { .. })
-        ));
+        assert_eq!(result.keypair.pubkey(), keypair.pubkey());
+        assert_eq!(
+            result.source,
+            KeypairSource::DefaultPath(file.path().into())
+        );
     }
 }

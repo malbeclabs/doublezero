@@ -136,18 +136,18 @@ impl DZClient {
             .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
         let data = instruction.pack();
 
+        let payer_pubkey = payer.pubkey();
+        let mut all_accounts = accounts;
+        if !all_accounts.iter().any(|a| a.pubkey == payer_pubkey) {
+            all_accounts.push(AccountMeta::new(payer_pubkey, true));
+        }
+        all_accounts.push(AccountMeta::new(program::id(), false));
+
         let mut transaction = Transaction::new_with_payer(
             &[Instruction::new_with_bytes(
                 self.program_id,
                 &data,
-                [
-                    accounts,
-                    vec![
-                        AccountMeta::new(payer.pubkey(), true),
-                        AccountMeta::new(program::id(), false),
-                    ],
-                ]
-                .concat(),
+                all_accounts,
             )],
             Some(&payer.pubkey()),
         );

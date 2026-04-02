@@ -180,3 +180,16 @@ func (br *ByteReader) Skip(n int) {
 		br.offset = len(br.data)
 	}
 }
+
+func (br *ByteReader) ReadFlexAlgoNodeSegmentSlice() []FlexAlgoNodeSegment {
+	length := br.ReadU32()
+	if length == 0 || (uint64(length)*34) > uint64(br.Remaining()) {
+		return nil
+	}
+	result := make([]FlexAlgoNodeSegment, length)
+	for i := uint32(0); i < length; i++ {
+		result[i].Topology = br.ReadPubkey()
+		result[i].NodeSegmentIdx = br.ReadU16()
+	}
+	return result
+}

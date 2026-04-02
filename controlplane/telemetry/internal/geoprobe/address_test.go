@@ -271,8 +271,13 @@ func TestParseICMPProbeAddresses(t *testing.T) {
 			},
 		},
 		{
-			name:  "Deduplicate",
+			name:  "Deduplicate exact",
 			input: "8.8.8.8:9000,8.8.8.8:9000",
+			want:  []ProbeAddress{{Host: "8.8.8.8", Port: 9000, TWAMPPort: 0}},
+		},
+		{
+			name:  "Deduplicate same host different port",
+			input: "8.8.8.8:9000,8.8.8.8:9001",
 			want:  []ProbeAddress{{Host: "8.8.8.8", Port: 9000, TWAMPPort: 0}},
 		},
 		{

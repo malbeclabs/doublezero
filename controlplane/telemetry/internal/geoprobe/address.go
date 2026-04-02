@@ -109,7 +109,7 @@ func ParseICMPProbeAddresses(s string) ([]ProbeAddress, error) {
 		}
 
 		addr := ProbeAddress{Host: ap.Addr().String(), Port: ap.Port()}
-		key := addr.String()
+		key := addr.Host
 		if seen[key] {
 			continue
 		}

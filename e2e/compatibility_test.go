@@ -63,10 +63,10 @@ var globalMinVersions = map[string]string{
 // Use the before() helper for the common "all versions below X" pattern:
 //   before("0.9.0")  →  []versionRange{{before: "0.9.0"}}
 //
-// Per-environment overrides: Cloudsmith repos for different environments may
-// publish the same version number from different git SHAs (e.g. testnet v0.8.2
-// was built 9 days after mainnet-beta v0.8.2 and includes features the mainnet
-// build doesn't). Use envOverride when the ranges differ across environments.
+// Per-environment overrides: GitHub releases for different environments may publish
+// the same version number from different git SHAs (e.g. testnet v0.8.2 was built
+// 9 days after mainnet-beta v0.8.2 and includes features the mainnet build doesn't).
+// Use envOverride when the ranges differ across environments.
 //
 // When adding entries:
 //   - Document WHY the incompatibility exists
@@ -623,7 +623,7 @@ func createAndStartDiscoveryDevnet(t *testing.T, cloneEnv string, log *slog.Logg
 }
 
 // discoverVersions enumerates CLI versions compatible with the current onchain program
-// using the discovery devnet's manager container to query Cloudsmith.
+// by querying GitHub releases for all client/vX.Y.Z tags.
 func discoverVersions(t *testing.T, dn *devnet.Devnet, cloneEnv, programID string, log *slog.Logger) []string {
 	// Read ProgramConfig to get min_compatible_version and current version.
 	log.Debug("==> Reading ProgramConfig from ledger")
@@ -658,26 +658,16 @@ func discoverVersions(t *testing.T, dn *devnet.Devnet, cloneEnv, programID strin
 		"minCompatVersion", devnet.FormatProgramVersion(minVersion),
 	)
 
-	// Set up Cloudsmith repo in the manager container.
-	log.Debug("==> Setting up Cloudsmith repo in discovery manager")
-	managerExec := func(ctx context.Context, command []string) ([]byte, error) {
-		return dn.Manager.Exec(ctx, command)
+	// Fetch available versions from GitHub releases.
+	log.Debug("==> Fetching client release tags from GitHub")
+	githubToken := os.Getenv("GITHUB_TOKEN")
+	if githubToken == "" {
+		githubToken = os.Getenv("GH_TOKEN")
 	}
-	err = devnet.SetupCloudsmithRepo(t.Context(), managerExec, cloneEnv)
+	releaseTags, err := devnet.FetchGitHubClientReleaseTags(t.Context(), githubToken)
 	require.NoError(t, err)
 
-	// Enumerate available versions from the Cloudsmith apt repo.
-	aptOutput, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c",
-		"apt-cache madison doublezero | awk -F'|' '{print $2}' | sed 's/ //g; s/-1$//' | sort -uV"})
-	require.NoError(t, err)
-	aptVersions := strings.Split(strings.TrimSpace(string(aptOutput)), "\n")
-	for i, v := range aptVersions {
-		if !strings.HasPrefix(v, "v") {
-			aptVersions[i] = "v" + v
-		}
-	}
-
-	compatVersions := devnet.EnumerateCompatibleVersions(aptVersions, minVersion, currentVersion)
+	compatVersions := devnet.EnumerateCompatibleVersions(releaseTags, minVersion, currentVersion)
 
 	// DZ_COMPAT_MAX_NUM_VERSIONS limits how many versions to test (0 = all).
 	if maxStr := os.Getenv("DZ_COMPAT_MAX_NUM_VERSIONS"); maxStr != "" {
@@ -797,15 +787,17 @@ func createAndStartVersionDevnet(
 	_, err = dn.Activator.StartIfNotRunning(t.Context())
 	require.NoError(t, err)
 
-	// Set up Cloudsmith and install the CLI version for this stack.
-	managerExec := func(ctx context.Context, command []string) ([]byte, error) {
-		return dn.Manager.Exec(ctx, command)
-	}
+	// Install the CLI version for this stack from GitHub releases.
 	if version != devnet.CurrentVersionLabel {
-		err = devnet.SetupCloudsmithRepo(t.Context(), managerExec, cloneEnv)
-		require.NoError(t, err)
 		log.Debug("==> Installing CLI version", "version", version)
-		err = devnet.InstallCLIVersion(t.Context(), managerExec, version)
+		githubToken := os.Getenv("GITHUB_TOKEN")
+		if githubToken == "" {
+			githubToken = os.Getenv("GH_TOKEN")
+		}
+		managerExec := func(ctx context.Context, command []string) ([]byte, error) {
+			return dn.Manager.Exec(ctx, command)
+		}
+		err = devnet.InstallCLIVersionFromGitHub(t.Context(), managerExec, version, cloneEnv, githubToken)
 		require.NoError(t, err)
 	}
 
@@ -889,7 +881,7 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 			})
 
 			// Use the unversioned binary for "current" (branch build already in container),
-			// versioned binary for released versions (installed from Cloudsmith).
+			// versioned binary for released versions (installed from GitHub releases).
 			cli := fmt.Sprintf("doublezero-%s", version)
 			if version == devnet.CurrentVersionLabel {
 				cli = "doublezero"

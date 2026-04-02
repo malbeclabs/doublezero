@@ -2,60 +2,126 @@ package devnet
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"sort"
 	"strings"
 
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 )
 
-// CloudsmithRepoName returns the Cloudsmith repo name for the given environment.
-// mainnet-beta uses "doublezero", testnet uses "doublezero-testnet", devnet uses "doublezero-devnet".
-func CloudsmithRepoName(env string) string {
-	switch env {
-	case "mainnet-beta":
-		return "doublezero"
-	case "testnet":
-		return "doublezero-testnet"
-	case "devnet":
-		return "doublezero-devnet"
-	default:
-		return "doublezero"
+// FetchGitHubClientReleaseTags fetches all client release tags from the GitHub API.
+// Returns version strings in "vX.Y.Z" format (e.g. "v0.10.0").
+// githubToken is used for authentication; pass empty string for unauthenticated access.
+func FetchGitHubClientReleaseTags(ctx context.Context, githubToken string) ([]string, error) {
+	var allTags []string
+	for page := 1; ; page++ {
+		url := fmt.Sprintf("https://api.github.com/repos/malbeclabs/doublezero/releases?per_page=100&page=%d", page)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+		if githubToken != "" {
+			req.Header.Set("Authorization", "Bearer "+githubToken)
+		}
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch releases page %d: %w", page, err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read releases response: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("GitHub API returned %d: %s", resp.StatusCode, string(body))
+		}
+
+		var releases []struct {
+			TagName string `json:"tag_name"`
+		}
+		if err := json.Unmarshal(body, &releases); err != nil {
+			return nil, fmt.Errorf("failed to decode releases: %w", err)
+		}
+
+		for _, r := range releases {
+			// Only include client releases tagged as client/vX.Y.Z.
+			if after, ok := strings.CutPrefix(r.TagName, "client/"); ok {
+				allTags = append(allTags, after) // e.g. "v0.10.0"
+			}
+		}
+
+		if len(releases) < 100 {
+			break
+		}
 	}
+	return allTags, nil
 }
 
-// SetupCloudsmithRepo runs the one-time Cloudsmith apt repo setup in a container.
-func SetupCloudsmithRepo(ctx context.Context, execFn func(ctx context.Context, command []string) ([]byte, error), env string) error {
-	repo := CloudsmithRepoName(env)
-	_, err := execFn(ctx, []string{"bash", "-c", fmt.Sprintf(`
+// InstallCLIVersionFromGitHub downloads and installs a specific CLI version from GitHub releases,
+// placing the binary at /usr/local/bin/doublezero-{version} in the container.
+//
+// For testnet and devnet environments, the Linux tar.gz archive is downloaded and the doublezero
+// binary is extracted. For mainnet-beta, the mainnet-beta deb package is installed with
+// dpkg --force-depends (skipping the doublezero-solana dependency which is already satisfied).
+func InstallCLIVersionFromGitHub(ctx context.Context, execFn func(ctx context.Context, command []string) ([]byte, error), version, env, githubToken string) error {
+	if env == "mainnet-beta" {
+		return installCLIMainnetBetaFromGitHub(ctx, execFn, version, githubToken)
+	}
+	return installCLIFromTarGz(ctx, execFn, version, githubToken)
+}
+
+func installCLIFromTarGz(ctx context.Context, execFn func(ctx context.Context, command []string) ([]byte, error), version, githubToken string) error {
+	url := fmt.Sprintf(
+		"https://github.com/malbeclabs/doublezero/releases/download/client%%2Fv%s/doublezero_Linux_x86_64.tar.gz",
+		version)
+	script := fmt.Sprintf(`
 		set -euo pipefail
-		curl -1sLf 'https://dl.cloudsmith.io/public/malbeclabs/%s/setup.deb.sh' | bash
-		apt-get update
-	`, repo)})
+		if [ -n "${GH_TOKEN:-}" ]; then
+			curl -fsSL -H "Authorization: Bearer $GH_TOKEN" '%s' -o /tmp/doublezero-%s.tar.gz
+		else
+			curl -fsSL '%s' -o /tmp/doublezero-%s.tar.gz
+		fi
+		EXTRACT_DIR=$(mktemp -d)
+		tar -xzf /tmp/doublezero-%s.tar.gz -C "$EXTRACT_DIR"
+		BINARY=$(find "$EXTRACT_DIR" -name doublezero -type f | head -1)
+		cp "$BINARY" /usr/local/bin/doublezero-%s
+		chmod +x /usr/local/bin/doublezero-%s
+		rm -rf /tmp/doublezero-%s.tar.gz "$EXTRACT_DIR"
+	`, url, version, url, version, version, version, version, version)
+	_, err := execFn(ctx, []string{"env", "GH_TOKEN=" + githubToken, "bash", "-c", script})
 	if err != nil {
-		return fmt.Errorf("failed to setup cloudsmith repo: %w", err)
+		return fmt.Errorf("failed to install CLI version %s from GitHub: %w", version, err)
 	}
 	return nil
 }
 
-// InstallCLIVersion installs a specific CLI version from the Cloudsmith apt repo and
-// renames the binaries to versioned names (e.g., doublezero-0.7.1, doublezerod-0.7.1).
-func InstallCLIVersion(ctx context.Context, execFn func(ctx context.Context, command []string) ([]byte, error), version string) error {
-	_, err := execFn(ctx, []string{"bash", "-c", fmt.Sprintf(`
+func installCLIMainnetBetaFromGitHub(ctx context.Context, execFn func(ctx context.Context, command []string) ([]byte, error), version, githubToken string) error {
+	url := fmt.Sprintf(
+		"https://github.com/malbeclabs/doublezero/releases/download/client%%2Fv%s/doublezero-mainnet-beta_%s_amd64.deb",
+		version, version)
+	script := fmt.Sprintf(`
 		set -euo pipefail
-
-		# Install the specific version.
-		apt-get install -y --allow-downgrades doublezero=%s-1
-
-		# Copy to versioned names (/usr/bin/ is where apt installs them).
+		if [ -n "${GH_TOKEN:-}" ]; then
+			curl -fsSL -H "Authorization: Bearer $GH_TOKEN" '%s' -o /tmp/doublezero-mainnet-beta-%s.deb
+		else
+			curl -fsSL '%s' -o /tmp/doublezero-mainnet-beta-%s.deb
+		fi
+		dpkg -i --force-depends /tmp/doublezero-mainnet-beta-%s.deb
 		cp /usr/bin/doublezero /usr/local/bin/doublezero-%s
-		cp /usr/bin/doublezerod /usr/local/bin/doublezerod-%s 2>/dev/null || true
-
-		# Reinstall the current version (from the container image).
-		apt-get install -y --allow-downgrades doublezero 2>/dev/null || true
-	`, version, version, version)})
+		chmod +x /usr/local/bin/doublezero-%s
+		# Restore the current version at /usr/bin/doublezero.
+		cp /doublezero/bin/doublezero /usr/bin/doublezero
+		rm -f /tmp/doublezero-mainnet-beta-%s.deb
+	`, url, version, url, version, version, version, version, version)
+	_, err := execFn(ctx, []string{"env", "GH_TOKEN=" + githubToken, "bash", "-c", script})
 	if err != nil {
-		return fmt.Errorf("failed to install CLI version %s: %w", version, err)
+		return fmt.Errorf("failed to install CLI version %s from GitHub: %w", version, err)
 	}
 	return nil
 }
@@ -88,7 +154,7 @@ func EnumerateCompatibleVersions(versionTags []string, min, current serviceabili
 		vj, _ := ParseSemver(versions[j])
 		return CompareProgramVersions(vi, vj) < 0
 	})
-	// Always append "current" at the end for the branch build (may not be in Cloudsmith yet).
+	// Always append "current" at the end for the branch build (may not be released yet).
 	versions = append(versions, CurrentVersionLabel)
 	return versions
 }

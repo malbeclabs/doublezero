@@ -83,7 +83,9 @@ pub fn process_remove_target(
             t.target_type == args.target_type
                 && t.geoprobe_pk == geoprobe_pk
                 && match args.target_type {
-                    GeoLocationTargetType::Outbound => t.ip_address == args.ip_address,
+                    GeoLocationTargetType::Outbound | GeoLocationTargetType::OutboundIcmp => {
+                        t.ip_address == args.ip_address
+                    }
                     GeoLocationTargetType::Inbound => t.target_pk == args.target_pk,
                 }
         })

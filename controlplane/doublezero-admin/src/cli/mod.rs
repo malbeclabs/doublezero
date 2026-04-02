@@ -11,5 +11,6 @@ pub mod migrate;
 pub mod multicast;
 pub mod multicastgroup;
 pub mod permission;
+pub mod sentinel;
 pub mod tenant;
 pub mod user;

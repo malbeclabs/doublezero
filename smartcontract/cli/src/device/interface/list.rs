@@ -158,7 +158,7 @@ mod tests {
                     interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
                     bandwidth: 1000,
                     cir: 500,
-                    mtu: 1500,
+                    mtu: 9000,
                     routing_mode: doublezero_serviceability::state::interface::RoutingMode::Static,
                     vlan_id: 0,
                     ip_net: "10.0.0.1/24".parse().unwrap(),
@@ -221,7 +221,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " device       | name | interface_type | loopback_type | interface_cyoa | interface_dia | bandwidth | cir    | mtu  | routing_mode | vlan_id | ip_net      | node_segment_idx | user_tunnel_endpoint | status    \n device1_code | eth0 | physical       | none          | none           | none          | 1Kbps     | 500bps | 1500 | static       | 0       | 10.0.0.1/24 | 12               | true                 | activated \n device1_code | lo0  | loopback       | vpnv4         | none           | none          | 100bps    | 50bps  | 1400 | static       | 16      | 10.0.1.1/24 | 13               | false                | activated \n");
+        assert_eq!(output_str, " device       | name | interface_type | loopback_type | interface_cyoa | interface_dia | bandwidth | cir    | mtu  | routing_mode | vlan_id | ip_net      | node_segment_idx | user_tunnel_endpoint | status    \n device1_code | eth0 | physical       | none          | none           | none          | 1Kbps     | 500bps | 9000 | static       | 0       | 10.0.0.1/24 | 12               | true                 | activated \n device1_code | lo0  | loopback       | vpnv4         | none           | none          | 100bps    | 50bps  | 1400 | static       | 16      | 10.0.1.1/24 | 13               | false                | activated \n");
 
         let mut output = Vec::new();
         let res = ListDeviceInterfaceCliCommand {
@@ -232,6 +232,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"device\":\"device1_code\",\"name\":\"eth0\",\"interface_type\":\"Physical\",\"loopback_type\":\"None\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":1000,\"cir\":500,\"mtu\":1500,\"routing_mode\":\"Static\",\"vlan_id\":0,\"ip_net\":\"10.0.0.1/24\",\"node_segment_idx\":12,\"user_tunnel_endpoint\":true,\"status\":\"activated\"},{\"device\":\"device1_code\",\"name\":\"lo0\",\"interface_type\":\"Loopback\",\"loopback_type\":\"Vpnv4\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":100,\"cir\":50,\"mtu\":1400,\"routing_mode\":\"Static\",\"vlan_id\":16,\"ip_net\":\"10.0.1.1/24\",\"node_segment_idx\":13,\"user_tunnel_endpoint\":false,\"status\":\"activated\"}]\n");
+        assert_eq!(output_str, "[{\"device\":\"device1_code\",\"name\":\"eth0\",\"interface_type\":\"Physical\",\"loopback_type\":\"None\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":1000,\"cir\":500,\"mtu\":9000,\"routing_mode\":\"Static\",\"vlan_id\":0,\"ip_net\":\"10.0.0.1/24\",\"node_segment_idx\":12,\"user_tunnel_endpoint\":true,\"status\":\"activated\"},{\"device\":\"device1_code\",\"name\":\"lo0\",\"interface_type\":\"Loopback\",\"loopback_type\":\"Vpnv4\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":100,\"cir\":50,\"mtu\":1400,\"routing_mode\":\"Static\",\"vlan_id\":16,\"ip_net\":\"10.0.1.1/24\",\"node_segment_idx\":13,\"user_tunnel_endpoint\":false,\"status\":\"activated\"}]\n");
     }
 }

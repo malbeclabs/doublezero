@@ -15,7 +15,7 @@ use crate::{
         globalstate::GlobalState,
         interface::{
             CurrentInterfaceVersion, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType,
-            LoopbackType, RoutingMode,
+            LoopbackType, RoutingMode, CYOA_DIA_INTERFACE_MTU, INTERFACE_MTU,
         },
     },
 };
@@ -152,6 +152,17 @@ pub fn process_create_device_interface(
     // CYOA interfaces must have an ip_net
     if value.interface_cyoa != InterfaceCYOA::None && value.ip_net.is_none() {
         return Err(DoubleZeroError::InvalidInterfaceIp.into());
+    }
+
+    // Validate MTU: CYOA/DIA interfaces must be 1500, all others must be 9000
+    let is_cyoa_or_dia =
+        value.interface_cyoa != InterfaceCYOA::None || value.interface_dia != InterfaceDIA::None;
+    if is_cyoa_or_dia {
+        if value.mtu != CYOA_DIA_INTERFACE_MTU {
+            return Err(DoubleZeroError::InvalidMtu.into());
+        }
+    } else if value.mtu != INTERFACE_MTU {
+        return Err(DoubleZeroError::InvalidMtu.into());
     }
 
     let mut device: Device = Device::try_from(device_account)?;

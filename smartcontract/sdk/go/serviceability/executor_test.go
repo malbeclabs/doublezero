@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -375,7 +376,7 @@ func makeInstructionError(instructionIndex int) *jsonrpc.RPCError {
 		Data: map[string]any{
 			"err": map[string]any{
 				"InstructionError": []any{
-					json.Number(string(rune('0' + instructionIndex))),
+					json.Number(fmt.Sprintf("%d", instructionIndex)),
 					map[string]any{
 						"Custom": json.Number("1001"),
 					},

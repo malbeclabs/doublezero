@@ -228,6 +228,9 @@ pub fn process_update_link(
             link.bandwidth = bandwidth;
         }
         if let Some(mtu) = value.mtu {
+            if mtu != crate::state::interface::LINK_MTU {
+                return Err(DoubleZeroError::InvalidMtu.into());
+            }
             link.mtu = mtu;
         }
         if let Some(delay_ns) = value.delay_ns {

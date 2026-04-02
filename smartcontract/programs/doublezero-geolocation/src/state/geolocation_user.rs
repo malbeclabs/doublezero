@@ -74,6 +74,7 @@ impl fmt::Display for GeolocationUserStatus {
 pub enum GeoLocationTargetType {
     Outbound = 0,
     Inbound = 1,
+    OutboundIcmp = 2,
 }
 
 impl fmt::Display for GeoLocationTargetType {
@@ -81,6 +82,7 @@ impl fmt::Display for GeoLocationTargetType {
         match self {
             GeoLocationTargetType::Outbound => write!(f, "outbound"),
             GeoLocationTargetType::Inbound => write!(f, "inbound"),
+            GeoLocationTargetType::OutboundIcmp => write!(f, "outbound-icmp"),
         }
     }
 }

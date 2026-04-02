@@ -175,7 +175,7 @@ mod tests {
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
             bandwidth: 1000000000,
-            mtu: 1500,
+            mtu: 9000,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
             delay_override_ns: 0,
@@ -328,7 +328,7 @@ mod tests {
         assert_eq!(json["status"].as_str().unwrap(), "activated");
         assert_eq!(json["tunnel_type"].as_str().unwrap(), "WAN");
         assert_eq!(json["bandwidth"].as_u64().unwrap(), 1_000_000_000);
-        assert_eq!(json["mtu"].as_u64().unwrap(), 1500);
+        assert_eq!(json["mtu"].as_u64().unwrap(), 9000);
         assert_eq!(json["contributor"].as_str().unwrap(), "test-contributor");
         assert_eq!(json["side_a"].as_str().unwrap(), "side-a-device");
         assert_eq!(json["side_z"].as_str().unwrap(), "side-z-device");

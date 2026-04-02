@@ -126,7 +126,7 @@ func TestE2E_QAAgent_UnicastConnectivity(t *testing.T) {
 
 	// Create a WAN link between the two devices.
 	log.Debug("==> Creating link onchain")
-	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `doublezero link create wan --code "la2-dz01:ewr1-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ewr1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 40 --jitter-ms 3 --desired-status activated`})
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `doublezero link create wan --code "la2-dz01:ewr1-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ewr1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 40 --jitter-ms 3 --desired-status activated`})
 	require.NoError(t, err)
 	log.Debug("--> Link created onchain")
 
@@ -385,7 +385,7 @@ func TestE2E_QAAgent_MultiTunnelConnectivity(t *testing.T) {
 
 	// Create a WAN link between the two devices.
 	log.Debug("==> Creating link onchain")
-	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `doublezero link create wan --code "la2-dz01:ewr1-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ewr1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 40 --jitter-ms 3 --desired-status activated`})
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `doublezero link create wan --code "la2-dz01:ewr1-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ewr1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 40 --jitter-ms 3 --desired-status activated`})
 	require.NoError(t, err)
 	log.Debug("--> Link created onchain")
 

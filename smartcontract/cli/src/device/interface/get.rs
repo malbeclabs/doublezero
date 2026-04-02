@@ -130,7 +130,7 @@ mod tests {
                 interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
                 bandwidth: 1000,
                 cir: 500,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: doublezero_serviceability::state::interface::RoutingMode::Static,
                 vlan_id: 16,
                 ip_net: "10.0.0.1/24".parse().unwrap(),

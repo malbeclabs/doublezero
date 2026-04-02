@@ -310,7 +310,7 @@ async fn test_device_interfaces() {
             bandwidth: 0,
             ip_net: None,
             cir: 0,
-            mtu: 1500,
+            mtu: 9000,
             routing_mode: RoutingMode::Static,
             vlan_id: 42,
             user_tunnel_endpoint: false,
@@ -390,7 +390,7 @@ async fn test_device_interfaces() {
             bandwidth: 0,
             cir: 0,
             ip_net: None,
-            mtu: 1500,
+            mtu: 9000,
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
@@ -417,7 +417,7 @@ async fn test_device_interfaces() {
             bandwidth: 0,
             cir: 0,
             ip_net: None,
-            mtu: 1500,
+            mtu: 9000,
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
@@ -445,7 +445,7 @@ async fn test_device_interfaces() {
             bandwidth: 0,
             ip_net: None,
             cir: 0,
-            mtu: 1500,
+            mtu: 9000,
             routing_mode: RoutingMode::Static,
             vlan_id: 1,
             user_tunnel_endpoint: false,
@@ -477,7 +477,7 @@ async fn test_device_interfaces() {
             bandwidth: 0,
             ip_net: Some("10.0.0.1/24".parse().unwrap()),
             cir: 0,
-            mtu: 1500,
+            mtu: 9000,
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
@@ -557,7 +557,7 @@ async fn test_device_interfaces() {
             bandwidth: 0,
             cir: 0,
             ip_net: None,
-            mtu: 1500,
+            mtu: 9000,
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
@@ -1167,7 +1167,7 @@ async fn test_device_interfaces() {
             bandwidth: 1000,
             cir: 500,
             ip_net: None,
-            mtu: 1500,
+            mtu: 9000,
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
@@ -1444,4 +1444,388 @@ async fn test_device_interfaces() {
 
     println!("✅ Updating ip_net on CYOA interface succeeds and persists");
     println!("🟢🟢🟢  End test_device_interfaces  🟢🟢🟢");
+}
+
+#[tokio::test]
+async fn test_interface_create_invalid_mtu_non_cyoa() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let (config_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
+            local_asn: 65000,
+            remote_asn: 65001,
+            device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+            user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+            multicastgroup_block: "224.0.0.0/16".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
+            next_bgp_community: None,
+        }),
+        vec![
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            country: "us".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            loc_id: 0,
+        }),
+        vec![
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            reserved: 0,
+        }),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (contributor_pubkey, _) =
+        get_contributor_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "cont".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
+            code: "la".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [8, 8, 8, 8].into(),
+            dz_prefixes: "110.1.0.0/23".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Non-CYOA interface with MTU 1500 should fail (must be 9000)
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "Et1/1".to_string(),
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::None,
+            interface_cyoa: InterfaceCYOA::None,
+            bandwidth: 0,
+            ip_net: None,
+            cir: 0,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let error_string = format!("{:?}", res.unwrap_err());
+    assert!(
+        error_string.contains("Custom(46)"),
+        "Expected InvalidMtu error (Custom(46)), got: {}",
+        error_string
+    );
+}
+
+#[tokio::test]
+async fn test_interface_create_invalid_mtu_cyoa() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let (config_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
+            local_asn: 65000,
+            remote_asn: 65001,
+            device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+            user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+            multicastgroup_block: "224.0.0.0/16".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
+            next_bgp_community: None,
+        }),
+        vec![
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            country: "us".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            loc_id: 0,
+        }),
+        vec![
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            reserved: 0,
+        }),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (contributor_pubkey, _) =
+        get_contributor_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "cont".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
+            code: "la".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [8, 8, 8, 8].into(),
+            dz_prefixes: "110.1.0.0/23".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // CYOA interface with MTU 9000 should fail (must be 1500)
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "Et1/1".to_string(),
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::None,
+            interface_cyoa: InterfaceCYOA::GREOverDIA,
+            bandwidth: 0,
+            ip_net: Some("63.243.225.62/30".parse().unwrap()),
+            cir: 0,
+            mtu: 9000,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: true,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let error_string = format!("{:?}", res.unwrap_err());
+    assert!(
+        error_string.contains("Custom(46)"),
+        "Expected InvalidMtu error (Custom(46)), got: {}",
+        error_string
+    );
 }

@@ -8,13 +8,28 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Smartcontract
+  - Add Index account for onchain key uniqueness enforcement and O(1) key-to-pubkey lookup, with standalone CreateIndex/DeleteIndex instructions for migration backfill
+  - minimum client version to 0.10.0
+  - Enforce 9000-byte MTU on links and non-CYOA/non-DIA device interfaces; CYOA/DIA interfaces must be 1500. Onchain validation now returns `InvalidMtu` (error 46) for non-conforming values.
 - CLI
   - Allow incremental multicast group addition without disconnecting
   - Reset SIGPIPE to SIG_DFL at the start of main() in all 3 CLI binaries (doublezero, doublezero-geolocation, doublezero-admin) so the process exits silently like standard CLI tools
+  - Support `--type outbound-icmp` in geolocation `user add-target`, `remove-target`, and `get` commands
+  - Add sentinel admin commands to find and create multicast publishers for IBRL validators
+- Sentinel
+  - Add multicast publisher worker with Solana RPC-based validator discovery
 - SDK
   - Add Go SDK for shred subscription program with read-only account deserialization (epoch state, seat assignments, pricing, settlement, validator client rewards), PDA derivation helpers, RPC fetchers, compatibility tests, and a fetch example CLI
+  - Add `GeoLocationTargetTypeOutboundIcmp` to Go geolocation SDK with deserialization and round-trip test support
+- Device Health Oracle
+  - Update link.health and device.health to `ready-for-service` and `ready-for-users` when they are not already in that state
+- Smartcontract
+  - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
 - Tools
   - Add `twamp-debug` diagnostic tool for testing kernel timestamping support on switches; sends real TWAMP probes to verify which SO_TIMESTAMPING modes (RX/TX software/hardware/sched) actually deliver timestamps, and reports RTT statistics comparing userspace vs kernel timestamp sources
+- E2E Tests
+  - Switch backward compatibility test to install versioned CLI binaries from GitHub releases instead of Cloudsmith apt repos; version enumeration now uses the GitHub API directly from Go rather than querying apt-cache inside the container
 
 ## [v0.15.0](https://github.com/malbeclabs/doublezero/compare/client/v0.14.0...client/v0.15.0) - 2026-03-27
 

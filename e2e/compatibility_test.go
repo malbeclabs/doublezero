@@ -26,6 +26,23 @@ import (
 )
 
 // =============================================================================
+// MINIMUM CLI VERSIONS PER ENVIRONMENT
+// =============================================================================
+//
+// These set a floor on the oldest CLI version tested, independent of the
+// onchain program's min_compatible_version.  The effective minimum is
+// max(programConfig.MinCompatVersion, globalMinVersion).
+//
+// Bump these when older releases are known to be broken or irrelevant for a
+// given environment and you don't want to wait for a min_compatible_version
+// bump onchain.
+
+var globalMinVersions = map[string]string{
+	"mainnet-beta": "0.10.0",
+	"testnet":      "0.10.0",
+}
+
+// =============================================================================
 // KNOWN INCOMPATIBILITIES - Review and remove as versions are deprecated
 // =============================================================================
 //
@@ -33,67 +50,106 @@ import (
 // onchain program for versions older than the specified version. These failures
 // are expected and will be reported as "KNOWN_FAIL" instead of "FAIL".
 //
-// Format: "step_name" -> {minVersion, envOverride}
+// Format: "step_name" -> {ranges, envOverride}
 //
-// Example: "write/foo_create": {minVersion: "0.9.0"} means:
-//   - CLI v0.8.x and older → KNOWN_FAIL (expected to fail, test passes)
-//   - CLI v0.9.0 and newer → FAIL if broken (unexpected, test fails)
+// Each entry lists one or more half-open version ranges [from, before) that are
+// known to be incompatible. A version that falls within ANY range is expected to
+// fail and will be reported as "KNOWN_FAIL" instead of "FAIL".
 //
-// Per-environment overrides: Cloudsmith repos for different environments may
-// publish the same version number from different git SHAs (e.g. testnet v0.8.2
-// was built 9 days after mainnet-beta v0.8.2 and includes features the mainnet
-// build doesn't). Use envOverride when the boundary differs across environments.
+// Range fields:
+//   - from:   first incompatible version (inclusive). Empty = no lower bound.
+//   - before: first compatible version (exclusive). Empty = no upper bound.
+//
+// Use the before() helper for the common "all versions below X" pattern:
+//   before("0.9.0")  →  []versionRange{{before: "0.9.0"}}
+//
+// Per-environment overrides: GitHub releases for different environments may publish
+// the same version number from different git SHAs (e.g. testnet v0.8.2 was built
+// 9 days after mainnet-beta v0.8.2 and includes features the mainnet build doesn't).
+// Use envOverride when the ranges differ across environments.
 //
 // When adding entries:
 //   - Document WHY the incompatibility exists
-//   - Set the version to the first CLI version that IS compatible
+//   - Use the narrowest range possible
 //   - Remove entries when min_compatible_version is bumped past them
 
-// knownIncompat defines the minimum compatible CLI version for a step,
-// with optional per-environment overrides.
+// versionRange defines a half-open range [from, before) of incompatible CLI versions.
+type versionRange struct {
+	from   string // first incompatible version (inclusive). Empty = no lower bound.
+	before string // first compatible version (exclusive). Empty = no upper bound.
+}
+
+// knownIncompat defines which CLI version ranges are known to be incompatible for a step.
 type knownIncompat struct {
-	minVersion  string            // default minimum compatible version
-	envOverride map[string]string // optional per-environment overrides (env → min version)
+	ranges      []versionRange            // default incompatible version ranges
+	envOverride map[string][]versionRange // optional per-env overrides (replaces ranges for that env)
+}
+
+// before returns a range matching all versions strictly less than v.
+func before(v string) []versionRange {
+	return []versionRange{{before: v}}
 }
 
 var knownIncompatibilities = map[string]knownIncompat{
 	// multicast_group_create: The MulticastGroupCreateArgs Borsh struct changed in v0.8.1.
 	// The index and bump_seed fields were removed. Older CLIs send the old format which
 	// causes Borsh deserialization failure in the current program.
-	"write/multicast_group_create": {minVersion: "0.8.1"},
+	"write/multicast_group_create": {ranges: before("0.8.1")},
 
 	// All multicast operations that depend on multicast_group_create. When the group
 	// can't be created (< 0.8.1), these all fail with "MulticastGroup not found".
-	"write/multicast_group_wait_activated": {minVersion: "0.8.1"},
+	"write/multicast_group_wait_activated": {ranges: before("0.8.1")},
 	// multicast_group_update: In addition to the dependency above, v0.8.1-v0.8.8 parsed
 	// --max-bandwidth as a plain integer. v0.8.9 added validate_parse_bandwidth (a855ca7a)
 	// which accepts unit strings like "200Mbps".
-	"write/multicast_group_update":               {minVersion: "0.8.9"},
-	"write/multicast_group_pub_allowlist_add":    {minVersion: "0.8.1"},
-	"write/multicast_group_pub_allowlist_remove": {minVersion: "0.8.1"},
-	"write/multicast_group_sub_allowlist_add":    {minVersion: "0.8.1"},
-	"write/user_subscribe":                       {minVersion: "0.8.1"},
-	"write/multicast_group_sub_allowlist_remove": {minVersion: "0.8.1"},
-	"write/multicast_group_get":                  {minVersion: "0.8.1"},
-	"write/multicast_group_delete":               {minVersion: "0.8.1"},
+	"write/multicast_group_update":               {ranges: before("0.8.9")},
+	"write/multicast_group_pub_allowlist_add":    {ranges: before("0.8.1")},
+	"write/multicast_group_pub_allowlist_remove": {ranges: before("0.8.1")},
+	"write/multicast_group_sub_allowlist_add":    {ranges: before("0.8.1")},
+	"write/user_subscribe":                       {ranges: before("0.8.1")},
+	"write/multicast_group_sub_allowlist_remove": {ranges: before("0.8.1")},
+	"write/multicast_group_get":                  {ranges: before("0.8.1")},
+	"write/multicast_group_delete":               {ranges: before("0.8.1")},
 
 	// set-health commands: The CLI subcommand was added in commit eb7ea308 (Jan 16).
 	// mainnet-beta v0.8.2 was built Jan 13 (before set-health) → doesn't have it.
 	// testnet v0.8.2 was built Jan 22 (after set-health) → has it.
 	// The next mainnet-beta release after 0.8.2 is 0.8.6, so that's its first version with it.
-	"write/device_set_health":   {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
-	"write/device_set_health_2": {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
-	"write/link_set_health":     {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
-	"write/link_set_health_dzx": {minVersion: "0.8.6", envOverride: map[string]string{"testnet": "0.8.2"}},
-
-	// link drain: --status soft-drained was supported since v0.7.2. v0.7.1 and older
-	// fail with "Invalid LinkStatus: soft-drained".
-	"write/link_drain":     {minVersion: "0.7.2"},
-	"write/link_drain_dzx": {minVersion: "0.7.2"},
+	"write/device_set_health":   {ranges: before("0.8.6"), envOverride: map[string][]versionRange{"testnet": before("0.8.2")}},
+	"write/device_set_health_2": {ranges: before("0.8.6"), envOverride: map[string][]versionRange{"testnet": before("0.8.2")}},
 
 	// device drain: --status drained (DeviceStatus) was added in v0.8.1.
-	"write/device_drain":   {minVersion: "0.8.1"},
-	"write/device_drain_2": {minVersion: "0.8.1"},
+	"write/device_drain":   {ranges: before("0.8.1")},
+	"write/device_drain_2": {ranges: before("0.8.1")},
+
+	// device interface / link commands: --mtu requirement changed from 2048 to 9000.
+	// Versions before 0.12.0 didn't have these commands; versions 0.12.0–0.15.x send
+	// the old MTU value which the current program rejects.
+	"write/device_interface_create":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_create_2":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_create_3":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_create_4":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_set_unlinked":   {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_set_unlinked_2": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_set_unlinked_3": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_set_unlinked_4": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/link_create_wan":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/link_create_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/link_accept_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/link_update":                     {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/link_set_health":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/link_set_health_dzx":             {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/link_get":                        {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/link_wait_activated":             {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/link_wait_activated_dzx":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/link_drain":                      {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/link_drain_dzx":                  {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/link_delete":                     {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/link_delete_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_delete":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_delete_2":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_delete_3":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_delete_4":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
 }
 
 // =============================================================================
@@ -113,9 +169,32 @@ var compatEnvConfigs = map[string]compatEnvConfig{
 	"mainnet-beta": {OnchainAllocation: false}, // Not yet enabled on mainnet
 }
 
+// versionInRange checks whether ver falls within the half-open range [from, before).
+func versionInRange(ver serviceability.ProgramVersion, r versionRange) bool {
+	if r.from != "" {
+		fromVer, ok := devnet.ParseSemver(r.from)
+		if !ok {
+			return false
+		}
+		if devnet.CompareProgramVersions(ver, fromVer) < 0 {
+			return false
+		}
+	}
+	if r.before != "" {
+		beforeVer, ok := devnet.ParseSemver(r.before)
+		if !ok {
+			return false
+		}
+		if devnet.CompareProgramVersions(ver, beforeVer) >= 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // isKnownIncompatible checks if a step failure is expected for the given CLI version
-// and environment. Returns true if the step has a known incompatibility and the version
-// is older than the minimum compatible version for that step (using per-env override if set).
+// and environment. Returns true if the version falls within any of the step's
+// incompatible version ranges (using per-env override if set).
 func isKnownIncompatible(stepName, cliVersion, env string) bool {
 	entry, exists := knownIncompatibilities[stepName]
 	if !exists {
@@ -125,27 +204,43 @@ func isKnownIncompatible(stepName, cliVersion, env string) bool {
 	if !ok {
 		return false
 	}
-	minVersion := entry.minVersion
+	ranges := entry.ranges
 	if override, ok := entry.envOverride[env]; ok {
-		minVersion = override
+		ranges = override
 	}
-	minVer, ok := devnet.ParseSemver(minVersion)
-	if !ok {
-		return false
+	for _, r := range ranges {
+		if versionInRange(cliVer, r) {
+			return true
+		}
 	}
-	return devnet.CompareProgramVersions(cliVer, minVer) < 0
+	return false
 }
 
-// knownIncompatMinVersion returns the effective minimum version for a step+env (for error messages).
-func knownIncompatMinVersion(stepName, env string) string {
+// formatIncompatRanges returns a human-readable description of the incompatible
+// ranges for a step+env, used in error messages.
+func formatIncompatRanges(stepName, env string) string {
 	entry, exists := knownIncompatibilities[stepName]
 	if !exists {
 		return ""
 	}
+	ranges := entry.ranges
 	if override, ok := entry.envOverride[env]; ok {
-		return override
+		ranges = override
 	}
-	return entry.minVersion
+	parts := make([]string, 0, len(ranges))
+	for _, r := range ranges {
+		switch {
+		case r.from == "" && r.before == "":
+			parts = append(parts, "all versions")
+		case r.from == "":
+			parts = append(parts, fmt.Sprintf("< %s", r.before))
+		case r.before == "":
+			parts = append(parts, fmt.Sprintf(">= %s", r.from))
+		default:
+			parts = append(parts, fmt.Sprintf("[%s, %s)", r.from, r.before))
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // TestE2E_BackwardCompatibility tests CLI compatibility with the upgraded onchain program.
@@ -528,7 +623,7 @@ func createAndStartDiscoveryDevnet(t *testing.T, cloneEnv string, log *slog.Logg
 }
 
 // discoverVersions enumerates CLI versions compatible with the current onchain program
-// using the discovery devnet's manager container to query Cloudsmith.
+// by querying GitHub releases for all client/vX.Y.Z tags.
 func discoverVersions(t *testing.T, dn *devnet.Devnet, cloneEnv, programID string, log *slog.Logger) []string {
 	// Read ProgramConfig to get min_compatible_version and current version.
 	log.Debug("==> Reading ProgramConfig from ledger")
@@ -542,7 +637,16 @@ func discoverVersions(t *testing.T, dn *devnet.Devnet, cloneEnv, programID strin
 	minVersion := programData.ProgramConfig.MinCompatVersion
 	currentVersion := programData.ProgramConfig.Version
 
-	// DZ_COMPAT_MIN_VERSION overrides ProgramConfig.MinCompatVersion.
+	// Apply the global per-environment minimum version floor.
+	if floor, ok := globalMinVersions[cloneEnv]; ok {
+		if floorVer, ok := devnet.ParseSemver(floor); ok {
+			if devnet.CompareProgramVersions(floorVer, minVersion) > 0 {
+				minVersion = floorVer
+			}
+		}
+	}
+
+	// DZ_COMPAT_MIN_VERSION overrides everything (including the global floor).
 	if override := os.Getenv("DZ_COMPAT_MIN_VERSION"); override != "" {
 		pv, ok := devnet.ParseSemver(override)
 		require.True(t, ok, "invalid DZ_COMPAT_MIN_VERSION: %s", override)
@@ -554,26 +658,16 @@ func discoverVersions(t *testing.T, dn *devnet.Devnet, cloneEnv, programID strin
 		"minCompatVersion", devnet.FormatProgramVersion(minVersion),
 	)
 
-	// Set up Cloudsmith repo in the manager container.
-	log.Debug("==> Setting up Cloudsmith repo in discovery manager")
-	managerExec := func(ctx context.Context, command []string) ([]byte, error) {
-		return dn.Manager.Exec(ctx, command)
+	// Fetch available versions from GitHub releases.
+	log.Debug("==> Fetching client release tags from GitHub")
+	githubToken := os.Getenv("GITHUB_TOKEN")
+	if githubToken == "" {
+		githubToken = os.Getenv("GH_TOKEN")
 	}
-	err = devnet.SetupCloudsmithRepo(t.Context(), managerExec, cloneEnv)
+	releaseTags, err := devnet.FetchGitHubClientReleaseTags(t.Context(), githubToken)
 	require.NoError(t, err)
 
-	// Enumerate available versions from the Cloudsmith apt repo.
-	aptOutput, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c",
-		"apt-cache madison doublezero | awk -F'|' '{print $2}' | sed 's/ //g; s/-1$//' | sort -uV"})
-	require.NoError(t, err)
-	aptVersions := strings.Split(strings.TrimSpace(string(aptOutput)), "\n")
-	for i, v := range aptVersions {
-		if !strings.HasPrefix(v, "v") {
-			aptVersions[i] = "v" + v
-		}
-	}
-
-	compatVersions := devnet.EnumerateCompatibleVersions(aptVersions, minVersion, currentVersion)
+	compatVersions := devnet.EnumerateCompatibleVersions(releaseTags, minVersion, currentVersion)
 
 	// DZ_COMPAT_MAX_NUM_VERSIONS limits how many versions to test (0 = all).
 	if maxStr := os.Getenv("DZ_COMPAT_MAX_NUM_VERSIONS"); maxStr != "" {
@@ -693,15 +787,17 @@ func createAndStartVersionDevnet(
 	_, err = dn.Activator.StartIfNotRunning(t.Context())
 	require.NoError(t, err)
 
-	// Set up Cloudsmith and install the CLI version for this stack.
-	managerExec := func(ctx context.Context, command []string) ([]byte, error) {
-		return dn.Manager.Exec(ctx, command)
-	}
+	// Install the CLI version for this stack from GitHub releases.
 	if version != devnet.CurrentVersionLabel {
-		err = devnet.SetupCloudsmithRepo(t.Context(), managerExec, cloneEnv)
-		require.NoError(t, err)
 		log.Debug("==> Installing CLI version", "version", version)
-		err = devnet.InstallCLIVersion(t.Context(), managerExec, version)
+		githubToken := os.Getenv("GITHUB_TOKEN")
+		if githubToken == "" {
+			githubToken = os.Getenv("GH_TOKEN")
+		}
+		managerExec := func(ctx context.Context, command []string) ([]byte, error) {
+			return dn.Manager.Exec(ctx, command)
+		}
+		err = devnet.InstallCLIVersionFromGitHub(t.Context(), managerExec, version, cloneEnv, githubToken)
 		require.NoError(t, err)
 	}
 
@@ -785,7 +881,7 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 			})
 
 			// Use the unversioned binary for "current" (branch build already in container),
-			// versioned binary for released versions (installed from Cloudsmith).
+			// versioned binary for released versions (installed from GitHub releases).
 			cli := fmt.Sprintf("doublezero-%s", version)
 			if version == devnet.CurrentVersionLabel {
 				cli = "doublezero"
@@ -851,8 +947,8 @@ func runReadWorkflows(
 			output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", rc.cmd})
 			if err == nil {
 				if isKnownIncompatible(stepKey, version, cloneEnv) {
-					t.Errorf("step %q passed for v%s but is listed as known-incompatible (min %s) — remove from knownIncompatibilities",
-						stepKey, version, knownIncompatMinVersion(stepKey, cloneEnv))
+					t.Errorf("step %q passed for v%s but is listed as known-incompatible (%s) — update knownIncompatibilities",
+						stepKey, version, formatIncompatRanges(stepKey, cloneEnv))
 				}
 				recordResult(version, stepKey, "PASS", "")
 				log.Debug("--> Command succeeded", "command", rc.cmd)
@@ -993,8 +1089,8 @@ func runWriteWorkflows(
 		stepKey := "write/" + ws.name
 		if err == nil {
 			if isKnownIncompatible(stepKey, version, cloneEnv) {
-				t.Errorf("step %q passed for v%s but is listed as known-incompatible (min %s) — remove from knownIncompatibilities",
-					stepKey, version, knownIncompatMinVersion(stepKey, cloneEnv))
+				t.Errorf("step %q passed for v%s but is listed as known-incompatible (%s) — update knownIncompatibilities",
+					stepKey, version, formatIncompatRanges(stepKey, cloneEnv))
 			}
 			recordResult(version, stepKey, "PASS", "")
 			log.Debug("--> Command succeeded", "command", ws.cmd)
@@ -1068,10 +1164,10 @@ func runWriteWorkflows(
 
 		// Interface creates use counter-based PDA derivation — must be sequential.
 		{name: "create_interfaces", parallel: false, steps: []writeStep{
-			{name: "device_interface_create", cmd: cli + " device interface create " + deviceCode + " " + ifaceName + " --bandwidth 10G --mtu 2048"},
-			{name: "device_interface_create_2", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName + " --bandwidth 10G --mtu 2048"},
-			{name: "device_interface_create_3", cmd: cli + " device interface create " + deviceCode + " " + ifaceName2 + " --bandwidth 10G --mtu 2048"},
-			{name: "device_interface_create_4", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName2 + " --bandwidth 10G --mtu 2048"},
+			{name: "device_interface_create", cmd: cli + " device interface create " + deviceCode + " " + ifaceName + " --bandwidth 10G --mtu 9000"},
+			{name: "device_interface_create_2", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName + " --bandwidth 10G --mtu 9000"},
+			{name: "device_interface_create_3", cmd: cli + " device interface create " + deviceCode + " " + ifaceName2 + " --bandwidth 10G --mtu 9000"},
+			{name: "device_interface_create_4", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName2 + " --bandwidth 10G --mtu 9000"},
 		}},
 
 		// Transition all 4 interfaces to "unlinked" (required before link creation).
@@ -1093,13 +1189,13 @@ func runWriteWorkflows(
 				" --contributor " + contributorCode +
 				" --side-a " + deviceCode + " --side-a-interface " + ifaceName +
 				" --side-z " + deviceCode2 + " --side-z-interface " + ifaceName +
-				` --bandwidth "10 Gbps" --mtu 2048 --delay-ms 1 --jitter-ms 0.01`},
+				` --bandwidth "10 Gbps" --mtu 9000 --delay-ms 1 --jitter-ms 0.01`},
 			{name: "link_create_dzx", cmd: cli + " link create dzx" +
 				" --code " + dzxLinkCode +
 				" --contributor " + contributorCode +
 				" --side-a " + deviceCode + " --side-a-interface " + ifaceName2 +
 				" --side-z " + deviceCode2 +
-				` --bandwidth "10 Gbps" --mtu 2048 --delay-ms 1 --jitter-ms 0.01`},
+				` --bandwidth "10 Gbps" --mtu 9000 --delay-ms 1 --jitter-ms 0.01`},
 			{name: "multicast_group_create", cmd: cli + " multicast group create --code " + multicastCode +
 				" --max-bandwidth 100Mbps --owner me", noCascade: true},
 			{name: "accesspass_set", cmd: cli + " access-pass set --accesspass-type prepaid --client-ip " + userClientIP +

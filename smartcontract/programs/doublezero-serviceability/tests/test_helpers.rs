@@ -279,6 +279,98 @@ pub async fn execute_transaction_expect_failure(
     result
 }
 
+/// Execute a transaction with extra accounts and expect it to fail. Returns the error result.
+#[allow(dead_code)]
+pub async fn execute_transaction_expect_failure_with_extra_accounts(
+    banks_client: &mut BanksClient,
+    _recent_blockhash: solana_program::hash::Hash,
+    program_id: Pubkey,
+    instruction: DoubleZeroInstruction,
+    accounts: Vec<AccountMeta>,
+    payer: &Keypair,
+    extra_accounts: &[AccountMeta],
+) -> Result<(), BanksClientError> {
+    print!("➡️  Transaction (expecting failure) {instruction:?} ");
+
+    let recent_blockhash = banks_client
+        .get_latest_blockhash()
+        .await
+        .expect("Failed to get latest blockhash");
+    let mut transaction = create_transaction_with_extra_accounts(
+        program_id,
+        &instruction,
+        &accounts,
+        payer,
+        extra_accounts,
+    );
+    transaction.try_sign(&[&payer], recent_blockhash).unwrap();
+    let result = banks_client.process_transaction(transaction).await;
+
+    if result.is_err() {
+        println!("❌ (expected)");
+    } else {
+        println!("✅ (unexpected success)");
+    }
+
+    result
+}
+
+#[allow(dead_code)]
+pub async fn execute_transaction_with_extra_accounts(
+    banks_client: &mut BanksClient,
+    _recent_blockhash: solana_program::hash::Hash,
+    program_id: Pubkey,
+    instruction: DoubleZeroInstruction,
+    accounts: Vec<AccountMeta>,
+    payer: &Keypair,
+    extra_accounts: &[AccountMeta],
+) {
+    print!("➡️  Transaction {instruction:?} ");
+
+    let recent_blockhash = banks_client
+        .get_latest_blockhash()
+        .await
+        .expect("Failed to get latest blockhash");
+    let mut transaction = create_transaction_with_extra_accounts(
+        program_id,
+        &instruction,
+        &accounts,
+        payer,
+        extra_accounts,
+    );
+    transaction.try_sign(&[&payer], recent_blockhash).unwrap();
+    banks_client.process_transaction(transaction).await.unwrap();
+
+    println!("✅")
+}
+
+#[allow(dead_code)]
+pub async fn try_execute_transaction_with_extra_accounts(
+    banks_client: &mut BanksClient,
+    recent_blockhash: solana_program::hash::Hash,
+    program_id: Pubkey,
+    instruction: DoubleZeroInstruction,
+    accounts: Vec<AccountMeta>,
+    payer: &Keypair,
+    extra_accounts: &[AccountMeta],
+) -> Result<(), BanksClientError> {
+    print!("➡️  Transaction {instruction:?} ");
+
+    let mut transaction = create_transaction_with_extra_accounts(
+        program_id,
+        &instruction,
+        &accounts,
+        payer,
+        extra_accounts,
+    );
+    transaction.try_sign(&[&payer], recent_blockhash).unwrap();
+    banks_client.process_transaction(transaction).await?;
+
+    println!("✅");
+
+    Ok(())
+}
+
 pub fn create_transaction(
     program_id: Pubkey,
     instruction: &DoubleZeroInstruction,

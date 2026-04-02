@@ -35,6 +35,7 @@ use crate::processors::{
         setairdrop::SetAirdropArgs, setauthority::SetAuthorityArgs,
         setfeatureflags::SetFeatureFlagsArgs, setversion::SetVersionArgs,
     },
+    index::{create::IndexCreateArgs, delete::IndexDeleteArgs},
     link::{
         accept::LinkAcceptArgs, activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
         create::LinkCreateArgs, delete::LinkDeleteArgs, reject::LinkRejectArgs,
@@ -223,10 +224,12 @@ pub enum DoubleZeroInstruction {
     Deprecated102(), // variant 102 (was CreateReservedSubscribeUser)
     Deprecated103(), // variant 103 (was DeleteReservedSubscribeUser)
 
-    CreateTopology(TopologyCreateArgs),     // variant 104
-    DeleteTopology(TopologyDeleteArgs),     // variant 105
-    ClearTopology(TopologyClearArgs),       // variant 106
-    BackfillTopology(TopologyBackfillArgs), // variant 107
+    CreateIndex(IndexCreateArgs),           // variant 104
+    DeleteIndex(IndexDeleteArgs),           // variant 105
+    CreateTopology(TopologyCreateArgs),     // variant 106
+    DeleteTopology(TopologyDeleteArgs),     // variant 107
+    ClearTopology(TopologyClearArgs),       // variant 108
+    BackfillTopology(TopologyBackfillArgs), // variant 109
 }
 
 impl DoubleZeroInstruction {
@@ -358,10 +361,12 @@ impl DoubleZeroInstruction {
             100 => Ok(Self::ResumePermission(PermissionResumeArgs::try_from(rest).unwrap())),
             101 => Ok(Self::DeletePermission(PermissionDeleteArgs::try_from(rest).unwrap())),
 
-            104 => Ok(Self::CreateTopology(TopologyCreateArgs::try_from(rest).unwrap())),
-            105 => Ok(Self::DeleteTopology(TopologyDeleteArgs::try_from(rest).unwrap())),
-            106 => Ok(Self::ClearTopology(TopologyClearArgs::try_from(rest).unwrap())),
-            107 => Ok(Self::BackfillTopology(TopologyBackfillArgs::try_from(rest).unwrap())),
+            104 => Ok(Self::CreateIndex(IndexCreateArgs::try_from(rest).unwrap())),
+            105 => Ok(Self::DeleteIndex(IndexDeleteArgs::try_from(rest).unwrap())),
+            106 => Ok(Self::CreateTopology(TopologyCreateArgs::try_from(rest).unwrap())),
+            107 => Ok(Self::DeleteTopology(TopologyDeleteArgs::try_from(rest).unwrap())),
+            108 => Ok(Self::ClearTopology(TopologyClearArgs::try_from(rest).unwrap())),
+            109 => Ok(Self::BackfillTopology(TopologyBackfillArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -497,10 +502,12 @@ impl DoubleZeroInstruction {
             Self::Deprecated102() => "Deprecated102".to_string(),
             Self::Deprecated103() => "Deprecated103".to_string(),
 
-            Self::CreateTopology(_) => "CreateTopology".to_string(), // variant 104
-            Self::DeleteTopology(_) => "DeleteTopology".to_string(), // variant 105
-            Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 106
-            Self::BackfillTopology(_) => "BackfillTopology".to_string(), // variant 107
+            Self::CreateIndex(_) => "CreateIndex".to_string(),     // variant 104
+            Self::DeleteIndex(_) => "DeleteIndex".to_string(),     // variant 105
+            Self::CreateTopology(_) => "CreateTopology".to_string(), // variant 106
+            Self::DeleteTopology(_) => "DeleteTopology".to_string(), // variant 107
+            Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 108
+            Self::BackfillTopology(_) => "BackfillTopology".to_string(), // variant 109
         }
     }
 
@@ -628,10 +635,12 @@ impl DoubleZeroInstruction {
             Self::Deprecated102() => String::new(),
             Self::Deprecated103() => String::new(),
 
-            Self::CreateTopology(args) => format!("{args:?}"), // variant 104
-            Self::DeleteTopology(args) => format!("{args:?}"), // variant 105
-            Self::ClearTopology(args) => format!("{args:?}"),  // variant 106
-            Self::BackfillTopology(args) => format!("{args:?}"), // variant 107
+            Self::CreateIndex(args) => format!("{args:?}"),   // variant 104
+            Self::DeleteIndex(args) => format!("{args:?}"),   // variant 105
+            Self::CreateTopology(args) => format!("{args:?}"), // variant 106
+            Self::DeleteTopology(args) => format!("{args:?}"), // variant 107
+            Self::ClearTopology(args) => format!("{args:?}"),  // variant 108
+            Self::BackfillTopology(args) => format!("{args:?}"), // variant 109
         }
     }
 }

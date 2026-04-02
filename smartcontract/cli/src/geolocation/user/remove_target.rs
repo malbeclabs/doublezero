@@ -49,6 +49,12 @@ impl RemoveTargetCliCommand {
                 let pk: Pubkey = pk_str.parse().expect("validated by clap");
                 (GeoLocationTargetType::Inbound, Ipv4Addr::UNSPECIFIED, pk)
             }
+            TargetType::OutboundIcmp => {
+                let ip = self.target_ip.ok_or_else(|| {
+                    eyre::eyre!("--target-ip is required for outbound-icmp targets")
+                })?;
+                (GeoLocationTargetType::OutboundIcmp, ip, Pubkey::default())
+            }
         };
 
         let probe_pk = super::add_target::resolve_probe(client, self.probe, self.exchange)?;
@@ -130,6 +136,54 @@ mod tests {
         let res = RemoveTargetCliCommand {
             user: "geo-user-01".to_string(),
             target_type: TargetType::Outbound,
+            target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
+            target_pk: None,
+            probe: Some("ams-probe-01".to_string()),
+            exchange: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("Signature:"));
+    }
+
+    #[test]
+    fn test_cli_remove_target_outbound_icmp() {
+        let mut client = MockGeoCliCommand::new();
+
+        let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
+        let svc_gs_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let exchange_pk = Pubkey::new_unique();
+        let probe = make_probe(exchange_pk);
+        let signature = Signature::new_unique();
+
+        client
+            .expect_get_geo_probe()
+            .with(predicate::eq(GetGeoProbeCommand {
+                pubkey_or_code: "ams-probe-01".to_string(),
+            }))
+            .returning(move |_| Ok((probe_pk, probe.clone())));
+
+        client
+            .expect_get_serviceability_globalstate_pk()
+            .returning(move || svc_gs_pk);
+
+        client
+            .expect_remove_target()
+            .with(predicate::eq(RemoveTargetCommand {
+                code: "geo-user-01".to_string(),
+                probe_pk,
+                target_type: GeoLocationTargetType::OutboundIcmp,
+                ip_address: Ipv4Addr::new(8, 8, 8, 8),
+                target_pk: Pubkey::default(),
+                serviceability_globalstate_pk: svc_gs_pk,
+            }))
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let res = RemoveTargetCliCommand {
+            user: "geo-user-01".to_string(),
+            target_type: TargetType::OutboundIcmp,
             target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
             target_pk: None,
             probe: Some("ams-probe-01".to_string()),

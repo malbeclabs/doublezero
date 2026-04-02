@@ -4,6 +4,10 @@ use doublezero_program_common::{types::NetworkV4, validate_iface};
 use solana_program::{msg, program_error::ProgramError};
 use std::{fmt, str::FromStr};
 
+pub const LINK_MTU: u32 = 9000;
+pub const INTERFACE_MTU: u16 = 9000;
+pub const CYOA_DIA_INTERFACE_MTU: u16 = 1500;
+
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
@@ -359,7 +363,7 @@ impl TryFrom<&InterfaceV1> for InterfaceV2 {
             loopback_type: data.loopback_type,
             bandwidth: 0,
             cir: 0,
-            mtu: 1500,
+            mtu: INTERFACE_MTU,
             routing_mode: RoutingMode::Static,
             vlan_id: data.vlan_id,
             ip_net: data.ip_net,
@@ -380,7 +384,7 @@ impl Default for InterfaceV2 {
             loopback_type: LoopbackType::None,
             bandwidth: 0,
             cir: 0,
-            mtu: 1500,
+            mtu: INTERFACE_MTU,
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             ip_net: NetworkV4::default(),

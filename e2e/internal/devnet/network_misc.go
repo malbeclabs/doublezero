@@ -80,7 +80,7 @@ func (n *MiscNetwork) Create(ctx context.Context) error {
 		Attachable: false,
 		Labels:     labels,
 		Options: map[string]string{
-			"com.docker.network.driver.mtu": "2048",
+			"com.docker.network.driver.mtu": "9000",
 		},
 	})
 	if err != nil {

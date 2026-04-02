@@ -248,6 +248,15 @@ async fn main() -> eyre::Result<()> {
         },
 
         Command::Migrate(args) => args.execute(&client, &mut handle),
+        Command::Sentinel(args) => match args.command {
+            cli::sentinel::SentinelCommands::FindValidatorMulticastPublishers(cmd) => {
+                cmd.execute(&dzclient).await
+            }
+            cli::sentinel::SentinelCommands::CreateValidatorMulticastPublishers(cmd) => {
+                cmd.execute(&dzclient).await
+            }
+        },
+
         Command::Export(args) => args.execute(&client, &mut handle),
         Command::Keygen(args) => args.execute(&client, &mut handle),
         Command::Log(args) => args.execute(&dzclient, &mut handle),

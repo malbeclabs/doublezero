@@ -61,7 +61,7 @@ impl GetGeolocationUserCliCommand {
             .iter()
             .map(|t| {
                 let (ip, port) = match t.target_type {
-                    GeoLocationTargetType::Outbound => {
+                    GeoLocationTargetType::Outbound | GeoLocationTargetType::OutboundIcmp => {
                         (t.ip_address.to_string(), t.location_offset_port)
                     }
                     GeoLocationTargetType::Inbound => ("-".to_string(), 0),

@@ -28,6 +28,8 @@ All notable changes to this project will be documented in this file.
   - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
 - Tools
   - Add `twamp-debug` diagnostic tool for testing kernel timestamping support on switches; sends real TWAMP probes to verify which SO_TIMESTAMPING modes (RX/TX software/hardware/sched) actually deliver timestamps, and reports RTT statistics comparing userspace vs kernel timestamp sources
+- E2E Tests
+  - Switch backward compatibility test to install versioned CLI binaries from GitHub releases instead of Cloudsmith apt repos; version enumeration now uses the GitHub API directly from Go rather than querying apt-cache inside the container
 
 ## [v0.15.0](https://github.com/malbeclabs/doublezero/compare/client/v0.14.0...client/v0.15.0) - 2026-03-27
 

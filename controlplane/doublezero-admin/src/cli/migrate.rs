@@ -3,11 +3,11 @@ use doublezero_cli::doublezerocommand::CliCommand;
 use doublezero_sdk::commands::{
     device::list::ListDeviceCommand,
     link::{list::ListLinkCommand, update::UpdateLinkCommand},
-    topology::list::ListTopologyCommand,
+    topology::{backfill::BackfillTopologyCommand, list::ListTopologyCommand},
 };
 use doublezero_serviceability::{pda::get_topology_pda, state::interface::LoopbackType};
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashSet, io::Write};
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct MigrateCliCommand {
@@ -77,38 +77,69 @@ impl MigrateCliCommand {
             }
         }
 
-        // ── Part 2: Vpnv4 loopback gap reporting ─────────────────────────────────
+        // ── Part 2: Vpnv4 loopback FlexAlgoNodeSegment backfill ─────────────────
 
         let topologies = client.list_topology(ListTopologyCommand)?;
-        let topology_pubkeys: HashSet<Pubkey> = topologies.keys().copied().collect();
+        let mut topology_entries: Vec<(Pubkey, _)> = topologies.into_iter().collect();
+        topology_entries.sort_by_key(|(pk, _)| pk.to_string());
 
         let devices = client.list_device(ListDeviceCommand)?;
-        let mut loopbacks_with_gaps = 0u32;
-
         let mut device_entries: Vec<(Pubkey, _)> = devices.into_iter().collect();
         device_entries.sort_by_key(|(pk, _)| pk.to_string());
 
-        for (device_pubkey, device) in &device_entries {
-            for iface in &device.interfaces {
-                let current = iface.into_current_version();
-                if current.loopback_type != LoopbackType::Vpnv4 {
-                    continue;
+        // For each topology, find devices that have Vpnv4 loopbacks missing that
+        // topology's segment — then backfill in a single transaction per topology.
+        let mut topologies_backfilled = 0u32;
+        let mut topologies_skipped = 0u32;
+
+        for (topology_pubkey, topology) in &topology_entries {
+            // Collect devices that have at least one Vpnv4 loopback missing this topology
+            let mut devices_needing_backfill: Vec<Pubkey> = Vec::new();
+
+            for (device_pubkey, device) in &device_entries {
+                let needs_backfill = device.interfaces.iter().any(|iface| {
+                    let current = iface.into_current_version();
+                    current.loopback_type == LoopbackType::Vpnv4
+                        && !current
+                            .flex_algo_node_segments
+                            .iter()
+                            .any(|s| s.topology == *topology_pubkey)
+                });
+                if needs_backfill {
+                    devices_needing_backfill.push(*device_pubkey);
                 }
+            }
 
-                let present: HashSet<Pubkey> = current
-                    .flex_algo_node_segments
-                    .iter()
-                    .map(|seg| seg.topology)
-                    .collect();
+            if devices_needing_backfill.is_empty() {
+                topologies_skipped += 1;
+                continue;
+            }
 
-                let missing_count = topology_pubkeys.difference(&present).count();
-                if missing_count > 0 {
-                    loopbacks_with_gaps += 1;
-                    writeln!(
-                        out,
-                        "  [loopback] {device_pubkey} iface={} — missing {missing_count} topology entries; re-create topology with device accounts to backfill",
-                        current.name
-                    )?;
+            topologies_backfilled += 1;
+            writeln!(
+                out,
+                "  [topology] {} ({}) — {} device(s) need backfill",
+                topology.name,
+                topology_pubkey,
+                devices_needing_backfill.len()
+            )?;
+
+            if !self.dry_run {
+                let result = client.backfill_topology(BackfillTopologyCommand {
+                    name: topology.name.clone(),
+                    device_pubkeys: devices_needing_backfill,
+                });
+                match result {
+                    Ok(sig) => {
+                        writeln!(out, "    backfilled: {sig}")?;
+                    }
+                    Err(e) => {
+                        writeln!(
+                            out,
+                            "    WARNING: failed to backfill topology {}: {e}",
+                            topology.name
+                        )?;
+                    }
                 }
             }
         }
@@ -125,9 +156,14 @@ impl MigrateCliCommand {
         } else {
             format!("{links_tagged} link(s) tagged")
         };
+        let loopback_summary = if self.dry_run {
+            format!("{topologies_backfilled} topology(s) would be backfilled")
+        } else {
+            format!("{topologies_backfilled} topology(s) backfilled")
+        };
         writeln!(
             out,
-            "\nMigration complete: {tagged_summary}, {links_skipped} link(s) skipped, {loopbacks_with_gaps} loopback(s) with gaps{dry_run_suffix}"
+            "\nMigration complete: {tagged_summary}, {links_skipped} link(s) skipped; {loopback_summary}, {topologies_skipped} topology(s) already complete{dry_run_suffix}"
         )?;
 
         Ok(())

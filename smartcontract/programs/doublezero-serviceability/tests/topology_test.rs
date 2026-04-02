@@ -20,7 +20,8 @@ use doublezero_serviceability::{
         link::{activate::LinkActivateArgs, create::LinkCreateArgs, update::LinkUpdateArgs},
         location::create::LocationCreateArgs,
         topology::{
-            clear::TopologyClearArgs, create::TopologyCreateArgs, delete::TopologyDeleteArgs,
+            backfill::TopologyBackfillArgs, clear::TopologyClearArgs, create::TopologyCreateArgs,
+            delete::TopologyDeleteArgs,
         },
     },
     resource::{IdOrIp, ResourceType},
@@ -1534,6 +1535,359 @@ async fn test_topology_clear_non_foundation_rejected() {
     }
 
     println!("[PASS] test_topology_clear_non_foundation_rejected");
+}
+
+// ============================================================================
+// BackfillTopology tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_topology_backfill_populates_vpnv4_loopbacks() {
+    println!("[TEST] test_topology_backfill_populates_vpnv4_loopbacks");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    // Step 1: Create Location
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            country: "us".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            loc_id: 0,
+        }),
+        vec![
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 2: Create Exchange
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            reserved: 0,
+        }),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 3: Create Contributor
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (contributor_pubkey, _) =
+        get_contributor_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "cont".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 4: Create Device
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
+            code: "dz1".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [8, 8, 8, 8].into(),
+            dz_prefixes: "110.1.0.0/23".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 5: Activate Device
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 6: Create a Vpnv4 loopback interface
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "loopback0".to_string(),
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::Vpnv4,
+            interface_cyoa: InterfaceCYOA::None,
+            bandwidth: 0,
+            cir: 0,
+            ip_net: None,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 7: Create topology WITHOUT passing device accounts — no backfill at create time
+    create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+    let (topology_pda, _) = get_topology_pda(&program_id, "unicast-default");
+
+    // Verify: device has 0 flex_algo_node_segments before backfill
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device not found");
+    let iface = device.interfaces[0].into_current_version();
+    assert_eq!(
+        iface.flex_algo_node_segments.len(),
+        0,
+        "Expected no segments before BackfillTopology"
+    );
+
+    // Step 8: Call BackfillTopology instruction
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let base_accounts = vec![
+        AccountMeta::new_readonly(topology_pda, false),
+        AccountMeta::new(segment_routing_ids_pda, false),
+        AccountMeta::new_readonly(globalstate_pubkey, false),
+    ];
+    let extra_accounts = vec![AccountMeta::new(device_pubkey, false)];
+    let mut tx = create_transaction_with_extra_accounts(
+        program_id,
+        &DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
+            name: "unicast-default".to_string(),
+        }),
+        &base_accounts,
+        &payer,
+        &extra_accounts,
+    );
+    tx.try_sign(&[&payer], recent_blockhash).unwrap();
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Verify: loopback now has 1 segment pointing to the topology
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device not found after backfill");
+    let iface = device.interfaces[0].into_current_version();
+    assert_eq!(
+        iface.flex_algo_node_segments.len(),
+        1,
+        "Expected one flex_algo_node_segment after BackfillTopology"
+    );
+    assert_eq!(
+        iface.flex_algo_node_segments[0].topology, topology_pda,
+        "Segment should point to the backfilled topology"
+    );
+
+    // Step 9: Call BackfillTopology again — idempotent, no duplicate segment
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx2 = create_transaction_with_extra_accounts(
+        program_id,
+        &DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
+            name: "unicast-default".to_string(),
+        }),
+        &base_accounts,
+        &payer,
+        &extra_accounts,
+    );
+    tx2.try_sign(&[&payer], recent_blockhash).unwrap();
+    banks_client.process_transaction(tx2).await.unwrap();
+
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device not found after second backfill");
+    let iface = device.interfaces[0].into_current_version();
+    assert_eq!(
+        iface.flex_algo_node_segments.len(),
+        1,
+        "Idempotent: BackfillTopology must not add a duplicate segment"
+    );
+
+    println!("[PASS] test_topology_backfill_populates_vpnv4_loopbacks");
+}
+
+#[tokio::test]
+async fn test_topology_backfill_non_foundation_rejected() {
+    println!("[TEST] test_topology_backfill_non_foundation_rejected");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+    let (topology_pda, _) = get_topology_pda(&program_id, "unicast-default");
+
+    let non_foundation = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &non_foundation.pubkey(),
+        10_000_000,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
+            name: "unicast-default".to_string(),
+        }),
+        vec![
+            AccountMeta::new_readonly(topology_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &non_foundation,
+    )
+    .await;
+
+    // DoubleZeroError::Unauthorized = Custom(22)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(22),
+        ))) => {}
+        _ => panic!("Expected Unauthorized error (Custom(22)), got {:?}", result),
+    }
+
+    println!("[PASS] test_topology_backfill_non_foundation_rejected");
+}
+
+#[tokio::test]
+async fn test_topology_backfill_nonexistent_topology_rejected() {
+    println!("[TEST] test_topology_backfill_nonexistent_topology_rejected");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    // Use a topology PDA that has never been created
+    let (nonexistent_topology_pda, _) = get_topology_pda(&program_id, "does-not-exist");
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
+            name: "does-not-exist".to_string(),
+        }),
+        vec![
+            AccountMeta::new_readonly(nonexistent_topology_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // DoubleZeroError::InvalidArgument = Custom(65)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(65),
+        ))) => {}
+        _ => panic!(
+            "Expected InvalidArgument error (Custom(65)), got {:?}",
+            result
+        ),
+    }
+
+    println!("[PASS] test_topology_backfill_nonexistent_topology_rejected");
 }
 
 // ============================================================================

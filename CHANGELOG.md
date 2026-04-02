@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Smartcontract
+  - Replace manual account validation assertions with `validate_program_account!` macro across serviceability processor files, adding consistent `data_is_empty` checks and fixing a missing `is_writable` validation in `ResumeLink` ([#3436](https://github.com/malbeclabs/doublezero/pull/3436))
+
 ## [v0.16.0](https://github.com/malbeclabs/doublezero/compare/client/v0.15.0...client/v0.16.0) - 2026-04-03
 
 ### Breaking

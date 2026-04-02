@@ -105,6 +105,8 @@ func installCLIMainnetBetaFromGitHub(ctx context.Context, execFn func(ctx contex
 	url := fmt.Sprintf(
 		"https://github.com/malbeclabs/doublezero/releases/download/client%%2Fv%s/doublezero-mainnet-beta_%s_amd64.deb",
 		version, version)
+	// Use dpkg-deb -x to extract the package contents directly, avoiding the
+	// postinstall script (which calls deb-systemd-helper, not available in the container).
 	script := fmt.Sprintf(`
 		set -euo pipefail
 		if [ -n "${GH_TOKEN:-}" ]; then
@@ -112,12 +114,11 @@ func installCLIMainnetBetaFromGitHub(ctx context.Context, execFn func(ctx contex
 		else
 			curl -fsSL '%s' -o /tmp/doublezero-mainnet-beta-%s.deb
 		fi
-		dpkg -i --force-depends /tmp/doublezero-mainnet-beta-%s.deb
-		cp /usr/bin/doublezero /usr/local/bin/doublezero-%s
+		EXTRACT_DIR=$(mktemp -d)
+		dpkg-deb -x /tmp/doublezero-mainnet-beta-%s.deb "$EXTRACT_DIR"
+		cp "$EXTRACT_DIR/usr/bin/doublezero" /usr/local/bin/doublezero-%s
 		chmod +x /usr/local/bin/doublezero-%s
-		# Restore the current version at /usr/bin/doublezero.
-		cp /doublezero/bin/doublezero /usr/bin/doublezero
-		rm -f /tmp/doublezero-mainnet-beta-%s.deb
+		rm -rf /tmp/doublezero-mainnet-beta-%s.deb "$EXTRACT_DIR"
 	`, url, version, url, version, version, version, version, version)
 	_, err := execFn(ctx, []string{"env", "GH_TOKEN=" + githubToken, "bash", "-c", script})
 	if err != nil {

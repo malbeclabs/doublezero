@@ -1,6 +1,6 @@
 use std::net::Ipv4Addr;
 
-use anyhow::Result;
+use anyhow::{Context, Result, bail};
 use clap::Args;
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
 use doublezero_solana_sdk::{
@@ -72,10 +72,28 @@ impl WithdrawCommand {
         });
         let client_ip_bits = u32::from(self.client_ip);
         let (client_seat_key, _) = state::find_client_seat_address(&device, client_ip_bits);
-
-        // Check if the payment escrow exists.
         let (escrow_key, _) = state::find_payment_escrow_address(&client_seat_key, &wallet_key);
-        let escrow_exists = wallet.connection.get_account(&escrow_key).await.is_ok();
+
+        // Fetch client seat and payment escrow.
+        let mut accounts = wallet
+            .connection
+            .get_multiple_accounts(&[client_seat_key, escrow_key])
+            .await?;
+
+        // Pop in reverse order: escrow (index 1) first, then seat (index 0).
+        let escrow_exists = accounts.pop().flatten().is_some();
+
+        // The seat must exist and be active in the current epoch to withdraw.
+        let seat_data = accounts
+            .pop()
+            .flatten()
+            .with_context(|| format!("Client seat {client_seat_key} does not exist"))?;
+        let (_, _, _, _, active_epoch) = state::parse_client_seat(&seat_data.data)
+            .with_context(|| format!("Failed to parse client seat {client_seat_key}"))?;
+        let current_epoch = wallet.connection.get_epoch_info().await?.epoch;
+        if active_epoch < current_epoch {
+            bail!("Client seat {client_seat_key} does not have active service");
+        }
 
         let mut instructions = Vec::new();
         let mut compute_unit_limit = 30_000;

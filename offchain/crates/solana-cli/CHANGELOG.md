@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - fix `fetch validator-debts` record logic ([#327](https://github.com/doublezerofoundation/doublezero-offchain/pull/327))
+- `shreds withdraw`: check that the client seat has active service before submitting withdrawal
 - remove `experimental` feature flag from `shreds` subcommands — they are now always available
 - `shreds price`: hide devices with no remaining seats by default; add `--all` flag to show all devices ([#324](https://github.com/doublezerofoundation/doublezero-offchain/pull/324))
 - `shreds price`: parallelize RPC calls to reduce latency

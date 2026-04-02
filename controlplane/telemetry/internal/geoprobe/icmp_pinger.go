@@ -35,7 +35,7 @@ type ICMPPingerConfig struct {
 }
 
 type ICMPPinger struct {
-	conn   *icmpConn
+	conn   icmpSocket
 	probes map[string]*icmpProbeEntry
 	cfg    *ICMPPingerConfig
 	seq    atomic.Uint32

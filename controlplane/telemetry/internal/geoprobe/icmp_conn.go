@@ -3,15 +3,23 @@
 package geoprobe
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log/slog"
 	"net"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
+
+// icmpSocket abstracts raw ICMP socket operations for testing.
+type icmpSocket interface {
+	sendEcho(dst net.IP, payload []byte) (time.Time, error)
+	recvEcho(buf []byte) (int, time.Time, error)
+	setReadDeadline(t time.Time) error
+	close() error
+}
 
 type icmpConn struct {
 	fd          int
@@ -51,7 +59,7 @@ func newICMPConn(log *slog.Logger) (*icmpConn, error) {
 		fd:          fd,
 		epfd:        epfd,
 		oob:         make([]byte, 512),
-		events:      make([]unix.EpollEvent, 1),
+		events:      make([]unix.EpollEvent, 16),
 		hasKernelTS: hasKernelTS,
 	}, nil
 }
@@ -120,9 +128,10 @@ func parseKernelTimestamp(oob []byte, fallback time.Time) time.Time {
 	}
 	for _, cmsg := range cmsgs {
 		if cmsg.Header.Level == syscall.SOL_SOCKET && cmsg.Header.Type == syscall.SO_TIMESTAMPNS {
-			if len(cmsg.Data) >= int(unsafe.Sizeof(syscall.Timespec{})) {
-				ts := *(*syscall.Timespec)(unsafe.Pointer(&cmsg.Data[0]))
-				kernel := time.Unix(int64(ts.Sec), int64(ts.Nsec))
+			if len(cmsg.Data) >= 16 {
+				sec := int64(binary.LittleEndian.Uint64(cmsg.Data[0:8]))
+				nsec := int64(binary.LittleEndian.Uint64(cmsg.Data[8:16]))
+				kernel := time.Unix(sec, nsec)
 				return decideRxTimestamp(kernel, fallback)
 			}
 		}

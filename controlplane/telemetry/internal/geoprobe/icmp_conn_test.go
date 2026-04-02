@@ -83,6 +83,19 @@ func TestDecideRxTimestamp(t *testing.T) {
 	})
 }
 
+func TestICMPConn_SendEcho_RejectsIPv6(t *testing.T) {
+	conn, err := newICMPConn(slog.Default())
+	if err != nil {
+		t.Skipf("skipping: need CAP_NET_RAW: %v", err)
+	}
+	defer conn.close()
+
+	payload := make([]byte, 64)
+	_, err = conn.sendEcho(net.ParseIP("::1"), payload)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not an IPv4 address")
+}
+
 func TestStripIPv4Header(t *testing.T) {
 	tests := []struct {
 		name  string

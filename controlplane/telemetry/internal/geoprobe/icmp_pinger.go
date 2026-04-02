@@ -308,6 +308,8 @@ func (p *ICMPPinger) MeasureAll(ctx context.Context) (map[ProbeAddress]uint64, e
 }
 
 func (p *ICMPPinger) Close() error {
+	p.measMu.Lock()
+	defer p.measMu.Unlock()
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

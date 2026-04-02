@@ -497,9 +497,9 @@ impl DoubleZeroInstruction {
             Self::Deprecated102() => "Deprecated102".to_string(),
             Self::Deprecated103() => "Deprecated103".to_string(),
 
-            Self::CreateTopology(_) => "CreateTopology".to_string(),     // variant 104
-            Self::DeleteTopology(_) => "DeleteTopology".to_string(),     // variant 105
-            Self::ClearTopology(_) => "ClearTopology".to_string(),       // variant 106
+            Self::CreateTopology(_) => "CreateTopology".to_string(), // variant 104
+            Self::DeleteTopology(_) => "DeleteTopology".to_string(), // variant 105
+            Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 106
             Self::BackfillTopology(_) => "BackfillTopology".to_string(), // variant 107
         }
     }
@@ -628,10 +628,10 @@ impl DoubleZeroInstruction {
             Self::Deprecated102() => String::new(),
             Self::Deprecated103() => String::new(),
 
-            Self::CreateTopology(args) => format!("{args:?}"),     // variant 104
-            Self::DeleteTopology(args) => format!("{args:?}"),     // variant 105
-            Self::ClearTopology(args) => format!("{args:?}"),      // variant 106
-            Self::BackfillTopology(args) => format!("{args:?}"),   // variant 107
+            Self::CreateTopology(args) => format!("{args:?}"), // variant 104
+            Self::DeleteTopology(args) => format!("{args:?}"), // variant 105
+            Self::ClearTopology(args) => format!("{args:?}"),  // variant 106
+            Self::BackfillTopology(args) => format!("{args:?}"), // variant 107
         }
     }
 }

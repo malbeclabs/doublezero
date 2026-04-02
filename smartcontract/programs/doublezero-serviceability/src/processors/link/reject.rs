@@ -1,5 +1,6 @@
 use crate::{
     error::DoubleZeroError,
+    processors::validation::validate_program_account,
     serializer::try_acc_write,
     state::{contributor::Contributor, device::Device, globalstate::GlobalState, link::*},
 };
@@ -35,13 +36,21 @@ pub fn process_reject_link(
     let link_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Check the owner of link and globalstate accounts first
-    assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    // Validate accounts
+    validate_program_account!(
+        link_account,
+        program_id,
+        writable = true,
+        pda = None::<&Pubkey>,
+        "Link"
     );
-    assert!(link_account.is_writable, "PDA Account is not writable");
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "GlobalState"
+    );
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
     let mut link: Link = Link::try_from(link_account)?;
@@ -71,13 +80,19 @@ pub fn process_reject_link(
             let payer_account = next_account_info(accounts_iter)?;
             let system_program = next_account_info(accounts_iter)?;
 
-            assert_eq!(
-                contributor_account.owner, program_id,
-                "Invalid PDA Account Owner"
+            validate_program_account!(
+                contributor_account,
+                program_id,
+                writable = false,
+                pda = None::<&Pubkey>,
+                "Contributor"
             );
-            assert_eq!(
-                side_z_account.owner, program_id,
-                "Invalid Side Z Account Owner"
+            validate_program_account!(
+                side_z_account,
+                program_id,
+                writable = false,
+                pda = None::<&Pubkey>,
+                "SideZ"
             );
             assert!(payer_account.is_signer, "Payer must be a signer");
             assert_eq!(

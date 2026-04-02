@@ -1,6 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_accesspass_pda,
+    processors::validation::validate_program_account,
     serializer::{try_acc_close, try_acc_write},
     state::{
         accesspass::{AccessPass, AccessPassStatus},
@@ -119,26 +120,36 @@ pub fn process_delete_user(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
+    // Validate accounts
+    validate_program_account!(
+        user_account,
+        program_id,
+        writable = true,
+        pda = None::<&Pubkey>,
+        "User"
+    );
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        accesspass_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "AccessPass"
     );
-    assert_eq!(
-        accesspass_account.owner, program_id,
-        "Invalid AccessPass Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
-    assert!(user_account.is_writable, "PDA Account is not writable");
 
     let user: User = User::try_from(user_account)?;
 

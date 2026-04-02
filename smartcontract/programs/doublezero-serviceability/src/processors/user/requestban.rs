@@ -1,5 +1,6 @@
 use crate::{
     error::DoubleZeroError,
+    processors::validation::validate_program_account,
     serializer::try_acc_write,
     state::{globalstate::GlobalState, user::*},
 };
@@ -89,19 +90,26 @@ pub fn process_request_ban_user(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    // Validate accounts
+    validate_program_account!(
+        user_account,
+        program_id,
+        writable = true,
+        pda = None::<&Pubkey>,
+        "User"
+    );
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
-    assert!(user_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {

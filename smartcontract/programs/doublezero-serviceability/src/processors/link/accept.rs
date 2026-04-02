@@ -1,6 +1,9 @@
 use crate::{
     error::DoubleZeroError,
-    processors::link::resource_onchain_helpers::validate_and_allocate_link_resources,
+    processors::{
+        link::resource_onchain_helpers::validate_and_allocate_link_resources,
+        validation::validate_program_account,
+    },
     serializer::try_acc_write,
     state::{
         contributor::Contributor,
@@ -78,18 +81,28 @@ pub fn process_accept_link(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(
-        contributor_account.owner, program_id,
-        "Invalid Contributor Account Owner"
+    // Validate accounts
+    validate_program_account!(
+        link_account,
+        program_id,
+        writable = true,
+        pda = None::<&Pubkey>,
+        "Link"
     );
-    assert_eq!(
-        side_z_account.owner, program_id,
-        "Invalid Side Z Account Owner"
+    validate_program_account!(
+        contributor_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "Contributor"
     );
-    // Check if the account is writable
-    assert!(link_account.is_writable, "PDA Account is not writable");
+    validate_program_account!(
+        side_z_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "SideZ"
+    );
 
     // Validate Contributor Owner
     let contributor = Contributor::try_from(contributor_account)?;
@@ -131,13 +144,12 @@ pub fn process_accept_link(
         // Combined accept + activate path with onchain allocation.
         // Gated on the OnChainAllocation feature flag (checked inside validate_and_allocate_link_resources).
 
-        assert_eq!(
-            side_a_device_account.owner, program_id,
-            "Invalid PDA Account Owner for Side A Device"
-        );
-        assert!(
-            side_a_device_account.is_writable,
-            "Side A PDA Account is not writable"
+        validate_program_account!(
+            side_a_device_account,
+            program_id,
+            writable = true,
+            pda = None::<&Pubkey>,
+            "SideADevice"
         );
         assert!(
             side_z_account.is_writable,

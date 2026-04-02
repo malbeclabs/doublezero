@@ -1,7 +1,10 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
-    processors::resource::{deallocate_id, deallocate_ip},
+    processors::{
+        resource::{deallocate_id, deallocate_ip},
+        validation::validate_program_account,
+    },
     resource::ResourceType,
     serializer::{try_acc_close, try_acc_write},
     state::{device::Device, globalstate::GlobalState, tenant::Tenant, user::*},
@@ -110,23 +113,33 @@ pub fn process_closeaccount_user(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(
-        device_account.owner, program_id,
-        "Invalid Device Account Owner"
+    // Validate accounts
+    validate_program_account!(
+        user_account,
+        program_id,
+        writable = true,
+        pda = None::<&Pubkey>,
+        "User"
     );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        device_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "Device"
+    );
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
-    assert!(user_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
@@ -160,97 +173,53 @@ pub fn process_closeaccount_user(
         dz_prefix_accounts,
     )) = resource_extension_accounts
     {
-        // Validate global_resource_ext (UserTunnelBlock)
-        assert_eq!(
-            global_resource_ext.owner, program_id,
-            "Invalid ResourceExtension Account Owner"
-        );
-        assert!(
-            global_resource_ext.is_writable,
-            "ResourceExtension Account is not writable"
-        );
-        assert!(
-            !global_resource_ext.data_is_empty(),
-            "ResourceExtension Account is empty"
-        );
-
+        // Validate UserTunnelBlock
         let (expected_user_tunnel_pda, _, _) =
             get_resource_extension_pda(program_id, ResourceType::UserTunnelBlock);
-        assert_eq!(
-            global_resource_ext.key, &expected_user_tunnel_pda,
-            "Invalid ResourceExtension PDA for UserTunnelBlock"
+        validate_program_account!(
+            global_resource_ext,
+            program_id,
+            writable = true,
+            pda = Some(&expected_user_tunnel_pda),
+            "UserTunnelBlock"
         );
 
-        // Validate multicast_publisher_block_ext (MulticastPublisherBlock) if provided
+        // Validate MulticastPublisherBlock if provided
         if let Some(multicast_publisher_ext) = multicast_publisher_block_ext {
-            assert_eq!(
-                multicast_publisher_ext.owner, program_id,
-                "Invalid ResourceExtension Account Owner for MulticastPublisherBlock"
-            );
-            assert!(
-                multicast_publisher_ext.is_writable,
-                "ResourceExtension Account for MulticastPublisherBlock is not writable"
-            );
-            assert!(
-                !multicast_publisher_ext.data_is_empty(),
-                "ResourceExtension Account for MulticastPublisherBlock is empty"
-            );
-
             let (expected_multicast_publisher_pda, _, _) =
                 get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
-            assert_eq!(
-                multicast_publisher_ext.key, &expected_multicast_publisher_pda,
-                "Invalid ResourceExtension PDA for MulticastPublisherBlock"
+            validate_program_account!(
+                multicast_publisher_ext,
+                program_id,
+                writable = true,
+                pda = Some(&expected_multicast_publisher_pda),
+                "MulticastPublisherBlock"
             );
         }
 
-        // Validate device_tunnel_ids_ext (TunnelIds)
-        assert_eq!(
-            device_tunnel_ids_ext.owner, program_id,
-            "Invalid ResourceExtension Account Owner for TunnelIds"
-        );
-        assert!(
-            device_tunnel_ids_ext.is_writable,
-            "ResourceExtension Account for TunnelIds is not writable"
-        );
-        assert!(
-            !device_tunnel_ids_ext.data_is_empty(),
-            "ResourceExtension Account for TunnelIds is empty"
-        );
-
+        // Validate TunnelIds
         let (expected_tunnel_ids_pda, _, _) =
             get_resource_extension_pda(program_id, ResourceType::TunnelIds(user.device_pk, 0));
-        assert_eq!(
-            device_tunnel_ids_ext.key, &expected_tunnel_ids_pda,
-            "Invalid ResourceExtension PDA for TunnelIds"
+        validate_program_account!(
+            device_tunnel_ids_ext,
+            program_id,
+            writable = true,
+            pda = Some(&expected_tunnel_ids_pda),
+            "TunnelIds"
         );
 
         // Validate all DzPrefixBlock accounts
         for (idx, dz_prefix_account) in dz_prefix_accounts.iter().enumerate() {
-            assert_eq!(
-                dz_prefix_account.owner, program_id,
-                "Invalid ResourceExtension Account Owner for DzPrefixBlock[{}]",
-                idx
-            );
-            assert!(
-                dz_prefix_account.is_writable,
-                "ResourceExtension Account for DzPrefixBlock[{}] is not writable",
-                idx
-            );
-            assert!(
-                !dz_prefix_account.data_is_empty(),
-                "ResourceExtension Account for DzPrefixBlock[{}] is empty",
-                idx
-            );
-
             let (expected_dz_prefix_pda, _, _) = get_resource_extension_pda(
                 program_id,
                 ResourceType::DzPrefixBlock(user.device_pk, idx),
             );
-            assert_eq!(
-                dz_prefix_account.key, &expected_dz_prefix_pda,
-                "Invalid ResourceExtension PDA for DzPrefixBlock[{}]",
-                idx
+            validate_program_account!(
+                dz_prefix_account,
+                program_id,
+                writable = true,
+                pda = Some(&expected_dz_prefix_pda),
+                &format!("DzPrefixBlock[{idx}]")
             );
         }
 

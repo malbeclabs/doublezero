@@ -148,19 +148,26 @@ pub fn process_update_link(
         payer_account
     );
 
-    // Check the owner of the accounts
-    assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    // Validate accounts
+    validate_program_account!(
+        link_account,
+        program_id,
+        writable = true,
+        pda = None::<&Pubkey>,
+        "Link"
+    );
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
-    assert!(link_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
     let contributor = Contributor::try_from(contributor_account)?;

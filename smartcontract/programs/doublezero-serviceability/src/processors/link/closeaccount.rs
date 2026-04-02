@@ -1,7 +1,10 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
-    processors::resource::{deallocate_id, deallocate_ip},
+    processors::{
+        resource::{deallocate_id, deallocate_ip},
+        validation::validate_program_account,
+    },
     resource::ResourceType,
     serializer::{try_acc_close, try_acc_write},
     state::{
@@ -79,31 +82,47 @@ pub fn process_closeaccount_link(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(
-        contributor_account.owner, program_id,
-        "Invalid Contributor Account Owner"
+    // Validate accounts
+    validate_program_account!(
+        link_account,
+        program_id,
+        writable = true,
+        pda = None::<&Pubkey>,
+        "Link"
     );
-    assert_eq!(
-        side_a_account.owner, program_id,
-        "Invalid Side A Account Owner"
+    validate_program_account!(
+        contributor_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "Contributor"
     );
-    assert_eq!(
-        side_z_account.owner, program_id,
-        "Invalid Side Z Account Owner"
+    validate_program_account!(
+        side_a_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "SideA"
     );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        side_z_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "SideZ"
+    );
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        pda = None::<&Pubkey>,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
-    assert!(link_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
@@ -137,46 +156,26 @@ pub fn process_closeaccount_link(
     // Deallocate resources from ResourceExtension if accounts provided
     // Deallocation is idempotent - safe to call even if resources weren't allocated
     if let Some((device_tunnel_block_ext, link_ids_ext)) = resource_extension_accounts {
-        // Validate device_tunnel_block_ext (DeviceTunnelBlock - global)
-        assert_eq!(
-            device_tunnel_block_ext.owner, program_id,
-            "Invalid ResourceExtension Account Owner for DeviceTunnelBlock"
-        );
-        assert!(
-            device_tunnel_block_ext.is_writable,
-            "ResourceExtension Account for DeviceTunnelBlock is not writable"
-        );
-        assert!(
-            !device_tunnel_block_ext.data_is_empty(),
-            "ResourceExtension Account for DeviceTunnelBlock is empty"
-        );
-
+        // Validate DeviceTunnelBlock
         let (expected_device_tunnel_pda, _, _) =
             get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
-        assert_eq!(
-            device_tunnel_block_ext.key, &expected_device_tunnel_pda,
-            "Invalid ResourceExtension PDA for DeviceTunnelBlock"
+        validate_program_account!(
+            device_tunnel_block_ext,
+            program_id,
+            writable = true,
+            pda = Some(&expected_device_tunnel_pda),
+            "DeviceTunnelBlock"
         );
 
-        // Validate link_ids_ext (LinkIds - global)
-        assert_eq!(
-            link_ids_ext.owner, program_id,
-            "Invalid ResourceExtension Account Owner for LinkIds"
-        );
-        assert!(
-            link_ids_ext.is_writable,
-            "ResourceExtension Account for LinkIds is not writable"
-        );
-        assert!(
-            !link_ids_ext.data_is_empty(),
-            "ResourceExtension Account for LinkIds is empty"
-        );
-
+        // Validate LinkIds
         let (expected_link_ids_pda, _, _) =
             get_resource_extension_pda(program_id, ResourceType::LinkIds);
-        assert_eq!(
-            link_ids_ext.key, &expected_link_ids_pda,
-            "Invalid ResourceExtension PDA for LinkIds"
+        validate_program_account!(
+            link_ids_ext,
+            program_id,
+            writable = true,
+            pda = Some(&expected_link_ids_pda),
+            "LinkIds"
         );
 
         // Deallocate tunnel_net from global DeviceTunnelBlock

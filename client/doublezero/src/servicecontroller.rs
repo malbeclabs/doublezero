@@ -146,6 +146,14 @@ fn parse_daemon_response<T: serde::de::DeserializeOwned>(
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct MulticastGroups {
+    #[serde(default)]
+    pub publisher: Vec<String>,
+    #[serde(default)]
+    pub subscriber: Vec<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct V2ServiceStatus {
     #[serde(flatten)]
@@ -158,6 +166,8 @@ pub struct V2ServiceStatus {
     pub metro: String,
     #[serde(default)]
     pub tenant: String,
+    #[serde(default)]
+    pub multicast_groups: MulticastGroups,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

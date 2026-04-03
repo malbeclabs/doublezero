@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
   - handle non-user owned disconnects gracefully
 - Sentinel
   - Add multicast publisher worker with Solana RPC-based validator discovery
+  - Add user's multicast pub/sub groups if applicable to `status`
 - SDK
   - Add Go SDK for shred subscription program with read-only account deserialization (epoch state, seat assignments, pricing, settlement, validator client rewards), PDA derivation helpers, RPC fetchers, compatibility tests, and a fetch example CLI
   - Add `GeoLocationTargetTypeOutboundIcmp` to Go geolocation SDK with deserialization and round-trip test support

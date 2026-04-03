@@ -328,6 +328,13 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 	t.Run("check_post_connect_"+mode, func(t *testing.T) {
 		log.Debug("==> Checking multicast post-connect requirements", "mode", mode)
 
+		var expectedMulticastGroups string
+		if mode == "publisher" {
+			expectedMulticastGroups = "P:mg01,P:mg02"
+		} else {
+			expectedMulticastGroups = "S:mg01,S:mg02"
+		}
+
 		var expectedAllocatedClientIP string
 		if mode == "publisher" {
 			// Query the allocated publisher IP from user list
@@ -366,6 +373,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 					"ClientIP":                  client.CYOANetworkIP,
 					"DeviceIP":                  device.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
+					"MulticastGroups":           expectedMulticastGroups,
 				},
 				cmd: []string{"doublezero", "status"},
 			},

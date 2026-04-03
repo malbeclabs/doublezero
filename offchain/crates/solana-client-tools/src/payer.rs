@@ -38,24 +38,30 @@ pub struct SolanaPayerOptions {
 #[derive(Debug, Args, Clone, Default)]
 pub struct SolanaSignerOptions {
     /// Filepath or URL to a keypair.
-    #[arg(long = "keypair", short = 'k', value_name = "KEYPAIR")]
+    #[arg(long = "keypair", short = 'k', value_name = "KEYPAIR", env)]
     pub keypair_path: Option<String>,
 
     /// Set the compute unit price for transaction in increments of 0.000001 lamports per compute
     /// unit.
-    #[arg(long, value_name = "MICROLAMPORTS")]
+    #[arg(long, value_name = "MICROLAMPORTS", env)]
     pub with_compute_unit_price: Option<u64>,
 
     /// Print verbose output.
-    #[arg(long, short = 'v', value_name = "VERBOSE", default_value = "false")]
+    #[arg(
+        long,
+        short = 'v',
+        value_name = "VERBOSE",
+        default_value = "false",
+        env
+    )]
     pub verbose: bool,
 
     /// Filepath or URL to keypair to pay transaction fee.
-    #[arg(long = "fee-payer", value_name = "KEYPAIR")]
+    #[arg(long = "fee-payer", value_name = "KEYPAIR", env)]
     pub fee_payer_path: Option<String>,
 
     /// Simulate transaction only.
-    #[arg(long, value_name = "DRY_RUN")]
+    #[arg(long, value_name = "DRY_RUN", env)]
     pub dry_run: bool,
 }
 

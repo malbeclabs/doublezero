@@ -20,7 +20,7 @@ pub struct ShredsCommand {
     /// the Solana network environment. Required for e2e / Docker environments
     /// where the DZ Ledger runs on the same validator as the shred-subscription
     /// program.
-    #[arg(long)]
+    #[arg(long, env)]
     dz_ledger_url: Option<String>,
 
     #[command(subcommand)]
@@ -66,10 +66,10 @@ impl ShredsSubcommand {
 #[derive(Debug, Args, Clone)]
 pub struct DeviceArgs {
     /// Device public key.
-    #[arg(long, group = "device_id")]
+    #[arg(long, group = "device_id", env)]
     pub device: Option<Pubkey>,
     /// Human-readable device code (e.g. "MIA-1").
-    #[arg(long, group = "device_id")]
+    #[arg(long, group = "device_id", env)]
     pub device_code: Option<String>,
 }
 

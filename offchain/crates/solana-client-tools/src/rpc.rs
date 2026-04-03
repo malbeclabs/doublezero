@@ -17,7 +17,7 @@ use crate::account::{record::BorshRecordAccountData, zero_copy::ZeroCopyAccountO
 #[derive(Debug, Args, Clone)]
 pub struct DoubleZeroLedgerConnectionOptions {
     /// URL for DoubleZero Ledger's JSON RPC. Required.
-    #[arg(long, required = true)]
+    #[arg(long, required = true, env)]
     pub dz_ledger_url: String,
 }
 
@@ -117,7 +117,7 @@ impl FromStr for NetworkEnvironment {
 pub struct SolanaConnectionOptions {
     /// URL for Solana's JSON RPC or moniker (or their first letter):
     /// [mainnet-beta, testnet, localhost].
-    #[arg(long = "url", short = 'u', value_name = "URL_OR_MONIKER")]
+    #[arg(long = "url", short = 'u', value_name = "URL_OR_MONIKER", env)]
     pub solana_url_or_moniker: Option<String>,
 }
 

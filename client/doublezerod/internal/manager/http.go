@@ -17,12 +17,12 @@ import (
 // V2ServiceStatus wraps a StatusResponse with enriched fields.
 type V2ServiceStatus struct {
 	*api.StatusResponse
-	CurrentDevice              string `json:"current_device"`
-	CurrentDeviceRttNanoseconds  int64   `json:"current_device_rtt_nanoseconds,omitempty"`
-	CurrentDeviceLossPercentage  float64 `json:"current_device_loss_percentage,omitempty"`
-	LowestLatencyDevice        string `json:"lowest_latency_device"`
-	Metro                      string `json:"metro"`
-	Tenant                     string `json:"tenant"`
+	CurrentDevice               string  `json:"current_device"`
+	CurrentDeviceRttNanoseconds int64   `json:"current_device_rtt_nanoseconds,omitempty"`
+	CurrentDeviceLossPercentage float64 `json:"current_device_loss_percentage,omitempty"`
+	LowestLatencyDevice         string  `json:"lowest_latency_device"`
+	Metro                       string  `json:"metro"`
+	Tenant                      string  `json:"tenant"`
 }
 
 // V2StatusResponse is the response for the /v2/status endpoint.

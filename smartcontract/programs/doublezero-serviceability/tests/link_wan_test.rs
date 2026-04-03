@@ -3041,7 +3041,7 @@ async fn test_link_topology_reassigned_by_foundation() {
 
     // Foundation reassigns link_topologies to high-bandwidth
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -3068,6 +3068,7 @@ async fn test_link_topology_reassigned_by_foundation() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+        &[AccountMeta::new_readonly(high_bandwidth_pda, false)],
     )
     .await;
 

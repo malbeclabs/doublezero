@@ -26,6 +26,23 @@ import (
 )
 
 // =============================================================================
+// MINIMUM CLI VERSIONS PER ENVIRONMENT
+// =============================================================================
+//
+// These set a floor on the oldest CLI version tested, independent of the
+// onchain program's min_compatible_version.  The effective minimum is
+// max(programConfig.MinCompatVersion, globalMinVersion).
+//
+// Bump these when older releases are known to be broken or irrelevant for a
+// given environment and you don't want to wait for a min_compatible_version
+// bump onchain.
+
+var globalMinVersions = map[string]string{
+	"mainnet-beta": "0.10.0",
+	"testnet":      "0.10.0",
+}
+
+// =============================================================================
 // KNOWN INCOMPATIBILITIES - Review and remove as versions are deprecated
 // =============================================================================
 //
@@ -72,7 +89,6 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/multicast_group_pub_allowlist_add":    {minVersion: "0.8.1"},
 	"write/multicast_group_pub_allowlist_remove": {minVersion: "0.8.1"},
 	"write/multicast_group_sub_allowlist_add":    {minVersion: "0.8.1"},
-	"write/user_subscribe":                       {minVersion: "0.8.1"},
 	"write/multicast_group_sub_allowlist_remove": {minVersion: "0.8.1"},
 	"write/multicast_group_get":                  {minVersion: "0.8.1"},
 	"write/multicast_group_delete":               {minVersion: "0.8.1"},
@@ -542,7 +558,16 @@ func discoverVersions(t *testing.T, dn *devnet.Devnet, cloneEnv, programID strin
 	minVersion := programData.ProgramConfig.MinCompatVersion
 	currentVersion := programData.ProgramConfig.Version
 
-	// DZ_COMPAT_MIN_VERSION overrides ProgramConfig.MinCompatVersion.
+	// Apply the global per-environment minimum version floor.
+	if floor, ok := globalMinVersions[cloneEnv]; ok {
+		if floorVer, ok := devnet.ParseSemver(floor); ok {
+			if devnet.CompareProgramVersions(floorVer, minVersion) > 0 {
+				minVersion = floorVer
+			}
+		}
+	}
+
+	// DZ_COMPAT_MIN_VERSION overrides everything (including the global floor).
 	if override := os.Getenv("DZ_COMPAT_MIN_VERSION"); override != "" {
 		pv, ok := devnet.ParseSemver(override)
 		require.True(t, ok, "invalid DZ_COMPAT_MIN_VERSION: %s", override)

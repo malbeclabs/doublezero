@@ -224,13 +224,16 @@ pub fn process_subscribe_multicastgroup(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
-    // The access pass must belong to the payer, unless the payer is in the foundation allowlist.
-    // Only enforced when globalstate is present (num_accounts >= 6 or use_onchain_allocation=true).
-    // Old callers without globalstate skip this check for backward compatibility.
-    if let Some(globalstate) = &globalstate_opt {
-        if accesspass.user_payer != *payer_account.key
-            && !globalstate.foundation_allowlist.contains(payer_account.key)
-        {
+    // The access pass must belong to the payer. If the payer differs, the payer
+    // must be in the foundation allowlist — which requires globalstate to be provided.
+    // Callers without globalstate (num_accounts < 6) are only permitted when
+    // payer == accesspass.user_payer (backward compatible with old clients).
+    if accesspass.user_payer != *payer_account.key {
+        let in_foundation = globalstate_opt
+            .as_ref()
+            .map(|gs| gs.foundation_allowlist.contains(payer_account.key))
+            .unwrap_or(false);
+        if !in_foundation {
             msg!(
                 "AccessPass user_payer {:?} does not match payer {:?}",
                 accesspass.user_payer,

@@ -1197,6 +1197,54 @@ async fn test_subscribe_unauthorized_payer_rejected() {
     }
 }
 
+/// A payer who is not the access pass owner is rejected even without globalstate.
+/// Old callers (5-account layout, no globalstate) are only permitted when payer == user.owner.
+#[tokio::test]
+async fn test_subscribe_unauthorized_payer_rejected_without_globalstate() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    let other_payer = solana_sdk::signature::Keypair::new();
+    transfer(&mut banks_client, &payer, &other_payer.pubkey(), 10_000_000).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            // No globalstate — 5-account backward-compat layout
+        ],
+        &other_payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(22),
+        ))) => {}
+        _ => panic!("Expected Unauthorized error (Custom(22)), got {:?}", result),
+    }
+}
+
 // --- Onchain allocation tests ---
 
 /// Helper to enable the OnChainAllocation feature flag on an existing fixture.

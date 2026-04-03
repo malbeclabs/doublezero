@@ -107,25 +107,17 @@ pub fn process_update_device_interface(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    validate_program_account!(
-        device_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "Device"
-    );
+    validate_program_account!(device_account, program_id, writable = true, "Device");
     validate_program_account!(
         contributor_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "Contributor"
     );
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
 
@@ -216,7 +208,7 @@ pub fn process_update_device_interface(
                 seg_ext,
                 program_id,
                 writable = true,
-                pda = Some(&expected_seg_pda),
+                pda = &expected_seg_pda,
                 "SegmentRoutingIds"
             );
 

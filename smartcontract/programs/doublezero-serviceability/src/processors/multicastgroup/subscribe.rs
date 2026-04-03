@@ -181,7 +181,6 @@ pub fn process_subscribe_multicastgroup(
         mgroup_account,
         program_id,
         writable = true,
-        pda = None::<&Pubkey>,
         "MulticastGroup"
     );
     if accesspass_account.data_is_empty() {
@@ -191,16 +190,9 @@ pub fn process_subscribe_multicastgroup(
         accesspass_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "AccessPass"
     );
-    validate_program_account!(
-        user_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "User"
-    );
+    validate_program_account!(user_account, program_id, writable = true, "User");
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
@@ -281,7 +273,7 @@ pub fn process_subscribe_multicastgroup(
                 multicast_publisher_block_ext,
                 program_id,
                 writable = true,
-                pda = Some(&expected_multicast_publisher_pda),
+                pda = &expected_multicast_publisher_pda,
                 "MulticastPublisherBlock"
             );
 
@@ -298,7 +290,7 @@ pub fn process_subscribe_multicastgroup(
                 multicast_publisher_block_ext,
                 program_id,
                 writable = true,
-                pda = Some(&expected_multicast_publisher_pda),
+                pda = &expected_multicast_publisher_pda,
                 "MulticastPublisherBlock"
             );
 

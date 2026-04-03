@@ -126,18 +126,11 @@ pub fn process_update_user(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    validate_program_account!(
-        user_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "User"
-    );
+    validate_program_account!(user_account, program_id, writable = true, "User");
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
 
@@ -168,7 +161,7 @@ pub fn process_update_user(
             user_tunnel_block_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_user_tunnel_pda),
+            pda = &expected_user_tunnel_pda,
             "UserTunnelBlock"
         );
 
@@ -180,7 +173,7 @@ pub fn process_update_user(
                 multicast_publisher_ext,
                 program_id,
                 writable = true,
-                pda = Some(&expected_multicast_publisher_pda),
+                pda = &expected_multicast_publisher_pda,
                 "MulticastPublisherBlock"
             );
         }
@@ -192,7 +185,7 @@ pub fn process_update_user(
             device_tunnel_ids_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_tunnel_ids_pda),
+            pda = &expected_tunnel_ids_pda,
             "TunnelIds"
         );
 
@@ -206,7 +199,7 @@ pub fn process_update_user(
                 dz_prefix_account,
                 program_id,
                 writable = true,
-                pda = Some(&expected_dz_prefix_pda),
+                pda = &expected_dz_prefix_pda,
                 &format!("DzPrefixBlock[{idx}]")
             );
         }

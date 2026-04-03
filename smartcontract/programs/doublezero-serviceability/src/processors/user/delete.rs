@@ -121,13 +121,7 @@ pub fn process_delete_user(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    validate_program_account!(
-        user_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "User"
-    );
+    validate_program_account!(user_account, program_id, writable = true, "User");
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
@@ -135,14 +129,12 @@ pub fn process_delete_user(
         accesspass_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "AccessPass"
     );
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
     assert_eq!(

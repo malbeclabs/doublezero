@@ -83,7 +83,7 @@ pub fn validate_and_allocate_user_resources<'a>(
         global_resource_ext,
         program_id,
         writable = true,
-        pda = Some(&expected_user_tunnel_pda),
+        pda = &expected_user_tunnel_pda,
         "UserTunnelBlock"
     );
 
@@ -96,7 +96,7 @@ pub fn validate_and_allocate_user_resources<'a>(
             multicast_publisher_block_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_multicast_publisher_pda),
+            pda = &expected_multicast_publisher_pda,
             "MulticastPublisherBlock"
         );
     }
@@ -108,7 +108,7 @@ pub fn validate_and_allocate_user_resources<'a>(
         device_tunnel_ids_ext,
         program_id,
         writable = true,
-        pda = Some(&expected_tunnel_ids_pda),
+        pda = &expected_tunnel_ids_pda,
         "TunnelIds"
     );
 
@@ -122,7 +122,7 @@ pub fn validate_and_allocate_user_resources<'a>(
             dz_prefix_account,
             program_id,
             writable = true,
-            pda = Some(&expected_dz_prefix_pda),
+            pda = &expected_dz_prefix_pda,
             &format!("DzPrefixBlock[{idx}]")
         );
     }
@@ -187,7 +187,7 @@ pub fn validate_and_deallocate_user_resources<'a>(
         global_resource_ext,
         program_id,
         writable = true,
-        pda = Some(&expected_user_tunnel_pda),
+        pda = &expected_user_tunnel_pda,
         "UserTunnelBlock"
     );
 
@@ -199,7 +199,7 @@ pub fn validate_and_deallocate_user_resources<'a>(
             multicast_publisher_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_multicast_publisher_pda),
+            pda = &expected_multicast_publisher_pda,
             "MulticastPublisherBlock"
         );
     }
@@ -211,7 +211,7 @@ pub fn validate_and_deallocate_user_resources<'a>(
         device_tunnel_ids_ext,
         program_id,
         writable = true,
-        pda = Some(&expected_tunnel_ids_pda),
+        pda = &expected_tunnel_ids_pda,
         "TunnelIds"
     );
 
@@ -225,7 +225,7 @@ pub fn validate_and_deallocate_user_resources<'a>(
             dz_prefix_account,
             program_id,
             writable = true,
-            pda = Some(&expected_dz_prefix_pda),
+            pda = &expected_dz_prefix_pda,
             &format!("DzPrefixBlock[{idx}]")
         );
     }

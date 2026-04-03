@@ -82,32 +82,23 @@ pub fn process_activate_link(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    validate_program_account!(
-        link_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "Link"
-    );
+    validate_program_account!(link_account, program_id, writable = true, "Link");
     validate_program_account!(
         side_a_device_account,
         program_id,
         writable = true,
-        pda = None::<&Pubkey>,
         "SideADevice"
     );
     validate_program_account!(
         side_z_device_account,
         program_id,
         writable = true,
-        pda = None::<&Pubkey>,
         "SideZDevice"
     );
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
 

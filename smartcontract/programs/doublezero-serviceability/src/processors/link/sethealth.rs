@@ -44,18 +44,11 @@ pub fn process_set_health_link(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    validate_program_account!(
-        link_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "Link"
-    );
+    validate_program_account!(link_account, program_id, writable = true, "Link");
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
     assert_eq!(

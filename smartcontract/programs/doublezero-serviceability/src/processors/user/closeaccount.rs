@@ -114,25 +114,12 @@ pub fn process_closeaccount_user(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    validate_program_account!(
-        user_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "User"
-    );
-    validate_program_account!(
-        device_account,
-        program_id,
-        writable = false,
-        pda = None::<&Pubkey>,
-        "Device"
-    );
+    validate_program_account!(user_account, program_id, writable = true, "User");
+    validate_program_account!(device_account, program_id, writable = false, "Device");
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
     assert_eq!(
@@ -180,7 +167,7 @@ pub fn process_closeaccount_user(
             global_resource_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_user_tunnel_pda),
+            pda = &expected_user_tunnel_pda,
             "UserTunnelBlock"
         );
 
@@ -192,7 +179,7 @@ pub fn process_closeaccount_user(
                 multicast_publisher_ext,
                 program_id,
                 writable = true,
-                pda = Some(&expected_multicast_publisher_pda),
+                pda = &expected_multicast_publisher_pda,
                 "MulticastPublisherBlock"
             );
         }
@@ -204,7 +191,7 @@ pub fn process_closeaccount_user(
             device_tunnel_ids_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_tunnel_ids_pda),
+            pda = &expected_tunnel_ids_pda,
             "TunnelIds"
         );
 
@@ -218,7 +205,7 @@ pub fn process_closeaccount_user(
                 dz_prefix_account,
                 program_id,
                 writable = true,
-                pda = Some(&expected_dz_prefix_pda),
+                pda = &expected_dz_prefix_pda,
                 &format!("DzPrefixBlock[{idx}]")
             );
         }

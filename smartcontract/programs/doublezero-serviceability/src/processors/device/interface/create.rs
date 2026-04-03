@@ -108,25 +108,17 @@ pub fn process_create_device_interface(
 
     let name = validate_iface(&value.name).map_err(|_| DoubleZeroError::InvalidInterfaceName)?;
 
-    validate_program_account!(
-        device_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "Device"
-    );
+    validate_program_account!(device_account, program_id, writable = true, "Device");
     validate_program_account!(
         contributor_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "Contributor"
     );
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
 
@@ -198,7 +190,7 @@ pub fn process_create_device_interface(
             device_tunnel_block_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_dtb_pda),
+            pda = &expected_dtb_pda,
             "DeviceTunnelBlock"
         );
 
@@ -208,7 +200,7 @@ pub fn process_create_device_interface(
             segment_routing_ids_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_sr_pda),
+            pda = &expected_sr_pda,
             "SegmentRoutingIds"
         );
 

@@ -43,9 +43,9 @@ pub fn process_resume_link(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    validate_program_account!(link_account, program_id, writable = true, pda = None::<&Pubkey>, "Link");
-    validate_program_account!(contributor_account, program_id, writable = false, pda = None::<&Pubkey>, "Contributor");
-    validate_program_account!(globalstate_account, program_id, writable = false, pda = None::<&Pubkey>, "GlobalState");
+    validate_program_account!(link_account, program_id, writable = true, "Link");
+    validate_program_account!(contributor_account, program_id, writable = false, "Contributor");
+    validate_program_account!(globalstate_account, program_id, writable = false, "GlobalState");
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,

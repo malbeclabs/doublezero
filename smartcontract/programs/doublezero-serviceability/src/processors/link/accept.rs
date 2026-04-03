@@ -82,27 +82,14 @@ pub fn process_accept_link(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    validate_program_account!(
-        link_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "Link"
-    );
+    validate_program_account!(link_account, program_id, writable = true, "Link");
     validate_program_account!(
         contributor_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "Contributor"
     );
-    validate_program_account!(
-        side_z_account,
-        program_id,
-        writable = false,
-        pda = None::<&Pubkey>,
-        "SideZ"
-    );
+    validate_program_account!(side_z_account, program_id, writable = false, "SideZ");
 
     // Validate Contributor Owner
     let contributor = Contributor::try_from(contributor_account)?;
@@ -148,7 +135,6 @@ pub fn process_accept_link(
             side_a_device_account,
             program_id,
             writable = true,
-            pda = None::<&Pubkey>,
             "SideADevice"
         );
         assert!(

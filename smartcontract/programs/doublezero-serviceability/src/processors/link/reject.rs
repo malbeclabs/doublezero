@@ -37,18 +37,11 @@ pub fn process_reject_link(
     let globalstate_account = next_account_info(accounts_iter)?;
 
     // Validate accounts
-    validate_program_account!(
-        link_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "Link"
-    );
+    validate_program_account!(link_account, program_id, writable = true, "Link");
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
 
@@ -84,16 +77,9 @@ pub fn process_reject_link(
                 contributor_account,
                 program_id,
                 writable = false,
-                pda = None::<&Pubkey>,
                 "Contributor"
             );
-            validate_program_account!(
-                side_z_account,
-                program_id,
-                writable = false,
-                pda = None::<&Pubkey>,
-                "SideZ"
-            );
+            validate_program_account!(side_z_account, program_id, writable = false, "SideZ");
             assert!(payer_account.is_signer, "Payer must be a signer");
             assert_eq!(
                 *system_program.unsigned_key(),

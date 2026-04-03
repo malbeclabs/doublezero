@@ -99,28 +99,14 @@ pub fn process_create_link(
         contributor_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "Contributor"
     );
-    validate_program_account!(
-        side_a_account,
-        program_id,
-        writable = false,
-        pda = None::<&Pubkey>,
-        "SideA"
-    );
-    validate_program_account!(
-        side_z_account,
-        program_id,
-        writable = false,
-        pda = None::<&Pubkey>,
-        "SideZ"
-    );
+    validate_program_account!(side_a_account, program_id, writable = false, "SideA");
+    validate_program_account!(side_z_account, program_id, writable = false, "SideZ");
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
     assert_eq!(

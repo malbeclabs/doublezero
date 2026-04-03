@@ -91,18 +91,11 @@ pub fn process_request_ban_user(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    validate_program_account!(
-        user_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "User"
-    );
+    validate_program_account!(user_account, program_id, writable = true, "User");
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
     assert_eq!(

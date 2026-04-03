@@ -87,25 +87,17 @@ pub fn process_delete_link(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    validate_program_account!(
-        link_account,
-        program_id,
-        writable = false,
-        pda = None::<&Pubkey>,
-        "Link"
-    );
+    validate_program_account!(link_account, program_id, writable = false, "Link");
     validate_program_account!(
         contributor_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "Contributor"
     );
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
     assert_eq!(
@@ -145,20 +137,8 @@ pub fn process_delete_link(
     )) = deallocation_accounts
     {
         // Validate additional accounts
-        validate_program_account!(
-            side_a_account,
-            program_id,
-            writable = false,
-            pda = None::<&Pubkey>,
-            "SideA"
-        );
-        validate_program_account!(
-            side_z_account,
-            program_id,
-            writable = false,
-            pda = None::<&Pubkey>,
-            "SideZ"
-        );
+        validate_program_account!(side_a_account, program_id, writable = false, "SideA");
+        validate_program_account!(side_z_account, program_id, writable = false, "SideZ");
 
         // Validate link references match accounts
         if link.owner != *owner_account.key

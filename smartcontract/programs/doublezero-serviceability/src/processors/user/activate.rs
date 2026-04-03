@@ -101,13 +101,7 @@ pub fn process_activate_user(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    validate_program_account!(
-        user_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "User"
-    );
+    validate_program_account!(user_account, program_id, writable = true, "User");
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
@@ -115,14 +109,12 @@ pub fn process_activate_user(
         accesspass_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "AccessPass"
     );
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
     assert_eq!(
@@ -171,7 +163,7 @@ pub fn process_activate_user(
             global_resource_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_user_tunnel_pda),
+            pda = &expected_user_tunnel_pda,
             "UserTunnelBlock"
         );
 
@@ -185,7 +177,7 @@ pub fn process_activate_user(
                 multicast_publisher_block_ext,
                 program_id,
                 writable = true,
-                pda = Some(&expected_multicast_publisher_pda),
+                pda = &expected_multicast_publisher_pda,
                 "MulticastPublisherBlock"
             );
         }
@@ -197,7 +189,7 @@ pub fn process_activate_user(
             device_tunnel_ids_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_tunnel_ids_pda),
+            pda = &expected_tunnel_ids_pda,
             "TunnelIds"
         );
 
@@ -211,7 +203,7 @@ pub fn process_activate_user(
                 dz_prefix_account,
                 program_id,
                 writable = true,
-                pda = Some(&expected_dz_prefix_pda),
+                pda = &expected_dz_prefix_pda,
                 &format!("DzPrefixBlock[{idx}]")
             );
         }

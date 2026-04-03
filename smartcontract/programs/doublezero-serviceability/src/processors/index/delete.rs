@@ -42,18 +42,11 @@ pub fn process_delete_index(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    validate_program_account!(
-        index_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "Index"
-    );
+    validate_program_account!(index_account, program_id, writable = true, "Index");
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
 

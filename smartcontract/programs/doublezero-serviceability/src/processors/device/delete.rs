@@ -80,25 +80,17 @@ pub fn process_delete_device(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    validate_program_account!(
-        device_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "Device"
-    );
+    validate_program_account!(device_account, program_id, writable = true, "Device");
     validate_program_account!(
         contributor_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "Contributor"
     );
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
     assert_eq!(

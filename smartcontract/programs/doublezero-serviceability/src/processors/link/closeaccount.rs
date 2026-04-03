@@ -83,39 +83,19 @@ pub fn process_closeaccount_link(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Validate accounts
-    validate_program_account!(
-        link_account,
-        program_id,
-        writable = true,
-        pda = None::<&Pubkey>,
-        "Link"
-    );
+    validate_program_account!(link_account, program_id, writable = true, "Link");
     validate_program_account!(
         contributor_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "Contributor"
     );
-    validate_program_account!(
-        side_a_account,
-        program_id,
-        writable = false,
-        pda = None::<&Pubkey>,
-        "SideA"
-    );
-    validate_program_account!(
-        side_z_account,
-        program_id,
-        writable = false,
-        pda = None::<&Pubkey>,
-        "SideZ"
-    );
+    validate_program_account!(side_a_account, program_id, writable = false, "SideA");
+    validate_program_account!(side_z_account, program_id, writable = false, "SideZ");
     validate_program_account!(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
     assert_eq!(
@@ -163,7 +143,7 @@ pub fn process_closeaccount_link(
             device_tunnel_block_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_device_tunnel_pda),
+            pda = &expected_device_tunnel_pda,
             "DeviceTunnelBlock"
         );
 
@@ -174,7 +154,7 @@ pub fn process_closeaccount_link(
             link_ids_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_link_ids_pda),
+            pda = &expected_link_ids_pda,
             "LinkIds"
         );
 

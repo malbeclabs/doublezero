@@ -264,6 +264,8 @@ router bgp 65342
       {{- end }}
       {{- if $.FlexAlgoEnabled }}
       next-hop resolution ribs tunnel-rib colored system-colored-tunnel-rib tunnel-rib system-tunnel-rib
+      {{- else }}
+      no next-hop resolution ribs tunnel-rib colored system-colored-tunnel-rib tunnel-rib system-tunnel-rib
       {{- end }}
    !
 {{- range $vrfId := .UnicastVrfs }}
@@ -306,11 +308,17 @@ router isis 1
       {{- range $.AllTopologies }}
       flex-algo {{ .Name }} level-2 advertised
       {{- end }}
+      {{- else }}
+      {{- range $.AllTopologies }}
+      no flex-algo {{ .Name }} level-2 advertised
+      {{- end }}
       {{- end }}
    {{- if $.FlexAlgoEnabled }}
    traffic-engineering
       no shutdown
       is-type level-2
+   {{- else }}
+   no traffic-engineering
    {{- end }}
 {{- if $.Device.Status.IsDrained }}
    set-overload-bit
@@ -332,9 +340,16 @@ router traffic-engineering
          administrative-group include any {{ .AdminGroupBit }} exclude 1
          color {{ .Color }}
       !
+      {{- else if eq .ConstraintStr "exclude" }}
+      flex-algo {{ .FlexAlgoNumber }} {{ .Name }}
+         administrative-group exclude {{ .AdminGroupBit }}
+         color {{ .Color }}
+      !
       {{- end }}
    {{- end }}
 !
+{{- else }}
+no router traffic-engineering
 {{- end }}
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300

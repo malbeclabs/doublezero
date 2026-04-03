@@ -50,14 +50,15 @@ type ServiceabilityProgramClient interface {
 }
 
 type stateCache struct {
-	Config          serviceability.Config
-	Devices         map[string]*Device
-	MulticastGroups map[string]serviceability.MulticastGroup
-	Tenants         map[string]serviceability.Tenant
-	Topologies      map[string]serviceability.TopologyInfo // keyed by base58 pubkey
-	UnicastVrfs     []uint16
-	Vpnv4BgpPeers   []BgpPeer
-	Ipv4BgpPeers    []BgpPeer
+	Config           serviceability.Config
+	Devices          map[string]*Device
+	MulticastGroups  map[string]serviceability.MulticastGroup
+	Tenants          map[string]serviceability.Tenant
+	Topologies       map[string]serviceability.TopologyInfo // keyed by base58 pubkey
+	UnicastVrfs      []uint16
+	Vpnv4BgpPeers    []BgpPeer
+	Ipv4BgpPeers     []BgpPeer
+	FlexAlgoBlocked  bool // true when flex-algo is enabled but loopbacks are missing node-segment data
 }
 
 type Controller struct {
@@ -611,7 +612,8 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		}
 	}
 
-	// Check for VPNv4 loopbacks missing flex-algo node-segment data when flex-algo is enabled
+	// Check for VPNv4 loopbacks missing flex-algo node-segment data when flex-algo is enabled.
+	// If any are found, block flex-algo config push for this cycle per RFC-18.
 	if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled && len(cache.Topologies) > 0 {
 		for devicePubKey, d := range cache.Devices {
 			if len(d.DevicePathologies) > 0 {
@@ -619,9 +621,10 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 			for _, intf := range d.Interfaces {
 				if intf.IsVpnv4Loopback() && len(intf.FlexAlgoNodeSegments) == 0 {
-					c.log.Error("flex_algo.enabled=true but VPNv4 loopback has no flex_algo_node_segments — run 'doublezero-admin migrate' and restart",
+					c.log.Error("flex_algo.enabled=true but VPNv4 loopback has no flex_algo_node_segments — run 'doublezero-admin migrate' and restart; flex-algo config will not be pushed this cycle",
 						"device_pubkey", devicePubKey,
 						"interface", intf.Name)
+					cache.FlexAlgoBlocked = true
 				}
 			}
 		}
@@ -925,6 +928,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		Strings:                  StringsHelper{},
 		AllTopologies:            allTopologies,
 		Config:                   c.featuresConfig,
+		FlexAlgoBlocked:          c.cache.FlexAlgoBlocked,
 	}
 
 	config, err := renderConfig(data)

@@ -1,3 +1,4 @@
+pub mod env;
 pub mod instruction;
 pub mod state;
 

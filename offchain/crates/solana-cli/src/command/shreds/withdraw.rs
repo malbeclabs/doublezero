@@ -4,6 +4,7 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
 use doublezero_solana_sdk::{
+    environment_usdc_token_mint_key,
     shred_subscription::{
         ID,
         instruction::{
@@ -63,13 +64,11 @@ impl WithdrawCommand {
             .device_args
             .resolve(network_env, &dz_ledger_url)
             .await?;
-        let usdc_mint_key = self.usdc_mint.unwrap_or_else(|| {
-            if network_env.is_mainnet_beta() {
-                state::MAINNET_USDC_MINT_KEY
-            } else {
-                state::DEVELOPMENT_USDC_MINT_KEY
-            }
-        });
+
+        let usdc_mint_key = self
+            .usdc_mint
+            .unwrap_or(environment_usdc_token_mint_key(network_env));
+
         let client_ip_bits = u32::from(self.client_ip);
         let (client_seat_key, _) = state::find_client_seat_address(&device, client_ip_bits);
         let (escrow_key, _) = state::find_payment_escrow_address(&client_seat_key, &wallet_key);

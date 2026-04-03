@@ -27,6 +27,13 @@ pub fn environment_2z_token_mint_key(network_env: NetworkEnvironment) -> Pubkey 
     }
 }
 
+pub fn environment_usdc_token_mint_key(network_env: NetworkEnvironment) -> Pubkey {
+    match network_env {
+        NetworkEnvironment::Testnet => shred_subscription::env::development::USDC_MINT_KEY,
+        _ => shred_subscription::env::mainnet::USDC_MINT_KEY,
+    }
+}
+
 pub fn build_memo_instruction(memo: &[u8]) -> Instruction {
     spl_memo_interface::instruction::build_memo(
         &spl_memo_interface::v3::ID,

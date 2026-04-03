@@ -1,4 +1,4 @@
-use std::{net::Ipv4Addr, sync::LazyLock};
+use std::net::Ipv4Addr;
 
 use doublezero_program_tools::{DISCRIMINATOR_LEN, Discriminator};
 use solana_sdk::pubkey::Pubkey;
@@ -12,22 +12,6 @@ pub const TOKEN_PDA_SEED_PREFIX: &[u8] = b"token";
 pub const PAYMENT_ESCROW_SEED_PREFIX: &[u8] = b"payment_escrow";
 pub const INSTANT_ALLOCATION_REQUEST_SEED_PREFIX: &[u8] = b"instant_seat_allocation_request";
 pub const WITHDRAW_SEAT_REQUEST_SEED_PREFIX: &[u8] = b"withdraw_seat_request";
-
-/// Mainnet USDC mint address.
-pub const MAINNET_USDC_MINT_KEY: Pubkey =
-    solana_sdk::pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
-
-/// Development/testnet USDC mint address.
-pub const DEVELOPMENT_USDC_MINT_KEY: Pubkey =
-    solana_sdk::pubkey!("uSDZq2RMuxrEf7gqgDjR8wJCtCyaDAQk2e5jLAaoeeM");
-
-/// USDC mint address (defaults to mainnet, overridable via env var).
-pub static USDC_MINT_KEY: LazyLock<Pubkey> = LazyLock::new(|| {
-    std::env::var("SHRED_SUBSCRIPTION_USDC_MINT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(MAINNET_USDC_MINT_KEY)
-});
 
 pub fn find_program_config_address() -> (Pubkey, u8) {
     Pubkey::find_program_address(

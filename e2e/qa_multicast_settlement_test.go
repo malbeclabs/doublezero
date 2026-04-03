@@ -140,10 +140,10 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	t.Run("validate_device_assignment", func(t *testing.T) {
 		statuses, err := client.GetUserStatuses(ctx)
 		require.NoError(t, err, "failed to get user statuses")
-		ibrlStatus := qa.FindIBRLStatus(statuses)
-		require.NotNil(t, ibrlStatus, "no IBRL status found after seat payment")
-		require.Equal(t, device.Code, ibrlStatus.CurrentDevice, "tunnel connected to wrong device")
-		log.Info("Tunnel up and device matches", "device", ibrlStatus.CurrentDevice, "dzIP", ibrlStatus.DoubleZeroIp)
+		mcastStatus := qa.FindMulticastStatus(statuses)
+		require.NotNil(t, mcastStatus, "no multicast status found after seat payment")
+		require.Equal(t, device.Code, mcastStatus.CurrentDevice, "tunnel connected to wrong device")
+		log.Info("Tunnel up and device matches", "device", mcastStatus.CurrentDevice, "dzIP", mcastStatus.DoubleZeroIp)
 	})
 
 	if !t.Run("withdraw_seat", func(t *testing.T) {

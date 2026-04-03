@@ -449,6 +449,7 @@ async fn try_write_off_distribution_debt(
             &[wallet],
             &[],
             true, // allow_compute_price_instruction
+            &[],
         )?;
 
         for mut instructions in instruction_batches {

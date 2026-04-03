@@ -42,13 +42,18 @@ struct EpochWarningInput {
 }
 
 /// Returns `true` when the client seat already has an active allocation
-/// (`active_epoch > 0`). Re-funding an active seat only needs to top up the
+/// (`tenure_epochs > 0`). Re-funding an active seat only needs to top up the
 /// escrow — requesting a new instant allocation would fail onchain because the
 /// seat is already counted against the device's available capacity.
+///
+/// Uses `tenure_epochs` rather than `active_epoch` because `BatchClearTenure`
+/// zeros only `tenure_epochs` when a seat loses its allocation (leaving
+/// `active_epoch` stale). Checking `active_epoch > 0` would incorrectly
+/// treat a cleared seat as active and skip the instant allocation request.
 fn is_seat_already_active(seat_data: Option<&[u8]>) -> bool {
     seat_data
         .and_then(state::parse_client_seat)
-        .map(|(_, _, _, _, active_epoch)| active_epoch > 0)
+        .map(|(_, _, tenure_epochs, _, _)| tenure_epochs > 0)
         .unwrap_or(false)
 }
 
@@ -729,25 +734,38 @@ mod tests {
 
     // --- is_seat_already_active tests ---
 
-    /// Build a minimal ClientSeat byte buffer with the given active_epoch.
-    fn make_seat_data(active_epoch: u64) -> Vec<u8> {
-        // Minimum valid size: ACTIVE_EPOCH_OFFSET + 8 = 64 + 8 = 72 bytes
-        // (DISCRIMINATOR_LEN = 8, offsets are relative to that)
+    const TENURE_OFFSET: usize = 46; // DISCRIMINATOR_LEN (8) + 38
+    const ACTIVE_EPOCH_OFFSET: usize = 64; // DISCRIMINATOR_LEN (8) + 56
+
+    /// Build a minimal ClientSeat byte buffer with the given tenure_epochs
+    /// and active_epoch. The buffer must be at least 72 bytes for
+    /// `parse_client_seat` to succeed.
+    fn make_seat_data_ex(tenure_epochs: u16, active_epoch: u64) -> Vec<u8> {
         let mut data = vec![0u8; 72];
-        // Write active_epoch at offset 64 (DISCRIMINATOR_LEN + 56).
-        data[64..72].copy_from_slice(&active_epoch.to_le_bytes());
+        data[TENURE_OFFSET..TENURE_OFFSET + 2].copy_from_slice(&tenure_epochs.to_le_bytes());
+        data[ACTIVE_EPOCH_OFFSET..ACTIVE_EPOCH_OFFSET + 8]
+            .copy_from_slice(&active_epoch.to_le_bytes());
         data
     }
 
     #[test]
-    fn seat_active_when_active_epoch_nonzero() {
-        let data = make_seat_data(5);
+    fn seat_active_when_tenure_nonzero() {
+        let data = make_seat_data_ex(3, 7);
         assert!(is_seat_already_active(Some(&data)));
     }
 
     #[test]
-    fn seat_not_active_when_active_epoch_zero() {
-        let data = make_seat_data(0);
+    fn seat_not_active_when_tenure_zero() {
+        let data = make_seat_data_ex(0, 0);
+        assert!(!is_seat_already_active(Some(&data)));
+    }
+
+    #[test]
+    fn seat_not_active_when_tenure_cleared_but_active_epoch_stale() {
+        // Regression: BatchClearTenure zeros tenure_epochs but leaves
+        // active_epoch at the old value. The old `active_epoch > 0` check
+        // would incorrectly return true here.
+        let data = make_seat_data_ex(0, 5);
         assert!(!is_seat_already_active(Some(&data)));
     }
 

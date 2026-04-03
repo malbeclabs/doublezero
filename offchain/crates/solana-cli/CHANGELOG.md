@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `shreds pay`: fix re-funded seats not getting instant allocation after tenure was cleared ([#332](https://github.com/doublezerofoundation/doublezero-offchain/pull/332))
 - fix `fetch validator-debts` record logic ([#327](https://github.com/doublezerofoundation/doublezero-offchain/pull/327))
 - `shreds withdraw`: check that the client seat has active service before submitting withdrawal
 - remove `experimental` feature flag from `shreds` subcommands — they are now always available

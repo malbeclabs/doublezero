@@ -106,10 +106,7 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/multicast_group_pub_allowlist_add":    {ranges: before("0.8.1")},
 	"write/multicast_group_pub_allowlist_remove": {ranges: before("0.8.1")},
 	"write/multicast_group_sub_allowlist_add":    {ranges: before("0.8.1")},
-	// user_subscribe: SubscribeMulticastGroup now requires globalstate as an account.
-	// Old CLIs don't include it and fail with "insufficient account keys for instruction".
-	"write/user_subscribe": {ranges: before("0.16.0")},
-	"write/multicast_group_sub_allowlist_remove": {ranges: before("0.8.1")},
+"write/multicast_group_sub_allowlist_remove": {ranges: before("0.8.1")},
 	"write/multicast_group_get":                  {ranges: before("0.8.1")},
 	"write/multicast_group_delete":               {ranges: before("0.8.1")},
 

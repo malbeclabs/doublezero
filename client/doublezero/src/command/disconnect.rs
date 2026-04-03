@@ -17,7 +17,7 @@ use doublezero_cli::{
 
 use doublezero_sdk::{
     commands::user::{delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand},
-    UserType,
+    GetGlobalStateCommand, UserType,
 };
 
 #[allow(clippy::upper_case_acronyms)]
@@ -57,7 +57,8 @@ impl DecommissioningCliCommand {
         let client_ip = super::helpers::resolve_client_ip(&controller).await?;
         spinner.println(format!("    Client IP: {client_ip}"));
 
-        self.delete_users(client, client_ip, &spinner)?;
+        let (_, gstate) = client.get_globalstate(GetGlobalStateCommand)?;
+        self.delete_users(client, client_ip, gstate.feed_authority_pk, &spinner)?;
 
         // Wait for daemon to deprovision the tunnel(s)
         let user_type_filter: Option<&str> = match self.dz_mode {
@@ -92,6 +93,7 @@ impl DecommissioningCliCommand {
         &self,
         client: &dyn CliCommand,
         client_ip: std::net::Ipv4Addr,
+        feed_authority: Pubkey,
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {
         spinner.inc(1);
@@ -116,15 +118,23 @@ impl DecommissioningCliCommand {
                 None => {}
             }
 
-            // Skip oracle-owned users — only the oracle can delete them.
-            // The oracle's orphan cleanup will remove the DZ Ledger user
-            // automatically once the onchain seat becomes inactive.
+            // Skip users owned by a different keypair — only the owner can delete them.
             if user.owner != client.get_payer() {
-                spinner.println(format!(
-                    "⚠️  User {pubkey} is managed by an external service (owner: {}). \
-                     It will be cleaned up automatically.",
-                    user.owner,
-                ));
+                if user.owner == feed_authority {
+                    // User is managed by the shred oracle.
+                    // The validator must withdraw via doublezero-solana first.
+                    spinner.println(format!(
+                        "⚠️  User {pubkey} is managed by the shred oracle (owner: {}). \
+                         Use `doublezero-solana shreds withdraw` to disconnect.",
+                        user.owner,
+                    ));
+                } else {
+                    spinner.println(format!(
+                        "⚠️  User {pubkey} is managed by an external service (owner: {}). \
+                         It will be cleaned up automatically.",
+                        user.owner,
+                    ));
+                }
                 continue;
             }
 
@@ -507,7 +517,7 @@ mod tests {
 
         let cmd = test_cmd();
         let spinner = hidden_spinner();
-        let result = cmd.delete_users(&client, ip, &spinner);
+        let result = cmd.delete_users(&client, ip, oracle_key, &spinner);
         assert!(result.is_ok());
 
         // Verify payer != oracle_key to confirm the test is meaningful.
@@ -518,6 +528,7 @@ mod tests {
     fn test_delete_users_deletes_self_owned_user() {
         let mut client = create_test_client();
         let payer = client.get_payer();
+        let feed_authority = Pubkey::new_unique();
         let ip = Ipv4Addr::new(10, 0, 0, 1);
 
         let user_pk = Pubkey::new_unique();
@@ -541,8 +552,37 @@ mod tests {
 
         let cmd = test_cmd();
         let spinner = hidden_spinner();
-        let result = cmd.delete_users(&client, ip, &spinner);
+        let result = cmd.delete_users(&client, ip, feed_authority, &spinner);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_delete_users_skips_externally_owned_non_oracle_user() {
+        let mut client = create_test_client();
+        let payer = client.get_payer();
+        let external_owner = Pubkey::new_unique();
+        let feed_authority = Pubkey::new_unique();
+        let ip = Ipv4Addr::new(10, 0, 0, 1);
+
+        let user_pk = Pubkey::new_unique();
+        let user = make_test_user(ip, external_owner, UserType::IBRL);
+
+        let mut users = HashMap::new();
+        users.insert(user_pk, user);
+
+        client
+            .expect_list_user()
+            .returning(move |_| Ok(users.clone()));
+        // delete_user should NOT be called for externally-owned user.
+        client.expect_delete_user().never();
+
+        let cmd = test_cmd();
+        let spinner = hidden_spinner();
+        let result = cmd.delete_users(&client, ip, feed_authority, &spinner);
+        assert!(result.is_ok());
+
+        assert_ne!(payer, external_owner);
+        assert_ne!(external_owner, feed_authority);
     }
 
     #[test]
@@ -576,7 +616,7 @@ mod tests {
 
         let cmd = test_cmd();
         let spinner = hidden_spinner();
-        let result = cmd.delete_users(&client, ip, &spinner);
+        let result = cmd.delete_users(&client, ip, oracle_key, &spinner);
         assert!(result.is_ok());
     }
 }

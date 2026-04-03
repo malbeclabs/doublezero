@@ -360,6 +360,7 @@ mod tests {
                     AccountMeta::new(mgroup_pubkey, false),
                     AccountMeta::new(accesspass_pubkey, false),
                     AccountMeta::new(user_pubkey, false),
+                    AccountMeta::new(globalstate_pubkey, false),
                 ]),
             )
             .times(1)
@@ -563,6 +564,7 @@ mod tests {
                     AccountMeta::new(mgroup_pubkey, false),
                     AccountMeta::new(accesspass_pubkey, false),
                     AccountMeta::new(user_pubkey, false),
+                    AccountMeta::new(globalstate_pubkey, false),
                 ]),
             )
             .times(1)
@@ -794,6 +796,7 @@ mod tests {
                     AccountMeta::new(mgroup_pubkey, false),
                     AccountMeta::new(accesspass_pubkey, false),
                     AccountMeta::new(user_pubkey, false),
+                    AccountMeta::new(globalstate_pubkey, false),
                 ]),
             )
             .times(1)

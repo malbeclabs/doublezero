@@ -2666,6 +2666,80 @@ async fn test_link_activation_fails_without_unicast_default() {
 }
 
 #[tokio::test]
+async fn test_link_topology_cap_at_8_rejected() {
+    let (
+        mut banks_client,
+        program_id,
+        payer,
+        globalstate_pubkey,
+        contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+        tunnel_pubkey,
+    ) = setup_link_env().await;
+
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
+            tunnel_id: 500,
+            tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Attempt to set 9 topology pubkeys — exceeds cap of 8
+    let nine_pubkeys: Vec<Pubkey> = (0..9).map(|_| Pubkey::new_unique()).collect();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            link_topologies: Some(nine_pubkeys),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let error_string = format!("{:?}", result.unwrap_err());
+    assert!(
+        error_string.contains("Custom(65)"),
+        "Expected InvalidArgument error (Custom(65)), got: {}",
+        error_string
+    );
+}
+
+#[tokio::test]
 async fn test_link_create_invalid_mtu() {
     let (
         mut banks_client,

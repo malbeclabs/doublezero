@@ -379,6 +379,10 @@ pub fn process_update_link(
             msg!("link_topologies update requires foundation allowlist");
             return Err(DoubleZeroError::NotAllowed.into());
         }
+        if link_topologies.len() > 8 {
+            msg!("link_topologies exceeds maximum of 8 entries");
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
         link.link_topologies = link_topologies.clone();
     }
 

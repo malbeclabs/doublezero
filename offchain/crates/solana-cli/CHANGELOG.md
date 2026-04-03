@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `shreds pay`: allow top-up when multicast user is owned by the shred oracle
 - support env var fallback for all CLI args ([#334](https://github.com/doublezerofoundation/doublezero-offchain/pull/334))
 - fix env USDC mint ([#333](https://github.com/doublezerofoundation/doublezero-offchain/pull/333))
 - `shreds pay`: fix re-funded seats not getting instant allocation after tenure was cleared ([#332](https://github.com/doublezerofoundation/doublezero-offchain/pull/332))

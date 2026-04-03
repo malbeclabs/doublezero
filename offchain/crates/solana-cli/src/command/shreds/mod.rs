@@ -106,6 +106,21 @@ pub(super) fn make_dz_connection(
     }
 }
 
+/// Known shred oracle pubkey per environment. Returns `None` on localnet
+/// (the multicast-user guard is already skipped there because
+/// `serviceability_program_id` returns `Err`).
+pub(super) fn shred_oracle_key(env: NetworkEnvironment) -> Option<Pubkey> {
+    match env {
+        NetworkEnvironment::MainnetBeta => Some(solana_sdk::pubkey!(
+            "3b2Ze7VYUvhwQBfx5oCMCmsc2xvyZ74s2Lata5vmQeeN"
+        )),
+        NetworkEnvironment::Testnet => Some(solana_sdk::pubkey!(
+            "BUtAWK4GaUV42YRp7jSHZhchspsshabn67HnBHnKxzsY"
+        )),
+        NetworkEnvironment::Localnet => None,
+    }
+}
+
 pub(super) fn serviceability_program_id(env: NetworkEnvironment) -> Result<Pubkey> {
     match env {
         NetworkEnvironment::MainnetBeta => {

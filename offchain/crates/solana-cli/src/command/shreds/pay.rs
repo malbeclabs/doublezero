@@ -116,6 +116,12 @@ pub struct PayCommand {
     /// Skip the epoch-remaining warning prompt (for batch/multi-seat workflows)
     #[arg(long)]
     accept_partial_epoch: bool,
+    /// Shred oracle pubkey (auto-detected from network; override for local dev)
+    #[arg(long, hide = true)]
+    shred_oracle_key: Option<Pubkey>,
+    /// Serviceability program ID for the multicast user guard (auto-detected; override for e2e)
+    #[arg(long, hide = true)]
+    serviceability_program_id: Option<Pubkey>,
 
     #[command(flatten)]
     solana_payer_options: SolanaPayerOptions,
@@ -147,23 +153,42 @@ impl PayCommand {
             .await?;
         let client_ip_bits = u32::from(self.client_ip);
 
-        // Best-effort check: verify this client IP doesn't already have a Multicast
-        // user on serviceability. If so, the shred oracle will fail to create a new
-        // subscribe user at settlement time. This is not enforced on-chain.
-        if let Ok(svc_program_id) = serviceability_program_id(network_env) {
+        // Best-effort check: if this client IP already has a Multicast user on
+        // serviceability owned by a *different* authority, the shred oracle will
+        // fail at create_subscribe_user (the User PDA is derived from IP alone).
+        // If the user is owned by the shred oracle, this is a top-up or re-sub.
+        let svc_program_id_result = match self.serviceability_program_id {
+            Some(id) => Ok(id),
+            None => serviceability_program_id(network_env),
+        };
+        if let Ok(svc_program_id) = svc_program_id_result {
+            let oracle_key = self
+                .shred_oracle_key
+                .or_else(|| super::shred_oracle_key(network_env));
+
             let dz_connection = make_dz_connection(&dz_ledger_url, network_env);
             let (user_pda, _) = get_user_pda(&svc_program_id, &self.client_ip, UserType::Multicast);
-            if let Ok(Some(_)) = dz_connection
+            if let Ok(Some(user_account)) = dz_connection
                 .get_account_with_commitment(&user_pda, CommitmentConfig::confirmed())
                 .await
                 .map(|r| r.value)
             {
-                bail!(
-                    "Client IP {} already has an active multicast user on serviceability. \
-                     Disconnect first (doublezero disconnect) before purchasing a \
-                     shred subscription.",
-                    self.client_ip,
-                );
+                let is_shred_oracle_user = oracle_key
+                    .map(|key| {
+                        user_account.data.len() >= 33
+                            && Pubkey::try_from(&user_account.data[1..33]).ok() == Some(key)
+                    })
+                    .unwrap_or(false);
+
+                if !is_shred_oracle_user {
+                    bail!(
+                        "Client IP {} already has a multicast user on serviceability \
+                         owned by a different authority. This IP may be subscribed to \
+                         another multicast group. Disconnect first \
+                         (doublezero disconnect) before purchasing a shred subscription.",
+                        self.client_ip,
+                    );
+                }
             }
         }
 

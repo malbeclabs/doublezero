@@ -206,6 +206,7 @@ func (w *ClickhouseWriter) flush(ctx context.Context) {
 
 	if err := batch.Send(); err != nil {
 		w.log.Error("failed to send batch", "error", err, "dropped_rows", len(rows))
+		_ = batch.Close()
 		return
 	}
 	_ = batch.Close()

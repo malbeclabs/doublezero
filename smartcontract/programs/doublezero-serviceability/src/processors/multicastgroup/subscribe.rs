@@ -152,7 +152,10 @@ pub fn process_subscribe_multicastgroup(
     let globalstate_opt = if has_globalstate {
         let gs_account = next_account_info(accounts_iter)?;
         let (expected_globalstate_pda, _) = get_globalstate_pda(program_id);
-        assert_eq!(gs_account.key, &expected_globalstate_pda, "Invalid GlobalState PDA");
+        assert_eq!(
+            gs_account.key, &expected_globalstate_pda,
+            "Invalid GlobalState PDA"
+        );
         Some(GlobalState::try_from(gs_account)?)
     } else {
         None

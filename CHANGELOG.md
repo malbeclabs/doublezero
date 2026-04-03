@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Smartcontract
+  - Require that the access pass provided to `SubscribeMulticastGroup` belongs to the payer; foundation allowlist members may use any access pass.
 ## [v0.15.0](https://github.com/malbeclabs/doublezero/compare/client/v0.14.0...client/v0.15.0) - 2026-03-27
 
 - Client

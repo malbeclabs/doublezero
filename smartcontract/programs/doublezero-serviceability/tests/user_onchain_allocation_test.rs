@@ -1165,7 +1165,7 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
     // =========================================================================
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
-    // SubscribeMulticastGroup (5 accounts: mgroup, accesspass, user, payer, system_program)
+    // SubscribeMulticastGroup (6 accounts: mgroup, accesspass, user, globalstate, payer, system_program)
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1180,6 +1180,7 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -1487,6 +1488,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -1577,6 +1579,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -1763,6 +1766,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey2, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -3711,6 +3715,7 @@ async fn test_activate_updating_does_not_set_multicast_publisher_for_non_publish
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -3963,6 +3968,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -4028,6 +4034,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -4261,6 +4268,7 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -4299,6 +4307,7 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -4530,6 +4539,7 @@ async fn test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_s
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -4594,6 +4604,7 @@ async fn test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_s
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -4866,6 +4877,7 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )

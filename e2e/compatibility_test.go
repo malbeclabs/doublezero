@@ -72,7 +72,6 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/multicast_group_pub_allowlist_add":    {minVersion: "0.8.1"},
 	"write/multicast_group_pub_allowlist_remove": {minVersion: "0.8.1"},
 	"write/multicast_group_sub_allowlist_add":    {minVersion: "0.8.1"},
-	"write/user_subscribe":                       {minVersion: "0.8.1"},
 	"write/multicast_group_sub_allowlist_remove": {minVersion: "0.8.1"},
 	"write/multicast_group_get":                  {minVersion: "0.8.1"},
 	"write/multicast_group_delete":               {minVersion: "0.8.1"},

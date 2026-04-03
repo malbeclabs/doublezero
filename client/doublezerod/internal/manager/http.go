@@ -17,10 +17,12 @@ import (
 // V2ServiceStatus wraps a StatusResponse with enriched fields.
 type V2ServiceStatus struct {
 	*api.StatusResponse
-	CurrentDevice       string `json:"current_device"`
-	LowestLatencyDevice string `json:"lowest_latency_device"`
-	Metro               string `json:"metro"`
-	Tenant              string `json:"tenant"`
+	CurrentDevice               string  `json:"current_device"`
+	CurrentDeviceRttNanoseconds int64   `json:"current_device_rtt_nanoseconds,omitempty"`
+	CurrentDeviceLossPercentage float64 `json:"current_device_loss_percentage,omitempty"`
+	LowestLatencyDevice         string  `json:"lowest_latency_device"`
+	Metro                       string  `json:"metro"`
+	Tenant                      string  `json:"tenant"`
 }
 
 // V2StatusResponse is the response for the /v2/status endpoint.
@@ -68,6 +70,7 @@ func (n *NetlinkManager) ServeProvision(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	n.updateConnectionInfoMetric()
 	_, _ = w.Write([]byte(`{"status": "ok"}`))
 }
 
@@ -97,6 +100,7 @@ func (n *NetlinkManager) ServeRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	n.updateConnectionInfoMetric()
 	_, _ = w.Write([]byte(`{"status": "ok"}`))
 }
 
@@ -165,6 +169,55 @@ func (n *NetlinkManager) ServeV2Status(w http.ResponseWriter, _ *http.Request) {
 		Network:           n.network,
 		Services:          enriched,
 	})
+}
+
+// updateConnectionInfoMetric resets and repopulates the doublezero_connection_info,
+// doublezero_connection_rtt_nanoseconds, and doublezero_connection_loss_percentage
+// gauges with current service metadata.
+func (n *NetlinkManager) updateConnectionInfoMetric() {
+	metricConnectionInfo.Reset()
+	metricConnectionRttNanoseconds.Reset()
+	metricConnectionLossPercentage.Reset()
+
+	statuses, err := n.Status()
+	if err != nil || len(statuses) == 0 {
+		return
+	}
+
+	enriched := n.enrichStatuses(statuses)
+	for _, svc := range enriched {
+		metricConnectionInfo.WithLabelValues(
+			svc.UserType.String(),
+			n.network,
+			svc.CurrentDevice,
+			svc.Metro,
+			svc.TunnelName,
+			ipString(svc.TunnelSrc),
+			ipString(svc.TunnelDst),
+		).Set(1)
+		if svc.CurrentDeviceRttNanoseconds > 0 {
+			metricConnectionRttNanoseconds.WithLabelValues(
+				svc.UserType.String(),
+				n.network,
+				svc.CurrentDevice,
+				svc.Metro,
+			).Set(float64(svc.CurrentDeviceRttNanoseconds))
+			metricConnectionLossPercentage.WithLabelValues(
+				svc.UserType.String(),
+				n.network,
+				svc.CurrentDevice,
+				svc.Metro,
+			).Set(svc.CurrentDeviceLossPercentage)
+		}
+	}
+}
+
+// ipString returns the string representation of an IP, or empty string if nil.
+func ipString(ip net.IP) string {
+	if ip == nil {
+		return ""
+	}
+	return ip.String()
 }
 
 // latencyToleranceNS matches the CLI's LATENCY_TOLERANCE_NS (5ms).
@@ -283,6 +336,13 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 			exchPK := [32]byte(matchedDevice.ExchangePubKey)
 			if exch, ok := exchangesByPK[exchPK]; ok {
 				es.Metro = exch.Name
+			}
+			for _, r := range latencyResults {
+				if r.Device.PubKey == matchedDevice.PubKey && r.Reachable {
+					es.CurrentDeviceRttNanoseconds = r.Avg
+					es.CurrentDeviceLossPercentage = r.Loss
+					break
+				}
 			}
 		}
 

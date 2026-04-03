@@ -90,6 +90,8 @@ func DeserializeInterface(reader *ByteReader, iface *Interface) {
 		DeserializeInterfaceV1(reader, iface)
 	case 1: // version 2
 		DeserializeInterfaceV2(reader, iface)
+	case 2: // version 3
+		DeserializeInterfaceV3(reader, iface)
 	}
 }
 
@@ -105,6 +107,24 @@ func DeserializeInterfaceV1(reader *ByteReader, iface *Interface) {
 }
 
 func DeserializeInterfaceV2(reader *ByteReader, iface *Interface) {
+	iface.Status = InterfaceStatus(reader.ReadU8())
+	iface.Name = reader.ReadString()
+	iface.InterfaceType = InterfaceType(reader.ReadU8())
+	iface.InterfaceCYOA = InterfaceCYOA(reader.ReadU8())
+	iface.InterfaceDIA = InterfaceDIA(reader.ReadU8())
+	loopbackTypeByte := reader.ReadU8()
+	iface.LoopbackType = LoopbackType(loopbackTypeByte)
+	iface.Bandwidth = reader.ReadU64()
+	iface.Cir = reader.ReadU64()
+	iface.Mtu = reader.ReadU16()
+	iface.RoutingMode = RoutingMode(reader.ReadU8())
+	iface.VlanId = reader.ReadU16()
+	iface.IpNet = reader.ReadNetworkV4()
+	iface.NodeSegmentIdx = reader.ReadU16()
+	iface.UserTunnelEndpoint = (reader.ReadU8() != 0)
+}
+
+func DeserializeInterfaceV3(reader *ByteReader, iface *Interface) {
 	iface.Status = InterfaceStatus(reader.ReadU8())
 	iface.Name = reader.ReadString()
 	iface.InterfaceType = InterfaceType(reader.ReadU8())

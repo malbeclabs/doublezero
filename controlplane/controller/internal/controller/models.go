@@ -326,11 +326,13 @@ type templateData struct {
 	Strings                  StringsHelper
 	AllTopologies            []TopologyModel
 	Config                   *FeaturesConfig // nil when no features config is loaded
+	FlexAlgoBlocked          bool            // true when flex-algo is blocked due to missing loopback node-segment data
 }
 
-// FlexAlgoEnabled returns true if a features config is loaded and flex_algo.enabled is set.
+// FlexAlgoEnabled returns true if a features config is loaded, flex_algo.enabled is set,
+// and flex-algo has not been blocked due to missing loopback node-segment data.
 func (d templateData) FlexAlgoEnabled() bool {
-	return d.Config != nil && d.Config.Features.FlexAlgo.Enabled
+	return d.Config != nil && d.Config.Features.FlexAlgo.Enabled && !d.FlexAlgoBlocked
 }
 
 // TopologyModel holds pre-computed topology data for template rendering.

@@ -84,7 +84,7 @@ pub fn process_delete_device(
     validate_program_account!(
         contributor_account,
         program_id,
-        writable = false,
+        writable = true,
         "Contributor"
     );
     validate_program_account!(

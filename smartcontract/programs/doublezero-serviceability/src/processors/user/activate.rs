@@ -108,7 +108,7 @@ pub fn process_activate_user(
     validate_program_account!(
         accesspass_account,
         program_id,
-        writable = false,
+        writable = true,
         "AccessPass"
     );
     validate_program_account!(

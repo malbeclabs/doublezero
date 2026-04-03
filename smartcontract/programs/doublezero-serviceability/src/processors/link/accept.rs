@@ -89,7 +89,7 @@ pub fn process_accept_link(
         writable = false,
         "Contributor"
     );
-    validate_program_account!(side_z_account, program_id, writable = false, "SideZ");
+    validate_program_account!(side_z_account, program_id, writable = true, "SideZ");
 
     // Validate Contributor Owner
     let contributor = Contributor::try_from(contributor_account)?;

@@ -115,7 +115,7 @@ pub fn process_closeaccount_user(
 
     // Validate accounts
     validate_program_account!(user_account, program_id, writable = true, "User");
-    validate_program_account!(device_account, program_id, writable = false, "Device");
+    validate_program_account!(device_account, program_id, writable = true, "Device");
     validate_program_account!(
         globalstate_account,
         program_id,

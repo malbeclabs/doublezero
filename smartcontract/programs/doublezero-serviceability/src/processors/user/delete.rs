@@ -128,7 +128,7 @@ pub fn process_delete_user(
     validate_program_account!(
         accesspass_account,
         program_id,
-        writable = false,
+        writable = true,
         "AccessPass"
     );
     validate_program_account!(

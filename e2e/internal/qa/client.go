@@ -70,6 +70,16 @@ func FindIBRLStatus(statuses []*pb.Status) *pb.Status {
 	return nil
 }
 
+// FindMulticastStatus returns the first Multicast status from the given list.
+func FindMulticastStatus(statuses []*pb.Status) *pb.Status {
+	for _, s := range statuses {
+		if s.UserType == "Multicast" {
+			return s
+		}
+	}
+	return nil
+}
+
 type Device struct {
 	PubKey       string
 	Code         string

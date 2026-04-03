@@ -539,7 +539,7 @@ async fn test_topology_create_backfills_vpnv4_loopbacks() {
             bandwidth: 0,
             cir: 0,
             ip_net: None,
-            mtu: 1500,
+            mtu: 9000,
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
@@ -857,7 +857,7 @@ async fn setup_wan_link(
             bandwidth: 0,
             ip_net: None,
             cir: 0,
-            mtu: 1500,
+            mtu: 9000,
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
@@ -930,7 +930,7 @@ async fn setup_wan_link(
             bandwidth: 0,
             ip_net: None,
             cir: 0,
-            mtu: 1500,
+            mtu: 9000,
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
@@ -1064,7 +1064,11 @@ async fn assign_link_topology(
     payer: &Keypair,
 ) {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    execute_transaction(
+    let extra_accounts: Vec<AccountMeta> = topology_pubkeys
+        .iter()
+        .map(|pk| AccountMeta::new_readonly(*pk, false))
+        .collect();
+    execute_transaction_with_extra_accounts(
         banks_client,
         recent_blockhash,
         program_id,
@@ -1078,6 +1082,7 @@ async fn assign_link_topology(
             AccountMeta::new_readonly(globalstate_pubkey, false),
         ],
         payer,
+        &extra_accounts,
     )
     .await;
 }
@@ -1682,7 +1687,7 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
             bandwidth: 0,
             cir: 0,
             ip_net: None,
-            mtu: 1500,
+            mtu: 9000,
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,

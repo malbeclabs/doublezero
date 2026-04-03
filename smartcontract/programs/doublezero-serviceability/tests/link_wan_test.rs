@@ -5,6 +5,7 @@ use doublezero_serviceability::{
         contributor::create::ContributorCreateArgs,
         device::interface::{update::DeviceInterfaceUpdateArgs, DeviceInterfaceUnlinkArgs},
         link::{activate::*, create::*, delete::*, sethealth::LinkSetHealthArgs, update::*},
+        topology::create::TopologyCreateArgs,
         *,
     },
     resource::ResourceType,
@@ -16,6 +17,7 @@ use doublezero_serviceability::{
             InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
         },
         link::*,
+        topology::TopologyConstraint,
     },
 };
 use globalconfig::set::SetGlobalConfigArgs;
@@ -2737,6 +2739,168 @@ async fn test_link_topology_cap_at_8_rejected() {
         "Expected InvalidArgument error (Custom(65)), got: {}",
         error_string
     );
+}
+
+#[tokio::test]
+async fn test_link_topology_invalid_account_rejected() {
+    let (
+        mut banks_client,
+        program_id,
+        payer,
+        globalstate_pubkey,
+        contributor_pubkey,
+        _device_a_pubkey,
+        _device_z_pubkey,
+        tunnel_pubkey,
+    ) = setup_link_env().await;
+
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
+            tunnel_id: 500,
+            tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(_device_a_pubkey, false),
+            AccountMeta::new(_device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    // Pass a bogus pubkey that has no onchain data — data_is_empty() → InvalidArgument
+    let bogus_pubkey = Pubkey::new_unique();
+    let result = try_execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            link_topologies: Some(vec![bogus_pubkey]),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+        &[AccountMeta::new_readonly(bogus_pubkey, false)],
+    )
+    .await;
+
+    let error_string = format!("{:?}", result.unwrap_err());
+    assert!(
+        error_string.contains("Custom(65)"),
+        "Expected InvalidArgument error (Custom(65)), got: {}",
+        error_string
+    );
+}
+
+#[tokio::test]
+async fn test_link_topology_valid_accepted() {
+    let (
+        mut banks_client,
+        program_id,
+        payer,
+        globalstate_pubkey,
+        contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+        tunnel_pubkey,
+    ) = setup_link_env().await;
+
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    // Create a second topology to assign to the link
+    let (topo_a_pda, _) = get_topology_pda(&program_id, "topo-a");
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+            name: "topo-a".to_string(),
+            constraint: TopologyConstraint::IncludeAny,
+        }),
+        vec![
+            AccountMeta::new(topo_a_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
+            tunnel_id: 500,
+            tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Assign the topology to the link — should succeed
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            link_topologies: Some(vec![topo_a_pda]),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+        &[AccountMeta::new_readonly(topo_a_pda, false)],
+    )
+    .await
+    .expect("Setting valid topology on link should succeed");
 }
 
 #[tokio::test]

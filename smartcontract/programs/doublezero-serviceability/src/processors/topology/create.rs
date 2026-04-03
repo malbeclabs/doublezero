@@ -1,6 +1,6 @@
 use crate::{
     error::DoubleZeroError,
-    pda::get_topology_pda,
+    pda::{get_resource_extension_pda, get_topology_pda},
     processors::resource::allocate_id,
     resource::ResourceType,
     seeds::{SEED_PREFIX, SEED_TOPOLOGY},
@@ -85,6 +85,12 @@ pub fn process_topology_create(
     }
 
     // Validate AdminGroupBits resource account
+    let (expected_agb_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::AdminGroupBits);
+    assert_eq!(
+        admin_group_bits_account.key, &expected_agb_pda,
+        "TopologyCreate: invalid AdminGroupBits PDA"
+    );
     assert_eq!(
         admin_group_bits_account.owner, program_id,
         "TopologyCreate: invalid AdminGroupBits account owner"
@@ -136,7 +142,7 @@ pub fn process_topology_create(
 
         // Validate the SegmentRoutingIds account
         let (expected_sr_pda, _, _) =
-            crate::pda::get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
+            get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
         assert_eq!(
             segment_routing_ids_account.key, &expected_sr_pda,
             "TopologyCreate: invalid SegmentRoutingIds PDA"

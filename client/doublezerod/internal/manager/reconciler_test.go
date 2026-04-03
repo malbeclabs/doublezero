@@ -15,6 +15,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -81,6 +82,14 @@ func (m *mockHeartbeatSender) Start(string, net.IP, []net.IP, int, time.Duration
 }
 func (m *mockHeartbeatSender) UpdateGroups([]net.IP) error { return nil }
 func (m *mockHeartbeatSender) Close() error                { return nil }
+
+type mockLatencyProvider struct {
+	results []latency.LatencyResult
+}
+
+func (m *mockLatencyProvider) GetResultsCache() []latency.LatencyResult {
+	return m.results
+}
 
 // --- test helpers ---
 
@@ -1411,6 +1420,17 @@ func TestConnectionInfoMetric(t *testing.T) {
 		},
 	}
 
+	latencyProvider := &mockLatencyProvider{
+		results: []latency.LatencyResult{
+			{
+				Device:    latency.DeviceInfo{PubKey: devicePK, Code: "dz1"},
+				Avg:       5_000_000,
+				Loss:      1.5,
+				Reachable: true,
+			},
+		},
+	}
+
 	dir := t.TempDir()
 	n := newTestNLM(fetcher,
 		WithClientIP(clientIP),
@@ -1418,10 +1438,12 @@ func TestConnectionInfoMetric(t *testing.T) {
 		WithStateDir(dir),
 		WithEnabled(true),
 		WithNetwork("testnet"),
+		WithLatencyProvider(latencyProvider),
 	)
 
-	// Reset metric to avoid cross-test pollution from promauto global state.
+	// Reset metrics to avoid cross-test pollution from promauto global state.
 	metricConnectionInfo.Reset()
+	metricConnectionRttNanoseconds.Reset()
 
 	t.Run("populated_after_reconcile", func(t *testing.T) {
 		n.reconcile(context.Background())
@@ -1437,6 +1459,20 @@ func TestConnectionInfoMetric(t *testing.T) {
 		if val != 1 {
 			t.Fatalf("expected metric value 1, got %f", val)
 		}
+
+		rttVal := testutil.ToFloat64(metricConnectionRttNanoseconds.WithLabelValues(
+			"IBRL", "testnet", "dz1", "Amsterdam",
+		))
+		if rttVal != 5_000_000 {
+			t.Fatalf("expected RTT metric value 5000000, got %f", rttVal)
+		}
+
+		lossVal := testutil.ToFloat64(metricConnectionLossPercentage.WithLabelValues(
+			"IBRL", "testnet", "dz1", "Amsterdam",
+		))
+		if lossVal != 1.5 {
+			t.Fatalf("expected loss metric value 1.5, got %f", lossVal)
+		}
 	})
 
 	t.Run("cleared_after_teardown", func(t *testing.T) {
@@ -1445,6 +1481,16 @@ func TestConnectionInfoMetric(t *testing.T) {
 		count := testutil.CollectAndCount(metricConnectionInfo)
 		if count != 0 {
 			t.Fatalf("expected 0 metric series after teardown, got %d", count)
+		}
+
+		rttCount := testutil.CollectAndCount(metricConnectionRttNanoseconds)
+		if rttCount != 0 {
+			t.Fatalf("expected 0 RTT metric series after teardown, got %d", rttCount)
+		}
+
+		lossCount := testutil.CollectAndCount(metricConnectionLossPercentage)
+		if lossCount != 0 {
+			t.Fatalf("expected 0 loss metric series after teardown, got %d", lossCount)
 		}
 	})
 }

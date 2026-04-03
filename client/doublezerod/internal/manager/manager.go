@@ -462,6 +462,8 @@ func (n *NetlinkManager) reconcilerTeardown() {
 	// Clear cached tunnel src so a fresh lookup is done on next enable.
 	n.tunnelSrcCache = make(map[string]net.IP)
 	metricConnectionInfo.Reset()
+	metricConnectionRttNanoseconds.Reset()
+	metricConnectionLossPercentage.Reset()
 }
 
 func (n *NetlinkManager) reconcile(ctx context.Context) {

@@ -106,7 +106,7 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/multicast_group_pub_allowlist_add":    {ranges: before("0.8.1")},
 	"write/multicast_group_pub_allowlist_remove": {ranges: before("0.8.1")},
 	"write/multicast_group_sub_allowlist_add":    {ranges: before("0.8.1")},
-"write/multicast_group_sub_allowlist_remove": {ranges: before("0.8.1")},
+	"write/multicast_group_sub_allowlist_remove": {ranges: before("0.8.1")},
 	"write/multicast_group_get":                  {ranges: before("0.8.1")},
 	"write/multicast_group_delete":               {ranges: before("0.8.1")},
 

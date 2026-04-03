@@ -361,7 +361,7 @@ route-map RM-USER-{{ .Id }}-IN permit 10
    set community 21682:{{ if eq true .IsMulticast }}1300{{ else }}1200{{ end }} 21682:{{ $.Device.BgpCommunity }}
    {{- if and $.FlexAlgoEnabled (not .IsMulticast) .TenantTopologyColors }}
    {{- if $.Config.Features.FlexAlgo.CommunityStamping.ShouldStamp .TenantPubKey $.Device.PubKey }}
-   set extcommunity color {{ .TenantTopologyColors }}
+   set extcommunity {{ .TenantTopologyColors }}
    {{- end }}
    {{- end }}
 {{- end }}

@@ -19,8 +19,10 @@ router pim sparse-mode
       rp address 10.0.0.0 239.0.0.0/24 override
 !
 vrf instance vrf1
+vrf instance vrf2
 ip routing
 ip routing vrf vrf1
+ip routing vrf vrf2
 !
 ntp server 0.pool.ntp.org
 ntp server 1.pool.ntp.org
@@ -131,6 +133,7 @@ mpls icmp ttl-exceeded tunneling
 mpls icmp ip source-interface Loopback255
 !
 default interface Tunnel500
+default interface Tunnel501
 interface Tunnel500
    description USER-UCAST-500
    ip access-group SEC-USER-500-IN in
@@ -140,6 +143,19 @@ interface Tunnel500
    tunnel mode gre
    tunnel source 1.1.1.1
    tunnel destination 2.2.2.2
+   tunnel path-mtu-discovery
+   tunnel ttl 32
+   no shutdown
+!
+interface Tunnel501
+   description USER-UCAST-501
+   ip access-group SEC-USER-501-IN in
+   vrf vrf2
+   mtu 9216
+   ip address 169.254.1.0/31
+   tunnel mode gre
+   tunnel source 1.1.1.1
+   tunnel destination 3.3.3.3
    tunnel path-mtu-discovery
    tunnel ttl 32
    no shutdown
@@ -167,6 +183,20 @@ router bgp 65342
       neighbor 169.254.0.1 route-map RM-USER-500-OUT out
       neighbor 169.254.0.1 maximum-routes 1
       neighbor 169.254.0.1 maximum-accepted-routes 1
+   vrf vrf2
+      rd 65342:2
+      route-target import vpn-ipv4 65342:2
+      route-target export vpn-ipv4 65342:2
+      router-id 7.7.7.7
+      no neighbor 169.254.1.1
+      neighbor 169.254.1.1 remote-as 65000
+      neighbor 169.254.1.1 local-as 65342 no-prepend replace-as
+      neighbor 169.254.1.1 passive
+      neighbor 169.254.1.1 description USER-501
+      neighbor 169.254.1.1 route-map RM-USER-501-IN in
+      neighbor 169.254.1.1 route-map RM-USER-501-OUT out
+      neighbor 169.254.1.1 maximum-routes 1
+      neighbor 169.254.1.1 maximum-accepted-routes 1
 !
 router isis 1
    net 49.0000.0e0e.0e0e.0000.00
@@ -209,6 +239,10 @@ route-map RM-USER-500-OUT deny 10
 route-map RM-USER-500-OUT permit 20
    match community COMM-ALL_USERS
 !
+no route-map RM-USER-501-OUT
+route-map RM-USER-501-OUT permit 20
+   match community COMM-ALL_USERS
+!
 no route-map RM-USER-500-IN
 route-map RM-USER-500-IN permit 10
    match ip address prefix-list PL-USER-500
@@ -216,8 +250,18 @@ route-map RM-USER-500-IN permit 10
    set community 21682:1200 21682:10050
    set extcommunity color 1
 !
+no route-map RM-USER-501-IN
+route-map RM-USER-501-IN permit 10
+   match ip address prefix-list PL-USER-501
+   match as-path length = 1
+   set community 21682:1200 21682:10050
+   set extcommunity color 2
+!
 no ip prefix-list PL-USER-500
 ip prefix-list PL-USER-500 seq 10 permit 100.0.0.0/32
+!
+no ip prefix-list PL-USER-501
+ip prefix-list PL-USER-501 seq 10 permit 100.0.0.1/32
 !
 no ip access-list SEC-USER-500-IN
 ip access-list SEC-USER-500-IN
@@ -234,7 +278,23 @@ ip access-list SEC-USER-500-IN
    permit ip 100.0.0.0/32 any
    deny ip any any
 !
+no ip access-list SEC-USER-501-IN
+ip access-list SEC-USER-501-IN
+   counters per-entry
+   !ICMP
+   permit icmp 169.254.1.1/32 any
+   !TRACEROUTE
+   permit udp 169.254.1.1/32 any range 33434 33534
+   !Allow TTL Exceeded for traceroute return packets
+   permit icmp 169.254.1.1/32 any time-exceeded
+   !PERMIT BGP
+   permit tcp 169.254.1.1/32 169.254.1.0/32 eq 179
+   !PERMIT USER DZ_IP as a source only
+   permit ip 100.0.0.1/32 any
+   deny ip any any
+!
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
 no ip access-list SEC-USER-PUB-MCAST-IN
 ip access-list SEC-USER-PUB-MCAST-IN
    counters per-entry

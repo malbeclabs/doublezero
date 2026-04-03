@@ -875,7 +875,7 @@ func TestRenderConfig(t *testing.T) {
 		},
 		{
 			Name:        "render_flex_algo_multi_topology",
-			Description: "render config with two flex-algo topologies: two WAN links in unicast-default, one WAN link in both unicast-default and high-bandwidth, one CYOA port not participating in flex-algo",
+			Description: "render config with two flex-algo topologies: three tunnels verify per-tunnel color stamping — unicast-default only (color 1), high-bandwidth only (color 2), and both (color 1 color 2)",
 			Data: func() templateData {
 				cfg := &FeaturesConfig{}
 				cfg.Features.FlexAlgo.Enabled = true
@@ -885,7 +885,7 @@ func TestRenderConfig(t *testing.T) {
 					MulticastGroupBlock:      "239.0.0.0/24",
 					TelemetryTWAMPListenPort: 862,
 					LocalASN:                 65342,
-					UnicastVrfs:              []uint16{1},
+					UnicastVrfs:              []uint16{1, 2},
 					Config:                   cfg,
 					AllTopologies: []TopologyModel{
 						{
@@ -967,6 +967,7 @@ func TestRenderConfig(t *testing.T) {
 						},
 						Tunnels: []*Tunnel{
 							{
+								// Tenant on unicast-default only → color 1
 								Id:                   500,
 								UnderlaySrcIP:        net.IP{1, 1, 1, 1},
 								UnderlayDstIP:        net.IP{2, 2, 2, 2},
@@ -979,12 +980,25 @@ func TestRenderConfig(t *testing.T) {
 								TenantPubKey:         "g35TxFqwMx95vCk63fTxGTHb6ei4W24qg5t2x6xD3cT",
 								TenantTopologyColors: "color 1",
 							},
+							{
+								// Tenant on high-bandwidth only → color 2
+								Id:                   501,
+								UnderlaySrcIP:        net.IP{1, 1, 1, 1},
+								UnderlayDstIP:        net.IP{3, 3, 3, 3},
+								OverlaySrcIP:         net.IP{169, 254, 1, 0},
+								OverlayDstIP:         net.IP{169, 254, 1, 1},
+								DzIp:                 net.IP{100, 0, 0, 1},
+								Allocated:            true,
+								VrfId:                2,
+								TenantPubKey:         "HWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2SFpos",
+								TenantTopologyColors: "color 2",
+							},
 						},
 					},
 				}
 			}(),
-			Want: "fixtures/flex_algo_multi_topology.tunnel.tmpl",
-		},
+		Want: "fixtures/flex_algo_multi_topology.tunnel.tmpl",
+	},
 		{
 			Name:        "render_flex_algo_unicast_drained",
 			Description: "render config with flex-algo enabled: one healthy WAN link and one draining WAN link — draining link appends UNICAST-DRAINED to admin-group",

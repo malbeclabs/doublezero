@@ -1,0 +1,8 @@
+FROM golang:1.25
+
+RUN apt-get update -qq && \
+    apt-get install -y libpcap-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4

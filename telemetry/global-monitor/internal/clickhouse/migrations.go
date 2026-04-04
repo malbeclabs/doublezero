@@ -39,11 +39,11 @@ type gooseLogger struct {
 	log *slog.Logger
 }
 
-func (g *gooseLogger) Fatalf(format string, v ...interface{}) {
+func (g *gooseLogger) Fatalf(format string, v ...any) {
 	g.log.Error(fmt.Sprintf(format, v...))
 }
 
-func (g *gooseLogger) Printf(format string, v ...interface{}) {
+func (g *gooseLogger) Printf(format string, v ...any) {
 	g.log.Info(fmt.Sprintf(format, v...))
 }
 

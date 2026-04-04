@@ -239,6 +239,7 @@ func run() error {
 	chEnabled := chAddr != "" && chDatabase != ""
 	var clickHouseWriter *chwriter.Writer
 	if chEnabled {
+		log.Info("clickhouse enabled", "addr", chAddr, "database", chDatabase, "secure", chSecure, "run_migrations", chRunMigrations)
 		if chRunMigrations {
 			if err := chwriter.RunMigrations(chAddr, chDatabase, chUsername, chPassword, chSecure, log); err != nil {
 				log.Error("failed to run clickhouse migrations", "error", err)
@@ -254,6 +255,9 @@ func run() error {
 		}
 		defer w.Close()
 		clickHouseWriter = w
+		log.Info("clickhouse writer created")
+	} else {
+		log.Info("clickhouse disabled (CLICKHOUSE_ADDR and CLICKHOUSE_DATABASE required)")
 	}
 
 	nlr := netlink.NewNetlinker()

@@ -10,7 +10,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	geolocation "github.com/malbeclabs/doublezero/sdk/geolocation/go"
-	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 )
 
 // parentDiscoveryFullRefreshEvery controls how often a full device resolution

@@ -11,7 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 )
 
 func TestSingleSocketPing_Localhost(t *testing.T) {

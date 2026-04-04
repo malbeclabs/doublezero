@@ -19,7 +19,7 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	twozoracle "github.com/malbeclabs/doublezero/controlplane/monitor/internal/2z-oracle"
 	"github.com/malbeclabs/doublezero/controlplane/monitor/internal/worker"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )

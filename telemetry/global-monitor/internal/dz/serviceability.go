@@ -7,7 +7,7 @@ import (
 	"net"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 )
 
 type UserType string
@@ -63,7 +63,7 @@ func mapUserType(ut serviceability.UserUserType) UserType {
 	switch ut {
 	case serviceability.UserTypeIBRL:
 		return UserTypeIBRL
-	case serviceability.UserTypeIBRLWithAllocatedIP:
+	case serviceability.UserTypeIBRLWithAllocIP:
 		return UserTypeIBRLWithAllocatedIP
 	case serviceability.UserTypeEdgeFiltering:
 		return UserTypeEdgeFiltering

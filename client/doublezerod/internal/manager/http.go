@@ -11,7 +11,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 )
 
 // V2ServiceStatus wraps a StatusResponse with enriched fields.

@@ -93,13 +93,14 @@ func (d DeviceDeviceType) String() string {
 type DeviceStatus uint8
 
 const (
-	DeviceStatusPending            DeviceStatus = 0
-	DeviceStatusActivated          DeviceStatus = 1
-	DeviceStatusDeleting           DeviceStatus = 2
-	DeviceStatusRejected           DeviceStatus = 3
-	DeviceStatusDrained            DeviceStatus = 4
-	DeviceStatusDeviceProvisioning DeviceStatus = 5
-	DeviceStatusLinkProvisioning   DeviceStatus = 6
+	DeviceStatusPending   DeviceStatus = 0
+	DeviceStatusActivated DeviceStatus = 1
+	// DeviceStatusSuspended was 2 but is no longer used
+	DeviceStatusDeleting           DeviceStatus = 3
+	DeviceStatusRejected           DeviceStatus = 4
+	DeviceStatusDrained            DeviceStatus = 5
+	DeviceStatusDeviceProvisioning DeviceStatus = 6
+	DeviceStatusLinkProvisioning   DeviceStatus = 7
 )
 
 func (d DeviceStatus) String() string {
@@ -125,6 +126,10 @@ func (d DeviceStatus) String() string {
 
 func (d DeviceStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.String())
+}
+
+func (d DeviceStatus) IsDrained() bool {
+	return d == DeviceStatusDrained
 }
 
 type DeviceHealth uint8
@@ -374,50 +379,50 @@ type Location struct {
 
 type Exchange struct {
 	AccountType    AccountType
-	Owner          [32]byte
-	Index          Uint128
-	BumpSeed       uint8
-	Lat            float64
-	Lng            float64
-	BgpCommunity   uint16
-	Status         ExchangeStatus
-	Code           string
-	Name           string
+	Owner          [32]byte       `influx:"tag,owner,pubkey"`
+	Index          Uint128        `influx:"-"`
+	BumpSeed       uint8          `influx:"-"`
+	Lat            float64        `influx:"field,lat"`
+	Lng            float64        `influx:"field,lng"`
+	BgpCommunity   uint16         `influx:"field,bgp_community"`
+	Status         ExchangeStatus `influx:"tag,status"`
+	Code           string         `influx:"tag,code"`
+	Name           string         `influx:"tag,name"`
 	ReferenceCount uint32
 	Device1PK      [32]byte
 	Device2PK      [32]byte
-	PubKey         [32]byte
+	PubKey         [32]byte `influx:"tag,pubkey,pubkey"`
 }
 
 type Device struct {
 	AccountType               AccountType
-	Owner                     [32]byte
-	Index                     Uint128
-	BumpSeed                  uint8
-	LocationPubKey            [32]byte
-	ExchangePubKey            [32]byte
-	DeviceType                DeviceDeviceType
-	PublicIp                  [4]uint8
-	Status                    DeviceStatus
-	Code                      string
-	DzPrefixes                [][5]uint8
-	MetricsPublisherPubKey    [32]byte
-	ContributorPubKey         [32]byte
-	MgmtVrf                   string
-	Interfaces                []Interface
-	ReferenceCount            uint32
-	UsersCount                uint16
-	MaxUsers                  uint16
-	DeviceHealth              DeviceHealth
-	DeviceDesiredStatus       DeviceDesiredStatus
-	UnicastUsersCount         uint16
-	MulticastSubscribersCount uint16
-	MaxUnicastUsers           uint16
-	MaxMulticastSubscribers   uint16
-	ReservedSeats             uint16
-	MulticastPublishersCount  uint16
-	MaxMulticastPublishers    uint16
-	PubKey                    [32]byte
+	Owner                     [32]byte            `influx:"tag,owner,pubkey"`
+	Index                     Uint128             `influx:"-"`
+	BumpSeed                  uint8               `influx:"-"`
+	LocationPubKey            [32]byte            `influx:"tag,location_pubkey,pubkey"`
+	ExchangePubKey            [32]byte            `influx:"tag,exchange_pubkey,pubkey"`
+	DeviceType                DeviceDeviceType    `influx:"tag,device_type"`
+	PublicIp                  [4]uint8            `influx:"tag,public_ip,ip"`
+	Status                    DeviceStatus        `influx:"tag,status"`
+	Code                      string              `influx:"tag,code"`
+	DzPrefixes                [][5]uint8          `influx:"field,dz_prefixes,cidr"`
+	MetricsPublisherPubKey    [32]byte            `influx:"tag,metrics_publisher_pubkey,pubkey"`
+	ContributorPubKey         [32]byte            `influx:"tag,contributor_pubkey,pubkey"`
+	MgmtVrf                   string              `influx:"field,mgmt_vrf"`
+	Interfaces                []Interface         `influx:"-"`
+	ReferenceCount            uint32              `influx:"field,reference_count"`
+	UsersCount                uint16              `influx:"field,users_count"`
+	MaxUsers                  uint16              `influx:"field,max_users"`
+	DeviceHealth              DeviceHealth        `influx:"field,device_health"`
+	DeviceDesiredStatus       DeviceDesiredStatus `influx:"tag,device_desired_status"`
+	UnicastUsersCount         uint16              `influx:"field,unicast_users_count"`
+	MulticastSubscribersCount uint16              `influx:"field,multicast_subscribers_count"`
+	MaxUnicastUsers           uint16              `influx:"field,max_unicast_users"`
+	MaxMulticastSubscribers   uint16              `influx:"field,max_multicast_subscribers"`
+	ReservedSeats             uint16              `influx:"field,reserved_seats"`
+	MulticastPublishersCount  uint16              `influx:"field,multicast_publishers_count"`
+	MaxMulticastPublishers    uint16              `influx:"field,max_multicast_publishers"`
+	PubKey                    [32]byte            `influx:"tag,pubkey,pubkey"`
 }
 
 func (d Device) MarshalJSON() ([]byte, error) {
@@ -485,8 +490,9 @@ func (l LinkLinkType) MarshalJSON() ([]byte, error) {
 type LinkStatus uint8
 
 const (
-	LinkStatusPending      LinkStatus = 0
-	LinkStatusActivated    LinkStatus = 1
+	LinkStatusPending   LinkStatus = 0
+	LinkStatusActivated LinkStatus = 1
+	// LinkStatusSuspended was 2 but is no longer used
 	LinkStatusDeleting     LinkStatus = 3
 	LinkStatusRejected     LinkStatus = 4
 	LinkStatusRequested    LinkStatus = 5
@@ -520,6 +526,10 @@ func (l LinkStatus) String() string {
 
 func (l LinkStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(l.String())
+}
+
+func (l LinkStatus) IsHardDrained() bool {
+	return l == LinkStatusHardDrained
 }
 
 type LinkHealth uint8
@@ -580,27 +590,27 @@ func (l LinkDesiredStatus) MarshalJSON() ([]byte, error) {
 
 type Link struct {
 	AccountType       AccountType
-	Owner             [32]byte
-	Index             Uint128
-	BumpSeed          uint8
-	SideAPubKey       [32]byte
-	SideZPubKey       [32]byte
-	LinkType          LinkLinkType
-	Bandwidth         uint64
-	Mtu               uint32
-	DelayNs           uint64
-	JitterNs          uint64
-	TunnelId          uint16
-	TunnelNet         [5]uint8
-	Status            LinkStatus
-	Code              string
-	ContributorPubKey [32]byte
-	SideAIfaceName    string
-	SideZIfaceName    string
-	DelayOverrideNs   uint64
-	LinkHealth        LinkHealth
-	LinkDesiredStatus LinkDesiredStatus
-	PubKey            [32]byte
+	Owner             [32]byte          `influx:"tag,owner,pubkey"`
+	Index             Uint128           `influx:"-"`
+	BumpSeed          uint8             `influx:"-"`
+	SideAPubKey       [32]byte          `influx:"tag,side_a_pubkey,pubkey"`
+	SideZPubKey       [32]byte          `influx:"tag,side_z_pubkey,pubkey"`
+	LinkType          LinkLinkType      `influx:"tag,link_type"`
+	Bandwidth         uint64            `influx:"field,bandwidth"`
+	Mtu               uint32            `influx:"field,mtu"`
+	DelayNs           uint64            `influx:"field,delay_ns"`
+	JitterNs          uint64            `influx:"field,jitter_ns"`
+	TunnelId          uint16            `influx:"tag,tunnel_id"`
+	TunnelNet         [5]uint8          `influx:"tag,tunnel_net,cidr"`
+	Status            LinkStatus        `influx:"tag,status"`
+	Code              string            `influx:"tag,code"`
+	ContributorPubKey [32]byte          `influx:"tag,contributor_pubkey,pubkey"`
+	SideAIfaceName    string            `influx:"tag,side_a_iface_name"`
+	SideZIfaceName    string            `influx:"tag,side_z_iface_name"`
+	DelayOverrideNs   uint64            `influx:"field,delay_override_ns"`
+	LinkHealth        LinkHealth        `influx:"field,link_health"`
+	LinkDesiredStatus LinkDesiredStatus `influx:"tag,link_desired_status"`
+	PubKey            [32]byte          `influx:"tag,pubkey,pubkey"`
 }
 
 type ContributorStatus uint8
@@ -633,14 +643,14 @@ func (s ContributorStatus) MarshalJSON() ([]byte, error) {
 
 type Contributor struct {
 	AccountType    AccountType
-	Owner          [32]byte
-	Index          Uint128
-	BumpSeed       uint8
-	Status         ContributorStatus
-	Code           string
-	ReferenceCount uint32
+	Owner          [32]byte          `influx:"tag,owner,pubkey"`
+	Index          Uint128           `influx:"-"`
+	BumpSeed       uint8             `influx:"-"`
+	Status         ContributorStatus `influx:"tag,status"`
+	Code           string            `influx:"tag,code"`
+	ReferenceCount uint32            `influx:"field,reference_count"`
 	OpsManagerPK   [32]byte
-	PubKey         [32]byte
+	PubKey         [32]byte `influx:"tag,pubkey,pubkey"`
 }
 
 type UserUserType uint8
@@ -754,6 +764,7 @@ type User struct {
 	Publishers      [][32]byte
 	Subscribers     [][32]byte
 	ValidatorPubKey [32]byte
+	TunnelEndpoint  [4]uint8
 	PubKey          [32]byte
 }
 

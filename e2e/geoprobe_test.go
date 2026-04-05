@@ -615,6 +615,201 @@ func runTargetSender(t *testing.T, containerID, agentIP, agentPubkey, keypairPat
 	})
 }
 
+// TestE2E_GeoprobeIcmpTargets verifies end-to-end ICMP outbound offset delivery.
+// The geoprobe agent discovers an outbound-icmp target from a GeolocationUser account,
+// measures it via ICMP echo, and delivers a composite LocationOffset.
+func TestE2E_GeoprobeIcmpTargets(t *testing.T) {
+	t.Parallel()
+
+	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
+	log := newTestLoggerForTest(t)
+
+	currentDir, err := os.Getwd()
+	require.NoError(t, err)
+	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
+
+	minBalanceSOL := 3.0
+	topUpSOL := 5.0
+	dn, err := devnet.New(devnet.DevnetSpec{
+		DeployID:  deployID,
+		DeployDir: t.TempDir(),
+		CYOANetwork: devnet.CYOANetworkSpec{
+			CIDRPrefix: subnetCIDRPrefix,
+		},
+		DeviceTunnelNet: "192.168.99.0/24",
+		Manager: devnet.ManagerSpec{
+			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
+		},
+		Funder: devnet.FunderSpec{
+			Verbose:       true,
+			MinBalanceSOL: minBalanceSOL,
+			TopUpSOL:      topUpSOL,
+			Interval:      3 * time.Second,
+		},
+	}, log, dockerClient, subnetAllocator)
+	require.NoError(t, err)
+
+	log.Debug("==> Starting containernet")
+	err = dn.Start(t.Context(), nil)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		var buf strings.Builder
+		fmt.Fprintf(&buf, "\n=== GEOPROBE ICMP DIAGNOSTIC DUMP (deploy=%s) ===\n", deployID)
+		for code, device := range dn.Devices {
+			for _, cmd := range []struct {
+				label   string
+				command []string
+			}{
+				{"doublezero-telemetry log (last 200 lines)", []string{"tail", "-200", "/var/log/agents-latest/doublezero-telemetry"}},
+			} {
+				output, err := device.Exec(ctx, cmd.command)
+				if err != nil {
+					fmt.Fprintf(&buf, "\n--- Device %s: %s (ERROR: %v)\n", code, cmd.label, err)
+				} else {
+					fmt.Fprintf(&buf, "\n--- Device %s: %s\n%s", code, cmd.label, string(output))
+				}
+			}
+		}
+		fmt.Fprintf(&buf, "\n=== GEOPROBE ICMP DIAGNOSTIC DUMP END ===\n")
+		fmt.Fprint(os.Stderr, buf.String())
+	})
+
+	linkNetwork := devnet.NewMiscNetwork(dn, log, "ams-dz01:ams-dz02")
+	_, err = linkNetwork.CreateIfNotExists(t.Context())
+	require.NoError(t, err)
+
+	// Add 2 devices in parallel.
+	var dz1TelemetryKeypairPK solana.PublicKey
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		telemetryKeypair := solana.NewWallet().PrivateKey
+		telemetryKeypairJSON, _ := json.Marshal(telemetryKeypair[:])
+		telemetryKeypairPath := t.TempDir() + "/ams-dz01-telemetry-keypair.json"
+		require.NoError(t, os.WriteFile(telemetryKeypairPath, telemetryKeypairJSON, 0600))
+		dz1TelemetryKeypairPK = telemetryKeypair.PublicKey()
+
+		_, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
+			Code:                         "ams-dz01",
+			Location:                     "ams",
+			Exchange:                     "xams",
+			MetricsPublisherPK:           dz1TelemetryKeypairPK.String(),
+			CYOANetworkIPHostID:          8,
+			CYOANetworkAllocatablePrefix: 29,
+			Telemetry: devnet.DeviceTelemetrySpec{
+				Enabled:              true,
+				KeypairPath:          telemetryKeypairPath,
+				TWAMPListenPort:      862,
+				ProbeInterval:        2 * time.Second,
+				SubmissionInterval:   5 * time.Second,
+				PeersRefreshInterval: 5 * time.Second,
+				Verbose:              true,
+			},
+			AdditionalNetworks: []string{linkNetwork.Name},
+			Interfaces: map[string]string{
+				"Ethernet2": "physical",
+			},
+		})
+		require.NoError(t, err)
+		requireEventuallyFunded(t, log, dn.Ledger.GetRPCClient(), dz1TelemetryKeypairPK, minBalanceSOL, "dz1 telemetry publisher")
+	}()
+	go func() {
+		defer wg.Done()
+		telemetryKeypair := solana.NewWallet().PrivateKey
+		telemetryKeypairJSON, _ := json.Marshal(telemetryKeypair[:])
+		telemetryKeypairPath := t.TempDir() + "/ams-dz02-telemetry-keypair.json"
+		require.NoError(t, os.WriteFile(telemetryKeypairPath, telemetryKeypairJSON, 0600))
+
+		_, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
+			Code:                         "ams-dz02",
+			Location:                     "ams",
+			Exchange:                     "xams",
+			MetricsPublisherPK:           telemetryKeypair.PublicKey().String(),
+			CYOANetworkIPHostID:          16,
+			CYOANetworkAllocatablePrefix: 29,
+			Telemetry: devnet.DeviceTelemetrySpec{
+				Enabled:              true,
+				KeypairPath:          telemetryKeypairPath,
+				TWAMPListenPort:      862,
+				ProbeInterval:        2 * time.Second,
+				SubmissionInterval:   5 * time.Second,
+				PeersRefreshInterval: 5 * time.Second,
+				Verbose:              true,
+			},
+			AdditionalNetworks: []string{linkNetwork.Name},
+			Interfaces: map[string]string{
+				"Ethernet2": "physical",
+			},
+		})
+		require.NoError(t, err)
+	}()
+	wg.Wait()
+
+	dz1 := dn.Devices["ams-dz01"]
+	require.NotNil(t, dz1)
+
+	geoprobeHostID := uint32(32)
+	geoprobeIP, err := netutil.DeriveIPFromCIDR(dn.CYOANetwork.SubnetCIDR, geoprobeHostID)
+	require.NoError(t, err)
+	geoprobeIPStr := geoprobeIP.To4().String()
+
+	exchangePK := getExchangePK(t, dn, "xams")
+
+	dz1DevicePK := dz1.ID
+	require.NotEmpty(t, dz1DevicePK)
+
+	log.Debug("==> Creating geoprobe onchain")
+	geoprobeAccountPK := createGeoprobeOnchain(t, dn, "geoprobe1", exchangePK, geoprobeIPStr, dz1TelemetryKeypairPK.String())
+
+	log.Debug("==> Adding dz1 as geoprobe parent")
+	addGeoprobeParent(t, dn, "geoprobe1", dz1DevicePK)
+
+	targetHostID := uint32(40)
+	targetIP, err := netutil.DeriveIPFromCIDR(dn.CYOANetwork.SubnetCIDR, targetHostID)
+	require.NoError(t, err)
+	targetIPStr := targetIP.To4().String()
+
+	// Start the target container (receives offsets via UDP; TWAMP reflector is unused).
+	log.Debug("==> Starting geoprobe target container")
+	targetContainerID := startGeoprobeTarget(t, log, dn, targetIPStr)
+
+	// Create a GeolocationUser with a single outbound-icmp target.
+	tokenAccount := solana.NewWallet().PublicKey().String()
+	log.Debug("==> Creating GeolocationUser onchain")
+	createGeolocationUser(t, dn, "geo-user-01", tokenAccount)
+	updateGeolocationUserPayment(t, dn, "geo-user-01", "paid")
+
+	log.Debug("==> Adding outbound-icmp target")
+	addGeolocationOutboundIcmpTarget(t, dn, "geo-user-01", targetIPStr, 8923, "geoprobe1")
+
+	// Start agent with CAP_NET_RAW for ICMP probing.
+	log.Debug("==> Starting geoprobe agent (ICMP target discovery)")
+	_ = startGeoprobeAgent(t, log, dn, geoprobeIPStr, geoprobeAccountPK,
+		dn.Manager.GeolocationProgramID, dn.Manager.ServiceabilityProgramID,
+		&geoprobeAgentOpts{
+			probeInterval: 5 * time.Second,
+			capNetRaw:     true,
+		})
+
+	// --- Outbound flow (ICMP) ---
+	// Wait for dz1's telemetry agent to discover the geoprobe and send offsets.
+	log.Debug("==> Waiting for geoprobe discovery and successful measurement")
+	waitForGeoprobeSuccess(t, dz1, geoprobeIPStr, 180*time.Second)
+
+	// Wait for the agent to forward a composite offset to the target via ICMP measurement.
+	log.Debug("==> Waiting for geoprobe target to receive composite offset from ICMP flow")
+	waitForTargetOffsetReceived(t, targetContainerID, 120*time.Second)
+}
+
 // createGeolocationUser creates a GeolocationUser account onchain.
 func createGeolocationUser(t *testing.T, dn *devnet.Devnet, code, tokenAccount string) {
 	t.Helper()
@@ -649,6 +844,20 @@ func addGeolocationOutboundTarget(t *testing.T, dn *devnet.Devnet, userCode, tar
 		"--probe", probeCode,
 	})
 	require.NoError(t, err, "user add-target outbound failed: %s", string(output))
+}
+
+// addGeolocationOutboundIcmpTarget adds an outbound-icmp target to a GeolocationUser.
+func addGeolocationOutboundIcmpTarget(t *testing.T, dn *devnet.Devnet, userCode, targetIP string, targetPort int, probeCode string) {
+	t.Helper()
+	output, err := dn.Manager.Exec(t.Context(), []string{
+		"doublezero-geolocation", "user", "add-target",
+		"--user", userCode,
+		"--type", "outbound-icmp",
+		"--target-ip", targetIP,
+		"--target-port", fmt.Sprintf("%d", targetPort),
+		"--probe", probeCode,
+	})
+	require.NoError(t, err, "user add-target outbound-icmp failed: %s", string(output))
 }
 
 // addGeolocationInboundTarget adds an inbound target to a GeolocationUser.

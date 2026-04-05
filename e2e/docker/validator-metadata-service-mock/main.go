@@ -117,14 +117,14 @@ func (s *server) handleSolanaRPC(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleGetVoteAccounts(w http.ResponseWriter, id int) {
 	type VoteAccount struct {
-		VotePubkey       string      `json:"votePubkey"`
-		NodePubkey       string      `json:"nodePubkey"`
-		ActivatedStake   int64       `json:"activatedStake"`
-		Commission       int         `json:"commission"`
-		EpochVoteAccount bool        `json:"epochVoteAccount"`
-		LastVote         int         `json:"lastVote"`
-		RootSlot         int         `json:"rootSlot"`
-		EpochCredits     [][]int     `json:"epochCredits"`
+		VotePubkey       string  `json:"votePubkey"`
+		NodePubkey       string  `json:"nodePubkey"`
+		ActivatedStake   int64   `json:"activatedStake"`
+		Commission       int     `json:"commission"`
+		EpochVoteAccount bool    `json:"epochVoteAccount"`
+		LastVote         int     `json:"lastVote"`
+		RootSlot         int     `json:"rootSlot"`
+		EpochCredits     [][]int `json:"epochCredits"`
 	}
 
 	var current []VoteAccount

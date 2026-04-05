@@ -45,6 +45,10 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	// Shared state across subtests.
 	var device *qa.Device
 	var amount string
+	var epochPrice uint64
+	var parsedAmount uint64
+	var effectivePrice uint64
+	var balanceBeforePay uint64
 	seatPaid := false
 
 	t.Cleanup(func() {
@@ -116,8 +120,19 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		}
 		require.NotNil(t, price, "no price found for device %s", device.Code)
 		require.NotZero(t, price.EpochPrice, "epoch price is zero for device %s", device.Code)
-		amount = strconv.FormatUint(price.EpochPrice, 10)
+		epochPrice = price.EpochPrice
+		amount = strconv.FormatUint(epochPrice, 10)
+		parsedAmount = epochPrice * 1_000_000 // convert dollars to USDC raw units (6 decimals)
 		log.Info("Found epoch price", "device", device.Code, "amount", amount)
+	}) {
+		return
+	}
+
+	if !t.Run("record_balance_before_pay", func(t *testing.T) {
+		var err error
+		balanceBeforePay, err = client.GetUSDCBalance(ctx)
+		require.NoError(t, err, "failed to get USDC balance before pay")
+		log.Info("USDC balance before pay", "balance", balanceBeforePay)
 	}) {
 		return
 	}
@@ -130,6 +145,25 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		return
 	}
 
+	if !t.Run("validate_balance_after_pay", func(t *testing.T) {
+		balanceAfterPay, err := client.GetUSDCBalance(ctx)
+		require.NoError(t, err, "failed to get USDC balance after pay")
+		debit := balanceBeforePay - balanceAfterPay
+		log.Info("USDC balance after pay", "balance", balanceAfterPay, "debit", debit, "expected_debit", parsedAmount)
+		require.Equal(t, parsedAmount, debit, "USDC balance should decrease by the paid amount")
+	}) {
+		return
+	}
+
+	if !t.Run("query_effective_seat_price", func(t *testing.T) {
+		var err error
+		effectivePrice, err = client.GetEffectiveSeatPrice(ctx, device.PubKey, epochPrice)
+		require.NoError(t, err, "failed to get effective seat price")
+		log.Info("Effective seat price", "effective_usdc", effectivePrice, "epoch_usdc", parsedAmount)
+	}) {
+		return
+	}
+
 	if !t.Run("validate_tunnel_up", func(t *testing.T) {
 		err := client.WaitForStatusUp(ctx)
 		require.NoError(t, err, "tunnel did not come up after seat payment")
@@ -137,14 +171,16 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		return
 	}
 
-	t.Run("validate_device_assignment", func(t *testing.T) {
+	if !t.Run("validate_device_assignment", func(t *testing.T) {
 		statuses, err := client.GetUserStatuses(ctx)
 		require.NoError(t, err, "failed to get user statuses")
 		mcastStatus := qa.FindMulticastStatus(statuses)
 		require.NotNil(t, mcastStatus, "no multicast status found after seat payment")
 		require.Equal(t, device.Code, mcastStatus.CurrentDevice, "tunnel connected to wrong device")
 		log.Info("Tunnel up and device matches", "device", mcastStatus.CurrentDevice, "dzIP", mcastStatus.DoubleZeroIp)
-	})
+	}) {
+		return
+	}
 
 	if !t.Run("withdraw_seat", func(t *testing.T) {
 		err := client.FeedSeatWithdraw(ctx, device.PubKey)
@@ -154,8 +190,24 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		return
 	}
 
-	t.Run("validate_tunnel_down", func(t *testing.T) {
+	if !t.Run("validate_tunnel_down", func(t *testing.T) {
 		err := client.WaitForStatusDisconnected(ctx)
 		require.NoError(t, err, "tunnel did not come down after seat withdrawal")
+	}) {
+		return
+	}
+
+	t.Run("validate_balance_after_withdraw", func(t *testing.T) {
+		balanceAfterWithdraw, err := client.GetUSDCBalance(ctx)
+		require.NoError(t, err, "failed to get USDC balance after withdraw")
+		expectedBalance := balanceBeforePay - effectivePrice
+		log.Info("USDC balance after withdraw",
+			"balance", balanceAfterWithdraw,
+			"expected", expectedBalance,
+			"before_pay", balanceBeforePay,
+			"effective_price", effectivePrice,
+		)
+		require.Equal(t, expectedBalance, balanceAfterWithdraw,
+			"USDC balance should equal before_pay minus the effective seat price")
 	})
 }

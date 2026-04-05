@@ -41,6 +41,7 @@ const (
 	QAAgentService_FeedSeatPrice_FullMethodName         = "/qa.QAAgentService/FeedSeatPrice"
 	QAAgentService_FeedSeatPay_FullMethodName           = "/qa.QAAgentService/FeedSeatPay"
 	QAAgentService_FeedSeatWithdraw_FullMethodName      = "/qa.QAAgentService/FeedSeatWithdraw"
+	QAAgentService_GetWalletPubkey_FullMethodName       = "/qa.QAAgentService/GetWalletPubkey"
 )
 
 // QAAgentServiceClient is the client API for QAAgentService service.
@@ -68,6 +69,7 @@ type QAAgentServiceClient interface {
 	FeedSeatPrice(ctx context.Context, in *FeedSeatPriceRequest, opts ...grpc.CallOption) (*FeedSeatPriceResponse, error)
 	FeedSeatPay(ctx context.Context, in *FeedSeatPayRequest, opts ...grpc.CallOption) (*Result, error)
 	FeedSeatWithdraw(ctx context.Context, in *FeedSeatWithdrawRequest, opts ...grpc.CallOption) (*Result, error)
+	GetWalletPubkey(ctx context.Context, in *GetWalletPubkeyRequest, opts ...grpc.CallOption) (*GetWalletPubkeyResponse, error)
 }
 
 type qAAgentServiceClient struct {
@@ -288,6 +290,16 @@ func (c *qAAgentServiceClient) FeedSeatWithdraw(ctx context.Context, in *FeedSea
 	return out, nil
 }
 
+func (c *qAAgentServiceClient) GetWalletPubkey(ctx context.Context, in *GetWalletPubkeyRequest, opts ...grpc.CallOption) (*GetWalletPubkeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetWalletPubkeyResponse)
+	err := c.cc.Invoke(ctx, QAAgentService_GetWalletPubkey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QAAgentServiceServer is the server API for QAAgentService service.
 // All implementations must embed UnimplementedQAAgentServiceServer
 // for forward compatibility.
@@ -313,6 +325,7 @@ type QAAgentServiceServer interface {
 	FeedSeatPrice(context.Context, *FeedSeatPriceRequest) (*FeedSeatPriceResponse, error)
 	FeedSeatPay(context.Context, *FeedSeatPayRequest) (*Result, error)
 	FeedSeatWithdraw(context.Context, *FeedSeatWithdrawRequest) (*Result, error)
+	GetWalletPubkey(context.Context, *GetWalletPubkeyRequest) (*GetWalletPubkeyResponse, error)
 	mustEmbedUnimplementedQAAgentServiceServer()
 }
 
@@ -385,6 +398,9 @@ func (UnimplementedQAAgentServiceServer) FeedSeatPay(context.Context, *FeedSeatP
 }
 func (UnimplementedQAAgentServiceServer) FeedSeatWithdraw(context.Context, *FeedSeatWithdrawRequest) (*Result, error) {
 	return nil, status.Error(codes.Unimplemented, "method FeedSeatWithdraw not implemented")
+}
+func (UnimplementedQAAgentServiceServer) GetWalletPubkey(context.Context, *GetWalletPubkeyRequest) (*GetWalletPubkeyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetWalletPubkey not implemented")
 }
 func (UnimplementedQAAgentServiceServer) mustEmbedUnimplementedQAAgentServiceServer() {}
 func (UnimplementedQAAgentServiceServer) testEmbeddedByValue()                        {}
@@ -785,6 +801,24 @@ func _QAAgentService_FeedSeatWithdraw_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _QAAgentService_GetWalletPubkey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWalletPubkeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QAAgentServiceServer).GetWalletPubkey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QAAgentService_GetWalletPubkey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QAAgentServiceServer).GetWalletPubkey(ctx, req.(*GetWalletPubkeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // QAAgentService_ServiceDesc is the grpc.ServiceDesc for QAAgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -875,6 +909,10 @@ var QAAgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FeedSeatWithdraw",
 			Handler:    _QAAgentService_FeedSeatWithdraw_Handler,
+		},
+		{
+			MethodName: "GetWalletPubkey",
+			Handler:    _QAAgentService_GetWalletPubkey_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

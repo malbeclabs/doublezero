@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
+	"github.com/mr-tron/base58"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
 	probing "github.com/prometheus-community/pro-bing"
 	"golang.org/x/net/ipv4"
@@ -501,6 +502,33 @@ func (q *QAAgent) FeedSeatWithdraw(ctx context.Context, req *pb.FeedSeatWithdraw
 	}
 	q.log.Debug("Seat withdrawal successful", "device", req.GetDevicePubkey(), "output", res.GetOutput())
 	return res, nil
+}
+
+// GetWalletPubkey reads a Solana keypair JSON file and returns the base58-encoded
+// public key. The keypair format is a JSON array of 64 bytes: the first 32 are the
+// private key, the last 32 are the public key.
+func (q *QAAgent) GetWalletPubkey(_ context.Context, req *pb.GetWalletPubkeyRequest) (*pb.GetWalletPubkeyResponse, error) {
+	keypairPath := os.ExpandEnv(req.GetKeypair())
+	if keypairPath == "" {
+		return nil, fmt.Errorf("keypair path is required")
+	}
+
+	data, err := os.ReadFile(keypairPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read keypair file %s: %w", keypairPath, err)
+	}
+
+	var keyBytes []byte
+	if err := json.Unmarshal(data, &keyBytes); err != nil {
+		return nil, fmt.Errorf("failed to parse keypair JSON from %s: %w", keypairPath, err)
+	}
+	if len(keyBytes) != 64 {
+		return nil, fmt.Errorf("invalid keypair length %d (expected 64) in %s", len(keyBytes), keypairPath)
+	}
+
+	pubkey := base58.Encode(keyBytes[32:])
+	q.log.Debug("Wallet pubkey retrieved", "keypair", keypairPath, "pubkey", pubkey)
+	return &pb.GetWalletPubkeyResponse{Pubkey: pubkey}, nil
 }
 
 type StatusResponse struct {

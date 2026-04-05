@@ -16,8 +16,8 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
-	"github.com/mr-tron/base58"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
+	"github.com/mr-tron/base58"
 	probing "github.com/prometheus-community/pro-bing"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"

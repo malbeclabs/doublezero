@@ -13,6 +13,7 @@ Wants=network-online.target
 Type=simple
 ExecStart=/usr/bin/doublezero-geoprobe-agent
 Restart=on-failure
+AmbientCapabilities=CAP_NET_RAW
 
 [Install]
 WantedBy=multi-user.target

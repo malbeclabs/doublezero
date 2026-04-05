@@ -195,6 +195,126 @@ func TestParseProbeAddresses(t *testing.T) {
 	}
 }
 
+func TestProbeAddress_ValidateICMP(t *testing.T) {
+	tests := []struct {
+		name    string
+		addr    ProbeAddress
+		wantErr string
+	}{
+		{
+			name:    "Valid ICMP address",
+			addr:    ProbeAddress{Host: "8.8.8.8", Port: 9000, TWAMPPort: 0},
+			wantErr: "",
+		},
+		{
+			name:    "Empty host",
+			addr:    ProbeAddress{Host: "", Port: 9000, TWAMPPort: 0},
+			wantErr: "host cannot be empty",
+		},
+		{
+			name:    "Invalid host",
+			addr:    ProbeAddress{Host: "notanip", Port: 9000, TWAMPPort: 0},
+			wantErr: "host must be a valid IP address",
+		},
+		{
+			name:    "Zero port",
+			addr:    ProbeAddress{Host: "8.8.8.8", Port: 0, TWAMPPort: 0},
+			wantErr: "port cannot be zero",
+		},
+		{
+			name:    "TWAMPPort ignored",
+			addr:    ProbeAddress{Host: "8.8.8.8", Port: 9000, TWAMPPort: 8925},
+			wantErr: "",
+		},
+		{
+			name:    "IPv6 rejected",
+			addr:    ProbeAddress{Host: "::1", Port: 9000, TWAMPPort: 0},
+			wantErr: "must be an IPv4 address",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.addr.ValidateICMP()
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParseICMPProbeAddresses(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    []ProbeAddress
+		wantErr string
+	}{
+		{
+			name:  "Empty string",
+			input: "",
+			want:  nil,
+		},
+		{
+			name:  "Single host:port",
+			input: "8.8.8.8:9000",
+			want:  []ProbeAddress{{Host: "8.8.8.8", Port: 9000, TWAMPPort: 0}},
+		},
+		{
+			name:  "Multiple entries",
+			input: "8.8.8.8:9000,1.1.1.1:9001",
+			want: []ProbeAddress{
+				{Host: "8.8.8.8", Port: 9000, TWAMPPort: 0},
+				{Host: "1.1.1.1", Port: 9001, TWAMPPort: 0},
+			},
+		},
+		{
+			name:  "Deduplicate exact",
+			input: "8.8.8.8:9000,8.8.8.8:9000",
+			want:  []ProbeAddress{{Host: "8.8.8.8", Port: 9000, TWAMPPort: 0}},
+		},
+		{
+			name:  "Deduplicate same host different port",
+			input: "8.8.8.8:9000,8.8.8.8:9001",
+			want:  []ProbeAddress{{Host: "8.8.8.8", Port: 9000, TWAMPPort: 0}},
+		},
+		{
+			name:    "Missing port",
+			input:   "8.8.8.8",
+			wantErr: "expected host:offset_port",
+		},
+		{
+			name:    "Three fields rejected",
+			input:   "8.8.8.8:9000:8925",
+			wantErr: "expected host:offset_port",
+		},
+		{
+			name:    "Invalid IP",
+			input:   "notanip:9000",
+			wantErr: "expected host:offset_port",
+		},
+		{
+			name:    "Zero port",
+			input:   "8.8.8.8:0",
+			wantErr: "invalid port 0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseICMPProbeAddresses(tt.input)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestParseProbeAddresses_Values(t *testing.T) {
 	t.Run("host-only format uses default ports", func(t *testing.T) {
 		addrs, err := ParseProbeAddresses("10.0.0.1")

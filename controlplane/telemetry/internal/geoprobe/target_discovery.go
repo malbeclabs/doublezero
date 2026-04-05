@@ -27,6 +27,11 @@ type InboundKeyUpdate struct {
 	Keys [][32]byte
 }
 
+// ICMPTargetUpdate contains outbound ICMP probe targets discovered from onchain data.
+type ICMPTargetUpdate struct {
+	Targets []ProbeAddress
+}
+
 // targetDiscoveryFullRefreshEvery controls how often a full GeolocationUser scan
 // is forced regardless of whether the GeoProbe target_update_count has changed.
 // At the default 60s interval, 5 means a full refresh every ~5 minutes.
@@ -37,6 +42,7 @@ type TargetDiscoveryConfig struct {
 	GeoProbePubkey         solana.PublicKey
 	Client                 GeolocationUserClient
 	CLITargets             []ProbeAddress
+	CLIIcmpTargets         []ProbeAddress
 	CLIAllowedKeys         [][32]byte
 	Logger                 *slog.Logger
 	ProbeTargetUpdateCount *atomic.Uint32 // shared counter from parent discovery
@@ -50,10 +56,12 @@ type TargetDiscovery struct {
 	geoProbePubkey         solana.PublicKey
 	client                 GeolocationUserClient
 	cliTargets             []ProbeAddress
+	cliIcmpTargets         []ProbeAddress
 	cliAllowedKeys         [][32]byte
 	probeTargetUpdateCount *atomic.Uint32
 
 	cachedTargets             []ProbeAddress
+	cachedIcmpTargets         []ProbeAddress
 	cachedInboundKeys         [][32]byte
 	tickCount                 uint64
 	lastSeenTargetUpdateCount uint32
@@ -75,25 +83,26 @@ func NewTargetDiscovery(cfg *TargetDiscoveryConfig) (*TargetDiscovery, error) {
 		geoProbePubkey:         cfg.GeoProbePubkey,
 		client:                 cfg.Client,
 		cliTargets:             cfg.CLITargets,
+		cliIcmpTargets:         cfg.CLIIcmpTargets,
 		cliAllowedKeys:         cfg.CLIAllowedKeys,
 		probeTargetUpdateCount: cfg.ProbeTargetUpdateCount,
 	}, nil
 }
 
 // Tick performs a single target discovery cycle and sends updates to the channels.
-func (d *TargetDiscovery) Tick(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate) {
-	d.discoverAndSend(ctx, targetCh, keyCh)
+func (d *TargetDiscovery) Tick(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate, icmpTargetCh chan<- ICMPTargetUpdate) {
+	d.discoverAndSend(ctx, targetCh, keyCh, icmpTargetCh)
 }
 
-func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate) {
-	targets, inboundKeys, err := d.discover(ctx)
+func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate, icmpTargetCh chan<- ICMPTargetUpdate) {
+	targets, icmpTargets, inboundKeys, err := d.discover(ctx)
 	if err != nil {
 		d.log.Warn("Target discovery tick failed", "error", err)
 		return
 	}
 
 	// nil targets means the scan was skipped (target_update_count unchanged).
-	if targets == nil && inboundKeys == nil {
+	if targets == nil && inboundKeys == nil && icmpTargets == nil {
 		return
 	}
 
@@ -114,11 +123,20 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 			d.log.Warn("Inbound key update channel full, skipping update")
 		}
 	}
+
+	if !probeAddressSlicesEqual(icmpTargets, d.cachedIcmpTargets) {
+		d.cachedIcmpTargets = icmpTargets
+		select {
+		case icmpTargetCh <- ICMPTargetUpdate{Targets: icmpTargets}:
+		default:
+			d.log.Warn("ICMP target update channel full, skipping update")
+		}
+	}
 }
 
 // discover performs a single discovery cycle: fetch users, filter, extract targets/keys,
-// merge with CLI values. Returns nil, nil, nil when the scan is skipped.
-func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]byte, error) {
+// merge with CLI values. Returns nil, nil, nil, nil when the scan is skipped.
+func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []ProbeAddress, [][32]byte, error) {
 	forceFullRefresh := d.tickCount%targetDiscoveryFullRefreshEvery == 0
 	d.tickCount++
 
@@ -127,20 +145,21 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]b
 		if current == d.lastSeenTargetUpdateCount && d.tickCount > 1 {
 			d.log.Debug("GeoProbe target_update_count unchanged, skipping target scan",
 				"targetUpdateCount", current)
-			return nil, nil, nil
+			return nil, nil, nil, nil
 		}
 		d.lastSeenTargetUpdateCount = current
 	}
 
 	users, err := d.client.GetGeolocationUsers(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to fetch GeolocationUser accounts: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to fetch GeolocationUser accounts: %w", err)
 	}
 
 	var probePKBytes [32]byte
 	copy(probePKBytes[:], d.geoProbePubkey[:])
 
 	var onchainTargets []ProbeAddress
+	var onchainIcmpTargets []ProbeAddress
 	var onchainKeys [][32]byte
 	seenKeys := make(map[[32]byte]struct{})
 
@@ -185,11 +204,26 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]b
 					seenKeys[key] = struct{}{}
 					onchainKeys = append(onchainKeys, key)
 				}
+
+			case geolocation.GeoLocationTargetTypeOutboundIcmp:
+				addr := icmpTargetToProbeAddress(target)
+				if err := addr.ValidateICMP(); err != nil {
+					d.log.Warn("Skipping invalid outbound ICMP target",
+						"user", users[i].Code, "addr", addr, "error", err)
+					continue
+				}
+				if err := addr.ValidateScope(); err != nil {
+					d.log.Warn("Rejecting non-public outbound ICMP target",
+						"user", users[i].Code, "addr", addr, "error", err)
+					continue
+				}
+				onchainIcmpTargets = append(onchainIcmpTargets, addr)
 			}
 		}
 	}
 
 	mergedTargets := mergeProbes(d.cliTargets, onchainTargets)
+	mergedIcmpTargets := mergeProbes(d.cliIcmpTargets, onchainIcmpTargets)
 	mergedKeys := mergeKeys(d.cliAllowedKeys, onchainKeys)
 
 	// Sync lastSeenTargetUpdateCount after a full scan (covers forced refresh path).
@@ -200,14 +234,16 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]b
 	d.log.Debug("Target discovery tick",
 		"users", len(users),
 		"onchainOutbound", len(onchainTargets),
+		"onchainOutboundIcmp", len(onchainIcmpTargets),
 		"onchainInbound", len(onchainKeys),
 		"cliTargets", len(d.cliTargets),
 		"cliKeys", len(d.cliAllowedKeys),
 		"mergedTargets", len(mergedTargets),
+		"mergedIcmpTargets", len(mergedIcmpTargets),
 		"mergedKeys", len(mergedKeys),
 	)
 
-	return mergedTargets, mergedKeys, nil
+	return mergedTargets, mergedIcmpTargets, mergedKeys, nil
 }
 
 // targetToProbeAddress converts a GeolocationTarget to a ProbeAddress.
@@ -218,6 +254,17 @@ func targetToProbeAddress(t *geolocation.GeolocationTarget) ProbeAddress {
 		Host:      host,
 		Port:      t.LocationOffsetPort,
 		TWAMPPort: telemetryconfig.DefaultGeoprobeTWAMPPort,
+	}
+}
+
+// icmpTargetToProbeAddress converts an OutboundIcmp GeolocationTarget to a ProbeAddress.
+func icmpTargetToProbeAddress(t *geolocation.GeolocationTarget) ProbeAddress {
+	host := fmt.Sprintf("%d.%d.%d.%d",
+		t.IPAddress[0], t.IPAddress[1], t.IPAddress[2], t.IPAddress[3])
+	return ProbeAddress{
+		Host:      host,
+		Port:      t.LocationOffsetPort,
+		TWAMPPort: 0,
 	}
 }
 

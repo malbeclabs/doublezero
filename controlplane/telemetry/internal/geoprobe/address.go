@@ -3,6 +3,7 @@ package geoprobe
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 
@@ -29,19 +30,32 @@ func (p ProbeAddress) String() string {
 	return fmt.Sprintf("%s:%d:%d", p.Host, p.Port, p.TWAMPPort)
 }
 
-// Validate checks if the ProbeAddress has valid Host and Port values.
+// Validate checks if the ProbeAddress has valid Host, Port, and TWAMPPort values.
 func (p ProbeAddress) Validate() error {
-	if p.Host == "" {
-		return fmt.Errorf("host cannot be empty")
-	}
-	if net.ParseIP(p.Host) == nil {
-		return fmt.Errorf("host must be a valid IP address")
-	}
-	if p.Port == 0 {
-		return fmt.Errorf("port cannot be zero")
+	if err := p.ValidateICMP(); err != nil {
+		return err
 	}
 	if p.TWAMPPort == 0 {
 		return fmt.Errorf("twamp port cannot be zero")
+	}
+	return nil
+}
+
+// ValidateICMP checks if the ProbeAddress is valid for ICMP probing.
+// Unlike Validate(), it does not require TWAMPPort to be set.
+func (p ProbeAddress) ValidateICMP() error {
+	if p.Host == "" {
+		return fmt.Errorf("host cannot be empty")
+	}
+	ip := net.ParseIP(p.Host)
+	if ip == nil {
+		return fmt.Errorf("host must be a valid IP address")
+	}
+	if ip.To4() == nil {
+		return fmt.Errorf("host %s must be an IPv4 address", p.Host)
+	}
+	if p.Port == 0 {
+		return fmt.Errorf("port cannot be zero")
 	}
 	return nil
 }
@@ -67,6 +81,43 @@ func (p ProbeAddress) ValidateScope() error {
 		return fmt.Errorf("host %s is not a public unicast address", p.Host)
 	}
 	return nil
+}
+
+// ParseICMPProbeAddresses parses a comma-separated list of ICMP probe addresses.
+// Each entry must be host:offset_port. TWAMPPort is always 0 for ICMP targets.
+func ParseICMPProbeAddresses(s string) ([]ProbeAddress, error) {
+	if s == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(s, ",")
+	probes := make([]ProbeAddress, 0, len(parts))
+	seen := make(map[string]bool)
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		ap, err := netip.ParseAddrPort(part)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ICMP probe address %q: expected host:offset_port", part)
+		}
+		if ap.Port() == 0 {
+			return nil, fmt.Errorf("invalid port 0 in %q", part)
+		}
+
+		addr := ProbeAddress{Host: ap.Addr().String(), Port: ap.Port()}
+		key := addr.Host
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		probes = append(probes, addr)
+	}
+
+	return probes, nil
 }
 
 // ParseProbeAddresses parses a comma-separated list of probe addresses.

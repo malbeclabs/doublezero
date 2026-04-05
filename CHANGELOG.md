@@ -3,7 +3,11 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
-
+- Smartcontract
+  - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
+- Telemetry
+  - Add ICMP pinger to geoprobe-agent for measuring outbound ICMP targets with interleaved batch send/receive, integrated into the existing measurement cycle alongside TWAMP
+  
 ### Breaking
 
 ### Changes

@@ -7,7 +7,8 @@ All notable changes to this project will be documented in this file.
   - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
 - Telemetry
   - Add ICMP pinger to geoprobe-agent for measuring outbound ICMP targets with interleaved batch send/receive, integrated into the existing measurement cycle alongside TWAMP
-  
+  - Add optional TLS support to state-ingest server via `--tls-cert-file` and `--tls-key-file` flags; when set, the server listens on both HTTP (`:8080`) and HTTPS (`:8443`) simultaneously
+
 ### Breaking
 
 ### Changes

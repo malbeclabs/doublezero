@@ -10,7 +10,7 @@ const (
 	MainnetTwoZOracleURL                 = "https://sol-2z-oracle-api-v1.mainnet-beta.doublezero.xyz"
 	MainnetSolanaRPC                     = "https://api.mainnet-beta.solana.com"
 	MainnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.mainnet-beta.doublezero.xyz"
-	MainnetTelemetryStateIngestURL       = "http://telemetry-state-in.mainnet-beta.doublezero.xyz"
+	MainnetTelemetryStateIngestURL       = "https://telemetry-state-in-mainnet-beta.doublezero.xyz"
 	MainnetTelemetryGNMITunnelServerAddr = "gnmic-mainnet-beta.doublezero.xyz:443"
 
 	MainnetRevenueDistributionProgramID = "dzrevZC94tBLwuHw1dyynZxaXTWyp7yocsinyEVPtt4"
@@ -27,7 +27,7 @@ const (
 	TestnetTwoZOracleURL                 = "https://sol-2z-oracle-api-v1.testnet.doublezero.xyz"
 	TestnetSolanaRPC                     = "https://api.testnet.solana.com"
 	TestnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.testnet.doublezero.xyz"
-	TestnetTelemetryStateIngestURL       = "http://telemetry-state-in.testnet.doublezero.xyz"
+	TestnetTelemetryStateIngestURL       = "https://telemetry-state-in-testnet.doublezero.xyz"
 	TestnetGeolocationProgramID          = "3AG2BCA7gAm47Q6xZzPQcUUYvnBjxAvPKnPz919cxHF4"
 	TestnetShredSubscriptionProgramID    = "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE"
 	TestnetUSDCMint                      = "uSDZq2RMuxrEf7gqgDjR8wJCtCyaDAQk2e5jLAaoeeM"
@@ -41,7 +41,7 @@ const (
 	DevnetDeviceLocalASN                = 21682
 	DevnetTwoZOracleURL                 = ""
 	DevnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.devnet.doublezero.xyz"
-	DevnetTelemetryStateIngestURL       = "http://telemetry-state-in.devnet.doublezero.xyz"
+	DevnetTelemetryStateIngestURL       = "https://telemetry-state-in-devnet.doublezero.xyz"
 	DevnetGeolocationProgramID          = "EXUUFfAjjuXnaBtsAMLsJX18ynnNHPwtkmk33bLVVoCm"
 	DevnetShredSubscriptionProgramID    = ""
 	DevnetUSDCMint                      = ""

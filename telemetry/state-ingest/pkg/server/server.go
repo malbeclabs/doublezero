@@ -16,7 +16,8 @@ type Server struct {
 	svc     *ServiceabilityView
 	handler *Handler
 
-	httpSrv      *http.Server
+	httpSrvsMu   sync.Mutex
+	httpSrvs     []*http.Server
 	shutdownOnce sync.Once
 }
 
@@ -42,10 +43,10 @@ func New(log *slog.Logger, cfg Config) (*Server, error) {
 	}, nil
 }
 
-func (s *Server) Start(ctx context.Context, cancel context.CancelFunc, listener net.Listener) <-chan error {
-	errCh := make(chan error, 2)
+func (s *Server) Start(ctx context.Context, cancel context.CancelFunc, listeners ...net.Listener) <-chan error {
+	errCh := make(chan error, 1+len(listeners))
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(1 + len(listeners))
 
 	go func() {
 		defer wg.Done()
@@ -56,16 +57,19 @@ func (s *Server) Start(ctx context.Context, cancel context.CancelFunc, listener 
 		}
 	}()
 
-	go func() {
-		defer wg.Done()
-		defer cancel()
-		if err := s.Serve(ctx, listener); err != nil {
-			s.log.Error("server exited with error", "error", err)
-			errCh <- err
-		} else {
-			s.log.Info("server stopped")
-		}
-	}()
+	for _, l := range listeners {
+		l := l
+		go func() {
+			defer wg.Done()
+			defer cancel()
+			if err := s.Serve(ctx, l); err != nil {
+				s.log.Error("server exited with error", "error", err)
+				errCh <- err
+			} else {
+				s.log.Info("server stopped")
+			}
+		}()
+	}
 
 	go func() {
 		wg.Wait()
@@ -79,14 +83,18 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	mux := http.NewServeMux()
 	s.handler.Register(mux)
 
-	s.httpSrv = &http.Server{Handler: mux}
+	httpSrv := &http.Server{Handler: mux}
+
+	s.httpSrvsMu.Lock()
+	s.httpSrvs = append(s.httpSrvs, httpSrv)
+	s.httpSrvsMu.Unlock()
 
 	go func() {
 		<-ctx.Done()
 		s.shutdown()
 	}()
 
-	err := s.httpSrv.Serve(listener)
+	err := httpSrv.Serve(listener)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
@@ -97,8 +105,11 @@ func (s *Server) shutdown() {
 	s.shutdownOnce.Do(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), s.cfg.ShutdownTimeout)
 		defer cancel()
-		if s.httpSrv != nil {
-			_ = s.httpSrv.Shutdown(ctx)
+		s.httpSrvsMu.Lock()
+		srvs := s.httpSrvs
+		s.httpSrvsMu.Unlock()
+		for _, srv := range srvs {
+			_ = srv.Shutdown(ctx)
 		}
 	})
 }

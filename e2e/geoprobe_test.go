@@ -212,14 +212,29 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 	targetIP, err := netutil.DeriveIPFromCIDR(dn.CYOANetwork.SubnetCIDR, targetHostID)
 	require.NoError(t, err)
 	targetIPStr := targetIP.To4().String()
-	log.Debug("==> Geoprobe target CYOA IP", "ip", targetIPStr)
 
-	// Start the geoprobe target container and process before the agent so it's
-	// ready to receive probes and offsets.
+	// Start the geoprobe target container before creating onchain targets,
+	// since we need to generate the sender keypair inside it.
 	log.Debug("==> Starting geoprobe target container")
 	targetContainerID := startGeoprobeTarget(t, log, dn, targetIPStr)
-	log.Debug("==> Geoprobe target started", "containerID", targetContainerID)
 
+	senderKeypairPath := "/tmp/target-sender-keypair.json"
+	senderPubkey := generateKeypairInContainer(t, targetContainerID, senderKeypairPath)
+	log.Debug("==> Target-sender keypair generated", "pubkey", senderPubkey)
+
+	// Create a GeolocationUser with outbound + inbound targets (replaces CLI flags).
+	tokenAccount := solana.NewWallet().PublicKey().String()
+	log.Debug("==> Creating GeolocationUser onchain")
+	createGeolocationUser(t, dn, "geo-user-01", tokenAccount)
+	updateGeolocationUserPayment(t, dn, "geo-user-01", "paid")
+
+	log.Debug("==> Adding outbound target")
+	addGeolocationOutboundTarget(t, dn, "geo-user-01", targetIPStr, 8923, "geoprobe1")
+
+	log.Debug("==> Adding inbound target")
+	addGeolocationInboundTarget(t, dn, "geo-user-01", senderPubkey, "geoprobe1")
+
+	// Start agent — no CLI flags for targets or pubkeys; all discovered onchain.
 	log.Debug("==> Starting geoprobe agent")
 	agent := startGeoprobeAgent(t, log, dn, geoprobeIPStr, geoprobeAccountPK,
 		dn.Manager.GeolocationProgramID, dn.Manager.ServiceabilityProgramID,
@@ -227,10 +242,6 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 			probeInterval: 5 * time.Second,
 		})
 	log.Debug("==> Geoprobe agent started", "pubkey", agent.agentPubkey)
-
-	senderKeypairPath := "/tmp/target-sender-keypair.json"
-	senderPubkey := generateKeypairInContainer(t, targetContainerID, senderKeypairPath)
-	log.Debug("==> Target-sender keypair generated", "pubkey", senderPubkey)
 
 	// --- Outbound flow ---
 	// Wait for dz1's telemetry agent to discover the geoprobe and successfully probe it.

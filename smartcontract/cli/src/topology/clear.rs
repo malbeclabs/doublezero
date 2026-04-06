@@ -7,12 +7,17 @@ use doublezero_sdk::commands::topology::clear::ClearTopologyCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
+// Solana transactions have a 32-account limit. With 3 fixed accounts (topology PDA,
+// globalstate, payer), we can fit at most 29 link accounts per transaction.
+const CLEAR_BATCH_SIZE: usize = 29;
+
 #[derive(Args, Debug)]
 pub struct ClearTopologyCliCommand {
     /// Name of the topology to clear from links
     #[arg(long)]
     pub name: String,
-    /// Comma-separated list of link pubkeys to clear the topology from
+    /// Comma-separated list of link pubkeys to clear the topology from.
+    /// If omitted, all links currently tagged with this topology are discovered automatically.
     #[arg(long, value_delimiter = ',')]
     pub links: Vec<String>,
 }
@@ -21,21 +26,56 @@ impl ClearTopologyCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let link_pubkeys: Vec<Pubkey> = self
-            .links
-            .iter()
-            .map(|s| {
-                s.parse::<Pubkey>()
-                    .map_err(|_| eyre::eyre!("invalid link pubkey: {}", s))
-            })
-            .collect::<eyre::Result<Vec<_>>>()?;
+        let link_pubkeys: Vec<Pubkey> = if self.links.is_empty() {
+            // Auto-discover: find all links tagged with this topology.
+            let topology_map = client
+                .list_topology(doublezero_sdk::commands::topology::list::ListTopologyCommand)?;
+            let topology_pk = topology_map
+                .iter()
+                .find(|(_, t)| t.name == self.name)
+                .map(|(pk, _)| *pk)
+                .ok_or_else(|| eyre::eyre!("Topology '{}' not found", self.name))?;
 
-        let n = link_pubkeys.len();
-        client.clear_topology(ClearTopologyCommand {
-            name: self.name.clone(),
-            link_pubkeys,
-        })?;
-        writeln!(out, "Cleared topology '{}' from {} link(s).", self.name, n)?;
+            let links = client.list_link(doublezero_sdk::commands::link::list::ListLinkCommand)?;
+            links
+                .into_iter()
+                .filter(|(_, link)| link.link_topologies.contains(&topology_pk))
+                .map(|(pk, _)| pk)
+                .collect()
+        } else {
+            self.links
+                .iter()
+                .map(|s| {
+                    s.parse::<Pubkey>()
+                        .map_err(|_| eyre::eyre!("invalid link pubkey: {}", s))
+                })
+                .collect::<eyre::Result<Vec<_>>>()?
+        };
+
+        let total = link_pubkeys.len();
+
+        if total == 0 {
+            writeln!(
+                out,
+                "No links tagged with topology '{}'. Nothing to clear.",
+                self.name
+            )?;
+            return Ok(());
+        }
+
+        // Batch into chunks that fit within Solana's account limit.
+        for chunk in link_pubkeys.chunks(CLEAR_BATCH_SIZE) {
+            client.clear_topology(ClearTopologyCommand {
+                name: self.name.clone(),
+                link_pubkeys: chunk.to_vec(),
+            })?;
+        }
+
+        writeln!(
+            out,
+            "Cleared topology '{}' from {} link(s).",
+            self.name, total
+        )?;
 
         Ok(())
     }
@@ -45,21 +85,36 @@ impl ClearTopologyCliCommand {
 mod tests {
     use super::*;
     use crate::doublezerocommand::MockCliCommand;
+    use doublezero_sdk::{Link, TopologyInfo};
     use mockall::predicate::eq;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
-    use std::io::Cursor;
+    use std::{collections::HashMap, io::Cursor};
 
     #[test]
-    fn test_clear_topology_execute_no_links() {
+    fn test_clear_topology_execute_no_links_auto_discover_empty() {
+        // When links is empty, auto-discovery runs but finds no tagged links.
         let mut mock = MockCliCommand::new();
+        let topology_pk = Pubkey::new_unique();
+
+        let mut topology_map: HashMap<Pubkey, TopologyInfo> = HashMap::new();
+        topology_map.insert(
+            topology_pk,
+            TopologyInfo {
+                account_type: doublezero_sdk::AccountType::Topology,
+                owner: Pubkey::default(),
+                bump_seed: 0,
+                name: "unicast-default".to_string(),
+                admin_group_bit: 1,
+                flex_algo_number: 129,
+                constraint:
+                    doublezero_serviceability::state::topology::TopologyConstraint::IncludeAny,
+            },
+        );
 
         mock.expect_check_requirements().returning(|_| Ok(()));
-        mock.expect_clear_topology()
-            .with(eq(ClearTopologyCommand {
-                name: "unicast-default".to_string(),
-                link_pubkeys: vec![],
-            }))
-            .returning(|_| Ok(Signature::new_unique()));
+        mock.expect_list_topology()
+            .returning(move |_| Ok(topology_map.clone()));
+        mock.expect_list_link().returning(|_| Ok(HashMap::new()));
 
         let cmd = ClearTopologyCliCommand {
             name: "unicast-default".to_string(),
@@ -69,7 +124,7 @@ mod tests {
         let result = cmd.execute(&mock, &mut out);
         assert!(result.is_ok());
         let output = String::from_utf8(out.into_inner()).unwrap();
-        assert!(output.contains("Cleared topology 'unicast-default' from 0 link(s)."));
+        assert!(output.contains("No links tagged with topology 'unicast-default'."));
     }
 
     #[test]
@@ -110,5 +165,98 @@ mod tests {
         let mut out = Cursor::new(Vec::new());
         let result = cmd.execute(&mock, &mut out);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_clear_topology_auto_discover() {
+        let mut mock = MockCliCommand::new();
+        let topology_pk = Pubkey::new_unique();
+        let other_topology_pk = Pubkey::new_unique();
+        let link1_pk = Pubkey::new_unique();
+        let link2_pk = Pubkey::new_unique();
+        let untagged_pk = Pubkey::new_unique();
+
+        let mut topology_map: HashMap<Pubkey, TopologyInfo> = HashMap::new();
+        topology_map.insert(
+            topology_pk,
+            TopologyInfo {
+                account_type: doublezero_sdk::AccountType::Topology,
+                owner: Pubkey::default(),
+                bump_seed: 0,
+                name: "my-topo".to_string(),
+                admin_group_bit: 1,
+                flex_algo_number: 129,
+                constraint:
+                    doublezero_serviceability::state::topology::TopologyConstraint::IncludeAny,
+            },
+        );
+
+        let mut links: HashMap<Pubkey, Link> = HashMap::new();
+        links.insert(
+            link1_pk,
+            Link {
+                link_topologies: vec![topology_pk],
+                ..Default::default()
+            },
+        );
+        links.insert(
+            link2_pk,
+            Link {
+                link_topologies: vec![topology_pk, other_topology_pk],
+                ..Default::default()
+            },
+        );
+        links.insert(
+            untagged_pk,
+            Link {
+                link_topologies: vec![],
+                ..Default::default()
+            },
+        );
+
+        mock.expect_check_requirements().returning(|_| Ok(()));
+        mock.expect_list_topology()
+            .returning(move |_| Ok(topology_map.clone()));
+        mock.expect_list_link()
+            .returning(move |_| Ok(links.clone()));
+        mock.expect_clear_topology()
+            .withf(move |cmd| {
+                cmd.name == "my-topo"
+                    && cmd.link_pubkeys.len() == 2
+                    && cmd.link_pubkeys.contains(&link1_pk)
+                    && cmd.link_pubkeys.contains(&link2_pk)
+            })
+            .returning(|_| Ok(Signature::new_unique()));
+
+        let cmd = ClearTopologyCliCommand {
+            name: "my-topo".to_string(),
+            links: vec![],
+        };
+        let mut out = Cursor::new(Vec::new());
+        let result = cmd.execute(&mock, &mut out);
+        assert!(result.is_ok(), "{:?}", result);
+        let output = String::from_utf8(out.into_inner()).unwrap();
+        assert!(output.contains("Cleared topology 'my-topo' from 2 link(s)."));
+    }
+
+    #[test]
+    fn test_clear_topology_auto_discover_not_found() {
+        let mut mock = MockCliCommand::new();
+
+        mock.expect_check_requirements().returning(|_| Ok(()));
+        mock.expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
+
+        let cmd = ClearTopologyCliCommand {
+            name: "nonexistent".to_string(),
+            links: vec![],
+        };
+        let mut out = Cursor::new(Vec::new());
+        let result = cmd.execute(&mock, &mut out);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Topology 'nonexistent' not found"));
     }
 }

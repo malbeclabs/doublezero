@@ -199,7 +199,7 @@ mod tests {
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
             link_topologies: vec![topology_pda],
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         client.expect_list_link().returning(move |_| {

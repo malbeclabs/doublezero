@@ -71,6 +71,8 @@ func TestCustomJSONMarshal(t *testing.T) {
 				"SideAIfaceName": "Switch1/1/1",
 				"SideZIfaceName": "Switch1/1/1",
 				"DelayOverrideNs": 10,
+				"LinkTopologies": null,
+				"LinkFlags": 0,
 				"PubKey": "` + dummyPubKeyB58 + `"
 			}`,
 			expectErr: false,
@@ -122,6 +124,8 @@ func TestCustomJSONMarshal(t *testing.T) {
 				"SideAIfaceName": "Edge1/0/0",
 				"SideZIfaceName": "Edge2/0/0",
 				"DelayOverrideNs": 0,
+				"LinkTopologies": null,
+				"LinkFlags": 0,
 				"PubKey": "` + dummyPubKeyB58 + `"
 			}`,
 			expectErr: false,
@@ -153,6 +157,8 @@ func TestCustomJSONMarshal(t *testing.T) {
 				"SideAIfaceName": "",
 				"SideZIfaceName": "",
 				"DelayOverrideNs": 0,
+				"LinkTopologies": null,
+				"LinkFlags": 0,
 				"PubKey": "11111111111111111111111111111111"
 			}`,
 			expectErr: false,
@@ -304,7 +310,7 @@ func TestCustomJSONMarshal(t *testing.T) {
                 "MgmtVrf": "mgmt-vrf",
                 "Interfaces": [
                     {
-                        "Version": 1,
+                        "Version": 2,
                         "Status": "activated",
                         "Name": "Switch1/1/1",
                         "InterfaceType": "physical",
@@ -410,6 +416,7 @@ func TestCustomJSONMarshal(t *testing.T) {
 				"BillingDiscriminant": 0,
 				"BillingRate": 0,
 				"BillingLastDeductionDzEpoch": 0,
+				"IncludeTopologies": null,
 				"PubKey": "` + dummyPubKeyB58 + `"
 			}`,
 			expectErr: false,

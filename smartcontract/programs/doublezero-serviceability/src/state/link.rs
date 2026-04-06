@@ -265,15 +265,19 @@ pub struct Link {
     pub link_health: LinkHealth,   // 1
     pub desired_status: LinkDesiredStatus, // 1
     pub link_topologies: Vec<Pubkey>, // 4 + 32 * len
-    pub unicast_drained: bool,     // 1
+    pub link_flags: u8,            // 1 — bitmask; see LINK_FLAG_* constants
 }
+
+/// Bit 0 of `link_flags`: link is administratively drained from unicast traffic.
+/// Maps to IS-IS admin-group UNICAST-DRAINED (group 0).
+pub const LINK_FLAG_UNICAST_DRAINED: u8 = 0x01;
 
 impl fmt::Display for Link {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, tunnel_id: {}, tunnel_net: {}, status: {}, code: {}, contributor_pk: {}, link_health: {}, desired_status: {}, link_topologies: {:?}, unicast_drained: {}",
-            self.account_type, self.owner, self.index, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.tunnel_id, &self.tunnel_net, self.status, self.code, self.contributor_pk, self.link_health, self.desired_status, self.link_topologies, self.unicast_drained
+            "account_type: {}, owner: {}, index: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, tunnel_id: {}, tunnel_net: {}, status: {}, code: {}, contributor_pk: {}, link_health: {}, desired_status: {}, link_topologies: {:?}, link_flags: {:#04x}",
+            self.account_type, self.owner, self.index, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.tunnel_id, &self.tunnel_net, self.status, self.code, self.contributor_pk, self.link_health, self.desired_status, self.link_topologies, self.link_flags
         )
     }
 }
@@ -303,7 +307,7 @@ impl Default for Link {
             link_health: LinkHealth::Pending,
             desired_status: LinkDesiredStatus::Pending,
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         }
     }
 }
@@ -335,7 +339,7 @@ impl TryFrom<&[u8]> for Link {
             link_health: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             desired_status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             link_topologies: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            unicast_drained: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            link_flags: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Link {
@@ -410,6 +414,14 @@ impl Validate for Link {
             msg!("Invalid link endpoints: side_a_pk and side_z_pk must be different");
             return Err(DoubleZeroError::InvalidDevicePubkey);
         }
+        // A link may belong to at most 8 topologies
+        if self.link_topologies.len() > 8 {
+            msg!(
+                "link_topologies exceeds maximum of 8 (got {})",
+                self.link_topologies.len()
+            );
+            return Err(DoubleZeroError::InvalidArgument);
+        }
         Ok(())
     }
 }
@@ -432,6 +444,10 @@ impl Link {
     /// This method mutates the `status` field of the `Link` in-place.
     /// Where `_` means any value is valid for that field.
     ///
+    pub fn is_unicast_drained(&self) -> bool {
+        self.link_flags & LINK_FLAG_UNICAST_DRAINED != 0
+    }
+
     #[allow(unreachable_code)]
     pub fn check_status_transition(&mut self) {
         // waiting for health oracle to implement this logic
@@ -556,7 +572,7 @@ mod tests {
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -611,7 +627,7 @@ mod tests {
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -643,7 +659,7 @@ mod tests {
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -675,7 +691,7 @@ mod tests {
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         // For Rejected status, tunnel_net is not validated and should succeed
@@ -707,7 +723,7 @@ mod tests {
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -739,7 +755,7 @@ mod tests {
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
         let err_low = val_low.validate();
         assert!(err_low.is_err());
@@ -779,7 +795,7 @@ mod tests {
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
         let err_low = val_low.validate();
         assert!(err_low.is_err());
@@ -820,7 +836,7 @@ mod tests {
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         let err = val.validate();
@@ -853,7 +869,7 @@ mod tests {
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
         let err_low = val_low.validate();
         assert!(err_low.is_err());
@@ -893,7 +909,7 @@ mod tests {
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
         let err_low = val_low.validate();
         assert!(err_low.is_err());
@@ -933,8 +949,45 @@ mod tests {
             link_health: LinkHealth::ReadyForService,
             desired_status: LinkDesiredStatus::Activated,
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
         assert!(bad_link.validate().is_ok());
+    }
+
+    #[test]
+    fn test_state_link_validate_error_too_many_topologies() {
+        let valid_link = Link {
+            account_type: AccountType::Link,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: Pubkey::new_unique(),
+            side_z_pk: Pubkey::new_unique(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 1566,
+            delay_ns: 1_000_000,
+            jitter_ns: 1_000_000,
+            tunnel_id: 1,
+            tunnel_net: "10.0.0.1/25".parse().unwrap(),
+            code: "test-123".to_string(),
+            status: LinkStatus::Activated,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
+            delay_override_ns: 0,
+            link_health: LinkHealth::ReadyForService,
+            desired_status: LinkDesiredStatus::Activated,
+            link_topologies: (0..8).map(|_| Pubkey::new_unique()).collect(),
+            link_flags: 0,
+        };
+        assert!(valid_link.validate().is_ok());
+
+        let too_many = Link {
+            link_topologies: (0..9).map(|_| Pubkey::new_unique()).collect(),
+            ..valid_link
+        };
+        let err = too_many.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidArgument);
     }
 }

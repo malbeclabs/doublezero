@@ -136,7 +136,7 @@ mod tests {
             desired_status: LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         let device_z = doublezero_serviceability::state::device::Device {
@@ -240,7 +240,7 @@ mod tests {
             desired_status: LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         let device_z = doublezero_serviceability::state::device::Device {

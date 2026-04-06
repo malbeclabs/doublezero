@@ -30,6 +30,7 @@ impl CreateContributorCommand {
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(self.owner, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(client.get_payer(), true), // TEMP: workaround for --owner me payer bug
                 ],
             )
             .map(|sig| (sig, pda_pubkey))

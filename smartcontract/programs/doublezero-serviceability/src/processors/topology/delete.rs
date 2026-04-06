@@ -76,7 +76,11 @@ pub fn process_topology_delete(
     }
 
     // Close the topology PDA (transfer lamports to payer, zero data)
-    // NOTE: We do NOT deallocate the admin-group bit — bits are permanently marked.
+    // NOTE: We do NOT deallocate the admin-group bit — bits are permanently retired.
+    // If a bit were reused for a new topology, any IS-IS router still advertising
+    // link memberships for the deleted topology would classify traffic onto the new
+    // topology's flex-algo path until the network fully converges, causing misrouting.
+    // Admin-group bits are a cheap resource (128 total), so permanent allocation is safe.
     try_acc_close(topology_account, payer_account)?;
 
     msg!("TopologyDelete: closed topology '{}'", value.name);

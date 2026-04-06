@@ -24,6 +24,15 @@ impl CreateTopologyCommand {
         let (admin_group_bits_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::AdminGroupBits);
 
+        // Pre-flight: verify admin-group-bits resource account exists
+        client.get_account(admin_group_bits_pda).map_err(|_| {
+            eyre::eyre!(
+                "admin-group-bits resource account not found ({}). \
+                Run 'doublezero resource create --resource-type admin-group-bits' first.",
+                admin_group_bits_pda
+            )
+        })?;
+
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
@@ -54,7 +63,7 @@ mod tests {
         state::topology::TopologyConstraint,
     };
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature};
+    use solana_sdk::{account::Account, instruction::AccountMeta, signature::Signature};
 
     #[test]
     fn test_commands_topology_create_command() {
@@ -64,6 +73,11 @@ mod tests {
         let (topology_pda, _) = get_topology_pda(&client.get_program_id(), "unicast-default");
         let (admin_group_bits_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::AdminGroupBits);
+
+        client
+            .expect_get_account()
+            .with(predicate::eq(admin_group_bits_pda))
+            .returning(|_| Ok(Account::default()));
 
         client
             .expect_execute_transaction()

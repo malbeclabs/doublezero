@@ -1,7 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     pda::{get_resource_extension_pda, get_topology_pda},
-    processors::resource::allocate_id,
+    processors::resource::{allocate_id, allocate_specific_id},
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
@@ -88,7 +88,35 @@ pub fn process_topology_backfill(
     let mut backfilled_count: usize = 0;
     let mut skipped_count: usize = 0;
 
-    for device_account in accounts_iter {
+    // Collect device accounts for two-pass processing.
+    let device_accounts: Vec<&AccountInfo> = accounts_iter.collect();
+
+    // First pass: pre-mark all existing node_segment_idx values as used in the
+    // SegmentRoutingIds resource. This prevents collisions when the activator
+    // manages SR IDs in-memory (use_onchain_allocation=false) and the on-chain
+    // resource hasn't been updated to reflect those allocations.
+    for device_account in &device_accounts {
+        if device_account.owner != program_id {
+            continue;
+        }
+        let device = match Device::try_from(&device_account.data.borrow()[..]) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        for iface in device.interfaces.iter() {
+            let current = iface.into_current_version();
+            if current.node_segment_idx > 0 {
+                // Ignore error: ID may already be marked (idempotent pre-mark).
+                let _ = allocate_specific_id(segment_routing_ids_account, current.node_segment_idx);
+            }
+            for fas in &current.flex_algo_node_segments {
+                let _ = allocate_specific_id(segment_routing_ids_account, fas.node_segment_idx);
+            }
+        }
+    }
+
+    // Second pass: allocate new IDs for loopbacks missing this topology's segment.
+    for device_account in &device_accounts {
         if device_account.owner != program_id {
             continue;
         }
@@ -98,12 +126,12 @@ pub fn process_topology_backfill(
         };
         let mut modified = false;
         for iface in device.interfaces.iter_mut() {
-            let iface_v3 = iface.into_current_version();
-            if iface_v3.loopback_type != LoopbackType::Vpnv4 {
+            let iface_v2 = iface.into_current_version();
+            if iface_v2.loopback_type != LoopbackType::Vpnv4 {
                 continue;
             }
             // Skip if already has a segment for this topology (idempotent)
-            if iface_v3
+            if iface_v2
                 .flex_algo_node_segments
                 .iter()
                 .any(|s| &s.topology == topology_key)
@@ -113,8 +141,8 @@ pub fn process_topology_backfill(
             }
             let node_segment_idx = allocate_id(segment_routing_ids_account)?;
             match iface {
-                Interface::V3(ref mut v3) => {
-                    v3.flex_algo_node_segments.push(FlexAlgoNodeSegment {
+                Interface::V2(ref mut v2) => {
+                    v2.flex_algo_node_segments.push(FlexAlgoNodeSegment {
                         topology: *topology_key,
                         node_segment_idx,
                     });
@@ -125,7 +153,7 @@ pub fn process_topology_backfill(
                         topology: *topology_key,
                         node_segment_idx,
                     });
-                    *iface = Interface::V3(upgraded);
+                    *iface = Interface::V2(upgraded);
                 }
             }
             modified = true;

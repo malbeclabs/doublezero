@@ -334,7 +334,7 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 
 		// Fallback: match by client_ip + user_type (e.g. multicast subscribers
 		// whose tunnel endpoint differs from the device public IP).
-		if matchedDevice == nil {
+		if matchedUser == nil {
 			clientIP4 := n.clientIP.To4()
 			for i := range users {
 				u := &users[i]

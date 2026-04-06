@@ -41,9 +41,6 @@ const targetDiscoveryFullRefreshEvery = 5
 type TargetDiscoveryConfig struct {
 	GeoProbePubkey         solana.PublicKey
 	Client                 GeolocationUserClient
-	CLITargets             []ProbeAddress
-	CLIIcmpTargets         []ProbeAddress
-	CLIAllowedKeys         [][32]byte
 	Logger                 *slog.Logger
 	ProbeTargetUpdateCount *atomic.Uint32 // shared counter from parent discovery
 }
@@ -55,9 +52,6 @@ type TargetDiscovery struct {
 	log                    *slog.Logger
 	geoProbePubkey         solana.PublicKey
 	client                 GeolocationUserClient
-	cliTargets             []ProbeAddress
-	cliIcmpTargets         []ProbeAddress
-	cliAllowedKeys         [][32]byte
 	probeTargetUpdateCount *atomic.Uint32
 
 	cachedTargets             []ProbeAddress
@@ -82,9 +76,6 @@ func NewTargetDiscovery(cfg *TargetDiscoveryConfig) (*TargetDiscovery, error) {
 		log:                    cfg.Logger,
 		geoProbePubkey:         cfg.GeoProbePubkey,
 		client:                 cfg.Client,
-		cliTargets:             cfg.CLITargets,
-		cliIcmpTargets:         cfg.CLIIcmpTargets,
-		cliAllowedKeys:         cfg.CLIAllowedKeys,
 		probeTargetUpdateCount: cfg.ProbeTargetUpdateCount,
 	}, nil
 }
@@ -222,10 +213,6 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []Probe
 		}
 	}
 
-	mergedTargets := mergeProbes(d.cliTargets, onchainTargets)
-	mergedIcmpTargets := mergeProbes(d.cliIcmpTargets, onchainIcmpTargets)
-	mergedKeys := mergeKeys(d.cliAllowedKeys, onchainKeys)
-
 	// Sync lastSeenTargetUpdateCount after a full scan (covers forced refresh path).
 	if d.probeTargetUpdateCount != nil {
 		d.lastSeenTargetUpdateCount = d.probeTargetUpdateCount.Load()
@@ -236,14 +223,9 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []Probe
 		"onchainOutbound", len(onchainTargets),
 		"onchainOutboundIcmp", len(onchainIcmpTargets),
 		"onchainInbound", len(onchainKeys),
-		"cliTargets", len(d.cliTargets),
-		"cliKeys", len(d.cliAllowedKeys),
-		"mergedTargets", len(mergedTargets),
-		"mergedIcmpTargets", len(mergedIcmpTargets),
-		"mergedKeys", len(mergedKeys),
 	)
 
-	return mergedTargets, mergedIcmpTargets, mergedKeys, nil
+	return onchainTargets, onchainIcmpTargets, onchainKeys, nil
 }
 
 // targetToProbeAddress converts a GeolocationTarget to a ProbeAddress.
@@ -266,25 +248,6 @@ func icmpTargetToProbeAddress(t *geolocation.GeolocationTarget) ProbeAddress {
 		Port:      t.LocationOffsetPort,
 		TWAMPPort: 0,
 	}
-}
-
-// mergeKeys combines two key slices, deduplicating by value.
-func mergeKeys(a, b [][32]byte) [][32]byte {
-	seen := make(map[[32]byte]struct{}, len(a)+len(b))
-	merged := make([][32]byte, 0, len(a)+len(b))
-	for _, k := range a {
-		if _, ok := seen[k]; !ok {
-			seen[k] = struct{}{}
-			merged = append(merged, k)
-		}
-	}
-	for _, k := range b {
-		if _, ok := seen[k]; !ok {
-			seen[k] = struct{}{}
-			merged = append(merged, k)
-		}
-	}
-	return merged
 }
 
 // probeAddressSlicesEqual checks if two ProbeAddress slices are equal by content.

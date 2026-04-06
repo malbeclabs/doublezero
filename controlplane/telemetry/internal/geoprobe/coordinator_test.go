@@ -22,7 +22,6 @@ func newTestCoordinatorConfig() *CoordinatorConfig {
 
 	return &CoordinatorConfig{
 		Logger:               logger,
-		InitialProbes:        nil,
 		ProbeUpdateCh:        nil,
 		Interval:             10 * time.Millisecond,
 		ProbeTimeout:         100 * time.Millisecond,
@@ -51,20 +50,16 @@ func TestNewCoordinator(t *testing.T) {
 	assert.Empty(t, coordinator.probes)
 }
 
-func TestNewCoordinator_WithInitialProbes(t *testing.T) {
+func TestNewCoordinator_StartsWithZeroProbes(t *testing.T) {
 	t.Parallel()
 
 	cfg := newTestCoordinatorConfig()
-	cfg.InitialProbes = []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
-		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
-	}
 
 	coordinator, err := NewCoordinator(cfg)
 
 	require.NoError(t, err)
 	require.NotNil(t, coordinator)
-	assert.Len(t, coordinator.probes, 2)
+	assert.Empty(t, coordinator.probes)
 }
 
 func TestNewCoordinator_ValidationErrors(t *testing.T) {
@@ -127,21 +122,23 @@ func TestCoordinator_HandleProbeUpdate_Remove(t *testing.T) {
 	t.Parallel()
 
 	cfg := newTestCoordinatorConfig()
-	cfg.InitialProbes = []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
-		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
-	}
 	coordinator, err := NewCoordinator(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, coordinator)
-	require.Len(t, coordinator.probes, 2)
 
 	ctx := context.Background()
-	newProbes := []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
-	}
 
-	coordinator.handleProbeUpdate(ctx, newProbes)
+	// Seed with two probes.
+	coordinator.handleProbeUpdate(ctx, []ProbeAddress{
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
+	})
+	require.Len(t, coordinator.probes, 2)
+
+	// Update to only one probe.
+	coordinator.handleProbeUpdate(ctx, []ProbeAddress{
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+	})
 
 	assert.Len(t, coordinator.probes, 1)
 	assert.Contains(t, coordinator.probes, "127.0.0.1:12345:8925")
@@ -152,22 +149,24 @@ func TestCoordinator_HandleProbeUpdate_Mixed(t *testing.T) {
 	t.Parallel()
 
 	cfg := newTestCoordinatorConfig()
-	cfg.InitialProbes = []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
-		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
-	}
 	coordinator, err := NewCoordinator(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, coordinator)
-	require.Len(t, coordinator.probes, 2)
 
 	ctx := context.Background()
-	newProbes := []ProbeAddress{
+
+	// Seed with two probes.
+	coordinator.handleProbeUpdate(ctx, []ProbeAddress{
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
+	})
+	require.Len(t, coordinator.probes, 2)
+
+	// Update: keep one, add one, remove one.
+	coordinator.handleProbeUpdate(ctx, []ProbeAddress{
 		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
 		{Host: "198.51.100.1", Port: 12347, TWAMPPort: 8925},
-	}
-
-	coordinator.handleProbeUpdate(ctx, newProbes)
+	})
 
 	assert.Len(t, coordinator.probes, 2)
 	assert.Contains(t, coordinator.probes, "127.0.0.1:12345:8925")
@@ -179,19 +178,21 @@ func TestCoordinator_HandleProbeUpdate_Empty(t *testing.T) {
 	t.Parallel()
 
 	cfg := newTestCoordinatorConfig()
-	cfg.InitialProbes = []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
-		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
-	}
 	coordinator, err := NewCoordinator(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, coordinator)
-	require.Len(t, coordinator.probes, 2)
 
 	ctx := context.Background()
-	newProbes := []ProbeAddress{}
 
-	coordinator.handleProbeUpdate(ctx, newProbes)
+	// Seed with two probes.
+	coordinator.handleProbeUpdate(ctx, []ProbeAddress{
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
+	})
+	require.Len(t, coordinator.probes, 2)
+
+	// Update to empty removes all probes.
+	coordinator.handleProbeUpdate(ctx, []ProbeAddress{})
 
 	assert.Empty(t, coordinator.probes)
 }
@@ -213,14 +214,16 @@ func TestCoordinator_RunMeasurementCycle_WithProbes(t *testing.T) {
 	t.Parallel()
 
 	cfg := newTestCoordinatorConfig()
-	cfg.InitialProbes = []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
-	}
 	coordinator, err := NewCoordinator(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, coordinator)
 
 	ctx := context.Background()
+
+	// Seed with a probe via update.
+	coordinator.handleProbeUpdate(ctx, []ProbeAddress{
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+	})
 
 	coordinator.runMeasurementCycle(ctx)
 }
@@ -292,12 +295,14 @@ func TestCoordinator_Run_MeasurementCycles(t *testing.T) {
 
 	cfg := newTestCoordinatorConfig()
 	cfg.Interval = 20 * time.Millisecond
-	cfg.InitialProbes = []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
-	}
 	coordinator, err := NewCoordinator(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, coordinator)
+
+	// Seed with a probe via update.
+	coordinator.handleProbeUpdate(context.Background(), []ProbeAddress{
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -310,19 +315,21 @@ func TestCoordinator_Close(t *testing.T) {
 	t.Parallel()
 
 	cfg := newTestCoordinatorConfig()
-	cfg.InitialProbes = []ProbeAddress{
-		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
-		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
-	}
 	coordinator, err := NewCoordinator(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, coordinator)
+
+	// Seed with probes via update.
+	coordinator.handleProbeUpdate(context.Background(), []ProbeAddress{
+		{Host: "127.0.0.1", Port: 12345, TWAMPPort: 8925},
+		{Host: "192.0.2.1", Port: 12346, TWAMPPort: 8925},
+	})
 
 	err = coordinator.Close()
 	assert.NoError(t, err)
 }
 
-func TestCoordinator_Close_WithoutInitialProbes(t *testing.T) {
+func TestCoordinator_Close_WithoutProbes(t *testing.T) {
 	t.Parallel()
 
 	cfg := newTestCoordinatorConfig()

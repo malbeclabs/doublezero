@@ -1,5 +1,5 @@
 use crate::{
-    error::DoubleZeroError,
+    error::{DoubleZeroError, Validate},
     pda::get_resource_extension_pda,
     processors::{
         resource::{allocate_specific_id, allocate_specific_ip, deallocate_id, deallocate_ip},
@@ -228,9 +228,6 @@ pub fn process_update_link(
             link.bandwidth = bandwidth;
         }
         if let Some(mtu) = value.mtu {
-            if mtu != crate::state::interface::LINK_MTU {
-                return Err(DoubleZeroError::InvalidMtu.into());
-            }
             link.mtu = mtu;
         }
         if let Some(delay_ns) = value.delay_ns {
@@ -382,7 +379,7 @@ pub fn process_update_link(
         link.link_topologies = link_topologies.clone();
     }
 
-    // unicast_drained: contributor A or foundation
+    // unicast_drained (LINK_FLAG_UNICAST_DRAINED bit 0): contributor A or foundation
     if let Some(unicast_drained) = value.unicast_drained {
         if link.contributor_pk != *contributor_account.key
             && !globalstate.foundation_allowlist.contains(payer_account.key)
@@ -390,10 +387,15 @@ pub fn process_update_link(
             msg!("unicast_drained update requires contributor A or foundation allowlist");
             return Err(DoubleZeroError::NotAllowed.into());
         }
-        link.unicast_drained = unicast_drained;
+        if unicast_drained {
+            link.link_flags |= crate::state::link::LINK_FLAG_UNICAST_DRAINED;
+        } else {
+            link.link_flags &= !crate::state::link::LINK_FLAG_UNICAST_DRAINED;
+        }
     }
 
     link.check_status_transition();
+    link.validate()?;
 
     try_acc_write(&link, link_account, payer_account, accounts)?;
 

@@ -1,7 +1,7 @@
 use crate::{
     error::DoubleZeroError,
-    pda::get_topology_pda,
-    processors::resource::allocate_id,
+    pda::{get_resource_extension_pda, get_topology_pda},
+    processors::{resource::allocate_id, validation::validate_program_account},
     resource::ResourceType,
     seeds::{SEED_PREFIX, SEED_TOPOLOGY},
     serializer::{try_acc_create, try_acc_write},
@@ -85,18 +85,18 @@ pub fn process_topology_create(
     }
 
     // Validate AdminGroupBits resource account
-    assert_eq!(
-        admin_group_bits_account.owner, program_id,
-        "TopologyCreate: invalid AdminGroupBits account owner"
+    let (expected_ab_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::AdminGroupBits);
+    validate_program_account!(
+        admin_group_bits_account,
+        program_id,
+        writable = true,
+        pda = Some(&expected_ab_pda),
+        "AdminGroupBits"
     );
 
-    // Allocate admin_group_bit (lowest available; bit 1 is pre-marked = never returned)
-    let admin_group_bit_u16 = allocate_id(admin_group_bits_account)?;
-    if admin_group_bit_u16 > 127 {
-        msg!("TopologyCreate: AdminGroupBits exhausted (max 128 topologies)");
-        return Err(DoubleZeroError::AllocationFailed.into());
-    }
-    let admin_group_bit = admin_group_bit_u16 as u8;
+    // Allocate admin_group_bit (lowest available bit in IdRange)
+    let admin_group_bit = allocate_id(admin_group_bits_account)? as u8;
     let flex_algo_number = 128u8
         .checked_add(admin_group_bit)
         .ok_or(DoubleZeroError::ArithmeticOverflow)?;
@@ -149,12 +149,12 @@ pub fn process_topology_create(
             let mut device = Device::try_from(&device_account.data.borrow()[..])?;
             let mut modified = false;
             for iface in device.interfaces.iter_mut() {
-                let iface_v3 = iface.into_current_version();
-                if iface_v3.loopback_type != LoopbackType::Vpnv4 {
+                let iface_v2 = iface.into_current_version();
+                if iface_v2.loopback_type != LoopbackType::Vpnv4 {
                     continue;
                 }
                 // Skip if already has a segment for this topology (idempotent)
-                if iface_v3
+                if iface_v2
                     .flex_algo_node_segments
                     .iter()
                     .any(|s| &s.topology == topology_account.key)
@@ -162,22 +162,22 @@ pub fn process_topology_create(
                     continue;
                 }
                 let node_segment_idx = allocate_id(segment_routing_ids_account)?;
-                // Mutate the interface in place — we need to upgrade to V3 if needed
+                // Mutate the interface in place — upgrade to V2 if needed
                 match iface {
-                    Interface::V3(ref mut v3) => {
-                        v3.flex_algo_node_segments.push(FlexAlgoNodeSegment {
+                    Interface::V2(ref mut v2) => {
+                        v2.flex_algo_node_segments.push(FlexAlgoNodeSegment {
                             topology: *topology_account.key,
                             node_segment_idx,
                         });
                     }
                     _ => {
-                        // Upgrade to V3 with the segment added
+                        // Upgrade to current version (V2) with the segment added
                         let mut upgraded = iface.into_current_version();
                         upgraded.flex_algo_node_segments.push(FlexAlgoNodeSegment {
                             topology: *topology_account.key,
                             node_segment_idx,
                         });
-                        *iface = Interface::V3(upgraded);
+                        *iface = Interface::V2(upgraded);
                     }
                 }
                 modified = true;

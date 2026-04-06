@@ -26,6 +26,7 @@ const (
 	TenantType            // 13
 	// 14 is reserved
 	PermissionType AccountType = 15
+	TopologyType   AccountType = 16
 )
 
 type LocationStatus uint8
@@ -386,7 +387,7 @@ func (l RoutingMode) MarshalJSON() ([]byte, error) {
 }
 
 type FlexAlgoNodeSegment struct {
-	Topology       [32]uint8
+	Topology       [32]byte
 	NodeSegmentIdx uint16
 }
 
@@ -404,9 +405,9 @@ type Interface struct {
 	RoutingMode           RoutingMode
 	VlanId                uint16
 	IpNet                 [5]uint8
-	NodeSegmentIdx        uint16
-	UserTunnelEndpoint    bool
-	FlexAlgoNodeSegments  []FlexAlgoNodeSegment
+	NodeSegmentIdx       uint16
+	UserTunnelEndpoint   bool
+	FlexAlgoNodeSegments []FlexAlgoNodeSegment `json:",omitempty"`
 }
 
 func (i Interface) MarshalJSON() ([]byte, error) {
@@ -651,6 +652,8 @@ type Link struct {
 	LinkHealth        LinkHealth        `influx:"field,link_health"`
 	LinkDesiredStatus LinkDesiredStatus `influx:"tag,link_desired_status"`
 	PubKey            [32]byte          `influx:"tag,pubkey,pubkey"`
+	LinkTopologies    [][32]byte
+	LinkFlags         uint8
 }
 
 func (l Link) MarshalJSON() ([]byte, error) {
@@ -778,6 +781,7 @@ type Tenant struct {
 	BillingRate                 uint64              `influx:"field,billing_rate"`
 	BillingLastDeductionDzEpoch uint64              `influx:"field,billing_last_deduction_dz_epoch"`
 	PubKey                      [32]byte            `influx:"tag,pubkey,pubkey"`
+	IncludeTopologies           [][32]byte
 }
 
 func (t Tenant) MarshalJSON() ([]byte, error) {
@@ -1289,4 +1293,33 @@ func (r ResourceExtension) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(jsonExt)
+}
+
+type TopologyConstraint uint8
+
+const (
+	TopologyConstraintIncludeAny TopologyConstraint = 0
+	TopologyConstraintExclude    TopologyConstraint = 1
+)
+
+func (c TopologyConstraint) String() string {
+	switch c {
+	case TopologyConstraintIncludeAny:
+		return "include-any"
+	case TopologyConstraintExclude:
+		return "exclude"
+	default:
+		return "unknown"
+	}
+}
+
+type TopologyInfo struct {
+	AccountType    AccountType
+	Owner          [32]byte
+	BumpSeed       uint8
+	Name           string
+	AdminGroupBit  uint8
+	FlexAlgoNumber uint8
+	Constraint     TopologyConstraint
+	PubKey         [32]byte
 }

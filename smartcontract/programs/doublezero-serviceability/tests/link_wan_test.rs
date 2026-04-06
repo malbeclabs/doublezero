@@ -231,7 +231,7 @@ async fn test_wan_link() {
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 9000,
+                mtu: 1500,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -362,7 +362,7 @@ async fn test_wan_link() {
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 9000,
+                mtu: 1500,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -610,7 +610,7 @@ async fn test_wan_link() {
             contributor_pk: Some(contributor_pubkey),
             tunnel_type: Some(LinkLinkType::WAN),
             bandwidth: Some(20000000000),
-            mtu: Some(9000),
+            mtu: Some(8900),
             delay_ns: Some(1000000),
             jitter_ns: Some(100000),
             delay_override_ns: Some(0),
@@ -639,7 +639,7 @@ async fn test_wan_link() {
     assert_eq!(tunnel_la.account_type, AccountType::Link);
     assert_eq!(tunnel_la.code, "la2".to_string());
     assert_eq!(tunnel_la.bandwidth, 20000000000);
-    assert_eq!(tunnel_la.mtu, 9000);
+    assert_eq!(tunnel_la.mtu, 8900);
     assert_eq!(tunnel_la.delay_ns, 1000000);
     assert_eq!(tunnel_la.status, LinkStatus::Activated);
     assert_eq!(tunnel_la.desired_status, LinkDesiredStatus::Activated);
@@ -823,7 +823,7 @@ async fn test_wan_link() {
     assert_eq!(tunnel_la.account_type, AccountType::Link);
     assert_eq!(tunnel_la.code, "la2".to_string());
     assert_eq!(tunnel_la.bandwidth, 20000000000);
-    assert_eq!(tunnel_la.mtu, 9000);
+    assert_eq!(tunnel_la.mtu, 8900);
     assert_eq!(tunnel_la.delay_ns, 1000000);
     assert_eq!(tunnel_la.status, LinkStatus::Deleting);
 
@@ -1149,7 +1149,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 9000,
+                mtu: 1500,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -1249,7 +1249,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             loopback_type: None,
             bandwidth: None,
             cir: None,
-            mtu: Some(9000),
+            mtu: None,
             routing_mode: None,
             vlan_id: None,
             user_tunnel_endpoint: None,
@@ -1277,7 +1277,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             loopback_type: None,
             bandwidth: None,
             cir: None,
-            mtu: Some(1500),
+            mtu: None,
             routing_mode: None,
             vlan_id: None,
             user_tunnel_endpoint: None,
@@ -1341,7 +1341,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             loopback_type: None,
             bandwidth: None,
             cir: None,
-            mtu: Some(9000),
+            mtu: None,
             routing_mode: None,
             vlan_id: None,
             user_tunnel_endpoint: None,
@@ -1398,7 +1398,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             loopback_type: None,
             bandwidth: None,
             cir: None,
-            mtu: Some(1500),
+            mtu: None,
             routing_mode: None,
             vlan_id: None,
             user_tunnel_endpoint: None,
@@ -1623,7 +1623,7 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 9000,
+                mtu: 1500,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -1714,7 +1714,7 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 9000,
+                mtu: 1500,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -2088,7 +2088,7 @@ async fn setup_link_env() -> (
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 9000,
+                mtu: 1500,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -2176,7 +2176,7 @@ async fn setup_link_env() -> (
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 9000,
+                mtu: 1500,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,

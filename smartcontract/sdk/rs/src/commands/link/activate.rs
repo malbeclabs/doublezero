@@ -138,7 +138,7 @@ mod tests {
             desired_status: LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         // Mock Link fetch
@@ -213,7 +213,7 @@ mod tests {
             desired_status: LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         // Compute ResourceExtension PDAs

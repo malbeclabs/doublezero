@@ -1,4 +1,4 @@
-//! Tests for TopologyInfo, FlexAlgoNodeSegment, and InterfaceV3 (RFC-18 / Link Classification).
+//! Tests for TopologyInfo and FlexAlgoNodeSegment (RFC-18 / Link Classification).
 
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
@@ -24,7 +24,7 @@ use doublezero_serviceability::{
             delete::TopologyDeleteArgs,
         },
     },
-    resource::{IdOrIp, ResourceType},
+    resource::ResourceType,
     state::{
         accounttype::AccountType,
         device::{DeviceDesiredStatus, DeviceType},
@@ -105,17 +105,17 @@ async fn test_admin_group_bits_create_and_pre_mark() {
         "AdminGroupBits account should have non-empty data"
     );
 
-    // Verify bit 1 (UNICAST-DRAINED) is pre-marked
+    // Bit 0 is implicitly reserved for UNICAST-DRAINED via IdRange(1, 127).
+    // No bits are pre-marked at resource creation time.
     let resource = get_resource_extension_data(&mut banks_client, resource_pubkey)
         .await
         .expect("AdminGroupBits resource extension should be deserializable");
 
     let allocated = resource.iter_allocated();
-    assert_eq!(allocated.len(), 1, "exactly one bit should be pre-marked");
     assert_eq!(
-        allocated[0],
-        IdOrIp::Id(1),
-        "bit 1 (UNICAST-DRAINED) should be pre-marked"
+        allocated.len(),
+        0,
+        "no bits should be pre-marked at creation"
     );
 
     println!("[PASS] test_admin_group_bits_create_and_pre_mark");
@@ -160,8 +160,8 @@ fn test_flex_algo_node_segment_roundtrip() {
 // ============================================================================
 
 #[tokio::test]
-async fn test_topology_create_bit_0_first() {
-    println!("[TEST] test_topology_create_bit_0_first");
+async fn test_topology_create_bit_1_first() {
+    println!("[TEST] test_topology_create_bit_1_first");
 
     let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
@@ -184,16 +184,18 @@ async fn test_topology_create_bit_0_first() {
 
     assert_eq!(topology.account_type, AccountType::Topology);
     assert_eq!(topology.name, "unicast-default");
-    assert_eq!(topology.admin_group_bit, 0);
-    assert_eq!(topology.flex_algo_number, 128);
+    // Bit 0 is reserved for UNICAST-DRAINED (implicit via IdRange(1, 127)),
+    // so the first user topology gets bit 1.
+    assert_eq!(topology.admin_group_bit, 1);
+    assert_eq!(topology.flex_algo_number, 129);
     assert_eq!(topology.constraint, TopologyConstraint::IncludeAny);
 
-    println!("[PASS] test_topology_create_bit_0_first");
+    println!("[PASS] test_topology_create_bit_1_first");
 }
 
 #[tokio::test]
-async fn test_topology_create_second_skips_bit_1() {
-    println!("[TEST] test_topology_create_second_skips_bit_1");
+async fn test_topology_create_consecutive_bits() {
+    println!("[TEST] test_topology_create_consecutive_bits");
 
     let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
@@ -201,7 +203,7 @@ async fn test_topology_create_second_skips_bit_1() {
     let (admin_group_bits_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
-    // First topology gets bit 0
+    // First topology gets bit 1 (bit 0 is implicitly reserved for UNICAST-DRAINED)
     create_topology(
         &mut banks_client,
         program_id,
@@ -213,7 +215,7 @@ async fn test_topology_create_second_skips_bit_1() {
     )
     .await;
 
-    // Second topology must skip bit 1 (pre-marked UNICAST-DRAINED) and get bit 2
+    // Second topology gets the next consecutive bit (2)
     let topology_pda = create_topology(
         &mut banks_client,
         program_id,
@@ -228,13 +230,10 @@ async fn test_topology_create_second_skips_bit_1() {
     let topology = get_topology(&mut banks_client, topology_pda).await;
 
     assert_eq!(topology.name, "shelby");
-    assert_eq!(
-        topology.admin_group_bit, 2,
-        "bit 1 should be skipped (UNICAST-DRAINED)"
-    );
+    assert_eq!(topology.admin_group_bit, 2);
     assert_eq!(topology.flex_algo_number, 130);
 
-    println!("[PASS] test_topology_create_second_skips_bit_1");
+    println!("[PASS] test_topology_create_consecutive_bits");
 }
 
 #[tokio::test]
@@ -1221,7 +1220,7 @@ async fn test_topology_delete_bit_not_reused() {
     let (admin_group_bits_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
-    // Create "topology-a" — gets bit 0
+    // Create "topology-a" — gets bit 1 (first available since bit 0 is reserved for UNICAST-DRAINED)
     create_topology(
         &mut banks_client,
         program_id,
@@ -1245,7 +1244,7 @@ async fn test_topology_delete_bit_not_reused() {
     .await
     .expect("Delete should succeed");
 
-    // Create "topology-b" — must NOT get bit 0 (permanently marked) or bit 1 (UNICAST-DRAINED)
+    // Create "topology-b" — must NOT get bit 1 (permanently marked even after delete),
     // so it should get bit 2
     let topology_b_pda = create_topology(
         &mut banks_client,
@@ -1261,7 +1260,7 @@ async fn test_topology_delete_bit_not_reused() {
     let topology_b = get_topology(&mut banks_client, topology_b_pda).await;
     assert_eq!(
         topology_b.admin_group_bit, 2,
-        "topology-b should get bit 2 (bit 0 permanently marked even after delete, bit 1 is UNICAST-DRAINED)"
+        "topology-b should get bit 2 (bit 1 permanently marked even after delete)"
     );
 
     println!("[PASS] test_topology_delete_bit_not_reused");
@@ -1890,6 +1889,265 @@ async fn test_topology_backfill_nonexistent_topology_rejected() {
     println!("[PASS] test_topology_backfill_nonexistent_topology_rejected");
 }
 
+#[tokio::test]
+async fn test_topology_backfill_avoids_collision_with_existing_node_segment_idx() {
+    // Regression test: BackfillTopology must not re-use the base node_segment_idx
+    // when the on-chain SegmentRoutingIds resource was never updated by the activator
+    // (use_onchain_allocation=false path). Before the fix, backfill would allocate
+    // ID 1 for the flex-algo segment even though ID 1 was already used as the base
+    // node_segment_idx on the loopback.
+    println!("[TEST] test_topology_backfill_avoids_collision_with_existing_node_segment_idx");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    // Step 1: Create Location
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            country: "us".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            loc_id: 0,
+        }),
+        vec![
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 2: Create Exchange
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            reserved: 0,
+        }),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 3: Create Contributor
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (contributor_pubkey, _) =
+        get_contributor_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "cont".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 4: Create Device
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
+            code: "dz1".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [8, 8, 8, 8].into(),
+            dz_prefixes: "110.1.0.0/23".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 5: Activate Device
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 6: Create a Vpnv4 loopback interface (without onchain allocation)
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "Loopback255".to_string(),
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::Vpnv4,
+            interface_cyoa: InterfaceCYOA::None,
+            bandwidth: 0,
+            cir: 0,
+            ip_net: None,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Step 7: Activate the loopback with explicit node_segment_idx=1, WITHOUT providing
+    // the SegmentRoutingIds account. This simulates the activator's use_onchain_allocation=false
+    // path: the base SR ID is set to 1 but the on-chain resource is never updated, so the
+    // resource still believes ID 1 is free.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
+            name: "Loopback255".to_string(),
+            ip_net: "172.16.0.1/32".parse().unwrap(),
+            node_segment_idx: 1,
+        }),
+        // Only device + globalstate — no link_ips or segment_routing_ids accounts.
+        // This causes the processor to take the else branch and store node_segment_idx
+        // directly without updating the on-chain resource (accounts.len() == 4).
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify base state: loopback has node_segment_idx=1, no flex-algo segments yet.
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device not found");
+    let iface = device.interfaces[0].into_current_version();
+    assert_eq!(
+        iface.node_segment_idx, 1,
+        "Base node_segment_idx should be 1"
+    );
+    assert_eq!(
+        iface.flex_algo_node_segments.len(),
+        0,
+        "No flex-algo segments before backfill"
+    );
+
+    // Step 8: Create topology
+    let topology_pda = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // Step 9: Call BackfillTopology. With the fix, the pre-mark pass marks ID 1 as used
+    // before allocating, so the flex-algo segment receives ID 2 (not 1).
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let base_accounts = vec![
+        AccountMeta::new_readonly(topology_pda, false),
+        AccountMeta::new(segment_routing_ids_pda, false),
+        AccountMeta::new_readonly(globalstate_pubkey, false),
+    ];
+    let extra_accounts = vec![AccountMeta::new(device_pubkey, false)];
+    let mut tx = create_transaction_with_extra_accounts(
+        program_id,
+        &DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
+            name: "unicast-default".to_string(),
+        }),
+        &base_accounts,
+        &payer,
+        &extra_accounts,
+    );
+    tx.try_sign(&[&payer], recent_blockhash).unwrap();
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Verify: flex-algo segment has node_segment_idx=2, NOT 1 (which is the base idx).
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device not found after backfill");
+    let iface = device.interfaces[0].into_current_version();
+    assert_eq!(
+        iface.node_segment_idx, 1,
+        "Base node_segment_idx must remain 1"
+    );
+    assert_eq!(
+        iface.flex_algo_node_segments.len(),
+        1,
+        "Expected one flex_algo_node_segment after backfill"
+    );
+    assert_eq!(
+        iface.flex_algo_node_segments[0].topology, topology_pda,
+        "Segment should point to the backfilled topology"
+    );
+    assert_eq!(
+        iface.flex_algo_node_segments[0].node_segment_idx, 2,
+        "flex-algo node_segment_idx must be 2 (fresh allocation), not 1 (base)"
+    );
+
+    println!("[PASS] test_topology_backfill_avoids_collision_with_existing_node_segment_idx");
+}
+
 // ============================================================================
 // unicast_drained tests
 // ============================================================================
@@ -1915,7 +2173,7 @@ async fn test_link_unicast_drained_contributor_can_set_own_link() {
 
     // Verify unicast_drained starts as false
     let link = get_link(&mut banks_client, link_pubkey).await;
-    assert!(!link.unicast_drained);
+    assert!(!link.is_unicast_drained());
 
     // Contributor A (payer) sets unicast_drained = true
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
@@ -1938,7 +2196,7 @@ async fn test_link_unicast_drained_contributor_can_set_own_link() {
 
     // Read back: unicast_drained must be true
     let link = get_link(&mut banks_client, link_pubkey).await;
-    assert!(link.unicast_drained);
+    assert!(link.is_unicast_drained());
 
     println!("[PASS] test_link_unicast_drained_contributor_can_set_own_link");
 }
@@ -2058,7 +2316,7 @@ async fn test_link_unicast_drained_foundation_can_set_any_link() {
     .await;
 
     let link = get_link(&mut banks_client, link_pubkey).await;
-    assert!(link.unicast_drained);
+    assert!(link.is_unicast_drained());
 
     println!("[PASS] test_link_unicast_drained_foundation_can_set_any_link");
 }
@@ -2113,7 +2371,7 @@ async fn test_link_unicast_drained_orthogonal_to_status_and_topologies() {
 
     let link_before = get_link(&mut banks_client, link_pubkey).await;
     assert!(link_before.link_topologies.contains(&topology_pda));
-    assert!(!link_before.unicast_drained);
+    assert!(!link_before.is_unicast_drained());
 
     // Set unicast_drained = true
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
@@ -2135,7 +2393,10 @@ async fn test_link_unicast_drained_orthogonal_to_status_and_topologies() {
     .await;
 
     let link_after = get_link(&mut banks_client, link_pubkey).await;
-    assert!(link_after.unicast_drained, "unicast_drained should be true");
+    assert!(
+        link_after.is_unicast_drained(),
+        "unicast_drained should be true"
+    );
     assert_eq!(
         link_after.status, link_before.status,
         "status should be unchanged"

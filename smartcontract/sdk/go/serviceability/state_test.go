@@ -375,6 +375,10 @@ func TestCustomJSONMarshal(t *testing.T) {
 				"Subscribers": ["` + dummyPubKeyB58 + `"],
 				"ValidatorPubKey": "` + dummyPubKeyB58 + `",
 				"TunnelEndpoint": "0.0.0.0",
+				"TunnelFlags": 0,
+				"BgpStatus": 0,
+				"LastBgpUpAt": 0,
+				"LastBgpReportedAt": 0,
 				"PubKey": "` + dummyPubKeyB58 + `"
 			}`,
 			expectErr: false,

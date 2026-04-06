@@ -913,8 +913,12 @@ type User struct {
 	Subscribers     [][32]uint8
 	ValidatorPubKey [32]uint8
 	// Tunnel endpoint IP (device-side GRE endpoint). 0.0.0.0 means use device.public_ip for backwards compatibility.
-	TunnelEndpoint [4]uint8
-	PubKey         [32]byte
+	TunnelEndpoint    [4]uint8
+	TunnelFlags       uint8
+	BgpStatus         uint8
+	LastBgpUpAt       uint64
+	LastBgpReportedAt uint64
+	PubKey            [32]byte
 }
 
 func (u User) MarshalJSON() ([]byte, error) {

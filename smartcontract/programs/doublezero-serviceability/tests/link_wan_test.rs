@@ -2718,3 +2718,623 @@ async fn test_link_activation_fails_without_unicast_default() {
         error_string
     );
 }
+}
+
+#[tokio::test]
+async fn test_link_topology_cap_at_8_rejected() {
+    let (
+        mut banks_client,
+        program_id,
+        payer,
+        globalstate_pubkey,
+        contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+        tunnel_pubkey,
+    ) = setup_link_env().await;
+
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
+            tunnel_id: 500,
+            tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Attempt to set 9 topology pubkeys — exceeds cap of 8
+    let nine_pubkeys: Vec<Pubkey> = (0..9).map(|_| Pubkey::new_unique()).collect();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            link_topologies: Some(nine_pubkeys),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let error_string = format!("{:?}", result.unwrap_err());
+    assert!(
+        error_string.contains("Custom(65)"),
+        "Expected InvalidArgument error (Custom(65)), got: {}",
+        error_string
+    );
+}
+
+#[tokio::test]
+async fn test_link_topology_invalid_account_rejected() {
+    let (
+        mut banks_client,
+        program_id,
+        payer,
+        globalstate_pubkey,
+        contributor_pubkey,
+        _device_a_pubkey,
+        _device_z_pubkey,
+        tunnel_pubkey,
+    ) = setup_link_env().await;
+
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
+            tunnel_id: 500,
+            tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(_device_a_pubkey, false),
+            AccountMeta::new(_device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    // Pass a bogus pubkey that has no onchain data — data_is_empty() → InvalidArgument
+    let bogus_pubkey = Pubkey::new_unique();
+    let result = try_execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            link_topologies: Some(vec![bogus_pubkey]),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+        &[AccountMeta::new_readonly(bogus_pubkey, false)],
+    )
+    .await;
+
+    let error_string = format!("{:?}", result.unwrap_err());
+    assert!(
+        error_string.contains("Custom(65)"),
+        "Expected InvalidArgument error (Custom(65)), got: {}",
+        error_string
+    );
+}
+
+#[tokio::test]
+async fn test_link_topology_valid_accepted() {
+    let (
+        mut banks_client,
+        program_id,
+        payer,
+        globalstate_pubkey,
+        contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+        tunnel_pubkey,
+    ) = setup_link_env().await;
+
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    // Create a second topology to assign to the link
+    let (topo_a_pda, _) = get_topology_pda(&program_id, "topo-a");
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+            name: "topo-a".to_string(),
+            constraint: TopologyConstraint::IncludeAny,
+        }),
+        vec![
+            AccountMeta::new(topo_a_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
+            tunnel_id: 500,
+            tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Assign the topology to the link — should succeed
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            link_topologies: Some(vec![topo_a_pda]),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+        &[AccountMeta::new_readonly(topo_a_pda, false)],
+    )
+    .await
+    .expect("Setting valid topology on link should succeed");
+}
+
+#[tokio::test]
+async fn test_link_create_invalid_mtu() {
+    let (
+        mut banks_client,
+        program_id,
+        payer,
+        globalstate_pubkey,
+        contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+        _tunnel_pubkey,
+    ) = setup_link_env().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Create link with MTU 1500 (should fail, must be 9000)
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (tunnel_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
+            code: "invalid-mtu".to_string(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 20000000000,
+            mtu: 1500,
+            delay_ns: 1000000,
+            jitter_ns: 100000,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: Some("Ethernet1".to_string()),
+            desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let error_string = format!("{:?}", res.unwrap_err());
+    assert!(
+        error_string.contains("Custom(46)"),
+        "Expected InvalidMtu error (Custom(46)), got: {}",
+        error_string
+    );
+}
+
+// ─── link_topologies update tests ────────────────────────────────────────────
+
+/// Foundation key can reassign link_topologies to a different topology after
+/// activation, overriding the auto-tag set by ActivateLink.
+#[tokio::test]
+async fn test_link_topology_reassigned_by_foundation() {
+    let (
+        mut banks_client,
+        program_id,
+        payer,
+        globalstate_pubkey,
+        _contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+        tunnel_pubkey,
+    ) = setup_link_env().await;
+
+    let recent_blockhash = banks_client
+        .get_latest_blockhash()
+        .await
+        .expect("Failed to get blockhash");
+
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    // Create unicast-default topology (required for activation)
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalstate_pubkey,
+        &payer,
+    )
+    .await;
+
+    // Create a second topology: high-bandwidth
+    let (high_bandwidth_pda, _) = get_topology_pda(&program_id, "high-bandwidth");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+            name: "high-bandwidth".to_string(),
+            constraint: TopologyConstraint::IncludeAny,
+        }),
+        vec![
+            AccountMeta::new(high_bandwidth_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Activate — auto-tags with unicast-default
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
+            tunnel_id: 500,
+            tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let link = get_account_data(&mut banks_client, tunnel_pubkey)
+        .await
+        .unwrap()
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link.link_topologies, vec![unicast_default_pda]);
+
+    // Foundation reassigns link_topologies to high-bandwidth
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            code: None,
+            contributor_pk: None,
+            tunnel_type: None,
+            bandwidth: None,
+            mtu: None,
+            delay_ns: None,
+            jitter_ns: None,
+            delay_override_ns: None,
+            status: None,
+            desired_status: None,
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
+            link_topologies: Some(vec![high_bandwidth_pda]),
+            unicast_drained: None,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(_contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+        &[AccountMeta::new_readonly(high_bandwidth_pda, false)],
+    )
+    .await;
+
+    let link = get_account_data(&mut banks_client, tunnel_pubkey)
+        .await
+        .unwrap()
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(
+        link.link_topologies,
+        vec![high_bandwidth_pda],
+        "link_topologies should be updated to high-bandwidth PDA"
+    );
+}
+
+/// Foundation key can clear link_topologies to an empty vector, removing the
+/// link from all constrained topologies (multicast-only link case).
+#[tokio::test]
+async fn test_link_topology_cleared_by_foundation() {
+    let (
+        mut banks_client,
+        program_id,
+        payer,
+        globalstate_pubkey,
+        contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+        tunnel_pubkey,
+    ) = setup_link_env().await;
+
+    let recent_blockhash = banks_client
+        .get_latest_blockhash()
+        .await
+        .expect("Failed to get blockhash");
+
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalstate_pubkey,
+        &payer,
+    )
+    .await;
+
+    // Activate — auto-tags with unicast-default
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
+            tunnel_id: 500,
+            tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let link = get_account_data(&mut banks_client, tunnel_pubkey)
+        .await
+        .unwrap()
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link.link_topologies, vec![unicast_default_pda]);
+
+    // Foundation clears link_topologies — link becomes multicast-only
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            code: None,
+            contributor_pk: None,
+            tunnel_type: None,
+            bandwidth: None,
+            mtu: None,
+            delay_ns: None,
+            jitter_ns: None,
+            delay_override_ns: None,
+            status: None,
+            desired_status: None,
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
+            link_topologies: Some(vec![]),
+            unicast_drained: None,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let link = get_account_data(&mut banks_client, tunnel_pubkey)
+        .await
+        .unwrap()
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(
+        link.link_topologies,
+        vec![],
+        "link_topologies should be empty after clearing"
+    );
+}
+
+/// A non-foundation payer cannot set link_topologies — the instruction must
+/// be rejected with NotAllowed (Custom(8)).
+#[tokio::test]
+async fn test_link_topology_update_rejected_for_non_foundation() {
+    let (
+        mut banks_client,
+        program_id,
+        payer,
+        globalstate_pubkey,
+        contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+        tunnel_pubkey,
+    ) = setup_link_env().await;
+
+    let recent_blockhash = banks_client
+        .get_latest_blockhash()
+        .await
+        .expect("Failed to get blockhash");
+
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalstate_pubkey,
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
+            tunnel_id: 500,
+            tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create a non-foundation keypair and fund it
+    let non_foundation = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &non_foundation.pubkey(),
+        1_000_000_000,
+    )
+    .await;
+
+    // Non-foundation payer attempts to set link_topologies on the existing link.
+    // The outer ownership check fails because the payer is neither the
+    // contributor's owner nor in the foundation allowlist.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            code: None,
+            contributor_pk: None,
+            tunnel_type: None,
+            bandwidth: None,
+            mtu: None,
+            delay_ns: None,
+            jitter_ns: None,
+            delay_override_ns: None,
+            status: None,
+            desired_status: None,
+            tunnel_id: None,
+            tunnel_net: None,
+            use_onchain_allocation: false,
+            link_topologies: Some(vec![unicast_default_pda]),
+            unicast_drained: None,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &non_foundation,
+    )
+    .await;
+
+    let error_string = format!("{:?}", result.unwrap_err());
+    assert!(
+        error_string.contains("Custom(8)"),
+        "Expected NotAllowed error (Custom(8)), got: {}",
+        error_string
+    );
+}

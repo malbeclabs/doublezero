@@ -263,7 +263,21 @@ describe("User fixture", () => {
       TunnelId: u.tunnelId,
       Status: u.status,
       ValidatorPubkey: u.validatorPubKey,
+      TunnelFlags: u.tunnelFlags,
+      BgpStatus: u.bgpStatus,
+      LastBgpUpAt: u.lastBgpUpAt,
+      LastBgpReportedAt: u.lastBgpReportedAt,
     });
+  });
+
+  test("backward compat: old layout yields zero for new fields", () => {
+    const [data] = loadFixture("user");
+    // Remove bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8) = 17 bytes
+    const truncated = data.slice(0, data.length - 17);
+    const u = deserializeUser(truncated);
+    expect(u.bgpStatus).toBe(0);
+    expect(u.lastBgpUpAt).toBe(0n);
+    expect(u.lastBgpReportedAt).toBe(0n);
   });
 });
 

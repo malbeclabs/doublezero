@@ -111,6 +111,10 @@ interface {{ .Name }}
    {{- range .FlexAlgoNodeSegments }}
    node-segment ipv4 index {{ .NodeSegmentIdx }} flex-algo {{ .TopologyName }}
    {{- end }}
+   {{- else }}
+   {{- range .FlexAlgoNodeSegments }}
+   no node-segment ipv4 index {{ .NodeSegmentIdx }} flex-algo {{ .TopologyName }}
+   {{- end }}
    {{- end }}
    {{- end }}
    {{- if and .Ip.IsValid .IsLoopback }}
@@ -128,7 +132,8 @@ interface {{ .Name }}
    {{- end }}
    isis hello padding
    isis network point-to-point
-   {{- if and $.FlexAlgoEnabled .Ip.IsValid .IsPhysical .Metric .IsLink (not .IsSubInterfaceParent) (not .IsCYOA) (not .IsDIA) }}
+   {{- if and .Ip.IsValid .IsPhysical .Metric .IsLink (not .IsSubInterfaceParent) (not .IsCYOA) (not .IsDIA) }}
+   {{- if $.FlexAlgoEnabled }}
    traffic-engineering
    {{- if and .LinkTopologies (not ($.Config.Features.FlexAlgo.LinkTagging.IsExcluded .PubKey)) }}
    traffic-engineering administrative-group {{ $.Strings.Join " " ($.Strings.ToUpperEach .LinkTopologies) }}{{ if .UnicastDrained }} UNICAST-DRAINED{{ end }}
@@ -136,6 +141,10 @@ interface {{ .Name }}
    traffic-engineering administrative-group UNICAST-DRAINED
    {{- else }}
    no traffic-engineering administrative-group
+   {{- end }}
+   {{- else }}
+   no traffic-engineering administrative-group
+   no traffic-engineering
    {{- end }}
    {{- end }}
    {{- end }}
@@ -265,7 +274,7 @@ router bgp 65342
       {{- if $.FlexAlgoEnabled }}
       next-hop resolution ribs tunnel-rib colored system-colored-tunnel-rib tunnel-rib system-tunnel-rib
       {{- else }}
-      no next-hop resolution ribs tunnel-rib colored system-colored-tunnel-rib tunnel-rib system-tunnel-rib
+      no next-hop resolution ribs
       {{- end }}
    !
 {{- range $vrfId := .UnicastVrfs }}
@@ -310,7 +319,7 @@ router isis 1
       {{- end }}
       {{- else }}
       {{- range $.AllTopologies }}
-      no flex-algo {{ .Name }} level-2 advertised
+      no flex-algo {{ .Name }} level-2
       {{- end }}
       {{- end }}
    {{- if $.FlexAlgoEnabled }}
@@ -329,7 +338,9 @@ router isis 1
 {{- if $.FlexAlgoEnabled }}
 router traffic-engineering
    router-id ipv4 {{ $.Device.Vpn4vLoopbackIP }}
-   administrative-group alias UNICAST-DRAINED group 1
+   segment-routing
+      rib system-colored-tunnel-rib
+   administrative-group alias UNICAST-DRAINED group 0
    {{- range $.AllTopologies }}
    administrative-group alias {{ $.Strings.ToUpper .Name }} group {{ .AdminGroupBit }}
    {{- end }}
@@ -337,20 +348,15 @@ router traffic-engineering
    {{- range $.AllTopologies }}
       {{- if eq .ConstraintStr "include-any" }}
       flex-algo {{ .FlexAlgoNumber }} {{ .Name }}
-         administrative-group include any {{ .AdminGroupBit }} exclude 1
-         color {{ .Color }}
-      !
-      {{- else if eq .ConstraintStr "exclude" }}
-      flex-algo {{ .FlexAlgoNumber }} {{ .Name }}
-         administrative-group exclude {{ .AdminGroupBit }}
+         administrative-group include any {{ .AdminGroupBit }} exclude 0
          color {{ .Color }}
       !
       {{- end }}
    {{- end }}
-!
 {{- else }}
 no router traffic-engineering
 {{- end }}
+!
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
 ip community-list COMM-{{ .Strings.ToUpper .Device.ExchangeCode }}_USERS permit 21682:{{ .Device.BgpCommunity }}

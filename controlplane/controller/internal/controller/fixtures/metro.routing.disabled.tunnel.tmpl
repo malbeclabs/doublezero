@@ -108,7 +108,7 @@ router bgp 65342
    address-family ipv4
    !
    address-family vpn-ipv4
-      no next-hop resolution ribs tunnel-rib colored system-colored-tunnel-rib tunnel-rib system-tunnel-rib
+      no next-hop resolution ribs
    !
    vrf vrf1
       rd 65342:1
@@ -147,6 +147,7 @@ router isis 1
    no set-overload-bit
 !
 no router traffic-engineering
+!
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
 ip community-list COMM-TST_USERS permit 21682:10050

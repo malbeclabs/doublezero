@@ -77,7 +77,11 @@ func main() {
 		"max_offset_age", *maxOffsetAge,
 	)
 
-	cache := geoprobe.NewMinCache[*geoprobe.LocationOffset](*maxOffsetAge, func(o *geoprobe.LocationOffset) uint64 {
+	// Keyed by SenderPubkey (geoprobe identity). Each geoprobe is an independent
+	// measurement stream. Uses RttNs (accumulated from the DZD root of trust),
+	// not MeasuredRttNs (single hop), because the geolocation constraint is the
+	// total distance from the DZD's known coordinates to this target.
+	caches := geoprobe.NewMinCacheMap[[32]byte, geoprobe.LocationOffset](*maxOffsetAge, func(o geoprobe.LocationOffset) uint64 {
 		return o.RttNs
 	})
 
@@ -113,7 +117,7 @@ func main() {
 	}
 
 	go runTWAMPReflector(ctx, log, *twampPort, errCh)
-	go runUDPListener(ctx, log, *udpPort, *verifySignature, limiter, chWriter, cache, errCh)
+	go runUDPListener(ctx, log, *udpPort, *verifySignature, limiter, chWriter, caches, errCh)
 
 	select {
 	case err := <-errCh:
@@ -241,7 +245,7 @@ func runTWAMPReflector(ctx context.Context, log *slog.Logger, port uint, errCh c
 	}
 }
 
-func runUDPListener(ctx context.Context, log *slog.Logger, port uint, verifySignatures bool, limiter *rateLimiter, chWriter *geoprobe.ClickhouseWriter, cache *geoprobe.MinCache[*geoprobe.LocationOffset], errCh chan<- error) {
+func runUDPListener(ctx context.Context, log *slog.Logger, port uint, verifySignatures bool, limiter *rateLimiter, chWriter *geoprobe.ClickhouseWriter, caches *geoprobe.MinCacheMap[[32]byte, geoprobe.LocationOffset], errCh chan<- error) {
 	conn, err := geoprobe.NewUDPListener(int(port))
 	if err != nil {
 		errCh <- fmt.Errorf("failed to create UDP listener: %w", err)
@@ -303,7 +307,7 @@ func runUDPListener(ctx context.Context, log *slog.Logger, port uint, verifySign
 			continue
 		}
 
-		handleOffset(log, offset, addr, verifySignatures, chWriter, cache)
+		handleOffset(log, offset, addr, verifySignatures, chWriter, caches)
 	}
 }
 
@@ -321,7 +325,7 @@ func countReferenceDepth(offset *geoprobe.LocationOffset) int {
 	return maxDepth + 1
 }
 
-func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.UDPAddr, verifySignatures bool, chWriter *geoprobe.ClickhouseWriter, cache *geoprobe.MinCache[*geoprobe.LocationOffset]) {
+func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.UDPAddr, verifySignatures bool, chWriter *geoprobe.ClickhouseWriter, caches *geoprobe.MinCacheMap[[32]byte, geoprobe.LocationOffset]) {
 	signatureValid := true
 	var verifyError error
 
@@ -345,17 +349,16 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 		}
 	}
 
+	cache := caches.Get(offset.SenderPubkey)
 	prevBestRtt, hadPrevBest := cache.BestRttNs()
-	cacheResult := cache.Update(offset)
+	cacheResult := cache.Update(*offset)
 
 	output := formatLocationOffset(offset, addr, signatureValid, verifyError)
 
-	shouldPrint := *verbose || cacheResult == geoprobe.UpdateBest || cacheResult == geoprobe.UpdatePromoted
-
-	if shouldPrint {
+	if *verbose || cacheResult.Changed() {
 		if *logFormat == "json" {
 			output.CacheUpdate = cacheResult.String()
-			if (cacheResult == geoprobe.UpdateBest || cacheResult == geoprobe.UpdatePromoted) && hadPrevBest {
+			if cacheResult.Changed() && hadPrevBest {
 				prevMs := float64(prevBestRtt) / nanosecondsPerMs
 				output.PreviousBestRttMs = &prevMs
 			}
@@ -369,6 +372,12 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 			text := formatTextOutput(output)
 			if *verbose {
 				text += fmt.Sprintf("  Cache: %s\n\n", cacheResult.String())
+			} else if cacheResult == geoprobe.UpdatePromoted {
+				if hadPrevBest {
+					text += fmt.Sprintf("  * Backup promoted to best (previous best: %.3fms)\n\n", float64(prevBestRtt)/nanosecondsPerMs)
+				} else {
+					text += "  * Backup promoted to best\n\n"
+				}
 			} else if hadPrevBest {
 				text += fmt.Sprintf("  * New best measurement (previous best: %.3fms)\n\n", float64(prevBestRtt)/nanosecondsPerMs)
 			}

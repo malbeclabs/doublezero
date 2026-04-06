@@ -206,8 +206,7 @@ func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq 
 	prevBestRtt, hadPrevBest := cache.BestRttNs()
 	cacheResult := cache.Update(m)
 
-	shouldPrint := *verbose || cacheResult == geoprobe.UpdateBest || cacheResult == geoprobe.UpdatePromoted
-	if shouldPrint {
+	if *verbose || cacheResult.Changed() {
 		logPairedResult(log, seq, probeMeasuredRttNs, targetMeasuredRtt,
 			reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid,
 			result.Reply1, cacheResult, prevBestRtt, hadPrevBest)
@@ -242,7 +241,7 @@ func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, ta
 			Offsets:             offsets,
 			CacheUpdate:         cacheResult.String(),
 		}
-		if (cacheResult == geoprobe.UpdateBest || cacheResult == geoprobe.UpdatePromoted) && hadPrevBest {
+		if cacheResult.Changed() && hadPrevBest {
 			prevMs := float64(prevBestRtt) / 1e6
 			output.PreviousBestRttMs = &prevMs
 		}
@@ -258,6 +257,12 @@ func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, ta
 			authorityPK, geoprobePK, reply, offsets)
 		if *verbose {
 			text += fmt.Sprintf("  Cache: %s\n\n", cacheResult.String())
+		} else if cacheResult == geoprobe.UpdatePromoted {
+			if hadPrevBest {
+				text += fmt.Sprintf("  * Backup promoted to best (previous best: %.3fms)\n\n", float64(prevBestRtt)/1e6)
+			} else {
+				text += "  * Backup promoted to best\n\n"
+			}
 		} else if hadPrevBest {
 			text += fmt.Sprintf("  * New best measurement (previous best: %.3fms)\n\n", float64(prevBestRtt)/1e6)
 		}

@@ -55,6 +55,16 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	err = dn.Start(ctx, nil)
 	require.NoError(t, err)
 
+	// Create UNICAST-DEFAULT topology before any link activation — required by the
+	// onchain program to auto-tag links at activation time.
+	log.Debug("==> Creating UNICAST-DEFAULT topology")
+	_, err = dn.Manager.Exec(ctx, []string{
+		"doublezero", "link", "topology", "create",
+		"--name", "unicast-default",
+		"--constraint", "include-any",
+	})
+	require.NoError(t, err)
+
 	// Create two devices for the link endpoints
 	// Note: Must use globally routable IPs - smart contract rejects private, documentation, and other reserved IPs
 	log.Debug("==> Creating devices for link test")

@@ -215,7 +215,7 @@ func TestFlowEnrichment(t *testing.T) {
 		WithClickhouseDB(chDbname),
 		WithClickhouseUser(chUser),
 		WithClickhousePassword(chPassword),
-		WithClickhouseTable("flows_integration"),
+		WithClickhouseTable(chTable),
 		WithTLSDisabled(true),
 		WithClickhouseLogger(logger),
 		WithClickhouseMetrics(NewClickhouseMetrics(reg)),

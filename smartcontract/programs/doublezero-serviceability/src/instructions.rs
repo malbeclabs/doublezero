@@ -84,7 +84,8 @@ use crate::processors::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
         closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
         create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs, reject::UserRejectArgs,
-        requestban::UserRequestBanArgs, update::UserUpdateArgs,
+        requestban::UserRequestBanArgs, set_bgp_status::SetUserBGPStatusArgs,
+        update::UserUpdateArgs,
     },
 };
 use borsh::BorshSerialize;
@@ -220,8 +221,9 @@ pub enum DoubleZeroInstruction {
     Deprecated102(), // variant 102 (was CreateReservedSubscribeUser)
     Deprecated103(), // variant 103 (was DeleteReservedSubscribeUser)
 
-    CreateIndex(IndexCreateArgs), // variant 104
-    DeleteIndex(IndexDeleteArgs), // variant 105
+    CreateIndex(IndexCreateArgs),                   // variant 104
+    DeleteIndex(IndexDeleteArgs),                   // variant 105
+    SetUserBGPStatus(SetUserBGPStatusArgs),         // variant 106
 }
 
 impl DoubleZeroInstruction {
@@ -356,6 +358,7 @@ impl DoubleZeroInstruction {
 
             104 => Ok(Self::CreateIndex(IndexCreateArgs::try_from(rest).unwrap())),
             105 => Ok(Self::DeleteIndex(IndexDeleteArgs::try_from(rest).unwrap())),
+            106 => Ok(Self::SetUserBGPStatus(SetUserBGPStatusArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -491,8 +494,9 @@ impl DoubleZeroInstruction {
             Self::Deprecated102() => "Deprecated102".to_string(),
             Self::Deprecated103() => "Deprecated103".to_string(),
 
-            Self::CreateIndex(_) => "CreateIndex".to_string(), // variant 104
-            Self::DeleteIndex(_) => "DeleteIndex".to_string(), // variant 105
+            Self::CreateIndex(_) => "CreateIndex".to_string(),             // variant 104
+            Self::DeleteIndex(_) => "DeleteIndex".to_string(),             // variant 105
+            Self::SetUserBGPStatus(_) => "SetUserBGPStatus".to_string(),   // variant 106
         }
     }
 
@@ -620,8 +624,9 @@ impl DoubleZeroInstruction {
             Self::Deprecated102() => String::new(),
             Self::Deprecated103() => String::new(),
 
-            Self::CreateIndex(args) => format!("{args:?}"), // variant 104
-            Self::DeleteIndex(args) => format!("{args:?}"), // variant 105
+            Self::CreateIndex(args) => format!("{args:?}"),      // variant 104
+            Self::DeleteIndex(args) => format!("{args:?}"),      // variant 105
+            Self::SetUserBGPStatus(args) => format!("{args:?}"), // variant 106
         }
     }
 }
@@ -636,7 +641,7 @@ mod tests {
             interface::{LoopbackType, RoutingMode},
             link::{LinkHealth, LinkLinkType},
             permission::permission_flags,
-            user::{UserCYOA, UserType},
+            user::{BGPStatus, UserCYOA, UserType},
         },
     };
     use solana_program::pubkey::Pubkey;
@@ -1310,6 +1315,12 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::DeletePermission(PermissionDeleteArgs {}),
             "DeletePermission",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetUserBGPStatus(SetUserBGPStatusArgs {
+                bgp_status: BGPStatus::Up,
+            }),
+            "SetUserBGPStatus",
         );
     }
 }

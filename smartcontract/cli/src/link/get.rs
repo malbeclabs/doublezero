@@ -119,7 +119,9 @@ impl GetLinkCliCommand {
             health: link.link_health.to_string(),
             owner: link.owner.to_string(),
             link_topologies: resolve_topology_names(&link.link_topologies, &topology_map),
-            unicast_drained: link.unicast_drained,
+            unicast_drained: link.link_flags
+                & doublezero_serviceability::state::link::LINK_FLAG_UNICAST_DRAINED
+                != 0,
         };
 
         if self.json {
@@ -175,7 +177,7 @@ mod tests {
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
             bandwidth: 1000000000,
-            mtu: 9000,
+            mtu: 1500,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
             delay_override_ns: 0,
@@ -189,7 +191,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         let contributor = Contributor {
@@ -328,7 +330,7 @@ mod tests {
         assert_eq!(json["status"].as_str().unwrap(), "activated");
         assert_eq!(json["tunnel_type"].as_str().unwrap(), "WAN");
         assert_eq!(json["bandwidth"].as_u64().unwrap(), 1_000_000_000);
-        assert_eq!(json["mtu"].as_u64().unwrap(), 9000);
+        assert_eq!(json["mtu"].as_u64().unwrap(), 1500);
         assert_eq!(json["contributor"].as_str().unwrap(), "test-contributor");
         assert_eq!(json["side_a"].as_str().unwrap(), "side-a-device");
         assert_eq!(json["side_z"].as_str().unwrap(), "side-z-device");

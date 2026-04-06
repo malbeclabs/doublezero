@@ -42,6 +42,9 @@ pub struct ListLinkCliCommand {
     /// Filter by link code (partial match)
     #[arg(long)]
     pub code: Option<String>,
+    /// Filter by topology name (use "default" for links with no topology assignment)
+    #[arg(long)]
+    pub topology: Option<String>,
     /// List only WAN links.
     #[arg(long, default_value_t = false)]
     pub wan: bool,
@@ -205,6 +208,20 @@ impl ListLinkCliCommand {
             links.retain(|(_, link)| link.code.contains(code_filter));
         }
 
+        // Filter by topology if specified
+        if let Some(topology_filter) = &self.topology {
+            if topology_filter == "default" {
+                links.retain(|(_, link)| link.link_topologies.is_empty());
+            } else {
+                let topology_pk = topology_map
+                    .iter()
+                    .find(|(_, t)| t.name == *topology_filter)
+                    .map(|(pk, _)| *pk)
+                    .ok_or_else(|| eyre::eyre!("Topology '{}' not found", topology_filter))?;
+                links.retain(|(_, link)| link.link_topologies.contains(&topology_pk));
+            }
+        }
+
         let mut tunnel_displays: Vec<LinkDisplay> = links
             .into_iter()
             .map(|(pubkey, link)| {
@@ -244,7 +261,9 @@ impl ListLinkCliCommand {
                     health: link.link_health,
                     owner: link.owner,
                     link_topologies: resolve_topology_names(&link.link_topologies, &topology_map),
-                    unicast_drained: link.unicast_drained,
+                    unicast_drained: link.link_flags
+                        & doublezero_serviceability::state::link::LINK_FLAG_UNICAST_DRAINED
+                        != 0,
                 }
             })
             .collect();
@@ -407,7 +426,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -429,6 +448,7 @@ mod tests {
             health: None,
             desired_status: None,
             code: None,
+            topology: None,
             wan: false,
             dzx: false,
             json: false,
@@ -450,6 +470,7 @@ mod tests {
             health: None,
             desired_status: None,
             code: None,
+            topology: None,
             wan: false,
             dzx: false,
             json: false,
@@ -607,7 +628,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
         let tunnel2_pubkey = Pubkey::new_unique();
         let tunnel2 = Link {
@@ -620,7 +641,7 @@ mod tests {
             side_z_pk: device1_pubkey,
             link_type: LinkLinkType::WAN,
             bandwidth: 5_000_000_000,
-            mtu: 9000,
+            mtu: 1500,
             delay_ns: 40_000,
             jitter_ns: 2000,
             delay_override_ns: 0,
@@ -634,7 +655,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -657,6 +678,7 @@ mod tests {
             health: None,
             desired_status: None,
             code: None,
+            topology: None,
             wan: false,
             dzx: false,
             json: false,
@@ -788,7 +810,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         let link2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPS");
@@ -802,7 +824,7 @@ mod tests {
             side_z_pk: device2_pubkey,
             link_type: LinkLinkType::DZX,
             bandwidth: 5_000_000_000,
-            mtu: 9000,
+            mtu: 1500,
             delay_ns: 10_000,
             jitter_ns: 500,
             delay_override_ns: 0,
@@ -816,7 +838,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -840,6 +862,7 @@ mod tests {
             health: None,
             desired_status: None,
             code: None,
+            topology: None,
             wan: false,
             dzx: false,
             json: false,
@@ -970,7 +993,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         let link2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPS");
@@ -984,7 +1007,7 @@ mod tests {
             side_z_pk: device1_pubkey,
             link_type: LinkLinkType::WAN,
             bandwidth: 5_000_000_000,
-            mtu: 9000,
+            mtu: 1500,
             delay_ns: 10_000,
             jitter_ns: 500,
             delay_override_ns: 0,
@@ -998,7 +1021,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -1022,6 +1045,7 @@ mod tests {
             health: None,
             desired_status: None,
             code: None,
+            topology: None,
             wan: false,
             dzx: false,
             json: false,
@@ -1119,7 +1143,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         let link2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPS");
@@ -1133,7 +1157,7 @@ mod tests {
             side_z_pk: device1_pubkey,
             link_type: LinkLinkType::WAN,
             bandwidth: 5_000_000_000,
-            mtu: 9000,
+            mtu: 1500,
             delay_ns: 10_000,
             jitter_ns: 500,
             delay_override_ns: 0,
@@ -1147,7 +1171,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -1171,6 +1195,7 @@ mod tests {
             health: None,
             desired_status: None,
             code: Some("production".to_string()),
+            topology: None,
             wan: false,
             dzx: false,
             json: false,

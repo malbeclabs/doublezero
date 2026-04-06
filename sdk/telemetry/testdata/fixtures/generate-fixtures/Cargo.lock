@@ -583,6 +583,8 @@ dependencies = [
 [[package]]
 name = "doublezero-config"
 version = "0.16.0"
+version = "0.15.0"
+>>>>>>> b1a32ee05 (smartcontract: add link_flags, topology list/filter CLI, SDK updates for RFC-18)
 dependencies = [
  "eyre",
  "serde",
@@ -592,6 +594,8 @@ dependencies = [
 [[package]]
 name = "doublezero-program-common"
 version = "0.16.0"
+version = "0.15.0"
+>>>>>>> b1a32ee05 (smartcontract: add link_flags, topology list/filter CLI, SDK updates for RFC-18)
 dependencies = [
  "borsh 1.6.0",
  "byteorder",
@@ -604,6 +608,8 @@ dependencies = [
 [[package]]
 name = "doublezero-serviceability"
 version = "0.16.0"
+version = "0.15.0"
+>>>>>>> b1a32ee05 (smartcontract: add link_flags, topology list/filter CLI, SDK updates for RFC-18)
 dependencies = [
  "bitflags",
  "borsh 1.6.0",
@@ -619,6 +625,8 @@ dependencies = [
 [[package]]
 name = "doublezero-telemetry"
 version = "0.16.0"
+version = "0.15.0"
+>>>>>>> b1a32ee05 (smartcontract: add link_flags, topology list/filter CLI, SDK updates for RFC-18)
 dependencies = [
  "borsh 1.6.0",
  "borsh-incremental",

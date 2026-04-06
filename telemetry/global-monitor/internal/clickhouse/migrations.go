@@ -1,6 +1,7 @@
 package clickhouse
 
 import (
+	"context"
 	"crypto/tls"
 	"database/sql"
 	"fmt"
@@ -11,7 +12,6 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-// RunMigrations applies pending goose migrations against ClickHouse.
 func RunMigrations(addr, database, username, password string, secure bool, log *slog.Logger) error {
 	opts := &clickhouse.Options{
 		Addr: []string{addr},
@@ -34,7 +34,6 @@ func RunMigrations(addr, database, username, password string, secure bool, log *
 	return runGoose(db, log)
 }
 
-// gooseLogger adapts slog to goose's Printf-style logger interface.
 type gooseLogger struct {
 	log *slog.Logger
 }
@@ -48,12 +47,13 @@ func (g *gooseLogger) Printf(format string, v ...any) {
 }
 
 func runGoose(db *sql.DB, log *slog.Logger) error {
-	goose.SetBaseFS(migrations.FS)
-	goose.SetLogger(&gooseLogger{log: log})
-	if err := goose.SetDialect("clickhouse"); err != nil {
-		return fmt.Errorf("goose dialect: %w", err)
+	provider, err := goose.NewProvider(goose.DialectClickHouse, db, migrations.FS,
+		goose.WithLogger(&gooseLogger{log: log}),
+	)
+	if err != nil {
+		return fmt.Errorf("goose provider: %w", err)
 	}
-	if err := goose.Up(db, "."); err != nil {
+	if _, err := provider.Up(context.Background()); err != nil {
 		return fmt.Errorf("goose up: %w", err)
 	}
 	return nil

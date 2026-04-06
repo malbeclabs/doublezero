@@ -232,8 +232,8 @@ func run() error {
 	// ClickHouse configuration.
 	chAddr := os.Getenv("CLICKHOUSE_ADDR")
 	chDatabase := os.Getenv("CLICKHOUSE_DATABASE")
-	chUsername := os.Getenv("CLICKHOUSE_USERNAME")
-	chPassword := os.Getenv("CLICKHOUSE_PASSWORD")
+	chUsername := os.Getenv("CLICKHOUSE_USER")
+	chPassword := os.Getenv("CLICKHOUSE_PASS")
 	chSecure := os.Getenv("CLICKHOUSE_SECURE") == "true"
 	chRunMigrations := os.Getenv("CLICKHOUSE_RUN_MIGRATIONS") == "true"
 	chEnabled := chAddr != "" && chDatabase != ""

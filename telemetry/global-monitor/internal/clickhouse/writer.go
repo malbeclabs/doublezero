@@ -11,7 +11,6 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
 
-// SolanaValidatorICMPProbeRow represents a row in the solana_validator_icmp_probe table.
 type SolanaValidatorICMPProbeRow struct {
 	Timestamp time.Time
 
@@ -72,7 +71,6 @@ type SolanaValidatorICMPProbeRow struct {
 	ValidatorStakeLamports uint64
 }
 
-// SolanaValidatorTPUQUICProbeRow represents a row in the solana_validator_tpuquic_probe table.
 type SolanaValidatorTPUQUICProbeRow struct {
 	Timestamp time.Time
 
@@ -134,7 +132,6 @@ type SolanaValidatorTPUQUICProbeRow struct {
 	ValidatorStakeLamports uint64
 }
 
-// DoubleZeroUserICMPProbeRow represents a row in the doublezero_user_icmp_probe table.
 type DoubleZeroUserICMPProbeRow struct {
 	Timestamp time.Time
 
@@ -198,14 +195,12 @@ type DoubleZeroUserICMPProbeRow struct {
 	TargetIPInSolanaGossipAsTPUQUIC         bool
 }
 
-// ProbeWriter is the interface used by planners to append probe result rows.
 type ProbeWriter interface {
 	AppendSolanaValidatorICMPProbe(row SolanaValidatorICMPProbeRow)
 	AppendSolanaValidatorTPUQUICProbe(row SolanaValidatorTPUQUICProbeRow)
 	AppendDoubleZeroUserICMPProbe(row DoubleZeroUserICMPProbeRow)
 }
 
-// Writer buffers probe result rows and flushes them to ClickHouse in batches.
 type Writer struct {
 	conn clickhouse.Conn
 	db   string
@@ -217,7 +212,6 @@ type Writer struct {
 	dzUserICMPRows []DoubleZeroUserICMPProbeRow
 }
 
-// NewWriter creates a new ClickHouse writer.
 func NewWriter(addr, database, username, password string, secure bool, log *slog.Logger) (*Writer, error) {
 	opts := &clickhouse.Options{
 		Addr: []string{addr},
@@ -252,33 +246,28 @@ func NewWriter(addr, database, username, password string, secure bool, log *slog
 	}, nil
 }
 
-// Close closes the ClickHouse connection.
 func (w *Writer) Close() error {
 	return w.conn.Close()
 }
 
-// AppendSolanaValidatorICMPProbe buffers a solana validator ICMP probe row.
 func (w *Writer) AppendSolanaValidatorICMPProbe(row SolanaValidatorICMPProbeRow) {
 	w.mu.Lock()
 	w.solICMPRows = append(w.solICMPRows, row)
 	w.mu.Unlock()
 }
 
-// AppendSolanaValidatorTPUQUICProbe buffers a solana validator TPUQUIC probe row.
 func (w *Writer) AppendSolanaValidatorTPUQUICProbe(row SolanaValidatorTPUQUICProbeRow) {
 	w.mu.Lock()
 	w.solTPUQUICRows = append(w.solTPUQUICRows, row)
 	w.mu.Unlock()
 }
 
-// AppendDoubleZeroUserICMPProbe buffers a doublezero user ICMP probe row.
 func (w *Writer) AppendDoubleZeroUserICMPProbe(row DoubleZeroUserICMPProbeRow) {
 	w.mu.Lock()
 	w.dzUserICMPRows = append(w.dzUserICMPRows, row)
 	w.mu.Unlock()
 }
 
-// Flush writes all buffered rows to ClickHouse and clears the buffers.
 func (w *Writer) Flush(ctx context.Context) error {
 	w.mu.Lock()
 	solICMP := w.solICMPRows
@@ -295,6 +284,7 @@ func (w *Writer) Flush(ctx context.Context) error {
 		if err := w.flushSolanaValidatorICMPProbe(ctx, solICMP); err != nil {
 			w.log.Error("clickhouse: failed to flush solana validator ICMP probe rows", "error", err, "count", len(solICMP))
 			errs = append(errs, err)
+			w.requeue(solICMP, nil, nil)
 		} else {
 			w.log.Debug("clickhouse: flushed solana validator ICMP probe rows", "count", len(solICMP))
 		}
@@ -304,6 +294,7 @@ func (w *Writer) Flush(ctx context.Context) error {
 		if err := w.flushSolanaValidatorTPUQUICProbe(ctx, solTPUQUIC); err != nil {
 			w.log.Error("clickhouse: failed to flush solana validator TPUQUIC probe rows", "error", err, "count", len(solTPUQUIC))
 			errs = append(errs, err)
+			w.requeue(nil, solTPUQUIC, nil)
 		} else {
 			w.log.Debug("clickhouse: flushed solana validator TPUQUIC probe rows", "count", len(solTPUQUIC))
 		}
@@ -313,6 +304,7 @@ func (w *Writer) Flush(ctx context.Context) error {
 		if err := w.flushDoubleZeroUserICMPProbe(ctx, dzUserICMP); err != nil {
 			w.log.Error("clickhouse: failed to flush doublezero user ICMP probe rows", "error", err, "count", len(dzUserICMP))
 			errs = append(errs, err)
+			w.requeue(nil, nil, dzUserICMP)
 		} else {
 			w.log.Debug("clickhouse: flushed doublezero user ICMP probe rows", "count", len(dzUserICMP))
 		}
@@ -322,6 +314,21 @@ func (w *Writer) Flush(ctx context.Context) error {
 		return fmt.Errorf("clickhouse: %d flush errors", len(errs))
 	}
 	return nil
+}
+
+// requeue prepends failed rows back into the buffers so they are retried on the next flush.
+func (w *Writer) requeue(solICMP []SolanaValidatorICMPProbeRow, solTPUQUIC []SolanaValidatorTPUQUICProbeRow, dzUserICMP []DoubleZeroUserICMPProbeRow) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(solICMP) > 0 {
+		w.solICMPRows = append(solICMP, w.solICMPRows...)
+	}
+	if len(solTPUQUIC) > 0 {
+		w.solTPUQUICRows = append(solTPUQUIC, w.solTPUQUICRows...)
+	}
+	if len(dzUserICMP) > 0 {
+		w.dzUserICMPRows = append(dzUserICMP, w.dzUserICMPRows...)
+	}
 }
 
 func (w *Writer) flushSolanaValidatorICMPProbe(ctx context.Context, rows []SolanaValidatorICMPProbeRow) error {

@@ -16,7 +16,7 @@ const (
 	MainnetRevenueDistributionProgramID = "dzrevZC94tBLwuHw1dyynZxaXTWyp7yocsinyEVPtt4"
 	MainnetGeolocationProgramID         = "8H7nS6eZiuf7rGQtz3PPz2q9m4eJRL37PPM678KHnspG"
 	MainnetShredSubscriptionProgramID   = "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE"
-	MainnetUSDCMint                     = "" // CLI defaults to real USDC on mainnet
+	MainnetUSDCMint                     = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 	// Testnet constants.
 	TestnetLedgerPublicRPCURL            = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"

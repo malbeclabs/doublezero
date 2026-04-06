@@ -2178,6 +2178,94 @@ func (x *FeedSeatPriceResponse) GetPrices() []*DevicePrice {
 	return nil
 }
 
+type GetWalletPubkeyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Keypair       string                 `protobuf:"bytes,1,opt,name=keypair,proto3" json:"keypair,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWalletPubkeyRequest) Reset() {
+	*x = GetWalletPubkeyRequest{}
+	mi := &file_agent_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWalletPubkeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWalletPubkeyRequest) ProtoMessage() {}
+
+func (x *GetWalletPubkeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWalletPubkeyRequest.ProtoReflect.Descriptor instead.
+func (*GetWalletPubkeyRequest) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *GetWalletPubkeyRequest) GetKeypair() string {
+	if x != nil {
+		return x.Keypair
+	}
+	return ""
+}
+
+type GetWalletPubkeyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Pubkey        string                 `protobuf:"bytes,1,opt,name=pubkey,proto3" json:"pubkey,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWalletPubkeyResponse) Reset() {
+	*x = GetWalletPubkeyResponse{}
+	mi := &file_agent_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWalletPubkeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWalletPubkeyResponse) ProtoMessage() {}
+
+func (x *GetWalletPubkeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWalletPubkeyResponse.ProtoReflect.Descriptor instead.
+func (*GetWalletPubkeyResponse) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *GetWalletPubkeyResponse) GetPubkey() string {
+	if x != nil {
+		return x.Pubkey
+	}
+	return ""
+}
+
 var File_agent_proto protoreflect.FileDescriptor
 
 const file_agent_proto_rawDesc = "" +
@@ -2353,7 +2441,11 @@ const file_agent_proto_rawDesc = "" +
 	" \x01(\x04R\n" +
 	"epochPrice\"@\n" +
 	"\x15FeedSeatPriceResponse\x12'\n" +
-	"\x06prices\x18\x01 \x03(\v2\x0f.qa.DevicePriceR\x06prices2\x8c\n" +
+	"\x06prices\x18\x01 \x03(\v2\x0f.qa.DevicePriceR\x06prices\"2\n" +
+	"\x16GetWalletPubkeyRequest\x12\x18\n" +
+	"\akeypair\x18\x01 \x01(\tR\akeypair\"1\n" +
+	"\x17GetWalletPubkeyResponse\x12\x16\n" +
+	"\x06pubkey\x18\x01 \x01(\tR\x06pubkey2\xd8\n" +
 	"\n" +
 	"\x0eQAAgentService\x127\n" +
 	"\x0eConnectUnicast\x12\x19.qa.ConnectUnicastRequest\x1a\n" +
@@ -2390,7 +2482,8 @@ const file_agent_proto_rawDesc = "" +
 	"\vFeedSeatPay\x12\x16.qa.FeedSeatPayRequest\x1a\n" +
 	".qa.Result\x12;\n" +
 	"\x10FeedSeatWithdraw\x12\x1b.qa.FeedSeatWithdrawRequest\x1a\n" +
-	".qa.ResultB/Z-github.com/malbeclabs/doublezero/e2e/proto/qab\x06proto3"
+	".qa.Result\x12J\n" +
+	"\x0fGetWalletPubkey\x12\x1a.qa.GetWalletPubkeyRequest\x1a\x1b.qa.GetWalletPubkeyResponseB/Z-github.com/malbeclabs/doublezero/e2e/proto/qab\x06proto3"
 
 var (
 	file_agent_proto_rawDescOnce sync.Once
@@ -2405,7 +2498,7 @@ func file_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
+var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_agent_proto_goTypes = []any{
 	(ConnectUnicastRequest_UnicastMode)(0),          // 0: qa.ConnectUnicastRequest.UnicastMode
 	(ConnectMulticastRequest_MulticastMode)(0),      // 1: qa.ConnectMulticastRequest.MulticastMode
@@ -2442,8 +2535,10 @@ var file_agent_proto_goTypes = []any{
 	(*FeedSeatPriceRequest)(nil),                    // 32: qa.FeedSeatPriceRequest
 	(*DevicePrice)(nil),                             // 33: qa.DevicePrice
 	(*FeedSeatPriceResponse)(nil),                   // 34: qa.FeedSeatPriceResponse
-	nil,                                             // 35: qa.MulticastReportResult.ReportsEntry
-	(*emptypb.Empty)(nil),                           // 36: google.protobuf.Empty
+	(*GetWalletPubkeyRequest)(nil),                  // 35: qa.GetWalletPubkeyRequest
+	(*GetWalletPubkeyResponse)(nil),                 // 36: qa.GetWalletPubkeyResponse
+	nil,                                             // 37: qa.MulticastReportResult.ReportsEntry
+	(*emptypb.Empty)(nil),                           // 38: google.protobuf.Empty
 }
 var file_agent_proto_depIdxs = []int32{
 	0,  // 0: qa.ConnectUnicastRequest.mode:type_name -> qa.ConnectUnicastRequest.UnicastMode
@@ -2456,7 +2551,7 @@ var file_agent_proto_depIdxs = []int32{
 	21, // 7: qa.TracerouteResult.hops:type_name -> qa.TracerouteHop
 	22, // 8: qa.MulticastJoinRequest.groups:type_name -> qa.MulticastGroup
 	22, // 9: qa.MulticastReportRequest.groups:type_name -> qa.MulticastGroup
-	35, // 10: qa.MulticastReportResult.reports:type_name -> qa.MulticastReportResult.ReportsEntry
+	37, // 10: qa.MulticastReportResult.reports:type_name -> qa.MulticastReportResult.ReportsEntry
 	33, // 11: qa.FeedSeatPriceResponse.prices:type_name -> qa.DevicePrice
 	27, // 12: qa.MulticastReportResult.ReportsEntry.value:type_name -> qa.MulticastReport
 	4,  // 13: qa.QAAgentService.ConnectUnicast:input_type -> qa.ConnectUnicastRequest
@@ -2464,45 +2559,47 @@ var file_agent_proto_depIdxs = []int32{
 	6,  // 15: qa.QAAgentService.DeleteMulticastGroup:input_type -> qa.DeleteMulticastGroupRequest
 	8,  // 16: qa.QAAgentService.MulticastAllowListAdd:input_type -> qa.MulticastAllowListAddRequest
 	7,  // 17: qa.QAAgentService.ConnectMulticast:input_type -> qa.ConnectMulticastRequest
-	36, // 18: qa.QAAgentService.GetStatus:input_type -> google.protobuf.Empty
-	36, // 19: qa.QAAgentService.GetLatency:input_type -> google.protobuf.Empty
-	36, // 20: qa.QAAgentService.GetPublicIP:input_type -> google.protobuf.Empty
-	36, // 21: qa.QAAgentService.GetRoutes:input_type -> google.protobuf.Empty
-	36, // 22: qa.QAAgentService.Disconnect:input_type -> google.protobuf.Empty
+	38, // 18: qa.QAAgentService.GetStatus:input_type -> google.protobuf.Empty
+	38, // 19: qa.QAAgentService.GetLatency:input_type -> google.protobuf.Empty
+	38, // 20: qa.QAAgentService.GetPublicIP:input_type -> google.protobuf.Empty
+	38, // 21: qa.QAAgentService.GetRoutes:input_type -> google.protobuf.Empty
+	38, // 22: qa.QAAgentService.Disconnect:input_type -> google.protobuf.Empty
 	17, // 23: qa.QAAgentService.Ping:input_type -> qa.PingRequest
 	19, // 24: qa.QAAgentService.Traceroute:input_type -> qa.TracerouteRequest
 	19, // 25: qa.QAAgentService.TracerouteRaw:input_type -> qa.TracerouteRequest
 	23, // 26: qa.QAAgentService.MulticastJoin:input_type -> qa.MulticastJoinRequest
-	36, // 27: qa.QAAgentService.MulticastLeave:input_type -> google.protobuf.Empty
+	38, // 27: qa.QAAgentService.MulticastLeave:input_type -> google.protobuf.Empty
 	26, // 28: qa.QAAgentService.MulticastReport:input_type -> qa.MulticastReportRequest
 	29, // 29: qa.QAAgentService.MulticastSend:input_type -> qa.MulticastSendRequest
-	36, // 30: qa.QAAgentService.FeedEnable:input_type -> google.protobuf.Empty
+	38, // 30: qa.QAAgentService.FeedEnable:input_type -> google.protobuf.Empty
 	32, // 31: qa.QAAgentService.FeedSeatPrice:input_type -> qa.FeedSeatPriceRequest
 	30, // 32: qa.QAAgentService.FeedSeatPay:input_type -> qa.FeedSeatPayRequest
 	31, // 33: qa.QAAgentService.FeedSeatWithdraw:input_type -> qa.FeedSeatWithdrawRequest
-	9,  // 34: qa.QAAgentService.ConnectUnicast:output_type -> qa.Result
-	9,  // 35: qa.QAAgentService.CreateMulticastGroup:output_type -> qa.Result
-	9,  // 36: qa.QAAgentService.DeleteMulticastGroup:output_type -> qa.Result
-	9,  // 37: qa.QAAgentService.MulticastAllowListAdd:output_type -> qa.Result
-	9,  // 38: qa.QAAgentService.ConnectMulticast:output_type -> qa.Result
-	11, // 39: qa.QAAgentService.GetStatus:output_type -> qa.StatusResponse
-	13, // 40: qa.QAAgentService.GetLatency:output_type -> qa.LatencyResponse
-	14, // 41: qa.QAAgentService.GetPublicIP:output_type -> qa.GetPublicIPResponse
-	15, // 42: qa.QAAgentService.GetRoutes:output_type -> qa.GetRoutesResponse
-	9,  // 43: qa.QAAgentService.Disconnect:output_type -> qa.Result
-	18, // 44: qa.QAAgentService.Ping:output_type -> qa.PingResult
-	20, // 45: qa.QAAgentService.Traceroute:output_type -> qa.TracerouteResult
-	9,  // 46: qa.QAAgentService.TracerouteRaw:output_type -> qa.Result
-	24, // 47: qa.QAAgentService.MulticastJoin:output_type -> qa.MulticastJoinResult
-	36, // 48: qa.QAAgentService.MulticastLeave:output_type -> google.protobuf.Empty
-	28, // 49: qa.QAAgentService.MulticastReport:output_type -> qa.MulticastReportResult
-	36, // 50: qa.QAAgentService.MulticastSend:output_type -> google.protobuf.Empty
-	9,  // 51: qa.QAAgentService.FeedEnable:output_type -> qa.Result
-	34, // 52: qa.QAAgentService.FeedSeatPrice:output_type -> qa.FeedSeatPriceResponse
-	9,  // 53: qa.QAAgentService.FeedSeatPay:output_type -> qa.Result
-	9,  // 54: qa.QAAgentService.FeedSeatWithdraw:output_type -> qa.Result
-	34, // [34:55] is the sub-list for method output_type
-	13, // [13:34] is the sub-list for method input_type
+	35, // 34: qa.QAAgentService.GetWalletPubkey:input_type -> qa.GetWalletPubkeyRequest
+	9,  // 35: qa.QAAgentService.ConnectUnicast:output_type -> qa.Result
+	9,  // 36: qa.QAAgentService.CreateMulticastGroup:output_type -> qa.Result
+	9,  // 37: qa.QAAgentService.DeleteMulticastGroup:output_type -> qa.Result
+	9,  // 38: qa.QAAgentService.MulticastAllowListAdd:output_type -> qa.Result
+	9,  // 39: qa.QAAgentService.ConnectMulticast:output_type -> qa.Result
+	11, // 40: qa.QAAgentService.GetStatus:output_type -> qa.StatusResponse
+	13, // 41: qa.QAAgentService.GetLatency:output_type -> qa.LatencyResponse
+	14, // 42: qa.QAAgentService.GetPublicIP:output_type -> qa.GetPublicIPResponse
+	15, // 43: qa.QAAgentService.GetRoutes:output_type -> qa.GetRoutesResponse
+	9,  // 44: qa.QAAgentService.Disconnect:output_type -> qa.Result
+	18, // 45: qa.QAAgentService.Ping:output_type -> qa.PingResult
+	20, // 46: qa.QAAgentService.Traceroute:output_type -> qa.TracerouteResult
+	9,  // 47: qa.QAAgentService.TracerouteRaw:output_type -> qa.Result
+	24, // 48: qa.QAAgentService.MulticastJoin:output_type -> qa.MulticastJoinResult
+	38, // 49: qa.QAAgentService.MulticastLeave:output_type -> google.protobuf.Empty
+	28, // 50: qa.QAAgentService.MulticastReport:output_type -> qa.MulticastReportResult
+	38, // 51: qa.QAAgentService.MulticastSend:output_type -> google.protobuf.Empty
+	9,  // 52: qa.QAAgentService.FeedEnable:output_type -> qa.Result
+	34, // 53: qa.QAAgentService.FeedSeatPrice:output_type -> qa.FeedSeatPriceResponse
+	9,  // 54: qa.QAAgentService.FeedSeatPay:output_type -> qa.Result
+	9,  // 55: qa.QAAgentService.FeedSeatWithdraw:output_type -> qa.Result
+	36, // 56: qa.QAAgentService.GetWalletPubkey:output_type -> qa.GetWalletPubkeyResponse
+	35, // [35:57] is the sub-list for method output_type
+	13, // [13:35] is the sub-list for method input_type
 	13, // [13:13] is the sub-list for extension type_name
 	13, // [13:13] is the sub-list for extension extendee
 	0,  // [0:13] is the sub-list for field type_name
@@ -2519,7 +2616,7 @@ func file_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   32,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

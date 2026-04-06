@@ -36,16 +36,17 @@ const (
 )
 
 var (
-	probeIP     = flag.String("probe-ip", "", "IP address of the GeoProbe to probe (required)")
-	probePort   = flag.Uint("probe-port", defaultProbePort, "TWAMP port on the probe")
-	probePK     = flag.String("probe-pk", "", "Base58 Ed25519 public key of the GeoProbe's signing authority (required)")
-	keypairPath = flag.String("keypair", "", "Path to this target's Ed25519 keypair file for signing outbound message (required)")
-	interval    = flag.Duration("interval", defaultInterval, "Interval between probe pairs")
-	count       = flag.Uint("count", 0, "Number of probe pairs to send (0 = infinite)")
-	timeout     = flag.Duration("timeout", defaultTimeout, "Per-probe timeout")
-	logFormat   = flag.String("log-format", "text", "Log format: text or json")
-	verbose     = flag.Bool("verbose", false, "Enable debug logging")
-	showVersion = flag.Bool("version", false, "Print version and exit")
+	probeIP           = flag.String("probe-ip", "", "IP address of the GeoProbe to probe (required)")
+	probePort         = flag.Uint("probe-port", defaultProbePort, "TWAMP port on the probe")
+	probePK           = flag.String("probe-pk", "", "Base58 Ed25519 public key of the GeoProbe's signing authority (required)")
+	keypairPath       = flag.String("keypair", "", "Path to this target's Ed25519 keypair file for signing outbound message (required)")
+	interval          = flag.Duration("interval", defaultInterval, "Interval between probe pairs")
+	count             = flag.Uint("count", 0, "Number of probe pairs to send (0 = infinite)")
+	timeout           = flag.Duration("timeout", defaultTimeout, "Per-probe timeout")
+	maxMeasurementAge = flag.Duration("max-measurement-age", 1*time.Hour, "TTL for measurement tracking; best/second-best window")
+	logFormat         = flag.String("log-format", "text", "Log format: text or json")
+	verbose           = flag.Bool("verbose", false, "Enable debug logging")
+	showVersion       = flag.Bool("version", false, "Print version and exit")
 
 	version = "dev"
 	commit  = "none"
@@ -75,7 +76,12 @@ func main() {
 		"interval", *interval,
 		"timeout", *timeout,
 		"count", *count,
+		"max_measurement_age", *maxMeasurementAge,
 	)
+
+	cache := geoprobe.NewMinCache[measurement](*maxMeasurementAge, func(m measurement) uint64 {
+		return m.probeMeasuredRttNs
+	})
 
 	// Load target keypair.
 	keypair, err := solana.PrivateKeyFromSolanaKeygenFile(*keypairPath)
@@ -131,7 +137,7 @@ func main() {
 
 		seq++
 		log.Debug("starting probe pair iteration", "seq", seq, "target", remoteAddr.String())
-		probePair(ctx, log, sender, seq)
+		probePair(ctx, log, sender, seq, cache)
 
 		if *count > 0 && seq >= uint32(*count) {
 			log.Info("completed all probe pairs", "count", *count)
@@ -151,7 +157,7 @@ func main() {
 // Both probes are pre-signed before any network I/O so that probe 1 fires
 // immediately after reply 0 arrives. Reply 1's SinceLastRxNs gives the
 // probe-measured RTT.
-func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq uint32) {
+func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq uint32, cache *geoprobe.MinCache[measurement]) {
 	probeCtx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
 
@@ -186,11 +192,29 @@ func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq 
 		"reply1_probe_sig", reply1ProbeSigValid,
 		"reply1_sig", reply1SigValid)
 
-	logPairedResult(log, seq, probeMeasuredRttNs, targetMeasuredRtt,
-		reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid, result.Reply1)
+	m := measurement{
+		probeMeasuredRttNs:  probeMeasuredRttNs,
+		targetMeasuredRtt:   targetMeasuredRtt,
+		seq:                 seq,
+		reply:               result.Reply1,
+		reply0ProbeSigValid: reply0ProbeSigValid,
+		reply0SigValid:      reply0SigValid,
+		reply1ProbeSigValid: reply1ProbeSigValid,
+		reply1SigValid:      reply1SigValid,
+	}
+
+	prevBestRtt, hadPrevBest := cache.BestRttNs()
+	cacheResult := cache.Update(m)
+
+	shouldPrint := *verbose || cacheResult == geoprobe.UpdateBest || cacheResult == geoprobe.UpdatePromoted
+	if shouldPrint {
+		logPairedResult(log, seq, probeMeasuredRttNs, targetMeasuredRtt,
+			reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid,
+			result.Reply1, cacheResult, prevBestRtt, hadPrevBest)
+	}
 }
 
-func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid bool, reply *signed.ReplyPacket) {
+func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid bool, reply *signed.ReplyPacket, cacheResult geoprobe.UpdateResult, prevBestRtt uint64, hadPrevBest bool) {
 	authorityPK := solana.PublicKeyFromBytes(reply.AuthorityPubkey[:])
 	geoprobePK := solana.PublicKeyFromBytes(reply.GeoprobePubkey[:])
 	offsets := parseOffsets(reply.Offsets)
@@ -216,6 +240,11 @@ func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, ta
 			AuthorityPubkey:     authorityPK.String(),
 			GeoprobePubkey:      geoprobePK.String(),
 			Offsets:             offsets,
+			CacheUpdate:         cacheResult.String(),
+		}
+		if (cacheResult == geoprobe.UpdateBest || cacheResult == geoprobe.UpdatePromoted) && hadPrevBest {
+			prevMs := float64(prevBestRtt) / 1e6
+			output.PreviousBestRttMs = &prevMs
 		}
 		data, err := json.Marshal(output)
 		if err != nil {
@@ -224,9 +253,15 @@ func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, ta
 		}
 		fmt.Println(string(data))
 	} else {
-		fmt.Print(formatTextResult(seq, probeMeasuredRttNs, targetMeasuredRtt,
+		text := formatTextResult(seq, probeMeasuredRttNs, targetMeasuredRtt,
 			reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid,
-			authorityPK, geoprobePK, reply, offsets))
+			authorityPK, geoprobePK, reply, offsets)
+		if *verbose {
+			text += fmt.Sprintf("  Cache: %s\n\n", cacheResult.String())
+		} else if hadPrevBest {
+			text += fmt.Sprintf("  * New best measurement (previous best: %.3fms)\n\n", float64(prevBestRtt)/1e6)
+		}
+		fmt.Print(text)
 	}
 }
 
@@ -255,6 +290,17 @@ func logProbeError(log *slog.Logger, seq uint32, probeErr error) {
 	}
 }
 
+type measurement struct {
+	probeMeasuredRttNs  uint64
+	targetMeasuredRtt   time.Duration
+	seq                 uint32
+	reply               *signed.ReplyPacket
+	reply0ProbeSigValid bool
+	reply0SigValid      bool
+	reply1ProbeSigValid bool
+	reply1SigValid      bool
+}
+
 type probeOutput struct {
 	Timestamp           string         `json:"timestamp"`
 	Seq                 uint32         `json:"seq"`
@@ -274,6 +320,8 @@ type probeOutput struct {
 	AuthorityPubkey     string         `json:"authority_pubkey,omitempty"`
 	GeoprobePubkey      string         `json:"geoprobe_pubkey,omitempty"`
 	Offsets             []offsetOutput `json:"offsets,omitempty"`
+	CacheUpdate         string         `json:"cache_update,omitempty"`
+	PreviousBestRttMs   *float64       `json:"previous_best_rtt_ms,omitempty"`
 	Error               string         `json:"error,omitempty"`
 }
 

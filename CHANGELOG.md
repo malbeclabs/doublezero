@@ -12,9 +12,7 @@ All notable changes to this project will be documented in this file.
   - Add optional TLS support to state-ingest server via `--tls-cert-file` and `--tls-key-file` flags; when set, the server listens on both HTTP (`:8080`) and HTTPS (`:8443`) simultaneously
 - E2E tests
   - Add `TestE2E_GeoprobeIcmpTargets` verifying end-to-end ICMP outbound offset delivery via onchain `outbound-icmp` targets
-  - Refactor geoprobe containers to use testcontainers entrypoints (`Cmd`, `WaitingFor`, `Files`) instead of `nohup`/`pgrep` via `docker exec`
-  - Convert `TestE2E_GeoprobeDiscovery` to discover targets from onchain `GeolocationUser` accounts instead of CLI flags
-  - Fix `PubkeyFromKeypairJSON` to parse `[]int` JSON (the standard Solana keypair format) instead of base64
+  - Refactor geoprobe E2E tests to use testcontainers entrypoints and onchain target discovery
   
 ### Breaking
 

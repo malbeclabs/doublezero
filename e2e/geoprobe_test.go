@@ -560,7 +560,7 @@ func waitForTargetOffsetReceived(t *testing.T, containerID string, timeout time.
 	t.Helper()
 
 	require.Eventually(t, func() bool {
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
 		logsReader, err := dockerClient.ContainerLogs(ctx, containerID, dockercontainer.LogsOptions{
 			ShowStdout: true,
@@ -686,7 +686,10 @@ func TestE2E_GeoprobeIcmpTargets(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add 2 devices in parallel.
-	var dz1TelemetryKeypairPK solana.PublicKey
+	var (
+		dz1TelemetryKeypairPK solana.PublicKey
+		dz2TelemetryKeypairPK solana.PublicKey
+	)
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -728,12 +731,13 @@ func TestE2E_GeoprobeIcmpTargets(t *testing.T) {
 		telemetryKeypairJSON, _ := json.Marshal(telemetryKeypair[:])
 		telemetryKeypairPath := t.TempDir() + "/ams-dz02-telemetry-keypair.json"
 		require.NoError(t, os.WriteFile(telemetryKeypairPath, telemetryKeypairJSON, 0600))
+		dz2TelemetryKeypairPK = telemetryKeypair.PublicKey()
 
 		_, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 			Code:                         "ams-dz02",
 			Location:                     "ams",
 			Exchange:                     "xams",
-			MetricsPublisherPK:           telemetryKeypair.PublicKey().String(),
+			MetricsPublisherPK:           dz2TelemetryKeypairPK.String(),
 			CYOANetworkIPHostID:          16,
 			CYOANetworkAllocatablePrefix: 29,
 			Telemetry: devnet.DeviceTelemetrySpec{
@@ -751,6 +755,7 @@ func TestE2E_GeoprobeIcmpTargets(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		requireEventuallyFunded(t, log, dn.Ledger.GetRPCClient(), dz2TelemetryKeypairPK, minBalanceSOL, "dz2 telemetry publisher")
 	}()
 	wg.Wait()
 

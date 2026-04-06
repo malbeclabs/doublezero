@@ -3,6 +3,7 @@
 package e2e_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,14 +17,17 @@ import (
 
 	dockercontainer "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
+	solanautil "github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 // TestE2E_GeoprobeDiscovery verifies the full geoprobe flow:
@@ -208,39 +212,36 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 	targetIP, err := netutil.DeriveIPFromCIDR(dn.CYOANetwork.SubnetCIDR, targetHostID)
 	require.NoError(t, err)
 	targetIPStr := targetIP.To4().String()
-	log.Debug("==> Geoprobe target CYOA IP", "ip", targetIPStr)
 
-	// Start the geoprobe target container and process before the agent so it's
-	// ready to receive probes and offsets.
+	// Start the geoprobe target container before creating onchain targets,
+	// since we need to generate the sender keypair inside it.
 	log.Debug("==> Starting geoprobe target container")
-	targetContainerID := startGeoprobeTargetContainer(t, log, dn, targetIPStr)
-	startGeoprobeTarget(t, targetContainerID)
-	log.Debug("==> Geoprobe target started", "containerID", targetContainerID)
-
-	// Generate keypairs for both agent and target-sender before starting either,
-	// so the agent can be configured with --allowed-pubkeys for the sender.
-	log.Debug("==> Starting geoprobe container")
-	geoprobeContainerID := startGeoprobeContainer(t, log, dn, geoprobeIPStr)
-	log.Debug("==> Geoprobe container started", "containerID", geoprobeContainerID)
-
-	agentKeypairPath := "/tmp/geoprobe-keypair.json"
-	agentPubkey := generateKeypair(t, geoprobeContainerID, agentKeypairPath)
-	log.Debug("==> Agent keypair generated", "pubkey", agentPubkey)
+	targetContainerID := startGeoprobeTarget(t, log, dn, targetIPStr)
 
 	senderKeypairPath := "/tmp/target-sender-keypair.json"
-	senderPubkey := generateKeypair(t, targetContainerID, senderKeypairPath)
+	senderPubkey := generateKeypairInContainer(t, targetContainerID, senderKeypairPath)
 	log.Debug("==> Target-sender keypair generated", "pubkey", senderPubkey)
 
-	// Start agent with the target as an additional target and the sender's pubkey allowed.
+	// Create a GeolocationUser with outbound + inbound targets (replaces CLI flags).
+	tokenAccount := solana.NewWallet().PublicKey().String()
+	log.Debug("==> Creating GeolocationUser onchain")
+	createGeolocationUser(t, dn, "geo-user-01", tokenAccount)
+	updateGeolocationUserPayment(t, dn, "geo-user-01", "paid")
+
+	log.Debug("==> Adding outbound target")
+	addGeolocationOutboundTarget(t, dn, "geo-user-01", targetIPStr, 8923, "geoprobe1")
+
+	log.Debug("==> Adding inbound target")
+	addGeolocationInboundTarget(t, dn, "geo-user-01", senderPubkey, "geoprobe1")
+
+	// Start agent — no CLI flags for targets or pubkeys; all discovered onchain.
 	log.Debug("==> Starting geoprobe agent")
-	startGeoprobeAgent(t, dn, geoprobeContainerID, agentKeypairPath, geoprobeAccountPK,
+	agent := startGeoprobeAgent(t, log, dn, geoprobeIPStr, geoprobeAccountPK,
 		dn.Manager.GeolocationProgramID, dn.Manager.ServiceabilityProgramID,
 		&geoprobeAgentOpts{
-			additionalTargets: fmt.Sprintf("%s:%d:%d", targetIPStr, 8923, 8925),
-			probeInterval:     5 * time.Second,
-			allowedPubkeys:    []string{senderPubkey},
+			probeInterval: 5 * time.Second,
 		})
-	log.Debug("==> Geoprobe agent started")
+	log.Debug("==> Geoprobe agent started", "pubkey", agent.agentPubkey)
 
 	// --- Outbound flow ---
 	// Wait for dz1's telemetry agent to discover the geoprobe and successfully probe it.
@@ -257,7 +258,7 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 	// Run target-sender from the target container to send signed TWAMP probes to the agent.
 	// The agent should reply with cached DZD offsets embedded in signed replies.
 	log.Debug("==> Running target-sender for inbound probing")
-	runTargetSender(t, targetContainerID, geoprobeIPStr, agentPubkey, senderKeypairPath)
+	runTargetSender(t, targetContainerID, geoprobeIPStr, agent.agentPubkey, senderKeypairPath)
 
 	log.Debug("==> Waiting for successful inbound probe with offsets")
 	waitForInboundProbeSuccess(t, targetContainerID, 120*time.Second)
@@ -337,26 +338,75 @@ func addGeoprobeParent(t *testing.T, dn *devnet.Devnet, code, devicePK string) {
 	require.NoError(t, err, "probe add-parent failed: %s", string(output))
 }
 
-// startGeoprobeContainer creates and starts a generic Linux container from the geoprobe image,
-// connected to both the default and CYOA networks with a specific CYOA IP.
-func startGeoprobeContainer(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoaIP string) string {
+type geoprobeAgentOpts struct {
+	probeInterval time.Duration
+	capNetRaw     bool // Add CAP_NET_RAW for ICMP probing.
+}
+
+// geoprobeAgentResult holds the container ID and generated pubkeys from starting a geoprobe agent.
+type geoprobeAgentResult struct {
+	containerID string
+	agentPubkey string
+}
+
+// startGeoprobeAgent creates and starts a geoprobe-agent container with the binary as its
+// entrypoint. Generates the agent keypair in Go and mounts it via Files. Returns the
+// container ID and agent pubkey.
+func startGeoprobeAgent(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoaIP, geoprobeAccountPK, geolocationProgramID, serviceabilityProgramID string, opts *geoprobeAgentOpts) geoprobeAgentResult {
 	t.Helper()
 
 	geoprobeImage := os.Getenv("DZ_GEOPROBE_IMAGE")
 	require.NotEmpty(t, geoprobeImage, "DZ_GEOPROBE_IMAGE must be set")
 
-	// Start with only the default network. We'll attach to CYOA manually with a specific IP.
+	// Generate agent keypair in Go.
+	agentKeypairJSON, err := solanautil.GenerateKeypairJSON()
+	require.NoError(t, err)
+	agentPubkey, err := solanautil.PubkeyFromKeypairJSON(agentKeypairJSON)
+	require.NoError(t, err)
+
+	const containerKeypairPath = "/tmp/geoprobe-keypair.json"
+
+	cmd := []string{
+		"doublezero-geoprobe-agent",
+		"-ledger-rpc-url", dn.Ledger.InternalRPCURL,
+		"-keypair", containerKeypairPath,
+		"-geoprobe-pubkey", geoprobeAccountPK,
+		"-geolocation-program-id", geolocationProgramID,
+		"-serviceability-program-id", serviceabilityProgramID,
+		"-twamp-listen-port", "8925",
+		"-udp-listen-port", "8923",
+		"-verbose",
+	}
+	if opts != nil && opts.probeInterval > 0 {
+		cmd = append(cmd, "-probe-interval", opts.probeInterval.String())
+	}
+
 	req := testcontainers.ContainerRequest{
 		Image: geoprobeImage,
 		Name:  dn.Spec.DeployID + "-geoprobe",
 		ConfigModifier: func(cfg *dockercontainer.Config) {
 			cfg.Hostname = "geoprobe"
 		},
+		Cmd:      cmd,
 		Networks: []string{dn.DefaultNetwork.Name},
+		Files: []testcontainers.ContainerFile{
+			{
+				Reader:            bytes.NewReader(agentKeypairJSON),
+				ContainerFilePath: containerKeypairPath,
+				FileMode:          0600,
+			},
+		},
+		WaitingFor: wait.ForLog("Starting geoprobe agent").WithStartupTimeout(30 * time.Second),
 		Resources: dockercontainer.Resources{
 			NanoCPUs: 1_000_000_000,
 			Memory:   512 * 1024 * 1024,
 		},
+	}
+
+	if opts != nil && opts.capNetRaw {
+		req.HostConfigModifier = func(hc *dockercontainer.HostConfig) {
+			hc.CapAdd = []string{"NET_RAW"}
+		}
 	}
 
 	container, err := testcontainers.GenericContainer(t.Context(), testcontainers.GenericContainerRequest{
@@ -368,7 +418,6 @@ func startGeoprobeContainer(t *testing.T, log *slog.Logger, dn *devnet.Devnet, c
 
 	containerID := container.GetContainerID()
 
-	// Connect to CYOA network with the specific IP.
 	err = dockerClient.NetworkConnect(t.Context(), dn.CYOANetwork.Name, containerID, &network.EndpointSettings{
 		IPAddress: cyoaIP,
 		IPAMConfig: &network.EndpointIPAMConfig{
@@ -381,27 +430,21 @@ func startGeoprobeContainer(t *testing.T, log *slog.Logger, dn *devnet.Devnet, c
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if t.Failed() {
-			output, err := docker.Exec(ctx, dockerClient, containerID, []string{
-				"bash", "-c", "cat /tmp/geoprobe-agent.log 2>/dev/null || echo 'no log file'",
-			})
-			if err == nil {
-				fmt.Fprintf(os.Stderr, "\n--- Geoprobe agent log ---\n%s\n", string(output))
-			}
+			dumpContainerLogs(ctx, containerID, "geoprobe-agent")
 		}
 		_ = container.Terminate(ctx)
 	})
 
-	return containerID
+	return geoprobeAgentResult{
+		containerID: containerID,
+		agentPubkey: agentPubkey,
+	}
 }
 
-type geoprobeAgentOpts struct {
-	additionalTargets string
-	probeInterval     time.Duration
-	allowedPubkeys    []string
-}
-
-// generateKeypair creates a Solana keypair inside a container and returns its base58 pubkey.
-func generateKeypair(t *testing.T, containerID, path string) string {
+// generateKeypairInContainer creates a Solana keypair inside a container using
+// solana-keygen and returns its base58 pubkey. Used for processes that run as
+// docker exec inside an existing container (e.g., target-sender).
+func generateKeypairInContainer(t *testing.T, containerID, path string) string {
 	t.Helper()
 
 	_, err := docker.Exec(t.Context(), dockerClient, containerID, []string{
@@ -416,49 +459,6 @@ func generateKeypair(t *testing.T, containerID, path string) string {
 	pubkey := strings.TrimSpace(string(output))
 	require.NotEmpty(t, pubkey)
 	return pubkey
-}
-
-// startGeoprobeAgent starts the geoprobe-agent with a pre-generated keypair.
-func startGeoprobeAgent(t *testing.T, dn *devnet.Devnet, containerID, keypairPath, geoprobeAccountPK, geolocationProgramID, serviceabilityProgramID string, opts *geoprobeAgentOpts) {
-	t.Helper()
-
-	args := fmt.Sprintf(
-		"nohup doublezero-geoprobe-agent "+
-			"-ledger-rpc-url %s "+
-			"-keypair %s "+
-			"-geoprobe-pubkey %s "+
-			"-geolocation-program-id %s "+
-			"-serviceability-program-id %s "+
-			"-twamp-listen-port 8925 "+
-			"-udp-listen-port 8923 "+
-			"-verbose",
-		dn.Ledger.InternalRPCURL,
-		keypairPath,
-		geoprobeAccountPK,
-		geolocationProgramID,
-		serviceabilityProgramID,
-	)
-	if opts != nil {
-		if opts.additionalTargets != "" {
-			args += fmt.Sprintf(" -additional-targets %s", opts.additionalTargets)
-		}
-		if opts.probeInterval > 0 {
-			args += fmt.Sprintf(" -probe-interval %s", opts.probeInterval)
-		}
-		if len(opts.allowedPubkeys) > 0 {
-			args += fmt.Sprintf(" -allowed-pubkeys %s", strings.Join(opts.allowedPubkeys, ","))
-		}
-	}
-	cmd := args + " > /tmp/geoprobe-agent.log 2>&1 &"
-	_, err := docker.Exec(t.Context(), dockerClient, containerID, []string{"bash", "-c", cmd})
-	require.NoError(t, err)
-
-	require.Eventually(t, func() bool {
-		output, err := docker.Exec(t.Context(), dockerClient, containerID, []string{
-			"bash", "-c", "pgrep -f doublezero-geoprobe-agent",
-		})
-		return err == nil && len(strings.TrimSpace(string(output))) > 0
-	}, 10*time.Second, 1*time.Second, "geoprobe-agent process should be running")
 }
 
 // waitForGeoprobeSuccess polls the telemetry-agent log on a device until it shows
@@ -482,9 +482,29 @@ func waitForGeoprobeSuccess(t *testing.T, device *devnet.Device, geoprobeIP stri
 	}, timeout, 5*time.Second, "Expected telemetry log to show 'Probe succeeded' and 'sent offset to probe' for geoprobe IP %s", geoprobeIP)
 }
 
-// startGeoprobeTargetContainer creates and starts a container for the geoprobe-target,
-// connected to both the default and CYOA networks with a specific CYOA IP.
-func startGeoprobeTargetContainer(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoaIP string) string {
+// dumpContainerLogs writes the last 200 lines of a container's stdout/stderr to test output.
+func dumpContainerLogs(ctx context.Context, containerID, label string) {
+	logsReader, err := dockerClient.ContainerLogs(ctx, containerID, dockercontainer.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Tail:       "200",
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\n--- %s container logs (ERROR: %v)\n", label, err)
+		return
+	}
+	defer logsReader.Close()
+	var stdout, stderr bytes.Buffer
+	_, _ = stdcopy.StdCopy(&stdout, &stderr, logsReader)
+	fmt.Fprintf(os.Stderr, "\n--- %s container logs (stdout) ---\n%s", label, stdout.String())
+	if stderr.Len() > 0 {
+		fmt.Fprintf(os.Stderr, "\n--- %s container logs (stderr) ---\n%s", label, stderr.String())
+	}
+}
+
+// startGeoprobeTarget creates and starts a geoprobe-target container with the binary
+// as its entrypoint. Returns the container ID.
+func startGeoprobeTarget(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoaIP string) string {
 	t.Helper()
 
 	geoprobeImage := os.Getenv("DZ_GEOPROBE_IMAGE")
@@ -496,7 +516,9 @@ func startGeoprobeTargetContainer(t *testing.T, log *slog.Logger, dn *devnet.Dev
 		ConfigModifier: func(cfg *dockercontainer.Config) {
 			cfg.Hostname = "geoprobe-target"
 		},
-		Networks: []string{dn.DefaultNetwork.Name},
+		Cmd:        []string{"doublezero-geoprobe-target", "-twamp-port", "8925", "-udp-port", "8923"},
+		Networks:   []string{dn.DefaultNetwork.Name},
+		WaitingFor: wait.ForLog("UDP listener started").WithStartupTimeout(30 * time.Second),
 		Resources: dockercontainer.Resources{
 			NanoCPUs: 1_000_000_000,
 			Memory:   512 * 1024 * 1024,
@@ -524,12 +546,7 @@ func startGeoprobeTargetContainer(t *testing.T, log *slog.Logger, dn *devnet.Dev
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if t.Failed() {
-			output, err := docker.Exec(ctx, dockerClient, containerID, []string{
-				"bash", "-c", "cat /tmp/geoprobe-target.log 2>/dev/null || echo 'no log file'",
-			})
-			if err == nil {
-				fmt.Fprintf(os.Stderr, "\n--- Geoprobe target log ---\n%s\n", string(output))
-			}
+			dumpContainerLogs(ctx, containerID, "geoprobe-target")
 		}
 		_ = container.Terminate(ctx)
 	})
@@ -537,38 +554,25 @@ func startGeoprobeTargetContainer(t *testing.T, log *slog.Logger, dn *devnet.Dev
 	return containerID
 }
 
-// startGeoprobeTarget starts the geoprobe-target process inside a container.
-func startGeoprobeTarget(t *testing.T, containerID string) {
-	t.Helper()
-
-	cmd := "nohup doublezero-geoprobe-target " +
-		"-twamp-port 8925 " +
-		"-udp-port 8923 " +
-		"> /tmp/geoprobe-target.log 2>&1 &"
-	_, err := docker.Exec(t.Context(), dockerClient, containerID, []string{"bash", "-c", cmd})
-	require.NoError(t, err)
-
-	require.Eventually(t, func() bool {
-		output, err := docker.Exec(t.Context(), dockerClient, containerID, []string{
-			"bash", "-c", "pgrep -f doublezero-geoprobe-target",
-		})
-		return err == nil && len(strings.TrimSpace(string(output))) > 0
-	}, 10*time.Second, 1*time.Second, "geoprobe-target process should be running")
-}
-
-// waitForTargetOffsetReceived polls the geoprobe-target log until it shows
+// waitForTargetOffsetReceived polls the geoprobe-target container logs until they show
 // a received LocationOffset with a valid signature chain.
 func waitForTargetOffsetReceived(t *testing.T, containerID string, timeout time.Duration) {
 	t.Helper()
 
 	require.Eventually(t, func() bool {
-		output, err := docker.Exec(t.Context(), dockerClient, containerID, []string{
-			"bash", "-c", "cat /tmp/geoprobe-target.log 2>/dev/null",
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+		logsReader, err := dockerClient.ContainerLogs(ctx, containerID, dockercontainer.LogsOptions{
+			ShowStdout: true,
+			ShowStderr: true,
 		})
 		if err != nil {
 			return false
 		}
-		logStr := string(output)
+		defer logsReader.Close()
+		var stdout, stderr bytes.Buffer
+		_, _ = stdcopy.StdCopy(&stdout, &stderr, logsReader)
+		logStr := stdout.String() + stderr.String()
 		return strings.Contains(logStr, "received LocationOffset") &&
 			strings.Contains(logStr, "signature_valid=true")
 	}, timeout, 5*time.Second, "Expected geoprobe-target to log 'received LocationOffset' with 'signature_valid=true'")
@@ -611,11 +615,10 @@ func runTargetSender(t *testing.T, containerID, agentIP, agentPubkey, keypairPat
 	})
 }
 
-// TestE2E_GeoprobeOnchainTargets verifies that the geoprobe agent discovers targets
-// from onchain GeolocationUser accounts instead of CLI flags.
-// It creates a GeolocationUser with outbound and inbound targets, then verifies the
-// full flow: outbound offset delivery and inbound signed TWAMP probing.
-func TestE2E_GeoprobeOnchainTargets(t *testing.T) {
+// TestE2E_GeoprobeIcmpTargets verifies end-to-end ICMP outbound offset delivery.
+// The geoprobe agent discovers an outbound-icmp target from a GeolocationUser account,
+// measures it via ICMP echo, and delivers a composite LocationOffset.
+func TestE2E_GeoprobeIcmpTargets(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
@@ -658,7 +661,7 @@ func TestE2E_GeoprobeOnchainTargets(t *testing.T) {
 		defer cancel()
 
 		var buf strings.Builder
-		fmt.Fprintf(&buf, "\n=== GEOPROBE ONCHAIN TARGETS DIAGNOSTIC DUMP (deploy=%s) ===\n", deployID)
+		fmt.Fprintf(&buf, "\n=== GEOPROBE ICMP DIAGNOSTIC DUMP (deploy=%s) ===\n", deployID)
 		for code, device := range dn.Devices {
 			for _, cmd := range []struct {
 				label   string
@@ -674,7 +677,7 @@ func TestE2E_GeoprobeOnchainTargets(t *testing.T) {
 				}
 			}
 		}
-		fmt.Fprintf(&buf, "\n=== GEOPROBE ONCHAIN TARGETS DIAGNOSTIC DUMP END ===\n")
+		fmt.Fprintf(&buf, "\n=== GEOPROBE ICMP DIAGNOSTIC DUMP END ===\n")
 		fmt.Fprint(os.Stderr, buf.String())
 	})
 
@@ -756,8 +759,6 @@ func TestE2E_GeoprobeOnchainTargets(t *testing.T) {
 	}()
 	wg.Wait()
 
-	_ = dz2TelemetryKeypairPK
-
 	dz1 := dn.Devices["ams-dz01"]
 	require.NotNil(t, dz1)
 
@@ -782,61 +783,36 @@ func TestE2E_GeoprobeOnchainTargets(t *testing.T) {
 	require.NoError(t, err)
 	targetIPStr := targetIP.To4().String()
 
-	// Start the target container and process first.
+	// Start the target container (receives offsets via UDP; TWAMP reflector is unused).
 	log.Debug("==> Starting geoprobe target container")
-	targetContainerID := startGeoprobeTargetContainer(t, log, dn, targetIPStr)
-	startGeoprobeTarget(t, targetContainerID)
+	targetContainerID := startGeoprobeTarget(t, log, dn, targetIPStr)
 
-	// Start the geoprobe container and generate keypairs.
-	log.Debug("==> Starting geoprobe container")
-	geoprobeContainerID := startGeoprobeContainer(t, log, dn, geoprobeIPStr)
-
-	agentKeypairPath := "/tmp/geoprobe-keypair.json"
-	agentPubkey := generateKeypair(t, geoprobeContainerID, agentKeypairPath)
-
-	senderKeypairPath := "/tmp/target-sender-keypair.json"
-	senderPubkey := generateKeypair(t, targetContainerID, senderKeypairPath)
-
-	// Create a GeolocationUser onchain and configure targets instead of using CLI flags.
+	// Create a GeolocationUser with a single outbound-icmp target.
 	tokenAccount := solana.NewWallet().PublicKey().String()
 	log.Debug("==> Creating GeolocationUser onchain")
 	createGeolocationUser(t, dn, "geo-user-01", tokenAccount)
-
-	// Users are created with PaymentStatus=Delinquent; set to Paid so the agent
-	// will pick up the targets.
-	log.Debug("==> Setting payment status to paid")
 	updateGeolocationUserPayment(t, dn, "geo-user-01", "paid")
 
-	// Add an outbound target so the agent sends location offsets to the target container.
-	log.Debug("==> Adding outbound target")
-	addGeolocationOutboundTarget(t, dn, "geo-user-01", targetIPStr, 8923, "geoprobe1")
+	log.Debug("==> Adding outbound-icmp target")
+	addGeolocationOutboundIcmpTarget(t, dn, "geo-user-01", targetIPStr, 8923, "geoprobe1")
 
-	// Add an inbound target so the agent allows signed TWAMP probes from the sender.
-	log.Debug("==> Adding inbound target")
-	addGeolocationInboundTarget(t, dn, "geo-user-01", senderPubkey, "geoprobe1")
-
-	// Start agent WITHOUT --additional-targets and --allowed-pubkeys.
-	// The agent should discover both targets from the onchain GeolocationUser.
-	log.Debug("==> Starting geoprobe agent (onchain target discovery)")
-	startGeoprobeAgent(t, dn, geoprobeContainerID, agentKeypairPath, geoprobeAccountPK,
+	// Start agent with CAP_NET_RAW for ICMP probing.
+	log.Debug("==> Starting geoprobe agent (ICMP target discovery)")
+	_ = startGeoprobeAgent(t, log, dn, geoprobeIPStr, geoprobeAccountPK,
 		dn.Manager.GeolocationProgramID, dn.Manager.ServiceabilityProgramID,
 		&geoprobeAgentOpts{
 			probeInterval: 5 * time.Second,
+			capNetRaw:     true,
 		})
 
-	// --- Outbound flow ---
+	// --- Outbound flow (ICMP) ---
+	// Wait for dz1's telemetry agent to discover the geoprobe and send offsets.
 	log.Debug("==> Waiting for geoprobe discovery and successful measurement")
 	waitForGeoprobeSuccess(t, dz1, geoprobeIPStr, 180*time.Second)
 
-	log.Debug("==> Waiting for geoprobe target to receive composite offset")
+	// Wait for the agent to forward a composite offset to the target via ICMP measurement.
+	log.Debug("==> Waiting for geoprobe target to receive composite offset from ICMP flow")
 	waitForTargetOffsetReceived(t, targetContainerID, 120*time.Second)
-
-	// --- Inbound flow ---
-	log.Debug("==> Running target-sender for inbound probing")
-	runTargetSender(t, targetContainerID, geoprobeIPStr, agentPubkey, senderKeypairPath)
-
-	log.Debug("==> Waiting for successful inbound probe with offsets")
-	waitForInboundProbeSuccess(t, targetContainerID, 120*time.Second)
 }
 
 // createGeolocationUser creates a GeolocationUser account onchain.
@@ -873,6 +849,20 @@ func addGeolocationOutboundTarget(t *testing.T, dn *devnet.Devnet, userCode, tar
 		"--probe", probeCode,
 	})
 	require.NoError(t, err, "user add-target outbound failed: %s", string(output))
+}
+
+// addGeolocationOutboundIcmpTarget adds an outbound-icmp target to a GeolocationUser.
+func addGeolocationOutboundIcmpTarget(t *testing.T, dn *devnet.Devnet, userCode, targetIP string, targetPort int, probeCode string) {
+	t.Helper()
+	output, err := dn.Manager.Exec(t.Context(), []string{
+		"doublezero-geolocation", "user", "add-target",
+		"--user", userCode,
+		"--type", "outbound-icmp",
+		"--target-ip", targetIP,
+		"--target-port", fmt.Sprintf("%d", targetPort),
+		"--probe", probeCode,
+	})
+	require.NoError(t, err, "user add-target outbound-icmp failed: %s", string(output))
 }
 
 // addGeolocationInboundTarget adds an inbound target to a GeolocationUser.

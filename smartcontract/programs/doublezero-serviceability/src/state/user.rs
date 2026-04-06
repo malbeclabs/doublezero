@@ -140,6 +140,27 @@ impl fmt::Display for UserStatus {
     }
 }
 
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum BGPStatus {
+    #[default]
+    Unknown = 0,
+    Up = 1,
+    Down = 2,
+}
+
+impl fmt::Display for BGPStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BGPStatus::Unknown => write!(f, "unknown"),
+            BGPStatus::Up => write!(f, "up"),
+            BGPStatus::Down => write!(f, "down"),
+        }
+    }
+}
+
 /// Bitflags stored in [`User::tunnel_flags`] to record durable tunnel
 /// properties that cannot be derived from mutable state at delete time.
 #[repr(u8)]

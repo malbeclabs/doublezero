@@ -103,7 +103,7 @@ use crate::{
             closeaccount::process_closeaccount_user, create::process_create_user,
             create_subscribe::process_create_subscribe_user, delete::process_delete_user,
             reject::process_reject_user, requestban::process_request_ban_user,
-            update::process_update_user,
+            set_bgp_status::process_set_bgp_status_user, update::process_update_user,
         },
     },
 };
@@ -427,6 +427,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::DeleteIndex(value) => {
             process_delete_index(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetUserBGPStatus(value) => {
+            process_set_bgp_status_user(program_id, accounts, &value)?
         }
     };
     Ok(())

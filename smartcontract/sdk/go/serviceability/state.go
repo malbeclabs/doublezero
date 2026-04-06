@@ -619,7 +619,7 @@ type Link struct {
 	LinkDesiredStatus LinkDesiredStatus `influx:"tag,link_desired_status"`
 	PubKey            [32]byte          `influx:"tag,pubkey,pubkey"`
 	LinkTopologies    [][32]byte
-	UnicastDrained    bool
+	LinkFlags         uint8
 }
 
 func (l Link) MarshalJSON() ([]byte, error) {

@@ -42,6 +42,7 @@ class AccountTypeEnum(IntEnum):
     ACCESS_PASS = 11
     TENANT = 13
     PERMISSION = 15
+    TOPOLOGY = 16
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +396,7 @@ CURRENT_INTERFACE_VERSION = 3
 
 @dataclass
 class FlexAlgoNodeSegment:
-    topology: bytes = b"\x00" * 32
+    topology: Pubkey = Pubkey.default()
     node_segment_idx: int = 0
 
 
@@ -416,10 +417,10 @@ class Interface:
     ip_net: bytes = b"\x00" * 5
     node_segment_idx: int = 0
     user_tunnel_endpoint: bool = False
-    flex_algo_node_segments: list["FlexAlgoNodeSegment"] = field(default_factory=list)
+    flex_algo_node_segments: list[FlexAlgoNodeSegment] = field(default_factory=list)
 
     @classmethod
-    def from_reader(cls, r: IncrementalReader) -> Interface:
+    def from_reader(cls, r: DefensiveReader) -> Interface:
         iface = cls()
         iface.version = r.read_u8()
         if iface.version > CURRENT_INTERFACE_VERSION - 1:
@@ -448,7 +449,7 @@ class Interface:
             iface.ip_net = r.read_network_v4()
             iface.node_segment_idx = r.read_u16()
             iface.user_tunnel_endpoint = r.read_bool()
-            if iface.version == 2:  # V3
+            if iface.version in (1, 2):  # flex_algo_node_segments present in V2 and V3
                 count = r.read_u32()
                 for _ in range(count):
                     seg = FlexAlgoNodeSegment()
@@ -683,6 +684,8 @@ class Link:
     delay_override_ns: int = 0
     link_health: LinkHealth = LinkHealth.UNKNOWN
     link_desired_status: LinkDesiredStatus = LinkDesiredStatus.PENDING
+    link_topologies: list[Pubkey] = field(default_factory=list)
+    link_flags: int = 0
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Link:
@@ -709,6 +712,8 @@ class Link:
         lk.delay_override_ns = r.read_u64()
         lk.link_health = LinkHealth(r.read_u8())
         lk.link_desired_status = LinkDesiredStatus(r.read_u8())
+        lk.link_topologies = _read_pubkey_vec(r)
+        lk.link_flags = r.read_u8()
         return lk
 
 
@@ -862,6 +867,7 @@ class Tenant:
     billing_discriminant: int = 0
     billing_rate: int = 0
     billing_last_deduction_dz_epoch: int = 0
+    include_topologies: list[Pubkey] = field(default_factory=list)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Tenant:
@@ -881,6 +887,7 @@ class Tenant:
         t.billing_discriminant = r.read_u8()
         t.billing_rate = r.read_u64()
         t.billing_last_deduction_dz_epoch = r.read_u64()
+        t.include_topologies = _read_pubkey_vec(r)
         return t
 
 
@@ -989,3 +996,42 @@ class Permission:
         hi = r.read_u64()
         p.permissions = lo | (hi << 64)
         return p
+
+
+# ---------------------------------------------------------------------------
+# TopologyInfo
+# ---------------------------------------------------------------------------
+
+
+class TopologyConstraint(IntEnum):
+    INCLUDE_ANY = 0
+    EXCLUDE = 1
+
+    def __str__(self) -> str:
+        _names = {0: "include-any", 1: "exclude"}
+        return _names.get(self.value, "unknown")
+
+
+@dataclass
+class TopologyInfo:
+    account_type: int = 0
+    owner: Pubkey = Pubkey.default()
+    bump_seed: int = 0
+    name: str = ""
+    admin_group_bit: int = 0
+    flex_algo_number: int = 0
+    constraint: TopologyConstraint = TopologyConstraint.INCLUDE_ANY
+    pub_key: Pubkey = Pubkey.default()  # set from account address after deserialization
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> TopologyInfo:
+        r = DefensiveReader(data)
+        t = cls()
+        t.account_type = r.read_u8()
+        t.owner = _read_pubkey(r)
+        t.bump_seed = r.read_u8()
+        t.name = r.read_string()
+        t.admin_group_bit = r.read_u8()
+        t.flex_algo_number = r.read_u8()
+        t.constraint = TopologyConstraint(r.read_u8())
+        return t

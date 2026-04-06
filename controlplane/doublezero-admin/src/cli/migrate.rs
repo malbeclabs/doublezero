@@ -1,4 +1,4 @@
-use clap::Args;
+use clap::{Args, Subcommand};
 use doublezero_cli::doublezerocommand::CliCommand;
 use doublezero_sdk::commands::{
     device::list::ListDeviceCommand,
@@ -11,12 +11,24 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct MigrateCliCommand {
+    #[command(subcommand)]
+    pub command: MigrateCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum MigrateCommands {
+    /// Backfill link topologies and Vpnv4 loopback FlexAlgoNodeSegments (RFC-18 migration)
+    FlexAlgo(FlexAlgoMigrateCliCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct FlexAlgoMigrateCliCommand {
     /// Print what would be changed without submitting transactions
     #[arg(long, default_value_t = false)]
     pub dry_run: bool,
 }
 
-impl MigrateCliCommand {
+impl FlexAlgoMigrateCliCommand {
     pub fn execute<C: CliCommand, W: Write>(&self, client: &C, out: &mut W) -> eyre::Result<()> {
         let program_id = client.get_program_id();
 

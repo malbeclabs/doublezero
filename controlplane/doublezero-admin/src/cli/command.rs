@@ -66,7 +66,7 @@ pub enum Command {
     /// Manage multicast
     #[command()]
     Multicast(MulticastCliCommand),
-    /// Backfill link topologies and report Vpnv4 loopback gaps (RFC-18 migration)
+    /// RFC-18 migration subcommands
     #[command()]
     Migrate(MigrateCliCommand),
     /// Sentinel admin commands

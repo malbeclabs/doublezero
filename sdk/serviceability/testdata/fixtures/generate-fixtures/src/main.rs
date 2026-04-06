@@ -324,6 +324,7 @@ fn generate_device(dir: &Path) {
                 ip_net: "172.16.0.1/30".parse().unwrap(),
                 node_segment_idx: 200,
                 user_tunnel_endpoint: true,
+                flex_algo_node_segments: vec![],
             }),
         ],
         reference_count: 12,
@@ -436,7 +437,7 @@ fn generate_link(dir: &Path) {
         link_health: LinkHealth::ReadyForService,
         desired_status: LinkDesiredStatus::Activated,
         link_topologies: vec![topology_pk],
-        unicast_drained: true,
+        link_flags: doublezero_serviceability::state::link::LINK_FLAG_UNICAST_DRAINED,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -468,7 +469,7 @@ fn generate_link(dir: &Path) {
             FieldValue { name: "DesiredStatus".into(), value: "1".into(), typ: "u8".into() },
             FieldValue { name: "LinkTopologiesLen".into(), value: "1".into(), typ: "u32".into() },
             FieldValue { name: "LinkTopologies0".into(), value: pubkey_bs58(&topology_pk), typ: "pubkey".into() },
-            FieldValue { name: "UnicastDrained".into(), value: "true".into(), typ: "bool".into() },
+            FieldValue { name: "LinkFlags".into(), value: "1".into(), typ: "u8".into() },
         ],
     };
 

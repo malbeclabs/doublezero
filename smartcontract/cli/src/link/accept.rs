@@ -239,7 +239,7 @@ mod tests {
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
             bandwidth: 1000000000,
-            mtu: 9000,
+            mtu: 1500,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
             delay_override_ns: 0,
@@ -253,7 +253,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         client

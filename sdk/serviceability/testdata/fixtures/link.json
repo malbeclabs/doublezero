@@ -118,9 +118,9 @@
       "typ": "pubkey"
     },
     {
-      "name": "UnicastDrained",
-      "value": "true",
-      "typ": "bool"
+      "name": "LinkFlags",
+      "value": "1",
+      "typ": "u8"
     }
   ]
 }

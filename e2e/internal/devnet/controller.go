@@ -26,6 +26,10 @@ const (
 
 type ControllerSpec struct {
 	ContainerImage string
+	// FeaturesConfigPath is the host path to a features.yaml file to mount into the
+	// controller container and pass via -features-config. If empty, the controller
+	// starts without a features config (flex_algo.enabled defaults to false).
+	FeaturesConfigPath string
 }
 
 func (s *ControllerSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
@@ -117,6 +121,18 @@ func (c *Controller) Start(ctx context.Context) error {
 		env["ALLOY_PROMETHEUS_URL"] = c.dn.Prometheus.InternalRemoteWriteURL()
 	}
 
+	const containerFeaturesConfigPath = "/features.yaml"
+	var files []testcontainers.ContainerFile
+	if c.dn.Spec.Controller.FeaturesConfigPath != "" {
+		env["DZ_FEATURES_CONFIG_PATH"] = containerFeaturesConfigPath
+		files = append(files, testcontainers.ContainerFile{
+			HostFilePath:      c.dn.Spec.Controller.FeaturesConfigPath,
+			ContainerFilePath: containerFeaturesConfigPath,
+			FileMode:          0o644,
+		})
+		c.log.Debug("==> Controller features config", "hostPath", c.dn.Spec.Controller.FeaturesConfigPath)
+	}
+
 	req := testcontainers.ContainerRequest{
 		Image: c.dn.Spec.Controller.ContainerImage,
 		Name:  c.dockerContainerName(),
@@ -126,6 +142,7 @@ func (c *Controller) Start(ctx context.Context) error {
 		ExposedPorts: []string{fmt.Sprintf("%d/tcp", internalControllerPort)},
 		WaitingFor:   wait.ForExposedPort(),
 		Env:          env,
+		Files:        files,
 		Networks:     []string{c.dn.DefaultNetwork.Name},
 		NetworkAliases: map[string][]string{
 			c.dn.DefaultNetwork.Name: {"controller"},

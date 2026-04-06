@@ -42,6 +42,9 @@ func Run() ExitCode {
 	var deployID string
 	rootCmd.PersistentFlags().StringVar(&deployID, "deploy-id", envWithDefault("DZ_DEPLOY_ID", defaultDeployID), "deploy identifier (env: DZ_DEPLOY_ID, default: "+defaultDeployID+")")
 
+	var featuresConfigPath string
+	rootCmd.PersistentFlags().StringVar(&featuresConfigPath, "features-config", "", "path to features.yaml to pass to the controller (optional)")
+
 	rootCmd.AddCommand(
 		NewBuildCmd().Command(),
 		NewStartCmd().Command(),
@@ -77,7 +80,12 @@ func withDevnet(f func(ctx context.Context, dn *LocalDevnet, cmd *cobra.Command,
 			return fmt.Errorf("failed to get deploy-id flag: %w", err)
 		}
 
-		dn, err := NewLocalDevnet(log, deployID)
+		featuresConfigPath, err := cmd.Root().PersistentFlags().GetString("features-config")
+		if err != nil {
+			return fmt.Errorf("failed to get features-config flag: %w", err)
+		}
+
+		dn, err := NewLocalDevnet(log, deployID, featuresConfigPath)
 		if err != nil {
 			return fmt.Errorf("failed to create devnet: %w", err)
 		}

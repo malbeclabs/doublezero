@@ -26,4 +26,8 @@ if [ -n "${ALLOY_PROMETHEUS_URL:-}" ]; then
 fi
 
 # Start the controller.
-doublezero-controller start -listen-addr 0.0.0.0 -listen-port 7000 -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -device-local-asn 65342 -no-hardware
+CONTROLLER_ARGS="-listen-addr 0.0.0.0 -listen-port 7000 -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -device-local-asn 65342 -no-hardware"
+if [ -n "${DZ_FEATURES_CONFIG_PATH:-}" ]; then
+  CONTROLLER_ARGS="${CONTROLLER_ARGS} -features-config ${DZ_FEATURES_CONFIG_PATH}"
+fi
+doublezero-controller start ${CONTROLLER_ARGS}

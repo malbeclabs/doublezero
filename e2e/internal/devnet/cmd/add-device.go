@@ -8,6 +8,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// physicalInterfacesForNetworks returns a map of Ethernet interface names to "physical"
+// for each additional network. Ethernet2 maps to the first additional network,
+// Ethernet3 to the second, and so on — matching how cEOS assigns eth interfaces
+// to Docker networks (eth0=Management0, eth1=Ethernet1/CYOA, eth2+=additional).
+func physicalInterfacesForNetworks(count int) map[string]string {
+	interfaces := make(map[string]string, count)
+	for i := range count {
+		interfaces[fmt.Sprintf("Ethernet%d", i+2)] = "physical"
+	}
+	return interfaces
+}
+
 type AddDeviceCmd struct{}
 
 func NewAddDeviceCmd() *AddDeviceCmd {
@@ -52,9 +64,7 @@ func (c *AddDeviceCmd) Command() *cobra.Command {
 					ManagementNS: "ns-management",
 					Verbose:      true,
 				},
-				Interfaces: map[string]string{
-					"Ethernet2": "physical",
-				},
+				Interfaces: physicalInterfacesForNetworks(len(additionalNetworks)),
 				LoopbackInterfaces: map[string]string{
 					"Loopback255": "vpnv4",
 					"Loopback256": "ipv4",

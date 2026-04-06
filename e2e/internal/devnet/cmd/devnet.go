@@ -37,7 +37,7 @@ type LocalDevnet struct {
 	workspaceDir string
 }
 
-func NewLocalDevnet(log *slog.Logger, deployID string) (*LocalDevnet, error) {
+func NewLocalDevnet(log *slog.Logger, deployID string, featuresConfigPath string) (*LocalDevnet, error) {
 	// Set the default logger for testcontainers.
 	logging.SetTestcontainersLogger(log)
 
@@ -89,6 +89,9 @@ func NewLocalDevnet(log *slog.Logger, deployID string) (*LocalDevnet, error) {
 		Funder: devnet.FunderSpec{
 			Verbose:  true,
 			Interval: 10 * time.Second,
+		},
+		Controller: devnet.ControllerSpec{
+			FeaturesConfigPath: featuresConfigPath,
 		},
 	}, log, dockerClient, subnetAllocator)
 	if err != nil {

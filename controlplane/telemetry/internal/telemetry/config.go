@@ -53,9 +53,6 @@ type Config struct {
 	// before a sender is evicted from the cache and recreated.
 	MaxConsecutiveSenderLosses int
 
-	// InitialChildGeoProbes is the startup probe list from CLI; runtime updates happen via channel.
-	InitialChildGeoProbes []geoprobe.ProbeAddress
-
 	// ServiceabilityProgramClient is the client to the serviceability program (for fetching Device/Location).
 	ServiceabilityProgramClient *serviceability.Client
 
@@ -114,7 +111,7 @@ func (c *Config) Validate() error {
 		c.MaxConsecutiveSenderLosses = 30
 	}
 
-	geoprobeEnabled := len(c.InitialChildGeoProbes) > 0 || c.GeolocationClient != nil
+	geoprobeEnabled := c.GeolocationClient != nil
 	if geoprobeEnabled {
 		if c.ServiceabilityProgramClient == nil {
 			return errors.New("serviceability client is required when geoprobe is enabled")

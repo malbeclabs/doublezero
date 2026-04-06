@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -48,12 +47,8 @@ var (
 	ledgerRPCURL               = flag.String("ledger-rpc-url", "", "The url of the ledger RPC. If env is provided, this flag is ignored.")
 	keypairPath                = flag.String("keypair", "", "The path to the probe's Ed25519 keypair file for signing messages.")
 	geoProbePubkeyStr          = flag.String("geoprobe-pubkey", "", "The geoprobe device's public key (base58). Identifies this specific probe in offsets. Should Match DZ Ledger")
-	additionalParent           = flag.String("additional-parent", "", "Trusted parent DZD in the format devicekey,metricskey (base58 pubkeys).")
-	additionalTargets          = flag.String("additional-targets", "", "Comma-separated list of target addresses (host or host:offset_port:twamp_port) to measure and send composite offsets.")
-	additionalIcmpTargets      = flag.String("additional-icmp-targets", "", "Comma-separated list of ICMP target addresses (host:offset_port) to measure via ICMP echo and send composite offsets.")
 	twampListenPort            = flag.Uint("twamp-listen-port", defaultTWAMPListenPort, "Port for TWAMP reflector.")
 	signedTWAMPListenPort      = flag.Uint("signed-twamp-port", defaultSignedTWAMPListenPort, "Port for Signed TWAMP reflector for inbound probing.")
-	allowedPubkeysFlag         = flag.String("allowed-pubkeys", "", "Comma-separated base58 Ed25519 pubkeys always authorized for signed TWAMP probes in inbound probing.")
 	udpListenPort              = flag.Uint("udp-listen-port", defaultUDPListenPort, "Port for receiving DZD offset datagrams.")
 	probeInterval              = flag.Duration("probe-interval", defaultProbeInterval, "Interval between measurement cycles.")
 	twampSenderTimeout         = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "Timeout for TWAMP probes to targets.")
@@ -70,12 +65,6 @@ var (
 	commit  = "none"
 	date    = "unknown"
 )
-
-// parentDZD represents a trusted parent DZD that sends offsets to this probe.
-type parentDZD struct {
-	pubkey          [32]byte // Parent pubkey (appears as SenderPubkey in received offsets)
-	authorityPubkey [32]byte // Authority pubkey (used to sign offsets)
-}
 
 // parentState holds the current parent authorities with thread-safe access.
 type parentState struct {
@@ -94,65 +83,6 @@ func (s *parentState) update(authorities map[[32]byte][32]byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.authorities = authorities
-}
-
-// parseParentDZD parses the --additional-parent flag value.
-// Format: "parentkey,authoritykey"
-func parseParentDZD(s string) (*parentDZD, error) {
-	if s == "" {
-		return nil, nil
-	}
-
-	parts := strings.Split(s, ",")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("expected format parentkey,authoritykey, got %q", s)
-	}
-
-	parentStr := strings.TrimSpace(parts[0])
-	authorityStr := strings.TrimSpace(parts[1])
-
-	parentPK, err := solana.PublicKeyFromBase58(parentStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid parent pubkey %q: %w", parentStr, err)
-	}
-
-	authorityPK, err := solana.PublicKeyFromBase58(authorityStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid authority pubkey %q: %w", authorityStr, err)
-	}
-
-	var pubkeyBytes, authorityBytes [32]byte
-	copy(pubkeyBytes[:], parentPK[:])
-	copy(authorityBytes[:], authorityPK[:])
-
-	return &parentDZD{
-		pubkey:          pubkeyBytes,
-		authorityPubkey: authorityBytes,
-	}, nil
-}
-
-// parseAllowedPubkeys parses a comma-separated list of base58 Ed25519 public keys.
-func parseAllowedPubkeys(s string) ([][32]byte, error) {
-	if s == "" {
-		return nil, nil
-	}
-
-	parts := strings.Split(s, ",")
-	keys := make([][32]byte, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		pk, err := solana.PublicKeyFromBase58(p)
-		if err != nil {
-			return nil, fmt.Errorf("invalid pubkey %q: %w", p, err)
-		}
-		var key [32]byte
-		copy(key[:], pk[:])
-		keys = append(keys, key)
-	}
-	return keys, nil
 }
 
 // offsetCache stores recent DZD offsets keyed by sender (device) pubkey.
@@ -362,30 +292,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Parse parent.
-	var parents []parentDZD
-	if *additionalParent != "" {
-		parent, err := parseParentDZD(*additionalParent)
-		if err != nil {
-			log.Error("Failed to parse additional-parent", "error", err)
-			os.Exit(1)
-		}
-		if parent != nil {
-			parents = append(parents, *parent)
-		}
-	}
-
-	// Build initial parent authority map from CLI args.
-	cliParentAuthorities := make(map[[32]byte][32]byte, len(parents))
-	for _, p := range parents {
-		cliParentAuthorities[p.pubkey] = p.authorityPubkey
-	}
-
 	pState := &parentState{
-		authorities: make(map[[32]byte][32]byte, len(cliParentAuthorities)),
-	}
-	for k, v := range cliParentAuthorities {
-		pState.authorities[k] = v
+		authorities: make(map[[32]byte][32]byte),
 	}
 
 	// Derive geolocation and serviceability program IDs from --env if not explicit.
@@ -413,41 +321,17 @@ func main() {
 
 	parentDiscoveryEnabled := !geolocationProgramID.IsZero() && !serviceabilityProgramID.IsZero()
 
-	if len(cliParentAuthorities) == 0 && !parentDiscoveryEnabled {
-		log.Warn("No trusted parents configured and parent discovery disabled -- will not accept offsets until parents are added")
-	}
-
-	// Parse targets.
-	targets, err := geoprobe.ParseProbeAddresses(*additionalTargets)
-	if err != nil {
-		log.Error("Failed to parse additional-targets", "error", err)
-		os.Exit(1)
-	}
-
-	icmpTargets, err := geoprobe.ParseICMPProbeAddresses(*additionalIcmpTargets)
-	if err != nil {
-		log.Error("Failed to parse additional-icmp-targets", "error", err)
-		os.Exit(1)
-	}
-
-	// Parse allowed pubkeys for signed TWAMP reflector.
-	allowedKeys, err := parseAllowedPubkeys(*allowedPubkeysFlag)
-	if err != nil {
-		log.Error("Failed to parse allowed-pubkeys", "error", err)
-		os.Exit(1)
+	if !parentDiscoveryEnabled {
+		log.Warn("Parent discovery disabled -- will not accept offsets until parents are added")
 	}
 
 	log.Info("Starting geoprobe agent",
 		"version", version,
-		"cliParents", len(parents),
 		"parentDiscovery", parentDiscoveryEnabled,
-		"targets", len(targets),
-		"icmpTargets", len(icmpTargets),
 		"probeInterval", *probeInterval,
 		"maxOffsetAge", *maxOffsetAge,
 		"twampListenPort", *twampListenPort,
 		"signedTWAMPListenPort", *signedTWAMPListenPort,
-		"allowedPubkeys", len(allowedKeys),
 		"udpListenPort", *udpListenPort,
 		"authority_pubkey", keypair.PublicKey(),
 		"geoprobe_pubkey", geoProbePubkey,
@@ -490,7 +374,7 @@ func main() {
 		defaultTWAMPReflectorTimeout,
 		signedSigner,
 		geoprobePubkeyBytes,
-		allowedKeys,
+		nil,
 		*verifyInterval,
 	)
 	if err != nil {
@@ -520,13 +404,6 @@ func main() {
 	})
 	defer pinger.Close()
 
-	// Add probes for targets.
-	for _, target := range targets {
-		if err := pinger.AddProbe(ctx, target); err != nil {
-			log.Warn("Failed to add target probe", "target", target, "error", err)
-		}
-	}
-
 	// Set up ICMP pinger for outbound ICMP targets.
 	icmpPinger, err := geoprobe.NewICMPPinger(&geoprobe.ICMPPingerConfig{
 		Logger:       log,
@@ -539,11 +416,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer icmpPinger.Close()
-	for _, target := range icmpTargets {
-		if err := icmpPinger.AddProbe(target); err != nil {
-			log.Warn("Failed to add ICMP target probe", "target", target, "error", err)
-		}
-	}
 
 	// Set up signer and RPC client.
 	signer, err := geoprobe.NewOffsetSigner(keypair, geoProbePubkey)
@@ -661,7 +533,6 @@ func main() {
 			GeoProbePubkey:         geoProbePubkey,
 			Client:                 geoProbeClient,
 			Resolver:               deviceResolver,
-			CLIParents:             cliParentAuthorities,
 			Logger:                 log,
 			ProbeTargetUpdateCount: &probeTargetUpdateCount,
 		})
@@ -673,7 +544,7 @@ func main() {
 		// Consume parent updates: update parentState for OffsetListener validation.
 		// Parent authority keys are NOT added to the signed TWAMP reflector — parent
 		// DZDs use the unsigned reflector. The signed reflector's allowlist comes
-		// from target discovery (inbound targets) and CLI --allowed-pubkeys only.
+		// from target discovery (inbound targets) only.
 		go func() {
 			for {
 				select {
@@ -697,9 +568,6 @@ func main() {
 		td, tdErr = geoprobe.NewTargetDiscovery(&geoprobe.TargetDiscoveryConfig{
 			GeoProbePubkey:         geoProbePubkey,
 			Client:                 geolocationUserClient,
-			CLITargets:             targets,
-			CLIIcmpTargets:         icmpTargets,
-			CLIAllowedKeys:         allowedKeys,
 			Logger:                 log,
 			ProbeTargetUpdateCount: &probeTargetUpdateCount,
 		})
@@ -753,9 +621,6 @@ func main() {
 			senderConn:         senderConn,
 			getCurrentSlot:     getCurrentSlot,
 			signedReflector:    signedReflector,
-			cliAllowedKeys:     allowedKeys,
-			targets:            targets,
-			icmpTargets:        icmpTargets,
 			targetUpdateCh:     targetUpdateCh,
 			icmpTargetUpdateCh: icmpTargetUpdateCh,
 			inboundKeyCh:       inboundKeyCh,
@@ -869,7 +734,6 @@ type measurementLoop struct {
 	senderConn      *net.UDPConn
 	getCurrentSlot  func(ctx context.Context) (uint64, error)
 	signedReflector signed.Reflector
-	cliAllowedKeys  [][32]byte
 
 	targets     []geoprobe.ProbeAddress
 	icmpTargets []geoprobe.ProbeAddress
@@ -970,9 +834,7 @@ func (ml *measurementLoop) run() error {
 		case keyUpdate := <-ml.inboundKeyCh:
 			ml.signedReflector.SetAuthorizedKeys(keyUpdate.Keys)
 			ml.log.Info("Updated signed TWAMP authorized keys from discovery",
-				"totalKeys", len(keyUpdate.Keys),
-				"cliKeys", len(ml.cliAllowedKeys),
-				"discoveredKeys", len(keyUpdate.Keys)-len(ml.cliAllowedKeys))
+				"totalKeys", len(keyUpdate.Keys))
 		}
 	}
 }

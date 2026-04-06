@@ -86,8 +86,7 @@ var (
 	gnmiTunnelServerAddr = flag.String("gnmi-tunnel-server-addr", "", "Address of the gNMI tunnel server (defaults to env config, e.g., gnmic-devnet.doublezero.xyz:443).")
 
 	// geoprobe flags
-	additionalChildProbes = flag.String("additional-child-probes", "", "Comma-separated list of child geoProbe addresses (host or host:offset_port:twamp_port) to measure RTT and send location offsets.")
-	geolocationProgramID  = flag.String("geolocation-program-id", "", "The ID of the geolocation program for onchain GeoProbe discovery. If env is provided, this flag is ignored.")
+	geolocationProgramID = flag.String("geolocation-program-id", "", "The ID of the geolocation program for onchain GeoProbe discovery. If env is provided, this flag is ignored.")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -187,16 +186,6 @@ func main() {
 	if err != nil {
 		log.Error("Failed to load metrics publisher keypair", "error", err)
 		os.Exit(1)
-	}
-
-	// Parse additional child probes if provided.
-	childProbes, err := geoprobe.ParseProbeAddresses(*additionalChildProbes)
-	if err != nil {
-		log.Error("Failed to parse additional-child-probes", "error", err)
-		os.Exit(1)
-	}
-	if len(childProbes) > 0 {
-		log.Info("Configured child probes for geolocation measurement", "count", len(childProbes), "probes", childProbes)
 	}
 
 	log.Info("Starting telemetry collector",
@@ -336,7 +325,6 @@ func main() {
 		},
 		SenderTTL:                  *senderTTL,
 		SubmitterMaxConcurrency:    *submitterMaxConcurrency,
-		InitialChildGeoProbes:      childProbes,
 		MaxConsecutiveSenderLosses: *maxConsecutiveSenderLosses,
 		GeolocationClient:          geolocationClient,
 	})

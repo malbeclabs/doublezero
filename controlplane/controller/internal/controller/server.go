@@ -348,22 +348,22 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		cache.Ipv4BgpPeers = append(cache.Ipv4BgpPeers, candidateIpv4BgpPeer)
 
 		// determine if interface is in an onchain link and assign metrics
-		findLink := func(intf Interface) serviceability.Link {
-			for _, link := range links {
+		findLink := func(intf Interface) *serviceability.Link {
+			for i, link := range links {
 				if d.PubKey == base58.Encode(link.SideAPubKey[:]) && intf.Name == link.SideAIfaceName {
-					return link
+					return &links[i]
 				}
 				if d.PubKey == base58.Encode(link.SideZPubKey[:]) && intf.Name == link.SideZIfaceName {
-					return link
+					return &links[i]
 				}
 			}
-			return serviceability.Link{}
+			return nil
 		}
 
 		for i, iface := range d.Interfaces {
 			link := findLink(iface)
 
-			if link == (serviceability.Link{}) || (link.Status != serviceability.LinkStatusActivated && link.Status != serviceability.LinkStatusSoftDrained && link.Status != serviceability.LinkStatusHardDrained) {
+			if link == nil || (link.Status != serviceability.LinkStatusActivated && link.Status != serviceability.LinkStatusSoftDrained && link.Status != serviceability.LinkStatusHardDrained) {
 				d.Interfaces[i].IsLink = false
 				d.Interfaces[i].Metric = 0
 				d.Interfaces[i].LinkStatus = serviceability.LinkStatusPending

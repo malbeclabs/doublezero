@@ -1,6 +1,7 @@
 package migrations
 
 import (
+	"context"
 	"crypto/tls"
 	"database/sql"
 	"fmt"
@@ -12,46 +13,20 @@ import (
 
 // RunMigrations applies pending goose migrations against ClickHouse.
 func RunMigrations(addr, database, username, password string, secure bool, log *slog.Logger) error {
-	opts := &clickhouse.Options{
-		Addr: []string{addr},
-		Auth: clickhouse.Auth{
-			Database: database,
-			Username: username,
-			Password: password,
-		},
+	db, err := NewDB(addr, database, username, password, secure)
+	if err != nil {
+		return err
 	}
-	if secure {
-		opts.TLS = &tls.Config{}
-	}
-	db := clickhouse.OpenDB(opts)
 	defer func() { _ = db.Close() }()
 
-	if err := db.Ping(); err != nil {
-		return fmt.Errorf("migration ping: %w", err)
+	provider, err := goose.NewProvider(goose.DialectClickHouse, db, FS, goose.WithSlog(log))
+	if err != nil {
+		return fmt.Errorf("goose provider: %w", err)
 	}
-
-	goose.SetBaseFS(FS)
-	goose.SetLogger(&gooseLogger{log: log})
-	if err := goose.SetDialect("clickhouse"); err != nil {
-		return fmt.Errorf("goose dialect: %w", err)
-	}
-	if err := goose.Up(db, "."); err != nil {
+	if _, err = provider.Up(context.Background()); err != nil {
 		return fmt.Errorf("goose up: %w", err)
 	}
 	return nil
-}
-
-// gooseLogger adapts slog to goose's Printf-style logger interface.
-type gooseLogger struct {
-	log *slog.Logger
-}
-
-func (g *gooseLogger) Fatalf(format string, v ...any) {
-	g.log.Error(fmt.Sprintf(format, v...))
-}
-
-func (g *gooseLogger) Printf(format string, v ...any) {
-	g.log.Info(fmt.Sprintf(format, v...))
 }
 
 // NewDB opens a ClickHouse database connection for use in tests or custom migration scenarios.

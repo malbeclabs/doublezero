@@ -15,10 +15,6 @@ type Server struct {
 
 	svc     *ServiceabilityView
 	handler *Handler
-
-	httpSrvsMu   sync.Mutex
-	httpSrvs     []*http.Server
-	shutdownOnce sync.Once
 }
 
 func New(log *slog.Logger, cfg Config) (*Server, error) {
@@ -85,13 +81,11 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 
 	httpSrv := &http.Server{Handler: mux}
 
-	s.httpSrvsMu.Lock()
-	s.httpSrvs = append(s.httpSrvs, httpSrv)
-	s.httpSrvsMu.Unlock()
-
 	go func() {
 		<-ctx.Done()
-		s.shutdown()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), s.cfg.ShutdownTimeout)
+		defer cancel()
+		_ = httpSrv.Shutdown(shutdownCtx)
 	}()
 
 	err := httpSrv.Serve(listener)
@@ -99,17 +93,4 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 		return nil
 	}
 	return err
-}
-
-func (s *Server) shutdown() {
-	s.shutdownOnce.Do(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), s.cfg.ShutdownTimeout)
-		defer cancel()
-		s.httpSrvsMu.Lock()
-		srvs := s.httpSrvs
-		s.httpSrvsMu.Unlock()
-		for _, srv := range srvs {
-			_ = srv.Shutdown(ctx)
-		}
-	})
 }

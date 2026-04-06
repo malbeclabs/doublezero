@@ -797,6 +797,136 @@ func TestRenderConfig(t *testing.T) {
 			},
 			Want: "fixtures/multi.vrf.mixed.metro.routing.tunnel.tmpl",
 		},
+		{
+			Name:        "render_flex_algo_enabled_successfully",
+			Description: "render config with flex-algo enabled: interface admin-groups, node-segments, router TE block, BGP color stamping",
+			Data: templateData{
+				Strings:                  StringsHelper{},
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
+				LocalASN:                 65342,
+				UnicastVrfs:              []uint16{1},
+				Config: func() *FeaturesConfig {
+					cfg := &FeaturesConfig{}
+					cfg.Features.FlexAlgo.Enabled = true
+					cfg.Features.FlexAlgo.CommunityStamping.All = true
+					return cfg
+				}(),
+				AllTopologies: []TopologyModel{
+					{
+						Name:           "unicast-default",
+						AdminGroupBit:  1,
+						FlexAlgoNumber: 129,
+						Color:          2,
+						ConstraintStr:  "include-any",
+					},
+				},
+				Device: &Device{
+					PubKey:                "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+					PublicIP:              net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+					ExchangeCode:          "tst",
+					BgpCommunity:          10050,
+					Interfaces: []Interface{
+						{
+							Name:           "Ethernet1/1",
+							Ip:             netip.MustParsePrefix("172.16.0.2/31"),
+							Mtu:            2048,
+							InterfaceType:  InterfaceTypePhysical,
+							Metric:         40000,
+							IsLink:         true,
+							LinkStatus:     serviceability.LinkStatusActivated,
+							LinkTopologies: []string{"unicast-default"},
+						},
+						{
+							Name:           "Loopback255",
+							Ip:             netip.MustParsePrefix("14.14.14.14/32"),
+							NodeSegmentIdx: 100,
+							InterfaceType:  InterfaceTypeLoopback,
+							LoopbackType:   LoopbackTypeVpnv4,
+							FlexAlgoNodeSegments: []FlexAlgoNodeSegmentModel{
+								{NodeSegmentIdx: 200, TopologyName: "unicast-default"},
+							},
+						},
+					},
+					Tunnels: []*Tunnel{
+						{
+							Id:                   500,
+							UnderlaySrcIP:        net.IP{1, 1, 1, 1},
+							UnderlayDstIP:        net.IP{2, 2, 2, 2},
+							OverlaySrcIP:         net.IP{169, 254, 0, 0},
+							OverlayDstIP:         net.IP{169, 254, 0, 1},
+							DzIp:                 net.IP{100, 0, 0, 0},
+							Allocated:            true,
+							VrfId:                1,
+							MetroRouting:         true,
+							TenantPubKey:         "g35TxFqwMx95vCk63fTxGTHb6ei4W24qg5t2x6xD3cT",
+							TenantTopologyColors: "color 2",
+						},
+					},
+				},
+			},
+			Want: "fixtures/base.config.flex-algo.txt",
+		},
+		{
+			Name:        "render_flex_algo_disabled_cleanup_successfully",
+			Description: "render config with flex-algo disabled but topologies present: cleanup commands emitted, no TE config",
+			Data: templateData{
+				Strings:                  StringsHelper{},
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
+				LocalASN:                 65342,
+				UnicastVrfs:              []uint16{1},
+				Config:                   nil,
+				AllTopologies: []TopologyModel{
+					{
+						Name:           "unicast-default",
+						AdminGroupBit:  0,
+						FlexAlgoNumber: 128,
+						Color:          1,
+						ConstraintStr:  "include-any",
+					},
+				},
+				Device: &Device{
+					PublicIP:              net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+					ExchangeCode:          "tst",
+					BgpCommunity:          10050,
+					Interfaces: []Interface{
+						{
+							Name:           "Ethernet1/1",
+							Ip:             netip.MustParsePrefix("172.16.0.2/31"),
+							Mtu:            2048,
+							InterfaceType:  InterfaceTypePhysical,
+							Metric:         40000,
+							IsLink:         true,
+							LinkStatus:     serviceability.LinkStatusActivated,
+							LinkTopologies: []string{"unicast-default"},
+						},
+					},
+					Tunnels: []*Tunnel{
+						{
+							Id:                   500,
+							UnderlaySrcIP:        net.IP{1, 1, 1, 1},
+							UnderlayDstIP:        net.IP{2, 2, 2, 2},
+							OverlaySrcIP:         net.IP{169, 254, 0, 0},
+							OverlayDstIP:         net.IP{169, 254, 0, 1},
+							DzIp:                 net.IP{100, 0, 0, 0},
+							Allocated:            true,
+							VrfId:                1,
+							MetroRouting:         true,
+							TenantPubKey:         "g35TxFqwMx95vCk63fTxGTHb6ei4W24qg5t2x6xD3cT",
+							TenantTopologyColors: "color 1",
+						},
+					},
+				},
+			},
+			Want: "fixtures/base.config.flex-algo-disabled.txt",
+		},
 	}
 
 	for _, test := range tests {
@@ -825,217 +955,6 @@ func TestRenderConfig(t *testing.T) {
 			}
 			if diff := cmp.Diff(string(want), got); diff != "" {
 				t.Errorf("renderTunnels mismatch in fixture %s (-want +got):\n%s", test.Want, diff)
-			}
-		})
-	}
-}
-
-func TestRenderFlexAlgoEnabled(t *testing.T) {
-	cfg := &FeaturesConfig{}
-	cfg.Features.FlexAlgo.Enabled = true
-	cfg.Features.FlexAlgo.CommunityStamping.All = true
-
-	data := templateData{
-		Strings:                  StringsHelper{},
-		MulticastGroupBlock:      "239.0.0.0/24",
-		TelemetryTWAMPListenPort: 862,
-		LocalASN:                 65342,
-		UnicastVrfs:              []uint16{1},
-		Config:                   cfg,
-		AllTopologies: []TopologyModel{
-			{
-				Name:           "unicast-default",
-				AdminGroupBit:  1,
-				FlexAlgoNumber: 129,
-				Color:          2,
-				ConstraintStr:  "include-any",
-			},
-		},
-		Device: &Device{
-			PubKey:                "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
-			PublicIP:              net.IP{7, 7, 7, 7},
-			Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
-			Vpn4vLoopbackIntfName: "Loopback255",
-			IsisNet:               "49.0000.0e0e.0e0e.0000.00",
-			ExchangeCode:          "tst",
-			BgpCommunity:          10050,
-			Interfaces: []Interface{
-				{
-					Name:           "Ethernet1/1",
-					Ip:             netip.MustParsePrefix("172.16.0.2/31"),
-					Mtu:            2048,
-					InterfaceType:  InterfaceTypePhysical,
-					Metric:         40000,
-					IsLink:         true,
-					LinkStatus:     serviceability.LinkStatusActivated,
-					LinkTopologies: []string{"unicast-default"},
-				},
-				{
-					Name:          "Loopback255",
-					Ip:            netip.MustParsePrefix("14.14.14.14/32"),
-					NodeSegmentIdx: 100,
-					InterfaceType: InterfaceTypeLoopback,
-					LoopbackType:  LoopbackTypeVpnv4,
-					FlexAlgoNodeSegments: []FlexAlgoNodeSegmentModel{
-						{NodeSegmentIdx: 200, TopologyName: "unicast-default"},
-					},
-				},
-			},
-			Tunnels: []*Tunnel{
-				{
-					Id:                   500,
-					UnderlaySrcIP:        net.IP{1, 1, 1, 1},
-					UnderlayDstIP:        net.IP{2, 2, 2, 2},
-					OverlaySrcIP:         net.IP{169, 254, 0, 0},
-					OverlayDstIP:         net.IP{169, 254, 0, 1},
-					DzIp:                 net.IP{100, 0, 0, 0},
-					Allocated:            true,
-					VrfId:                1,
-					MetroRouting:         true,
-					TenantPubKey:         "g35TxFqwMx95vCk63fTxGTHb6ei4W24qg5t2x6xD3cT",
-					TenantTopologyColors: "color 2",
-				},
-			},
-		},
-	}
-
-	got, err := renderConfig(data)
-	if err != nil {
-		t.Fatalf("error rendering template: %v", err)
-	}
-
-	checks := []struct {
-		desc    string
-		present bool
-		substr  string
-	}{
-		// Change 1: interface admin-group (uppercase)
-		{"traffic-engineering enable on interface", true, "   traffic-engineering\n   traffic-engineering administrative-group UNICAST-DEFAULT"},
-		// Change 3: BGP next-hop
-		{"next-hop resolution ribs in vpn-ipv4", true, "next-hop resolution ribs tunnel-rib colored system-colored-tunnel-rib"},
-		// Change 4: IS-IS flex-algo advertisement inside segment-routing mpls
-		{"IS-IS flex-algo advertisement", true, "flex-algo unicast-default level-2 advertised"},
-		{"IS-IS traffic-engineering block", true, "   traffic-engineering\n      no shutdown\n      is-type level-2"},
-		// Change 5: router traffic-engineering block (correct structure)
-		{"router traffic-engineering block", true, "router traffic-engineering"},
-		{"segment-routing rib in TE block", true, "   segment-routing\n      rib system-colored-tunnel-rib"},
-		{"router-id in TE block", true, "   router-id ipv4 14.14.14.14"},
-		{"UNICAST-DRAINED alias first", true, "   administrative-group alias UNICAST-DRAINED group 0"},
-		{"UNICAST-DEFAULT alias uppercase", true, "   administrative-group alias UNICAST-DEFAULT group 1"},
-		{"flex-algo TE definition", true, "      flex-algo 129 unicast-default"},
-		{"flex-algo admin-group include-any", true, "         administrative-group include any 1 exclude 0"},
-		{"flex-algo color", true, "         color 2"},
-		// Community stamping
-		{"extcommunity color in route-map", true, "set extcommunity color 2"},
-		// Change 2: loopback node-segments
-		{"loopback base node-segment", true, "   node-segment ipv4 index 100"},
-		{"loopback flex-algo node-segment", true, "   node-segment ipv4 index 200 flex-algo unicast-default"},
-		// Negative: wrong patterns must not appear
-		{"no metric-type igp", false, "metric-type igp"},
-		{"no topology standard", false, "topology standard"},
-	}
-
-	for _, c := range checks {
-		t.Run(c.desc, func(t *testing.T) {
-			if strings.Contains(got, c.substr) != c.present {
-				if c.present {
-					t.Errorf("expected %q to be present in rendered config, but it was not", c.substr)
-				} else {
-					t.Errorf("expected %q to be absent from rendered config, but it was present", c.substr)
-				}
-			}
-		})
-	}
-}
-
-func TestRenderFlexAlgoDisabled(t *testing.T) {
-	// Config is nil — flex-algo blocks must not appear.
-	data := templateData{
-		Strings:                  StringsHelper{},
-		MulticastGroupBlock:      "239.0.0.0/24",
-		TelemetryTWAMPListenPort: 862,
-		LocalASN:                 65342,
-		UnicastVrfs:              []uint16{1},
-		Config:                   nil,
-		AllTopologies: []TopologyModel{
-			{
-				Name:           "unicast-default",
-				AdminGroupBit:  0,
-				FlexAlgoNumber: 128,
-				Color:          1,
-				ConstraintStr:  "include-any",
-			},
-		},
-		Device: &Device{
-			PublicIP:              net.IP{7, 7, 7, 7},
-			Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
-			Vpn4vLoopbackIntfName: "Loopback255",
-			IsisNet:               "49.0000.0e0e.0e0e.0000.00",
-			ExchangeCode:          "tst",
-			BgpCommunity:          10050,
-			Interfaces: []Interface{
-				{
-					Name:           "Ethernet1/1",
-					Ip:             netip.MustParsePrefix("172.16.0.2/31"),
-					Mtu:            2048,
-					InterfaceType:  InterfaceTypePhysical,
-					Metric:         40000,
-					IsLink:         true,
-					LinkStatus:     serviceability.LinkStatusActivated,
-					LinkTopologies: []string{"unicast-default"},
-				},
-			},
-			Tunnels: []*Tunnel{
-				{
-					Id:                   500,
-					UnderlaySrcIP:        net.IP{1, 1, 1, 1},
-					UnderlayDstIP:        net.IP{2, 2, 2, 2},
-					OverlaySrcIP:         net.IP{169, 254, 0, 0},
-					OverlayDstIP:         net.IP{169, 254, 0, 1},
-					DzIp:                 net.IP{100, 0, 0, 0},
-					Allocated:            true,
-					VrfId:                1,
-					MetroRouting:         true,
-					TenantPubKey:         "g35TxFqwMx95vCk63fTxGTHb6ei4W24qg5t2x6xD3cT",
-					TenantTopologyColors: "color 1",
-				},
-			},
-		},
-	}
-
-	got, err := renderConfig(data)
-	if err != nil {
-		t.Fatalf("error rendering template: %v", err)
-	}
-
-	absent := []string{
-		// Positive (non-removal) forms must be absent; cleanup `no ...` forms are checked below.
-		"   traffic-engineering administrative-group",
-		"router traffic-engineering\n   router-id",
-		"administrative-group alias",
-		"next-hop resolution ribs tunnel-rib",
-		"set extcommunity color",
-	}
-
-	for _, substr := range absent {
-		t.Run("absent: "+substr, func(t *testing.T) {
-			if strings.Contains(got, substr) {
-				t.Errorf("expected %q to be absent from rendered config (flex-algo disabled), but it was present", substr)
-			}
-		})
-	}
-
-	present := []string{
-		"no router traffic-engineering",
-		"no next-hop resolution ribs",
-		"no traffic-engineering administrative-group",
-		"no traffic-engineering",
-	}
-
-	for _, substr := range present {
-		t.Run("present: "+substr, func(t *testing.T) {
-			if !strings.Contains(got, substr) {
-				t.Errorf("expected %q to be present in rendered config (flex-algo disabled cleanup), but it was absent", substr)
 			}
 		})
 	}

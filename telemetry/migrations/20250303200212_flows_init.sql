@@ -68,7 +68,11 @@ CREATE TABLE IF NOT EXISTS default.flows
     `src_exchange` String,
     `dst_exchange` String
 )
-ENGINE = SharedMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')
+-- MergeTree is used intentionally. ClickHouse Cloud automatically promotes MergeTree
+-- (and its variants) to the equivalent SharedMergeTree engine transparently, so
+-- specifying SharedMergeTree explicitly is unnecessary and breaks single-node deployments.
+-- See: https://clickhouse.com/docs/cloud/reference/shared-merge-tree
+ENGINE = MergeTree()
 PARTITION BY toYYYYMM(time_received_ns)
 ORDER BY (time_received_ns, sampler_address, etype, proto, in_ifname, out_ifname, src_as, dst_as, sampling_rate)
 TTL toDateTime(time_received_ns) + toIntervalMonth(1)

@@ -1,15 +1,66 @@
 use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator};
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
-    commands::device::interface::{
-        activate::ActivateDeviceInterfaceCommand, reject::RejectDeviceInterfaceCommand,
-        remove::RemoveDeviceInterfaceCommand, unlink::UnlinkDeviceInterfaceCommand,
+    commands::{
+        device::interface::{
+            activate::ActivateDeviceInterfaceCommand, reject::RejectDeviceInterfaceCommand,
+            remove::RemoveDeviceInterfaceCommand, unlink::UnlinkDeviceInterfaceCommand,
+        },
+        topology::{backfill::BackfillTopologyCommand, list::ListTopologyCommand},
     },
     CurrentInterfaceVersion, Device, DoubleZeroClient, InterfaceStatus, InterfaceType,
     LoopbackType,
 };
 use log::{error, info};
 use solana_sdk::pubkey::Pubkey;
+
+/// After a vpnv4 loopback is activated, automatically backfill flex-algo node segments
+/// on that device for every topology that currently exists on the ledger.
+fn backfill_device_for_all_topologies(
+    client: &dyn DoubleZeroClient,
+    device_pubkey: &Pubkey,
+    device_code: &str,
+) {
+    let topologies = match ListTopologyCommand.execute(client) {
+        Ok(t) => t,
+        Err(e) => {
+            error!(
+                "Failed to list topologies for backfill after loopback activation on {device_code}: {e}"
+            );
+            return;
+        }
+    };
+
+    if topologies.is_empty() {
+        return;
+    }
+
+    info!(
+        "Backfilling {} topology/topologies for device {device_code} after vpnv4 loopback activation",
+        topologies.len()
+    );
+
+    for topology in topologies.values() {
+        let cmd = BackfillTopologyCommand {
+            name: topology.name.clone(),
+            device_pubkeys: vec![*device_pubkey],
+        };
+        match cmd.execute(client) {
+            Ok(sig) => {
+                info!(
+                    "Backfilled topology '{}' for device {device_code}: {sig}",
+                    topology.name
+                );
+            }
+            Err(e) => {
+                error!(
+                    "Failed to backfill topology '{}' for device {device_code}: {e}",
+                    topology.name
+                );
+            }
+        }
+    }
+}
 
 /// Stateless interface manager for onchain allocation mode.
 /// Does not use local allocators - all allocation is handled by the smart contract.
@@ -74,6 +125,10 @@ impl<'a> InterfaceMgrStateless<'a> {
             &NetworkV4::default(),
             0,
         );
+
+        if iface.loopback_type == LoopbackType::Vpnv4 {
+            backfill_device_for_all_topologies(self.client, device_pubkey, &device.code);
+        }
     }
 
     /// Handle interface deletion (stateless mode - no local deallocation)
@@ -254,6 +309,10 @@ impl<'a> InterfaceMgr<'a> {
             &iface.ip_net,
             iface.node_segment_idx,
         );
+
+        if iface.loopback_type == LoopbackType::Vpnv4 {
+            backfill_device_for_all_topologies(self.client, device_pubkey, &device.code);
+        }
     }
 
     /// Handle interface deletion and resource cleanup

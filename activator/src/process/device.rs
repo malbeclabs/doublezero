@@ -437,6 +437,13 @@ mod tests {
                 )
                 .returning(|_, _| Ok(Signature::new_unique()));
 
+            // After activating a vpnv4 loopback, the interface manager queries existing topologies
+            // to auto-backfill flex-algo node segments.
+            client
+                .expect_gets()
+                .with(predicate::eq(AccountType::Topology))
+                .returning(|_| Ok(HashMap::new()));
+
             // interfaces get checked on activated devices
             device.status = DeviceStatus::Activated;
 
@@ -661,6 +668,13 @@ mod tests {
                 predicate::always(),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
+
+        // After activating a vpnv4 loopback, the interface manager queries existing topologies
+        // to auto-backfill flex-algo node segments.
+        client
+            .expect_gets()
+            .with(predicate::eq(AccountType::Topology))
+            .returning(|_| Ok(HashMap::new()));
 
         process_device_event(
             &client,

@@ -18,7 +18,7 @@ use doublezero_sdk::{
     commands::{
         device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
         link::list::ListLinkCommand, location::list::ListLocationCommand,
-        user::list::ListUserCommand,
+        topology::backfill::BackfillTopologyCommand, user::list::ListUserCommand,
     },
     doublezeroclient::DoubleZeroClient,
     AccountData, Device, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType, Link,
@@ -63,6 +63,35 @@ pub struct ProcessorStateless<T: DoubleZeroClient> {
     client: Arc<T>,
     devices: DeviceMapStateless,
     multicastgroups: MulticastGroupMap,
+}
+
+/// Solana transaction account limit minus the 4 fixed accounts in BackfillTopologyCommand
+/// (topology PDA, segment_routing_ids PDA, globalstate, payer).
+const BACKFILL_BATCH_SIZE: usize = 28;
+
+/// Backfill flex-algo node segments on a set of devices for a given topology, batching
+/// device pubkeys to stay within Solana's per-transaction account limit.
+fn backfill_topology_for_devices(
+    client: &dyn DoubleZeroClient,
+    topology_name: &str,
+    device_pubkeys: &[Pubkey],
+) {
+    if device_pubkeys.is_empty() {
+        return;
+    }
+    info!(
+        "Backfilling topology '{topology_name}' for {} device(s)",
+        device_pubkeys.len()
+    );
+    for chunk in device_pubkeys.chunks(BACKFILL_BATCH_SIZE) {
+        let cmd = BackfillTopologyCommand {
+            name: topology_name.to_string(),
+            device_pubkeys: chunk.to_vec(),
+        };
+        if let Err(e) = cmd.execute(client) {
+            error!("Failed to backfill topology '{topology_name}' for device batch: {e}");
+        }
+    }
 }
 
 /// Reserve segment routing IDs and loopback IPs for devices that have active allocations.
@@ -340,6 +369,14 @@ impl<T: DoubleZeroClient> Processor<T> {
                             error!("Error processing access pass event: {e}");
                         });
             }
+            AccountData::Topology(topology) => {
+                let device_pubkeys: Vec<Pubkey> = self.devices.keys().copied().collect();
+                backfill_topology_for_devices(
+                    self.client.as_ref(),
+                    &topology.name,
+                    &device_pubkeys,
+                );
+            }
             _ => {}
         };
         metrics::counter!("doublezero_activator_event_handled").increment(1);
@@ -438,6 +475,14 @@ impl<T: DoubleZeroClient> ProcessorStateless<T> {
                         .inspect_err(|e| {
                             error!("Error processing access pass event: {e}");
                         });
+            }
+            AccountData::Topology(topology) => {
+                let device_pubkeys: Vec<Pubkey> = self.devices.keys().copied().collect();
+                backfill_topology_for_devices(
+                    self.client.as_ref(),
+                    &topology.name,
+                    &device_pubkeys,
+                );
             }
             _ => {}
         };

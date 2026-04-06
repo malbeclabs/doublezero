@@ -1,8 +1,8 @@
-# RFC 17 — User BGP Status
+# RFC 19 — User BGP Status
 
 ## Summary
 
-**Status: `Draft`**
+**Status: `Approved`**
 
 This RFC closes the loop between Serviceability, DZD configuration, and the doublezerod
 client connection by persisting the real BGP session state of each user onchain.

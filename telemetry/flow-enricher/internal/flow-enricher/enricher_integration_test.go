@@ -320,7 +320,7 @@ func TestFlowEnrichment(t *testing.T) {
 	payload := readPcap(t, "./fixtures/sflow_ingress_user_traffic.pcap")
 
 	f := &flow.FlowSample{
-		ReceiveTimestamp: &timestamppb.Timestamp{Seconds: 1625243456, Nanos: 0},
+		ReceiveTimestamp: timestamppb.Now(),
 		FlowPayload:      payload,
 	}
 

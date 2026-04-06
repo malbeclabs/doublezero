@@ -60,7 +60,13 @@ CREATE TABLE IF NOT EXISTS default.flows
     `_offset` Int64,
     `_topic` String,
     `_header_keys` Array(String),
-    `_header_values` Array(String)
+    `_header_values` Array(String),
+    `src_device_code` String,
+    `dst_device_code` String,
+    `src_location` String,
+    `dst_location` String,
+    `src_exchange` String,
+    `dst_exchange` String
 )
 ENGINE = SharedMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')
 PARTITION BY toYYYYMM(time_received_ns)

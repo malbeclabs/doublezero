@@ -632,6 +632,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let (accesspass1_pubkey, _) =
@@ -671,6 +674,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let (accesspass2_pubkey, _) =
@@ -793,6 +799,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let user2 = User {
@@ -814,6 +823,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -896,6 +908,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let user2 = User {
@@ -917,6 +932,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -999,6 +1017,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let user2 = User {
@@ -1020,6 +1041,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1102,6 +1126,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let user2 = User {
@@ -1123,6 +1150,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1205,6 +1235,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let user2 = User {
@@ -1226,6 +1259,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1323,6 +1359,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let user2 = User {
@@ -1344,6 +1383,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1462,6 +1504,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let user2 = User {
@@ -1483,6 +1528,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1631,6 +1679,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let user2 = User {
@@ -1652,6 +1703,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         client.expect_list_user().returning(move |_| {

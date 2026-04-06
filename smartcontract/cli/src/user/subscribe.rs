@@ -135,6 +135,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let mgroup_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
@@ -231,6 +234,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let mgroup_pubkey1 = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");

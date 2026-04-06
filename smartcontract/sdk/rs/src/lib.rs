@@ -30,7 +30,7 @@ pub use doublezero_serviceability::{
         programconfig::ProgramConfig,
         resource_extension::ResourceExtensionOwned,
         tenant::Tenant,
-        user::{User, UserCYOA, UserStatus, UserType},
+        user::{BGPStatus, User, UserCYOA, UserStatus, UserType},
     },
 };
 

@@ -28,7 +28,7 @@ use std::net::Ipv4Addr;
 
 // Value to rent exempt two `User` accounts + configurable amount for connect/disconnect txns
 // `User` account size assumes a single publisher and subscriber pubkey registered
-const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 241 * 3; // 241 bytes per User account x 3 accounts = 723 bytes
+const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 258 * 3; // 258 bytes per User account x 3 accounts = 774 bytes
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct SetAccessPassArgs {
@@ -352,6 +352,9 @@ mod tests {
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         // User with 1 subscriber only (publisher use case)
@@ -374,6 +377,9 @@ mod tests {
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         // User with both 1 publisher and 1 subscriber (future simultaneous pub/sub)
@@ -396,6 +402,9 @@ mod tests {
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let size_with_publisher = borsh::object_length(&user_with_publisher).unwrap();
@@ -403,25 +412,25 @@ mod tests {
         let size_with_both = borsh::object_length(&user_with_both).unwrap();
 
         // Verify our understanding of the sizes
-        // Base User size (empty vecs) = 177 bytes (includes tunnel_flags u8)
+        // Base User size (empty vecs) = 194 bytes (includes tunnel_flags, bgp_status, last_bgp_up_at, last_bgp_reported_at)
         // Each Pubkey in publishers/subscribers adds 32 bytes
         assert_eq!(
-            size_with_publisher, 209,
-            "User with 1 publisher should be 209 bytes"
+            size_with_publisher, 226,
+            "User with 1 publisher should be 226 bytes"
         );
         assert_eq!(
-            size_with_subscriber, 209,
-            "User with 1 subscriber should be 209 bytes"
+            size_with_subscriber, 226,
+            "User with 1 subscriber should be 226 bytes"
         );
         assert_eq!(
-            size_with_both, 241,
-            "User with 1 publisher + 1 subscriber should be 241 bytes"
+            size_with_both, 258,
+            "User with 1 publisher + 1 subscriber should be 258 bytes"
         );
 
-        // The constant should be sized for 3 accounts with both pub+sub (241 * 3 = 723)
+        // The constant should be sized for 3 accounts with both pub+sub (258 * 3 = 774)
         assert_eq!(
             AIRDROP_USER_RENT_LAMPORTS_BYTES,
-            241 * 3,
+            258 * 3,
             "AIRDROP_USER_RENT_LAMPORTS_BYTES should be sized for 3 User accounts with pub+sub"
         );
 

@@ -249,6 +249,12 @@ pub struct User {
     pub tunnel_endpoint: Ipv4Addr, // 4
     /// Bitflags recording durable tunnel properties. See [`TunnelFlags`].
     pub tunnel_flags: u8, // 1
+    /// BGP session status as last reported by the device agent.
+    pub bgp_status: BGPStatus, // 1
+    /// Slot number of the most recent BGP session up event.
+    pub last_bgp_up_at: u64, // 8
+    /// Slot number of the most recent BGP status report from the device agent.
+    pub last_bgp_reported_at: u64, // 8
 }
 
 impl fmt::Display for User {
@@ -297,6 +303,9 @@ impl TryFrom<&[u8]> for User {
             tunnel_endpoint: BorshDeserialize::deserialize(&mut data)
                 .unwrap_or([0, 0, 0, 0].into()),
             tunnel_flags: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bgp_status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            last_bgp_up_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            last_bgp_reported_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::User {
@@ -505,6 +514,9 @@ mod tests {
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -553,6 +565,9 @@ mod tests {
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let err = val.validate();
@@ -581,6 +596,9 @@ mod tests {
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -608,6 +626,9 @@ mod tests {
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -635,6 +656,9 @@ mod tests {
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -662,6 +686,9 @@ mod tests {
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -689,6 +716,9 @@ mod tests {
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -717,6 +747,9 @@ mod tests {
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 1), // Private IP - invalid
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -726,6 +759,9 @@ mod tests {
         let val_loopback = User {
             tunnel_endpoint: Ipv4Addr::new(127, 0, 0, 1), // Loopback - invalid
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
             ..val.clone()
         };
         let err = val_loopback.validate();
@@ -736,6 +772,9 @@ mod tests {
         let val_link_local = User {
             tunnel_endpoint: Ipv4Addr::new(169, 254, 1, 1), // Link-local - invalid
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
             ..val.clone()
         };
         let err = val_link_local.validate();
@@ -746,6 +785,9 @@ mod tests {
         let val_unspecified = User {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
             ..val.clone()
         };
         assert!(val_unspecified.validate().is_ok());
@@ -754,6 +796,9 @@ mod tests {
         let val_global = User {
             tunnel_endpoint: Ipv4Addr::new(8, 8, 8, 8), // Global IP - valid
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
             ..val
         };
         assert!(val_global.validate().is_ok());
@@ -784,6 +829,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         }
     }
 
@@ -923,6 +971,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 1), // invalid: private IP
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         assert!(val.validate().is_ok());
@@ -977,14 +1028,31 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: TunnelFlags::CreatedAsPublisher as u8,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
-        let mut data = borsh::to_vec(&user).unwrap();
-        // Remove the last byte (tunnel_flags) to simulate an old account
-        data.pop();
-        let deserialized = User::try_from(&data[..]).unwrap();
+        let data = borsh::to_vec(&user).unwrap();
+        // Remove tunnel_flags (1) + bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
+        // to simulate an old account that predates tunnel_flags.
+        let old_data = &data[..data.len() - 18];
+        let deserialized = User::try_from(old_data).unwrap();
         assert_eq!(
             deserialized.tunnel_flags, 0,
             "Old accounts must default tunnel_flags to 0"
+        );
+        assert_eq!(
+            deserialized.bgp_status,
+            BGPStatus::Unknown,
+            "Old accounts must default bgp_status to Unknown"
+        );
+        assert_eq!(
+            deserialized.last_bgp_up_at, 0,
+            "Old accounts must default last_bgp_up_at to 0"
+        );
+        assert_eq!(
+            deserialized.last_bgp_reported_at, 0,
+            "Old accounts must default last_bgp_reported_at to 0"
         );
     }
 
@@ -1009,6 +1077,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: TunnelFlags::CreatedAsPublisher as u8,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
         let data = borsh::to_vec(&user).unwrap();
         let deserialized = User::try_from(&data[..]).unwrap();

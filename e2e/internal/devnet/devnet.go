@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"maps"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	dockercontainer "github.com/docker/docker/api/types/container"
@@ -58,17 +60,19 @@ type DevnetSpec struct {
 	CYOANetwork CYOANetworkSpec
 
 	// Override the default device tunnel network onchain.
-	DeviceTunnelNet    string
-	Ledger             LedgerSpec
-	Manager            ManagerSpec
-	Funder             FunderSpec
-	Controller         ControllerSpec
-	Activator          ActivatorSpec
-	DeviceHealthOracle DeviceHealthOracleSpec
-	InfluxDB           InfluxDBSpec
-	Prometheus         PrometheusSpec
-	Devices            map[string]DeviceSpec
-	Clients            map[string]ClientSpec
+	DeviceTunnelNet              string
+	Ledger                       LedgerSpec
+	Manager                      ManagerSpec
+	Funder                       FunderSpec
+	Controller                   ControllerSpec
+	Activator                    ActivatorSpec
+	DeviceHealthOracle           DeviceHealthOracleSpec
+	InfluxDB                     InfluxDBSpec
+	Prometheus                   PrometheusSpec
+	Sentinel                     SentinelSpec
+	ValidatorMetadataServiceMock ValidatorMetadataServiceMockSpec
+	Devices                      map[string]DeviceSpec
+	Clients                      map[string]ClientSpec
 
 	// SkipProgramDeploy skips deploying programs and initializing the smart contract.
 	// Use this when the ledger already has cloned program state from a remote cluster.
@@ -91,16 +95,18 @@ type Devnet struct {
 	DefaultNetwork *DefaultNetwork
 	CYOANetwork    *CYOANetwork
 
-	Ledger             *Ledger
-	Manager            *Manager
-	Funder             *Funder
-	Controller         *Controller
-	Activator          *Activator
-	DeviceHealthOracle *DeviceHealthOracle
-	InfluxDB           *InfluxDB
-	Prometheus         *Prometheus
-	Devices            map[string]*Device
-	Clients            map[string]*Client
+	Ledger                       *Ledger
+	Manager                      *Manager
+	Funder                       *Funder
+	Controller                   *Controller
+	Activator                    *Activator
+	DeviceHealthOracle           *DeviceHealthOracle
+	InfluxDB                     *InfluxDB
+	Prometheus                   *Prometheus
+	Sentinel                     *Sentinel
+	ValidatorMetadataServiceMock *ValidatorMetadataServiceMock
+	Devices                      map[string]*Device
+	Clients                      map[string]*Client
 }
 
 func (s *DevnetSpec) Validate() error {
@@ -343,6 +349,14 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 			log: log.With("component", "prometheus"),
 		}
 	}
+	dn.Sentinel = &Sentinel{
+		dn:  dn,
+		log: log.With("component", "sentinel"),
+	}
+	dn.ValidatorMetadataServiceMock = &ValidatorMetadataServiceMock{
+		dn:  dn,
+		log: log.With("component", "validator-metadata-service-mock"),
+	}
 	dn.Devices = make(map[string]*Device)
 	dn.Clients = make(map[string]*Client)
 
@@ -521,6 +535,22 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 
 	d.log.Info("--> Devnet running", "duration", time.Since(start))
 	return nil
+}
+
+// StartValidatorMetadataServiceMock starts the validator metadata service mock container.
+func (d *Devnet) StartValidatorMetadataServiceMock(ctx context.Context) error {
+	if err := d.Spec.ValidatorMetadataServiceMock.Validate(); err != nil {
+		return fmt.Errorf("invalid validator metadata service mock spec: %w", err)
+	}
+	return d.ValidatorMetadataServiceMock.Start(ctx)
+}
+
+// StartSentinel starts the sentinel container.
+func (d *Devnet) StartSentinel(ctx context.Context) error {
+	if err := d.Spec.Sentinel.Validate(); err != nil {
+		return fmt.Errorf("invalid sentinel spec: %w", err)
+	}
+	return d.Sentinel.Start(ctx)
 }
 
 func (d *Devnet) AddDevice(ctx context.Context, spec DeviceSpec) (*Device, error) {
@@ -917,6 +947,27 @@ func (d *Devnet) waitContainerHealthy(ctx context.Context, containerID string, t
 
 func shortContainerID(id string) string {
 	return id[:12]
+}
+
+// DumpContainerLogs prints the logs from a container for debugging on test failure.
+func (d *Devnet) DumpContainerLogs(t *testing.T, name string, containerID string) {
+	t.Helper()
+	if containerID == "" {
+		return
+	}
+
+	logsReader, err := d.dockerClient.ContainerLogs(context.Background(), containerID, dockercontainer.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+	})
+	if err != nil {
+		t.Logf("Failed to get logs for %s: %v", name, err)
+		return
+	}
+	defer logsReader.Close()
+
+	all, _ := io.ReadAll(logsReader)
+	t.Logf("=== %s logs (%d bytes) ===\n%s", name, len(all), string(all))
 }
 
 // generateKeypairIfNotExists generates and writes a new keypair to the keypair path if it does not exist.

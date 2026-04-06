@@ -1,6 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_link_pda,
+    processors::validation::validate_program_account,
     seeds::{SEED_LINK, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
@@ -94,21 +95,19 @@ pub fn process_create_link(
         validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
     code.make_ascii_lowercase();
 
-    assert_eq!(
-        contributor_account.owner, program_id,
-        "Invalid Contributor Account Owner"
+    validate_program_account!(
+        contributor_account,
+        program_id,
+        writable = true,
+        "Contributor"
     );
-    assert_eq!(
-        side_a_account.owner, program_id,
-        "Invalid Side A Account Owner"
-    );
-    assert_eq!(
-        side_z_account.owner, program_id,
-        "Invalid Side Z Account Owner"
-    );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(side_a_account, program_id, writable = true, "SideA");
+    validate_program_account!(side_z_account, program_id, writable = true, "SideZ");
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = true,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),

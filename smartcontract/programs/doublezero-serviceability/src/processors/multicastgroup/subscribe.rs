@@ -176,29 +176,28 @@ pub fn process_subscribe_multicastgroup(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(
-        mgroup_account.owner, program_id,
-        "Invalid PDA Account Owner"
+    // Validate accounts
+    validate_program_account!(
+        mgroup_account,
+        program_id,
+        writable = true,
+        "MulticastGroup"
     );
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
-    assert_eq!(
-        accesspass_account.owner, program_id,
-        "Invalid Accesspass Account Owner"
+    validate_program_account!(
+        accesspass_account,
+        program_id,
+        writable = false,
+        "AccessPass"
     );
-    assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
+    validate_program_account!(user_account, program_id, writable = true, "User");
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    assert!(
-        mgroup_account.is_writable,
-        "multicastgroup account is not writable"
-    );
-    assert!(user_account.is_writable, "user account is not writable");
 
     // Parse and validate user
     let mut user: User = User::try_from(user_account)?;
@@ -274,7 +273,7 @@ pub fn process_subscribe_multicastgroup(
                 multicast_publisher_block_ext,
                 program_id,
                 writable = true,
-                pda = Some(&expected_multicast_publisher_pda),
+                pda = &expected_multicast_publisher_pda,
                 "MulticastPublisherBlock"
             );
 
@@ -291,7 +290,7 @@ pub fn process_subscribe_multicastgroup(
                 multicast_publisher_block_ext,
                 program_id,
                 writable = true,
-                pda = Some(&expected_multicast_publisher_pda),
+                pda = &expected_multicast_publisher_pda,
                 "MulticastPublisherBlock"
             );
 

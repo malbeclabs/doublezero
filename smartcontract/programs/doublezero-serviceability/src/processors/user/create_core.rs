@@ -82,7 +82,6 @@ pub fn create_user_core(
         core.accesspass_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "AccessPass"
     );
 
@@ -92,13 +91,7 @@ pub fn create_user_core(
             return Err(DoubleZeroError::InvalidTenantPubkey.into());
         }
 
-        validate_program_account!(
-            tenant_account,
-            program_id,
-            writable = true,
-            pda = None::<&Pubkey>,
-            "Tenant"
-        );
+        validate_program_account!(tenant_account, program_id, writable = true, "Tenant");
 
         if tenant_account.data.borrow()[0] != AccountType::Tenant as u8 {
             return Err(DoubleZeroError::InvalidAccountType.into());

@@ -403,6 +403,8 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						SideZIfaceName:    "lo0",
 						LinkHealth:        LinkHealth(173),
 						LinkDesiredStatus: LinkDesiredStatus(37),
+						LinkFlags:         118,
+						LinkTopologies:    nil,
 						PubKey:            pubkeys[5],
 					},
 				},

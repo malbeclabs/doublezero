@@ -19,6 +19,8 @@ pub enum ShredSubscriptionInstructionData {
     RequestInstantSeatAllocation,
     /// Request instant seat withdrawal.
     RequestInstantSeatWithdrawal,
+    /// Set the rewards proportion for a validator client.
+    SetValidatorClientRewardsProportion(u16),
 }
 
 impl ShredSubscriptionInstructionData {
@@ -34,6 +36,8 @@ impl ShredSubscriptionInstructionData {
         Discriminator::new_sha2(b"dz::ix::request_instant_seat_allocation");
     pub const REQUEST_INSTANT_SEAT_WITHDRAWAL: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::request_instant_seat_withdrawal");
+    pub const SET_VALIDATOR_CLIENT_REWARDS_PROPORTION: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::set_validator_client_rewards_proportion");
 }
 
 impl BorshSerialize for ShredSubscriptionInstructionData {
@@ -55,6 +59,10 @@ impl BorshSerialize for ShredSubscriptionInstructionData {
             Self::RequestInstantSeatWithdrawal => {
                 Self::REQUEST_INSTANT_SEAT_WITHDRAWAL.serialize(writer)
             }
+            Self::SetValidatorClientRewardsProportion(proportion) => {
+                Self::SET_VALIDATOR_CLIENT_REWARDS_PROPORTION.serialize(writer)?;
+                proportion.serialize(writer)
+            }
         }
     }
 }
@@ -74,6 +82,10 @@ impl BorshDeserialize for ShredSubscriptionInstructionData {
             }
             Self::REQUEST_INSTANT_SEAT_ALLOCATION => Ok(Self::RequestInstantSeatAllocation),
             Self::REQUEST_INSTANT_SEAT_WITHDRAWAL => Ok(Self::RequestInstantSeatWithdrawal),
+            Self::SET_VALIDATOR_CLIENT_REWARDS_PROPORTION => {
+                let proportion = u16::deserialize_reader(reader)?;
+                Ok(Self::SetValidatorClientRewardsProportion(proportion))
+            }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid discriminator",

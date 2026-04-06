@@ -211,7 +211,10 @@ impl PaymentsCommand {
                             ShredSubscriptionInstructionData::InitializePaymentEscrow
                             | ShredSubscriptionInstructionData::InitializeClientSeat { .. }
                             | ShredSubscriptionInstructionData::RequestInstantSeatAllocation
-                            | ShredSubscriptionInstructionData::RequestInstantSeatWithdrawal,
+                            | ShredSubscriptionInstructionData::RequestInstantSeatWithdrawal
+                            | ShredSubscriptionInstructionData::SetValidatorClientRewardsProportion(
+                                _,
+                            ),
                         ) => {}
                         // TODO: oracle instructions (BatchAllocateSeats,
                         // InstantAllocateSeat) debit the escrow. Their

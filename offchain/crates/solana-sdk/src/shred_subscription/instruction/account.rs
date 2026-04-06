@@ -236,6 +236,34 @@ impl From<RequestInstantSeatWithdrawalAccounts> for Vec<AccountMeta> {
     }
 }
 
+/// Accounts for the `SetValidatorClientRewardsProportion` instruction (3 accounts).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetValidatorClientRewardsProportionAccounts {
+    pub program_config_key: Pubkey,
+    pub manager_key: Pubkey,
+    pub validator_client_rewards_key: Pubkey,
+}
+
+impl SetValidatorClientRewardsProportionAccounts {
+    pub fn new(manager_key: &Pubkey, client_id: u16) -> Self {
+        Self {
+            program_config_key: state::find_program_config_address().0,
+            manager_key: *manager_key,
+            validator_client_rewards_key: state::find_validator_client_rewards_address(client_id).0,
+        }
+    }
+}
+
+impl From<SetValidatorClientRewardsProportionAccounts> for Vec<AccountMeta> {
+    fn from(accounts: SetValidatorClientRewardsProportionAccounts) -> Self {
+        vec![
+            AccountMeta::new(accounts.program_config_key, false),
+            AccountMeta::new_readonly(accounts.manager_key, true),
+            AccountMeta::new_readonly(accounts.validator_client_rewards_key, false),
+        ]
+    }
+}
+
 /// Accounts for the `FundPaymentEscrowUsdc` instruction (10 accounts).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FundPaymentEscrowUsdcAccounts {

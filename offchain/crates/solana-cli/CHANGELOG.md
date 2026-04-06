@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `shreds validator-client-rewards`: add hidden command to set validator client rewards proportion
+
 ## [0.5.0](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.0)
 
 - uptick version 0.5.0 (#337)

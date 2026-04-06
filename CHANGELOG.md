@@ -40,6 +40,7 @@ All notable changes to this project will be documented in this file.
   - Support `--type outbound-icmp` in geolocation `user add-target`, `remove-target`, and `get` commands
   - Add sentinel admin commands to find and create multicast publishers for IBRL validators
   - handle non-user owned disconnects gracefully
+  - Add user's multicast pub/sub groups if applicable to `status`
 - Sentinel
   - Add multicast publisher worker with Solana RPC-based validator discovery
   - Add e2e tests for multicast publisher worker with validator-metadata-service mock

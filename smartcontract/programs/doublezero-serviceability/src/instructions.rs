@@ -221,9 +221,9 @@ pub enum DoubleZeroInstruction {
     Deprecated102(), // variant 102 (was CreateReservedSubscribeUser)
     Deprecated103(), // variant 103 (was DeleteReservedSubscribeUser)
 
-    CreateIndex(IndexCreateArgs),                   // variant 104
-    DeleteIndex(IndexDeleteArgs),                   // variant 105
-    SetUserBGPStatus(SetUserBGPStatusArgs),         // variant 106
+    CreateIndex(IndexCreateArgs),           // variant 104
+    DeleteIndex(IndexDeleteArgs),           // variant 105
+    SetUserBGPStatus(SetUserBGPStatusArgs), // variant 106
 }
 
 impl DoubleZeroInstruction {
@@ -494,9 +494,9 @@ impl DoubleZeroInstruction {
             Self::Deprecated102() => "Deprecated102".to_string(),
             Self::Deprecated103() => "Deprecated103".to_string(),
 
-            Self::CreateIndex(_) => "CreateIndex".to_string(),             // variant 104
-            Self::DeleteIndex(_) => "DeleteIndex".to_string(),             // variant 105
-            Self::SetUserBGPStatus(_) => "SetUserBGPStatus".to_string(),   // variant 106
+            Self::CreateIndex(_) => "CreateIndex".to_string(), // variant 104
+            Self::DeleteIndex(_) => "DeleteIndex".to_string(), // variant 105
+            Self::SetUserBGPStatus(_) => "SetUserBGPStatus".to_string(), // variant 106
         }
     }
 
@@ -624,8 +624,8 @@ impl DoubleZeroInstruction {
             Self::Deprecated102() => String::new(),
             Self::Deprecated103() => String::new(),
 
-            Self::CreateIndex(args) => format!("{args:?}"),      // variant 104
-            Self::DeleteIndex(args) => format!("{args:?}"),      // variant 105
+            Self::CreateIndex(args) => format!("{args:?}"), // variant 104
+            Self::DeleteIndex(args) => format!("{args:?}"), // variant 105
             Self::SetUserBGPStatus(args) => format!("{args:?}"), // variant 106
         }
     }

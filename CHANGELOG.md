@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.
 - Telemetry
   - Add optional TLS support to state-ingest server via `--tls-cert-file` and `--tls-key-file` flags; when set, the server listens on both HTTP (`:8080`) and HTTPS (`:8443`) simultaneously
   - Remove `--additional-child-probes` CLI flag from telemetry-agent; child geoprobe discovery now relies entirely on the onchain Geolocation program
+- Monitor
+  - Add ClickHouse as a telemetry backend for the global monitor alongside existing InfluxDB
 - E2E tests
   - Add `TestE2E_GeoprobeIcmpTargets` verifying end-to-end ICMP outbound offset delivery via onchain `outbound-icmp` targets
   - Refactor geoprobe E2E tests to use testcontainers entrypoints and onchain target discovery

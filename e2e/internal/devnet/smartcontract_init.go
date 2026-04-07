@@ -78,6 +78,9 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 
 		doublezero init
 
+		# Create the unicast-default topology required by the link activate processor (RFC-18).
+		doublezero link topology create --name unicast-default --constraint include-any
+
 		doublezero global-config authority set --activator-authority me --sentinel-authority me
 
 		doublezero global-config set --local-asn 65000 --remote-asn 65342 --device-tunnel-block ` + dn.Spec.DeviceTunnelNet + ` --user-tunnel-block 169.254.0.0/16 --multicastgroup-block 233.84.178.0/24 --multicast-publisher-block 148.51.120.0/21

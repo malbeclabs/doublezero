@@ -534,18 +534,16 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
-    if (iface.version === 2) {
-      // V3
-      const segCount = r.readU32();
-      const flexAlgoNodeSegments: FlexAlgoNodeSegment[] = [];
-      for (let i = 0; i < segCount; i++) {
-        flexAlgoNodeSegments.push({
-          topology: readPubkey(r),
-          nodeSegmentIdx: r.readU16(),
-        });
-      }
-      iface.flexAlgoNodeSegments = flexAlgoNodeSegments;
+    // flex_algo_node_segments is part of V2 (version byte 1) and later
+    const segCount = r.readU32();
+    const flexAlgoNodeSegments: FlexAlgoNodeSegment[] = [];
+    for (let i = 0; i < segCount; i++) {
+      flexAlgoNodeSegments.push({
+        topology: readPubkey(r),
+        nodeSegmentIdx: r.readU16(),
+      });
     }
+    iface.flexAlgoNodeSegments = flexAlgoNodeSegments;
   }
 
   return iface;

@@ -438,7 +438,10 @@ async fn test_update_cyoa_interface_with_invalid_sibling() {
         .unwrap();
 
     let updated_iface = device.find_interface("Ethernet1").unwrap().1;
-    assert_eq!(updated_iface.mtu, 1500, "MTU should remain 1500 for CYOA interface");
+    assert_eq!(
+        updated_iface.mtu, 1500,
+        "MTU should remain 1500 for CYOA interface"
+    );
     assert_eq!(
         updated_iface.ip_net,
         "63.243.225.62/30".parse().unwrap(),

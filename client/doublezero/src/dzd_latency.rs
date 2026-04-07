@@ -313,14 +313,14 @@ mod tests {
         )
     }
 
-    fn make_latency(pk: &str, avg_latency_ns: i64, reachable: bool) -> LatencyRecord {
+    fn make_latency(pk: &str, latency_ns: i64, reachable: bool) -> LatencyRecord {
         LatencyRecord {
             device_pk: pk.to_string(),
             device_code: "device".to_string(),
             device_ip: "0.0.0.0".to_string(),
-            min_latency_ns: avg_latency_ns,
-            max_latency_ns: avg_latency_ns,
-            avg_latency_ns,
+            min_latency_ns: latency_ns,
+            max_latency_ns: latency_ns,
+            avg_latency_ns: latency_ns,
             reachable,
         }
     }

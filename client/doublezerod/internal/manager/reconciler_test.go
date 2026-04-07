@@ -9,15 +9,18 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 // --- test mocks ---
@@ -80,6 +83,14 @@ func (m *mockHeartbeatSender) Start(string, net.IP, []net.IP, int, time.Duration
 }
 func (m *mockHeartbeatSender) UpdateGroups([]net.IP) error { return nil }
 func (m *mockHeartbeatSender) Close() error                { return nil }
+
+type mockLatencyProvider struct {
+	results []latency.LatencyResult
+}
+
+func (m *mockLatencyProvider) GetResultsCache() []latency.LatencyResult {
+	return m.results
+}
 
 // --- test helpers ---
 
@@ -1208,6 +1219,7 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 	mcastGroup := serviceability.MulticastGroup{
 		PubKey:      mcastGroupPK,
 		MulticastIp: [4]uint8{239, 0, 0, 1},
+		Code:        "solana-ams",
 	}
 
 	type wantService struct {
@@ -1216,6 +1228,8 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 		metro         string
 		tenant        string
 		hasDzIP       bool // whether DoubleZeroIP should be non-empty
+		pubGroups     []string
+		subGroups     []string
 	}
 
 	tests := []struct {
@@ -1233,7 +1247,7 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 				}(),
 			},
 			want: []wantService{
-				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true},
+				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{}, subGroups: []string{}},
 			},
 		},
 		{
@@ -1247,7 +1261,7 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 				}(),
 			},
 			want: []wantService{
-				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true},
+				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{"solana-ams"}, subGroups: []string{}},
 			},
 		},
 		{
@@ -1263,7 +1277,7 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 				}(),
 			},
 			want: []wantService{
-				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: false},
+				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: false, pubGroups: []string{}, subGroups: []string{"solana-ams"}},
 			},
 		},
 		{
@@ -1284,8 +1298,8 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 				}(),
 			},
 			want: []wantService{
-				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true},
-				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: false},
+				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{}, subGroups: []string{}},
+				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: false, pubGroups: []string{}, subGroups: []string{"solana-ams"}},
 			},
 		},
 		{
@@ -1304,8 +1318,8 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 				}(),
 			},
 			want: []wantService{
-				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true},
-				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true},
+				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{}, subGroups: []string{}},
+				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{"solana-ams"}, subGroups: []string{}},
 			},
 		},
 	}
@@ -1382,9 +1396,113 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 				if gotDzIP != w.hasDzIP {
 					t.Errorf("[%s] expected hasDzIP=%v, got DoubleZeroIP=%v", w.userType, w.hasDzIP, svc.DoubleZeroIP)
 				}
+				if !slices.Equal(svc.MulticastGroups.Publisher, w.pubGroups) {
+					t.Errorf("[%s] expected pub groups %v, got %v", w.userType, w.pubGroups, svc.MulticastGroups.Publisher)
+				}
+				if !slices.Equal(svc.MulticastGroups.Subscriber, w.subGroups) {
+					t.Errorf("[%s] expected sub groups %v, got %v", w.userType, w.subGroups, svc.MulticastGroups.Subscriber)
+				}
 			}
 		})
 	}
+}
+
+func TestConnectionInfoMetric(t *testing.T) {
+	devicePK := [32]byte{1}
+	exchangePK := [32]byte{2}
+	clientIP := net.IPv4(1, 2, 3, 4).To4()
+
+	device := testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})
+	device.ExchangePubKey = exchangePK
+	device.Code = "dz1"
+	device.Status = serviceability.DeviceStatusActivated
+
+	user := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeIBRL, serviceability.UserStatusActivated)
+
+	fetcher := &mockFetcher{
+		data: &serviceability.ProgramData{
+			Config:  testConfig(),
+			Devices: []serviceability.Device{device},
+			Users:   []serviceability.User{user},
+			Exchanges: []serviceability.Exchange{
+				{PubKey: exchangePK, Name: "Amsterdam"},
+			},
+		},
+	}
+
+	latencyProvider := &mockLatencyProvider{
+		results: []latency.LatencyResult{
+			{
+				Device:    latency.DeviceInfo{PubKey: devicePK, Code: "dz1"},
+				Avg:       5_000_000,
+				Loss:      1.5,
+				Reachable: true,
+			},
+		},
+	}
+
+	dir := t.TempDir()
+	n := newTestNLM(fetcher,
+		WithClientIP(clientIP),
+		WithPollInterval(time.Hour),
+		WithStateDir(dir),
+		WithEnabled(true),
+		WithNetwork("testnet"),
+		WithLatencyProvider(latencyProvider),
+	)
+
+	// Reset metrics to avoid cross-test pollution from promauto global state.
+	metricConnectionInfo.Reset()
+	metricConnectionRttNanoseconds.Reset()
+
+	t.Run("populated_after_reconcile", func(t *testing.T) {
+		n.reconcile(context.Background())
+
+		count := testutil.CollectAndCount(metricConnectionInfo)
+		if count != 1 {
+			t.Fatalf("expected 1 metric series, got %d", count)
+		}
+
+		val := testutil.ToFloat64(metricConnectionInfo.WithLabelValues(
+			"IBRL", "testnet", "dz1", "Amsterdam", "doublezero0", "1.2.3.4", "5.6.7.8",
+		))
+		if val != 1 {
+			t.Fatalf("expected metric value 1, got %f", val)
+		}
+
+		rttVal := testutil.ToFloat64(metricConnectionRttNanoseconds.WithLabelValues(
+			"IBRL", "testnet", "dz1", "Amsterdam",
+		))
+		if rttVal != 5_000_000 {
+			t.Fatalf("expected RTT metric value 5000000, got %f", rttVal)
+		}
+
+		lossVal := testutil.ToFloat64(metricConnectionLossPercentage.WithLabelValues(
+			"IBRL", "testnet", "dz1", "Amsterdam",
+		))
+		if lossVal != 1.5 {
+			t.Fatalf("expected loss metric value 1.5, got %f", lossVal)
+		}
+	})
+
+	t.Run("cleared_after_teardown", func(t *testing.T) {
+		n.reconcilerTeardown()
+
+		count := testutil.CollectAndCount(metricConnectionInfo)
+		if count != 0 {
+			t.Fatalf("expected 0 metric series after teardown, got %d", count)
+		}
+
+		rttCount := testutil.CollectAndCount(metricConnectionRttNanoseconds)
+		if rttCount != 0 {
+			t.Fatalf("expected 0 RTT metric series after teardown, got %d", rttCount)
+		}
+
+		lossCount := testutil.CollectAndCount(metricConnectionLossPercentage)
+		if lossCount != 0 {
+			t.Fatalf("expected 0 loss metric series after teardown, got %d", lossCount)
+		}
+	})
 }
 
 func TestServeV2Status_NoFetcher(t *testing.T) {

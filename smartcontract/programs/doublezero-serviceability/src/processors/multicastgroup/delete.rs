@@ -124,7 +124,7 @@ pub fn process_delete_multicastgroup(
             multicast_group_block_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_pda),
+            pda = &expected_pda,
             "MulticastGroupBlock"
         );
 

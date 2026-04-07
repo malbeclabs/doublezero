@@ -1,7 +1,10 @@
 use crate::{
     error::DoubleZeroError,
     pda::{get_resource_extension_pda, get_topology_pda},
-    processors::resource::{allocate_id, allocate_ip},
+    processors::{
+        resource::{allocate_id, allocate_ip},
+        validation::validate_program_account,
+    },
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
@@ -79,29 +82,25 @@ pub fn process_activate_link(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(
-        side_a_device_account.owner, program_id,
-        "Invalid PDA Account Owner for Side A Device"
+    // Validate accounts
+    validate_program_account!(link_account, program_id, writable = true, "Link");
+    validate_program_account!(
+        side_a_device_account,
+        program_id,
+        writable = true,
+        "SideADevice"
     );
-    assert_eq!(
-        side_z_device_account.owner, program_id,
-        "Invalid PDA Account Owner for Side Z Device"
+    validate_program_account!(
+        side_z_device_account,
+        program_id,
+        writable = true,
+        "SideZDevice"
     );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
-    );
-    // Check if the account is writable
-    assert!(link_account.is_writable, "PDA Account is not writable");
-    assert!(
-        side_a_device_account.is_writable,
-        "Side A PDA Account is not writable"
-    );
-    assert!(
-        side_z_device_account.is_writable,
-        "Side Z PDA Account is not writable"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        "GlobalState"
     );
 
     let globalstate = GlobalState::try_from(globalstate_account)?;

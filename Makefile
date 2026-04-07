@@ -33,6 +33,10 @@ go-build:
 
 .PHONY: go-lint
 go-lint:
+	dev/go-lint.sh
+
+.PHONY: go-lint-native
+go-lint-native:
 	golangci-lint run -c ./.golangci.yaml
 	cd controlplane/s3-uploader && golangci-lint run
 
@@ -43,7 +47,18 @@ go-fmt:
 
 .PHONY: go-test
 go-test:
+	dev/go-test.sh
+
+.PHONY: go-test-native
+go-test-native:
 	go test -exec "sudo -E" -race -v ./...
+	cd controlplane/s3-uploader && go test -race -v ./...
+	$(if $(findstring nocontainertest,$(MAKECMDGOALS)),,$(MAKE) go-container-test)
+	$(MAKE) -C client/doublezerod test-faults
+
+.PHONY: go-test-docker
+go-test-docker:
+	go test -race -v ./...
 	cd controlplane/s3-uploader && go test -race -v ./...
 	$(if $(findstring nocontainertest,$(MAKECMDGOALS)),,$(MAKE) go-container-test)
 	$(MAKE) -C client/doublezerod test-faults
@@ -208,6 +223,7 @@ generate-fixtures:
 #   make e2e-test-keep-nobuild              # both
 #   make e2e-test-cleanup                   # remove leftover containers
 # -----------------------------------------------------------------------------
+
 .PHONY: e2e-build
 e2e-build:
 	cd e2e && $(MAKE) build

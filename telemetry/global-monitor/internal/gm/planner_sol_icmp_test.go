@@ -19,7 +19,7 @@ func TestGlobalMonitor_SolanaValidatorICMPPlanner_getTargets_PublicOnly_WhenNoDZ
 	log := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
 	influx := newFakeWriteAPI()
 	geo := &fakeGeoIP{rec: nil}
-	p := NewSolanaValidatorICMPPlanner(log, influx, geo)
+	p := NewSolanaValidatorICMPPlanner(log, influx, nil, geo)
 
 	v1 := mkValidator(pk(1), "203.0.113.10")
 	v2 := mkValidator(pk(2), "203.0.113.11")
@@ -47,7 +47,7 @@ func TestGlobalMonitor_SolanaValidatorICMPPlanner_getTargets_DZFilters_AndPrefli
 	log := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
 	influx := newFakeWriteAPI()
 	geo := &fakeGeoIP{rec: nil}
-	p := NewSolanaValidatorICMPPlanner(log, influx, geo)
+	p := NewSolanaValidatorICMPPlanner(log, influx, nil, geo)
 
 	sourceUser := mkUser(pk(99), "198.51.100.2", "10.255.0.1", "yyz", dz.UserTypeIBRL, solana.PublicKey{})
 	src := mkSource("eth0", "198.51.100.2", "dz0", &sourceUser)
@@ -113,7 +113,7 @@ func TestGlobalMonitor_SolanaValidatorICMPPlanner_BuildPlans_DedupAndPaths_Targe
 	log := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
 	influx := newFakeWriteAPI()
 	geo := &fakeGeoIP{rec: nil}
-	p := NewSolanaValidatorICMPPlanner(log, influx, geo)
+	p := NewSolanaValidatorICMPPlanner(log, influx, nil, geo)
 
 	sourceUser := mkUser(pk(99), "198.51.100.2", "10.255.0.1", "yyz", dz.UserTypeIBRL, solana.PublicKey{})
 	src := mkSource("eth0", "198.51.100.2", "dz0", &sourceUser)
@@ -152,7 +152,7 @@ func TestGlobalMonitor_SolanaValidatorICMPPlanner_Record_WritesExpectedInfluxPoi
 	log := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
 	influx := newFakeWriteAPI()
 	geo := &fakeGeoIP{rec: nil}
-	p := NewSolanaValidatorICMPPlanner(log, influx, geo)
+	p := NewSolanaValidatorICMPPlanner(log, influx, nil, geo)
 
 	sourceUser := mkUser(pk(99), "198.51.100.2", "10.255.0.1", "yyz", dz.UserTypeIBRL, solana.PublicKey{})
 	src := mkSource("eth0", "198.51.100.2", "dz0", &sourceUser)
@@ -298,5 +298,115 @@ func TestGlobalMonitor_SolanaValidatorICMPPlanner_Record_WritesExpectedInfluxPoi
 		tags := pointTags(pts[0])
 		requireTag(t, tags, "validator_pubkey", valNoVote.Node.Pubkey.String())
 		require.NotContains(t, tags, "validator_vote_pubkey")
+	})
+}
+
+func TestGlobalMonitor_SolanaValidatorICMPPlanner_Record_WritesExpectedClickHouseRows(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
+	influx := newFakeWriteAPI()
+	ch := newFakeProbeWriter()
+	geo := &fakeGeoIP{rec: nil}
+	p := NewSolanaValidatorICMPPlanner(log, influx, ch, geo)
+
+	sourceUser := mkUser(pk(99), "198.51.100.2", "10.255.0.1", "yyz", dz.UserTypeIBRL, solana.PublicKey{})
+	src := mkSource("eth0", "198.51.100.2", "dz0", &sourceUser)
+
+	val := mkValidator(pk(1), "203.0.113.10")
+	val.LeaderRatio = 0.42
+	val.VoteAccount.VotePubkey = pk(100)
+	val.GeoIP = &geoip.Record{
+		Country:     "Canada",
+		CountryCode: "CA",
+		Region:      "ON",
+		City:        "Toronto",
+		CityID:      123,
+		MetroName:   "Yorkton",
+		ASN:         64500,
+		ASNOrg:      "Example",
+		Latitude:    43.7,
+		Longitude:   -79.4,
+	}
+	uTarget := mkUser(pk(7), "198.51.100.7", "10.0.0.7", "nyc", dz.UserTypeIBRL, solana.PublicKey{})
+
+	dzT, err := NewICMPProbeTarget(log, "dz0", val.Node.GossipIP, &ICMPProbeTargetConfig{})
+	require.NoError(t, err)
+	pubT, err := NewICMPProbeTarget(log, "eth0", val.Node.GossipIP, &ICMPProbeTargetConfig{})
+	require.NoError(t, err)
+
+	ts := time.Unix(1700000000, 0)
+
+	t.Run("success writes row with stats", func(t *testing.T) {
+		ch := newFakeProbeWriter()
+		p.chWriter = ch
+
+		res := &ProbeResult{
+			Timestamp: ts,
+			OK:        true,
+			Stats: &ProbeStats{
+				PacketsSent: 10, PacketsRecv: 9, PacketsLost: 1, LossRatio: 0.1,
+				RTTMin: 10 * time.Millisecond, RTTAvg: 15 * time.Millisecond, RTTStdDev: 2 * time.Millisecond,
+			},
+		}
+		p.recordResult(src, val, dzT, &uTarget, res)
+
+		rows := ch.SolICMPRows()
+		require.Len(t, rows, 1)
+		row := rows[0]
+
+		require.Equal(t, ts, row.Timestamp)
+		require.Equal(t, string(ProbeTypeICMP), row.ProbeType)
+		require.Equal(t, string(ProbePathDoubleZero), row.ProbePath)
+		require.Equal(t, val.Node.Pubkey.String(), row.ValidatorPubkey)
+		require.Equal(t, val.VoteAccount.VotePubkey.String(), row.ValidatorVotePubkey)
+		require.Equal(t, val.Node.GossipIP.To4().String(), row.TargetIP)
+		require.Equal(t, "dz0", row.SourceIface)
+		require.Equal(t, src.User.DZIP.String(), row.SourceIP)
+		require.Equal(t, uTarget.Device.Code, row.TargetDZDCode)
+		require.Equal(t, uTarget.Device.Exchange.Code, row.TargetDZDMetroCode)
+
+		require.True(t, row.ProbeOK)
+		require.Empty(t, row.ProbeFailReason)
+		require.InDelta(t, 15.0, row.ProbeRTTAvgMs, 1)
+		require.Equal(t, int64(10), row.ProbePacketsSent)
+		require.InDelta(t, 0.1, row.ProbeLossRatio, 0.01)
+
+		require.Equal(t, "CA", row.TargetGeoIPCountryCode)
+		require.InDelta(t, 43.7, row.TargetGeoIPLatitude, 0.01)
+		require.InDelta(t, 0.42, row.ValidatorLeaderRatio, 0.01)
+	})
+
+	t.Run("not-ready does not write", func(t *testing.T) {
+		ch := newFakeProbeWriter()
+		p.chWriter = ch
+
+		res := &ProbeResult{Timestamp: ts, OK: false, FailReason: ProbeFailReasonNotReady}
+		p.recordResult(src, val, pubT, &uTarget, res)
+
+		require.Len(t, ch.SolICMPRows(), 0)
+	})
+
+	t.Run("failure writes row with probe_ok=false", func(t *testing.T) {
+		ch := newFakeProbeWriter()
+		p.chWriter = ch
+
+		res := &ProbeResult{Timestamp: ts, OK: false, FailReason: ProbeFailReasonTimeout}
+		p.recordResult(src, val, pubT, &uTarget, res)
+
+		rows := ch.SolICMPRows()
+		require.Len(t, rows, 1)
+		row := rows[0]
+
+		require.False(t, row.ProbeOK)
+		require.Equal(t, string(ProbeFailReasonTimeout), row.ProbeFailReason)
+		require.Equal(t, string(ProbePathPublicInternet), row.ProbePath)
+		require.Equal(t, "eth0", row.SourceIface)
+		require.Equal(t, src.PublicIP.String(), row.SourceIP)
+		require.Zero(t, row.ProbeRTTAvgMs)
+	})
+
+	t.Run("nil chWriter does not panic", func(t *testing.T) {
+		p.chWriter = nil
+		res := &ProbeResult{Timestamp: ts, OK: false, FailReason: ProbeFailReasonTimeout}
+		p.recordResult(src, val, pubT, &uTarget, res)
 	})
 }

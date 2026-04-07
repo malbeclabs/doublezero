@@ -117,100 +117,52 @@ func TestProbeAddress_ValidateScope(t *testing.T) {
 	}
 }
 
-func TestParseProbeAddresses(t *testing.T) {
+func TestProbeAddress_ValidateICMP(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      string
-		wantCount  int
-		wantErrMsg string
+		name    string
+		addr    ProbeAddress
+		wantErr string
 	}{
 		{
-			name:      "Empty string",
-			input:     "",
-			wantCount: 0,
+			name:    "Valid ICMP address",
+			addr:    ProbeAddress{Host: "8.8.8.8", Port: 9000, TWAMPPort: 0},
+			wantErr: "",
 		},
 		{
-			name:      "Single host only",
-			input:     "8.8.8.8",
-			wantCount: 1,
+			name:    "Empty host",
+			addr:    ProbeAddress{Host: "", Port: 9000, TWAMPPort: 0},
+			wantErr: "host cannot be empty",
 		},
 		{
-			name:      "Multiple hosts only",
-			input:     "8.8.8.8,1.1.1.1",
-			wantCount: 2,
+			name:    "Invalid host",
+			addr:    ProbeAddress{Host: "notanip", Port: 9000, TWAMPPort: 0},
+			wantErr: "host must be a valid IP address",
 		},
 		{
-			name:       "Invalid host",
-			input:      "invalid",
-			wantErrMsg: "invalid probe address",
+			name:    "Zero port",
+			addr:    ProbeAddress{Host: "8.8.8.8", Port: 0, TWAMPPort: 0},
+			wantErr: "port cannot be zero",
 		},
 		{
-			name:       "Two-field format rejected",
-			input:      "8.8.8.8:53",
-			wantErrMsg: "invalid probe address",
+			name:    "TWAMPPort ignored",
+			addr:    ProbeAddress{Host: "8.8.8.8", Port: 9000, TWAMPPort: 8925},
+			wantErr: "",
 		},
 		{
-			name:      "Deduplication",
-			input:     "8.8.8.8,8.8.8.8",
-			wantCount: 1,
-		},
-		{
-			name:      "Whitespace handling",
-			input:     " 8.8.8.8 , 1.1.1.1 ",
-			wantCount: 2,
-		},
-		{
-			name:      "Three-field format",
-			input:     "8.8.8.8:53:8925",
-			wantCount: 1,
-		},
-		{
-			name:      "Mixed one and three field formats",
-			input:     "8.8.8.8,1.1.1.1:53:9000",
-			wantCount: 2,
-		},
-		{
-			name:       "Invalid twamp port",
-			input:      "8.8.8.8:53:invalid",
-			wantErrMsg: "invalid twamp port",
-		},
-		{
-			name:       "Too many fields",
-			input:      "8.8.8.8:53:8925:extra",
-			wantErrMsg: "invalid probe address",
+			name:    "IPv6 rejected",
+			addr:    ProbeAddress{Host: "::1", Port: 9000, TWAMPPort: 0},
+			wantErr: "must be an IPv4 address",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			addrs, err := ParseProbeAddresses(tt.input)
-			if tt.wantErrMsg == "" {
+			err := tt.addr.ValidateICMP()
+			if tt.wantErr == "" {
 				require.NoError(t, err)
-				require.Len(t, addrs, tt.wantCount)
 			} else {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tt.wantErrMsg)
+				require.ErrorContains(t, err, tt.wantErr)
 			}
 		})
 	}
-}
-
-func TestParseProbeAddresses_Values(t *testing.T) {
-	t.Run("host-only format uses default ports", func(t *testing.T) {
-		addrs, err := ParseProbeAddresses("10.0.0.1")
-		require.NoError(t, err)
-		require.Len(t, addrs, 1)
-		require.Equal(t, "10.0.0.1", addrs[0].Host)
-		require.Equal(t, uint16(8923), addrs[0].Port)
-		require.Equal(t, uint16(8925), addrs[0].TWAMPPort)
-	})
-
-	t.Run("three-field format uses explicit ports", func(t *testing.T) {
-		addrs, err := ParseProbeAddresses("10.0.0.1:8923:9000")
-		require.NoError(t, err)
-		require.Len(t, addrs, 1)
-		require.Equal(t, "10.0.0.1", addrs[0].Host)
-		require.Equal(t, uint16(8923), addrs[0].Port)
-		require.Equal(t, uint16(9000), addrs[0].TWAMPPort)
-	})
 }

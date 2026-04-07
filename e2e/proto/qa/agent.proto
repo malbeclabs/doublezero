@@ -28,6 +28,7 @@ service QAAgentService {
   rpc FeedSeatPrice(FeedSeatPriceRequest) returns (FeedSeatPriceResponse);
   rpc FeedSeatPay(FeedSeatPayRequest) returns (Result);
   rpc FeedSeatWithdraw(FeedSeatWithdrawRequest) returns (Result);
+  rpc GetWalletPubkey(GetWalletPubkeyRequest) returns (GetWalletPubkeyResponse);
 }
 
 message ConnectUnicastRequest {
@@ -254,4 +255,12 @@ message DevicePrice {
 
 message FeedSeatPriceResponse {
   repeated DevicePrice prices = 1;
+}
+
+message GetWalletPubkeyRequest {
+  string keypair = 1;
+}
+
+message GetWalletPubkeyResponse {
+  string pubkey = 1;
 }

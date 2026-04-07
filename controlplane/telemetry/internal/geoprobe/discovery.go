@@ -29,7 +29,6 @@ type DiscoveryConfig struct {
 	Logger        *slog.Logger
 	Client        GeolocationClient
 	LocalDevicePK solana.PublicKey
-	InitialProbes []ProbeAddress
 	ProbeUpdateCh chan<- []ProbeAddress
 	Interval      time.Duration
 }
@@ -41,7 +40,6 @@ type Discovery struct {
 	log           *slog.Logger
 	client        GeolocationClient
 	localDevicePK solana.PublicKey
-	initialProbes []ProbeAddress
 	probeUpdateCh chan<- []ProbeAddress
 	interval      time.Duration
 
@@ -71,7 +69,6 @@ func NewDiscovery(cfg *DiscoveryConfig) (*Discovery, error) {
 		log:           cfg.Logger,
 		client:        cfg.Client,
 		localDevicePK: cfg.LocalDevicePK,
-		initialProbes: cfg.InitialProbes,
 		probeUpdateCh: cfg.ProbeUpdateCh,
 		interval:      cfg.Interval,
 	}, nil
@@ -83,7 +80,6 @@ func (d *Discovery) Run(ctx context.Context) error {
 	d.log.Info("Starting geoprobe discovery",
 		"interval", d.interval,
 		"localDevicePK", d.localDevicePK,
-		"initialProbes", len(d.initialProbes),
 	)
 
 	d.discover(ctx)
@@ -143,17 +139,13 @@ func (d *Discovery) discover(ctx context.Context) {
 		matched = append(matched, addr)
 	}
 
-	merged := mergeProbes(d.initialProbes, matched)
-
 	d.log.Debug("Geoprobe discovery tick",
 		"onchainTotal", len(onchainProbes),
 		"onchainMatched", len(matched),
-		"cliProbes", len(d.initialProbes),
-		"merged", len(merged),
 	)
 
 	select {
-	case d.probeUpdateCh <- merged:
+	case d.probeUpdateCh <- matched:
 	default:
 		d.log.Debug("Probe update channel full, skipping update")
 	}
@@ -180,28 +172,6 @@ func hasParentDevice(probe *geolocation.GeoProbe, devicePK solana.PublicKey) boo
 		}
 	}
 	return false
-}
-
-// mergeProbes combines two sets of probes, deduplicating by ProbeAddress.String().
-func mergeProbes(a, b []ProbeAddress) []ProbeAddress {
-	seen := make(map[string]struct{}, len(a)+len(b))
-	merged := make([]ProbeAddress, 0, len(a)+len(b))
-
-	for _, addr := range a {
-		key := addr.String()
-		if _, ok := seen[key]; !ok {
-			seen[key] = struct{}{}
-			merged = append(merged, addr)
-		}
-	}
-	for _, addr := range b {
-		key := addr.String()
-		if _, ok := seen[key]; !ok {
-			seen[key] = struct{}{}
-			merged = append(merged, addr)
-		}
-	}
-	return merged
 }
 
 func pubkeySet(keys []solana.PublicKey) map[solana.PublicKey]struct{} {

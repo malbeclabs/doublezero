@@ -106,21 +106,20 @@ pub fn process_update_device_interface(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(
-        device_account.owner, program_id,
-        "Invalid PDA Account Owner"
+    // Validate accounts
+    validate_program_account!(device_account, program_id, writable = true, "Device");
+    validate_program_account!(
+        contributor_account,
+        program_id,
+        writable = false,
+        "Contributor"
     );
-    assert_eq!(
-        contributor_account.owner, program_id,
-        "Invalid Contributor Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        "GlobalState"
     );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
-    );
-    // Check if the account is writable
-    assert!(device_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
@@ -209,7 +208,7 @@ pub fn process_update_device_interface(
                 seg_ext,
                 program_id,
                 writable = true,
-                pda = Some(&expected_seg_pda),
+                pda = &expected_seg_pda,
                 "SegmentRoutingIds"
             );
 

@@ -116,6 +116,95 @@ func TestTelemetry_StateIngest_Server_Start_CancelStopsAllAndClosesErrCh(t *test
 	}
 }
 
+func TestTelemetry_StateIngest_Server_Start_MultiListener_CancelStopsAllAndClosesErrCh(t *testing.T) {
+	t.Parallel()
+
+	cfg := newTestConfig(t)
+	require.NoError(t, cfg.Validate())
+
+	s, err := New(slog.Default(), cfg)
+	require.NoError(t, err)
+
+	ln1, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln1.Close() })
+
+	ln2, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln2.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	errCh := s.Start(ctx, cancel, ln1, ln2)
+
+	// Ensure both listeners are serving.
+	for _, addr := range []string{ln1.Addr().String(), ln2.Addr().String()} {
+		c, err := net.DialTimeout("tcp", addr, time.Second)
+		require.NoError(t, err)
+		_ = c.Close()
+	}
+
+	cancel()
+
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+}
+
+func TestTelemetry_StateIngest_Server_Start_MultiListener_OneErrorCancelsOther(t *testing.T) {
+	t.Parallel()
+
+	cfg := newTestConfig(t)
+	require.NoError(t, cfg.Validate())
+
+	s, err := New(slog.Default(), cfg)
+	require.NoError(t, err)
+
+	ln1, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln1.Close() })
+
+	ln2, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln2.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	errCh := s.Start(ctx, cancel, ln1, ln2)
+
+	// Ensure both listeners are serving.
+	for _, addr := range []string{ln1.Addr().String(), ln2.Addr().String()} {
+		c, err := net.DialTimeout("tcp", addr, time.Second)
+		require.NoError(t, err)
+		_ = c.Close()
+	}
+
+	// Force one listener to fail.
+	require.NoError(t, ln1.Close())
+
+	// Expect an error from the failed listener.
+	var gotErr error
+	select {
+	case gotErr = <-errCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for error after listener close")
+	}
+	require.Error(t, gotErr)
+
+	// ctx should be canceled, which stops the other listener too.
+	select {
+	case <-ctx.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected ctx to be canceled after listener error")
+	}
+
+	// errCh must close.
+	for range errCh {
+	}
+}
+
 func TestTelemetry_StateIngest_Server_Start_ServeErrorPropagatesAndCancels(t *testing.T) {
 	t.Parallel()
 

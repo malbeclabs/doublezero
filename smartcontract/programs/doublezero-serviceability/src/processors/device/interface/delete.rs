@@ -139,7 +139,7 @@ pub fn process_delete_device_interface(
             device_tunnel_block_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_dtb_pda),
+            pda = &expected_dtb_pda,
             "DeviceTunnelBlock"
         );
 
@@ -149,7 +149,7 @@ pub fn process_delete_device_interface(
             segment_routing_ids_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_sr_pda),
+            pda = &expected_sr_pda,
             "SegmentRoutingIds"
         );
 

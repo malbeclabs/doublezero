@@ -22,9 +22,10 @@ const (
 )
 
 type RetryOptions struct {
-	MaxAttempts int
-	BaseBackoff time.Duration
-	MaxBackoff  time.Duration
+	MaxAttempts     int
+	BaseBackoff     time.Duration
+	MaxBackoff      time.Duration
+	IsRetryableFunc func(error) bool
 }
 
 func WithRetry(inner solanarpc.JSONRPCClient, opt *RetryOptions) solanarpc.JSONRPCClient {
@@ -39,6 +40,9 @@ func WithRetry(inner solanarpc.JSONRPCClient, opt *RetryOptions) solanarpc.JSONR
 	}
 	if opt.MaxBackoff <= 0 {
 		opt.MaxBackoff = defaultMaxBackoff
+	}
+	if opt.IsRetryableFunc == nil {
+		opt.IsRetryableFunc = isRetryableJSONRPC
 	}
 	return &retryingJSONRPCClient{inner: inner, opt: *opt}
 }
@@ -91,7 +95,7 @@ func doRetry(ctx context.Context, opt RetryOptions, f func(context.Context) erro
 		}
 
 		lastErr = f(ctx)
-		if lastErr == nil || !isRetryableJSONRPC(lastErr) {
+		if lastErr == nil || !opt.IsRetryableFunc(lastErr) {
 			return lastErr
 		}
 	}
@@ -126,7 +130,8 @@ func isRetryableJSONRPC(err error) bool {
 	msg := strings.ToLower(err.Error())
 	if strings.Contains(msg, "connection reset by peer") ||
 		strings.Contains(msg, "broken pipe") ||
-		strings.Contains(msg, "use of closed network connection") {
+		strings.Contains(msg, "use of closed network connection") ||
+		strings.Contains(msg, "rate limited") {
 		return true
 	}
 
@@ -149,7 +154,7 @@ func isRetryableJSONRPC(err error) bool {
 	var ce hasCode
 	if errors.As(err, &ce) {
 		switch ce.Code() {
-		case -32005, -32004, -32003:
+		case -32005, -32004, -32003, -32429:
 			return true
 		}
 	}

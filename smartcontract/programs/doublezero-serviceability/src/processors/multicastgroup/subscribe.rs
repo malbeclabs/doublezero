@@ -135,21 +135,34 @@ pub fn process_subscribe_multicastgroup(
     accounts: &[AccountInfo],
     value: &MulticastGroupSubscribeArgs,
 ) -> ProgramResult {
+    let num_accounts = accounts.len();
     let accounts_iter = &mut accounts.iter();
 
     let mgroup_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let user_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for onchain allocation
     // Account layout WITH onchain allocation (use_onchain_allocation=true):
     //   [mgroup, accesspass, user, globalstate, multicast_publisher_block, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_allocation=false):
+    // Account layout WITHOUT onchain allocation, WITH globalstate (num_accounts >= 6):
+    //   [mgroup, accesspass, user, globalstate, payer, system]
+    // Account layout WITHOUT onchain allocation, WITHOUT globalstate (num_accounts == 5, backward compat):
     //   [mgroup, accesspass, user, payer, system]
+    let has_globalstate = value.use_onchain_allocation || num_accounts >= 6;
+    let globalstate_opt = if has_globalstate {
+        let gs_account = next_account_info(accounts_iter)?;
+        let (expected_globalstate_pda, _) = get_globalstate_pda(program_id);
+        assert_eq!(
+            gs_account.key, &expected_globalstate_pda,
+            "Invalid GlobalState PDA"
+        );
+        Some(GlobalState::try_from(gs_account)?)
+    } else {
+        None
+    };
     let onchain_accounts = if value.use_onchain_allocation {
-        let globalstate_account = next_account_info(accounts_iter)?;
         let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
-        Some((globalstate_account, multicast_publisher_block_ext))
+        Some(multicast_publisher_block_ext)
     } else {
         None
     };
@@ -163,29 +176,28 @@ pub fn process_subscribe_multicastgroup(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(
-        mgroup_account.owner, program_id,
-        "Invalid PDA Account Owner"
+    // Validate accounts
+    validate_program_account!(
+        mgroup_account,
+        program_id,
+        writable = true,
+        "MulticastGroup"
     );
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
-    assert_eq!(
-        accesspass_account.owner, program_id,
-        "Invalid Accesspass Account Owner"
+    validate_program_account!(
+        accesspass_account,
+        program_id,
+        writable = false,
+        "AccessPass"
     );
-    assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
+    validate_program_account!(user_account, program_id, writable = true, "User");
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    assert!(
-        mgroup_account.is_writable,
-        "multicastgroup account is not writable"
-    );
-    assert!(user_account.is_writable, "user account is not writable");
 
     // Parse and validate user
     let mut user: User = User::try_from(user_account)?;
@@ -214,6 +226,25 @@ pub fn process_subscribe_multicastgroup(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
+    // The access pass must belong to the payer. If the payer differs, the payer
+    // must be in the foundation allowlist — which requires globalstate to be provided.
+    // Callers without globalstate (num_accounts < 6) are only permitted when
+    // payer == accesspass.user_payer (backward compatible with old clients).
+    if accesspass.user_payer != *payer_account.key {
+        let in_foundation = globalstate_opt
+            .as_ref()
+            .map(|gs| gs.foundation_allowlist.contains(payer_account.key))
+            .unwrap_or(false);
+        if !in_foundation {
+            msg!(
+                "AccessPass user_payer {:?} does not match payer {:?}",
+                accesspass.user_payer,
+                payer_account.key
+            );
+            return Err(DoubleZeroError::Unauthorized.into());
+        }
+    }
+
     let result = subscribe_user_to_multicastgroup(
         mgroup_account,
         &accesspass,
@@ -222,18 +253,14 @@ pub fn process_subscribe_multicastgroup(
         value.subscriber,
     )?;
 
-    if let Some((globalstate_account, multicast_publisher_block_ext)) = onchain_accounts {
+    if let Some(multicast_publisher_block_ext) = onchain_accounts {
         // Onchain allocation path: allocate dz_ip directly, skip Updating status
-        let globalstate = GlobalState::try_from(globalstate_account)?;
+        let globalstate = globalstate_opt
+            .as_ref()
+            .expect("globalstate required for onchain allocation");
         if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
             return Err(DoubleZeroError::FeatureNotEnabled.into());
         }
-
-        let (expected_globalstate_pda, _) = get_globalstate_pda(program_id);
-        assert_eq!(
-            globalstate_account.key, &expected_globalstate_pda,
-            "Invalid GlobalState PDA",
-        );
 
         // Allocate dz_ip when gaining first publisher
         if result.publisher_list_transitioned
@@ -246,7 +273,7 @@ pub fn process_subscribe_multicastgroup(
                 multicast_publisher_block_ext,
                 program_id,
                 writable = true,
-                pda = Some(&expected_multicast_publisher_pda),
+                pda = &expected_multicast_publisher_pda,
                 "MulticastPublisherBlock"
             );
 
@@ -263,7 +290,7 @@ pub fn process_subscribe_multicastgroup(
                 multicast_publisher_block_ext,
                 program_id,
                 writable = true,
-                pda = Some(&expected_multicast_publisher_pda),
+                pda = &expected_multicast_publisher_pda,
                 "MulticastPublisherBlock"
             );
 

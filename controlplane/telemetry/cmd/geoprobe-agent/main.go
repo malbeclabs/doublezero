@@ -1,3 +1,5 @@
+//go:build linux
+
 package main
 
 import (
@@ -11,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -46,11 +47,8 @@ var (
 	ledgerRPCURL               = flag.String("ledger-rpc-url", "", "The url of the ledger RPC. If env is provided, this flag is ignored.")
 	keypairPath                = flag.String("keypair", "", "The path to the probe's Ed25519 keypair file for signing messages.")
 	geoProbePubkeyStr          = flag.String("geoprobe-pubkey", "", "The geoprobe device's public key (base58). Identifies this specific probe in offsets. Should Match DZ Ledger")
-	additionalParent           = flag.String("additional-parent", "", "Trusted parent DZD in the format devicekey,metricskey (base58 pubkeys).")
-	additionalTargets          = flag.String("additional-targets", "", "Comma-separated list of target addresses (host or host:offset_port:twamp_port) to measure and send composite offsets.")
 	twampListenPort            = flag.Uint("twamp-listen-port", defaultTWAMPListenPort, "Port for TWAMP reflector.")
 	signedTWAMPListenPort      = flag.Uint("signed-twamp-port", defaultSignedTWAMPListenPort, "Port for Signed TWAMP reflector for inbound probing.")
-	allowedPubkeysFlag         = flag.String("allowed-pubkeys", "", "Comma-separated base58 Ed25519 pubkeys always authorized for signed TWAMP probes in inbound probing.")
 	udpListenPort              = flag.Uint("udp-listen-port", defaultUDPListenPort, "Port for receiving DZD offset datagrams.")
 	probeInterval              = flag.Duration("probe-interval", defaultProbeInterval, "Interval between measurement cycles.")
 	twampSenderTimeout         = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "Timeout for TWAMP probes to targets.")
@@ -67,12 +65,6 @@ var (
 	commit  = "none"
 	date    = "unknown"
 )
-
-// parentDZD represents a trusted parent DZD that sends offsets to this probe.
-type parentDZD struct {
-	pubkey          [32]byte // Parent pubkey (appears as SenderPubkey in received offsets)
-	authorityPubkey [32]byte // Authority pubkey (used to sign offsets)
-}
 
 // parentState holds the current parent authorities with thread-safe access.
 type parentState struct {
@@ -91,65 +83,6 @@ func (s *parentState) update(authorities map[[32]byte][32]byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.authorities = authorities
-}
-
-// parseParentDZD parses the --additional-parent flag value.
-// Format: "parentkey,authoritykey"
-func parseParentDZD(s string) (*parentDZD, error) {
-	if s == "" {
-		return nil, nil
-	}
-
-	parts := strings.Split(s, ",")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("expected format parentkey,authoritykey, got %q", s)
-	}
-
-	parentStr := strings.TrimSpace(parts[0])
-	authorityStr := strings.TrimSpace(parts[1])
-
-	parentPK, err := solana.PublicKeyFromBase58(parentStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid parent pubkey %q: %w", parentStr, err)
-	}
-
-	authorityPK, err := solana.PublicKeyFromBase58(authorityStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid authority pubkey %q: %w", authorityStr, err)
-	}
-
-	var pubkeyBytes, authorityBytes [32]byte
-	copy(pubkeyBytes[:], parentPK[:])
-	copy(authorityBytes[:], authorityPK[:])
-
-	return &parentDZD{
-		pubkey:          pubkeyBytes,
-		authorityPubkey: authorityBytes,
-	}, nil
-}
-
-// parseAllowedPubkeys parses a comma-separated list of base58 Ed25519 public keys.
-func parseAllowedPubkeys(s string) ([][32]byte, error) {
-	if s == "" {
-		return nil, nil
-	}
-
-	parts := strings.Split(s, ",")
-	keys := make([][32]byte, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		pk, err := solana.PublicKeyFromBase58(p)
-		if err != nil {
-			return nil, fmt.Errorf("invalid pubkey %q: %w", p, err)
-		}
-		var key [32]byte
-		copy(key[:], pk[:])
-		keys = append(keys, key)
-	}
-	return keys, nil
 }
 
 // offsetCache stores recent DZD offsets keyed by sender (device) pubkey.
@@ -359,30 +292,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Parse parent.
-	var parents []parentDZD
-	if *additionalParent != "" {
-		parent, err := parseParentDZD(*additionalParent)
-		if err != nil {
-			log.Error("Failed to parse additional-parent", "error", err)
-			os.Exit(1)
-		}
-		if parent != nil {
-			parents = append(parents, *parent)
-		}
-	}
-
-	// Build initial parent authority map from CLI args.
-	cliParentAuthorities := make(map[[32]byte][32]byte, len(parents))
-	for _, p := range parents {
-		cliParentAuthorities[p.pubkey] = p.authorityPubkey
-	}
-
 	pState := &parentState{
-		authorities: make(map[[32]byte][32]byte, len(cliParentAuthorities)),
-	}
-	for k, v := range cliParentAuthorities {
-		pState.authorities[k] = v
+		authorities: make(map[[32]byte][32]byte),
 	}
 
 	// Derive geolocation and serviceability program IDs from --env if not explicit.
@@ -410,34 +321,17 @@ func main() {
 
 	parentDiscoveryEnabled := !geolocationProgramID.IsZero() && !serviceabilityProgramID.IsZero()
 
-	if len(cliParentAuthorities) == 0 && !parentDiscoveryEnabled {
-		log.Warn("No trusted parents configured and parent discovery disabled -- will not accept offsets until parents are added")
-	}
-
-	// Parse targets.
-	targets, err := geoprobe.ParseProbeAddresses(*additionalTargets)
-	if err != nil {
-		log.Error("Failed to parse additional-targets", "error", err)
-		os.Exit(1)
-	}
-
-	// Parse allowed pubkeys for signed TWAMP reflector.
-	allowedKeys, err := parseAllowedPubkeys(*allowedPubkeysFlag)
-	if err != nil {
-		log.Error("Failed to parse allowed-pubkeys", "error", err)
-		os.Exit(1)
+	if !parentDiscoveryEnabled {
+		log.Warn("Parent discovery disabled -- will not accept offsets until parents are added")
 	}
 
 	log.Info("Starting geoprobe agent",
 		"version", version,
-		"cliParents", len(parents),
 		"parentDiscovery", parentDiscoveryEnabled,
-		"targets", len(targets),
 		"probeInterval", *probeInterval,
 		"maxOffsetAge", *maxOffsetAge,
 		"twampListenPort", *twampListenPort,
 		"signedTWAMPListenPort", *signedTWAMPListenPort,
-		"allowedPubkeys", len(allowedKeys),
 		"udpListenPort", *udpListenPort,
 		"authority_pubkey", keypair.PublicKey(),
 		"geoprobe_pubkey", geoProbePubkey,
@@ -480,7 +374,7 @@ func main() {
 		defaultTWAMPReflectorTimeout,
 		signedSigner,
 		geoprobePubkeyBytes,
-		allowedKeys,
+		nil,
 		*verifyInterval,
 	)
 	if err != nil {
@@ -510,12 +404,18 @@ func main() {
 	})
 	defer pinger.Close()
 
-	// Add probes for targets.
-	for _, target := range targets {
-		if err := pinger.AddProbe(ctx, target); err != nil {
-			log.Warn("Failed to add target probe", "target", target, "error", err)
-		}
+	// Set up ICMP pinger for outbound ICMP targets.
+	icmpPinger, err := geoprobe.NewICMPPinger(&geoprobe.ICMPPingerConfig{
+		Logger:       log,
+		ProbeTimeout: *twampSenderTimeout,
+		BatchSize:    geoprobe.ICMPDefaultBatchSize,
+		StaggerDelay: geoprobe.ICMPDefaultStaggerDelay,
+	})
+	if err != nil {
+		log.Error("Failed to create ICMP pinger (CAP_NET_RAW may be missing)", "error", err)
+		os.Exit(1)
 	}
+	defer icmpPinger.Close()
 
 	// Set up signer and RPC client.
 	signer, err := geoprobe.NewOffsetSigner(keypair, geoProbePubkey)
@@ -620,6 +520,7 @@ func main() {
 	targetUpdateCh := make(chan geoprobe.TargetUpdate, 1)
 	inboundKeyCh := make(chan geoprobe.InboundKeyUpdate, 1)
 	parentUpdateCh := make(chan geoprobe.ParentUpdate, 1)
+	icmpTargetUpdateCh := make(chan geoprobe.ICMPTargetUpdate, 1)
 
 	// Build parent discovery if program IDs are configured.
 	var pd *geoprobe.ParentDiscovery
@@ -632,7 +533,6 @@ func main() {
 			GeoProbePubkey:         geoProbePubkey,
 			Client:                 geoProbeClient,
 			Resolver:               deviceResolver,
-			CLIParents:             cliParentAuthorities,
 			Logger:                 log,
 			ProbeTargetUpdateCount: &probeTargetUpdateCount,
 		})
@@ -644,7 +544,7 @@ func main() {
 		// Consume parent updates: update parentState for OffsetListener validation.
 		// Parent authority keys are NOT added to the signed TWAMP reflector — parent
 		// DZDs use the unsigned reflector. The signed reflector's allowlist comes
-		// from target discovery (inbound targets) and CLI --allowed-pubkeys only.
+		// from target discovery (inbound targets) only.
 		go func() {
 			for {
 				select {
@@ -668,8 +568,6 @@ func main() {
 		td, tdErr = geoprobe.NewTargetDiscovery(&geoprobe.TargetDiscoveryConfig{
 			GeoProbePubkey:         geoProbePubkey,
 			Client:                 geolocationUserClient,
-			CLITargets:             targets,
-			CLIAllowedKeys:         allowedKeys,
 			Logger:                 log,
 			ProbeTargetUpdateCount: &probeTargetUpdateCount,
 		})
@@ -691,7 +589,7 @@ func main() {
 			}
 			if td != nil {
 				start := time.Now()
-				td.Tick(ctx, targetUpdateCh, inboundKeyCh)
+				td.Tick(ctx, targetUpdateCh, inboundKeyCh, icmpTargetUpdateCh)
 				metrics.GeoProbeTargetDiscoveryDuration.Observe(time.Since(start).Seconds())
 			}
 		}
@@ -713,7 +611,21 @@ func main() {
 	// Run main measurement loop. This runs regardless of whether trusted parents
 	// are configured at startup, since they may be added dynamically at runtime.
 	go func() {
-		if err := runMeasurementLoop(ctx, log, pinger, cache, signer, senderConn, targets, getCurrentSlot, targetUpdateCh, inboundKeyCh, signedReflector, allowedKeys); err != nil {
+		ml := &measurementLoop{
+			ctx:                ctx,
+			log:                log,
+			pinger:             pinger,
+			icmpPinger:         icmpPinger,
+			cache:              cache,
+			signer:             signer,
+			senderConn:         senderConn,
+			getCurrentSlot:     getCurrentSlot,
+			signedReflector:    signedReflector,
+			targetUpdateCh:     targetUpdateCh,
+			icmpTargetUpdateCh: icmpTargetUpdateCh,
+			inboundKeyCh:       inboundKeyCh,
+		}
+		if err := ml.run(); err != nil {
 			errCh <- fmt.Errorf("measurement loop: %w", err)
 		}
 	}()
@@ -812,130 +724,177 @@ func runOffsetListener(
 	}
 }
 
-func runMeasurementLoop(
-	ctx context.Context,
-	log *slog.Logger,
-	pinger *geoprobe.Pinger,
-	cache *offsetCache,
-	signer *geoprobe.OffsetSigner,
-	senderConn *net.UDPConn,
-	targets []geoprobe.ProbeAddress,
-	getCurrentSlot func(ctx context.Context) (uint64, error),
-	targetUpdateCh <-chan geoprobe.TargetUpdate,
-	inboundKeyCh <-chan geoprobe.InboundKeyUpdate,
-	signedReflector signed.Reflector,
-	cliAllowedKeys [][32]byte,
-) error {
+type measurementLoop struct {
+	ctx             context.Context
+	log             *slog.Logger
+	pinger          *geoprobe.Pinger
+	icmpPinger      *geoprobe.ICMPPinger
+	cache           *offsetCache
+	signer          *geoprobe.OffsetSigner
+	senderConn      *net.UDPConn
+	getCurrentSlot  func(ctx context.Context) (uint64, error)
+	signedReflector signed.Reflector
+
+	targets     []geoprobe.ProbeAddress
+	icmpTargets []geoprobe.ProbeAddress
+
+	targetUpdateCh     <-chan geoprobe.TargetUpdate
+	icmpTargetUpdateCh <-chan geoprobe.ICMPTargetUpdate
+	inboundKeyCh       <-chan geoprobe.InboundKeyUpdate
+}
+
+func (ml *measurementLoop) reconcileTargets(
+	oldTargets []geoprobe.ProbeAddress,
+	newTargets []geoprobe.ProbeAddress,
+	addProbe func(geoprobe.ProbeAddress) error,
+	removeProbe func(geoprobe.ProbeAddress) error,
+	measureOne func(geoprobe.ProbeAddress) (uint64, bool),
+) ([]geoprobe.ProbeAddress, map[geoprobe.ProbeAddress]uint64) {
+	oldSet := make(map[string]geoprobe.ProbeAddress, len(oldTargets))
+	for _, t := range oldTargets {
+		oldSet[t.String()] = t
+	}
+	newSet := make(map[string]geoprobe.ProbeAddress, len(newTargets))
+	for _, t := range newTargets {
+		newSet[t.String()] = t
+	}
+
+	var newlyAdded []geoprobe.ProbeAddress
+	for key, addr := range newSet {
+		if _, exists := oldSet[key]; !exists {
+			if err := addProbe(addr); err != nil {
+				ml.log.Warn("Failed to add discovered target probe", "target", addr, "error", err)
+			} else {
+				newlyAdded = append(newlyAdded, addr)
+			}
+		}
+	}
+	for key, addr := range oldSet {
+		if _, exists := newSet[key]; !exists {
+			if err := removeProbe(addr); err != nil {
+				ml.log.Warn("Failed to remove stale target probe", "target", addr, "error", err)
+			}
+		}
+	}
+
+	var rttData map[geoprobe.ProbeAddress]uint64
+	if len(newlyAdded) > 0 {
+		rttData = make(map[geoprobe.ProbeAddress]uint64, len(newlyAdded))
+		for _, addr := range newlyAdded {
+			if rttNs, ok := measureOne(addr); ok {
+				rttData[addr] = rttNs
+			}
+		}
+	}
+	return newTargets, rttData
+}
+
+func (ml *measurementLoop) run() error {
 	measureTicker := time.NewTicker(*probeInterval)
 	defer measureTicker.Stop()
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-ml.ctx.Done():
 			return nil
 
 		case <-measureTicker.C:
-			runMeasurementCycle(ctx, log, pinger, cache, signer, senderConn, targets, getCurrentSlot)
+			ml.runCycle()
 
-		case update := <-targetUpdateCh:
-			// Reconcile pinger probes with new target set.
-			oldSet := make(map[string]geoprobe.ProbeAddress, len(targets))
-			for _, t := range targets {
-				oldSet[t.String()] = t
-			}
-			newSet := make(map[string]geoprobe.ProbeAddress, len(update.Targets))
-			for _, t := range update.Targets {
-				newSet[t.String()] = t
-			}
-			var newlyAdded []geoprobe.ProbeAddress
-			for key, addr := range newSet {
-				if _, exists := oldSet[key]; !exists {
-					if err := pinger.AddProbe(ctx, addr); err != nil {
-						log.Warn("Failed to add discovered target probe", "target", addr, "error", err)
-					} else {
-						newlyAdded = append(newlyAdded, addr)
-					}
-				}
-			}
-			for key, addr := range oldSet {
-				if _, exists := newSet[key]; !exists {
-					if err := pinger.RemoveProbe(addr); err != nil {
-						log.Warn("Failed to remove stale target probe", "target", addr, "error", err)
-					}
-				}
-			}
-			targets = update.Targets
-			metrics.GeoProbeTargetsDiscovered.Set(float64(len(targets)))
-			log.Info("Updated targets from discovery", "totalTargets", len(targets))
-
-			// Immediately probe newly discovered targets so they don't
-			// have to wait for the next measurement ticker.
-			if len(newlyAdded) > 0 {
-				rttData := make(map[geoprobe.ProbeAddress]uint64, len(newlyAdded))
-				for _, addr := range newlyAdded {
-					if rttNs, ok := pinger.MeasureOne(ctx, addr); ok {
-						rttData[addr] = rttNs
-					}
-				}
-				if len(rttData) > 0 {
-					sendCompositeOffsets(ctx, log, rttData, cache, signer, senderConn, getCurrentSlot)
-				}
+		case update := <-ml.targetUpdateCh:
+			newTargets, rttData := ml.reconcileTargets(
+				ml.targets,
+				update.Targets,
+				func(addr geoprobe.ProbeAddress) error { return ml.pinger.AddProbe(ml.ctx, addr) },
+				ml.pinger.RemoveProbe,
+				func(addr geoprobe.ProbeAddress) (uint64, bool) { return ml.pinger.MeasureOne(ml.ctx, addr) },
+			)
+			ml.targets = newTargets
+			metrics.GeoProbeTargetsDiscovered.Set(float64(len(ml.targets)))
+			ml.log.Info("Updated targets from discovery", "totalTargets", len(ml.targets))
+			if len(rttData) > 0 {
+				sendCompositeOffsets(ml.ctx, ml.log, rttData, ml.cache, ml.signer, ml.senderConn, ml.getCurrentSlot)
 			}
 
-		case keyUpdate := <-inboundKeyCh:
-			signedReflector.SetAuthorizedKeys(keyUpdate.Keys)
-			log.Info("Updated signed TWAMP authorized keys from discovery",
-				"totalKeys", len(keyUpdate.Keys),
-				"cliKeys", len(cliAllowedKeys),
-				"discoveredKeys", len(keyUpdate.Keys)-len(cliAllowedKeys))
+		case icmpUpdate := <-ml.icmpTargetUpdateCh:
+			newTargets, rttData := ml.reconcileTargets(
+				ml.icmpTargets,
+				icmpUpdate.Targets,
+				func(addr geoprobe.ProbeAddress) error { return ml.icmpPinger.AddProbe(addr) },
+				ml.icmpPinger.RemoveProbe,
+				func(addr geoprobe.ProbeAddress) (uint64, bool) { return ml.icmpPinger.MeasureOne(ml.ctx, addr) },
+			)
+			ml.icmpTargets = newTargets
+			metrics.GeoProbeIcmpTargetsDiscovered.Set(float64(len(ml.icmpTargets)))
+			ml.log.Info("Updated ICMP targets from discovery", "totalIcmpTargets", len(ml.icmpTargets))
+			if len(rttData) > 0 {
+				sendCompositeOffsets(ml.ctx, ml.log, rttData, ml.cache, ml.signer, ml.senderConn, ml.getCurrentSlot)
+			}
+
+		case keyUpdate := <-ml.inboundKeyCh:
+			ml.signedReflector.SetAuthorizedKeys(keyUpdate.Keys)
+			ml.log.Info("Updated signed TWAMP authorized keys from discovery",
+				"totalKeys", len(keyUpdate.Keys))
 		}
 	}
 }
 
-func runMeasurementCycle(
-	ctx context.Context,
-	log *slog.Logger,
-	pinger *geoprobe.Pinger,
-	cache *offsetCache,
-	signer *geoprobe.OffsetSigner,
-	senderConn *net.UDPConn,
-	targets []geoprobe.ProbeAddress,
-	getCurrentSlot func(ctx context.Context) (uint64, error),
-) {
-	if len(targets) == 0 {
-		log.Debug("No targets configured, skipping measurement cycle")
+func (ml *measurementLoop) runCycle() {
+	if len(ml.targets) == 0 && len(ml.icmpTargets) == 0 {
+		ml.log.Debug("No targets configured, skipping measurement cycle")
 		return
 	}
 
-	log.Debug("Starting measurement cycle", "targets", len(targets))
+	ml.log.Debug("Starting measurement cycle", "targets", len(ml.targets), "icmpTargets", len(ml.icmpTargets))
 	start := time.Now()
 	defer func() {
 		metrics.GeoProbeMeasurementCycleDuration.Observe(time.Since(start).Seconds())
 	}()
 
-	rttData, err := pinger.MeasureAll(ctx)
-	if err != nil {
-		log.Error("Failed to measure targets", "error", err)
-		metrics.GeoProbeErrors.WithLabelValues(metrics.GeoProbeErrorTypeMeasurementCycle).Inc()
-		return
+	rttData := make(map[geoprobe.ProbeAddress]uint64)
+
+	if len(ml.targets) > 0 {
+		twampResults, err := ml.pinger.MeasureAll(ml.ctx)
+		if err != nil {
+			ml.log.Error("Failed to measure TWAMP targets", "error", err)
+			metrics.GeoProbeErrors.WithLabelValues(metrics.GeoProbeErrorTypeMeasurementCycle).Inc()
+		} else {
+			for k, v := range twampResults {
+				rttData[k] = v
+			}
+		}
+	}
+
+	if len(ml.icmpTargets) > 0 {
+		icmpStart := time.Now()
+		icmpResults, err := ml.icmpPinger.MeasureAll(ml.ctx)
+		metrics.GeoProbeIcmpMeasurementCycleDuration.Observe(time.Since(icmpStart).Seconds())
+		if err != nil {
+			ml.log.Error("Failed to measure ICMP targets", "error", err)
+			metrics.GeoProbeErrors.WithLabelValues(metrics.GeoProbeErrorTypeIcmpMeasurementCycle).Inc()
+		} else {
+			for k, v := range icmpResults {
+				rttData[k] = v
+			}
+		}
 	}
 
 	if len(rttData) == 0 {
-		log.Warn("No successful target measurements in cycle")
+		ml.log.Warn("No successful target measurements in cycle")
 		return
 	}
 
-	// Log individual target measurement results
 	for addr, rttNs := range rttData {
-		log.Debug("target measurement result", "target", addr.Host, "rtt_ms", float64(rttNs)/1000000.0)
+		ml.log.Debug("target measurement result", "target", addr.Host, "rtt_ms", float64(rttNs)/1000000.0)
 	}
 
-	sent := sendCompositeOffsets(ctx, log, rttData, cache, signer, senderConn, getCurrentSlot)
+	sent := sendCompositeOffsets(ml.ctx, ml.log, rttData, ml.cache, ml.signer, ml.senderConn, ml.getCurrentSlot)
 
-	log.Info("Completed measurement cycle",
+	ml.log.Info("Completed measurement cycle",
 		"measured", len(rttData),
 		"sent", sent,
-		"total_targets", len(targets))
+		"total_targets", len(ml.targets),
+		"total_icmp_targets", len(ml.icmpTargets))
 }
 
 func sendCompositeOffsets(

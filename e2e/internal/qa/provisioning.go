@@ -598,4 +598,3 @@ func formatBandwidth(bps uint64) string {
 	}
 	return fmt.Sprintf("%d bps", bps)
 }
-

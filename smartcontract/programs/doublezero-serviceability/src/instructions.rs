@@ -88,7 +88,8 @@ use crate::processors::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
         closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
         create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs, reject::UserRejectArgs,
-        requestban::UserRequestBanArgs, update::UserUpdateArgs,
+        requestban::UserRequestBanArgs, set_bgp_status::SetUserBGPStatusArgs,
+        update::UserUpdateArgs,
     },
 };
 use borsh::BorshSerialize;
@@ -226,10 +227,11 @@ pub enum DoubleZeroInstruction {
 
     CreateIndex(IndexCreateArgs),           // variant 104
     DeleteIndex(IndexDeleteArgs),           // variant 105
-    CreateTopology(TopologyCreateArgs),     // variant 106
-    DeleteTopology(TopologyDeleteArgs),     // variant 107
-    ClearTopology(TopologyClearArgs),       // variant 108
-    BackfillTopology(TopologyBackfillArgs), // variant 109
+    SetUserBGPStatus(SetUserBGPStatusArgs), // variant 106
+    CreateTopology(TopologyCreateArgs),     // variant 107
+    DeleteTopology(TopologyDeleteArgs),     // variant 108
+    ClearTopology(TopologyClearArgs),       // variant 109
+    BackfillTopology(TopologyBackfillArgs), // variant 110
 }
 
 impl DoubleZeroInstruction {
@@ -363,10 +365,11 @@ impl DoubleZeroInstruction {
 
             104 => Ok(Self::CreateIndex(IndexCreateArgs::try_from(rest).unwrap())),
             105 => Ok(Self::DeleteIndex(IndexDeleteArgs::try_from(rest).unwrap())),
-            106 => Ok(Self::CreateTopology(TopologyCreateArgs::try_from(rest).unwrap())),
-            107 => Ok(Self::DeleteTopology(TopologyDeleteArgs::try_from(rest).unwrap())),
-            108 => Ok(Self::ClearTopology(TopologyClearArgs::try_from(rest).unwrap())),
-            109 => Ok(Self::BackfillTopology(TopologyBackfillArgs::try_from(rest).unwrap())),
+            106 => Ok(Self::SetUserBGPStatus(SetUserBGPStatusArgs::try_from(rest).unwrap())),
+            107 => Ok(Self::CreateTopology(TopologyCreateArgs::try_from(rest).unwrap())),
+            108 => Ok(Self::DeleteTopology(TopologyDeleteArgs::try_from(rest).unwrap())),
+            109 => Ok(Self::ClearTopology(TopologyClearArgs::try_from(rest).unwrap())),
+            110 => Ok(Self::BackfillTopology(TopologyBackfillArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -502,12 +505,13 @@ impl DoubleZeroInstruction {
             Self::Deprecated102() => "Deprecated102".to_string(),
             Self::Deprecated103() => "Deprecated103".to_string(),
 
-            Self::CreateIndex(_) => "CreateIndex".to_string(),     // variant 104
-            Self::DeleteIndex(_) => "DeleteIndex".to_string(),     // variant 105
-            Self::CreateTopology(_) => "CreateTopology".to_string(), // variant 106
-            Self::DeleteTopology(_) => "DeleteTopology".to_string(), // variant 107
-            Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 108
-            Self::BackfillTopology(_) => "BackfillTopology".to_string(), // variant 109
+            Self::CreateIndex(_) => "CreateIndex".to_string(),         // variant 104
+            Self::DeleteIndex(_) => "DeleteIndex".to_string(),         // variant 105
+            Self::SetUserBGPStatus(_) => "SetUserBGPStatus".to_string(), // variant 106
+            Self::CreateTopology(_) => "CreateTopology".to_string(),   // variant 107
+            Self::DeleteTopology(_) => "DeleteTopology".to_string(),   // variant 108
+            Self::ClearTopology(_) => "ClearTopology".to_string(),     // variant 109
+            Self::BackfillTopology(_) => "BackfillTopology".to_string(), // variant 110
         }
     }
 
@@ -635,12 +639,13 @@ impl DoubleZeroInstruction {
             Self::Deprecated102() => String::new(),
             Self::Deprecated103() => String::new(),
 
-            Self::CreateIndex(args) => format!("{args:?}"),   // variant 104
-            Self::DeleteIndex(args) => format!("{args:?}"),   // variant 105
-            Self::CreateTopology(args) => format!("{args:?}"), // variant 106
-            Self::DeleteTopology(args) => format!("{args:?}"), // variant 107
-            Self::ClearTopology(args) => format!("{args:?}"),  // variant 108
-            Self::BackfillTopology(args) => format!("{args:?}"), // variant 109
+            Self::CreateIndex(args) => format!("{args:?}"),       // variant 104
+            Self::DeleteIndex(args) => format!("{args:?}"),       // variant 105
+            Self::SetUserBGPStatus(args) => format!("{args:?}"),  // variant 106
+            Self::CreateTopology(args) => format!("{args:?}"),    // variant 107
+            Self::DeleteTopology(args) => format!("{args:?}"),    // variant 108
+            Self::ClearTopology(args) => format!("{args:?}"),     // variant 109
+            Self::BackfillTopology(args) => format!("{args:?}"),  // variant 110
         }
     }
 }
@@ -655,7 +660,7 @@ mod tests {
             interface::{LoopbackType, RoutingMode},
             link::{LinkHealth, LinkLinkType},
             permission::permission_flags,
-            user::{UserCYOA, UserType},
+            user::{BGPStatus, UserCYOA, UserType},
         },
     };
     use solana_program::pubkey::Pubkey;
@@ -1332,6 +1337,12 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::DeletePermission(PermissionDeleteArgs {}),
             "DeletePermission",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetUserBGPStatus(SetUserBGPStatusArgs {
+                bgp_status: BGPStatus::Up,
+            }),
+            "SetUserBGPStatus",
         );
         test_instruction(
             DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {

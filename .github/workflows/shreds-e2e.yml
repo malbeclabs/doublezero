@@ -3,7 +3,6 @@ on:
   push:
     branches: [main, 'hotfix/**']
   pull_request:
-    branches: [main, 'hotfix/**']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}

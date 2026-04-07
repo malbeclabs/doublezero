@@ -3,6 +3,7 @@ use doublezero_serviceability::{
     pda::*,
     processors::{
         accesspass::set::SetAccessPassArgs,
+        allowlist::foundation::add::AddFoundationAllowlistArgs,
         contributor::create::ContributorCreateArgs,
         device::{
             activate::DeviceActivateArgs, create::DeviceCreateArgs, update::DeviceUpdateArgs,
@@ -477,6 +478,7 @@ async fn test_subscribe_first_publisher_sets_updating() {
         accesspass_pubkey,
         user_pubkey,
         mgroup1_pubkey,
+        globalstate_pubkey,
         ..
     } = f;
 
@@ -495,6 +497,7 @@ async fn test_subscribe_first_publisher_sets_updating() {
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -552,6 +555,7 @@ async fn test_subscribe_second_publisher_does_not_set_updating() {
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -600,6 +604,7 @@ async fn test_subscribe_second_publisher_does_not_set_updating() {
             AccountMeta::new(mgroup2_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -644,6 +649,7 @@ async fn test_subscribe_subscriber_does_not_set_updating() {
         user_pubkey,
         mgroup1_pubkey,
         mgroup2_pubkey,
+        globalstate_pubkey,
         ..
     } = f;
 
@@ -662,6 +668,7 @@ async fn test_subscribe_subscriber_does_not_set_updating() {
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -694,6 +701,7 @@ async fn test_subscribe_subscriber_does_not_set_updating() {
             AccountMeta::new(mgroup2_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -758,6 +766,7 @@ async fn test_unsubscribe_last_publisher_sets_updating() {
                 AccountMeta::new(mgroup_pk, false),
                 AccountMeta::new(accesspass_pubkey, false),
                 AccountMeta::new(user_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
             ],
             &payer,
         )
@@ -808,6 +817,7 @@ async fn test_unsubscribe_last_publisher_sets_updating() {
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -840,6 +850,7 @@ async fn test_unsubscribe_last_publisher_sets_updating() {
             AccountMeta::new(mgroup2_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -889,6 +900,7 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -930,6 +942,7 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -971,6 +984,7 @@ async fn test_subscribe_foundation_admin_payer_differs_from_user_owner() {
         accesspass_pubkey, // derived from payer.pubkey() = user.owner
         user_pubkey,
         mgroup1_pubkey,
+        globalstate_pubkey,
         ..
     } = f;
 
@@ -981,6 +995,20 @@ async fn test_subscribe_foundation_admin_payer_differs_from_user_owner() {
         &payer,
         &foundation_admin.pubkey(),
         10_000_000,
+    )
+    .await;
+
+    // Add foundation_admin to the foundation allowlist so they can act on behalf of users.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs {
+            pubkey: foundation_admin.pubkey(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
     )
     .await;
 
@@ -1002,6 +1030,7 @@ async fn test_subscribe_foundation_admin_payer_differs_from_user_owner() {
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &foundation_admin,
     )
@@ -1031,6 +1060,7 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
         accesspass_pubkey, // derived from payer.pubkey() = user.owner
         user_pubkey,
         mgroup1_pubkey,
+        globalstate_pubkey,
         ..
     } = f;
 
@@ -1050,6 +1080,7 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -1073,6 +1104,20 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
     )
     .await;
 
+    // Add foundation_admin to the foundation allowlist so they can act on behalf of users.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs {
+            pubkey: foundation_admin.pubkey(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
     // Unsubscribe the user, signed by foundation_admin (payer != user.owner).
     // Before the fix this would panic with "Invalid AccessPass PDA" because the PDA was
     // derived from payer_account.key (foundation_admin) instead of user.owner (alice).
@@ -1091,6 +1136,7 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &foundation_admin,
     )
@@ -1104,6 +1150,102 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
         .unwrap();
     assert_eq!(user.subscribers.len(), 0);
     assert_eq!(user.status, UserStatus::Activated);
+}
+
+/// A payer who is not the access pass owner and not in the foundation allowlist is rejected.
+#[tokio::test]
+async fn test_subscribe_unauthorized_payer_rejected() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        globalstate_pubkey,
+        ..
+    } = f;
+
+    let other_payer = solana_sdk::signature::Keypair::new();
+    transfer(&mut banks_client, &payer, &other_payer.pubkey(), 10_000_000).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &other_payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(22),
+        ))) => {}
+        _ => panic!("Expected Unauthorized error (Custom(22)), got {:?}", result),
+    }
+}
+
+/// A payer who is not the access pass owner is rejected even without globalstate.
+/// Old callers (5-account layout, no globalstate) are only permitted when payer == user.owner.
+#[tokio::test]
+async fn test_subscribe_unauthorized_payer_rejected_without_globalstate() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    let other_payer = solana_sdk::signature::Keypair::new();
+    transfer(&mut banks_client, &payer, &other_payer.pubkey(), 10_000_000).await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            // No globalstate — 5-account backward-compat layout
+        ],
+        &other_payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(22),
+        ))) => {}
+        _ => panic!("Expected Unauthorized error (Custom(22)), got {:?}", result),
+    }
 }
 
 // --- Onchain allocation tests ---

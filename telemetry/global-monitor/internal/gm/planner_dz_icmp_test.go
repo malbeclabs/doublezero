@@ -20,7 +20,7 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_getTargets_PublicOnly_WhenNoDZI
 	influx := newFakeWriteAPI()
 	geo := &fakeGeoIP{rec: nil}
 
-	p := NewDoubleZeroUserICMPPlanner(log, influx, geo)
+	p := NewDoubleZeroUserICMPPlanner(log, influx, nil, geo)
 
 	u1 := mkUser(pk(1), "203.0.113.10", "10.0.0.10", "nyc", dz.UserTypeIBRL, solana.PublicKey{})
 	u2 := mkUser(pk(2), "203.0.113.11", "10.0.0.11", "sfo", dz.UserTypeIBRL, solana.PublicKey{})
@@ -52,7 +52,7 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_getTargets_DZFilters_AndPreflig
 	log := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
 	influx := newFakeWriteAPI()
 	geo := &fakeGeoIP{rec: nil}
-	p := NewDoubleZeroUserICMPPlanner(log, influx, geo)
+	p := NewDoubleZeroUserICMPPlanner(log, influx, nil, geo)
 
 	sourceUser := mkUser(pk(99), "198.51.100.2", "10.255.0.1", "yyz", dz.UserTypeIBRL, solana.PublicKey{})
 	src := mkSource("eth0", "198.51.100.2", "dz0", &sourceUser)
@@ -120,7 +120,7 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_BuildPlans_DedupAndPaths(t *tes
 	log := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
 	influx := newFakeWriteAPI()
 	geo := &fakeGeoIP{rec: nil}
-	p := NewDoubleZeroUserICMPPlanner(log, influx, geo)
+	p := NewDoubleZeroUserICMPPlanner(log, influx, nil, geo)
 
 	sourceUser := mkUser(pk(99), "198.51.100.2", "10.255.0.1", "yyz", dz.UserTypeIBRL, solana.PublicKey{})
 	src := mkSource("eth0", "198.51.100.2", "dz0", &sourceUser)
@@ -177,7 +177,7 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedInfluxPoin
 			Longitude:   -79.4,
 		},
 	}
-	p := NewDoubleZeroUserICMPPlanner(log, influx, geo)
+	p := NewDoubleZeroUserICMPPlanner(log, influx, nil, geo)
 
 	sourceUser := mkUser(pk(99), "198.51.100.2", "10.255.0.1", "yyz", dz.UserTypeIBRL, solana.PublicKey{})
 	src := mkSource("eth0", "198.51.100.2", "dz0", &sourceUser)
@@ -329,5 +329,132 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedInfluxPoin
 		tags := pointTags(pts[0])
 		require.Contains(t, tags, "user_validator_pubkey")
 		require.NotContains(t, tags, "validator_vote_pubkey")
+	})
+}
+
+func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedClickHouseRows(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
+	influx := newFakeWriteAPI()
+	ch := newFakeProbeWriter()
+	geo := &fakeGeoIP{
+		rec: &geoip.Record{
+			Country:     "Canada",
+			CountryCode: "CA",
+			Region:      "ON",
+			City:        "Toronto",
+			CityID:      123,
+			MetroName:   "Yorkton",
+			ASN:         64500,
+			ASNOrg:      "Example",
+			Latitude:    43.7,
+			Longitude:   -79.4,
+		},
+	}
+	p := NewDoubleZeroUserICMPPlanner(log, influx, ch, geo)
+
+	sourceUser := mkUser(pk(99), "198.51.100.2", "10.255.0.1", "yyz", dz.UserTypeIBRL, solana.PublicKey{})
+	src := mkSource("eth0", "198.51.100.2", "dz0", &sourceUser)
+
+	u := mkUser(pk(1), "203.0.113.10", "10.0.0.10", "nyc", dz.UserTypeIBRL, pk(42))
+	votePK := pk(100)
+	gossip := map[solana.PublicKey]*sol.GossipNode{
+		u.ValidatorPK: {GossipIP: u.ClientIP, TPUQUICIP: u.DZIP},
+	}
+	validators := map[solana.PublicKey]*sol.Validator{
+		u.ValidatorPK: {
+			VoteAccount: sol.VoteAccount{
+				VotePubkey: votePK,
+			},
+		},
+	}
+
+	dzT, err := NewICMPProbeTarget(log, "dz0", u.DZIP, &ICMPProbeTargetConfig{})
+	require.NoError(t, err)
+	pubT, err := NewICMPProbeTarget(log, "eth0", u.ClientIP, &ICMPProbeTargetConfig{})
+	require.NoError(t, err)
+
+	ts := time.Unix(1700000000, 0)
+
+	t.Run("success writes row with stats and solana cross-refs", func(t *testing.T) {
+		ch := newFakeProbeWriter()
+		p.chWriter = ch
+
+		res := &ProbeResult{
+			Timestamp: ts,
+			OK:        true,
+			Stats: &ProbeStats{
+				PacketsSent: 10, PacketsRecv: 9, PacketsLost: 1, LossRatio: 0.1,
+				RTTMin: 10 * time.Millisecond, RTTAvg: 15 * time.Millisecond, RTTStdDev: 2 * time.Millisecond,
+			},
+		}
+		p.recordResult(src, &u, dzT, res, gossip, validators)
+
+		rows := ch.DZUserICMPRows()
+		require.Len(t, rows, 1)
+		row := rows[0]
+
+		require.Equal(t, ts, row.Timestamp)
+		require.Equal(t, string(ProbeTypeICMP), row.ProbeType)
+		require.Equal(t, string(ProbePathDoubleZero), row.ProbePath)
+		require.Equal(t, u.PubKey.String(), row.UserPubkey)
+		require.Equal(t, u.ValidatorPK.String(), row.UserValidatorPubkey)
+		require.Equal(t, votePK.String(), row.ValidatorVotePubkey)
+		require.Equal(t, u.DZIP.String(), row.TargetIP)
+		require.Equal(t, "dz0", row.SourceIface)
+		require.Equal(t, src.User.DZIP.String(), row.SourceIP)
+		require.Equal(t, u.Device.Code, row.TargetDZDCode)
+
+		require.True(t, row.ProbeOK)
+		require.Empty(t, row.ProbeFailReason)
+		require.InDelta(t, 15.0, row.ProbeRTTAvgMs, 1)
+		require.Equal(t, int64(10), row.ProbePacketsSent)
+		require.InDelta(t, 0.1, row.ProbeLossRatio, 0.01)
+
+		require.Equal(t, "CA", row.TargetGeoIPCountryCode)
+		require.InDelta(t, 43.7, row.TargetGeoIPLatitude, 0.01)
+
+		// Solana cross-reference fields.
+		require.True(t, row.UserValidatorPubkeyInSolanaVoteAccounts)
+		require.True(t, row.UserValidatorPubkeyInSolanaGossip)
+		// Target IP on DZ path is u.DZIP (10.0.0.10), which is not in gossip GossipIP (203.0.113.10).
+		require.False(t, row.TargetIPInSolanaGossip)
+		// But it IS in gossip as TPUQUICIP (u.DZIP = 10.0.0.10).
+		require.True(t, row.TargetIPInSolanaGossipAsTPUQUIC)
+	})
+
+	t.Run("not-ready does not write", func(t *testing.T) {
+		ch := newFakeProbeWriter()
+		p.chWriter = ch
+
+		res := &ProbeResult{Timestamp: ts, OK: false, FailReason: ProbeFailReasonNotReady}
+		p.recordResult(src, &u, dzT, res, gossip, validators)
+
+		require.Len(t, ch.DZUserICMPRows(), 0)
+	})
+
+	t.Run("failure writes row with probe_ok=false", func(t *testing.T) {
+		ch := newFakeProbeWriter()
+		p.chWriter = ch
+
+		res := &ProbeResult{Timestamp: ts, OK: false, FailReason: ProbeFailReasonTimeout}
+		p.recordResult(src, &u, pubT, res, gossip, validators)
+
+		rows := ch.DZUserICMPRows()
+		require.Len(t, rows, 1)
+		row := rows[0]
+
+		require.False(t, row.ProbeOK)
+		require.Equal(t, string(ProbeFailReasonTimeout), row.ProbeFailReason)
+		require.Equal(t, string(ProbePathPublicInternet), row.ProbePath)
+		require.Equal(t, "eth0", row.SourceIface)
+		require.Equal(t, src.PublicIP.String(), row.SourceIP)
+		require.Equal(t, u.ClientIP.String(), row.TargetIP)
+		require.Zero(t, row.ProbeRTTAvgMs)
+	})
+
+	t.Run("nil chWriter does not panic", func(t *testing.T) {
+		p.chWriter = nil
+		res := &ProbeResult{Timestamp: ts, OK: false, FailReason: ProbeFailReasonTimeout}
+		p.recordResult(src, &u, pubT, res, gossip, validators)
 	})
 }

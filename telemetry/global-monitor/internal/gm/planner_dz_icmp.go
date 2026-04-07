@@ -9,6 +9,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	influxdb2api "github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
+	chwriter "github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/clickhouse"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/dz"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/netlink"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/sol"
@@ -18,13 +19,15 @@ import (
 type DoubleZeroUserICMPPlanner struct {
 	log       *slog.Logger
 	influxAPI influxdb2api.WriteAPI
+	chWriter  chwriter.ProbeWriter
 	geoIP     geoip.Resolver
 }
 
-func NewDoubleZeroUserICMPPlanner(log *slog.Logger, influxAPI influxdb2api.WriteAPI, geoIP geoip.Resolver) *DoubleZeroUserICMPPlanner {
+func NewDoubleZeroUserICMPPlanner(log *slog.Logger, influxAPI influxdb2api.WriteAPI, chWriter chwriter.ProbeWriter, geoIP geoip.Resolver) *DoubleZeroUserICMPPlanner {
 	return &DoubleZeroUserICMPPlanner{
 		log:       log,
 		influxAPI: influxAPI,
+		chWriter:  chWriter,
 		geoIP:     geoIP,
 	}
 }
@@ -66,9 +69,6 @@ func (p *DoubleZeroUserICMPPlanner) BuildPlans(
 				Kind: PlanKindDZUserICMP,
 				Path: path,
 				Record: func(res *ProbeResult) {
-					if p.influxAPI == nil {
-						return
-					}
 					p.recordResult(source, &user, tgt, res, gossipNodes, validators)
 				},
 			})
@@ -287,6 +287,7 @@ func (p *DoubleZeroUserICMPPlanner) recordResult(source *Source, user *dz.User, 
 		if p.influxAPI != nil {
 			p.influxAPI.WritePoint(point)
 		}
+		p.recordClickHouseRow(tags, fields, res, false, string(res.FailReason), nil)
 		return
 	}
 
@@ -309,4 +310,84 @@ func (p *DoubleZeroUserICMPPlanner) recordResult(source *Source, user *dz.User, 
 	if p.influxAPI != nil {
 		p.influxAPI.WritePoint(point)
 	}
+	p.recordClickHouseRow(tags, fields, res, true, "", stats)
+}
+
+func (p *DoubleZeroUserICMPPlanner) recordClickHouseRow(tags map[string]string, fields map[string]any, result *ProbeResult, probeOK bool, failReason string, stats *ProbeStats) {
+	if p.chWriter == nil {
+		return
+	}
+
+	row := chwriter.DoubleZeroUserICMPProbeRow{
+		Timestamp:              result.Timestamp,
+		ProbeType:              tags["probe_type"],
+		ProbePath:              tags["probe_path"],
+		UserPubkey:             tags["user_pubkey"],
+		UserValidatorPubkey:    tags["user_validator_pubkey"],
+		ValidatorVotePubkey:    tags["validator_vote_pubkey"],
+		TargetIP:               tags["target_ip"],
+		TargetIPBlock24:        tags["target_ip_block_24"],
+		SourceMetro:            tags["source_metro"],
+		SourceMetroName:        tags["source_metro_name"],
+		SourceHost:             tags["source_host"],
+		SourceIface:            tags["source_iface"],
+		SourceIP:               tags["source_ip"],
+		SourceUserPubkey:       tags["source_user_pubkey"],
+		SourceDZDCode:          tags["source_dzd_code"],
+		SourceDZDMetroCode:     tags["source_dzd_metro_code"],
+		SourceDZDMetroName:     tags["source_dzd_metro_name"],
+		TargetDZDCode:          tags["target_dzd_code"],
+		TargetDZDMetroCode:     tags["target_dzd_metro_code"],
+		TargetDZDMetroName:     tags["target_dzd_metro_name"],
+		TargetGeoIPCountry:     tags["target_geoip_country"],
+		TargetGeoIPCountryCode: tags["target_geoip_country_code"],
+		TargetGeoIPRegion:      tags["target_geoip_region"],
+		TargetGeoIPCity:        tags["target_geoip_city"],
+		TargetGeoIPMetro:       tags["target_geoip_metro"],
+		TargetGeoIPASNOrg:      tags["target_geoip_asn_org"],
+		ProbeOK:                probeOK,
+		ProbeFailReason:        failReason,
+	}
+
+	if v, ok := fields["target_geoip_latitude"].(float64); ok {
+		row.TargetGeoIPLatitude = v
+	}
+	if v, ok := fields["target_geoip_longitude"].(float64); ok {
+		row.TargetGeoIPLongitude = v
+	}
+
+	// Parse integer tags.
+	if v, err := strconv.Atoi(tags["target_geoip_city_id"]); err == nil {
+		row.TargetGeoIPCityID = int32(v)
+	}
+	if v, err := strconv.Atoi(tags["target_geoip_asn"]); err == nil {
+		row.TargetGeoIPASN = uint32(v)
+	}
+
+	// Solana cross-reference fields.
+	if v, ok := fields["user_validator_pubkey_in_solana_vote_accounts"].(bool); ok {
+		row.UserValidatorPubkeyInSolanaVoteAccounts = v
+	}
+	if v, ok := fields["user_validator_pubkey_in_solana_gossip"].(bool); ok {
+		row.UserValidatorPubkeyInSolanaGossip = v
+	}
+	if v, ok := fields["target_ip_in_solana_gossip"].(bool); ok {
+		row.TargetIPInSolanaGossip = v
+	}
+	if v, ok := fields["target_ip_in_solana_gossip_as_tpuquic"].(bool); ok {
+		row.TargetIPInSolanaGossipAsTPUQUIC = v
+	}
+
+	if stats != nil {
+		row.ProbeRTTAvgMs = float64(stats.RTTAvg.Milliseconds())
+		row.ProbeRTTLatestMs = float64(stats.RTTAvg.Milliseconds())
+		row.ProbeRTTMinMs = float64(stats.RTTMin.Milliseconds())
+		row.ProbeRTTDevMs = float64(stats.RTTStdDev.Milliseconds())
+		row.ProbePacketsSent = int64(stats.PacketsSent)
+		row.ProbePacketsRecv = int64(stats.PacketsRecv)
+		row.ProbePacketsLost = int64(stats.PacketsLost)
+		row.ProbeLossRatio = stats.LossRatio
+	}
+
+	p.chWriter.AppendDoubleZeroUserICMPProbe(row)
 }

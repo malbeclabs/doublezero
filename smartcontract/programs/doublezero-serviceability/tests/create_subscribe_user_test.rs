@@ -1230,6 +1230,7 @@ async fn test_publisher_multicast_publisher_persists_through_disconnect() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -1395,6 +1396,7 @@ async fn test_publisher_disconnect_delete_decrements_publishers_count() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )

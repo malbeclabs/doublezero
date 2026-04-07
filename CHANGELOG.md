@@ -3,29 +3,56 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
+  
+### Breaking
+
+### Changes
+
+- Tools
+  - Add `IsRetryableFunc` field to `RetryOptions` for configurable retry criteria in the Solana JSON-RPC client; add `"rate limited"` string match and RPC code `-32429` to the default implementation
+- Telemetry
+  - Add optional TLS support to state-ingest server via `--tls-cert-file` and `--tls-key-file` flags; when set, the server listens on both HTTP (`:8080`) and HTTPS (`:8443`) simultaneously
+  - Remove `--additional-child-probes` CLI flag from telemetry-agent; child geoprobe discovery now relies entirely on the onchain Geolocation program
+- Monitor
+  - Add ClickHouse as a telemetry backend for the global monitor alongside existing InfluxDB
+- E2E tests
+  - Add `TestE2E_GeoprobeIcmpTargets` verifying end-to-end ICMP outbound offset delivery via onchain `outbound-icmp` targets
+  - Refactor geoprobe E2E tests to use testcontainers entrypoints and onchain target discovery
+- Smartcontract
+  - Replace manual account validation assertions with `validate_program_account!` macro across serviceability processor files, adding consistent `data_is_empty` checks and fixing a missing `is_writable` validation in `ResumeLink` ([#3436](https://github.com/malbeclabs/doublezero/pull/3436))
+  - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
+- Geolocation
+  - geoprobe-target can now store LocationOffset messages in ClickHouse
+  - Add ICMP pinger to geoprobe-agent for measuring outbound ICMP targets with interleaved batch send/receive, integrated into the existing measurement cycle alongside TWAMP
+  - Remove `--additional-parent`, `--additional-targets`, `--additional-icmp-targets`, and `--allowed-pubkeys` CLI flags from geoprobe-agent; all configuration now comes from onchain state via parent and target discovery
+
+## [v0.16.0](https://github.com/malbeclabs/doublezero/compare/client/v0.15.0...client/v0.16.0) - 2026-04-03
 
 ### Breaking
 
 ### Changes
 
 - Smartcontract
+  - Require that the access pass provided to `SubscribeMulticastGroup` belongs to the payer; foundation allowlist members may use any access pass.
   - Add Index account for onchain key uniqueness enforcement and O(1) key-to-pubkey lookup, with standalone CreateIndex/DeleteIndex instructions for migration backfill
-  - minimum client version to 0.10.0
+  - Set minimum client version to 0.10.0
   - Enforce 9000-byte MTU on links and non-CYOA/non-DIA device interfaces; CYOA/DIA interfaces must be 1500. Onchain validation now returns `InvalidMtu` (error 46) for non-conforming values.
+  - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
 - CLI
   - Allow incremental multicast group addition without disconnecting
   - Reset SIGPIPE to SIG_DFL at the start of main() in all 3 CLI binaries (doublezero, doublezero-geolocation, doublezero-admin) so the process exits silently like standard CLI tools
   - Support `--type outbound-icmp` in geolocation `user add-target`, `remove-target`, and `get` commands
   - Add sentinel admin commands to find and create multicast publishers for IBRL validators
+  - handle non-user owned disconnects gracefully
+  - Add user's multicast pub/sub groups if applicable to `status`
 - Sentinel
   - Add multicast publisher worker with Solana RPC-based validator discovery
+  - Add e2e tests for multicast publisher worker with validator-metadata-service mock
 - SDK
   - Add Go SDK for shred subscription program with read-only account deserialization (epoch state, seat assignments, pricing, settlement, validator client rewards), PDA derivation helpers, RPC fetchers, compatibility tests, and a fetch example CLI
   - Add `GeoLocationTargetTypeOutboundIcmp` to Go geolocation SDK with deserialization and round-trip test support
 - Device Health Oracle
   - Update link.health and device.health to `ready-for-service` and `ready-for-users` when they are not already in that state
-- Smartcontract
-  - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
 - Tools
   - Add `twamp-debug` diagnostic tool for testing kernel timestamping support on switches; sends real TWAMP probes to verify which SO_TIMESTAMPING modes (RX/TX software/hardware/sched) actually deliver timestamps, and reports RTT statistics comparing userspace vs kernel timestamp sources
 - E2E Tests
@@ -43,6 +70,9 @@ All notable changes to this project will be documented in this file.
   - Add `doublezero-admin migrate flex-algo [--dry-run]` to tag existing links with UNICAST-DEFAULT and backfill node segments
 - SDK
   - Update Go, Python, and TypeScript SDKs with `TopologyInfo` deserialization and new `link_topologies`, `link_flags`, and `include_topologies` fields
+- Client
+  - Add `doublezero_connection_info` Prometheus metric exposing connection metadata (user_type, network, current_device, metro, tunnel_name, tunnel_src, tunnel_dst) ([#3201](https://github.com/malbeclabs/doublezero/pull/3201))
+  - Add `doublezero_connection_rtt_nanoseconds` and `doublezero_connection_loss_percentage` Prometheus metrics reporting RTT and packet loss to the current connected device
 
 ## [v0.15.0](https://github.com/malbeclabs/doublezero/compare/client/v0.14.0...client/v0.15.0) - 2026-03-27
 

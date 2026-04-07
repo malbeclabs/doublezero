@@ -11,8 +11,8 @@ import (
 type AccountType uint8
 
 const (
-	GlobalState AccountType = iota + 1
-	ConfigType
+	GlobalStateType AccountType = iota + 1
+	GlobalConfigType
 	LocationType
 	ExchangeType
 	DeviceType
@@ -31,24 +31,36 @@ const (
 type LocationStatus uint8
 
 const (
-	LocationStatusPending LocationStatus = iota
-	LocationStatusActivated
-	LocationStatusSuspended
-	LocationStatusDeleted
+	LocationStatusPending   LocationStatus = 0
+	LocationStatusActivated LocationStatus = 1
+	LocationStatusSuspended LocationStatus = 2
 )
+
+func (s LocationStatus) String() string {
+	switch s {
+	case LocationStatusPending:
+		return "pending"
+	case LocationStatusActivated:
+		return "activated"
+	case LocationStatusSuspended:
+		return "suspended"
+	default:
+		return "unknown"
+	}
+}
 
 type Uint128 struct {
 	High uint64
 	Low  uint64
 }
 
-type Config struct {
+type GlobalConfig struct {
 	AccountType             AccountType
 	Owner                   [32]byte
-	Bump_seed               uint8
-	Local_asn               uint32
-	Remote_asn              uint32
-	TunnelTunnelBlock       [5]uint8
+	BumpSeed                uint8
+	LocalASN                uint32
+	RemoteASN               uint32
+	DeviceTunnelBlock       [5]uint8
 	UserTunnelBlock         [5]uint8
 	MulticastGroupBlock     [5]uint8
 	NextBGPCommunity        uint16
@@ -56,52 +68,74 @@ type Config struct {
 	PubKey                  [32]byte
 }
 
+type GlobalState struct {
+	AccountType                AccountType
+	BumpSeed                   uint8
+	AccountIndex               Uint128
+	FoundationAllowlist        [][32]byte
+	ActivatorAuthorityPK       [32]byte
+	SentinelAuthorityPK        [32]byte
+	ContributorAirdropLamports uint64
+	UserAirdropLamports        uint64
+	HealthOraclePK             [32]byte
+	QAAllowlist                [][32]byte
+	FeatureFlags               Uint128
+	FeedAuthorityPK            [32]byte
+	PubKey                     [32]byte
+}
+
 type Location struct {
-	AccountType AccountType
-	Owner       [32]uint8
-	Index       Uint128
-	Bump_seed   uint8
-	Lat         float64
-	Lng         float64
-	LocId       uint32
-	Status      LocationStatus
-	Code        string
-	Name        string
-	Country     string
-	PubKey      [32]byte
+	AccountType    AccountType
+	Owner          [32]uint8
+	Index          Uint128
+	BumpSeed       uint8
+	Lat            float64
+	Lng            float64
+	LocId          uint32
+	Status         LocationStatus
+	Code           string
+	Name           string
+	Country        string
+	ReferenceCount uint32
+	PubKey         [32]byte
 }
 
 type ExchangeStatus uint8
 
 const (
-	ExchangeStatusPending ExchangeStatus = iota
-	ExchangeStatusActivated
-	ExchangeStatusSuspended
-	ExchangeStatusDeleted
+	ExchangeStatusPending   ExchangeStatus = 0
+	ExchangeStatusActivated ExchangeStatus = 1
+	ExchangeStatusSuspended ExchangeStatus = 2
 )
 
 func (e ExchangeStatus) String() string {
-	return [...]string{
-		"pending",
-		"activated",
-		"suspended",
-		"deleted",
-	}[e]
+	switch e {
+	case ExchangeStatusPending:
+		return "pending"
+	case ExchangeStatusActivated:
+		return "activated"
+	case ExchangeStatusSuspended:
+		return "suspended"
+	default:
+		return "unknown"
+	}
 }
 
 type Exchange struct {
-	AccountType  AccountType
-	Owner        [32]uint8      `influx:"tag,owner,pubkey"`
-	Index        Uint128        `influx:"-"`
-	Bump_seed    uint8          `influx:"-"`
-	Lat          float64        `influx:"field,lat"`
-	Lng          float64        `influx:"field,lng"`
-	BgpCommunity uint16         `influx:"field,bgp_community"`
-	Unused       uint16         `influx:"-"`
-	Status       ExchangeStatus `influx:"tag,status"`
-	Code         string         `influx:"tag,code"`
-	Name         string         `influx:"tag,name"`
-	PubKey       [32]byte       `influx:"tag,pubkey,pubkey"`
+	AccountType    AccountType
+	Owner          [32]uint8      `influx:"tag,owner,pubkey"`
+	Index          Uint128        `influx:"-"`
+	BumpSeed       uint8          `influx:"-"`
+	Lat            float64        `influx:"field,lat"`
+	Lng            float64        `influx:"field,lng"`
+	BgpCommunity   uint16         `influx:"field,bgp_community"`
+	ReferenceCount uint32         `influx:"field,reference_count"`
+	Status         ExchangeStatus `influx:"tag,status"`
+	Code           string         `influx:"tag,code"`
+	Name           string         `influx:"tag,name"`
+	Device1PK      [32]byte       `influx:"tag,device1_pk,pubkey"`
+	Device2PK      [32]byte       `influx:"tag,device2_pk,pubkey"`
+	PubKey         [32]byte       `influx:"tag,pubkey,pubkey"`
 }
 
 type DeviceDeviceType uint8
@@ -397,7 +431,7 @@ type Device struct {
 	AccountType               AccountType
 	Owner                     [32]uint8           `influx:"tag,owner,pubkey"`
 	Index                     Uint128             `influx:"-"`
-	Bump_seed                 uint8               `influx:"-"`
+	BumpSeed                  uint8               `influx:"-"`
 	LocationPubKey            [32]uint8           `influx:"tag,location_pubkey,pubkey"`
 	ExchangePubKey            [32]uint8           `influx:"tag,exchange_pubkey,pubkey"`
 	DeviceType                DeviceDeviceType    `influx:"tag,device_type"`
@@ -592,7 +626,7 @@ type Link struct {
 	AccountType       AccountType
 	Owner             [32]uint8         `influx:"tag,owner,pubkey"`
 	Index             Uint128           `influx:"-"`
-	Bump_seed         uint8             `influx:"-"`
+	BumpSeed          uint8             `influx:"-"`
 	SideAPubKey       [32]uint8         `influx:"tag,side_a_pubkey,pubkey"`
 	SideZPubKey       [32]uint8         `influx:"tag,side_z_pubkey,pubkey"`
 	LinkType          LinkLinkType      `influx:"tag,link_type"`
@@ -648,19 +682,25 @@ func (l Link) MarshalJSON() ([]byte, error) {
 type ContributorStatus uint8
 
 const (
-	ContributorStatusPending ContributorStatus = iota
-	ContributorStatusActivated
-	ContributorStatusSuspended
-	ContributorStatusDeleted
+	ContributorStatusPending   ContributorStatus = 0
+	ContributorStatusActivated ContributorStatus = 1
+	ContributorStatusSuspended ContributorStatus = 2
+	ContributorStatusDeleting  ContributorStatus = 3
 )
 
 func (s ContributorStatus) String() string {
-	return [...]string{
-		"pending",
-		"activated",
-		"suspended",
-		"deleted",
-	}[s]
+	switch s {
+	case ContributorStatusPending:
+		return "pending"
+	case ContributorStatusActivated:
+		return "activated"
+	case ContributorStatusSuspended:
+		return "suspended"
+	case ContributorStatusDeleting:
+		return "deleting"
+	default:
+		return "unknown"
+	}
 }
 
 func (s ContributorStatus) MarshalJSON() ([]byte, error) {
@@ -675,6 +715,7 @@ type Contributor struct {
 	Status         ContributorStatus `influx:"tag,status"`
 	Code           string            `influx:"tag,code"`
 	ReferenceCount uint32            `influx:"field,reference_count"`
+	OpsManagerPK   [32]byte          `influx:"tag,ops_manager_pk,pubkey"`
 	PubKey         [32]byte          `influx:"tag,pubkey,pubkey"`
 }
 
@@ -770,6 +811,9 @@ const (
 	UserTypeMulticast
 )
 
+// UserTypeIBRLWithAllocIP is an alias for UserTypeIBRLWithAllocatedIP.
+const UserTypeIBRLWithAllocIP = UserTypeIBRLWithAllocatedIP
+
 func (u UserUserType) String() string {
 	return [...]string{
 		"ibrl",
@@ -811,27 +855,40 @@ func (c CyoaType) MarshalJSON() ([]byte, error) {
 type UserStatus uint8
 
 const (
-	UserStatusPending UserStatus = iota
-	UserStatusActivated
-	UserStatusSuspendedDeprecated
-	UserStatusDeleted
-	UserStatusRejected
-	UserStatusPendingBan
-	UserStatusBanned
-	UserStatusUpdating
+	UserStatusPending             UserStatus = 0
+	UserStatusActivated           UserStatus = 1
+	UserStatusSuspendedDeprecated UserStatus = 2
+	UserStatusDeleted             UserStatus = 3
+	UserStatusRejected            UserStatus = 4
+	UserStatusPendingBan          UserStatus = 5
+	UserStatusBanned              UserStatus = 6
+	UserStatusUpdating            UserStatus = 7
+	UserStatusOutOfCredits        UserStatus = 8
 )
 
 func (u UserStatus) String() string {
-	return [...]string{
-		"pending",
-		"activated",
-		"suspended",
-		"deleted",
-		"rejected",
-		"pending_ban",
-		"banned",
-		"updating",
-	}[u]
+	switch u {
+	case UserStatusPending:
+		return "pending"
+	case UserStatusActivated:
+		return "activated"
+	case UserStatusSuspendedDeprecated:
+		return "suspended"
+	case UserStatusDeleted:
+		return "deleted"
+	case UserStatusRejected:
+		return "rejected"
+	case UserStatusPendingBan:
+		return "pending_ban"
+	case UserStatusBanned:
+		return "banned"
+	case UserStatusUpdating:
+		return "updating"
+	case UserStatusOutOfCredits:
+		return "out_of_credits"
+	default:
+		return "unknown"
+	}
 }
 
 func (u UserStatus) MarshalJSON() ([]byte, error) {
@@ -842,7 +899,7 @@ type User struct {
 	AccountType     AccountType
 	Owner           [32]uint8
 	Index           Uint128
-	Bump_seed       uint8
+	BumpSeed        uint8
 	UserType        UserUserType
 	TenantPubKey    [32]uint8
 	DevicePubKey    [32]uint8
@@ -924,7 +981,7 @@ type MulticastGroup struct {
 	AccountType     AccountType
 	Owner           [32]uint8
 	Index           Uint128
-	Bump_seed       uint8
+	BumpSeed        uint8
 	TenantPubKey    [32]uint8
 	MulticastIp     [4]uint8
 	MaxBandwidth    uint64
@@ -942,9 +999,64 @@ type ProgramVersion struct {
 }
 
 type ProgramConfig struct {
-	AccountType AccountType
-	BumpSeed    uint8
-	Version     ProgramVersion
+	AccountType      AccountType
+	BumpSeed         uint8
+	Version          ProgramVersion
+	MinCompatVersion ProgramVersion
+}
+
+type AccessPassTypeTag uint8
+
+const (
+	AccessPassTypePrepaid            AccessPassTypeTag = 0
+	AccessPassTypeSolanaValidator    AccessPassTypeTag = 1
+	AccessPassTypeSolanaRPC          AccessPassTypeTag = 2
+	AccessPassTypeSolanaMulticastPub AccessPassTypeTag = 3
+	AccessPassTypeSolanaMulticastSub AccessPassTypeTag = 4
+	AccessPassTypeOthers             AccessPassTypeTag = 5
+)
+
+type AccessPassStatus uint8
+
+const (
+	AccessPassStatusRequested    AccessPassStatus = 0
+	AccessPassStatusConnected    AccessPassStatus = 1
+	AccessPassStatusDisconnected AccessPassStatus = 2
+	AccessPassStatusExpired      AccessPassStatus = 3
+)
+
+func (s AccessPassStatus) String() string {
+	switch s {
+	case AccessPassStatusRequested:
+		return "requested"
+	case AccessPassStatusConnected:
+		return "connected"
+	case AccessPassStatusDisconnected:
+		return "disconnected"
+	case AccessPassStatusExpired:
+		return "expired"
+	default:
+		return "unknown"
+	}
+}
+
+type AccessPass struct {
+	AccountType        AccountType
+	Owner              [32]byte
+	BumpSeed           uint8
+	AccessPassTypeTag  AccessPassTypeTag
+	AssociatedPubkey   [32]byte // for SolanaValidator, SolanaRPC, SolanaMulticast*
+	OthersTypeName     string   // for Others variant
+	OthersKey          string   // for Others variant
+	ClientIp           [4]uint8
+	UserPayer          [32]byte
+	LastAccessEpoch    uint64
+	ConnectionCount    uint16
+	Status             AccessPassStatus
+	MGroupPubAllowlist [][32]byte
+	MGroupSubAllowlist [][32]byte
+	Flags              uint8
+	PubKey             [32]byte
 }
 
 func onChainNetToString(n [5]uint8) string {

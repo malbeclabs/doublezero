@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

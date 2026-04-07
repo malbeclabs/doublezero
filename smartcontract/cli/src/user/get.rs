@@ -1,5 +1,4 @@
-use crate::{doublezerocommand::CliCommand, validators::validate_pubkey};
-use chrono::{TimeZone, Utc};
+use crate::{doublezerocommand::CliCommand, helpers::slot_to_datetime, validators::validate_pubkey};
 use clap::Args;
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
@@ -11,20 +10,6 @@ use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
 use tabled::Tabled;
-
-fn slot_to_datetime<C: CliCommand>(client: &C, slot: u64) -> String {
-    if slot == 0 {
-        return "never".to_string();
-    }
-    match client.get_block_time(slot) {
-        Ok(Some(ts)) => Utc
-            .timestamp_opt(ts, 0)
-            .single()
-            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
-            .unwrap_or_else(|| slot.to_string()),
-        _ => slot.to_string(),
-    }
-}
 
 #[derive(Args, Debug)]
 pub struct GetUserCliCommand {

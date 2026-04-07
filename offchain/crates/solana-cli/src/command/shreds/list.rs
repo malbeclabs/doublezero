@@ -3,14 +3,17 @@ use std::{collections::HashMap, net::Ipv4Addr};
 use anyhow::Result;
 use clap::Args;
 use doublezero_serviceability::state::device::Device;
-use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_solana_client_tools::{
+    payer::try_load_keypair,
+    rpc::{SolanaConnection, SolanaConnectionOptions},
+};
 use doublezero_solana_sdk::shred_subscription::{self, state};
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
     rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
     rpc_filter::{Memcmp, RpcFilterType},
 };
-use solana_sdk::{account::Account, pubkey::Pubkey};
+use solana_sdk::{account::Account, pubkey::Pubkey, signer::Signer};
 use tabled::{Table, Tabled, settings::Style};
 
 use super::make_dz_connection;
@@ -25,13 +28,19 @@ pub struct ListCommand {
     #[command(flatten)]
     device_args: super::DeviceArgs,
 
-    /// Filter seats by withdraw authority (wallets that have payment escrows).
-    #[arg(long)]
-    withdraw_authority: Option<Pubkey>,
+    /// Filter seats by funder (withdraw authority). Accepts a public key or a
+    /// path to a keypair file. When omitted, defaults to the default keypair's
+    /// public key (use --all to show every seat instead).
+    #[arg(long, short = 'k')]
+    funder: Option<String>,
 
     /// Filter seats by client IPv4 address.
     #[arg(long)]
     client_ip: Option<Ipv4Addr>,
+
+    /// Show all seats regardless of funder.
+    #[arg(long)]
+    all: bool,
 
     #[command(flatten)]
     connection_options: SolanaConnectionOptions,
@@ -116,9 +125,23 @@ impl ListCommand {
             })
             .collect();
 
+        // Resolve the funder (withdraw authority) filter.
+        let funder: Option<Pubkey> = if let Some(ref funder_str) = self.funder {
+            if let Ok(pubkey) = funder_str.parse::<Pubkey>() {
+                Some(pubkey)
+            } else {
+                let keypair = try_load_keypair(Some(funder_str.into()))?;
+                Some(keypair.pubkey())
+            }
+        } else if !self.all {
+            let keypair = try_load_keypair(None)?;
+            Some(keypair.pubkey())
+        } else {
+            None
+        };
+
         // Fetch escrow balances.
-        let (escrow_balances, filtered_seats) = if let Some(ref authority) = self.withdraw_authority
-        {
+        let (escrow_balances, filtered_seats) = if let Some(ref authority) = funder {
             let escrow_keys: Vec<Pubkey> = parsed_seats
                 .iter()
                 .map(|(seat_key, _, _, _)| {
@@ -160,7 +183,11 @@ impl ListCommand {
                     balances.insert(seat_key, balance);
                 }
             }
-            (balances, parsed_seats)
+            let matching_seats: Vec<_> = parsed_seats
+                .into_iter()
+                .filter(|(seat_key, _, _, _)| balances.contains_key(seat_key))
+                .collect();
+            (balances, matching_seats)
         };
 
         if filtered_seats.is_empty() {

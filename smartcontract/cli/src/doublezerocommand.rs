@@ -132,6 +132,7 @@ pub trait CliCommand {
     fn get_payer(&self) -> Pubkey;
     fn get_balance(&self) -> eyre::Result<u64>;
     fn get_epoch(&self) -> eyre::Result<u64>;
+    fn get_block_time(&self, slot: u64) -> eyre::Result<Option<i64>>;
     fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>>;
     fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account>;
     fn get_minimum_balance_for_rent_exemption(&self, data_len: usize) -> eyre::Result<u64>;
@@ -374,6 +375,9 @@ impl CliCommand for CliCommandImpl<'_> {
     }
     fn get_epoch(&self) -> eyre::Result<u64> {
         self.client.get_epoch()
+    }
+    fn get_block_time(&self, slot: u64) -> eyre::Result<Option<i64>> {
+        self.client.get_block_time(slot)
     }
     fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>> {
         self.client.get_logs(pubkey)

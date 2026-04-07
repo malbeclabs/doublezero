@@ -414,6 +414,20 @@ impl DoubleZeroClient for DZClient {
             .map(|info| info.epoch)
     }
 
+    fn get_block_time(&self, slot: u64) -> eyre::Result<Option<i64>> {
+        match self.client.get_block_time(slot) {
+            Ok(ts) => Ok(Some(ts)),
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("Block not available") || msg.contains("was skipped") {
+                    Ok(None)
+                } else {
+                    Err(eyre!(e))
+                }
+            }
+        }
+    }
+
     fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>> {
         let options = RpcProgramAccountsConfig {
             filters: None,

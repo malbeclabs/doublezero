@@ -62,6 +62,19 @@ All notable changes to this project will be documented in this file.
 - Client
   - Add `doublezero_connection_info` Prometheus metric exposing connection metadata (user_type, network, current_device, metro, tunnel_name, tunnel_src, tunnel_dst) ([#3201](https://github.com/malbeclabs/doublezero/pull/3201))
   - Add `doublezero_connection_rtt_nanoseconds` and `doublezero_connection_loss_percentage` Prometheus metrics reporting RTT and packet loss to the current connected device
+- Smartcontract
+  - Add `TopologyInfo` onchain account for IS-IS flex-algo link classification: auto-assigned TE admin-group bit (1–62), derived flex-algo number (128 + bit), and constraint type (`include-any`/`include-all`); capped at 62 topologies via `AdminGroupBits` resource extension
+  - Add `link_topologies: Vec<Pubkey>` (capped at 8) and `link_flags: u8` (bit 0 = unicast-drained) to the `Link` account
+  - Add `include_topologies` to the `Tenant` account for topology-filtered routing opt-in
+  - Enforce UNICAST-DEFAULT topology existence as a precondition for link activation
+- CLI
+  - Add `doublezero link topology` subcommands: `create`, `delete`, `clear`, `list`, `backfill`
+  - Add `--link-topology <name>` and `--unicast-drained <bool>` flags to `doublezero link update`
+  - Add `--topology <name>` filter to `doublezero link list` (`default` = untagged links)
+  - Add `--include-topologies <name>` flag to `doublezero tenant update`
+  - Add `doublezero-admin migrate flex-algo [--dry-run]` to tag existing links with UNICAST-DEFAULT and backfill node segments
+- SDK
+  - Update Go, Python, and TypeScript SDKs with `TopologyInfo` deserialization and new `link_topologies`, `link_flags`, and `include_topologies` fields
 
 ## [v0.15.0](https://github.com/malbeclabs/doublezero/compare/client/v0.14.0...client/v0.15.0) - 2026-03-27
 

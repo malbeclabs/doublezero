@@ -27,6 +27,7 @@ All notable changes to this project will be documented in this file.
   - geoprobe-target can now store LocationOffset messages in ClickHouse
   - Add ICMP pinger to geoprobe-agent for measuring outbound ICMP targets with interleaved batch send/receive, integrated into the existing measurement cycle alongside TWAMP
   - Remove `--additional-parent`, `--additional-targets`, `--additional-icmp-targets`, and `--allowed-pubkeys` CLI flags from geoprobe-agent; all configuration now comes from onchain state via parent and target discovery
+  - Add `MinCache` for tracking minimum-RTT measurements with best/backup promotion over a rolling TTL window, used by both geoprobe-target and geoprobe-target-sender to suppress redundant output and surface only new-best events
 
 ## [v0.16.0](https://github.com/malbeclabs/doublezero/compare/client/v0.15.0...client/v0.16.0) - 2026-04-03
 

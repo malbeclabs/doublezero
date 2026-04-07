@@ -35,7 +35,7 @@ pub fn select_tunnel_endpoint(
     device_public_ip: Ipv4Addr,
     exclude_ips: &[Ipv4Addr],
 ) -> Ipv4Addr {
-    // Filter latencies to records matching this device_pk, sorted by avg latency (ascending)
+    // Filter latencies to records matching this device_pk, sorted by min latency (ascending)
     let mut device_latencies: Vec<&LatencyRecord> = latencies
         .iter()
         .filter(|l| l.device_pk == device_pk)
@@ -151,7 +151,7 @@ pub async fn retrieve_latencies<T: ServiceController>(
 //     typical internet connections while giving the selector enough freedom to
 //     choose alternate devices when needed.
 //
-// The value is expressed in nanoseconds to match avg_latency_ns.
+// The value is expressed in nanoseconds to match min_latency_ns.
 const LATENCY_TOLERANCE_NS: i64 = 5_000_000; // 5 ms
 
 /// Find the best device based on latency.

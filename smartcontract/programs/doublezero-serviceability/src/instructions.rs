@@ -510,7 +510,7 @@ impl DoubleZeroInstruction {
             Self::SetUserBGPStatus(_) => "SetUserBGPStatus".to_string(), // variant 106
             Self::CreateTopology(_) => "CreateTopology".to_string(), // variant 107
             Self::DeleteTopology(_) => "DeleteTopology".to_string(), // variant 108
-            Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 109
+            Self::ClearTopology(_) => "ClearTopology".to_string(), // variant 109
             Self::BackfillTopology(_) => "BackfillTopology".to_string(), // variant 110
         }
     }
@@ -644,7 +644,7 @@ impl DoubleZeroInstruction {
             Self::SetUserBGPStatus(args) => format!("{args:?}"), // variant 106
             Self::CreateTopology(args) => format!("{args:?}"), // variant 107
             Self::DeleteTopology(args) => format!("{args:?}"), // variant 108
-            Self::ClearTopology(args) => format!("{args:?}"),  // variant 109
+            Self::ClearTopology(args) => format!("{args:?}"), // variant 109
             Self::BackfillTopology(args) => format!("{args:?}"), // variant 110
         }
     }

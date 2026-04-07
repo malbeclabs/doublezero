@@ -124,31 +124,37 @@ var knownIncompatibilities = map[string]knownIncompat{
 	// device interface / link commands: --mtu requirement changed from 2048 to 9000.
 	// Versions before 0.12.0 didn't have these commands; versions 0.12.0–0.15.x send
 	// the old MTU value which the current program rejects.
-	"write/device_interface_create":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_create_2":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_create_3":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_create_4":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_set_unlinked":   {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_set_unlinked_2": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_set_unlinked_3": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_set_unlinked_4": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_create_wan":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_create_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_accept_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_update":                     {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_set_health":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_set_health_dzx":             {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_get":                        {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_wait_activated":             {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_wait_activated_dzx":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_drain":                      {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_drain_dzx":                  {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_delete":                     {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_delete_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_delete":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_delete_2":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_delete_3":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_delete_4":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	//
+	// Testnet override: extends the incompatible range to cover v0.10.0–v0.16.x. On
+	// testnet, v0.10.0–v0.11.0 predate the interface/link commands entirely, and
+	// testnet v0.16.0 was built before the RFC-18 InterfaceV2 (flex_algo_node_segments)
+	// change, so it can't deserialize the new account format. On mainnet-beta v0.16.0
+	// was released after RFC-18, so only the 0.12.0–0.15.x range applies there.
+	"write/device_interface_create":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_create_2":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_create_3":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_create_4":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_set_unlinked":   {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_set_unlinked_2": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_set_unlinked_3": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_set_unlinked_4": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_create_wan":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_create_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_accept_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_update":                     {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_set_health":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_set_health_dzx":             {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_get":                        {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_wait_activated":             {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_wait_activated_dzx":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_drain":                      {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_drain_dzx":                  {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_delete":                     {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_delete_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_delete":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_delete_2":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_delete_3":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_delete_4":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
 }
 
 // =============================================================================
@@ -780,6 +786,13 @@ func createAndStartVersionDevnet(
 	// required accounts for the SetGlobalConfig instruction.
 	_, _ = dn.Manager.Exec(t.Context(), []string{"bash", "-c",
 		"doublezero global-config set --multicast-publisher-block 148.51.120.0/21"})
+
+	// Ensure the unicast-default topology exists. The link activate processor (RFC-18)
+	// requires this topology account to be present. Ignore errors — if the topology
+	// already exists in the cloned state (e.g. testnet after RFC-18 deployment), this
+	// is a no-op. Use the current CLI since old CLIs don't have topology commands.
+	_, _ = dn.Manager.Exec(t.Context(), []string{"bash", "-c",
+		"doublezero link topology create --name unicast-default --constraint include-any"})
 
 	// Start the activator — it needs the PDAs to exist.
 	// Skip the controller (not exercised in compat tests, saves memory).

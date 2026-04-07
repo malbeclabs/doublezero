@@ -392,19 +392,19 @@ type FlexAlgoNodeSegment struct {
 }
 
 type Interface struct {
-	Version               uint8
-	Status                InterfaceStatus
-	Name                  string
-	InterfaceType         InterfaceType
-	InterfaceCYOA         InterfaceCYOA
-	InterfaceDIA          InterfaceDIA
-	LoopbackType          LoopbackType
-	Bandwidth             uint64
-	Cir                   uint64
-	Mtu                   uint16
-	RoutingMode           RoutingMode
-	VlanId                uint16
-	IpNet                 [5]uint8
+	Version              uint8
+	Status               InterfaceStatus
+	Name                 string
+	InterfaceType        InterfaceType
+	InterfaceCYOA        InterfaceCYOA
+	InterfaceDIA         InterfaceDIA
+	LoopbackType         LoopbackType
+	Bandwidth            uint64
+	Cir                  uint64
+	Mtu                  uint16
+	RoutingMode          RoutingMode
+	VlanId               uint16
+	IpNet                [5]uint8
 	NodeSegmentIdx       uint16
 	UserTunnelEndpoint   bool
 	FlexAlgoNodeSegments []FlexAlgoNodeSegment `json:",omitempty"`

@@ -73,6 +73,11 @@ All notable changes to this project will be documented in this file.
 - Activator
   - Automatically backfill flex-algo node segment IDs for all activated devices when a new `TopologyInfo` account is created onchain
   - Automatically backfill existing topologies' node segments when a Vpnv4 loopback interface is activated on a device
+- Controller
+  - Add `features.yaml` config file support (`--features-config` flag); a `flex_algo.enabled` flag gates all flex-algo config generation
+  - When flex-algo is enabled: generate IS-IS TE admin-group assignments on link interfaces, flex-algo topology definitions, and `system-colored-tunnel-rib` as the BGP next-hop resolution source
+  - Stamp BGP color extcommunity on user tunnel route-maps for tenants with `include_topologies` set
+  - Add `node-segment ipv4 index` lines to Vpnv4 loopback config for each flex-algo, sourced from segment routing IDs backfilled by the activator
 - Client
   - Add `doublezero_connection_info` Prometheus metric exposing connection metadata (user_type, network, current_device, metro, tunnel_name, tunnel_src, tunnel_dst) ([#3201](https://github.com/malbeclabs/doublezero/pull/3201))
   - Add `doublezero_connection_rtt_nanoseconds` and `doublezero_connection_loss_percentage` Prometheus metrics reporting RTT and packet loss to the current connected device

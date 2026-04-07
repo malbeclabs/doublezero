@@ -10,17 +10,25 @@ use doublezero_revenue_distribution::{
 };
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
-use solana_sdk::{signature::Keypair, signer::Signer};
+use solana_sdk::signature::{Keypair, Signer};
 use svm_hash::merkle::{merkle_root_from_indexed_pod_leaves, MerkleProof};
 
 //
-// Withdraw SOL.
-//
-// This test uses the mock SOL/2Z Swap program.
+// Setup.
 //
 
-#[tokio::test]
-async fn test_withdraw_sol() {
+struct WithdrawSolSetup {
+    test_setup: common::ProgramTestWithOwner,
+    src_token_account_key: Pubkey,
+    transfer_authority_signer: Keypair,
+    total_solana_validator_debt: u64,
+}
+
+/// Set up the program with a paid validator debt, ready for SOL withdrawal
+/// via the mock swap program. Uses custom setup (not `setup_configured_program`)
+/// because it needs `start_test_with_accounts` for pre-bootstrapped token accounts
+/// and `Sol2zSwapProgram` configuration.
+async fn setup_for_withdraw_sol() -> WithdrawSolSetup {
     let transfer_authority_signer = Keypair::new();
 
     let bootstrapped_accounts = common::generate_token_accounts_for_test(
@@ -31,23 +39,9 @@ async fn test_withdraw_sol() {
 
     let mut test_setup = common::start_test_with_accounts(bootstrapped_accounts).await;
 
-    let benevolent_dictator_signer = Keypair::new();
-
-    let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
-
-    // Community burn rate.
-    let initial_cbr = 100_000_000; // 10%.
-    let cbr_limit = 500_000_000; // 50%.
-    let dz_epochs_to_increasing_cbr = 10;
-    let dz_epochs_to_cbr_limit = 20;
-
-    // Relay settings.
-    let distribute_rewards_relay_lamports = 10_000;
-
-    // Debt.
+    let admin_signer = Keypair::new();
 
     let dz_epoch = DoubleZeroEpoch::new(0);
-
     let node_id = Pubkey::new_unique();
     let total_solana_validator_debt = 10 * u64::pow(10, 9); // 10 SOL.
 
@@ -70,7 +64,7 @@ async fn test_withdraw_sol() {
         .initialize_program()
         .await
         .unwrap()
-        .set_admin(&benevolent_dictator_signer.pubkey())
+        .set_admin(&admin_signer.pubkey())
         .await
         .unwrap()
         .initialize_journal()
@@ -80,11 +74,11 @@ async fn test_withdraw_sol() {
         .await
         .unwrap()
         .configure_program(
-            &benevolent_dictator_signer,
+            &admin_signer,
             [
-                ProgramConfiguration::DebtAccountant(benevolent_dictator_signer.pubkey()),
+                ProgramConfiguration::DebtAccountant(admin_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
-                    base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
+                    base_block_rewards_pct: 500,
                     priority_block_rewards_pct: 0,
                     inflation_rewards_pct: 0,
                     jito_tips_pct: 0,
@@ -92,14 +86,12 @@ async fn test_withdraw_sol() {
                     _unused: Default::default(),
                 },
                 ProgramConfiguration::CommunityBurnRateParameters {
-                    limit: cbr_limit,
-                    dz_epochs_to_increasing: dz_epochs_to_increasing_cbr,
-                    dz_epochs_to_limit: dz_epochs_to_cbr_limit,
-                    initial_rate: Some(initial_cbr),
+                    limit: 500_000_000,
+                    dz_epochs_to_increasing: 10,
+                    dz_epochs_to_limit: 20,
+                    initial_rate: Some(100_000_000),
                 },
-                ProgramConfiguration::DistributeRewardsRelayLamports(
-                    distribute_rewards_relay_lamports,
-                ),
+                ProgramConfiguration::DistributeRewardsRelayLamports(10_000),
                 ProgramConfiguration::CalculationGracePeriodMinutes(1),
                 ProgramConfiguration::DistributionInitializationGracePeriodMinutes(1),
                 ProgramConfiguration::Sol2zSwapProgram(mock_swap_sol_2z::ID),
@@ -108,7 +100,7 @@ async fn test_withdraw_sol() {
         )
         .await
         .unwrap()
-        .initialize_distribution(&benevolent_dictator_signer)
+        .initialize_distribution(&admin_signer)
         .await
         .unwrap()
         .warp_timestamp_by(60)
@@ -116,14 +108,14 @@ async fn test_withdraw_sol() {
         .unwrap()
         .configure_distribution_debt(
             dz_epoch,
-            &benevolent_dictator_signer,
+            &admin_signer,
             total_solana_validators,
             total_solana_validator_debt,
             solana_validator_debt_merkle_root,
         )
         .await
         .unwrap()
-        .finalize_distribution_debt(dz_epoch, &benevolent_dictator_signer)
+        .finalize_distribution_debt(dz_epoch, &admin_signer)
         .await
         .unwrap()
         .initialize_solana_validator_deposit(&node_id)
@@ -139,7 +131,28 @@ async fn test_withdraw_sol() {
         .await
         .unwrap();
 
-    // Test inputs.
+    WithdrawSolSetup {
+        test_setup,
+        src_token_account_key,
+        transfer_authority_signer,
+        total_solana_validator_debt,
+    }
+}
+
+//
+// Withdraw SOL — happy path.
+//
+// This test uses the mock SOL/2Z Swap program.
+//
+
+#[tokio::test]
+async fn test_withdraw_sol() {
+    let WithdrawSolSetup {
+        mut test_setup,
+        src_token_account_key,
+        transfer_authority_signer,
+        total_solana_validator_debt,
+    } = setup_for_withdraw_sol().await;
 
     let amount_2z_in = 2_500 * u64::pow(10, 8); // 2,500 2Z.
     let amount_sol_out = 2 * u64::pow(10, 9); // 2 SOL.
@@ -151,7 +164,7 @@ async fn test_withdraw_sol() {
         .await
         .unwrap();
 
-    // Test.
+    // First swap.
 
     test_setup
         .mock_buy_sol(
@@ -164,7 +177,6 @@ async fn test_withdraw_sol() {
         .await
         .unwrap();
 
-    // Check the journal's balances.
     let (_, journal, _) = test_setup.fetch_journal().await;
     assert_eq!(
         journal.total_sol_balance,
@@ -192,6 +204,8 @@ async fn test_withdraw_sol() {
         .amount;
     assert_eq!(swap_destination_balance, amount_2z_in);
 
+    // Second swap.
+
     test_setup
         .mock_buy_sol(
             &src_token_account_key,
@@ -203,7 +217,6 @@ async fn test_withdraw_sol() {
         .await
         .unwrap();
 
-    // Check the journal's balances.
     let (_, journal, _) = test_setup.fetch_journal().await;
     assert_eq!(
         journal.total_sol_balance,

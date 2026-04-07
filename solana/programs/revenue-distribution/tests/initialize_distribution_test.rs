@@ -14,26 +14,34 @@ use solana_sdk::signature::{Keypair, Signer};
 use spl_associated_token_account_interface::address::get_associated_token_address;
 
 //
-// Initialize distribution.
+// Setup.
 //
 
-#[tokio::test]
-async fn test_initialize_distribution() {
+struct InitializeDistributionSetup {
+    test_setup: common::ProgramTestWithOwner,
+    debt_accountant_signer: Keypair,
+    calculation_grace_period_minutes: u16,
+    initialization_grace_period_minutes: u16,
+}
+
+/// Set up a configured program ready for distribution initialization.
+/// Uses specific CBR params (`dz_epochs_to_increasing = 1`) to test the
+/// community burn rate progression.
+async fn setup_for_initialize_distribution() -> InitializeDistributionSetup {
     let mut test_setup = common::start_test().await;
 
     let admin_signer = Keypair::new();
-
     let debt_accountant_signer = Keypair::new();
+
     let solana_validator_base_block_rewards_pct_fee = 0;
     let calculation_grace_period_minutes = 69;
     let initialization_grace_period_minutes = 420;
-
-    // Relay settings.
     let distribute_rewards_relay_lamports = 10_000;
 
-    // Community burn rate.
-    let initial_cbr = 100_000_000; // 10%.
-    let cbr_limit = 500_000_000; // 50%.
+    // Community burn rate — uses dz_epochs_to_increasing = 1
+    // to test rate progression across multiple distributions.
+    let initial_cbr = 100_000_000;
+    let cbr_limit = 500_000_000;
     let dz_epochs_to_increasing_cbr = 1;
     let dz_epochs_to_cbr_limit = 20;
 
@@ -78,7 +86,37 @@ async fn test_initialize_distribution() {
             ],
         )
         .await
-        .unwrap()
+        .unwrap();
+
+    InitializeDistributionSetup {
+        test_setup,
+        debt_accountant_signer,
+        calculation_grace_period_minutes,
+        initialization_grace_period_minutes,
+    }
+}
+
+//
+// Initialize distribution — happy path.
+//
+
+#[tokio::test]
+async fn test_initialize_distribution() {
+    let InitializeDistributionSetup {
+        mut test_setup,
+        debt_accountant_signer,
+        calculation_grace_period_minutes,
+        initialization_grace_period_minutes,
+    } = setup_for_initialize_distribution().await;
+
+    let solana_validator_base_block_rewards_pct_fee = 0;
+    let initial_cbr = 100_000_000;
+    let cbr_limit = 500_000_000;
+    let dz_epochs_to_increasing_cbr = 1;
+    let dz_epochs_to_cbr_limit = 20;
+    let distribute_rewards_relay_lamports = 10_000;
+
+    test_setup
         .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap();
@@ -129,7 +167,7 @@ async fn test_initialize_distribution() {
     expected_program_config.bump_seed = ProgramConfig::find_address().1;
     expected_program_config.reserve_2z_bump_seed =
         state::find_2z_token_pda_address(&program_config_key).1;
-    expected_program_config.admin_key = admin_signer.pubkey();
+    expected_program_config.admin_key = program_config.admin_key;
     expected_program_config.next_completed_dz_epoch = DoubleZeroEpoch::new(1);
     expected_program_config.debt_accountant_key = debt_accountant_signer.pubkey();
     expected_program_config.last_initialized_distribution_timestamp =
@@ -227,7 +265,7 @@ async fn test_initialize_distribution() {
     expected_program_config.bump_seed = ProgramConfig::find_address().1;
     expected_program_config.reserve_2z_bump_seed =
         state::find_2z_token_pda_address(&program_config_key).1;
-    expected_program_config.admin_key = admin_signer.pubkey();
+    expected_program_config.admin_key = program_config.admin_key;
     expected_program_config.next_completed_dz_epoch = DoubleZeroEpoch::new(2);
     expected_program_config.debt_accountant_key = debt_accountant_signer.pubkey();
     expected_program_config.last_initialized_distribution_timestamp =

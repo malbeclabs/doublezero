@@ -6,13 +6,13 @@ use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
         account::EnableSolanaValidatorDebtWriteOffAccounts, ProgramConfiguration,
-        ProgramFeatureConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
+        ProgramFeatureConfiguration, RevenueDistributionInstructionData,
     },
     state::{self, Distribution},
     types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
     ID,
 };
-use solana_program_test::tokio;
+use solana_program_test::{tokio, BanksClientError};
 use solana_sdk::{
     instruction::InstructionError,
     signature::{Keypair, Signer},
@@ -21,83 +21,43 @@ use solana_sdk::{
 use svm_hash::sha2::Hash;
 
 //
-// Enable Solana validator debt write off.
+// Setup.
 //
 
-#[tokio::test]
-async fn test_enable_solana_validator_debt_write_off() {
+struct EnableSolanaValidatorDebtWriteOffSetup {
+    test_setup: common::ProgramTestWithOwner,
+    admin_signer: Keypair,
+    debt_accountant_signer: Keypair,
+    dz_epoch: DoubleZeroEpoch,
+    activation_epoch: DoubleZeroEpoch,
+    total_solana_validators: u32,
+    total_solana_validator_debt: u64,
+    solana_validator_debt_merkle_root: Hash,
+}
+
+/// Set up a configured program with distribution debt configured on epoch 1,
+/// ready to test enabling debt write-off. The feature activation epoch is NOT
+/// yet configured — tests do that as needed.
+async fn setup_for_enable_solana_validator_debt_write_off() -> EnableSolanaValidatorDebtWriteOffSetup
+{
     let mut test_setup = common::start_test().await;
 
-    let admin_signer = Keypair::new();
-
-    let debt_accountant_signer = Keypair::new();
-    let rewards_accountant_signer = Keypair::new();
-    let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
-
-    // Community burn rate.
-    let initial_cbr = 100_000_000; // 10%.
-    let cbr_limit = 500_000_000; // 50%.
-    let dz_epochs_to_increasing_cbr = 10;
-    let dz_epochs_to_cbr_limit = 20;
-
-    // Relay settings.
-    let distribute_rewards_relay_lamports = 10_000;
-
-    // Distribution debt.
+    let configured = test_setup.setup_configured_program().await.unwrap();
 
     let dz_epoch = DoubleZeroEpoch::new(1);
     let activation_epoch = dz_epoch.saturating_add_duration(2);
-
     let total_solana_validators = 2;
     let total_solana_validator_debt = 100 * u64::pow(10, 9);
     let solana_validator_debt_merkle_root = Hash::new_unique();
 
     test_setup
-        .initialize_program()
-        .await
-        .unwrap()
-        .initialize_journal()
-        .await
-        .unwrap()
-        .set_admin(&admin_signer.pubkey())
-        .await
-        .unwrap()
-        .configure_program(
-            &admin_signer,
-            [
-                ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
-                ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
-                ProgramConfiguration::SolanaValidatorFeeParameters {
-                    base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
-                    priority_block_rewards_pct: 0,
-                    inflation_rewards_pct: 0,
-                    jito_tips_pct: 0,
-                    fixed_sol_amount: 0,
-                    _unused: Default::default(),
-                },
-                ProgramConfiguration::CommunityBurnRateParameters {
-                    limit: cbr_limit,
-                    dz_epochs_to_increasing: dz_epochs_to_increasing_cbr,
-                    dz_epochs_to_limit: dz_epochs_to_cbr_limit,
-                    initial_rate: Some(initial_cbr),
-                },
-                ProgramConfiguration::DistributeRewardsRelayLamports(
-                    distribute_rewards_relay_lamports,
-                ),
-                ProgramConfiguration::CalculationGracePeriodMinutes(1),
-                ProgramConfiguration::DistributionInitializationGracePeriodMinutes(1),
-                ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
-            ],
-        )
-        .await
-        .unwrap()
-        .initialize_distribution(&debt_accountant_signer)
+        .initialize_distribution(&configured.debt_accountant_signer)
         .await
         .unwrap()
         .warp_timestamp_by(60)
         .await
         .unwrap()
-        .initialize_distribution(&debt_accountant_signer)
+        .initialize_distribution(&configured.debt_accountant_signer)
         .await
         .unwrap()
         .warp_timestamp_by(60)
@@ -105,7 +65,7 @@ async fn test_enable_solana_validator_debt_write_off() {
         .unwrap()
         .configure_distribution_debt(
             dz_epoch,
-            &debt_accountant_signer,
+            &configured.debt_accountant_signer,
             total_solana_validators,
             total_solana_validator_debt,
             solana_validator_debt_merkle_root,
@@ -113,9 +73,42 @@ async fn test_enable_solana_validator_debt_write_off() {
         .await
         .unwrap();
 
+    EnableSolanaValidatorDebtWriteOffSetup {
+        test_setup,
+        admin_signer: configured.admin_signer,
+        debt_accountant_signer: configured.debt_accountant_signer,
+        dz_epoch,
+        activation_epoch,
+        total_solana_validators,
+        total_solana_validator_debt,
+        solana_validator_debt_merkle_root,
+    }
+}
+
+//
+// Enable Solana validator debt write off — happy path with sequential error checks.
+//
+
+#[tokio::test]
+async fn test_enable_solana_validator_debt_write_off() {
+    let EnableSolanaValidatorDebtWriteOffSetup {
+        mut test_setup,
+        admin_signer,
+        debt_accountant_signer,
+        dz_epoch,
+        activation_epoch,
+        total_solana_validators,
+        total_solana_validator_debt,
+        solana_validator_debt_merkle_root,
+    } = setup_for_enable_solana_validator_debt_write_off().await;
+
+    let initial_cbr = 100_000_000;
+    let solana_validator_base_block_rewards_pct_fee = 500;
+    let distribute_rewards_relay_lamports = 10_000;
+
     let payer_key = test_setup.payer_signer().pubkey();
 
-    let enable_solana_validator_debt_write_off_ix = try_build_instruction(
+    let enable_ix = try_build_instruction(
         &ID,
         EnableSolanaValidatorDebtWriteOffAccounts::new(dz_epoch, &payer_key),
         &RevenueDistributionInstructionData::EnableSolanaValidatorDebtWriteOff,
@@ -124,12 +117,9 @@ async fn test_enable_solana_validator_debt_write_off() {
 
     // Cannot enable write-offs before the feature is activated.
     let (tx_err, program_logs) = test_setup
-        .unwrap_simulation_error(
-            std::slice::from_ref(&enable_solana_validator_debt_write_off_ix),
-            &[],
-        )
-        .await;
-
+        .unwrap_simulation_error(std::slice::from_ref(&enable_ix), &[])
+        .await
+        .unwrap();
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -155,12 +145,9 @@ async fn test_enable_solana_validator_debt_write_off() {
     assert!(!program_config.is_debt_write_off_feature_activated());
 
     let (tx_err, program_logs) = test_setup
-        .unwrap_simulation_error(
-            std::slice::from_ref(&enable_solana_validator_debt_write_off_ix),
-            &[],
-        )
-        .await;
-
+        .unwrap_simulation_error(std::slice::from_ref(&enable_ix), &[])
+        .await
+        .unwrap();
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -183,8 +170,9 @@ async fn test_enable_solana_validator_debt_write_off() {
 
     // Cannot enable write offs before debt calculation is finalized.
     let (tx_err, program_logs) = test_setup
-        .unwrap_simulation_error(&[enable_solana_validator_debt_write_off_ix], &[])
-        .await;
+        .unwrap_simulation_error(std::slice::from_ref(&enable_ix), &[])
+        .await
+        .unwrap();
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -242,16 +230,9 @@ async fn test_enable_solana_validator_debt_write_off() {
     );
 
     // Cannot enable write offs again.
-    let enable_solana_validator_debt_write_off_ix = try_build_instruction(
-        &ID,
-        EnableSolanaValidatorDebtWriteOffAccounts::new(dz_epoch, &payer_key),
-        &RevenueDistributionInstructionData::EnableSolanaValidatorDebtWriteOff,
-    )
-    .unwrap();
-
-    let (tx_err, program_logs) = test_setup
-        .unwrap_simulation_error(&[enable_solana_validator_debt_write_off_ix], &[])
-        .await;
+    let (tx_err, program_logs) = simulate_program_revert(&mut test_setup, dz_epoch)
+        .await
+        .unwrap();
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -260,4 +241,24 @@ async fn test_enable_solana_validator_debt_write_off() {
         program_logs.get(3).unwrap(),
         "Program log: Solana validator debt write off is already enabled"
     );
+}
+
+//
+// Helpers.
+//
+
+async fn simulate_program_revert(
+    test_setup: &mut common::ProgramTestWithOwner,
+    dz_epoch: DoubleZeroEpoch,
+) -> Result<(TransactionError, Vec<String>), BanksClientError> {
+    let payer_key = test_setup.payer_signer().pubkey();
+
+    let enable_ix = try_build_instruction(
+        &ID,
+        EnableSolanaValidatorDebtWriteOffAccounts::new(dz_epoch, &payer_key),
+        &RevenueDistributionInstructionData::EnableSolanaValidatorDebtWriteOff,
+    )
+    .unwrap();
+
+    test_setup.unwrap_simulation_error(&[enable_ix], &[]).await
 }

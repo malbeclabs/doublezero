@@ -13,16 +13,20 @@ use solana_pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signer};
 
 //
-// Configure contributor rewards.
+// Setup.
 //
 
-#[tokio::test]
-async fn test_initialize_contributor_rewards() {
+struct ConfigureContributorRewardsSetup {
+    test_setup: common::ProgramTestWithOwner,
+    rewards_manager_signer: Keypair,
+    service_key: Pubkey,
+}
+
+async fn setup_for_configure_contributor_rewards() -> ConfigureContributorRewardsSetup {
     let mut test_setup = common::start_test().await;
 
     let admin_signer = Keypair::new();
     let contributor_manager_signer = Keypair::new();
-
     let rewards_manager_signer = Keypair::new();
     let service_key = Pubkey::new_unique();
 
@@ -56,7 +60,24 @@ async fn test_initialize_contributor_rewards() {
         .await
         .unwrap();
 
-    // Test inputs.
+    ConfigureContributorRewardsSetup {
+        test_setup,
+        rewards_manager_signer,
+        service_key,
+    }
+}
+
+//
+// Configure contributor rewards — happy path.
+//
+
+#[tokio::test]
+async fn test_initialize_contributor_rewards() {
+    let ConfigureContributorRewardsSetup {
+        mut test_setup,
+        rewards_manager_signer,
+        service_key,
+    } = setup_for_configure_contributor_rewards().await;
 
     let recipients = [
         (Pubkey::new_unique(), 1_000),

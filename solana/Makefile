@@ -52,6 +52,10 @@ test-sbf: build-sbf-mock
 	cargo test-sbf --features $(CARGO_FEATURES) --manifest-path $(PASSPORT_PATH)
 	cargo test-sbf --features $(CARGO_FEATURES) --manifest-path $(REVENUE_DISTRIBUTION_PATH)
 
+.PHONY: test-sbf-debug
+test-sbf-debug:
+	DEBUG=1 $(MAKE) test-sbf
+
 .PHONY: test-lib
 test-lib:
 	cargo test --lib --features development,offchain

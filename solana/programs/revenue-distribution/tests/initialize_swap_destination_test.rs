@@ -11,17 +11,31 @@ use solana_program_test::tokio;
 use spl_token_interface::state::{Account as TokenAccount, AccountState as SplTokenAccountState};
 
 //
-// Initialize swap destination.
+// Setup.
+//
+
+struct InitializeSwapDestinationSetup {
+    test_setup: common::ProgramTestWithOwner,
+}
+
+async fn setup_for_initialize_swap_destination() -> InitializeSwapDestinationSetup {
+    let mut test_setup = common::start_test().await;
+
+    test_setup.initialize_program().await.unwrap();
+
+    InitializeSwapDestinationSetup { test_setup }
+}
+
+//
+// Initialize swap destination — happy path.
 //
 
 #[tokio::test]
 async fn test_initialize_swap_destination() {
-    let mut test_setup = common::start_test().await;
+    let InitializeSwapDestinationSetup { mut test_setup } =
+        setup_for_initialize_swap_destination().await;
 
     test_setup
-        .initialize_program()
-        .await
-        .unwrap()
         .initialize_swap_destination(&DOUBLEZERO_MINT_KEY)
         .await
         .unwrap();

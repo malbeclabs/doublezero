@@ -6,13 +6,13 @@ use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
         account::WriteOffSolanaValidatorDebtAccounts, ProgramConfiguration,
-        ProgramFeatureConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
+        ProgramFeatureConfiguration, RevenueDistributionInstructionData,
     },
     state::{self, Distribution, SolanaValidatorDeposit},
     types::{BurnRate, DoubleZeroEpoch, SolanaValidatorDebt, ValidatorFee},
     ID,
 };
-use solana_program_test::tokio;
+use solana_program_test::{tokio, BanksClientError};
 use solana_pubkey::Pubkey;
 use solana_sdk::{
     instruction::InstructionError,
@@ -22,32 +22,34 @@ use solana_sdk::{
 use svm_hash::merkle::{merkle_root_from_indexed_pod_leaves, MerkleProof};
 
 //
-// Write off Solana validator debt.
+// Setup.
 //
 
-#[tokio::test]
-async fn test_write_off_solana_validator_debt() {
+struct WriteOffSolanaValidatorDebtSetup {
+    test_setup: common::ProgramTestWithOwner,
+    debt_accountant_signer: Keypair,
+    dz_epoch: DoubleZeroEpoch,
+    next_dz_epoch: DoubleZeroEpoch,
+    debt_data: Vec<SolanaValidatorDebt>,
+    total_solana_validators: u32,
+    total_solana_validator_debt: u64,
+    solana_validator_debt_merkle_root: svm_hash::sha2::Hash,
+}
+
+/// Set up a configured program with:
+/// - Three distributions (epoch 0, 1, 2) — debt configured on epochs 1 and 2
+/// - Write-off feature activated and enabled on epoch 1
+/// - Validator deposit accounts initialized (but no debt paid yet)
+///
+/// Stops BEFORE any debt payment or write-off so the test can exercise
+/// the full write-off lifecycle with sequential error checks.
+async fn setup_for_write_off_solana_validator_debt() -> WriteOffSolanaValidatorDebtSetup {
     let mut test_setup = common::start_test().await;
 
-    let admin_signer = Keypair::new();
-
-    let debt_accountant_signer = Keypair::new();
-    let rewards_accountant_signer = Keypair::new();
-    let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
-
-    // Community burn rate.
-    let initial_cbr = 100_000_000; // 10%.
-    let cbr_limit = 500_000_000; // 50%.
-    let dz_epochs_to_increasing_cbr = 10;
-    let dz_epochs_to_cbr_limit = 20;
-
-    // Relay settings.
-    let distribute_rewards_relay_lamports = 10_000;
+    let configured = test_setup.setup_configured_program().await.unwrap();
 
     let dz_epoch = DoubleZeroEpoch::new(1);
     let next_dz_epoch = dz_epoch.saturating_add_duration(1);
-
-    // Distribution debt accounting.
 
     let debt_data = (0..16)
         .map(|i| SolanaValidatorDebt {
@@ -62,6 +64,97 @@ async fn test_write_off_solana_validator_debt() {
         merkle_root_from_indexed_pod_leaves(&debt_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
             .unwrap();
 
+    test_setup
+        .configure_program(
+            &configured.admin_signer,
+            [ProgramConfiguration::FeatureActivation {
+                feature: ProgramFeatureConfiguration::SolanaValidatorDebtWriteOff,
+                activation_epoch: DoubleZeroEpoch::new(1),
+            }],
+        )
+        .await
+        .unwrap()
+        // Distribution 0.
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
+        // Distribution 1 (dz_epoch).
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
+        // Distribution 2 (next_dz_epoch).
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
+        .configure_distribution_debt(
+            dz_epoch,
+            &configured.debt_accountant_signer,
+            total_solana_validators,
+            total_solana_validator_debt,
+            solana_validator_debt_merkle_root,
+        )
+        .await
+        .unwrap()
+        .configure_distribution_debt(
+            next_dz_epoch,
+            &configured.debt_accountant_signer,
+            total_solana_validators,
+            total_solana_validator_debt,
+            solana_validator_debt_merkle_root,
+        )
+        .await
+        .unwrap();
+
+    // Initialize all validator deposit accounts.
+    for debt in debt_data.iter() {
+        test_setup
+            .initialize_solana_validator_deposit(&debt.node_id)
+            .await
+            .unwrap();
+    }
+
+    WriteOffSolanaValidatorDebtSetup {
+        test_setup,
+        debt_accountant_signer: configured.debt_accountant_signer,
+        dz_epoch,
+        next_dz_epoch,
+        debt_data,
+        total_solana_validators,
+        total_solana_validator_debt,
+        solana_validator_debt_merkle_root,
+    }
+}
+
+//
+// Write off Solana validator debt — happy path with sequential error checks.
+//
+
+#[tokio::test]
+async fn test_write_off_solana_validator_debt() {
+    let WriteOffSolanaValidatorDebtSetup {
+        mut test_setup,
+        debt_accountant_signer,
+        dz_epoch,
+        next_dz_epoch,
+        debt_data,
+        total_solana_validators,
+        total_solana_validator_debt,
+        solana_validator_debt_merkle_root,
+    } = setup_for_write_off_solana_validator_debt().await;
+
+    let initial_cbr = 100_000_000;
+    let solana_validator_base_block_rewards_pct_fee = 500;
+    let distribute_rewards_relay_lamports = 10_000;
+
     let split_write_off_index = 8;
     let debt_write_off_first = debt_data
         .iter()
@@ -74,95 +167,7 @@ async fn test_write_off_solana_validator_debt() {
         .map(|debt| debt.amount)
         .sum::<u64>();
 
-    test_setup
-        .initialize_program()
-        .await
-        .unwrap()
-        .initialize_journal()
-        .await
-        .unwrap()
-        .set_admin(&admin_signer.pubkey())
-        .await
-        .unwrap()
-        .configure_program(
-            &admin_signer,
-            [
-                ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
-                ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
-                ProgramConfiguration::SolanaValidatorFeeParameters {
-                    base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
-                    priority_block_rewards_pct: 0,
-                    inflation_rewards_pct: 0,
-                    jito_tips_pct: 0,
-                    fixed_sol_amount: 0,
-                    _unused: Default::default(),
-                },
-                ProgramConfiguration::CommunityBurnRateParameters {
-                    limit: cbr_limit,
-                    dz_epochs_to_increasing: dz_epochs_to_increasing_cbr,
-                    dz_epochs_to_limit: dz_epochs_to_cbr_limit,
-                    initial_rate: Some(initial_cbr),
-                },
-                ProgramConfiguration::DistributeRewardsRelayLamports(
-                    distribute_rewards_relay_lamports,
-                ),
-                ProgramConfiguration::CalculationGracePeriodMinutes(1),
-                ProgramConfiguration::DistributionInitializationGracePeriodMinutes(1),
-                ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
-                ProgramConfiguration::FeatureActivation {
-                    feature: ProgramFeatureConfiguration::SolanaValidatorDebtWriteOff,
-                    activation_epoch: DoubleZeroEpoch::new(1),
-                },
-            ],
-        )
-        .await
-        .unwrap()
-        .initialize_distribution(&debt_accountant_signer)
-        .await
-        .unwrap()
-        .warp_timestamp_by(60)
-        .await
-        .unwrap()
-        .initialize_distribution(&debt_accountant_signer)
-        .await
-        .unwrap()
-        .warp_timestamp_by(60)
-        .await
-        .unwrap()
-        .initialize_distribution(&debt_accountant_signer)
-        .await
-        .unwrap()
-        .warp_timestamp_by(60)
-        .await
-        .unwrap()
-        .configure_distribution_debt(
-            dz_epoch,
-            &debt_accountant_signer,
-            total_solana_validators,
-            total_solana_validator_debt,
-            solana_validator_debt_merkle_root,
-        )
-        .await
-        .unwrap()
-        .configure_distribution_debt(
-            next_dz_epoch,
-            &debt_accountant_signer,
-            total_solana_validators,
-            total_solana_validator_debt,
-            solana_validator_debt_merkle_root,
-        )
-        .await
-        .unwrap();
-
-    // Initialize Solana validator deposit accounts.
-    for debt in debt_data.iter() {
-        test_setup
-            .initialize_solana_validator_deposit(&debt.node_id)
-            .await
-            .unwrap();
-    }
-
-    // Pay debt for one validator.
+    // Pick an arbitrary validator to test error scenarios.
     let arbitrary_bad_debt_index = 2;
     let arbitrary_bad_debt = debt_data[arbitrary_bad_debt_index];
     let proof = MerkleProof::from_indexed_pod_leaves(
@@ -172,28 +177,17 @@ async fn test_write_off_solana_validator_debt() {
     )
     .unwrap();
 
-    // Cannot write off debt for distribution without enabling write off.
-    let write_off_solana_validator_debt_ix = try_build_instruction(
-        &ID,
-        WriteOffSolanaValidatorDebtAccounts::new(
-            &debt_accountant_signer.pubkey(),
-            dz_epoch,
-            &arbitrary_bad_debt.node_id,
-            next_dz_epoch,
-        ),
-        &RevenueDistributionInstructionData::WriteOffSolanaValidatorDebt {
-            amount: arbitrary_bad_debt.amount,
-            proof: proof.clone(),
-        },
+    // Cannot write off debt before enabling write-off.
+    let (tx_err, program_logs) = simulate_write_off_revert(
+        &mut test_setup,
+        &debt_accountant_signer,
+        dz_epoch,
+        &arbitrary_bad_debt,
+        next_dz_epoch,
+        proof.clone(),
     )
+    .await
     .unwrap();
-
-    let (tx_err, program_logs) = test_setup
-        .unwrap_simulation_error(
-            std::slice::from_ref(&write_off_solana_validator_debt_ix),
-            &[&debt_accountant_signer],
-        )
-        .await;
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -212,12 +206,16 @@ async fn test_write_off_solana_validator_debt() {
         .unwrap();
 
     // Cannot write off debt for distribution with unfinalized debt.
-    let (tx_err, program_logs) = test_setup
-        .unwrap_simulation_error(
-            &[write_off_solana_validator_debt_ix],
-            &[&debt_accountant_signer],
-        )
-        .await;
+    let (tx_err, program_logs) = simulate_write_off_revert(
+        &mut test_setup,
+        &debt_accountant_signer,
+        dz_epoch,
+        &arbitrary_bad_debt,
+        next_dz_epoch,
+        proof.clone(),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -236,29 +234,17 @@ async fn test_write_off_solana_validator_debt() {
         .await
         .unwrap();
 
-    // Cannot write off debt using an epoch that is not at least the current
-    // epoch we intend to write off debt for.
-    let write_off_solana_validator_debt_ix = try_build_instruction(
-        &ID,
-        WriteOffSolanaValidatorDebtAccounts::new(
-            &debt_accountant_signer.pubkey(),
-            dz_epoch,
-            &arbitrary_bad_debt.node_id,
-            DoubleZeroEpoch::new(0),
-        ),
-        &RevenueDistributionInstructionData::WriteOffSolanaValidatorDebt {
-            amount: arbitrary_bad_debt.amount,
-            proof: proof.clone(),
-        },
+    // Cannot write off debt using an epoch that is below the current epoch.
+    let (tx_err, program_logs) = simulate_write_off_revert(
+        &mut test_setup,
+        &debt_accountant_signer,
+        dz_epoch,
+        &arbitrary_bad_debt,
+        DoubleZeroEpoch::new(0),
+        proof.clone(),
     )
+    .await
     .unwrap();
-
-    let (tx_err, program_logs) = test_setup
-        .unwrap_simulation_error(
-            &[write_off_solana_validator_debt_ix],
-            &[&debt_accountant_signer],
-        )
-        .await;
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -268,10 +254,10 @@ async fn test_write_off_solana_validator_debt() {
         "Program log: Write-off distribution's epoch must be at least the epoch of the current distribution"
     );
 
-    // Pay debt for one validator.
+    // Pay debt for one upstanding citizen.
     let upstanding_citizen_index = 3;
     let paid_debt = debt_data[upstanding_citizen_index];
-    let proof = MerkleProof::from_indexed_pod_leaves(
+    let paid_proof = MerkleProof::from_indexed_pod_leaves(
         &debt_data,
         upstanding_citizen_index.try_into().unwrap(),
         Some(SolanaValidatorDebt::LEAF_PREFIX),
@@ -286,29 +272,17 @@ async fn test_write_off_solana_validator_debt() {
         .await
         .unwrap();
 
-    // Cannot write off debt for a deposit account that has enough lamports to
-    // cover debt.
-    let write_off_solana_validator_debt_ix = try_build_instruction(
-        &ID,
-        WriteOffSolanaValidatorDebtAccounts::new(
-            &debt_accountant_signer.pubkey(),
-            dz_epoch,
-            &paid_debt.node_id,
-            dz_epoch,
-        ),
-        &RevenueDistributionInstructionData::WriteOffSolanaValidatorDebt {
-            amount: paid_debt.amount,
-            proof: proof.clone(),
-        },
+    // Cannot write off debt for a deposit that has enough lamports.
+    let (tx_err, program_logs) = simulate_write_off_revert(
+        &mut test_setup,
+        &debt_accountant_signer,
+        dz_epoch,
+        &paid_debt,
+        dz_epoch,
+        paid_proof.clone(),
     )
+    .await
     .unwrap();
-
-    let (tx_err, program_logs) = test_setup
-        .unwrap_simulation_error(
-            &[write_off_solana_validator_debt_ix],
-            &[&debt_accountant_signer],
-        )
-        .await;
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -319,11 +293,11 @@ async fn test_write_off_solana_validator_debt() {
     );
 
     test_setup
-        .pay_solana_validator_debt(dz_epoch, &paid_debt, proof)
+        .pay_solana_validator_debt(dz_epoch, &paid_debt, paid_proof)
         .await
         .unwrap();
 
-    // Write off some debt at epoch 1.
+    // Write off some debt at epoch 1 (validators 8..16).
     for (i, debt) in debt_data.iter().enumerate().skip(split_write_off_index) {
         assert_ne!(i, arbitrary_bad_debt_index);
         assert_ne!(i, upstanding_citizen_index);
@@ -347,7 +321,7 @@ async fn test_write_off_solana_validator_debt() {
             .unwrap();
     }
 
-    // Write off debt for the rest at epoch 2.
+    // Write off remaining debt at epoch 2 (validators 0..8 except paid).
     for (i, debt) in debt_data.iter().enumerate().take(split_write_off_index) {
         if i == upstanding_citizen_index {
             continue;
@@ -372,6 +346,7 @@ async fn test_write_off_solana_validator_debt() {
             .unwrap();
     }
 
+    // Verify dz_epoch distribution state.
     let (distribution_key, distribution, remaining_distribution_data, _, _) =
         test_setup.fetch_distribution(dz_epoch).await;
 
@@ -417,6 +392,7 @@ async fn test_write_off_solana_validator_debt() {
         [distribution.processed_solana_validator_debt_write_off_bitmap_range()];
     assert_eq!(write_off_bitmap, [0b11110111, 0b11111111]);
 
+    // Verify next_dz_epoch distribution state.
     let (distribution_key, distribution, remaining_distribution_data, _, _) =
         test_setup.fetch_distribution(next_dz_epoch).await;
 
@@ -453,7 +429,7 @@ async fn test_write_off_solana_validator_debt() {
     let (_, journal, _) = test_setup.fetch_journal().await;
     assert_eq!(journal.total_sol_balance, paid_debt.amount);
 
-    // Solana validator deposit accounts should have written off debt updated.
+    // Verify deposit accounts have written off debt updated.
     for (i, debt) in debt_data.iter().enumerate() {
         let (_, solana_validator_deposit) = test_setup
             .fetch_solana_validator_deposit(&debt.node_id)
@@ -466,12 +442,7 @@ async fn test_write_off_solana_validator_debt() {
         }
     }
 
-    // Cannot write off debt again. This includes attempting to write off debt
-    // for the upstanding citizen who paid.
-    //
-    // NOTE: This test also demonstrates that even though the debt was written
-    // off at epoch 1, it cannot be written off using another epoch's
-    // distribution, too.
+    // Cannot write off debt again for any validator (including the paid one).
     for (i, debt) in debt_data.iter().enumerate() {
         let leaf_index = u32::try_from(i).unwrap();
 
@@ -482,32 +453,21 @@ async fn test_write_off_solana_validator_debt() {
         )
         .unwrap();
 
-        let write_off_solana_validator_debt_ix = try_build_instruction(
-            &ID,
-            WriteOffSolanaValidatorDebtAccounts::new(
-                &debt_accountant_signer.pubkey(),
-                dz_epoch,
-                &debt.node_id,
-                next_dz_epoch,
-            ),
-            &RevenueDistributionInstructionData::WriteOffSolanaValidatorDebt {
-                amount: debt.amount,
-                proof,
-            },
+        let (tx_err, program_logs) = simulate_write_off_revert(
+            &mut test_setup,
+            &debt_accountant_signer,
+            dz_epoch,
+            debt,
+            next_dz_epoch,
+            proof,
         )
+        .await
         .unwrap();
 
-        let (tx_err, program_logs) = test_setup
-            .unwrap_simulation_error(
-                &[write_off_solana_validator_debt_ix],
-                &[&debt_accountant_signer],
-            )
-            .await;
         assert_eq!(
             tx_err,
             TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
         );
-
         assert_eq!(
             program_logs.get(4).unwrap(),
             &format!("Program log: Merkle leaf index {leaf_index} has already been processed")
@@ -528,4 +488,36 @@ async fn test_write_off_solana_validator_debt() {
             )
         }
     }
+}
+
+//
+// Helpers.
+//
+
+async fn simulate_write_off_revert(
+    test_setup: &mut common::ProgramTestWithOwner,
+    debt_accountant_signer: &Keypair,
+    dz_epoch: DoubleZeroEpoch,
+    debt: &SolanaValidatorDebt,
+    write_off_dz_epoch: DoubleZeroEpoch,
+    proof: MerkleProof,
+) -> Result<(TransactionError, Vec<String>), BanksClientError> {
+    let write_off_ix = try_build_instruction(
+        &ID,
+        WriteOffSolanaValidatorDebtAccounts::new(
+            &debt_accountant_signer.pubkey(),
+            dz_epoch,
+            &debt.node_id,
+            write_off_dz_epoch,
+        ),
+        &RevenueDistributionInstructionData::WriteOffSolanaValidatorDebt {
+            amount: debt.amount,
+            proof,
+        },
+    )
+    .unwrap();
+
+    test_setup
+        .unwrap_simulation_error(&[write_off_ix], &[debt_accountant_signer])
+        .await
 }

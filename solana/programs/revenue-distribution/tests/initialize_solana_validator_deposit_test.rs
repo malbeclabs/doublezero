@@ -7,12 +7,26 @@ use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
 
 //
-// Initialize Solana validator deposit.
+// Setup.
+//
+
+struct InitializeSolanaValidatorDepositSetup {
+    test_setup: common::ProgramTestWithOwner,
+}
+
+async fn setup_for_initialize_solana_validator_deposit() -> InitializeSolanaValidatorDepositSetup {
+    let test_setup = common::start_test().await;
+    InitializeSolanaValidatorDepositSetup { test_setup }
+}
+
+//
+// Initialize Solana validator deposit — happy path.
 //
 
 #[tokio::test]
 async fn test_initialize_solana_validator_deposit() {
-    let mut test_setup = common::start_test().await;
+    let InitializeSolanaValidatorDepositSetup { mut test_setup } =
+        setup_for_initialize_solana_validator_deposit().await;
 
     let node_id = Pubkey::new_unique();
 

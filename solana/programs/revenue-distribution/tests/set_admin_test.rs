@@ -6,21 +6,33 @@ use doublezero_revenue_distribution::state::{self, ProgramConfig};
 use solana_program_test::tokio;
 use solana_sdk::{signature::Keypair, signer::Signer};
 
-#[tokio::test]
-async fn test_set_admin() {
+//
+// Setup.
+//
+
+struct SetAdminSetup {
+    test_setup: common::ProgramTestWithOwner,
+}
+
+async fn setup_for_set_admin() -> SetAdminSetup {
     let mut test_setup = common::start_test().await;
 
-    // Test input.
+    test_setup.initialize_program().await.unwrap();
+
+    SetAdminSetup { test_setup }
+}
+
+//
+// Set admin — happy path.
+//
+
+#[tokio::test]
+async fn test_set_admin() {
+    let SetAdminSetup { mut test_setup } = setup_for_set_admin().await;
 
     let admin_signer = Keypair::new();
 
-    test_setup
-        .initialize_program()
-        .await
-        .unwrap()
-        .set_admin(&admin_signer.pubkey())
-        .await
-        .unwrap();
+    test_setup.set_admin(&admin_signer.pubkey()).await.unwrap();
 
     let (program_config_key, program_config, _) = test_setup.fetch_program_config().await;
 

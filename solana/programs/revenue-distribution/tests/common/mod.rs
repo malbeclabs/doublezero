@@ -1,5 +1,24 @@
 #![allow(dead_code)]
 
+#[ctor::ctor]
+fn init_logger() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let mut builder = env_logger::builder();
+
+        // If DEBUG is set, show the Solana program logs.
+        if std::env::var_os("DEBUG").is_some() {
+            builder.filter_level(log::LevelFilter::Error);
+            builder.filter(
+                Some("solana_runtime::message_processor::stable_log"),
+                log::LevelFilter::Debug,
+            );
+        }
+
+        let _ = builder.try_init();
+    });
+}
+
 use doublezero_program_tools::{
     instruction::try_build_instruction, zero_copy::checked_from_bytes_with_discriminator,
 };
@@ -19,7 +38,7 @@ use doublezero_revenue_distribution::{
             WriteOffSolanaValidatorDebtAccounts,
         },
         ContributorRewardsConfiguration, DistributionMerkleRootKind, ProgramConfiguration,
-        RevenueDistributionInstructionData,
+        ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{
         self, ContributorRewards, Distribution, Journal, ProgramConfig, SolanaValidatorDeposit,
@@ -195,12 +214,65 @@ pub fn generate_token_accounts_for_test(mint_key: &Pubkey, owners: &[Pubkey]) ->
         .collect()
 }
 
+pub struct ConfiguredProgramState {
+    pub admin_signer: Keypair,
+    pub debt_accountant_signer: Keypair,
+    pub rewards_accountant_signer: Keypair,
+}
+
 pub struct IndexedProgramLog<'a> {
     pub index: usize,
     pub message: &'a str,
 }
 
 impl ProgramTestWithOwner {
+    pub async fn setup_configured_program(
+        &mut self,
+    ) -> Result<ConfiguredProgramState, BanksClientError> {
+        let admin_signer = Keypair::new();
+        let debt_accountant_signer = Keypair::new();
+        let rewards_accountant_signer = Keypair::new();
+
+        self.initialize_program()
+            .await?
+            .initialize_journal()
+            .await?
+            .set_admin(&admin_signer.pubkey())
+            .await?
+            .configure_program(
+                &admin_signer,
+                [
+                    ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
+                    ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
+                    ProgramConfiguration::SolanaValidatorFeeParameters {
+                        base_block_rewards_pct: 500,
+                        priority_block_rewards_pct: 0,
+                        inflation_rewards_pct: 0,
+                        jito_tips_pct: 0,
+                        fixed_sol_amount: 0,
+                        _unused: Default::default(),
+                    },
+                    ProgramConfiguration::CommunityBurnRateParameters {
+                        limit: 500_000_000,
+                        dz_epochs_to_increasing: 10,
+                        dz_epochs_to_limit: 20,
+                        initial_rate: Some(100_000_000),
+                    },
+                    ProgramConfiguration::DistributeRewardsRelayLamports(10_000),
+                    ProgramConfiguration::CalculationGracePeriodMinutes(1),
+                    ProgramConfiguration::DistributionInitializationGracePeriodMinutes(1),
+                    ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
+                ],
+            )
+            .await?;
+
+        Ok(ConfiguredProgramState {
+            admin_signer,
+            debt_accountant_signer,
+            rewards_accountant_signer,
+        })
+    }
+
     pub fn payer_signer(&self) -> &Keypair {
         &self.context.payer
     }
@@ -228,13 +300,12 @@ impl ProgramTestWithOwner {
             .map_err(Into::into)
     }
 
-    // TODO: Is there a better way to do this?
     pub async fn unwrap_simulation_error(
         &mut self,
         instructions: &[Instruction],
         signers: &[&Keypair],
-    ) -> (TransactionError, Vec<String>) {
-        let recent_blockhash = self.get_latest_blockhash().await.unwrap();
+    ) -> Result<(TransactionError, Vec<String>), BanksClientError> {
+        let recent_blockhash = self.get_latest_blockhash().await?;
 
         let payer_signer = &self.context.payer;
 
@@ -247,14 +318,18 @@ impl ProgramTestWithOwner {
             .context
             .banks_client
             .simulate_transaction(transaction)
-            .await
-            .unwrap();
+            .await?;
 
-        let tx_err = simulated_tx.result.unwrap().unwrap_err();
+        let tx_err = simulated_tx
+            .result
+            .ok_or(BanksClientError::ClientError(
+                "simulation returned no result",
+            ))?
+            .unwrap_err();
 
         self.context.last_blockhash = recent_blockhash;
 
-        (tx_err, simulated_tx.simulation_details.unwrap().logs)
+        Ok((tx_err, simulated_tx.simulation_details.unwrap().logs))
     }
 
     pub async fn transfer_lamports(

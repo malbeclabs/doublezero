@@ -12,7 +12,7 @@ use doublezero_revenue_distribution::{
     types::{BurnRate, DoubleZeroEpoch, SolanaValidatorDebt, ValidatorFee},
     ID,
 };
-use solana_program_test::tokio;
+use solana_program_test::{tokio, BanksClientError};
 use solana_pubkey::Pubkey;
 use solana_sdk::{
     instruction::InstructionError,
@@ -22,27 +22,24 @@ use solana_sdk::{
 use svm_hash::{merkle::merkle_root_from_indexed_pod_leaves, sha2::Hash};
 
 //
-// Configure distribution debt.
+// Setup.
 //
 
-#[tokio::test]
-async fn test_configure_distribution_debt() {
+struct ConfigureDistributionDebtSetup {
+    test_setup: common::ProgramTestWithOwner,
+    admin_signer: Keypair,
+    debt_accountant_signer: Keypair,
+}
+
+/// Set up a configured program with two distributions (epoch 0 and 1),
+/// but WITHOUT validator fee parameters set. This allows testing the
+/// zero-fee rejection path.
+async fn setup_for_configure_distribution_debt() -> ConfigureDistributionDebtSetup {
     let mut test_setup = common::start_test().await;
 
     let admin_signer = Keypair::new();
-
     let debt_accountant_signer = Keypair::new();
     let rewards_accountant_signer = Keypair::new();
-    let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
-
-    // Community burn rate.
-    let initial_cbr = 100_000_000; // 10%.
-    let cbr_limit = 500_000_000; // 50%.
-    let dz_epochs_to_increasing_cbr = 10;
-    let dz_epochs_to_cbr_limit = 20;
-
-    // Relay settings.
-    let distribute_rewards_relay_lamports = 10_000;
 
     let calculation_grace_period_minutes = 60;
     let initialization_grace_period_minutes = 1;
@@ -63,14 +60,12 @@ async fn test_configure_distribution_debt() {
                 ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
                 ProgramConfiguration::CommunityBurnRateParameters {
-                    limit: cbr_limit,
-                    dz_epochs_to_increasing: dz_epochs_to_increasing_cbr,
-                    dz_epochs_to_limit: dz_epochs_to_cbr_limit,
-                    initial_rate: Some(initial_cbr),
+                    limit: 500_000_000,
+                    dz_epochs_to_increasing: 10,
+                    dz_epochs_to_limit: 20,
+                    initial_rate: Some(100_000_000),
                 },
-                ProgramConfiguration::DistributeRewardsRelayLamports(
-                    distribute_rewards_relay_lamports,
-                ),
+                ProgramConfiguration::DistributeRewardsRelayLamports(10_000),
                 ProgramConfiguration::CalculationGracePeriodMinutes(
                     calculation_grace_period_minutes,
                 ),
@@ -95,28 +90,38 @@ async fn test_configure_distribution_debt() {
         .await
         .unwrap();
 
-    // Test inputs.
+    ConfigureDistributionDebtSetup {
+        test_setup,
+        admin_signer,
+        debt_accountant_signer,
+    }
+}
+
+//
+// Configure distribution debt — cannot configure with zero fees.
+//
+
+#[tokio::test]
+async fn test_cannot_configure_distribution_debt_with_zero_fees() {
+    let ConfigureDistributionDebtSetup {
+        mut test_setup,
+        debt_accountant_signer,
+        ..
+    } = setup_for_configure_distribution_debt().await;
 
     let dz_epoch = DoubleZeroEpoch::new(1);
 
-    // Cannot configure distribution debt with zero fees.
-    let configure_distribution_debt_ix = try_build_instruction(
-        &ID,
-        ConfigureDistributionDebtAccounts::new(&debt_accountant_signer.pubkey(), dz_epoch),
-        &RevenueDistributionInstructionData::ConfigureDistributionDebt {
-            total_validators: 3,
-            total_debt: 69,
-            merkle_root: Hash::new_unique(),
-        },
+    let (tx_err, program_logs) = simulate_program_revert(
+        &mut test_setup,
+        &debt_accountant_signer,
+        dz_epoch,
+        3,
+        69,
+        Hash::new_unique(),
     )
+    .await
     .unwrap();
 
-    let (tx_err, program_logs) = test_setup
-        .unwrap_simulation_error(
-            &[configure_distribution_debt_ix],
-            &[&debt_accountant_signer],
-        )
-        .await;
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -125,7 +130,21 @@ async fn test_configure_distribution_debt() {
         program_logs.get(3).unwrap(),
         "Program log: Configuring distribution debt disallowed"
     );
+}
 
+//
+// Configure distribution debt — happy path.
+//
+
+#[tokio::test]
+async fn test_configure_distribution_debt() {
+    let ConfigureDistributionDebtSetup {
+        mut test_setup,
+        admin_signer,
+        debt_accountant_signer,
+    } = setup_for_configure_distribution_debt().await;
+
+    let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
     let dz_epoch = DoubleZeroEpoch::new(2);
 
     test_setup
@@ -145,7 +164,7 @@ async fn test_configure_distribution_debt() {
         .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .warp_timestamp_by(u32::from(calculation_grace_period_minutes) * 60)
+        .warp_timestamp_by(60 * 60)
         .await
         .unwrap();
 
@@ -184,6 +203,9 @@ async fn test_configure_distribution_debt() {
 
     let (distribution_key, distribution, _, _, _) = test_setup.fetch_distribution(dz_epoch).await;
 
+    let initial_cbr = 100_000_000;
+    let distribute_rewards_relay_lamports = 10_000;
+
     let mut expected_distribution = Distribution::default();
     expected_distribution.bump_seed = Distribution::find_address(dz_epoch).1;
     expected_distribution.token_2z_pda_bump_seed =
@@ -201,4 +223,32 @@ async fn test_configure_distribution_debt() {
     expected_distribution.calculation_allowed_timestamp =
         test_setup.get_clock().await.unix_timestamp as u32;
     assert_eq!(distribution, expected_distribution);
+}
+
+//
+// Helpers.
+//
+
+async fn simulate_program_revert(
+    test_setup: &mut common::ProgramTestWithOwner,
+    debt_accountant_signer: &Keypair,
+    dz_epoch: DoubleZeroEpoch,
+    total_validators: u32,
+    total_debt: u64,
+    merkle_root: Hash,
+) -> Result<(TransactionError, Vec<String>), BanksClientError> {
+    let configure_distribution_debt_ix = try_build_instruction(
+        &ID,
+        ConfigureDistributionDebtAccounts::new(&debt_accountant_signer.pubkey(), dz_epoch),
+        &RevenueDistributionInstructionData::ConfigureDistributionDebt {
+            total_validators,
+            total_debt,
+            merkle_root,
+        },
+    )
+    .unwrap();
+
+    test_setup
+        .unwrap_simulation_error(&[configure_distribution_debt_ix], &[debt_accountant_signer])
+        .await
 }

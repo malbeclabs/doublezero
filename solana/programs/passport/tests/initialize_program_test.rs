@@ -6,9 +6,26 @@ use doublezero_passport::state::ProgramConfig;
 use doublezero_program_tools::zero_copy::checked_from_bytes_with_discriminator;
 use solana_program_test::tokio;
 
+//
+// Setup.
+//
+
+struct InitializeProgramSetup {
+    test_setup: common::ProgramTestWithOwner,
+}
+
+async fn setup_for_initialize_program() -> InitializeProgramSetup {
+    let test_setup = common::start_test().await;
+    InitializeProgramSetup { test_setup }
+}
+
+//
+// Initialize program — happy path.
+//
+
 #[tokio::test]
 async fn test_initialize_program() {
-    let mut test_setup = common::start_test().await;
+    let InitializeProgramSetup { mut test_setup } = setup_for_initialize_program().await;
 
     test_setup.initialize_program().await.unwrap();
 

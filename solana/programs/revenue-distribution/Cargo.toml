@@ -30,6 +30,9 @@ svm-hash = { workspace = true, features = ["borsh", "bytemuck"] }
 
 [dev-dependencies]
 bincode.workspace = true
+ctor.workspace = true
+env_logger.workspace = true
+log.workspace = true
 mock-swap-sol-2z.workspace = true
 solana-loader-v3-interface.workspace = true
 solana-program-test.workspace = true

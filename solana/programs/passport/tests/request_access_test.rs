@@ -12,7 +12,7 @@ use doublezero_passport::{
     ID,
 };
 use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
-use solana_program_test::tokio;
+use solana_program_test::{tokio, BanksClientError};
 use solana_pubkey::Pubkey;
 use solana_sdk::{
     instruction::InstructionError,
@@ -21,22 +21,24 @@ use solana_sdk::{
 };
 
 //
-// Request access.
+// Setup.
 //
 
-#[tokio::test]
-async fn test_request_access() {
+struct RequestAccessSetup {
+    test_setup: common::ProgramTestWithOwner,
+    admin_signer: Keypair,
+    request_deposit_lamports: u64,
+    request_fee_lamports: u64,
+    solana_validator_backup_ids_limit: u16,
+}
+
+async fn setup_for_request_access() -> RequestAccessSetup {
+    let mut test_setup = common::start_test().await;
+
     let admin_signer = Keypair::new();
-
-    let service_key_1 = Pubkey::new_unique();
-    let service_key_2 = Pubkey::new_unique();
-    let validator_id = Pubkey::new_unique();
-
     let request_deposit_lamports = 10_000_000;
     let request_fee_lamports = 10_000;
     let solana_validator_backup_ids_limit = 2;
-
-    let mut test_setup = common::start_test().await;
 
     test_setup
         .initialize_program()
@@ -61,7 +63,77 @@ async fn test_request_access() {
         .await
         .unwrap();
 
-    // Test inputs
+    RequestAccessSetup {
+        test_setup,
+        admin_signer,
+        request_deposit_lamports,
+        request_fee_lamports,
+        solana_validator_backup_ids_limit,
+    }
+}
+
+//
+// Request access — exceeding backup IDs limit.
+//
+
+#[tokio::test]
+async fn test_cannot_request_access_exceeding_backup_ids_limit() {
+    let RequestAccessSetup {
+        mut test_setup,
+        solana_validator_backup_ids_limit,
+        ..
+    } = setup_for_request_access().await;
+
+    let service_key = Pubkey::new_unique();
+    let validator_id = Pubkey::new_unique();
+
+    let attestation = SolanaValidatorAttestation {
+        validator_id,
+        service_key,
+        ed25519_signature: [1; 64],
+    };
+
+    let (tx_err, program_logs) = simulate_request_access_revert(
+        &mut test_setup,
+        &service_key,
+        AccessMode::SolanaValidatorWithBackupIds {
+            attestation,
+            backup_ids: vec![
+                Pubkey::new_unique(),
+                Pubkey::new_unique(),
+                Pubkey::new_unique(),
+            ],
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)
+    );
+    assert_eq!(
+        program_logs.get(3).unwrap(),
+        &format!("Program log: Cannot exceed backup IDs limit {solana_validator_backup_ids_limit}",)
+    );
+}
+
+//
+// Request access — happy path with two access modes.
+//
+
+#[tokio::test]
+async fn test_request_access() {
+    let RequestAccessSetup {
+        mut test_setup,
+        request_deposit_lamports,
+        request_fee_lamports,
+        ..
+    } = setup_for_request_access().await;
+
+    let service_key_1 = Pubkey::new_unique();
+    let service_key_2 = Pubkey::new_unique();
+    let validator_id = Pubkey::new_unique();
 
     let attestation_1 = SolanaValidatorAttestation {
         validator_id,
@@ -74,41 +146,6 @@ async fn test_request_access() {
         ed25519_signature: [1; 64],
     };
     let backup_ids = vec![Pubkey::new_unique(), Pubkey::new_unique()];
-
-    //
-    // Fail on exceeding the Solana validator backup IDs limit.
-    //
-
-    let payer_signer = Keypair::new();
-    let exceeding_solana_validator_backup_ids_limit_ix = try_build_instruction(
-        &ID,
-        RequestAccessAccounts::new(&payer_signer.pubkey(), &service_key_2),
-        &PassportInstructionData::RequestAccess(AccessMode::SolanaValidatorWithBackupIds {
-            attestation: attestation_2,
-            backup_ids: vec![
-                Pubkey::new_unique(),
-                Pubkey::new_unique(),
-                Pubkey::new_unique(),
-            ],
-        }),
-    )
-    .unwrap();
-
-    let (error, program_logs) = test_setup
-        .unwrap_simulation_error(
-            &[exceeding_solana_validator_backup_ids_limit_ix],
-            &[&payer_signer],
-        )
-        .await;
-
-    assert_eq!(
-        error,
-        TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)
-    );
-    assert_eq!(
-        program_logs.get(3).unwrap(),
-        &format!("Program log: Cannot exceed backup IDs limit {solana_validator_backup_ids_limit}",)
-    );
 
     let access_mode_1 = AccessMode::SolanaValidator(attestation_1);
     let access_mode_2 = AccessMode::SolanaValidatorWithBackupIds {
@@ -124,6 +161,7 @@ async fn test_request_access() {
         .await
         .unwrap();
 
+    // Verify first access request.
     let (access_request_key, access_request) =
         test_setup.fetch_access_request(&service_key_1).await;
 
@@ -155,6 +193,7 @@ async fn test_request_access() {
         request_deposit_lamports + request_rent
     );
 
+    // Verify second access request.
     let (access_request_key, access_request) =
         test_setup.fetch_access_request(&service_key_2).await;
 
@@ -179,10 +218,7 @@ async fn test_request_access() {
         request_deposit_lamports + request_rent
     );
 
-    //
     // Fail on duplicate access request.
-    //
-
     let duplicate_ix = try_build_instruction(
         &ID,
         RequestAccessAccounts::new(&test_setup.payer_signer.pubkey(), &service_key_1),
@@ -198,33 +234,44 @@ async fn test_request_access() {
         &[&test_setup.payer_signer],
     )
     .await;
-
     assert!(result.is_err());
 
-    //
-    // Fail on mismatched service key account and service key argument.
-    //
-
+    // Fail on mismatched service key.
     let payer_signer = Keypair::new();
-    let invalid_service_key_ix = try_build_instruction(
-        &ID,
-        RequestAccessAccounts::new(&payer_signer.pubkey(), &service_key_2),
-        &PassportInstructionData::RequestAccess(AccessMode::SolanaValidator(attestation_1)),
+    let (tx_err, _) = simulate_request_access_revert_with_payer(
+        &mut test_setup,
+        &payer_signer,
+        &service_key_2,
+        AccessMode::SolanaValidator(attestation_1),
     )
+    .await
     .unwrap();
-
-    let (error, _) = test_setup
-        .unwrap_simulation_error(&[invalid_service_key_ix], &[&payer_signer])
-        .await;
-
     assert_eq!(
-        error,
+        tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidSeeds)
     );
+}
 
-    //
-    // Pause the program now.
-    //
+//
+// Request access — program paused.
+//
+
+#[tokio::test]
+async fn test_cannot_request_access_when_paused() {
+    let RequestAccessSetup {
+        mut test_setup,
+        admin_signer,
+        ..
+    } = setup_for_request_access().await;
+
+    let service_key = Pubkey::new_unique();
+    let validator_id = Pubkey::new_unique();
+
+    let attestation = SolanaValidatorAttestation {
+        validator_id,
+        service_key,
+        ed25519_signature: [1; 64],
+    };
 
     test_setup
         .configure_program(
@@ -239,13 +286,40 @@ async fn test_request_access() {
     let (_, program_config) = test_setup.fetch_program_config().await;
     assert!(program_config.is_paused());
 
-    //
-    // Request creation should error now.
-    //
-
     let result = test_setup
-        .request_access(&service_key_1, AccessMode::SolanaValidator(attestation_1))
+        .request_access(&service_key, AccessMode::SolanaValidator(attestation))
         .await;
-
     assert!(result.is_err());
+}
+
+//
+// Helpers.
+//
+
+async fn simulate_request_access_revert(
+    test_setup: &mut common::ProgramTestWithOwner,
+    service_key: &Pubkey,
+    access_mode: AccessMode,
+) -> Result<(TransactionError, Vec<String>), BanksClientError> {
+    let payer_signer = Keypair::new();
+    simulate_request_access_revert_with_payer(test_setup, &payer_signer, service_key, access_mode)
+        .await
+}
+
+async fn simulate_request_access_revert_with_payer(
+    test_setup: &mut common::ProgramTestWithOwner,
+    payer_signer: &Keypair,
+    service_key: &Pubkey,
+    access_mode: AccessMode,
+) -> Result<(TransactionError, Vec<String>), BanksClientError> {
+    let ix = try_build_instruction(
+        &ID,
+        RequestAccessAccounts::new(&payer_signer.pubkey(), service_key),
+        &PassportInstructionData::RequestAccess(access_mode),
+    )
+    .unwrap();
+
+    test_setup
+        .unwrap_simulation_error(&[ix], &[payer_signer])
+        .await
 }

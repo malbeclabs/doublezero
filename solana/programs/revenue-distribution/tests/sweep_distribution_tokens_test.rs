@@ -28,11 +28,35 @@ use svm_hash::{
 };
 
 //
-// Sweep distribution tokens.
+// Setup.
 //
 
-#[tokio::test]
-async fn test_sweep_distribution_tokens() {
+struct SweepDistributionTokensSetup {
+    test_setup: common::ProgramTestWithOwner,
+    debt_accountant_signer: Keypair,
+    rewards_accountant_signer: Keypair,
+    src_token_account_key: Pubkey,
+    transfer_authority_signer: Keypair,
+    debt_data: Vec<SolanaValidatorDebt>,
+    total_solana_validators: u32,
+    total_solana_validator_debt: u64,
+    solana_validator_debt_merkle_root: Hash,
+    uncollectible_debt: SolanaValidatorDebt,
+    expected_swept_2z_amount_1: u64,
+    expected_swept_2z_amount_2: u64,
+    total_contributors: u32,
+    rewards_merkle_root: Hash,
+    dz_epoch: DoubleZeroEpoch,
+    next_dz_epoch: DoubleZeroEpoch,
+    and_another_dz_epoch: DoubleZeroEpoch,
+}
+
+/// Set up a configured program with two distributions, debt paid (except one
+/// uncollectible validator), rewards configured, and swap destination ready.
+/// Uses custom setup because it needs `start_test_with_accounts` for
+/// pre-bootstrapped token accounts and extra config (`Sol2zSwapProgram`,
+/// `FeatureActivation`, `MinimumEpochDurationToFinalizeRewards`).
+async fn setup_for_sweep_distribution_tokens() -> SweepDistributionTokensSetup {
     let transfer_authority_signer = Keypair::new();
 
     let bootstrapped_accounts = common::generate_token_accounts_for_test(
@@ -44,21 +68,15 @@ async fn test_sweep_distribution_tokens() {
     let mut test_setup = common::start_test_with_accounts(bootstrapped_accounts).await;
 
     let admin_signer = Keypair::new();
-
     let debt_accountant_signer = Keypair::new();
     let rewards_accountant_signer = Keypair::new();
-    let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
-    // Community burn rate.
-    let initial_cbr = 100_000_000; // 10%.
-    let cbr_limit = 500_000_000; // 50%.
-    let dz_epochs_to_increasing_cbr = 10;
-    let dz_epochs_to_cbr_limit = 20;
-
-    // Relay settings.
+    let initial_cbr = 100_000_000;
+    let cbr_limit = 500_000_000;
+    let solana_validator_base_block_rewards_pct_fee = 500;
     let distribute_rewards_relay_lamports = 10_000;
+    let minimum_epoch_duration_to_finalize_rewards = 1;
 
-    // Distribution debt.
     let debt_data = (0..8)
         .map(|i| SolanaValidatorDebt {
             node_id: Pubkey::new_unique(),
@@ -72,23 +90,17 @@ async fn test_sweep_distribution_tokens() {
         merkle_root_from_indexed_pod_leaves(&debt_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
             .unwrap();
 
-    // Do not pay all debt. Forgive one poor soul.
     let uncollectible_index = 2;
     let uncollectible_debt = debt_data[uncollectible_index];
 
     let expected_swept_2z_amount_1 = 69 * u64::pow(10, 8);
     let expected_swept_2z_amount_2 = 420 * u64::pow(10, 8);
 
-    // Distribution rewards.
-    let minimum_epoch_duration_to_finalize_rewards = 1;
-
     let total_contributors = 2;
     let rewards_merkle_root = Hash::new_unique();
 
-    // Target epochs.
     let dz_epoch = DoubleZeroEpoch::new(0);
     let next_dz_epoch = dz_epoch.saturating_add_duration(1);
-    let and_another_dz_epoch = next_dz_epoch.saturating_add_duration(1);
 
     test_setup
         .transfer_2z(
@@ -122,8 +134,8 @@ async fn test_sweep_distribution_tokens() {
                 },
                 ProgramConfiguration::CommunityBurnRateParameters {
                     limit: cbr_limit,
-                    dz_epochs_to_increasing: dz_epochs_to_increasing_cbr,
-                    dz_epochs_to_limit: dz_epochs_to_cbr_limit,
+                    dz_epochs_to_increasing: 10,
+                    dz_epochs_to_limit: 20,
                     initial_rate: Some(initial_cbr),
                 },
                 ProgramConfiguration::DistributeRewardsRelayLamports(
@@ -182,19 +194,15 @@ async fn test_sweep_distribution_tokens() {
         .await
         .unwrap();
 
-    // 1. Initialize Solana validator deposit accounts.
-    // 2. Transfer amount each validator owes so each can pay its debt.
-    // 3. Pay each validator's debt.
+    // Pay all validators except the uncollectible one.
     for (i, debt) in debt_data.iter().enumerate() {
         let node_id = &debt.node_id;
 
-        // Just initialize this validator's deposit account.
         if i == uncollectible_index {
             test_setup
                 .initialize_solana_validator_deposit(node_id)
                 .await
                 .unwrap();
-
             continue;
         }
 
@@ -205,21 +213,73 @@ async fn test_sweep_distribution_tokens() {
         )
         .unwrap();
 
-        let amount = debt.amount;
-
         let (deposit_key, _) = SolanaValidatorDeposit::find_address(node_id);
 
         test_setup
             .initialize_solana_validator_deposit(node_id)
             .await
             .unwrap()
-            .transfer_lamports(&deposit_key, amount)
+            .transfer_lamports(&deposit_key, debt.amount)
             .await
             .unwrap()
             .pay_solana_validator_debt(next_dz_epoch, debt, proof)
             .await
             .unwrap();
     }
+
+    let and_another_dz_epoch = next_dz_epoch.saturating_add_duration(1);
+
+    SweepDistributionTokensSetup {
+        test_setup,
+        debt_accountant_signer,
+        rewards_accountant_signer,
+        src_token_account_key,
+        transfer_authority_signer,
+        debt_data,
+        total_solana_validators,
+        total_solana_validator_debt,
+        solana_validator_debt_merkle_root,
+        uncollectible_debt,
+        expected_swept_2z_amount_1,
+        expected_swept_2z_amount_2,
+        total_contributors,
+        rewards_merkle_root,
+        dz_epoch,
+        next_dz_epoch,
+        and_another_dz_epoch,
+    }
+}
+
+//
+// Sweep distribution tokens — happy path with sequential error checks.
+//
+
+#[tokio::test]
+async fn test_sweep_distribution_tokens() {
+    let SweepDistributionTokensSetup {
+        mut test_setup,
+        debt_accountant_signer,
+        rewards_accountant_signer,
+        src_token_account_key,
+        transfer_authority_signer,
+        debt_data,
+        total_solana_validators,
+        total_solana_validator_debt,
+        solana_validator_debt_merkle_root,
+        uncollectible_debt,
+        expected_swept_2z_amount_1,
+        expected_swept_2z_amount_2,
+        total_contributors,
+        rewards_merkle_root,
+        dz_epoch,
+        next_dz_epoch,
+        and_another_dz_epoch,
+        ..
+    } = setup_for_sweep_distribution_tokens().await;
+
+    let initial_cbr = 100_000_000;
+    let solana_validator_base_block_rewards_pct_fee = 500;
+    let distribute_rewards_relay_lamports = 10_000;
 
     // Cannot sweep until distribution 0 is finalized.
     let sweep_distribution_tokens_ix = try_build_instruction(
@@ -235,7 +295,8 @@ async fn test_sweep_distribution_tokens() {
 
     let (tx_err, program_logs) = test_setup
         .unwrap_simulation_error(&[sweep_distribution_tokens_ix], &[])
-        .await;
+        .await
+        .unwrap();
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -270,7 +331,8 @@ async fn test_sweep_distribution_tokens() {
 
     let (tx_err, program_logs) = test_setup
         .unwrap_simulation_error(&[sweep_distribution_tokens_ix], &[])
-        .await;
+        .await
+        .unwrap();
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -301,7 +363,8 @@ async fn test_sweep_distribution_tokens() {
 
     let (tx_err, program_logs) = test_setup
         .unwrap_simulation_error(&[sweep_distribution_tokens_ix], &[])
-        .await;
+        .await
+        .unwrap();
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -344,8 +407,7 @@ async fn test_sweep_distribution_tokens() {
         .await
         .unwrap();
 
-    // 1. Transfer amount each validator owes so each can pay its debt.
-    // 2. Pay each validator's debt.
+    // Pay all validators' debt for the new distribution.
     for (i, debt) in debt_data.iter().enumerate() {
         let proof = MerkleProof::from_indexed_pod_leaves(
             &debt_data,
@@ -354,13 +416,10 @@ async fn test_sweep_distribution_tokens() {
         )
         .unwrap();
 
-        let node_id = &debt.node_id;
-        let amount = debt.amount;
-
-        let (deposit_key, _) = SolanaValidatorDeposit::find_address(node_id);
+        let (deposit_key, _) = SolanaValidatorDeposit::find_address(&debt.node_id);
 
         test_setup
-            .transfer_lamports(&deposit_key, amount)
+            .transfer_lamports(&deposit_key, debt.amount)
             .await
             .unwrap()
             .pay_solana_validator_debt(and_another_dz_epoch, debt, proof)
@@ -416,8 +475,6 @@ async fn test_sweep_distribution_tokens() {
         total_solana_validator_debt
     );
 
-    // Swap destination account should have a balance change reflecting the
-    // amount of SOL debt collected.
     let swap_destination_balance_after = test_setup
         .fetch_token_account(&swap_destination_key)
         .await
@@ -496,9 +553,10 @@ async fn test_sweep_distribution_tokens() {
     assert_eq!(rewards_bitmap, [0]);
 
     // Write off debt for the uncollectible validator.
+    let uncollectible_index = 2;
     let proof = MerkleProof::from_indexed_pod_leaves(
         &debt_data,
-        uncollectible_index.try_into().unwrap(),
+        uncollectible_index,
         Some(SolanaValidatorDebt::LEAF_PREFIX),
     )
     .unwrap();
@@ -525,8 +583,6 @@ async fn test_sweep_distribution_tokens() {
 
     let swap_destination_balance_before = swap_destination_balance_after;
 
-    // Swap destination account should have a balance change reflecting the
-    // amount of SOL debt collected.
     let swap_destination_balance_after = test_setup
         .fetch_token_account(&swap_destination_key)
         .await

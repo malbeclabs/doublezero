@@ -14,11 +14,15 @@ use solana_pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signer};
 
 //
-// Configure program.
+// Setup.
 //
 
-#[tokio::test]
-async fn test_configure_program() {
+struct ConfigureProgramSetup {
+    test_setup: common::ProgramTestWithOwner,
+    admin_signer: Keypair,
+}
+
+async fn setup_for_configure_program() -> ConfigureProgramSetup {
     let mut test_setup = common::start_test().await;
 
     let admin_signer = Keypair::new();
@@ -30,6 +34,23 @@ async fn test_configure_program() {
         .set_admin(&admin_signer.pubkey())
         .await
         .unwrap();
+
+    ConfigureProgramSetup {
+        test_setup,
+        admin_signer,
+    }
+}
+
+//
+// Configure program — happy path.
+//
+
+#[tokio::test]
+async fn test_configure_program() {
+    let ConfigureProgramSetup {
+        mut test_setup,
+        admin_signer,
+    } = setup_for_configure_program().await;
 
     // Test inputs.
 

@@ -1,12 +1,31 @@
 #![allow(dead_code)]
 
+#[ctor::ctor]
+fn init_logger() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let mut builder = env_logger::builder();
+
+        // If DEBUG is set, show the Solana program logs.
+        if std::env::var_os("DEBUG").is_some() {
+            builder.filter_level(log::LevelFilter::Error);
+            builder.filter(
+                Some("solana_runtime::message_processor::stable_log"),
+                log::LevelFilter::Debug,
+            );
+        }
+
+        let _ = builder.try_init();
+    });
+}
+
 use doublezero_passport::{
     instruction::{
         account::{
             ConfigureProgramAccounts, DenyAccessAccounts, GrantAccessAccounts,
             InitializeProgramAccounts, RequestAccessAccounts, SetAdminAccounts,
         },
-        AccessMode, PassportInstructionData, ProgramConfiguration,
+        AccessMode, PassportInstructionData, ProgramConfiguration, ProgramFlagConfiguration,
     },
     state::{AccessRequest, ProgramConfig},
     ID,
@@ -36,6 +55,11 @@ pub struct ProgramTestWithOwner {
     pub payer_signer: Keypair,
     pub cached_blockhash: Hash,
     pub owner_signer: Keypair,
+}
+
+pub struct ConfiguredProgramState {
+    pub admin_signer: Keypair,
+    pub sentinel_signer: Keypair,
 }
 
 pub async fn start_test_with_accounts(accounts: Vec<TestAccount>) -> ProgramTestWithOwner {
@@ -108,8 +132,8 @@ impl ProgramTestWithOwner {
         &mut self,
         instructions: &[Instruction],
         signers: &[&Keypair],
-    ) -> (TransactionError, Vec<String>) {
-        let recent_blockhash = self.get_latest_blockhash().await.unwrap();
+    ) -> Result<(TransactionError, Vec<String>), BanksClientError> {
+        let recent_blockhash = self.get_latest_blockhash().await?;
         let payer_signer = &self.payer_signer;
 
         let mut tx_signers = vec![payer_signer];
@@ -117,17 +141,50 @@ impl ProgramTestWithOwner {
 
         let transaction = new_transaction(instructions, &tx_signers, recent_blockhash);
 
-        let simulated_tx = self
-            .banks_client
-            .simulate_transaction(transaction)
-            .await
-            .unwrap();
+        let simulated_tx = self.banks_client.simulate_transaction(transaction).await?;
 
-        let tx_err = simulated_tx.result.unwrap().unwrap_err();
+        let tx_err = simulated_tx
+            .result
+            .ok_or(BanksClientError::ClientError(
+                "simulation returned no result",
+            ))?
+            .unwrap_err();
 
         self.cached_blockhash = recent_blockhash;
 
-        (tx_err, simulated_tx.simulation_details.unwrap().logs)
+        Ok((tx_err, simulated_tx.simulation_details.unwrap().logs))
+    }
+
+    pub async fn setup_configured_program(
+        &mut self,
+    ) -> Result<ConfiguredProgramState, BanksClientError> {
+        let admin_signer = Keypair::new();
+        let sentinel_signer = Keypair::new();
+
+        self.transfer_lamports(&sentinel_signer.pubkey(), 128 * 6_960)
+            .await?
+            .initialize_program()
+            .await?
+            .set_admin(&admin_signer.pubkey())
+            .await?
+            .configure_program(
+                [
+                    ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
+                    ProgramConfiguration::DoubleZeroLedgerSentinel(sentinel_signer.pubkey()),
+                    ProgramConfiguration::AccessRequestDeposit {
+                        request_deposit_lamports: 10_000_000,
+                        request_fee_lamports: 10_000,
+                    },
+                    ProgramConfiguration::SolanaValidatorBackupIdsLimit(2),
+                ],
+                &admin_signer,
+            )
+            .await?;
+
+        Ok(ConfiguredProgramState {
+            admin_signer,
+            sentinel_signer,
+        })
     }
 
     pub async fn initialize_program(&mut self) -> Result<&mut Self, BanksClientError> {

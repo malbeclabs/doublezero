@@ -12,12 +12,25 @@ use solana_program_test::tokio;
 use spl_token_interface::state::{Account as TokenAccount, AccountState as SplTokenAccountState};
 
 //
-// Initialize journal.
+// Setup.
+//
+
+struct InitializeJournalSetup {
+    test_setup: common::ProgramTestWithOwner,
+}
+
+async fn setup_for_initialize_journal() -> InitializeJournalSetup {
+    let test_setup = common::start_test().await;
+    InitializeJournalSetup { test_setup }
+}
+
+//
+// Initialize journal — happy path.
 //
 
 #[tokio::test]
 async fn test_initialize_journal() {
-    let mut test_setup = common::start_test().await;
+    let InitializeJournalSetup { mut test_setup } = setup_for_initialize_journal().await;
 
     test_setup.initialize_journal().await.unwrap();
 

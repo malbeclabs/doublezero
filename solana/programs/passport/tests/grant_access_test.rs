@@ -4,14 +4,14 @@ mod common;
 
 use doublezero_passport::{
     instruction::{
-        account::GrantAccessAccounts, AccessMode, PassportInstructionData, ProgramConfiguration,
-        ProgramFlagConfiguration, SolanaValidatorAttestation,
+        account::GrantAccessAccounts, AccessMode, PassportInstructionData,
+        SolanaValidatorAttestation,
     },
     state::AccessRequest,
     ID,
 };
 use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
-use solana_program_test::tokio;
+use solana_program_test::{tokio, BanksClientError};
 use solana_pubkey::Pubkey;
 use solana_sdk::{
     instruction::InstructionError,
@@ -20,21 +20,24 @@ use solana_sdk::{
 };
 
 //
-// Grant access.
+// Setup.
 //
 
-#[tokio::test]
-async fn test_grant_access() {
-    let admin_signer = Keypair::new();
+struct GrantAccessSetup {
+    test_setup: common::ProgramTestWithOwner,
+    sentinel_signer: Keypair,
+    service_key: Pubkey,
+    access_deposit: u64,
+    access_fee: u64,
+}
+
+async fn setup_for_grant_access() -> GrantAccessSetup {
+    let mut test_setup = common::start_test().await;
+
+    let configured = test_setup.setup_configured_program().await.unwrap();
 
     let service_key = Pubkey::new_unique();
     let validator_id = Pubkey::new_unique();
-    let sentinel_signer = Keypair::new();
-
-    let access_deposit = 10_000_000;
-    let access_fee = 10_000;
-
-    let mut test_setup = common::start_test().await;
 
     let attestation = SolanaValidatorAttestation {
         validator_id,
@@ -43,33 +46,32 @@ async fn test_grant_access() {
     };
 
     test_setup
-        .transfer_lamports(&sentinel_signer.pubkey(), 128 * 6_960)
-        .await
-        .unwrap()
-        .initialize_program()
-        .await
-        .unwrap()
-        .set_admin(&admin_signer.pubkey())
-        .await
-        .unwrap()
-        .configure_program(
-            [
-                ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
-                ProgramConfiguration::DoubleZeroLedgerSentinel(sentinel_signer.pubkey()),
-                ProgramConfiguration::AccessRequestDeposit {
-                    request_deposit_lamports: access_deposit,
-                    request_fee_lamports: access_fee,
-                },
-            ],
-            &admin_signer,
-        )
-        .await
-        .unwrap()
         .request_access(&service_key, AccessMode::SolanaValidator(attestation))
         .await
         .unwrap();
 
-    // Test inputs.
+    GrantAccessSetup {
+        test_setup,
+        sentinel_signer: configured.sentinel_signer,
+        service_key,
+        access_deposit: 10_000_000,
+        access_fee: 10_000,
+    }
+}
+
+//
+// Grant access — happy path.
+//
+
+#[tokio::test]
+async fn test_grant_access() {
+    let GrantAccessSetup {
+        mut test_setup,
+        sentinel_signer,
+        service_key,
+        access_deposit,
+        access_fee,
+    } = setup_for_grant_access().await;
 
     let sentinel_before_balance = test_setup
         .banks_client
@@ -133,57 +135,62 @@ async fn test_grant_access() {
         .await
         .unwrap();
     assert!(access_request_info.is_none());
+}
 
-    //
-    // Reject the grant access request with an unauthorized sentinel.
-    //
+//
+// Grant access — unauthorized sentinel.
+//
 
-    test_setup
-        .request_access(&service_key, AccessMode::SolanaValidator(attestation))
-        .await
-        .unwrap();
-
-    // Test inputs.
+#[tokio::test]
+async fn test_cannot_grant_access_unauthorized_sentinel() {
+    let GrantAccessSetup {
+        mut test_setup,
+        service_key,
+        ..
+    } = setup_for_grant_access().await;
 
     let (access_request_key, _) = test_setup.fetch_access_request(&service_key).await;
     let unauthorized_signer = Keypair::new();
+    let payer_key = test_setup.payer_signer.pubkey();
 
-    // Cannot grant access with unauthorized sentinel.
-    let grant_access_ix = try_build_instruction(
-        &ID,
-        GrantAccessAccounts::new(
-            &unauthorized_signer.pubkey(),
-            &access_request_key,
-            &test_setup.payer_signer.pubkey(),
-        ),
-        &PassportInstructionData::GrantAccess,
+    let (tx_err, _) = simulate_grant_access_revert(
+        &mut test_setup,
+        &unauthorized_signer,
+        &access_request_key,
+        &payer_key,
     )
+    .await
     .unwrap();
-
-    let (tx_err, _program_logs) = test_setup
-        .unwrap_simulation_error(&[grant_access_ix], &[&unauthorized_signer])
-        .await;
 
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
+}
 
-    // Cannot use another account as rent beneficiary.
-    let grant_access_ix = try_build_instruction(
-        &ID,
-        GrantAccessAccounts::new(
-            &sentinel_signer.pubkey(),
-            &access_request_key,
-            &Pubkey::new_unique(),
-        ),
-        &PassportInstructionData::GrantAccess,
+//
+// Grant access — wrong rent beneficiary.
+//
+
+#[tokio::test]
+async fn test_cannot_grant_access_wrong_rent_beneficiary() {
+    let GrantAccessSetup {
+        mut test_setup,
+        sentinel_signer,
+        service_key,
+        ..
+    } = setup_for_grant_access().await;
+
+    let (access_request_key, access_request) = test_setup.fetch_access_request(&service_key).await;
+
+    let (tx_err, program_logs) = simulate_grant_access_revert(
+        &mut test_setup,
+        &sentinel_signer,
+        &access_request_key,
+        &Pubkey::new_unique(),
     )
+    .await
     .unwrap();
-
-    let (tx_err, program_logs) = test_setup
-        .unwrap_simulation_error(&[grant_access_ix], &[&sentinel_signer])
-        .await;
 
     assert_eq!(
         tx_err,
@@ -196,4 +203,30 @@ async fn test_grant_access() {
             access_request.rent_beneficiary_key
         )
     );
+}
+
+//
+// Helpers.
+//
+
+async fn simulate_grant_access_revert(
+    test_setup: &mut common::ProgramTestWithOwner,
+    sentinel_signer: &Keypair,
+    access_request_key: &Pubkey,
+    rent_beneficiary_key: &Pubkey,
+) -> Result<(TransactionError, Vec<String>), BanksClientError> {
+    let grant_access_ix = try_build_instruction(
+        &ID,
+        GrantAccessAccounts::new(
+            &sentinel_signer.pubkey(),
+            access_request_key,
+            rent_beneficiary_key,
+        ),
+        &PassportInstructionData::GrantAccess,
+    )
+    .unwrap();
+
+    test_setup
+        .unwrap_simulation_error(&[grant_access_ix], &[sentinel_signer])
+        .await
 }

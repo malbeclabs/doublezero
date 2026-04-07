@@ -6,13 +6,13 @@ use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
         account::{ConfigureDistributionRewardsAccounts, FinalizeDistributionRewardsAccounts},
-        ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
+        ProgramConfiguration, RevenueDistributionInstructionData,
     },
     state::{self, Distribution},
     types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
     ID,
 };
-use solana_program_test::tokio;
+use solana_program_test::{tokio, BanksClientError};
 use solana_sdk::{
     instruction::InstructionError,
     signature::{Keypair, Signer},
@@ -21,32 +21,29 @@ use solana_sdk::{
 use svm_hash::sha2::Hash;
 
 //
-// Finalize distribution rewards.
+// Setup.
 //
 
-#[tokio::test]
-async fn test_finalize_distribution_rewards() {
+struct FinalizeDistributionRewardsSetup {
+    test_setup: common::ProgramTestWithOwner,
+    admin_signer: Keypair,
+    debt_accountant_signer: Keypair,
+    rewards_accountant_signer: Keypair,
+    dz_epoch: DoubleZeroEpoch,
+    total_solana_validators: u32,
+    total_solana_validator_debt: u64,
+    solana_validator_debt_merkle_root: Hash,
+    total_contributors: u32,
+    rewards_merkle_root: Hash,
+}
+
+/// Set up a configured program with distribution debt configured on epoch 1.
+async fn setup_for_finalize_distribution_rewards() -> FinalizeDistributionRewardsSetup {
     let mut test_setup = common::start_test().await;
 
-    let admin_signer = Keypair::new();
-
-    let debt_accountant_signer = Keypair::new();
-    let rewards_accountant_signer = Keypair::new();
-    let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
-
-    // Community burn rate.
-    let initial_cbr = 100_000_000; // 10%.
-    let cbr_limit = 500_000_000; // 50%.
-    let dz_epochs_to_increasing_cbr = 10;
-    let dz_epochs_to_cbr_limit = 20;
-
-    // Relay settings.
-    let distribute_rewards_relay_lamports = 10_000;
-
-    // Distribution.
+    let configured = test_setup.setup_configured_program().await.unwrap();
 
     let dz_epoch = DoubleZeroEpoch::new(1);
-
     let total_solana_validators = 2_048;
     let total_solana_validator_debt = 69;
     let solana_validator_debt_merkle_root = Hash::new_unique();
@@ -54,51 +51,13 @@ async fn test_finalize_distribution_rewards() {
     let rewards_merkle_root = Hash::new_unique();
 
     test_setup
-        .initialize_program()
-        .await
-        .unwrap()
-        .initialize_journal()
-        .await
-        .unwrap()
-        .set_admin(&admin_signer.pubkey())
-        .await
-        .unwrap()
-        .configure_program(
-            &admin_signer,
-            [
-                ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
-                ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
-                ProgramConfiguration::SolanaValidatorFeeParameters {
-                    base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
-                    priority_block_rewards_pct: 0,
-                    inflation_rewards_pct: 0,
-                    jito_tips_pct: 0,
-                    fixed_sol_amount: 0,
-                    _unused: Default::default(),
-                },
-                ProgramConfiguration::CommunityBurnRateParameters {
-                    limit: cbr_limit,
-                    dz_epochs_to_increasing: dz_epochs_to_increasing_cbr,
-                    dz_epochs_to_limit: dz_epochs_to_cbr_limit,
-                    initial_rate: Some(initial_cbr),
-                },
-                ProgramConfiguration::DistributeRewardsRelayLamports(
-                    distribute_rewards_relay_lamports,
-                ),
-                ProgramConfiguration::CalculationGracePeriodMinutes(1),
-                ProgramConfiguration::DistributionInitializationGracePeriodMinutes(1),
-                ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
-            ],
-        )
-        .await
-        .unwrap()
-        .initialize_distribution(&debt_accountant_signer)
+        .initialize_distribution(&configured.debt_accountant_signer)
         .await
         .unwrap()
         .warp_timestamp_by(60)
         .await
         .unwrap()
-        .initialize_distribution(&debt_accountant_signer)
+        .initialize_distribution(&configured.debt_accountant_signer)
         .await
         .unwrap()
         .warp_timestamp_by(60)
@@ -106,7 +65,7 @@ async fn test_finalize_distribution_rewards() {
         .unwrap()
         .configure_distribution_debt(
             dz_epoch,
-            &debt_accountant_signer,
+            &configured.debt_accountant_signer,
             total_solana_validators,
             total_solana_validator_debt,
             solana_validator_debt_merkle_root,
@@ -114,9 +73,47 @@ async fn test_finalize_distribution_rewards() {
         .await
         .unwrap();
 
+    FinalizeDistributionRewardsSetup {
+        test_setup,
+        admin_signer: configured.admin_signer,
+        debt_accountant_signer: configured.debt_accountant_signer,
+        rewards_accountant_signer: configured.rewards_accountant_signer,
+        dz_epoch,
+        total_solana_validators,
+        total_solana_validator_debt,
+        solana_validator_debt_merkle_root,
+        total_contributors,
+        rewards_merkle_root,
+    }
+}
+
+//
+// Finalize distribution rewards — happy path with sequential error checks.
+//
+
+#[tokio::test]
+async fn test_finalize_distribution_rewards() {
+    let FinalizeDistributionRewardsSetup {
+        mut test_setup,
+        admin_signer,
+        debt_accountant_signer,
+        rewards_accountant_signer,
+        dz_epoch,
+        total_solana_validators,
+        total_solana_validator_debt,
+        solana_validator_debt_merkle_root,
+        total_contributors,
+        rewards_merkle_root,
+    } = setup_for_finalize_distribution_rewards().await;
+
+    let initial_cbr = 100_000_000;
+    let solana_validator_base_block_rewards_pct_fee = 500;
+    let distribute_rewards_relay_lamports = 10_000;
+
     // Cannot finalize rewards until debt has been finalized.
-    let (tx_err, program_logs) =
-        cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
+    let (tx_err, program_logs) = simulate_finalize_revert(&mut test_setup, dz_epoch)
+        .await
+        .unwrap();
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -132,8 +129,9 @@ async fn test_finalize_distribution_rewards() {
         .unwrap();
 
     // Cannot finalize if the rewards root is null.
-    let (tx_err, program_logs) =
-        cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
+    let (tx_err, program_logs) = simulate_finalize_revert(&mut test_setup, dz_epoch)
+        .await
+        .unwrap();
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -154,8 +152,9 @@ async fn test_finalize_distribution_rewards() {
         .unwrap();
 
     // Cannot finalize until the minimum number of epochs has been configured.
-    let (tx_err, program_logs) =
-        cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
+    let (tx_err, program_logs) = simulate_finalize_revert(&mut test_setup, dz_epoch)
+        .await
+        .unwrap();
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -183,9 +182,9 @@ async fn test_finalize_distribution_rewards() {
         dz_epoch.saturating_add_duration(minimum_epoch_duration_to_finalize_rewards.into());
 
     // Cannot finalize until the minimum number of epochs have passed.
-
-    let (tx_err, program_logs) =
-        cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
+    let (tx_err, program_logs) = simulate_finalize_revert(&mut test_setup, dz_epoch)
+        .await
+        .unwrap();
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -271,22 +270,10 @@ async fn test_finalize_distribution_rewards() {
     );
 
     // Cannot configure distribution rewards after finalization.
-    let configure_distribution_rewards_ix = try_build_instruction(
-        &ID,
-        ConfigureDistributionRewardsAccounts::new(&rewards_accountant_signer.pubkey(), dz_epoch),
-        &RevenueDistributionInstructionData::ConfigureDistributionRewards {
-            total_contributors,
-            merkle_root: rewards_merkle_root,
-        },
-    )
-    .unwrap();
-
-    let (tx_err, program_logs) = test_setup
-        .unwrap_simulation_error(
-            &[configure_distribution_rewards_ix],
-            &[&rewards_accountant_signer],
-        )
-        .await;
+    let (tx_err, program_logs) =
+        simulate_configure_rewards_revert(&mut test_setup, &rewards_accountant_signer, dz_epoch)
+            .await
+            .unwrap();
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -297,8 +284,9 @@ async fn test_finalize_distribution_rewards() {
     );
 
     // Cannot finalize again.
-    let (tx_err, program_logs) =
-        cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
+    let (tx_err, program_logs) = simulate_finalize_revert(&mut test_setup, dz_epoch)
+        .await
+        .unwrap();
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -309,10 +297,14 @@ async fn test_finalize_distribution_rewards() {
     );
 }
 
-async fn cannot_finalize_distribution_rewards(
+//
+// Helpers.
+//
+
+async fn simulate_finalize_revert(
     test_setup: &mut common::ProgramTestWithOwner,
     dz_epoch: DoubleZeroEpoch,
-) -> (TransactionError, Vec<String>) {
+) -> Result<(TransactionError, Vec<String>), BanksClientError> {
     let payer_key = test_setup.payer_signer().pubkey();
 
     let finalize_distribution_rewards_ix = try_build_instruction(
@@ -324,5 +316,28 @@ async fn cannot_finalize_distribution_rewards(
 
     test_setup
         .unwrap_simulation_error(&[finalize_distribution_rewards_ix], &[])
+        .await
+}
+
+async fn simulate_configure_rewards_revert(
+    test_setup: &mut common::ProgramTestWithOwner,
+    rewards_accountant_signer: &Keypair,
+    dz_epoch: DoubleZeroEpoch,
+) -> Result<(TransactionError, Vec<String>), BanksClientError> {
+    let configure_distribution_rewards_ix = try_build_instruction(
+        &ID,
+        ConfigureDistributionRewardsAccounts::new(&rewards_accountant_signer.pubkey(), dz_epoch),
+        &RevenueDistributionInstructionData::ConfigureDistributionRewards {
+            total_contributors: 69,
+            merkle_root: Hash::new_unique(),
+        },
+    )
+    .unwrap();
+
+    test_setup
+        .unwrap_simulation_error(
+            &[configure_distribution_rewards_ix],
+            &[rewards_accountant_signer],
+        )
         .await
 }

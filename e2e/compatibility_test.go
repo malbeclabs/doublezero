@@ -121,40 +121,41 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/device_drain":   {ranges: before("0.8.1")},
 	"write/device_drain_2": {ranges: before("0.8.1")},
 
-	// device interface / link commands: --mtu requirement changed from 2048 to 9000.
-	// Versions before 0.12.0 didn't have these commands; versions 0.12.0–0.15.x send
-	// the old MTU value which the current program rejects.
+	// device interface / link commands: --mtu requirement changed from 2048 to 9000 in v0.16.0,
+	// and RFC-18 added flex_algo_node_segments to InterfaceV2 which old CLIs cannot deserialize.
+	// Versions 0.12.0–0.15.x send the old MTU value which the current program rejects.
+	// Versions 0.10.0–0.11.0 can CREATE interfaces (the CLI sends the instruction without reading
+	// back), but cannot UPDATE or otherwise operate on them because reading the new InterfaceV2
+	// format (with trailing flex_algo_node_segments bytes) fails deserialization.
 	//
-	// Testnet override: extends the incompatible range to cover v0.10.0–v0.16.x. On
-	// testnet, v0.10.0–v0.11.0 predate the interface/link commands entirely, and
-	// testnet v0.16.0 was built before the RFC-18 InterfaceV2 (flex_algo_node_segments)
-	// change, so it can't deserialize the new account format. On mainnet-beta v0.16.0
-	// was released after RFC-18, so only the 0.12.0–0.15.x range applies there.
+	// Testnet override: extends the incompatible range to cover v0.10.0–v0.16.x. Testnet v0.16.0
+	// was built before the RFC-18 InterfaceV2 change and can't deserialize the new account format.
+	// On mainnet-beta v0.16.0 was released after RFC-18, so it is compatible.
 	"write/device_interface_create":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
 	"write/device_interface_create_2":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
 	"write/device_interface_create_3":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
 	"write/device_interface_create_4":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/device_interface_set_unlinked":   {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/device_interface_set_unlinked_2": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/device_interface_set_unlinked_3": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/device_interface_set_unlinked_4": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/link_create_wan":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/link_create_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/link_accept_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/link_update":                     {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/link_set_health":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/link_set_health_dzx":             {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/link_get":                        {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/link_wait_activated":             {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/link_wait_activated_dzx":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/link_drain":                      {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/link_drain_dzx":                  {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/link_delete":                     {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/link_delete_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/device_interface_delete":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/device_interface_delete_2":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/device_interface_delete_3":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/device_interface_delete_4":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_set_unlinked":   {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_set_unlinked_2": {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_set_unlinked_3": {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_set_unlinked_4": {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_create_wan":                 {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_create_dzx":                 {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_accept_dzx":                 {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_update":                     {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_set_health":                 {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_set_health_dzx":             {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_get":                        {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_wait_activated":             {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_wait_activated_dzx":         {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_drain":                      {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_drain_dzx":                  {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_delete":                     {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/link_delete_dzx":                 {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_delete":         {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_delete_2":       {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_delete_3":       {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	"write/device_interface_delete_4":       {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
 }
 
 // =============================================================================

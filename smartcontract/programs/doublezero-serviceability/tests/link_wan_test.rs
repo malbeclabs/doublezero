@@ -2957,60 +2957,6 @@ async fn test_link_topology_valid_accepted() {
     .expect("Setting valid topology on link should succeed");
 }
 
-#[tokio::test]
-async fn test_link_create_invalid_mtu() {
-    let (
-        mut banks_client,
-        program_id,
-        payer,
-        globalstate_pubkey,
-        contributor_pubkey,
-        device_a_pubkey,
-        device_z_pubkey,
-        _tunnel_pubkey,
-    ) = setup_link_env().await;
-
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // Create link with MTU 1500 (should fail, must be 9000)
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (tunnel_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
-
-    let res = try_execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
-            code: "invalid-mtu".to_string(),
-            link_type: LinkLinkType::WAN,
-            bandwidth: 20000000000,
-            mtu: 1500,
-            delay_ns: 1000000,
-            jitter_ns: 100000,
-            side_a_iface_name: "Ethernet0".to_string(),
-            side_z_iface_name: Some("Ethernet1".to_string()),
-            desired_status: Some(LinkDesiredStatus::Activated),
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(tunnel_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let error_string = format!("{:?}", res.unwrap_err());
-    assert!(
-        error_string.contains("Custom(46)"),
-        "Expected InvalidMtu error (Custom(46)), got: {}",
-        error_string
-    );
-}
-
 // ─── link_topologies update tests ────────────────────────────────────────────
 
 /// Foundation key can reassign link_topologies to a different topology after

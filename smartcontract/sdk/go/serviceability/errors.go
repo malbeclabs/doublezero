@@ -115,6 +115,70 @@ func ProgramErrorMessage(code uint32) string {
 	return fmt.Sprintf("unknown error code %d", code)
 }
 
+// parseProgramLogs extracts the "Program log: ..." lines from a jsonrpc.RPCError's
+// Data["logs"] field. Returns nil if no logs are found.
+func parseProgramLogs(err error) []string {
+	var rpcErr *jsonrpc.RPCError
+	if !errors.As(err, &rpcErr) {
+		return nil
+	}
+
+	data, ok := rpcErr.Data.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	logsRaw, ok := data["logs"]
+	if !ok {
+		return nil
+	}
+
+	logsSlice, ok := logsRaw.([]any)
+	if !ok {
+		return nil
+	}
+
+	var logs []string
+	for _, entry := range logsSlice {
+		if s, ok := entry.(string); ok {
+			logs = append(logs, s)
+		}
+	}
+	return logs
+}
+
+// formatRPCError produces a concise, human-readable summary of a Solana RPC
+// transaction error. It includes the program error name/description (if known)
+// and any "Program log:" lines that are not just invoke/consumed/success noise.
+func formatRPCError(err error) string {
+	code, hasCode := parseCustomErrorCode(err)
+
+	// Collect interesting program log lines (skip boilerplate).
+	var interesting []string
+	for _, line := range parseProgramLogs(err) {
+		// Keep only "Program log:" lines that aren't instruction echo.
+		if len(line) > 13 && line[:13] == "Program log: " {
+			msg := line[13:]
+			// Skip the "Instruction: ..." echo lines.
+			if len(msg) > 13 && msg[:13] == "Instruction: " {
+				continue
+			}
+			interesting = append(interesting, msg)
+		}
+	}
+
+	switch {
+	case hasCode && len(interesting) > 0:
+		return fmt.Sprintf("%s (program logs: %v)", ProgramErrorMessage(code), interesting)
+	case hasCode:
+		return ProgramErrorMessage(code)
+	case len(interesting) > 0:
+		return fmt.Sprintf("transaction failed (program logs: %v)", interesting)
+	default:
+		return err.Error()
+	}
+}
+
 // parseCustomErrorCode extracts the custom error code from a jsonrpc.RPCError.
 // It looks at Data["err"]["InstructionError"][1]["Custom"] and handles both
 // json.Number and float64 representations. Returns (code, true) on success

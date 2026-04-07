@@ -1,4 +1,6 @@
-use crate::{doublezerocommand::CliCommand, helpers::slot_to_datetime, validators::validate_pubkey};
+use crate::{
+    doublezerocommand::CliCommand, helpers::slot_to_datetime, validators::validate_pubkey,
+};
 use clap::Args;
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
@@ -26,6 +28,7 @@ struct UserDisplay {
     pub account: String,
     pub user_type: String,
     pub tenant: String,
+    #[tabled(skip)]
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub device_pk: Pubkey,
     pub device: String,
@@ -41,8 +44,14 @@ struct UserDisplay {
     pub subscribers: String,
     pub status: String,
     pub bgp_status: String,
-    pub last_bgp_reported_at: String,
-    pub last_bgp_up_at: String,
+    #[tabled(skip)]
+    pub last_bgp_reported_at: u64,
+    #[tabled(rename = "last_bgp_reported_at")]
+    pub last_bgp_reported_at_str: String,
+    #[tabled(skip)]
+    pub last_bgp_up_at: u64,
+    #[tabled(rename = "last_bgp_up_at")]
+    pub last_bgp_up_at_str: String,
     pub owner: String,
 }
 
@@ -112,8 +121,10 @@ impl GetUserCliCommand {
                 .join(", "),
             status: user.status.to_string(),
             bgp_status: user.bgp_status.to_string(),
-            last_bgp_reported_at: slot_to_datetime(client, user.last_bgp_reported_at),
-            last_bgp_up_at: slot_to_datetime(client, user.last_bgp_up_at),
+            last_bgp_reported_at: user.last_bgp_reported_at,
+            last_bgp_reported_at_str: slot_to_datetime(client, user.last_bgp_reported_at),
+            last_bgp_up_at: user.last_bgp_up_at,
+            last_bgp_up_at_str: slot_to_datetime(client, user.last_bgp_up_at),
             owner: user.owner.to_string(),
         };
 

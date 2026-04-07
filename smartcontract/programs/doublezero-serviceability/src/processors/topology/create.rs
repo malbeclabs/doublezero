@@ -91,7 +91,7 @@ pub fn process_topology_create(
         admin_group_bits_account,
         program_id,
         writable = true,
-        pda = Some(&expected_ab_pda),
+        pda = &expected_ab_pda,
         "AdminGroupBits"
     );
 

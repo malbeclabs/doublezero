@@ -30,6 +30,19 @@ All notable changes to this project will be documented in this file.
   - Add `twamp-debug` diagnostic tool for testing kernel timestamping support on switches; sends real TWAMP probes to verify which SO_TIMESTAMPING modes (RX/TX software/hardware/sched) actually deliver timestamps, and reports RTT statistics comparing userspace vs kernel timestamp sources
 - E2E Tests
   - Switch backward compatibility test to install versioned CLI binaries from GitHub releases instead of Cloudsmith apt repos; version enumeration now uses the GitHub API directly from Go rather than querying apt-cache inside the container
+- Smartcontract
+  - Add `TopologyInfo` onchain account for IS-IS flex-algo link classification: auto-assigned TE admin-group bit (1–62), derived flex-algo number (128 + bit), and constraint type (`include-any`/`include-all`); capped at 62 topologies via `AdminGroupBits` resource extension
+  - Add `link_topologies: Vec<Pubkey>` (capped at 8) and `link_flags: u8` (bit 0 = unicast-drained) to the `Link` account
+  - Add `include_topologies` to the `Tenant` account for topology-filtered routing opt-in
+  - Enforce UNICAST-DEFAULT topology existence as a precondition for link activation
+- CLI
+  - Add `doublezero link topology` subcommands: `create`, `delete`, `clear`, `list`, `backfill`
+  - Add `--link-topology <name>` and `--unicast-drained <bool>` flags to `doublezero link update`
+  - Add `--topology <name>` filter to `doublezero link list` (`default` = untagged links)
+  - Add `--include-topologies <name>` flag to `doublezero tenant update`
+  - Add `doublezero-admin migrate flex-algo [--dry-run]` to tag existing links with UNICAST-DEFAULT and backfill node segments
+- SDK
+  - Update Go, Python, and TypeScript SDKs with `TopologyInfo` deserialization and new `link_topologies`, `link_flags`, and `include_topologies` fields
 
 ## [v0.15.0](https://github.com/malbeclabs/doublezero/compare/client/v0.14.0...client/v0.15.0) - 2026-03-27
 

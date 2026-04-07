@@ -19,6 +19,11 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
+use solana_account_decoder_client_types::UiAccountEncoding;
+use solana_client::{
+    rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
+    rpc_filter::{Memcmp, RpcFilterType},
+};
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
 use spl_associated_token_account_interface::address::get_associated_token_address;
@@ -89,6 +94,29 @@ fn epoch_warning_prompt(input: &EpochWarningInput) -> Option<String> {
         format_duration(remaining_secs),
         format_duration(remaining_secs),
     ))
+}
+
+/// Given raw account data from a `getProgramAccounts` query filtered by
+/// client IP, return the device keys of any **active** seats that are NOT on
+/// `target_device`. Withdrawn seats (`tenure_epochs == 0`) are excluded
+/// because they will never win an auction and are harmless — blocking on
+/// them would prevent users from migrating an IP to a new device after
+/// withdrawal. An empty vec means no conflict.
+fn other_device_keys_for_ip(
+    accounts: &[(Pubkey, solana_sdk::account::Account)],
+    target_device: &Pubkey,
+) -> Vec<Pubkey> {
+    accounts
+        .iter()
+        .filter_map(|(_, account)| {
+            let (device_key, _, tenure_epochs, _, _) = state::parse_client_seat(&account.data)?;
+            if device_key != *target_device && tenure_epochs > 0 {
+                Some(device_key)
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /*
@@ -201,10 +229,52 @@ impl PayCommand {
         let accounts = wallet
             .connection
             .get_multiple_accounts(&[client_seat_key, escrow_key])
-            .await
-            .unwrap();
+            .await?;
         let seat_exists = accounts[0].is_some();
         let escrow_exists = accounts[1].is_some();
+
+        // Block if this client IP already has a seat on a DIFFERENT device.
+        // The serviceability User PDA is keyed by (IP, user_type) with no
+        // device dimension, so two seats for the same IP on different devices
+        // causes the oracle to fail with AccountAlreadyInitialized.
+        let discriminator_bytes =
+            borsh::to_vec(&state::CLIENT_SEAT_DISCRIMINATOR).expect("discriminator serialization");
+        let ip_bytes = client_ip_bits.to_le_bytes().to_vec();
+        let filters = vec![
+            RpcFilterType::Memcmp(Memcmp::new_raw_bytes(0, discriminator_bytes)),
+            RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
+                state::CLIENT_SEAT_CLIENT_IP_OFFSET,
+                ip_bytes,
+            )),
+        ];
+        let config = RpcProgramAccountsConfig {
+            filters: Some(filters),
+            account_config: RpcAccountInfoConfig {
+                encoding: Some(UiAccountEncoding::Base64),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let existing_seats = wallet
+            .connection
+            .get_program_accounts_with_config(&ID, config)
+            .await?;
+
+        let other_device_keys = other_device_keys_for_ip(&existing_seats, &device);
+
+        if !other_device_keys.is_empty() {
+            let device_list = other_device_keys
+                .iter()
+                .map(|k| k.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            bail!(
+                "Client IP {} already has a seat on device {}. \
+                 Withdraw from that device first before creating a seat on a new device.",
+                self.client_ip,
+                device_list,
+            );
+        }
 
         let seat_already_active =
             is_seat_already_active(accounts[0].as_ref().map(|a| a.data.as_slice()));
@@ -398,6 +468,8 @@ fn format_duration(seconds: f64) -> String {
 
 #[cfg(test)]
 mod tests {
+    use solana_sdk::account::Account;
+
     use super::*;
 
     // --- format_duration tests ---
@@ -800,5 +872,76 @@ mod tests {
     fn seat_not_active_when_data_too_short() {
         let short_data = vec![0u8; 10];
         assert!(!is_seat_already_active(Some(&short_data)));
+    }
+
+    // --- other_device_keys_for_ip tests ---
+
+    /// Build a minimal ClientSeat byte buffer with the given device key and
+    /// tenure_epochs value.
+    fn make_seat_with_device(device: &Pubkey, tenure_epochs: u16) -> Account {
+        let mut data = vec![0u8; 72];
+        data[8..40].copy_from_slice(device.as_ref());
+        data[TENURE_OFFSET..TENURE_OFFSET + 2].copy_from_slice(&tenure_epochs.to_le_bytes());
+        Account {
+            data,
+            ..Account::default()
+        }
+    }
+
+    #[test]
+    fn no_conflict_when_no_seats() {
+        let target = Pubkey::new_unique();
+        assert!(other_device_keys_for_ip(&[], &target).is_empty());
+    }
+
+    #[test]
+    fn no_conflict_when_only_same_device() {
+        let target = Pubkey::new_unique();
+        let accounts = vec![(Pubkey::new_unique(), make_seat_with_device(&target, 1))];
+        assert!(other_device_keys_for_ip(&accounts, &target).is_empty());
+    }
+
+    #[test]
+    fn conflict_when_different_device() {
+        let target = Pubkey::new_unique();
+        let other = Pubkey::new_unique();
+        let accounts = vec![(Pubkey::new_unique(), make_seat_with_device(&other, 1))];
+        let result = other_device_keys_for_ip(&accounts, &target);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], other);
+    }
+
+    #[test]
+    fn conflict_filters_out_target_device() {
+        let target = Pubkey::new_unique();
+        let other = Pubkey::new_unique();
+        let accounts = vec![
+            (Pubkey::new_unique(), make_seat_with_device(&target, 1)),
+            (Pubkey::new_unique(), make_seat_with_device(&other, 1)),
+        ];
+        let result = other_device_keys_for_ip(&accounts, &target);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], other);
+    }
+
+    #[test]
+    fn conflict_multiple_other_devices() {
+        let target = Pubkey::new_unique();
+        let other1 = Pubkey::new_unique();
+        let other2 = Pubkey::new_unique();
+        let accounts = vec![
+            (Pubkey::new_unique(), make_seat_with_device(&other1, 1)),
+            (Pubkey::new_unique(), make_seat_with_device(&other2, 1)),
+        ];
+        let result = other_device_keys_for_ip(&accounts, &target);
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn no_conflict_when_other_device_seat_withdrawn() {
+        let target = Pubkey::new_unique();
+        let other = Pubkey::new_unique();
+        let accounts = vec![(Pubkey::new_unique(), make_seat_with_device(&other, 0))];
+        assert!(other_device_keys_for_ip(&accounts, &target).is_empty());
     }
 }

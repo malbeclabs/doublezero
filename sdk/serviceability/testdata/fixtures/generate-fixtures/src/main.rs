@@ -33,7 +33,7 @@ use doublezero_serviceability::state::{
     multicastgroup::{MulticastGroup, MulticastGroupStatus},
     programconfig::ProgramConfig,
     tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
-    user::{User, UserCYOA, UserStatus, UserType},
+    user::{BGPStatus, User, UserCYOA, UserStatus, UserType},
 };
 use serde::Serialize;
 
@@ -495,6 +495,9 @@ fn generate_user(dir: &Path) {
         validator_pubkey,
         tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         tunnel_flags: 0,
+        bgp_status: BGPStatus::Up,
+        last_bgp_up_at: 1_700_000_000,
+        last_bgp_reported_at: 1_700_000_100,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -522,6 +525,10 @@ fn generate_user(dir: &Path) {
             FieldValue { name: "Subscribers0".into(), value: pubkey_bs58(&subscriber_pk), typ: "pubkey".into() },
             FieldValue { name: "ValidatorPubkey".into(), value: pubkey_bs58(&validator_pubkey), typ: "pubkey".into() },
             FieldValue { name: "TunnelEndpoint".into(), value: "0.0.0.0".into(), typ: "ipv4".into() },
+            FieldValue { name: "TunnelFlags".into(), value: "0".into(), typ: "u8".into() },
+            FieldValue { name: "BgpStatus".into(), value: "1".into(), typ: "u8".into() },
+            FieldValue { name: "LastBgpUpAt".into(), value: "1700000000".into(), typ: "u64".into() },
+            FieldValue { name: "LastBgpReportedAt".into(), value: "1700000100".into(), typ: "u64".into() },
         ],
     };
 

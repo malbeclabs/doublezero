@@ -182,6 +182,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(
@@ -324,6 +327,9 @@ mod tests {
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer);

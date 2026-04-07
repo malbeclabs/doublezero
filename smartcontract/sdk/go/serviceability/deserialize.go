@@ -207,6 +207,10 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	user.Subscribers = reader.ReadPubkeySlice()
 	user.ValidatorPubKey = reader.ReadPubkey()
 	user.TunnelEndpoint = reader.ReadIPv4()
+	user.TunnelFlags = reader.ReadU8()
+	user.BgpStatus = reader.ReadU8()
+	user.LastBgpUpAt = reader.ReadU64()
+	user.LastBgpReportedAt = reader.ReadU64()
 	// Note: user.PubKey is set separately in client.go after deserialization
 }
 

@@ -111,7 +111,8 @@ func (e *Executor) SetDeviceHealthBatch(ctx context.Context, updates []DeviceHea
 			"failingIndex", failingIdx,
 			"devicePubkey", failedUpdate.DevicePubkey.String(),
 			"remainingBefore", len(remaining),
-			"error", err)
+			"error", formatRPCError(err),
+		)
 
 		remaining = append(remaining[:failingIdx], remaining[failingIdx+1:]...)
 	}
@@ -153,7 +154,8 @@ func (e *Executor) SetLinkHealthBatch(ctx context.Context, updates []LinkHealthU
 			"failingIndex", failingIdx,
 			"linkPubkey", failedUpdate.LinkPubkey.String(),
 			"remainingBefore", len(remaining),
-			"error", err)
+			"error", formatRPCError(err),
+		)
 
 		remaining = append(remaining[:failingIdx], remaining[failingIdx+1:]...)
 	}

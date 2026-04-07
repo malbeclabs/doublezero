@@ -1,6 +1,6 @@
 package serviceability
 
-// Program IDs per environment.
+// ProgramIDs are the serviceability program IDs per environment.
 var ProgramIDs = map[string]string{
 	"mainnet-beta": "ser2VaTMAcYTaauMrTSfSrxBaUDq7BLNs2xfUugTAGv",
 	"testnet":      "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb",

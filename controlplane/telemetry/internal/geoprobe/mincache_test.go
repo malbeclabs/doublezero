@@ -23,16 +23,19 @@ func newTestCache(maxAge time.Duration) (*MinCache[testMeasurement], *time.Time)
 
 func TestMinCache_FirstMeasurementBecomesBest(t *testing.T) {
 	c, _ := newTestCache(time.Hour)
-	result := c.Update(testMeasurement{rttNs: 1000, label: "first"})
-	if result != UpdateBest {
-		t.Fatalf("expected UpdateBest, got %v", result)
+	info := c.Update(testMeasurement{rttNs: 1000, label: "first"})
+	if info.Result != UpdateBest {
+		t.Fatalf("expected UpdateBest, got %v", info.Result)
+	}
+	if info.Promoted {
+		t.Fatal("unexpected promotion")
+	}
+	if info.HadPrevBest {
+		t.Fatal("unexpected previous best")
 	}
 	got, ok := c.Best()
-	if !ok {
-		t.Fatal("expected best to be present")
-	}
-	if got.rttNs != 1000 {
-		t.Fatalf("expected rttNs=1000, got %d", got.rttNs)
+	if !ok || got.rttNs != 1000 {
+		t.Fatalf("expected rttNs=1000, got %d (ok=%v)", got.rttNs, ok)
 	}
 }
 
@@ -40,15 +43,15 @@ func TestMinCache_LowerRTTReplacesBest(t *testing.T) {
 	c, _ := newTestCache(time.Hour)
 	c.Update(testMeasurement{rttNs: 2000, label: "high"})
 
-	result := c.Update(testMeasurement{rttNs: 1000, label: "low"})
-	if result != UpdateBest {
-		t.Fatalf("expected UpdateBest, got %v", result)
+	info := c.Update(testMeasurement{rttNs: 1000, label: "low"})
+	if info.Result != UpdateBest {
+		t.Fatalf("expected UpdateBest, got %v", info.Result)
+	}
+	if !info.HadPrevBest || info.PrevBestRttNs != 2000 {
+		t.Fatalf("expected prev best 2000, got %d (had=%v)", info.PrevBestRttNs, info.HadPrevBest)
 	}
 	got, ok := c.Best()
-	if !ok {
-		t.Fatal("expected best to be present")
-	}
-	if got.label != "low" {
+	if !ok || got.label != "low" {
 		t.Fatalf("expected label=low, got %s", got.label)
 	}
 }
@@ -57,9 +60,12 @@ func TestMinCache_HigherRTTGoesToBackup(t *testing.T) {
 	c, _ := newTestCache(time.Hour)
 	c.Update(testMeasurement{rttNs: 1000, label: "best"})
 
-	result := c.Update(testMeasurement{rttNs: 2000, label: "backup"})
-	if result != UpdateBackup {
-		t.Fatalf("expected UpdateBackup, got %v", result)
+	info := c.Update(testMeasurement{rttNs: 2000, label: "backup"})
+	if info.Result != UpdateBackup {
+		t.Fatalf("expected UpdateBackup, got %v", info.Result)
+	}
+	if info.Promoted {
+		t.Fatal("unexpected promotion")
 	}
 	got, ok := c.Best()
 	if !ok || got.label != "best" {
@@ -71,17 +77,23 @@ func TestMinCache_ExpiredBestPromotesBackup(t *testing.T) {
 	c, now := newTestCache(100 * time.Millisecond)
 	c.Update(testMeasurement{rttNs: 1000, label: "best"})
 
-	// Insert backup 60ms later so it outlives best.
 	*now = now.Add(60 * time.Millisecond)
 	c.Update(testMeasurement{rttNs: 2000, label: "backup"})
 
 	// Advance past best's expiry but backup still valid.
 	*now = now.Add(50 * time.Millisecond)
 
-	// Insert something with higher RTT than backup — triggers promotion.
-	result := c.Update(testMeasurement{rttNs: 3000, label: "new"})
-	if result != UpdatePromoted {
-		t.Fatalf("expected UpdatePromoted, got %v", result)
+	// Insert something worse than backup — triggers promotion, incoming goes to backup.
+	info := c.Update(testMeasurement{rttNs: 3000, label: "new"})
+	if !info.Promoted {
+		t.Fatal("expected promotion")
+	}
+	if info.Result != UpdateBackup {
+		t.Fatalf("expected incoming to become backup, got %v", info.Result)
+	}
+	// PrevBestRttNs should be the expired best's RTT, not the backup's.
+	if !info.HadPrevBest || info.PrevBestRttNs != 1000 {
+		t.Fatalf("expected prev best 1000 (expired), got %d (had=%v)", info.PrevBestRttNs, info.HadPrevBest)
 	}
 }
 
@@ -95,10 +107,16 @@ func TestMinCache_PromotionThenNewBestReturnsUpdateBest(t *testing.T) {
 	// Best (5000) expires, backup (8000) still valid.
 	*now = now.Add(50 * time.Millisecond)
 
-	// New measurement beats the promoted backup — should be UpdateBest, not UpdatePromoted.
-	result := c.Update(testMeasurement{rttNs: 3000, label: "new-low"})
-	if result != UpdateBest {
-		t.Fatalf("expected UpdateBest (new value beats promoted backup), got %v", result)
+	// New measurement beats the promoted backup.
+	info := c.Update(testMeasurement{rttNs: 3000, label: "new-low"})
+	if info.Result != UpdateBest {
+		t.Fatalf("expected UpdateBest, got %v", info.Result)
+	}
+	if !info.Promoted {
+		t.Fatal("expected promotion flag")
+	}
+	if !info.HadPrevBest || info.PrevBestRttNs != 5000 {
+		t.Fatalf("expected prev best 5000, got %d", info.PrevBestRttNs)
 	}
 	got, _ := c.Best()
 	if got.label != "new-low" {
@@ -127,9 +145,9 @@ func TestMinCache_StaleBackupReplaced(t *testing.T) {
 	// Advance past half-maxAge so the backup is considered stale.
 	*now = now.Add(110 * time.Millisecond)
 
-	result := c.Update(testMeasurement{rttNs: 9000, label: "backup-new"})
-	if result != UpdateBackup {
-		t.Fatalf("expected UpdateBackup (stale replacement), got %v", result)
+	info := c.Update(testMeasurement{rttNs: 9000, label: "backup-new"})
+	if info.Result != UpdateBackup {
+		t.Fatalf("expected UpdateBackup (stale replacement), got %v", info.Result)
 	}
 }
 
@@ -138,19 +156,18 @@ func TestMinCache_FreshBackupNotReplacedByWorse(t *testing.T) {
 	c.Update(testMeasurement{rttNs: 1000, label: "best"})
 	c.Update(testMeasurement{rttNs: 2000, label: "backup"})
 
-	// Immediately insert a worse value — backup is fresh, should not be replaced.
-	result := c.Update(testMeasurement{rttNs: 3000, label: "worse"})
-	if result != UpdateNone {
-		t.Fatalf("expected UpdateNone (fresh backup not replaced), got %v", result)
+	info := c.Update(testMeasurement{rttNs: 3000, label: "worse"})
+	if info.Result != UpdateNone {
+		t.Fatalf("expected UpdateNone (fresh backup not replaced), got %v", info.Result)
 	}
 }
 
 func TestMinCache_EqualRTTReplacesBest(t *testing.T) {
 	c, _ := newTestCache(time.Hour)
 	c.Update(testMeasurement{rttNs: 1000, label: "first"})
-	result := c.Update(testMeasurement{rttNs: 1000, label: "second"})
-	if result != UpdateBest {
-		t.Fatalf("expected UpdateBest for equal RTT, got %v", result)
+	info := c.Update(testMeasurement{rttNs: 1000, label: "second"})
+	if info.Result != UpdateBest {
+		t.Fatalf("expected UpdateBest for equal RTT, got %v", info.Result)
 	}
 	got, _ := c.Best()
 	if got.label != "second" {
@@ -169,6 +186,21 @@ func TestMinCache_BestRttNs(t *testing.T) {
 	rtt, ok := c.BestRttNs()
 	if !ok || rtt != 5000 {
 		t.Fatalf("expected 5000, got %d (ok=%v)", rtt, ok)
+	}
+}
+
+func TestMinCache_Empty(t *testing.T) {
+	c, now := newTestCache(20 * time.Millisecond)
+	if !c.Empty() {
+		t.Fatal("new cache should be empty")
+	}
+	c.Update(testMeasurement{rttNs: 1000})
+	if c.Empty() {
+		t.Fatal("cache with entry should not be empty")
+	}
+	*now = now.Add(30 * time.Millisecond)
+	if !c.Empty() {
+		t.Fatal("cache should be empty after expiry")
 	}
 }
 
@@ -193,6 +225,38 @@ func TestMinCache_ConcurrentAccess(t *testing.T) {
 	}
 }
 
+func TestMinCacheMap_Sweep(t *testing.T) {
+	now := time.Now()
+	m := NewMinCacheMap[string, testMeasurement](50*time.Millisecond, testRttFunc)
+
+	cA := m.Get("a")
+	cA.nowFunc = func() time.Time { return now }
+	cA.Update(testMeasurement{rttNs: 1000})
+
+	cB := m.Get("b")
+	cB.nowFunc = func() time.Time { return now }
+	cB.Update(testMeasurement{rttNs: 2000})
+
+	// Expire only "a" by advancing its clock.
+	expiredNow := now.Add(60 * time.Millisecond)
+	cA.nowFunc = func() time.Time { return expiredNow }
+
+	m.Sweep()
+
+	// "a" should be evicted, "b" should remain.
+	m.mu.RLock()
+	_, hasA := m.caches["a"]
+	_, hasB := m.caches["b"]
+	m.mu.RUnlock()
+
+	if hasA {
+		t.Fatal("expected 'a' to be swept")
+	}
+	if !hasB {
+		t.Fatal("expected 'b' to remain")
+	}
+}
+
 func TestUpdateResult_String(t *testing.T) {
 	tests := []struct {
 		r    UpdateResult
@@ -201,7 +265,6 @@ func TestUpdateResult_String(t *testing.T) {
 		{UpdateNone, "no_change"},
 		{UpdateBest, "new_best"},
 		{UpdateBackup, "backup_updated"},
-		{UpdatePromoted, "promoted"},
 		{UpdateResult(99), "unknown"},
 	}
 	for _, tt := range tests {
@@ -211,19 +274,20 @@ func TestUpdateResult_String(t *testing.T) {
 	}
 }
 
-func TestUpdateResult_Changed(t *testing.T) {
+func TestUpdateInfo_Changed(t *testing.T) {
 	tests := []struct {
-		r    UpdateResult
+		info UpdateInfo
 		want bool
 	}{
-		{UpdateNone, false},
-		{UpdateBest, true},
-		{UpdateBackup, false},
-		{UpdatePromoted, true},
+		{UpdateInfo{Result: UpdateNone}, false},
+		{UpdateInfo{Result: UpdateBest}, true},
+		{UpdateInfo{Result: UpdateBackup}, false},
+		{UpdateInfo{Result: UpdateBackup, Promoted: true}, true},
+		{UpdateInfo{Result: UpdateNone, Promoted: true}, true},
 	}
 	for _, tt := range tests {
-		if got := tt.r.Changed(); got != tt.want {
-			t.Errorf("UpdateResult(%d).Changed() = %v, want %v", tt.r, got, tt.want)
+		if got := tt.info.Changed(); got != tt.want {
+			t.Errorf("%+v.Changed() = %v, want %v", tt.info, got, tt.want)
 		}
 	}
 }

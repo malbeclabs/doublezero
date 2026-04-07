@@ -5,14 +5,13 @@ import (
 	"time"
 )
 
-// UpdateResult describes how a MinCache.Update call changed the cache state.
+// UpdateResult describes what happened to the incoming value in a MinCache.Update call.
 type UpdateResult int
 
 const (
-	UpdateNone     UpdateResult = iota // no change to best or backup
-	UpdateBest                         // best was replaced with a new lower-RTT value
-	UpdateBackup                       // backup was replaced
-	UpdatePromoted                     // backup was promoted to best (old best expired)
+	UpdateNone   UpdateResult = iota // incoming value was discarded
+	UpdateBest                       // incoming value became the new best
+	UpdateBackup                     // incoming value became the new backup
 )
 
 func (r UpdateResult) String() string {
@@ -23,17 +22,28 @@ func (r UpdateResult) String() string {
 		return "new_best"
 	case UpdateBackup:
 		return "backup_updated"
-	case UpdatePromoted:
-		return "promoted"
 	default:
 		return "unknown"
 	}
 }
 
-// Changed returns true if the update resulted in a new best value, either
-// from a direct replacement or a backup promotion.
-func (r UpdateResult) Changed() bool {
-	return r == UpdateBest || r == UpdatePromoted
+// UpdateInfo is the result of a MinCache.Update call. It describes what happened
+// to the incoming value and whether a backup-to-best promotion occurred during
+// this call (independent of the incoming value's placement).
+type UpdateInfo struct {
+	Result UpdateResult
+	// Promoted is true if backup was promoted to best because the old best expired.
+	Promoted bool
+	// PrevBestRttNs is the RTT of the previous best before this update, captured
+	// inside the lock. Zero if there was no previous best.
+	PrevBestRttNs uint64
+	HadPrevBest   bool
+}
+
+// Changed returns true if the best value changed, either from a new best
+// measurement or a backup promotion.
+func (u UpdateInfo) Changed() bool {
+	return u.Result == UpdateBest || u.Promoted
 }
 
 type minEntry[T any] struct {
@@ -67,7 +77,7 @@ func NewMinCache[T any](maxAge time.Duration, rttFunc func(T) uint64) *MinCache[
 }
 
 // Update feeds a new measurement into the cache and returns what changed.
-func (c *MinCache[T]) Update(value T) UpdateResult {
+func (c *MinCache[T]) Update(value T) UpdateInfo {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -79,11 +89,19 @@ func (c *MinCache[T]) Update(value T) UpdateResult {
 		receivedAt: now,
 	}
 
-	promoted := false
+	// Capture previous best before any mutation.
+	var info UpdateInfo
+	if !c.best.expiredAt(now, c.maxAge) {
+		info.PrevBestRttNs = c.best.rttNs
+		info.HadPrevBest = true
+	}
+
 	if c.best.expiredAt(now, c.maxAge) {
 		if !c.backup.expiredAt(now, c.maxAge) {
+			info.PrevBestRttNs = c.best.rttNs // expired best's RTT (before promotion)
+			info.HadPrevBest = c.best != nil
 			c.best = c.backup
-			promoted = true
+			info.Promoted = true
 		} else {
 			c.best = nil
 		}
@@ -92,36 +110,30 @@ func (c *MinCache[T]) Update(value T) UpdateResult {
 
 	if c.best == nil {
 		c.best = entry
-		return UpdateBest
+		info.Result = UpdateBest
+		return info
 	}
 
 	if rttNs <= c.best.rttNs {
-		// New measurement beats current best (whether it was promoted or original).
 		c.best = entry
-		return UpdateBest
+		info.Result = UpdateBest
+		return info
 	}
 
 	// Higher RTT than best — consider for backup.
 	if c.backup.expiredAt(now, c.maxAge) || rttNs <= c.backup.rttNs {
 		c.backup = entry
-		if promoted {
-			return UpdatePromoted
-		}
-		return UpdateBackup
+		info.Result = UpdateBackup
+		return info
 	}
 	halfMaxAge := c.maxAge / 2
 	if now.Sub(c.backup.receivedAt) > halfMaxAge {
 		c.backup = entry
-		if promoted {
-			return UpdatePromoted
-		}
-		return UpdateBackup
+		info.Result = UpdateBackup
+		return info
 	}
 
-	if promoted {
-		return UpdatePromoted
-	}
-	return UpdateNone
+	return info
 }
 
 // Best returns the current best value. If best is expired, it falls through to
@@ -158,6 +170,14 @@ func (c *MinCache[T]) BestRttNs() (uint64, bool) {
 	return 0, false
 }
 
+// Empty returns true if both best and backup are expired.
+func (c *MinCache[T]) Empty() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	now := c.nowFunc()
+	return c.best.expiredAt(now, c.maxAge) && c.backup.expiredAt(now, c.maxAge)
+}
+
 // MinCacheMap manages per-key MinCache instances, creating them on demand.
 type MinCacheMap[K comparable, V any] struct {
 	mu      sync.RWMutex
@@ -191,4 +211,15 @@ func (m *MinCacheMap[K, V]) Get(key K) *MinCache[V] {
 	c = NewMinCache[V](m.maxAge, m.rttFunc)
 	m.caches[key] = c
 	return c
+}
+
+// Sweep removes caches where both best and backup have expired.
+func (m *MinCacheMap[K, V]) Sweep() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for k, c := range m.caches {
+		if c.Empty() {
+			delete(m.caches, k)
+		}
+	}
 }

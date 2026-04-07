@@ -115,6 +115,7 @@ func main() {
 	if *rateLimit > 0 {
 		go limiter.cleanup(ctx)
 	}
+	go sweepCaches(ctx, caches)
 
 	go runTWAMPReflector(ctx, log, *twampPort, errCh)
 	go runUDPListener(ctx, log, *udpPort, *verifySignature, limiter, chWriter, caches, errCh)
@@ -223,6 +224,19 @@ func (rl *rateLimiter) cleanup(ctx context.Context) {
 				}
 			}
 			rl.mu.Unlock()
+		}
+	}
+}
+
+func sweepCaches(ctx context.Context, caches *geoprobe.MinCacheMap[[32]byte, geoprobe.LocationOffset]) {
+	ticker := time.NewTicker(rateLimitCleanupInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			caches.Sweep()
 		}
 	}
 }
@@ -350,16 +364,18 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 	}
 
 	cache := caches.Get(offset.SenderPubkey)
-	prevBestRtt, hadPrevBest := cache.BestRttNs()
-	cacheResult := cache.Update(*offset)
+	info := cache.Update(*offset)
 
 	output := formatLocationOffset(offset, addr, signatureValid, verifyError)
 
-	if *verbose || cacheResult.Changed() {
+	if *verbose || info.Changed() {
 		if *logFormat == "json" {
-			output.CacheUpdate = cacheResult.String()
-			if cacheResult.Changed() && hadPrevBest {
-				prevMs := float64(prevBestRtt) / nanosecondsPerMs
+			output.CacheUpdate = info.Result.String()
+			if info.Promoted {
+				output.CacheUpdate = "promoted+" + info.Result.String()
+			}
+			if info.Changed() && info.HadPrevBest {
+				prevMs := float64(info.PrevBestRttNs) / nanosecondsPerMs
 				output.PreviousBestRttMs = &prevMs
 			}
 			data, err := json.MarshalIndent(output, "", "  ")
@@ -371,15 +387,11 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 		} else {
 			text := formatTextOutput(output)
 			if *verbose {
-				text += fmt.Sprintf("  Cache: %s\n\n", cacheResult.String())
-			} else if cacheResult == geoprobe.UpdatePromoted {
-				if hadPrevBest {
-					text += fmt.Sprintf("  * Backup promoted to best (previous best: %.3fms)\n\n", float64(prevBestRtt)/nanosecondsPerMs)
-				} else {
-					text += "  * Backup promoted to best\n\n"
-				}
-			} else if hadPrevBest {
-				text += fmt.Sprintf("  * New best measurement (previous best: %.3fms)\n\n", float64(prevBestRtt)/nanosecondsPerMs)
+				text += fmt.Sprintf("  Cache: result=%s promoted=%v\n\n", info.Result.String(), info.Promoted)
+			} else if info.Promoted && info.HadPrevBest {
+				text += fmt.Sprintf("  * Backup promoted to best (previous best: %.3fms)\n\n", float64(info.PrevBestRttNs)/nanosecondsPerMs)
+			} else if info.Result == geoprobe.UpdateBest && info.HadPrevBest {
+				text += fmt.Sprintf("  * New best measurement (previous best: %.3fms)\n\n", float64(info.PrevBestRttNs)/nanosecondsPerMs)
 			}
 			fmt.Print(text)
 		}
@@ -393,7 +405,8 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 		"rtt_ms", output.RttMs,
 		"max_distance_miles", output.MaxDistanceMiles,
 		"signature_valid", signatureValid,
-		"cache_update", cacheResult.String(),
+		"cache_result", info.Result.String(),
+		"cache_promoted", info.Promoted,
 	)
 	log.Debug("offset processed successfully", "from", addr, "authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(), "rtt_ms", float64(offset.RttNs)/1000000.0)
 }

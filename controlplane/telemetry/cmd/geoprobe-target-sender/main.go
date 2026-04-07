@@ -203,17 +203,16 @@ func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq 
 		reply1SigValid:      reply1SigValid,
 	}
 
-	prevBestRtt, hadPrevBest := cache.BestRttNs()
-	cacheResult := cache.Update(m)
+	info := cache.Update(m)
 
-	if *verbose || cacheResult.Changed() {
+	if *verbose || info.Changed() {
 		logPairedResult(log, seq, probeMeasuredRttNs, targetMeasuredRtt,
 			reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid,
-			result.Reply1, cacheResult, prevBestRtt, hadPrevBest)
+			result.Reply1, info)
 	}
 }
 
-func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid bool, reply *signed.ReplyPacket, cacheResult geoprobe.UpdateResult, prevBestRtt uint64, hadPrevBest bool) {
+func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid bool, reply *signed.ReplyPacket, info geoprobe.UpdateInfo) {
 	authorityPK := solana.PublicKeyFromBytes(reply.AuthorityPubkey[:])
 	geoprobePK := solana.PublicKeyFromBytes(reply.GeoprobePubkey[:])
 	offsets := parseOffsets(reply.Offsets)
@@ -239,10 +238,13 @@ func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, ta
 			AuthorityPubkey:     authorityPK.String(),
 			GeoprobePubkey:      geoprobePK.String(),
 			Offsets:             offsets,
-			CacheUpdate:         cacheResult.String(),
+			CacheUpdate:         info.Result.String(),
 		}
-		if cacheResult.Changed() && hadPrevBest {
-			prevMs := float64(prevBestRtt) / 1e6
+		if info.Promoted {
+			output.CacheUpdate = "promoted+" + info.Result.String()
+		}
+		if info.Changed() && info.HadPrevBest {
+			prevMs := float64(info.PrevBestRttNs) / 1e6
 			output.PreviousBestRttMs = &prevMs
 		}
 		data, err := json.Marshal(output)
@@ -256,15 +258,11 @@ func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, ta
 			reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid,
 			authorityPK, geoprobePK, reply, offsets)
 		if *verbose {
-			text += fmt.Sprintf("  Cache: %s\n\n", cacheResult.String())
-		} else if cacheResult == geoprobe.UpdatePromoted {
-			if hadPrevBest {
-				text += fmt.Sprintf("  * Backup promoted to best (previous best: %.3fms)\n\n", float64(prevBestRtt)/1e6)
-			} else {
-				text += "  * Backup promoted to best\n\n"
-			}
-		} else if hadPrevBest {
-			text += fmt.Sprintf("  * New best measurement (previous best: %.3fms)\n\n", float64(prevBestRtt)/1e6)
+			text += fmt.Sprintf("  Cache: result=%s promoted=%v\n\n", info.Result.String(), info.Promoted)
+		} else if info.Promoted && info.HadPrevBest {
+			text += fmt.Sprintf("  * Backup promoted to best (previous best: %.3fms)\n\n", float64(info.PrevBestRttNs)/1e6)
+		} else if info.Result == geoprobe.UpdateBest && info.HadPrevBest {
+			text += fmt.Sprintf("  * New best measurement (previous best: %.3fms)\n\n", float64(info.PrevBestRttNs)/1e6)
 		}
 		fmt.Print(text)
 	}

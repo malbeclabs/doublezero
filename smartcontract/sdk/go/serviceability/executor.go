@@ -107,11 +107,16 @@ func (e *Executor) SetDeviceHealthBatch(ctx context.Context, updates []DeviceHea
 		}
 
 		failedUpdate := remaining[failingIdx]
-		e.log.Warn("Device health update failed, removing from batch and retrying",
+		logAttrs := []any{
 			"failingIndex", failingIdx,
 			"devicePubkey", failedUpdate.DevicePubkey.String(),
 			"remainingBefore", len(remaining),
-			"error", err)
+			"error", err,
+		}
+		if code, ok := parseCustomErrorCode(err); ok {
+			logAttrs = append(logAttrs, "programError", ProgramErrorMessage(code))
+		}
+		e.log.Warn("Device health update failed, removing from batch and retrying", logAttrs...)
 
 		remaining = append(remaining[:failingIdx], remaining[failingIdx+1:]...)
 	}
@@ -149,11 +154,16 @@ func (e *Executor) SetLinkHealthBatch(ctx context.Context, updates []LinkHealthU
 		}
 
 		failedUpdate := remaining[failingIdx]
-		e.log.Warn("Link health update failed, removing from batch and retrying",
+		logAttrs := []any{
 			"failingIndex", failingIdx,
 			"linkPubkey", failedUpdate.LinkPubkey.String(),
 			"remainingBefore", len(remaining),
-			"error", err)
+			"error", err,
+		}
+		if code, ok := parseCustomErrorCode(err); ok {
+			logAttrs = append(logAttrs, "programError", ProgramErrorMessage(code))
+		}
+		e.log.Warn("Link health update failed, removing from batch and retrying", logAttrs...)
 
 		remaining = append(remaining[:failingIdx], remaining[failingIdx+1:]...)
 	}

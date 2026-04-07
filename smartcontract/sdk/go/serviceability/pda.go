@@ -5,6 +5,9 @@ import "github.com/gagliardetto/solana-go"
 // PDA seeds matching Rust implementation in seeds.rs
 const (
 	SeedPrefix                  = "doublezero"
+	SeedGlobalState             = "globalstate"
+	SeedGlobalConfig            = "config"
+	SeedProgramConfig           = "programconfig"
 	SeedLinkIds                 = "linkids"
 	SeedSegmentRoutingIds       = "segmentroutingids"
 	SeedUserTunnelBlock         = "usertunnelblock"
@@ -14,6 +17,38 @@ const (
 	SeedTenant                  = "tenant"
 	SeedPermission              = "permission"
 )
+
+// DeriveGlobalStatePDA derives the PDA for the GlobalState account.
+func DeriveGlobalStatePDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
+	seeds := [][]byte{
+		[]byte(SeedPrefix),
+		[]byte(SeedGlobalState),
+	}
+	return solana.FindProgramAddress(seeds, programID)
+}
+
+// DeriveGlobalConfigPDA derives the PDA for the GlobalConfig account.
+func DeriveGlobalConfigPDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
+	seeds := [][]byte{
+		[]byte(SeedPrefix),
+		[]byte(SeedGlobalConfig),
+	}
+	return solana.FindProgramAddress(seeds, programID)
+}
+
+// DeriveProgramConfigPDA derives the PDA for the ProgramConfig account.
+func DeriveProgramConfigPDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
+	seeds := [][]byte{
+		[]byte(SeedPrefix),
+		[]byte(SeedProgramConfig),
+	}
+	return solana.FindProgramAddress(seeds, programID)
+}
+
+// GetGlobalStatePDA is a convenience alias for DeriveGlobalStatePDA.
+func GetGlobalStatePDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
+	return DeriveGlobalStatePDA(programID)
+}
 
 // GetLinkIdsPDA derives the PDA for the global LinkIds resource extension
 func GetLinkIdsPDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {

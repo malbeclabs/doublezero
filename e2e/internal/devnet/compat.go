@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 // FetchGitHubClientReleaseTags fetches all client release tags from the GitHub API.

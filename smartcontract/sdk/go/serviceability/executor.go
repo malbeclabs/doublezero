@@ -349,16 +349,6 @@ func (e *Executor) waitForTransactionFinalized(ctx context.Context, sig solana.S
 	return tx, nil
 }
 
-func GetGlobalStatePDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
-	return solana.FindProgramAddress(
-		[][]byte{
-			[]byte("doublezero"),
-			[]byte("globalstate"),
-		},
-		programID,
-	)
-}
-
 // parseFailingInstructionIndex extracts the failing instruction index from a Solana RPC error.
 // Solana returns errors in the format: {"err": {"InstructionError": [index, errorDetails]}}
 func parseFailingInstructionIndex(err error) (int, error) {

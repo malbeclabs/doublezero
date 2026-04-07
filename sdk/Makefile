@@ -11,8 +11,6 @@ sdk_epoch ?= 0
 test:
 	go test ./borsh-incremental/go/...
 	go test ./revdist/go/...
-	go test ./serviceability/go/...
-	go test ./telemetry/go/...
 	go test ./shreds/go/...
 	$(MAKE) test-python
 	$(MAKE) test-typescript
@@ -44,7 +42,6 @@ compat-test:
 	REVDIST_COMPAT_TEST=1 go test -run TestCompat -v ./revdist/go/...
 	$(MAKE) compat-test-python-revdist
 	$(MAKE) compat-test-typescript-revdist
-	SERVICEABILITY_COMPAT_TEST=1 go test -run TestCompat -v ./serviceability/go/...
 	$(MAKE) compat-test-python-serviceability
 	$(MAKE) compat-test-typescript-serviceability
 	SHREDS_COMPAT_TEST=1 go test -run TestCompat -v ./shreds/go/...
@@ -77,10 +74,6 @@ example-shreds-go:
 # -----------------------------------------------------------------------------
 # Serviceability examples
 # -----------------------------------------------------------------------------
-.PHONY: example-serviceability-go
-example-serviceability-go:
-	go run ./serviceability/go/examples/fetch --env $(sdk_env)
-
 .PHONY: example-serviceability-python
 example-serviceability-python:
 	cd serviceability/python && uv run python examples/fetch.py --env $(sdk_env)
@@ -92,10 +85,6 @@ example-serviceability-typescript:
 # -----------------------------------------------------------------------------
 # Telemetry examples
 # -----------------------------------------------------------------------------
-.PHONY: example-telemetry-go
-example-telemetry-go:
-	go run ./telemetry/go/examples/fetch --env $(sdk_env) --epoch $(sdk_epoch)
-
 .PHONY: example-telemetry-python
 example-telemetry-python:
 	cd telemetry/python && uv run python examples/fetch.py --env $(sdk_env) --epoch $(sdk_epoch)
@@ -123,7 +112,7 @@ example-revdist-typescript:
 # Run all examples for a specific language
 # -----------------------------------------------------------------------------
 .PHONY: examples-go
-examples-go: example-serviceability-go example-telemetry-go example-revdist-go example-shreds-go
+examples-go: example-revdist-go example-shreds-go
 
 .PHONY: examples-python
 examples-python: example-serviceability-python example-telemetry-python example-revdist-python

@@ -78,6 +78,8 @@ All notable changes to this project will be documented in this file.
   - When flex-algo is enabled: generate IS-IS TE admin-group assignments on link interfaces, flex-algo topology definitions, and `system-colored-tunnel-rib` as the BGP next-hop resolution source
   - Stamp BGP color extcommunity on user tunnel route-maps for tenants with `include_topologies` set
   - Add `node-segment ipv4 index` lines to Vpnv4 loopback config for each flex-algo, sourced from segment routing IDs backfilled by the activator
+- E2E Tests
+  - Add flex-algo e2e tests: topology lifecycle (safe-delete enforcement), topology filter (`--topology` CLI validation), unicast-drained flag transitions, tenant `include_topologies` changes, migration dry-run and live run, and controller config generation against live cEOS
 - Client
   - Add `doublezero_connection_info` Prometheus metric exposing connection metadata (user_type, network, current_device, metro, tunnel_name, tunnel_src, tunnel_dst) ([#3201](https://github.com/malbeclabs/doublezero/pull/3201))
   - Add `doublezero_connection_rtt_nanoseconds` and `doublezero_connection_loss_percentage` Prometheus metrics reporting RTT and packet loss to the current connected device

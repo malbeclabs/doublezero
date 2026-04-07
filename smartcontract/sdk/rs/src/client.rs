@@ -146,7 +146,10 @@ impl DZClient {
 
         let payer_pubkey = payer.pubkey();
         let mut all_accounts = accounts;
-        if !all_accounts.iter().any(|a| a.pubkey == payer_pubkey && a.is_signer) {
+        if !all_accounts
+            .iter()
+            .any(|a| a.pubkey == payer_pubkey && a.is_signer)
+        {
             all_accounts.push(AccountMeta::new(payer_pubkey, true));
         }
         all_accounts.push(AccountMeta::new(program::id(), false));

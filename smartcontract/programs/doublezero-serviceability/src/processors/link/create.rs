@@ -9,7 +9,7 @@ use crate::{
         contributor::Contributor,
         device::Device,
         globalstate::GlobalState,
-        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus},
+        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LINK_MTU},
         link::*,
     },
 };
@@ -89,6 +89,10 @@ pub fn process_create_link(
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
+
+    if value.mtu != LINK_MTU {
+        return Err(DoubleZeroError::InvalidMtu.into());
+    }
 
     // Validate and normalize code
     let mut code =

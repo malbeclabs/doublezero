@@ -1058,7 +1058,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
                 bandwidth: 0,
                 ip_net: Some("100.1.0.0/31".parse().unwrap()),
                 cir: 0,
-                mtu: 9000,
+                mtu: 1500,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,

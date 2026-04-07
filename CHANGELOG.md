@@ -70,6 +70,9 @@ All notable changes to this project will be documented in this file.
   - Add `doublezero-admin migrate flex-algo [--dry-run]` to tag existing links with UNICAST-DEFAULT and backfill node segments
 - SDK
   - Update Go, Python, and TypeScript SDKs with `TopologyInfo` deserialization and new `link_topologies`, `link_flags`, and `include_topologies` fields
+- Activator
+  - Automatically backfill flex-algo node segment IDs for all activated devices when a new `TopologyInfo` account is created onchain
+  - Automatically backfill existing topologies' node segments when a Vpnv4 loopback interface is activated on a device
 - Client
   - Add `doublezero_connection_info` Prometheus metric exposing connection metadata (user_type, network, current_device, metro, tunnel_name, tunnel_src, tunnel_dst) ([#3201](https://github.com/malbeclabs/doublezero/pull/3201))
   - Add `doublezero_connection_rtt_nanoseconds` and `doublezero_connection_loss_percentage` Prometheus metrics reporting RTT and packet loss to the current connected device

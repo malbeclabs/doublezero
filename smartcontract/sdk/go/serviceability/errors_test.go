@@ -13,7 +13,7 @@ import (
 func TestProgramErrorMessage(t *testing.T) {
 	t.Run("known error code", func(t *testing.T) {
 		msg := ProgramErrorMessage(8)
-		assert.Equal(t, "NotAllowed: You are not allowed to execute this action", msg)
+		assert.Equal(t, "NotAllowed", msg)
 	})
 
 	t.Run("unknown error code", func(t *testing.T) {
@@ -21,10 +21,9 @@ func TestProgramErrorMessage(t *testing.T) {
 		assert.Equal(t, "unknown error code 9999", msg)
 	})
 
-	t.Run("all codes have non-empty name and description", func(t *testing.T) {
-		for code, pe := range programErrors {
-			assert.NotEmpty(t, pe.Name, "code %d has empty Name", code)
-			assert.NotEmpty(t, pe.Description, "code %d has empty Description", code)
+	t.Run("all codes have non-empty names", func(t *testing.T) {
+		for code, name := range programErrors {
+			assert.NotEmpty(t, name, "code %d has empty name", code)
 		}
 	})
 }
@@ -162,7 +161,7 @@ func TestFormatRPCError(t *testing.T) {
 		// Wrap it like executeTransaction does.
 		wrapped := fmt.Errorf("failed to send transaction: %w", rpcErr)
 		msg := formatRPCError(wrapped)
-		assert.Equal(t, "InvalidClientIp: Invalid Client IP (program logs: [Invalid public IP: 0.1.2.3])", msg)
+		assert.Equal(t, "InvalidClientIp (program logs: [Invalid public IP: 0.1.2.3])", msg)
 	})
 
 	t.Run("known code without interesting logs", func(t *testing.T) {
@@ -183,7 +182,7 @@ func TestFormatRPCError(t *testing.T) {
 			},
 		}
 		msg := formatRPCError(rpcErr)
-		assert.Equal(t, "NotAllowed: You are not allowed to execute this action", msg)
+		assert.Equal(t, "NotAllowed", msg)
 	})
 
 	t.Run("falls back to Error() for non-RPC errors", func(t *testing.T) {

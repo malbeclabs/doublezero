@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
   - Add `TestE2E_GeoprobeIcmpTargets` verifying end-to-end ICMP outbound offset delivery via onchain `outbound-icmp` targets
   - Refactor geoprobe E2E tests to use testcontainers entrypoints and onchain target discovery
 - Smartcontract
+  - Add human-readable error messages for serviceability program errors in the Go SDK, including program log extraction for enhanced debugging
   - Replace manual account validation assertions with `validate_program_account!` macro across serviceability processor files, adding consistent `data_is_empty` checks and fixing a missing `is_writable` validation in `ResumeLink` ([#3436](https://github.com/malbeclabs/doublezero/pull/3436))
   - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
 - Geolocation

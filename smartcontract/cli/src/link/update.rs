@@ -4,8 +4,8 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
         validate_code, validate_parse_bandwidth, validate_parse_delay_ms,
-        validate_parse_delay_override_ms, validate_parse_jitter_ms, validate_parse_mtu,
-        validate_pubkey, validate_pubkey_or_code,
+        validate_parse_delay_override_ms, validate_parse_jitter_ms, validate_pubkey,
+        validate_pubkey_or_code,
     },
 };
 use clap::Args;
@@ -13,6 +13,7 @@ use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::commands::{
     contributor::get::GetContributorCommand,
     link::{get::GetLinkCommand, update::UpdateLinkCommand},
+    topology::list::ListTopologyCommand,
 };
 use doublezero_serviceability::state::link::LinkDesiredStatus;
 use eyre::eyre;
@@ -35,8 +36,8 @@ pub struct UpdateLinkCliCommand {
     /// Updated bandwidth (e.g. 1Gbps, 100Mbps)
     #[arg(long, value_parser = validate_parse_bandwidth)]
     pub bandwidth: Option<u64>,
-    /// Updated MTU (Maximum Transmission Unit) in bytes
-    #[arg(long, value_parser = validate_parse_mtu)]
+    /// Updated MTU (Maximum Transmission Unit) in bytes. Must be 9000.
+    #[arg(long)]
     pub mtu: Option<u32>,
     /// RTT (Round Trip Time) delay in milliseconds
     #[arg(long, value_parser = validate_parse_delay_ms)]
@@ -103,6 +104,12 @@ impl UpdateLinkCliCommand {
             .transpose()
             .map_err(|e| eyre!("Invalid status: {e}"))?;
 
+        if let Some(mtu) = self.mtu {
+            if mtu != 9000 {
+                return Err(eyre!("Link MTU must be 9000"));
+            }
+        }
+
         if let Some(ref code) = self.code {
             if link.code != *code
                 && client
@@ -115,19 +122,18 @@ impl UpdateLinkCliCommand {
             }
         }
 
-        let link_topologies = if let Some(ref topology_name) = self.link_topology {
-            if topology_name == "default" {
-                Some(vec![])
-            } else {
-                let (topology_pda, _) =
-                    doublezero_sdk::get_topology_pda(&client.get_program_id(), topology_name);
-                client
-                    .get_account(topology_pda)
-                    .map_err(|_| eyre::eyre!("Topology '{}' not found", topology_name))?;
-                Some(vec![topology_pda])
+        let link_topologies = match self.link_topology {
+            None => None,
+            Some(ref name) if name == "default" => Some(vec![]),
+            Some(ref name) => {
+                let topology_map = client.list_topology(ListTopologyCommand)?;
+                let topology_pk = topology_map
+                    .iter()
+                    .find(|(_, t)| t.name == *name)
+                    .map(|(pk, _)| *pk)
+                    .ok_or_else(|| eyre!("Topology '{}' not found", name))?;
+                Some(vec![topology_pk])
             }
-        } else {
-            None
         };
 
         let signature = client.update_link(UpdateLinkCommand {
@@ -217,7 +223,7 @@ mod tests {
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
             bandwidth: 1000000000,
-            mtu: 1500,
+            mtu: 9000,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
             delay_override_ns: 0,
@@ -229,8 +235,7 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
-
-            link_topologies: Vec::new(),
+            link_topologies: vec![],
             link_flags: 0,
         };
 
@@ -244,7 +249,7 @@ mod tests {
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
             bandwidth: 1000000000,
-            mtu: 1500,
+            mtu: 9000,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
             delay_override_ns: 0,
@@ -256,8 +261,7 @@ mod tests {
             side_z_iface_name: "eth3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
-
-            link_topologies: Vec::new(),
+            link_topologies: vec![],
             link_flags: 0,
         };
 
@@ -297,7 +301,7 @@ mod tests {
                 contributor_pk: Some(contributor_pk),
                 tunnel_type: None,
                 bandwidth: Some(1000000000),
-                mtu: Some(1500),
+                mtu: Some(9000),
                 delay_ns: Some(10000000),
                 jitter_ns: Some(5000000),
                 delay_override_ns: None,
@@ -318,7 +322,7 @@ mod tests {
             contributor: Some(contributor_pk.to_string()),
             tunnel_type: None,
             bandwidth: Some(1000000000),
-            mtu: Some(1500),
+            mtu: Some(9000),
             delay_ms: Some(10.0),
             jitter_ms: Some(5.0),
             delay_override_ms: None,
@@ -345,7 +349,7 @@ mod tests {
             contributor: Some(contributor_pk.to_string()),
             tunnel_type: None,
             bandwidth: Some(1000000000),
-            mtu: Some(1500),
+            mtu: Some(9000),
             delay_ms: Some(10.0),
             jitter_ms: Some(5.0),
             delay_override_ms: None,

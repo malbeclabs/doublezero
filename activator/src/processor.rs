@@ -763,7 +763,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         let mut existing_links: HashMap<Pubkey, Link> = HashMap::new();
@@ -800,7 +800,7 @@ mod tests {
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
 
             link_topologies: Vec::new(),
-            unicast_drained: false,
+            link_flags: 0,
         };
 
         let new_link_cloned = new_link.clone();

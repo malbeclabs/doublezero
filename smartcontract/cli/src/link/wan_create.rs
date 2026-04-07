@@ -5,7 +5,7 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
         validate_code, validate_parse_bandwidth, validate_parse_delay_ms, validate_parse_jitter_ms,
-        validate_parse_mtu, validate_pubkey_or_code,
+        validate_pubkey_or_code,
     },
 };
 use clap::Args;
@@ -51,8 +51,8 @@ pub struct CreateWANLinkCliCommand {
     /// Bandwidth (required). Accepts values in Kbps, Mbps, or Gbps.
     #[arg(long, value_parser = validate_parse_bandwidth)]
     pub bandwidth: u64,
-    /// MTU (Maximum Transmission Unit) in bytes.
-    #[arg(long, value_parser = validate_parse_mtu)]
+    /// MTU (Maximum Transmission Unit) in bytes. Must be 9000.
+    #[arg(long, default_value_t = 9000)]
     pub mtu: u32,
     /// RTT (Round Trip Time) delay in milliseconds.
     #[arg(long, value_parser = validate_parse_delay_ms)]
@@ -129,9 +129,9 @@ impl CreateWANLinkCliCommand {
             ));
         }
 
-        if side_a_iface.mtu != 2048 {
+        if side_a_iface.mtu != 9000 {
             return Err(eyre!(
-                "Interface '{}' on side A device has MTU {} but WAN link interfaces must have MTU 2048",
+                "Interface '{}' on side A device has MTU {} but WAN link interfaces must have MTU 9000",
                 self.side_a_interface, side_a_iface.mtu
             ));
         }
@@ -171,11 +171,15 @@ impl CreateWANLinkCliCommand {
             ));
         }
 
-        if side_z_iface.mtu != 2048 {
+        if side_z_iface.mtu != 9000 {
             return Err(eyre!(
-                "Interface '{}' on side Z device has MTU {} but WAN link interfaces must have MTU 2048",
+                "Interface '{}' on side Z device has MTU {} but WAN link interfaces must have MTU 9000",
                 self.side_z_interface, side_z_iface.mtu
             ));
+        }
+
+        if self.mtu != 9000 {
+            return Err(eyre!("Link MTU must be 9000"));
         }
 
         if client
@@ -277,7 +281,7 @@ mod tests {
                 ip_net: "10.2.0.1/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-                mtu: 2048,
+                mtu: 9000,
                 ..Default::default()
             }
             .to_interface()],
@@ -322,7 +326,7 @@ mod tests {
                 ip_net: "10.2.0.2/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-                mtu: 2048,
+                mtu: 9000,
                 ..Default::default()
             }
             .to_interface()],
@@ -367,7 +371,7 @@ mod tests {
                 ip_net: "10.2.0.3/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-                mtu: 2048,
+                mtu: 9000,
                 ..Default::default()
             }
             .to_interface()],
@@ -393,7 +397,7 @@ mod tests {
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
             bandwidth: 1000000000,
-            mtu: 1500,
+            mtu: 9000,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
             delay_override_ns: 0,
@@ -406,8 +410,7 @@ mod tests {
             side_z_iface_name: "Ethernet1/2".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
-
-            link_topologies: Vec::new(),
+            link_topologies: vec![],
             link_flags: 0,
         };
 
@@ -450,7 +453,7 @@ mod tests {
                 side_z_pk: device2_pk,
                 link_type: LinkLinkType::WAN,
                 bandwidth: 1000000000,
-                mtu: 1500,
+                mtu: 9000,
                 delay_ns: 10000000000,
                 jitter_ns: 5000000000,
                 side_a_iface_name: "Ethernet1/1".to_string(),
@@ -468,7 +471,7 @@ mod tests {
             side_a: device1_pk.to_string(),
             side_z: device2_pk.to_string(),
             bandwidth: 1000000000,
-            mtu: 1500,
+            mtu: 9000,
             delay_ms: 10000.0,
             jitter_ms: 5000.0,
             side_a_interface: "Ethernet1/1".to_string(),
@@ -497,7 +500,7 @@ mod tests {
             side_a: device2_pk.to_string(),
             side_z: device3_pk.to_string(),
             bandwidth: 1000000000,
-            mtu: 1500,
+            mtu: 9000,
             delay_ms: 10000.0,
             jitter_ms: 5000.0,
             side_a_interface: "Ethernet1/2".to_string(),
@@ -635,7 +638,7 @@ mod tests {
             side_a: device1_pk.to_string(),
             side_z: device2_pk.to_string(),
             bandwidth: 1000000000,
-            mtu: 1500,
+            mtu: 9000,
             delay_ms: 10000.0,
             jitter_ms: 5000.0,
             side_a_interface: "Ethernet1/1".to_string(),
@@ -723,7 +726,7 @@ mod tests {
                 name: "Ethernet1/2".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
-                mtu: 2048,
+                mtu: 9000,
                 vlan_id: 16,
                 ip_net: "10.2.0.2/24".parse().unwrap(),
                 node_segment_idx: 0,
@@ -770,7 +773,7 @@ mod tests {
             side_a: device1_pk.to_string(),
             side_z: device2_pk.to_string(),
             bandwidth: 1000000000,
-            mtu: 2048,
+            mtu: 9000,
             delay_ms: 10000.0,
             jitter_ms: 5000.0,
             side_a_interface: "Ethernet1/1".to_string(),
@@ -782,7 +785,7 @@ mod tests {
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
-            "Interface 'Ethernet1/1' on side A device has MTU 1500 but WAN link interfaces must have MTU 2048"
+            "Interface 'Ethernet1/1' on side A device has MTU 1500 but WAN link interfaces must have MTU 9000"
         );
     }
 }

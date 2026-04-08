@@ -1067,7 +1067,7 @@ mod tests {
                 device_pk: pk1.to_string(),
                 device_code: "device".to_string(),
                 device_ip: "0.0.0.0".to_string(),
-                min_latency_ns: 5_000_000,  // lower min → should win
+                min_latency_ns: 5_000_000, // lower min → should win
                 max_latency_ns: 30_000_000,
                 avg_latency_ns: 25_000_000, // higher avg
                 reachable: true,
@@ -1078,7 +1078,7 @@ mod tests {
                 device_ip: "0.0.0.0".to_string(),
                 min_latency_ns: 13_000_000, // higher min → current device
                 max_latency_ns: 20_000_000,
-                avg_latency_ns: 6_000_000,  // lower avg (would anchor tolerance if avg-seeded)
+                avg_latency_ns: 6_000_000, // lower avg (would anchor tolerance if avg-seeded)
                 reachable: true,
             },
         ];

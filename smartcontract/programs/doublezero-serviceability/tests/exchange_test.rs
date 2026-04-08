@@ -534,13 +534,13 @@ async fn test_exchange_owner_and_foundation_can_update_status() {
 #[tokio::test]
 async fn test_exchange_bgp_community_autoassignment() {
     let program_id = Pubkey::new_unique();
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+    let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
-    )
-    .start()
-    .await;
+    );
+    program_test.set_compute_max_units(1_000_000);
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
     println!("🟢  Start test_exchange_bgp_community_autoassignment");
 

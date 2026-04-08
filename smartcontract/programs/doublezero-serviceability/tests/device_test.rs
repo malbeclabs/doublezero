@@ -1022,13 +1022,13 @@ async fn test_device_update_multicast_counts_ignored_for_non_foundation_payer() 
 async fn setup_program_with_location_and_exchange(
 ) -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey, Pubkey, Pubkey) {
     let program_id = Pubkey::new_unique();
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+    let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
-    )
-    .start()
-    .await;
+    );
+    program_test.set_compute_max_units(1_000_000);
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
     // Start with a fresh program
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);

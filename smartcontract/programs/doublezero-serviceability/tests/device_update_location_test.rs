@@ -21,13 +21,13 @@ use test_helpers::*;
 #[tokio::test]
 async fn device_update_location_test() {
     let program_id = Pubkey::new_unique();
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+    let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
-    )
-    .start()
-    .await;
+    );
+    program_test.set_compute_max_units(1_000_000);
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
     /***********************************************************************************************************************************/
     println!("🟢  Start test_device");

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `shreds`: prepend `CheckCliVersion` instruction to all write transactions (pay, withdraw, validator-client-rewards) for onchain minimum CLI version enforcement
 - `shreds pay`: block duplicate client IP across devices — prevent creating a seat for an IP that already has an active seat on a different device
 - `shreds validator-client-rewards`: add hidden command to set validator client rewards proportion
 - `shreds list`: filter by funder (withdraw-authority) by default, add `--all` flag

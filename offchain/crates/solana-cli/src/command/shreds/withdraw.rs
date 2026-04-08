@@ -94,8 +94,8 @@ impl WithdrawCommand {
             bail!("Client seat {client_seat_key} does not have active service");
         }
 
-        let mut instructions = Vec::new();
-        let mut compute_unit_limit = 30_000;
+        let mut instructions = vec![super::build_check_cli_version_instruction()?];
+        let mut compute_unit_limit = 5_000 + 30_000;
 
         instructions.push(try_build_instruction(
             &ID,

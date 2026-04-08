@@ -8,6 +8,10 @@ pub mod withdraw;
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use doublezero_solana_client_tools::rpc::{DoubleZeroLedgerConnection, NetworkEnvironment};
+use doublezero_solana_sdk::shred_subscription::{
+    ID as SHRED_SUBSCRIPTION_PROGRAM_ID,
+    instruction::{ShredSubscriptionInstructionData, account::CheckCliVersionAccounts},
+};
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
     rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
@@ -124,6 +128,42 @@ pub(super) fn shred_oracle_key(env: NetworkEnvironment) -> Option<Pubkey> {
         )),
         NetworkEnvironment::Localnet => None,
     }
+}
+
+/// Parse the CLI's build version into (major, minor, patch).
+///
+/// Handles version strings like "0.5.0" or "0.5.0-rc1" by only considering
+/// the first three numeric components.
+fn cli_version() -> (u32, u32, u32) {
+    let version_str = option_env!("BUILD_VERSION")
+        .unwrap_or(env!("CARGO_PKG_VERSION"))
+        .trim_start_matches('v');
+    let mut parts = version_str.split('.');
+    let major = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let minor = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    // Strip any pre-release suffix (e.g. "0-rc1" -> "0").
+    let patch = parts
+        .next()
+        .and_then(|s| s.split('-').next())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    (major, minor, patch)
+}
+
+/// Build a `CheckCliVersion` instruction to prepend to write transactions.
+pub(super) fn build_check_cli_version_instruction() -> Result<solana_sdk::instruction::Instruction>
+{
+    let (major, minor, patch) = cli_version();
+    let ix = doublezero_solana_sdk::try_build_instruction(
+        &SHRED_SUBSCRIPTION_PROGRAM_ID,
+        CheckCliVersionAccounts::new(),
+        &ShredSubscriptionInstructionData::CheckCliVersion {
+            major,
+            minor,
+            patch,
+        },
+    )?;
+    Ok(ix)
 }
 
 pub(super) fn serviceability_program_id(env: NetworkEnvironment) -> Result<Pubkey> {

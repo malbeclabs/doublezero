@@ -371,8 +371,8 @@ impl PayCommand {
             );
         }
 
-        let mut instructions = Vec::new();
-        let mut compute_unit_limit = 0u32;
+        let mut instructions = vec![super::build_check_cli_version_instruction()?];
+        let mut compute_unit_limit = 5_000u32;
 
         if !seat_exists {
             let seat_ix = try_build_instruction(

@@ -54,9 +54,10 @@ impl ValidatorClientRewardsCommand {
             &ShredSubscriptionInstructionData::SetValidatorClientRewardsProportion(proportion_bps),
         )?;
 
-        let mut instructions = vec![ix];
+        let check_ix = super::build_check_cli_version_instruction()?;
+        let mut instructions = vec![check_ix, ix];
 
-        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(30_000));
+        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(35_000));
         if let Some(ref compute_unit_price_ix) = wallet.compute_unit_price_ix {
             instructions.push(compute_unit_price_ix.clone());
         }

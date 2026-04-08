@@ -21,6 +21,8 @@ pub enum ShredSubscriptionInstructionData {
     RequestInstantSeatWithdrawal,
     /// Set the rewards proportion for a validator client.
     SetValidatorClientRewardsProportion(u16),
+    /// Validates the provided CLI version against the onchain minimum.
+    CheckCliVersion { major: u32, minor: u32, patch: u32 },
 }
 
 impl ShredSubscriptionInstructionData {
@@ -38,6 +40,8 @@ impl ShredSubscriptionInstructionData {
         Discriminator::new_sha2(b"dz::ix::request_instant_seat_withdrawal");
     pub const SET_VALIDATOR_CLIENT_REWARDS_PROPORTION: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::set_validator_client_rewards_proportion");
+    pub const CHECK_CLI_VERSION: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::check_cli_version");
 }
 
 impl BorshSerialize for ShredSubscriptionInstructionData {
@@ -63,6 +67,16 @@ impl BorshSerialize for ShredSubscriptionInstructionData {
                 Self::SET_VALIDATOR_CLIENT_REWARDS_PROPORTION.serialize(writer)?;
                 proportion.serialize(writer)
             }
+            Self::CheckCliVersion {
+                major,
+                minor,
+                patch,
+            } => {
+                Self::CHECK_CLI_VERSION.serialize(writer)?;
+                major.serialize(writer)?;
+                minor.serialize(writer)?;
+                patch.serialize(writer)
+            }
         }
     }
 }
@@ -85,6 +99,16 @@ impl BorshDeserialize for ShredSubscriptionInstructionData {
             Self::SET_VALIDATOR_CLIENT_REWARDS_PROPORTION => {
                 let proportion = u16::deserialize_reader(reader)?;
                 Ok(Self::SetValidatorClientRewardsProportion(proportion))
+            }
+            Self::CHECK_CLI_VERSION => {
+                let major = u32::deserialize_reader(reader)?;
+                let minor = u32::deserialize_reader(reader)?;
+                let patch = u32::deserialize_reader(reader)?;
+                Ok(Self::CheckCliVersion {
+                    major,
+                    minor,
+                    patch,
+                })
             }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,

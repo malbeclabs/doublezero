@@ -264,6 +264,35 @@ impl From<SetValidatorClientRewardsProportionAccounts> for Vec<AccountMeta> {
     }
 }
 
+/// Accounts for the `CheckCliVersion` instruction (1 account).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckCliVersionAccounts {
+    pub program_config_key: Pubkey,
+}
+
+impl Default for CheckCliVersionAccounts {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CheckCliVersionAccounts {
+    pub fn new() -> Self {
+        Self {
+            program_config_key: state::find_program_config_address().0,
+        }
+    }
+}
+
+impl From<CheckCliVersionAccounts> for Vec<AccountMeta> {
+    fn from(accounts: CheckCliVersionAccounts) -> Self {
+        vec![AccountMeta::new_readonly(
+            accounts.program_config_key,
+            false,
+        )]
+    }
+}
+
 /// Accounts for the `FundPaymentEscrowUsdc` instruction (10 accounts).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FundPaymentEscrowUsdcAccounts {

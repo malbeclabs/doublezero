@@ -134,6 +134,8 @@ mod tests {
             jitter_ns: 100000,
             status: LinkStatus::Requested,
             desired_status: LinkDesiredStatus::Activated,
+            link_topologies: vec![],
+            link_flags: 0,
         };
 
         let device_z = doublezero_serviceability::state::device::Device {
@@ -235,6 +237,8 @@ mod tests {
             jitter_ns: 100000,
             status: LinkStatus::Requested,
             desired_status: LinkDesiredStatus::Activated,
+            link_topologies: vec![],
+            link_flags: 0,
         };
 
         let device_z = doublezero_serviceability::state::device::Device {

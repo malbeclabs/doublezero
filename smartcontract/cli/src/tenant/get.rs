@@ -103,6 +103,7 @@ mod tests {
             metro_routing: true,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
 
         let tenant_cloned = tenant.clone();

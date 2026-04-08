@@ -46,6 +46,8 @@ impl SetGlobalConfigCommand {
         );
         let (vrf_ids_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
+        let (admin_group_bits_pda, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::AdminGroupBits);
 
         client.execute_transaction(
             DoubleZeroInstruction::SetGlobalConfig(set_config_args),
@@ -59,6 +61,7 @@ impl SetGlobalConfigCommand {
                 AccountMeta::new(segment_routing_ids_pda, false),
                 AccountMeta::new(multicast_publisher_block_pda, false),
                 AccountMeta::new(vrf_ids_pda, false),
+                AccountMeta::new(admin_group_bits_pda, false),
             ],
         )
     }

@@ -190,6 +190,8 @@ mod tests {
             delay_override_ns: 0,
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+            link_topologies: vec![],
+            link_flags: 0,
         }
     }
 

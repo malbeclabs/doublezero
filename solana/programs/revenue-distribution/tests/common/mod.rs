@@ -35,7 +35,7 @@ use doublezero_revenue_distribution::{
             PaySolanaValidatorDebtAccounts, SetAdminAccounts,
             SetDistributionEconomicBurnRateAccounts, SetRewardsManagerAccounts,
             SweepDistributionTokensAccounts, VerifyDistributionMerkleRootAccounts,
-            WriteOffSolanaValidatorDebtAccounts,
+            WithdrawSolanaValidatorDepositAccounts, WriteOffSolanaValidatorDebtAccounts,
         },
         ContributorRewardsConfiguration, DistributionMerkleRootKind, ProgramConfiguration,
         ProgramFlagConfiguration, RevenueDistributionInstructionData,
@@ -952,6 +952,38 @@ impl ProgramTestWithOwner {
             &self.context.last_blockhash,
             &[write_off_solana_validator_debt_ix],
             &[payer_signer, debt_accountant_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
+    pub async fn withdraw_solana_validator_deposit(
+        &mut self,
+        node_signer: &Keypair,
+        beneficiary_key: Option<&Pubkey>,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.context.payer;
+        let node_id = node_signer.pubkey();
+
+        let withdraw_solana_validator_deposit_ix = try_build_instruction(
+            &ID,
+            WithdrawSolanaValidatorDepositAccounts::new(&node_id, beneficiary_key),
+            &RevenueDistributionInstructionData::WithdrawSolanaValidatorDeposit,
+        )
+        .unwrap();
+
+        let signers = if beneficiary_key.is_some() {
+            vec![payer_signer, node_signer]
+        } else {
+            vec![payer_signer]
+        };
+
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
+            &[withdraw_solana_validator_deposit_ix],
+            &signers,
         )
         .await?;
 

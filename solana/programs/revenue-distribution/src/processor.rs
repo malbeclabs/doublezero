@@ -137,6 +137,9 @@ fn try_process_instruction(
         RevenueDistributionInstructionData::SetDistributionEconomicBurnRate(burn_rate_value) => {
             try_set_distribution_economic_burn_rate(accounts, burn_rate_value)
         }
+        RevenueDistributionInstructionData::WithdrawSolanaValidatorDeposit => {
+            try_withdraw_solana_validator_deposit(accounts)
+        }
     }
 }
 
@@ -2659,6 +2662,89 @@ fn try_set_distribution_economic_burn_rate(
     distribution.economic_burn_rate = burn_rate;
 
     msg!("Economic burn rate is now {}", burn_rate);
+
+    Ok(())
+}
+
+fn try_withdraw_solana_validator_deposit(accounts: &[AccountInfo]) -> ProgramResult {
+    msg!("Withdraw Solana validator deposit");
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Solana validator deposit.
+    // - 2: Validator node.
+    // - 3: Beneficiary (optional).
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Account 0 must be the program config.
+    let program_config =
+        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Make sure the program is not paused.
+    program_config.try_require_unpaused()?;
+
+    // Account 1 must be the Solana validator deposit.
+    let solana_validator_deposit = ZeroCopyAccount::<SolanaValidatorDeposit>::try_next_accounts(
+        &mut accounts_iter,
+        Some(&ID),
+    )?;
+    let node_id = solana_validator_deposit.node_id;
+    msg!("Node ID: {}", node_id);
+
+    // Account 2 must be the validator node. This account must match the
+    // node ID encoded in the Solana validator deposit.
+    let (account_index, validator_node_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    if validator_node_info.key != &node_id {
+        msg!(
+            "Invalid address for validator node (account {})",
+            account_index
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Account 3 may be the beneficiary of the excess lamports. If provided, the
+    // validator node must be a signer to act as an authority for the
+    // beneficiary. Otherwise, the validator node is the destination.
+    let beneficiary_info = match try_next_enumerated_account(&mut accounts_iter, Default::default())
+    {
+        Ok((_, specified_beneficiary_info)) => {
+            if !validator_node_info.is_signer {
+                msg!("Validator node must be a signer when a beneficiary is provided");
+                return Err(ProgramError::MissingRequiredSignature);
+            }
+
+            specified_beneficiary_info
+        }
+        Err(_) => validator_node_info,
+    };
+
+    let written_off_sol_debt = solana_validator_deposit.written_off_sol_debt;
+    let solana_validator_deposit_info = solana_validator_deposit.info;
+    drop(solana_validator_deposit);
+
+    let solana_validator_deposit_lamports = solana_validator_deposit_info.lamports();
+
+    // Withdraw the excess lamports beyond rent exemption and written-off debt.
+    let rent_exemption_lamports = Rent::get()
+        .unwrap()
+        .minimum_balance(zero_copy::data_end::<SolanaValidatorDeposit>());
+
+    let withdrawn_lamports = solana_validator_deposit_lamports
+        .saturating_sub(rent_exemption_lamports)
+        .saturating_sub(written_off_sol_debt);
+
+    if withdrawn_lamports == 0 {
+        msg!(
+            "No excess lamports to withdraw. Delinquent debt: {}",
+            written_off_sol_debt
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    **solana_validator_deposit_info.lamports.borrow_mut() -= withdrawn_lamports;
+    **beneficiary_info.lamports.borrow_mut() += withdrawn_lamports;
 
     Ok(())
 }

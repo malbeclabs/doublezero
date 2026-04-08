@@ -111,6 +111,7 @@ pub enum RevenueDistributionInstructionData {
     SweepDistributionTokens,
     WithdrawSol(u64),
     SetDistributionEconomicBurnRate(u32),
+    WithdrawSolanaValidatorDeposit,
 }
 
 impl RevenueDistributionInstructionData {
@@ -158,6 +159,8 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::withdraw_sol");
     pub const SET_DISTRIBUTION_ECONOMIC_BURN_RATE: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::set_distribution_economic_burn_rate");
+    pub const WITHDRAW_SOLANA_VALIDATOR_DEPOSIT: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::withdraw_solana_validator_deposit");
 
     //
     // Versioned instruction selectors.
@@ -255,6 +258,7 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
                 BorshDeserialize::deserialize_reader(reader)
                     .map(Self::SetDistributionEconomicBurnRate)
             }
+            Self::WITHDRAW_SOLANA_VALIDATOR_DEPOSIT => Ok(Self::WithdrawSolanaValidatorDeposit),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid discriminator",
@@ -353,6 +357,9 @@ impl BorshSerialize for RevenueDistributionInstructionData {
             Self::SetDistributionEconomicBurnRate(burn_rate_value) => {
                 Self::SET_DISTRIBUTION_ECONOMIC_BURN_RATE.serialize(writer)?;
                 burn_rate_value.serialize(writer)
+            }
+            Self::WithdrawSolanaValidatorDeposit => {
+                Self::WITHDRAW_SOLANA_VALIDATOR_DEPOSIT.serialize(writer)
             }
         }
     }

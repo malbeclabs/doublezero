@@ -1,3 +1,5 @@
+use crate::doublezerocommand::CliCommand;
+use chrono::{TimeZone, Utc};
 use std::{
     io::{Read, Write},
     str,
@@ -10,6 +12,20 @@ use std::{
     str::FromStr,
     time::Duration,
 };
+
+pub fn slot_to_datetime<C: CliCommand>(client: &C, slot: u64) -> String {
+    if slot == 0 {
+        return "never".to_string();
+    }
+    match client.get_block_time(slot) {
+        Ok(Some(ts)) => Utc
+            .timestamp_opt(ts, 0)
+            .single()
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+            .unwrap_or_else(|| slot.to_string()),
+        _ => slot.to_string(),
+    }
+}
 
 pub fn parse_pubkey(input: &str) -> Option<Pubkey> {
     if input.len() < 43 || input.len() > 44 {

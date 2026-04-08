@@ -245,8 +245,7 @@ pub fn process_closeaccount_user(
             tenant_acc.key, &user.tenant_pk,
             "Tenant account doesn't match user's tenant"
         );
-        assert_eq!(tenant_acc.owner, program_id, "Invalid Tenant Account Owner");
-        assert!(tenant_acc.is_writable, "Tenant Account is not writable");
+        validate_program_account!(tenant_acc, program_id, writable = true, "Tenant");
 
         let mut tenant = Tenant::try_from(tenant_acc)?;
         tenant.reference_count = tenant.reference_count.saturating_sub(1);

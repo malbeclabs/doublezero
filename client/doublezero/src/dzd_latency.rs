@@ -1045,6 +1045,60 @@ mod tests {
         assert_eq!(result.device_pk, pk1.to_string()); // lower min wins
     }
 
+    #[tokio::test]
+    async fn test_best_latency_current_device_seeded_by_min_not_avg() {
+        // Verify that when a current_device is set, the tolerance window is seeded from
+        // min_latency_ns (line 205), not avg_latency_ns.
+        //
+        // pk2 (current): min=13ms, avg=6ms → min-seeded best_latency=13ms
+        // pk1 (candidate): min=5ms, avg=25ms
+        //
+        // With min seeding: |5 - 13| = 8ms > 5ms tolerance → switches to pk1 (correct)
+        // With avg seeding: |5 - 6| = 1ms < 5ms tolerance → wrongly stays with pk2
+        let (pk1, dev1) = make_device(DeviceStatus::Activated, 0);
+        let (pk2, dev2) = make_device(DeviceStatus::Activated, 0);
+
+        let mut devices = HashMap::new();
+        devices.insert(pk1, dev1);
+        devices.insert(pk2, dev2);
+
+        let latencies = vec![
+            LatencyRecord {
+                device_pk: pk1.to_string(),
+                device_code: "device".to_string(),
+                device_ip: "0.0.0.0".to_string(),
+                min_latency_ns: 5_000_000,  // lower min → should win
+                max_latency_ns: 30_000_000,
+                avg_latency_ns: 25_000_000, // higher avg
+                reachable: true,
+            },
+            LatencyRecord {
+                device_pk: pk2.to_string(),
+                device_code: "device".to_string(),
+                device_ip: "0.0.0.0".to_string(),
+                min_latency_ns: 13_000_000, // higher min → current device
+                max_latency_ns: 20_000_000,
+                avg_latency_ns: 6_000_000,  // lower avg (would anchor tolerance if avg-seeded)
+                reachable: true,
+            },
+        ];
+
+        let mut controller = MockServiceController::new();
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
+
+        // pk2 is the current device but pk1 has significantly lower min (8ms gap > 5ms tolerance)
+        let result = best_latency(&controller, &devices, true, None, Some(&pk2), &[])
+            .await
+            .unwrap();
+
+        assert_eq!(result.device_pk, pk1.to_string()); // switches to lower-min device
+    }
+
     #[test]
     fn test_select_tunnel_endpoint_no_matching_device() {
         let pk = Pubkey::new_unique();

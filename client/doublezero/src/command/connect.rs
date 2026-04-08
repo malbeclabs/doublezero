@@ -1072,6 +1072,7 @@ mod tests {
                 metro_routing: false,
                 route_liveness: false,
                 billing: TenantBillingConfig::default(),
+                include_topologies: vec![],
             };
 
             let mut tenants = HashMap::new();
@@ -1397,6 +1398,7 @@ mod tests {
                 metro_routing: false,
                 route_liveness: false,
                 billing: TenantBillingConfig::default(),
+                include_topologies: vec![],
             };
             tenants.insert(pk, tenant.clone());
             (pk, tenant)

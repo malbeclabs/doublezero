@@ -91,13 +91,13 @@ struct CreateSubscribeFixture {
 async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFixture {
     let program_id = Pubkey::new_unique();
 
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+    let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
-    )
-    .start()
-    .await;
+    );
+    program_test.set_compute_max_units(1_000_000);
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
@@ -114,6 +114,8 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
     let (multicast_publisher_block, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Init global state
     execute_transaction(
@@ -153,6 +155,7 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )
@@ -1530,13 +1533,13 @@ async fn test_create_subscribe_user_foundation_owner_override() {
     let client_ip = [100, 0, 0, 30];
     let program_id = Pubkey::new_unique();
 
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+    let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
-    )
-    .start()
-    .await;
+    );
+    program_test.set_compute_max_units(1_000_000);
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
@@ -1553,6 +1556,8 @@ async fn test_create_subscribe_user_foundation_owner_override() {
     let (multicast_publisher_block, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Init global state (payer is automatically in foundation_allowlist)
     execute_transaction(
@@ -1592,6 +1597,7 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )
@@ -1863,6 +1869,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
         program_id,
         processor!(process_instruction),
     );
+    program_test.set_compute_max_units(1_000_000);
 
     // Fund the sentinel
     program_test.add_account(
@@ -1893,6 +1900,8 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
     let (multicast_publisher_block, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Init global state
     execute_transaction(
@@ -1949,6 +1958,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )
@@ -2219,6 +2229,7 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
         program_id,
         processor!(process_instruction),
     );
+    program_test.set_compute_max_units(1_000_000);
 
     // Fund the non-foundation payer so it can sign transactions
     program_test.add_account(
@@ -2249,6 +2260,8 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
     let (multicast_publisher_block, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Init global state with foundation payer
     execute_transaction(
@@ -2288,6 +2301,7 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )

@@ -104,6 +104,7 @@ async fn test_delete_cyoa_interface_with_invalid_sibling() {
         ip_net: "63.243.225.62/30".parse().unwrap(),
         node_segment_idx: 0,
         user_tunnel_endpoint: false,
+        flex_algo_node_segments: vec![],
     };
 
     // Interface B: INVALID CYOA interface — CYOA set but ip_net is default (0.0.0.0/0).
@@ -123,6 +124,7 @@ async fn test_delete_cyoa_interface_with_invalid_sibling() {
         ip_net: NetworkV4::default(), // <-- INVALID: CYOA without ip_net
         node_segment_idx: 0,
         user_tunnel_endpoint: false,
+        flex_algo_node_segments: vec![],
     };
 
     let device = Device {
@@ -337,6 +339,7 @@ async fn test_update_cyoa_interface_with_invalid_sibling() {
         ip_net: "63.243.225.62/30".parse().unwrap(),
         node_segment_idx: 0,
         user_tunnel_endpoint: false,
+        flex_algo_node_segments: vec![],
     };
 
     // Interface B: INVALID CYOA interface — CYOA set but ip_net is default.
@@ -355,6 +358,7 @@ async fn test_update_cyoa_interface_with_invalid_sibling() {
         ip_net: NetworkV4::default(), // <-- INVALID: CYOA without ip_net
         node_segment_idx: 0,
         user_tunnel_endpoint: false,
+        flex_algo_node_segments: vec![],
     };
 
     let device = Device {
@@ -410,7 +414,7 @@ async fn test_update_cyoa_interface_with_invalid_sibling() {
         program_id,
         DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
             name: "ethernet1".to_string(),
-            mtu: Some(1500),
+            mtu: Some(1500), // CYOA interfaces require CYOA_DIA_INTERFACE_MTU = 1500
             ..Default::default()
         }),
         vec![

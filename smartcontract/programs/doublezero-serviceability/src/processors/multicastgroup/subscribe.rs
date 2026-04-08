@@ -201,7 +201,14 @@ pub fn process_subscribe_multicastgroup(
 
     // Parse and validate user
     let mut user: User = User::try_from(user_account)?;
-    if user.status != UserStatus::Activated && user.status != UserStatus::Updating {
+    // Allow pure-unsubscribe (both false) for any status so that users
+    // created atomically via CreateSubscribeUser can be cleaned up before
+    // activation.  Subscribe operations still require Activated/Updating.
+    let is_unsubscribe_only = !value.publisher && !value.subscriber;
+    if !is_unsubscribe_only
+        && user.status != UserStatus::Activated
+        && user.status != UserStatus::Updating
+    {
         msg!("UserStatus: {:?}", user.status);
         return Err(DoubleZeroError::InvalidStatus.into());
     }
@@ -301,8 +308,10 @@ pub fn process_subscribe_multicastgroup(
         }
     } else {
         // Legacy path: trigger activator reprocessing when publisher list transitions
-        // (gaining first publisher requires dz_ip allocation, losing last means it's no longer needed)
-        if result.publisher_list_transitioned {
+        // (gaining first publisher requires dz_ip allocation, losing last means it's no longer needed).
+        // Skip for Pending users — they haven't been activated yet so there is
+        // no dz_ip to (de)allocate and the Updating status would fail validation.
+        if result.publisher_list_transitioned && user.status != UserStatus::Pending {
             user.status = UserStatus::Updating;
         }
     }

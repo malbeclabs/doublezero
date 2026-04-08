@@ -13,5 +13,6 @@ pub mod multicastgroup;
 pub mod permission;
 pub mod resource;
 pub mod tenant;
+pub mod topology;
 pub mod user;
 pub mod validation;

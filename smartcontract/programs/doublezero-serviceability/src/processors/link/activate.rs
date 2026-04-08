@@ -1,6 +1,6 @@
 use crate::{
     error::DoubleZeroError,
-    pda::get_resource_extension_pda,
+    pda::{get_resource_extension_pda, get_topology_pda},
     processors::{
         resource::{allocate_id, allocate_ip},
         validation::validate_program_account,
@@ -59,11 +59,11 @@ pub fn process_activate_link(
     let side_z_device_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for on-chain allocation (before payer)
+    // Optional: ResourceExtension accounts for on-chain allocation (before unicast-default topology)
     // Account layout WITH ResourceExtension (use_onchain_allocation = true):
-    //   [link, side_a_dev, side_z_dev, globalstate, device_tunnel_block, link_ids, payer, system]
+    //   [link, side_a_dev, side_z_dev, globalstate, device_tunnel_block, link_ids, unicast_default, payer, system]
     // Account layout WITHOUT (legacy, use_onchain_allocation = false):
-    //   [link, side_a_dev, side_z_dev, globalstate, payer, system]
+    //   [link, side_a_dev, side_z_dev, globalstate, unicast_default, payer, system]
     let resource_extension_accounts = if value.use_onchain_allocation {
         let device_tunnel_block_ext = next_account_info(accounts_iter)?; // DeviceTunnelBlock (global)
         let link_ids_ext = next_account_info(accounts_iter)?; // LinkIds (global)
@@ -72,6 +72,7 @@ pub fn process_activate_link(
         None
     };
 
+    let unicast_default_topology_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
 
@@ -230,6 +231,16 @@ pub fn process_activate_link(
     link.status = LinkStatus::Activated;
 
     link.check_status_transition();
+
+    // Auto-tag with UNICAST-DEFAULT topology at activation
+    let (expected_unicast_default_pda, _) = get_topology_pda(program_id, "unicast-default");
+    if unicast_default_topology_account.owner != program_id
+        || unicast_default_topology_account.key != &expected_unicast_default_pda
+        || unicast_default_topology_account.data_is_empty()
+    {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+    link.link_topologies = vec![*unicast_default_topology_account.key];
 
     try_acc_write(&side_a_dev, side_a_device_account, payer_account, accounts)?;
     try_acc_write(&side_z_dev, side_z_device_account, payer_account, accounts)?;

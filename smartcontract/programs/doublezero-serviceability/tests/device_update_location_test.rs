@@ -21,13 +21,13 @@ use test_helpers::*;
 #[tokio::test]
 async fn device_update_location_test() {
     let program_id = Pubkey::new_unique();
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+    let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
-    )
-    .start()
-    .await;
+    );
+    program_test.set_compute_max_units(1_000_000);
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
     /***********************************************************************************************************************************/
     println!("🟢  Start test_device");
@@ -64,6 +64,8 @@ async fn device_update_location_test() {
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -87,6 +89,7 @@ async fn device_update_location_test() {
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )

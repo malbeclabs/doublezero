@@ -23,6 +23,7 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
+	telemetrysvc "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/serviceability"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/state"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
@@ -366,8 +367,12 @@ func main() {
 	// Run BGP status submitter if enabled.
 	var bgpStatusErrCh <-chan error
 	if *bgpStatusEnable {
+		cachedSvcClient := telemetrysvc.NewCachingFetcher(
+			serviceability.New(rpcClient, serviceabilityProgramID),
+			telemetrysvc.DefaultCacheTTL,
+		)
 		bgpStatusErrCh = startBGPStatusSubmitter(ctx, cancel, log, keypair, localDevicePK,
-			rpcClient, serviceabilityProgramID, localNet, *bgpNamespace)
+			serviceabilityProgramID, localNet, *bgpNamespace, cachedSvcClient, rpcClient)
 	}
 
 	// Wait for the context to be done or an error to be returned.
@@ -399,13 +404,13 @@ func startBGPStatusSubmitter(
 	log *slog.Logger,
 	keypair solana.PrivateKey,
 	localDevicePK solana.PublicKey,
-	rpcClient *solanarpc.Client,
 	serviceabilityProgramID solana.PublicKey,
 	localNet netutil.LocalNet,
 	bgpNamespace string,
+	svcClient telemetrysvc.ProgramDataProvider,
+	rpcClient *solanarpc.Client,
 ) <-chan error {
 	executor := serviceability.NewExecutor(log, rpcClient, &keypair, serviceabilityProgramID)
-	svcClient := serviceability.New(rpcClient, serviceabilityProgramID)
 
 	sub, err := bgpstatus.NewSubmitter(bgpstatus.Config{
 		Log:                     log,

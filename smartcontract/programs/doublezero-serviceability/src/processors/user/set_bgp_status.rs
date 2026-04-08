@@ -1,5 +1,6 @@
 use crate::{
     error::DoubleZeroError,
+    processors::validation::validate_program_account,
     serializer::try_acc_write,
     state::{
         device::Device,
@@ -44,13 +45,9 @@ pub fn process_set_bgp_status_user(
         payer_account.is_signer,
         "Metrics publisher must be a signer"
     );
-    assert!(user_account.is_writable, "User account must be writable");
 
-    assert_eq!(user_account.owner, program_id, "Invalid user account owner");
-    assert_eq!(
-        device_account.owner, program_id,
-        "Invalid device account owner"
-    );
+    validate_program_account!(user_account, program_id, writable = true, "User");
+    validate_program_account!(device_account, program_id, writable = false, "Device");
 
     let device = Device::try_from(device_account)?;
 

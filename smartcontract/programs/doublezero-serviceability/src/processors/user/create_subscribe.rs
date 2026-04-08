@@ -18,7 +18,7 @@ use super::{
     create_core::{create_user_core, CreateUserCoreAccounts, PDAVersion},
     resource_onchain_helpers,
 };
-use crate::processors::multicastgroup::subscribe::subscribe_user_to_multicastgroup;
+use crate::processors::multicastgroup::subscribe::update_user_multicastgroup_subscription;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct UserCreateSubscribeArgs {
@@ -111,7 +111,7 @@ pub fn process_create_subscribe_user(
     )?;
 
     // Subscribe user to multicast group
-    let subscribe_result = subscribe_user_to_multicastgroup(
+    let subscribe_result = update_user_multicastgroup_subscription(
         mgroup_account,
         &result.accesspass,
         &mut result.user,

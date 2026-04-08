@@ -51,7 +51,12 @@ use doublezero_serviceability::{
     },
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
+use solana_sdk::{
+    instruction::{AccountMeta, InstructionError},
+    pubkey::Pubkey,
+    signature::Signer,
+    transaction::TransactionError,
+};
 use std::net::Ipv4Addr;
 
 mod test_helpers;
@@ -2528,5 +2533,183 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
     assert!(
         result.is_err(),
         "Non-foundation member should not be able to set custom owner"
+    );
+}
+
+// ============================================================================
+// Unsubscribe Pending User (regression for oracle withdrawal deadlock)
+// ============================================================================
+
+/// A user created via CreateSubscribeUser (legacy) is Pending with a publisher
+/// subscription. Unsubscribing (publisher: false, subscriber: false) must
+/// succeed so the oracle can clean up the user before activation.
+#[tokio::test]
+async fn test_unsubscribe_pending_user_created_via_create_subscribe() {
+    let client_ip = [100, 0, 0, 99];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        ..
+    } = f;
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Create user via legacy path — user is Pending with publisher subscription.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: true,
+            subscriber: false,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
+            owner: Pubkey::default(),
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Pending);
+    assert_eq!(user.publishers, vec![mgroup_pubkey]);
+
+    // Unsubscribe the Pending user — this is the path the oracle takes during
+    // instant withdrawal cleanup. Before the fix this returned InvalidStatus.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &payer,
+    )
+    .await
+    .expect("Unsubscribe should succeed for Pending user");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Pending);
+    assert!(user.publishers.is_empty(), "Publisher should be removed");
+
+    let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
+        .await
+        .expect("MulticastGroup should exist")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(mgroup.publisher_count, 0);
+}
+
+/// Subscribing (publisher: true) a Pending user must still be rejected.
+#[tokio::test]
+async fn test_subscribe_pending_user_still_rejected() {
+    let client_ip = [100, 0, 0, 98];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        ..
+    } = f;
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Create user via legacy path — user is Pending.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: true,
+            subscriber: false,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 0,
+            owner: Pubkey::default(),
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Attempting to subscribe (add) a Pending user should still fail.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "Subscribe should still be rejected for Pending user"
+    );
+    let err = result.unwrap_err();
+    assert_eq!(
+        err.unwrap(),
+        TransactionError::InstructionError(0, InstructionError::Custom(7)),
+        "Should return InvalidStatus (0x7)"
     );
 }

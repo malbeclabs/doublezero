@@ -27,6 +27,7 @@ All notable changes to this project will be documented in this file.
   - Replace manual account validation assertions with `validate_program_account!` macro across serviceability processor files, adding consistent `data_is_empty` checks and fixing a missing `is_writable` validation in `ResumeLink` ([#3436](https://github.com/malbeclabs/doublezero/pull/3436))
   - Extend `validate_program_account!` migration to remaining user and multicastgroup allowlist processors (`set_bgp_status`, `delete`, `closeaccount`, publisher/subscriber `add`/`remove`)
   - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
+  - Allow pending users with subs to be deleted
 - Geolocation
   - geoprobe-target can now store LocationOffset messages in ClickHouse
   - Add ICMP pinger to geoprobe-agent for measuring outbound ICMP targets with interleaved batch send/receive, integrated into the existing measurement cycle alongside TWAMP

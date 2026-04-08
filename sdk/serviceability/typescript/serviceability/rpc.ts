@@ -1,6 +1,7 @@
 import { Connection, type ConnectionConfig } from "@solana/web3.js";
 
 const DEFAULT_MAX_RETRIES = 5;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Creates a Solana RPC Connection with retry on 429 Too Many Requests.
@@ -8,18 +9,29 @@ const DEFAULT_MAX_RETRIES = 5;
  * The built-in @solana/web3.js retry uses short backoffs (500ms-4s) that
  * may not be sufficient for rate-limited public RPC endpoints. This wrapper
  * provides longer backoff intervals (2s, 4s, 6s, 8s, 10s).
+ *
+ * Also adds a per-request timeout so that hung connections (no response from
+ * the RPC server) fail fast rather than waiting indefinitely.
  */
 export function newConnection(
   url: string,
-  config?: ConnectionConfig & { maxRetries?: number },
+  config?: ConnectionConfig & { maxRetries?: number; requestTimeoutMs?: number },
 ): Connection {
   const maxRetries = config?.maxRetries ?? DEFAULT_MAX_RETRIES;
+  const requestTimeoutMs = config?.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   const retryFetch = async (
     input: Parameters<typeof fetch>[0],
     init?: Parameters<typeof fetch>[1],
   ): Promise<Response> => {
     for (let attempt = 0; ; attempt++) {
-      const response = await fetch(input, init);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
+      let response: Response;
+      try {
+        response = await fetch(input, { ...init, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
       if (response.status !== 429 || attempt >= maxRetries) {
         return response;
       }

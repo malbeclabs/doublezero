@@ -15,9 +15,12 @@ pub struct GetGeolocationUserCliCommand {
     /// User pubkey or code to retrieve
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub user: String,
-    /// Output as JSON
-    #[arg(long)]
+    /// Output as pretty JSON
+    #[arg(long, default_value_t = false, conflicts_with = "json_compact")]
     pub json: bool,
+    /// Output as compact JSON
+    #[arg(long, default_value_t = false, conflicts_with = "json")]
+    pub json_compact: bool,
 }
 
 #[derive(Serialize)]
@@ -44,7 +47,7 @@ struct TargetDisplay {
     pub ip: String,
     pub port: u16,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
-    pub target_pk: Pubkey,
+    pub target_signing_pubkey: Pubkey,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(rename = "probe")]
     pub geoprobe_pk: Pubkey,
@@ -70,7 +73,7 @@ impl GetGeolocationUserCliCommand {
                     target_type: t.target_type.to_string(),
                     ip,
                     port,
-                    target_pk: t.target_pk,
+                    target_signing_pubkey: t.target_pk,
                     geoprobe_pk: t.geoprobe_pk,
                 }
             })
@@ -97,8 +100,12 @@ impl GetGeolocationUserCliCommand {
             targets,
         };
 
-        if self.json {
-            let json = serde_json::to_string_pretty(&display)?;
+        if self.json || self.json_compact {
+            let json = if self.json_compact {
+                serde_json::to_string(&display)?
+            } else {
+                serde_json::to_string_pretty(&display)?
+            };
             writeln!(out, "{json}")?;
         } else {
             let rows: Vec<(&str, String)> = vec![
@@ -189,6 +196,7 @@ mod tests {
         let res = GetGeolocationUserCliCommand {
             user: user_pk.to_string(),
             json: false,
+            json_compact: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -225,6 +233,7 @@ mod tests {
         let res = GetGeolocationUserCliCommand {
             user: user_pk.to_string(),
             json: true,
+            json_compact: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -256,6 +265,7 @@ mod tests {
         let res = GetGeolocationUserCliCommand {
             user: user_pk.to_string(),
             json: false,
+            json_compact: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

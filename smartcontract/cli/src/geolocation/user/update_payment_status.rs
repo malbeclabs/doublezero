@@ -1,7 +1,9 @@
-use crate::{geoclicommand::GeoCliCommand, validators::validate_code};
+use crate::{geoclicommand::GeoCliCommand, validators::validate_pubkey_or_code};
 use clap::{Args, ValueEnum};
 use doublezero_geolocation::state::geolocation_user::GeolocationPaymentStatus;
-use doublezero_sdk::geolocation::geolocation_user::update_payment_status::UpdatePaymentStatusCommand;
+use doublezero_sdk::geolocation::geolocation_user::{
+    get::GetGeolocationUserCommand, update_payment_status::UpdatePaymentStatusCommand,
+};
 use std::io::Write;
 
 #[derive(ValueEnum, Debug, Clone)]
@@ -12,8 +14,8 @@ pub enum PaymentStatus {
 
 #[derive(Args, Debug)]
 pub struct UpdatePaymentStatusCliCommand {
-    /// User code
-    #[arg(long, value_parser = validate_code)]
+    /// User code or pubkey
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub user: String,
     /// New payment status
     #[arg(long, value_enum)]
@@ -30,10 +32,14 @@ impl UpdatePaymentStatusCliCommand {
             PaymentStatus::Delinquent => GeolocationPaymentStatus::Delinquent,
         };
 
+        let (_, resolved_user) = client.get_geolocation_user(GetGeolocationUserCommand {
+            pubkey_or_code: self.user,
+        })?;
+
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
         let sig = client.update_payment_status(UpdatePaymentStatusCommand {
-            code: self.user,
+            code: resolved_user.code,
             serviceability_globalstate_pk,
             payment_status,
             last_deduction_dz_epoch: self.last_deduction_epoch,
@@ -49,8 +55,35 @@ impl UpdatePaymentStatusCliCommand {
 mod tests {
     use super::*;
     use crate::geoclicommand::MockGeoCliCommand;
+    use doublezero_geolocation::state::{
+        accounttype::AccountType,
+        geolocation_user::{
+            FlatPerEpochConfig, GeolocationBillingConfig, GeolocationUser, GeolocationUserStatus,
+        },
+    };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+
+    fn mock_get_geolocation_user(client: &mut MockGeoCliCommand) {
+        client.expect_get_geolocation_user().returning(move |cmd| {
+            Ok((
+                Pubkey::new_unique(),
+                GeolocationUser {
+                    account_type: AccountType::GeolocationUser,
+                    owner: Pubkey::new_unique(),
+                    code: cmd.pubkey_or_code.clone(),
+                    token_account: Pubkey::new_unique(),
+                    payment_status: GeolocationPaymentStatus::Paid,
+                    billing: GeolocationBillingConfig::FlatPerEpoch(FlatPerEpochConfig {
+                        rate: 1000,
+                        last_deduction_dz_epoch: 42,
+                    }),
+                    status: GeolocationUserStatus::Activated,
+                    targets: vec![],
+                },
+            ))
+        });
+    }
 
     #[test]
     fn test_cli_update_payment_status_paid() {
@@ -58,6 +91,8 @@ mod tests {
 
         let svc_gs_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let signature = Signature::new_unique();
+
+        mock_get_geolocation_user(&mut client);
 
         client
             .expect_get_serviceability_globalstate_pk()
@@ -91,6 +126,8 @@ mod tests {
 
         let svc_gs_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let signature = Signature::new_unique();
+
+        mock_get_geolocation_user(&mut client);
 
         client
             .expect_get_serviceability_globalstate_pk()

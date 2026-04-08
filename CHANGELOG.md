@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
   - Add `TestE2E_GeoprobeIcmpTargets` verifying end-to-end ICMP outbound offset delivery via onchain `outbound-icmp` targets
   - Refactor geoprobe E2E tests to use testcontainers entrypoints and onchain target discovery
 - Smartcontract
+  - Implement `SetUserBGPStatus` processor: validates metrics publisher authorization, updates `bgp_status`, `last_bgp_reported_at`, and `last_bgp_up_at` fields on the user account
   - Add human-readable error messages for serviceability program errors in the Go SDK, including program log extraction for enhanced debugging
   - `user get` no longer fails when no Access Pass exists; it prints a warning to stderr and continues, showing an empty access pass field
   - Replace manual account validation assertions with `validate_program_account!` macro across serviceability processor files, adding consistent `data_is_empty` checks and fixing a missing `is_writable` validation in `ResumeLink` ([#3436](https://github.com/malbeclabs/doublezero/pull/3436))

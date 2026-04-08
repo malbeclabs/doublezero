@@ -56,7 +56,6 @@ impl DeactivateMulticastGroupCommand {
         client.execute_transaction(
             DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
                 use_onchain_deallocation: self.use_onchain_deallocation,
-                close_index: true,
             }),
             accounts,
         )
@@ -149,7 +148,6 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::DeactivateMulticastGroup(
                     MulticastGroupDeactivateArgs {
                         use_onchain_deallocation: false,
-                        close_index: true,
                     },
                 )),
                 predicate::eq(vec![
@@ -223,7 +221,6 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::DeactivateMulticastGroup(
                     MulticastGroupDeactivateArgs {
                         use_onchain_deallocation: true,
-                        close_index: true,
                     },
                 )),
                 predicate::eq(vec![

@@ -222,7 +222,6 @@ async fn test_multicastgroup() {
         program_id,
         DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
             use_onchain_deallocation: false,
-            close_index: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -246,21 +245,22 @@ async fn test_multicastgroup() {
     println!("✅ MulticastGroup deleted");
     /*****************************************************************************************************************************************************/
     println!("6. Testing MulticastGroup deactivation (final delete)...");
-    // Index account was already closed by DeleteMulticastGroup, so don't pass it here
-    execute_transaction(
+    // Index account was already closed by DeleteMulticastGroup, pass Pubkey::default() to skip
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
             use_onchain_deallocation: false,
-            close_index: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(multicastgroup.owner, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(Pubkey::default(), false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -372,7 +372,6 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
         program_id,
         DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
             use_onchain_deallocation: false,
-            close_index: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -479,7 +478,6 @@ async fn test_multicastgroup_deactivate_fails_when_not_deleting() {
         program_id,
         DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
             use_onchain_deallocation: false,
-            close_index: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -865,7 +863,6 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
         program_id,
         DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
             use_onchain_deallocation: false,
-            close_index: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -915,7 +912,6 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
         program_id,
         DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
             use_onchain_deallocation: false,
-            close_index: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -965,7 +961,6 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
         program_id,
         DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
             use_onchain_deallocation: false,
-            close_index: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),

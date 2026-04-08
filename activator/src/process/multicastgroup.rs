@@ -406,14 +406,13 @@ mod tests {
                 .with(predicate::eq(pubkey))
                 .returning(move |_| Ok(AccountData::MulticastGroup(mgroup_for_get.clone())));
 
-            // Stateless mode: use_onchain_deallocation=true, close_index=true
+            // Stateless mode: use_onchain_deallocation=true
             client
                 .expect_execute_transaction()
                 .with(
                     predicate::eq(DoubleZeroInstruction::DeactivateMulticastGroup(
                         MulticastGroupDeactivateArgs {
                             use_onchain_deallocation: true,
-                            close_index: true,
                         },
                     )),
                     predicate::always(),

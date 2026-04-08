@@ -84,17 +84,18 @@ pub fn process_create_multicastgroup(
         validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
     let lowercase_code = code.to_ascii_lowercase();
 
-    // Check the owner of the accounts
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    // Validate accounts
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = true,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
     assert!(mgroup_account.is_writable, "PDA Account is not writable");
 
     // Parse the global state account & check if the payer is in the allowlist
@@ -183,6 +184,8 @@ pub fn process_create_multicastgroup(
     let index = Index {
         account_type: AccountType::Index,
         pk: *mgroup_account.key,
+        entity_account_type: AccountType::MulticastGroup,
+        key: multicastgroup.code.clone(),
         bump_seed: index_bump_seed,
     };
 

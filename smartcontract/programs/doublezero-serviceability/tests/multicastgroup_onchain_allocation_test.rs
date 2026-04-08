@@ -262,7 +262,6 @@ async fn test_delete_multicastgroup_atomic_with_deallocation() {
         program_id,
         DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
             use_onchain_deallocation: true,
-            close_index: true,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -345,7 +344,6 @@ async fn test_delete_multicastgroup_atomic_backward_compat() {
         program_id,
         DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
             use_onchain_deallocation: false,
-            close_index: true,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),

@@ -96,23 +96,23 @@ pub fn process_update_multicastgroup(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(
-        multicastgroup_account.owner, program_id,
-        "Invalid PDA Account Owner"
+    // Validate accounts
+    validate_program_account!(
+        multicastgroup_account,
+        program_id,
+        writable = true,
+        "MulticastGroup"
     );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
-    );
-    assert!(
-        multicastgroup_account.is_writable,
-        "PDA Account is not writable"
     );
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = GlobalState::try_from(globalstate_account)?;
@@ -135,17 +135,12 @@ pub fn process_update_multicastgroup(
             // Validate old Index PDA
             let (expected_old_index_pda, _) =
                 get_index_pda(program_id, SEED_MULTICAST_GROUP, &multicastgroup.code);
-            assert_eq!(
-                old_index_account.key, &expected_old_index_pda,
-                "Invalid old Index Pubkey"
-            );
-            assert_eq!(
-                old_index_account.owner, program_id,
-                "Invalid old Index Account Owner"
-            );
-            assert!(
-                old_index_account.is_writable,
-                "Old Index Account is not writable"
+            validate_program_account!(
+                old_index_account,
+                program_id,
+                writable = true,
+                pda = &expected_old_index_pda,
+                "Old Index"
             );
 
             // Validate new Index PDA
@@ -176,6 +171,8 @@ pub fn process_update_multicastgroup(
             let new_index = Index {
                 account_type: AccountType::Index,
                 pk: *multicastgroup_account.key,
+                entity_account_type: AccountType::MulticastGroup,
+                key: new_code.clone(),
                 bump_seed: new_index_bump_seed,
             };
 

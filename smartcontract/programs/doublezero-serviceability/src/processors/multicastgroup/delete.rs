@@ -30,17 +30,14 @@ pub struct MulticastGroupDeleteArgs {
     /// Requires ResourceExtension accounts and owner account.
     #[incremental(default = false)]
     pub use_onchain_deallocation: bool,
-    /// When true, close the associated Index account alongside the multicast group.
-    #[incremental(default = false)]
-    pub close_index: bool,
 }
 
 impl fmt::Debug for MulticastGroupDeleteArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "use_onchain_deallocation: {}, close_index: {}",
-            self.use_onchain_deallocation, self.close_index
+            "use_onchain_deallocation: {}",
+            self.use_onchain_deallocation
         )
     }
 }
@@ -55,13 +52,10 @@ pub fn process_delete_multicastgroup(
     let multicastgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: additional accounts for atomic deallocation
-    // Account layout WITH deallocation + index:
+    // Account layout WITH deallocation:
     //   [mgroup, globalstate, multicast_group_block, owner, index, payer, system]
-    // Account layout WITHOUT deallocation, with index:
+    // Account layout WITHOUT deallocation:
     //   [mgroup, globalstate, index, payer, system]
-    // Legacy (no deallocation, no index):
-    //   [mgroup, globalstate, payer, system]
     let deallocation_accounts = if value.use_onchain_deallocation {
         let multicast_group_block_ext = next_account_info(accounts_iter)?;
         let owner_account = next_account_info(accounts_iter)?;
@@ -70,12 +64,7 @@ pub fn process_delete_multicastgroup(
         None
     };
 
-    let index_account = if value.close_index {
-        Some(next_account_info(accounts_iter)?)
-    } else {
-        None
-    };
-
+    let index_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -85,23 +74,23 @@ pub fn process_delete_multicastgroup(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(
-        multicastgroup_account.owner, program_id,
-        "Invalid PDA Account Owner"
+    // Validate accounts
+    validate_program_account!(
+        multicastgroup_account,
+        program_id,
+        writable = true,
+        "MulticastGroup"
     );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
-    );
-    assert!(
-        multicastgroup_account.is_writable,
-        "PDA Account is not writable"
     );
 
     // Parse the global state account & check if the payer is in the allowlist
@@ -172,24 +161,26 @@ pub fn process_delete_multicastgroup(
         msg!("Deleted: {:?}", multicastgroup_account);
     }
 
-    // Close the Index account if provided
-    if let Some(index_acc) = index_account {
-        assert_eq!(index_acc.owner, program_id, "Invalid Index Account Owner");
-        assert!(index_acc.is_writable, "Index Account is not writable");
-
-        // Verify the Index PDA matches
+    // Close the Index account (skip for pre-migration accounts using Pubkey::default())
+    if *index_account.key != Pubkey::default() {
         let (expected_index_pda, _) =
             get_index_pda(program_id, SEED_MULTICAST_GROUP, &multicastgroup_code);
-        assert_eq!(index_acc.key, &expected_index_pda, "Invalid Index Pubkey");
+        validate_program_account!(
+            index_account,
+            program_id,
+            writable = true,
+            pda = &expected_index_pda,
+            "Index"
+        );
 
         // Verify it's an Index account pointing to this multicast group
-        let index = Index::try_from(index_acc)?;
+        let index = Index::try_from(index_account)?;
         assert_eq!(
             index.pk, *multicastgroup_account.key,
             "Index does not point to this MulticastGroup"
         );
 
-        try_acc_close(index_acc, payer_account)?;
+        try_acc_close(index_account, payer_account)?;
     }
 
     Ok(())

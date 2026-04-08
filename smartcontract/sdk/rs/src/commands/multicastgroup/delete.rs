@@ -58,7 +58,6 @@ impl DeleteMulticastGroupCommand {
         client.execute_transaction(
             DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
                 use_onchain_deallocation,
-                close_index: true,
             }),
             accounts,
         )
@@ -131,7 +130,6 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::DeleteMulticastGroup(
                     MulticastGroupDeleteArgs {
                         use_onchain_deallocation: false,
-                        close_index: true,
                     },
                 )),
                 predicate::eq(vec![
@@ -199,7 +197,6 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::DeleteMulticastGroup(
                     MulticastGroupDeleteArgs {
                         use_onchain_deallocation: true,
-                        close_index: true,
                     },
                 )),
                 predicate::eq(vec![

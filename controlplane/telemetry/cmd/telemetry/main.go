@@ -279,11 +279,15 @@ func main() {
 		os.Exit(1)
 	}
 	localNet := netutil.NewLocalNet(log)
+	cachedSvcClient := telemetrysvc.NewCachingFetcher(
+		serviceability.New(rpcClient, serviceabilityProgramID),
+		telemetrysvc.DefaultCacheTTL,
+	)
 	peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(
 		&telemetry.LedgerPeerDiscoveryConfig{
 			Logger:          log,
 			LocalDevicePK:   localDevicePK,
-			ProgramClient:   serviceability.New(rpcClient, serviceabilityProgramID),
+			ProgramClient:   cachedSvcClient,
 			LocalNet:        localNet,
 			TWAMPPort:       uint16(*twampListenPort),
 			RefreshInterval: *peersRefreshInterval,
@@ -323,7 +327,7 @@ func main() {
 		TWAMPReflector:              reflector,
 		PeerDiscovery:               peerDiscovery,
 		TelemetryProgramClient:      sdktelemetry.New(log, rpcClient, &keypair, telemetryProgramID),
-		ServiceabilityProgramClient: serviceability.New(rpcClient, serviceabilityProgramID),
+		ServiceabilityProgramClient: cachedSvcClient,
 		RPCClient:                   rpcClient,
 		Keypair:                     keypair,
 		GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
@@ -367,10 +371,6 @@ func main() {
 	// Run BGP status submitter if enabled.
 	var bgpStatusErrCh <-chan error
 	if *bgpStatusEnable {
-		cachedSvcClient := telemetrysvc.NewCachingFetcher(
-			serviceability.New(rpcClient, serviceabilityProgramID),
-			telemetrysvc.DefaultCacheTTL,
-		)
 		bgpStatusErrCh = startBGPStatusSubmitter(ctx, cancel, log, keypair, localDevicePK,
 			serviceabilityProgramID, localNet, *bgpNamespace, cachedSvcClient, rpcClient)
 	}

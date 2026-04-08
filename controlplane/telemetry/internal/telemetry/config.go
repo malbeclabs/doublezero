@@ -8,7 +8,6 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
 
@@ -54,7 +53,7 @@ type Config struct {
 	MaxConsecutiveSenderLosses int
 
 	// ServiceabilityProgramClient is the client to the serviceability program (for fetching Device/Location).
-	ServiceabilityProgramClient *serviceability.Client
+	ServiceabilityProgramClient ServiceabilityProgramClient
 
 	// RPCClient is the Solana RPC client (for fetching slot).
 	RPCClient *solanarpc.Client

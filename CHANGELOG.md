@@ -485,6 +485,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- E2E
+  - Increase `waitForRoutesTimeout` from 90s to 120s to fix flaky QA tests caused by slow BGP route propagation between distant exchanges
 - CLI
   - Remove log noise on resolve route
   - `doublezero resource verify` command added to verify onchain resources

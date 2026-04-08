@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/state"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -55,7 +56,11 @@ func (s *Submitter) tick(ctx context.Context) {
 		return
 	}
 
-	interfaces, err := s.cfg.LocalNet.Interfaces()
+	// Tunnel interfaces for user sessions live in the BGP VRF namespace (e.g. ns-vrf1),
+	// not the default namespace, so we must read them from there.
+	interfaces, err := netns.RunInNamespace(s.cfg.BGPNamespace, func() ([]netutil.Interface, error) {
+		return s.cfg.LocalNet.Interfaces()
+	})
 	if err != nil {
 		s.log.Error("bgpstatus: failed to get local interfaces", "error", err)
 		return
@@ -79,19 +84,27 @@ func (s *Submitter) tick(ctx context.Context) {
 
 		// Resolve the BGP peer IP for this user's /31 tunnel net.
 		tunnelNet := tunnelNetToIPNet(user.TunnelNet)
+		var observedUp bool
 		tunnel, err := netutil.FindLocalTunnel(interfaces, tunnelNet)
 		if err != nil {
 			if !errors.Is(err, netutil.ErrLocalTunnelNotFound) {
 				s.log.Warn("bgpstatus: unexpected error finding tunnel", "user", userPK, "error", err)
+				continue
 			}
-			// Tunnel not up — user cannot be Up.
 			s.log.Debug("bgpstatus: tunnel not found for user", "user", userPK)
-			continue
-		}
-
-		_, observedUp := establishedIPs[tunnel.TargetIP.String()]
-		if observedUp {
-			us.lastUpObservedAt = now
+			// Without a tunnel, the BGP session cannot be established.
+			// If the last known onchain status was already Down (or never written),
+			// there is nothing to update — skip this user.
+			if us.lastOnchainStatus != serviceability.BGPStatusUp {
+				continue
+			}
+			// The tunnel is gone but the last known onchain status is Up.
+			// Fall through with observedUp=false so we submit Down.
+		} else {
+			_, observedUp = establishedIPs[tunnel.TargetIP.String()]
+			if observedUp {
+				us.lastUpObservedAt = now
+			}
 		}
 
 		effectiveStatus := computeEffectiveStatus(observedUp, us, now, s.cfg.DownGracePeriod)

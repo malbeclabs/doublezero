@@ -65,6 +65,10 @@ func TestE2E_UserBGPStatus(t *testing.T) {
 		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
+		LoopbackInterfaces: map[string]string{
+			"Loopback255": "vpnv4",
+			"Loopback256": "ipv4",
+		},
 		Telemetry: devnet.DeviceTelemetrySpec{
 			Enabled:                  true,
 			KeypairPath:              telemetryKeypairPath,
@@ -87,16 +91,33 @@ func TestE2E_UserBGPStatus(t *testing.T) {
 
 	tdn := &TestDevnet{Devnet: dn, log: log}
 
-	if !t.Run("wait_for_user_activation", func(t *testing.T) {
-		err := tdn.WaitForUserActivation(t, 1)
+	t.Run("wait_for_device_activation", func(t *testing.T) {
+		svcClient, err := dn.Ledger.GetServiceabilityClient()
+		require.NoError(t, err)
+		require.Eventually(t, func() bool {
+			data, err := svcClient.GetProgramData(t.Context())
+			if err != nil {
+				return false
+			}
+			for _, d := range data.Devices {
+				if d.Code == device.Spec.Code && d.Status == serviceability.DeviceStatusActivated {
+					return true
+				}
+			}
+			return false
+		}, 60*time.Second, 2*time.Second, "device was not activated within timeout")
+	})
+
+	if !t.Run("connect", func(t *testing.T) {
+		tdn.ConnectIBRLUserTunnel(t, client)
+		err := client.WaitForTunnelUp(t.Context(), 90*time.Second)
 		require.NoError(t, err)
 	}) {
 		t.FailNow()
 	}
 
-	if !t.Run("connect", func(t *testing.T) {
-		tdn.ConnectIBRLUserTunnel(t, client)
-		err := client.WaitForTunnelUp(t.Context(), 90*time.Second)
+	if !t.Run("wait_for_user_activation", func(t *testing.T) {
+		err := tdn.WaitForUserActivation(t, 1)
 		require.NoError(t, err)
 	}) {
 		t.FailNow()
@@ -154,7 +175,14 @@ func TestE2E_UserBGPStatus(t *testing.T) {
 	}
 
 	if !t.Run("disconnect", func(t *testing.T) {
-		tdn.DisconnectUserTunnel(t, client)
+		// Kill the doublezerod daemon ungracefully (SIGKILL) to simulate an
+		// unexpected BGP session drop without triggering the onchain disconnect
+		// lifecycle.  A clean disconnect via "doublezero disconnect" would delete
+		// the user account onchain, leaving no record to check BGP status on.
+		// With an ungraceful kill the user stays activated onchain, giving the
+		// BGP status submitter a chance to detect the dropped session and submit Down.
+		_, err := client.Exec(t.Context(), []string{"bash", "-c", "pkill -9 doublezerod || true"})
+		require.NoError(t, err)
 	}) {
 		t.FailNow()
 	}

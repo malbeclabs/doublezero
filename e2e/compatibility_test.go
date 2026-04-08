@@ -128,13 +128,14 @@ var knownIncompatibilities = map[string]knownIncompat{
 	// back), but cannot UPDATE or otherwise operate on them because reading the new InterfaceV2
 	// format (with trailing flex_algo_node_segments bytes) fails deserialization.
 	//
-	// Testnet override: extends the incompatible range to cover v0.10.0–v0.16.x. Testnet v0.16.0
-	// was built before the RFC-18 InterfaceV2 change and can't deserialize the new account format.
-	// On mainnet-beta v0.16.0 was released after RFC-18, so it is compatible.
-	"write/device_interface_create":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/device_interface_create_2":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/device_interface_create_3":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
-	"write/device_interface_create_4":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
+	// Testnet v0.16.0 was built before the RFC-18 InterfaceV2 change and cannot deserialize the
+	// new account format. However it CAN create interfaces (the create instruction doesn't read
+	// back), so device_interface_create does not need a testnet override. Operations that read
+	// interface accounts (set_unlinked, link_create, etc.) do need the override.
+	"write/device_interface_create":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_create_2":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_create_3":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_create_4":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
 	"write/device_interface_set_unlinked":   {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
 	"write/device_interface_set_unlinked_2": {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},
 	"write/device_interface_set_unlinked_3": {ranges: []versionRange{{from: "0.10.0", before: "0.16.0"}}, envOverride: map[string][]versionRange{"testnet": {{from: "0.10.0", before: "0.17.0"}}}},

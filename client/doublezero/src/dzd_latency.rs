@@ -35,14 +35,14 @@ pub fn select_tunnel_endpoint(
     device_public_ip: Ipv4Addr,
     exclude_ips: &[Ipv4Addr],
 ) -> Ipv4Addr {
-    // Filter latencies to records matching this device_pk, sorted by avg latency (ascending)
+    // Filter latencies to records matching this device_pk, sorted by min latency (ascending)
     let mut device_latencies: Vec<&LatencyRecord> = latencies
         .iter()
         .filter(|l| l.device_pk == device_pk)
         .collect();
     device_latencies.sort_by(|a, b| {
-        a.avg_latency_ns
-            .partial_cmp(&b.avg_latency_ns)
+        a.min_latency_ns
+            .partial_cmp(&b.min_latency_ns)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
@@ -129,8 +129,8 @@ pub async fn retrieve_latencies<T: ServiceController>(
         if reachable_cmp != std::cmp::Ordering::Equal {
             return reachable_cmp;
         }
-        a.avg_latency_ns
-            .partial_cmp(&b.avg_latency_ns)
+        a.min_latency_ns
+            .partial_cmp(&b.min_latency_ns)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
@@ -151,7 +151,7 @@ pub async fn retrieve_latencies<T: ServiceController>(
 //     typical internet connections while giving the selector enough freedom to
 //     choose alternate devices when needed.
 //
-// The value is expressed in nanoseconds to match avg_latency_ns.
+// The value is expressed in nanoseconds to match min_latency_ns.
 const LATENCY_TOLERANCE_NS: i64 = 5_000_000; // 5 ms
 
 /// Find the best device based on latency.
@@ -203,7 +203,7 @@ pub async fn best_latency<T: ServiceController>(
             .find(|latency| latency.device_pk == current_device.to_string())
         {
             best = Some(current);
-            best_latency = current.avg_latency_ns;
+            best_latency = current.min_latency_ns;
         }
     }
 
@@ -220,7 +220,7 @@ pub async fn best_latency<T: ServiceController>(
             .ok_or_else(|| eyre::eyre!("Device with pubkey {} not found", &latency.device_pk))?;
 
         if (!ignore_unprovisionable || device.is_device_eligible_for_provisioning())
-            && (latency.avg_latency_ns - best_latency).abs() > LATENCY_TOLERANCE_NS
+            && (latency.min_latency_ns - best_latency).abs() > LATENCY_TOLERANCE_NS
         {
             best = Some(latency);
             break;
@@ -313,14 +313,14 @@ mod tests {
         )
     }
 
-    fn make_latency(pk: &str, avg_latency_ns: i64, reachable: bool) -> LatencyRecord {
+    fn make_latency(pk: &str, latency_ns: i64, reachable: bool) -> LatencyRecord {
         LatencyRecord {
             device_pk: pk.to_string(),
             device_code: "device".to_string(),
             device_ip: "0.0.0.0".to_string(),
-            min_latency_ns: avg_latency_ns,
-            max_latency_ns: avg_latency_ns,
-            avg_latency_ns,
+            min_latency_ns: latency_ns,
+            max_latency_ns: latency_ns,
+            avg_latency_ns: latency_ns,
             reachable,
         }
     }
@@ -916,6 +916,187 @@ mod tests {
             &[Ipv4Addr::new(10, 0, 0, 1)],
         );
         assert_eq!(result, Ipv4Addr::UNSPECIFIED);
+    }
+
+    // --- min-latency ranking tests ---
+    // These tests use distinct min/avg values to verify that ranking is by min_latency_ns.
+
+    #[test]
+    fn test_select_tunnel_endpoint_ranks_by_min_not_avg() {
+        let pk = Pubkey::new_unique();
+        let pk_str = pk.to_string();
+        let latencies = vec![
+            LatencyRecord {
+                device_pk: pk_str.clone(),
+                device_code: "device1".to_string(),
+                device_ip: "10.0.0.1".to_string(),
+                min_latency_ns: 20_000_000, // higher min
+                max_latency_ns: 20_000_000,
+                avg_latency_ns: 5_000_000, // lower avg (would win if ranked by avg)
+                reachable: true,
+            },
+            LatencyRecord {
+                device_pk: pk_str.clone(),
+                device_code: "device1".to_string(),
+                device_ip: "10.0.0.2".to_string(),
+                min_latency_ns: 5_000_000, // lower min (should win)
+                max_latency_ns: 5_000_000,
+                avg_latency_ns: 20_000_000, // higher avg
+                reachable: true,
+            },
+        ];
+        let result = select_tunnel_endpoint(&latencies, &pk_str, Ipv4Addr::new(10, 0, 0, 1), &[]);
+        assert_eq!(result, Ipv4Addr::new(10, 0, 0, 2)); // lower min wins
+    }
+
+    #[tokio::test]
+    async fn test_retrieve_latencies_sorts_by_min_not_avg() {
+        let (pk1, dev1) = make_device(DeviceStatus::Activated, 0);
+        let (pk2, dev2) = make_device(DeviceStatus::Activated, 0);
+
+        let mut devices = HashMap::new();
+        devices.insert(pk1, dev1);
+        devices.insert(pk2, dev2);
+
+        // pk1: low min, high avg. pk2: high min, low avg.
+        // Sorted by min: pk1 first. Sorted by avg: pk2 first.
+        let latencies = vec![
+            LatencyRecord {
+                device_pk: pk1.to_string(),
+                device_code: "device".to_string(),
+                device_ip: "0.0.0.0".to_string(),
+                min_latency_ns: 5_000_000, // lower min → should be first
+                max_latency_ns: 30_000_000,
+                avg_latency_ns: 25_000_000, // higher avg
+                reachable: true,
+            },
+            LatencyRecord {
+                device_pk: pk2.to_string(),
+                device_code: "device".to_string(),
+                device_ip: "0.0.0.0".to_string(),
+                min_latency_ns: 15_000_000, // higher min
+                max_latency_ns: 20_000_000,
+                avg_latency_ns: 8_000_000, // lower avg → would be first if sorted by avg
+                reachable: true,
+            },
+        ];
+
+        let mut controller = MockServiceController::new();
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
+
+        let result = retrieve_latencies(&controller, &devices, false, None)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].device_pk, pk1.to_string()); // lower min first
+        assert_eq!(result[1].device_pk, pk2.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_best_latency_selects_by_min_not_avg() {
+        let (pk1, dev1) = make_device(DeviceStatus::Activated, 0);
+        let (pk2, dev2) = make_device(DeviceStatus::Activated, 0);
+
+        let mut devices = HashMap::new();
+        devices.insert(pk1, dev1);
+        devices.insert(pk2, dev2);
+
+        // pk1: low min, high avg. pk2: high min, low avg.
+        // Should select pk1 (lower min).
+        let latencies = vec![
+            LatencyRecord {
+                device_pk: pk1.to_string(),
+                device_code: "device".to_string(),
+                device_ip: "0.0.0.0".to_string(),
+                min_latency_ns: 5_000_000, // lower min → should win
+                max_latency_ns: 30_000_000,
+                avg_latency_ns: 25_000_000, // higher avg
+                reachable: true,
+            },
+            LatencyRecord {
+                device_pk: pk2.to_string(),
+                device_code: "device".to_string(),
+                device_ip: "0.0.0.0".to_string(),
+                min_latency_ns: 15_000_000, // higher min → should lose
+                max_latency_ns: 20_000_000,
+                avg_latency_ns: 8_000_000, // lower avg → would win if sorted by avg
+                reachable: true,
+            },
+        ];
+
+        let mut controller = MockServiceController::new();
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
+
+        let result = best_latency(&controller, &devices, true, None, None, &[])
+            .await
+            .unwrap();
+
+        assert_eq!(result.device_pk, pk1.to_string()); // lower min wins
+    }
+
+    #[tokio::test]
+    async fn test_best_latency_current_device_seeded_by_min_not_avg() {
+        // Verify that when a current_device is set, the tolerance window is seeded from
+        // min_latency_ns (line 205), not avg_latency_ns.
+        //
+        // pk2 (current): min=13ms, avg=6ms → min-seeded best_latency=13ms
+        // pk1 (candidate): min=5ms, avg=25ms
+        //
+        // With min seeding: |5 - 13| = 8ms > 5ms tolerance → switches to pk1 (correct)
+        // With avg seeding: |5 - 6| = 1ms < 5ms tolerance → wrongly stays with pk2
+        let (pk1, dev1) = make_device(DeviceStatus::Activated, 0);
+        let (pk2, dev2) = make_device(DeviceStatus::Activated, 0);
+
+        let mut devices = HashMap::new();
+        devices.insert(pk1, dev1);
+        devices.insert(pk2, dev2);
+
+        let latencies = vec![
+            LatencyRecord {
+                device_pk: pk1.to_string(),
+                device_code: "device".to_string(),
+                device_ip: "0.0.0.0".to_string(),
+                min_latency_ns: 5_000_000, // lower min → should win
+                max_latency_ns: 30_000_000,
+                avg_latency_ns: 25_000_000, // higher avg
+                reachable: true,
+            },
+            LatencyRecord {
+                device_pk: pk2.to_string(),
+                device_code: "device".to_string(),
+                device_ip: "0.0.0.0".to_string(),
+                min_latency_ns: 13_000_000, // higher min → current device
+                max_latency_ns: 20_000_000,
+                avg_latency_ns: 6_000_000, // lower avg (would anchor tolerance if avg-seeded)
+                reachable: true,
+            },
+        ];
+
+        let mut controller = MockServiceController::new();
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
+
+        // pk2 is the current device but pk1 has significantly lower min (8ms gap > 5ms tolerance)
+        let result = best_latency(&controller, &devices, true, None, Some(&pk2), &[])
+            .await
+            .unwrap();
+
+        assert_eq!(result.device_pk, pk1.to_string()); // switches to lower-min device
     }
 
     #[test]

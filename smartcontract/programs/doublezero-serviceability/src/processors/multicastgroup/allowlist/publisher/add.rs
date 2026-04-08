@@ -1,6 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_accesspass_pda,
+    processors::validation::validate_program_account,
     seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
@@ -59,17 +60,17 @@ pub fn process_add_multicastgroup_pub_allowlist(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Check the owner of the accounts
-    assert_eq!(
-        mgroup_account.owner, program_id,
-        "Invalid PDA Account Owner"
+    validate_program_account!(
+        mgroup_account,
+        program_id,
+        writable = true,
+        "MulticastGroup"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
-    assert!(mgroup_account.is_writable, "PDA Account is not writable");
 
     // Parse the global state account
     let mgroup = MulticastGroup::try_from(mgroup_account)?;

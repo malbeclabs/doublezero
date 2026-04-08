@@ -221,10 +221,7 @@ pub fn process_delete_user(
         let owner_account = owner_account.unwrap();
 
         // Validate additional accounts
-        assert_eq!(
-            device_account.owner, program_id,
-            "Invalid Device Account Owner"
-        );
+        validate_program_account!(device_account, program_id, writable = false, "Device");
 
         if user.device_pk != *device_account.key {
             return Err(ProgramError::InvalidAccountData);
@@ -250,8 +247,7 @@ pub fn process_delete_user(
                 tenant_acc.key, &user.tenant_pk,
                 "Tenant account doesn't match user's tenant"
             );
-            assert_eq!(tenant_acc.owner, program_id, "Invalid Tenant Account Owner");
-            assert!(tenant_acc.is_writable, "Tenant Account is not writable");
+            validate_program_account!(tenant_acc, program_id, writable = true, "Tenant");
 
             let mut tenant = Tenant::try_from(tenant_acc)?;
             tenant.reference_count = tenant.reference_count.saturating_sub(1);

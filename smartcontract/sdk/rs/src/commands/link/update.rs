@@ -100,6 +100,8 @@ impl UpdateLinkCommand {
                 tunnel_id: self.tunnel_id,
                 tunnel_net: self.tunnel_net,
                 use_onchain_allocation,
+                link_topologies: None,
+                unicast_drained: None,
             }),
             accounts,
         )

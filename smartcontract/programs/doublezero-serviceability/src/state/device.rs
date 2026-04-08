@@ -1049,6 +1049,7 @@ mod tests {
             ip_net: "10.0.0.1/24".parse().unwrap(),
             node_segment_idx: 42,
             user_tunnel_endpoint: true,
+            flex_algo_node_segments: vec![],
         }
         .to_interface();
         let val = Device {
@@ -1119,6 +1120,7 @@ mod tests {
                     ip_net: "10.0.0.1/24".parse().unwrap(),
                     node_segment_idx: 42,
                     user_tunnel_endpoint: true,
+                    flex_algo_node_segments: vec![],
                 }
                 .to_interface(),
                 CurrentInterfaceVersion {
@@ -1136,6 +1138,7 @@ mod tests {
                     ip_net: "10.0.1.1/24".parse().unwrap(),
                     node_segment_idx: 24,
                     user_tunnel_endpoint: false,
+                    flex_algo_node_segments: vec![],
                 }
                 .to_interface(),
             ],

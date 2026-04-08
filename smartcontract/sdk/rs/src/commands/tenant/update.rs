@@ -26,6 +26,7 @@ impl UpdateTenantCommand {
                 metro_routing: self.metro_routing,
                 route_liveness: self.route_liveness,
                 billing: self.billing,
+                include_topologies: None,
             }),
             vec![
                 AccountMeta::new(self.tenant_pubkey, false),

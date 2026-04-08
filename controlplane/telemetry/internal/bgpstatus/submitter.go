@@ -142,15 +142,18 @@ func (s *Submitter) worker(ctx context.Context) {
 
 			sig, err := s.submitWithRetry(ctx, task)
 
+			statusLabel := task.status.String()
 			s.mu.Lock()
 			delete(s.pending, userPK)
 			if err == nil {
+				metricSubmissionsTotal.WithLabelValues(statusLabel, "success").Inc()
 				us := s.userStateFor(userPK)
 				us.lastOnchainStatus = task.status
 				us.lastWriteTime = s.cfg.Clock.Now()
 				s.log.Info("bgpstatus: submitted BGP status",
 					"user", userPK, "status", task.status, "sig", sig)
 			} else {
+				metricSubmissionsTotal.WithLabelValues(statusLabel, "error").Inc()
 				s.log.Error("bgpstatus: failed to submit after retries",
 					"user", userPK, "status", task.status, "error", err)
 			}
@@ -170,8 +173,10 @@ func (s *Submitter) submitWithRetry(ctx context.Context, task submitTask) (solan
 
 	var lastErr error
 	for attempt := range submitMaxRetries {
+		start := time.Now()
 		sig, err := s.cfg.Executor.SetUserBGPStatus(ctx, update)
 		if err == nil {
+			metricSubmissionDuration.Observe(time.Since(start).Seconds())
 			return sig, nil
 		}
 		lastErr = err

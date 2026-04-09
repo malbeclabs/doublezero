@@ -17,23 +17,29 @@ type BurnInTimes struct {
 	DrainedStart      time.Time
 }
 
-// DeviceBurnInStart returns the appropriate burn-in start time for the given device status.
-func (b BurnInTimes) DeviceBurnInStart(status serviceability.DeviceStatus) time.Time {
-	if status == serviceability.DeviceStatusDrained {
-		return b.DrainedStart
-	}
-	return b.ProvisioningStart
-}
-
 // ContextWithBurnInTimes returns a new context carrying the given BurnInTimes.
 func ContextWithBurnInTimes(ctx context.Context, times BurnInTimes) context.Context {
 	return context.WithValue(ctx, burnInTimesKey{}, times)
 }
 
-// BurnInTimesFromContext extracts BurnInTimes from the context.
-func BurnInTimesFromContext(ctx context.Context) (BurnInTimes, bool) {
-	v, ok := ctx.Value(burnInTimesKey{}).(BurnInTimes)
-	return v, ok
+// DeviceBurnIn extracts BurnInTimes from the context and returns the burn-in
+// start time and expected number of minutes for the given device status.
+// Returns ok=false if the context has no BurnInTimes, and expectedMinutes=0
+// when the burn-in window has zero length (e.g. a newly created environment).
+func DeviceBurnIn(ctx context.Context, status serviceability.DeviceStatus) (start time.Time, expectedMinutes int64, ok bool) {
+	burnIn, ok := ctx.Value(burnInTimesKey{}).(BurnInTimes)
+	if !ok {
+		return time.Time{}, 0, false
+	}
+	start = burnIn.ProvisioningStart
+	if status == serviceability.DeviceStatusDrained {
+		start = burnIn.DrainedStart
+	}
+	expectedMinutes = int64(time.Since(start).Minutes())
+	if expectedMinutes < 0 {
+		expectedMinutes = 0
+	}
+	return start, expectedMinutes, true
 }
 
 // DeviceCriterion evaluates whether a device meets a specific readiness requirement.

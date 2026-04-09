@@ -16,9 +16,9 @@ type mockRow struct {
 	scanFunc func(dest ...any) error
 }
 
-func (r *mockRow) Err() error                    { return nil }
-func (r *mockRow) Scan(dest ...any) error         { return r.scanFunc(dest...) }
-func (r *mockRow) ScanStruct(_ any) error         { return nil }
+func (r *mockRow) Err() error             { return nil }
+func (r *mockRow) Scan(dest ...any) error { return r.scanFunc(dest...) }
+func (r *mockRow) ScanStruct(_ any) error { return nil }
 
 // mockConn implements the subset of driver.Conn used by ClickHouseClient.
 type mockConn struct {

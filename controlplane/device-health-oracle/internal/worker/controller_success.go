@@ -34,20 +34,16 @@ func (c *ControllerSuccessCriterion) Name() string {
 }
 
 func (c *ControllerSuccessCriterion) Check(ctx context.Context, device serviceability.Device) (bool, string) {
-	burnIn, ok := BurnInTimesFromContext(ctx)
+	start, expectedMinutes, ok := DeviceBurnIn(ctx, device.Status)
 	if !ok {
 		return false, "burn-in times not available in context"
 	}
-
-	start := burnIn.DeviceBurnInStart(device.Status)
-	now := time.Now()
-	expectedMinutes := int64(now.Sub(start).Minutes())
-	if expectedMinutes <= 0 {
+	if expectedMinutes == 0 {
 		return true, ""
 	}
 
 	pubkey := solana.PublicKeyFromBytes(device.PubKey[:]).String()
-	minutesWithCalls, err := c.checker.ControllerCallCoverage(ctx, pubkey, start, now)
+	minutesWithCalls, err := c.checker.ControllerCallCoverage(ctx, pubkey, start, time.Now())
 	if err != nil {
 		c.log.Error("Failed to query controller call coverage",
 			"device", pubkey, "code", device.Code, "error", err)

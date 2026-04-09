@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Controlplane
+  - Add `controller_success` activation criterion to device-health-oracle that verifies devices have consistent controller call coverage over a configurable burn-in period by querying ClickHouse
 - Client
   - Rank devices and tunnel endpoints by minimum observed latency (`min_latency_ns`) instead of average when selecting a connection target, preferring paths with the best achievable round-trip time
 - Tools

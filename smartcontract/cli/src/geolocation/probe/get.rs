@@ -20,9 +20,12 @@ pub struct GetGeoProbeCliCommand {
     /// Probe pubkey or code to retrieve
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub probe: String,
-    /// Output as JSON
-    #[arg(long)]
+    /// Output as pretty JSON
+    #[arg(long, default_value_t = false, conflicts_with = "json_compact")]
     pub json: bool,
+    /// Output as compact JSON
+    #[arg(long, default_value_t = false, conflicts_with = "json")]
+    pub json_compact: bool,
 }
 
 #[derive(Tabled, Serialize)]
@@ -43,7 +46,7 @@ struct GeoProbeGetDisplay {
     #[tabled(rename = "parent_devices")]
     pub parent_devices_display: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
-    pub signing_keypair: Pubkey,
+    pub signing_pubkey: Pubkey,
     pub reference_count: u32,
 }
 
@@ -71,12 +74,16 @@ impl GetGeoProbeCliCommand {
             port: probe.location_offset_port,
             parent_devices: probe.parent_devices,
             parent_devices_display,
-            signing_keypair: probe.metrics_publisher_pk,
+            signing_pubkey: probe.metrics_publisher_pk,
             reference_count: probe.reference_count,
         };
 
-        if self.json {
-            let json = serde_json::to_string_pretty(&display)?;
+        if self.json || self.json_compact {
+            let json = if self.json_compact {
+                serde_json::to_string(&display)?
+            } else {
+                serde_json::to_string_pretty(&display)?
+            };
             writeln!(out, "{json}")?;
         } else {
             let headers = GeoProbeGetDisplay::headers();
@@ -149,6 +156,7 @@ mod tests {
         let res = GetGeoProbeCliCommand {
             probe: Pubkey::new_unique().to_string(),
             json: false,
+            json_compact: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -157,6 +165,7 @@ mod tests {
         let res = GetGeoProbeCliCommand {
             probe: probe_pk.to_string(),
             json: false,
+            json_compact: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -172,7 +181,7 @@ mod tests {
         assert!(has_row("exchange", &exchange_pk.to_string()));
         assert!(has_row("public_ip", "10.0.0.1"));
         assert!(has_row("port", "8923"));
-        assert!(has_row("signing_keypair", &metrics_pk.to_string()));
+        assert!(has_row("signing_pubkey", &metrics_pk.to_string()));
         assert!(has_row("reference_count", "0"));
     }
 
@@ -193,6 +202,7 @@ mod tests {
         let res = GetGeoProbeCliCommand {
             probe: probe_pk.to_string(),
             json: true,
+            json_compact: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -208,9 +218,39 @@ mod tests {
         assert_eq!(parents.len(), 1);
         assert_eq!(parents[0].as_str().unwrap(), parent_pk.to_string());
         assert_eq!(
-            json["signing_keypair"].as_str().unwrap(),
+            json["signing_pubkey"].as_str().unwrap(),
             metrics_pk.to_string()
         );
         assert_eq!(json["reference_count"].as_u64().unwrap(), 0);
+    }
+
+    #[test]
+    fn test_cli_geo_probe_get_json_compact() {
+        let (mut client, probe_pk, owner_pk, exchange_pk, metrics_pk) = setup_client();
+        let parent_pk = Pubkey::from_str_const("AQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let probe = make_probe(owner_pk, exchange_pk, metrics_pk, vec![parent_pk]);
+
+        client
+            .expect_get_geo_probe()
+            .with(predicate::eq(GetGeoProbeCommand {
+                pubkey_or_code: probe_pk.to_string(),
+            }))
+            .returning(move |_| Ok((probe_pk, probe.clone())));
+
+        let mut output = Vec::new();
+        let res = GetGeoProbeCliCommand {
+            probe: probe_pk.to_string(),
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        let trimmed = output_str.trim();
+        assert!(!trimmed.contains('\n'), "compact JSON must be single-line");
+        let json: serde_json::Value = serde_json::from_str(trimmed).unwrap();
+        assert_eq!(json["account"].as_str().unwrap(), probe_pk.to_string());
+        assert_eq!(json["code"].as_str().unwrap(), "ams-probe-01");
+        assert_eq!(json["parent_devices"].as_array().unwrap().len(), 1);
     }
 }

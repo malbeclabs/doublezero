@@ -1,16 +1,15 @@
-use crate::{
-    geoclicommand::GeoCliCommand,
-    validators::{validate_code, validate_pubkey_or_code},
-};
+use crate::{geoclicommand::GeoCliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
-use doublezero_sdk::geolocation::geo_probe::add_parent_device::AddParentDeviceCommand;
+use doublezero_sdk::geolocation::geo_probe::{
+    add_parent_device::AddParentDeviceCommand, get::GetGeoProbeCommand,
+};
 use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct AddParentGeoProbeCliCommand {
-    /// Probe code
-    #[arg(long, value_name = "PROBE_CODE", value_parser = validate_code)]
-    pub code: String,
+    /// Probe pubkey or code
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub probe: String,
     /// Device pubkey or code to add as parent
     #[arg(long, value_name = "PARENT_DEVICE", value_parser = validate_pubkey_or_code)]
     pub device: String,
@@ -18,11 +17,16 @@ pub struct AddParentGeoProbeCliCommand {
 
 impl AddParentGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+        let (_, resolved_probe) = client.get_geo_probe(GetGeoProbeCommand {
+            pubkey_or_code: self.probe,
+        })?;
+        let code = resolved_probe.code;
+
         let device_pk = client.resolve_device_pk(self.device)?;
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
         let sig = client.add_parent_device(AddParentDeviceCommand {
-            code: self.code,
+            code,
             device_pk,
             serviceability_globalstate_pk,
         })?;
@@ -37,8 +41,10 @@ impl AddParentGeoProbeCliCommand {
 mod tests {
     use super::*;
     use crate::geoclicommand::MockGeoCliCommand;
+    use doublezero_geolocation::state::{accounttype::AccountType, geo_probe::GeoProbe};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use std::net::Ipv4Addr;
 
     #[test]
     fn test_cli_geo_probe_add_parent() {
@@ -52,6 +58,29 @@ mod tests {
             139, 130, 217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139,
             100, 221, 20, 137, 4, 5,
         ]);
+
+        client
+            .expect_get_geo_probe()
+            .with(predicate::eq(GetGeoProbeCommand {
+                pubkey_or_code: "ams-probe-01".to_string(),
+            }))
+            .returning(move |_| {
+                Ok((
+                    Pubkey::new_unique(),
+                    GeoProbe {
+                        account_type: AccountType::GeoProbe,
+                        owner: Pubkey::new_unique(),
+                        exchange_pk: Pubkey::new_unique(),
+                        public_ip: Ipv4Addr::new(10, 0, 0, 1),
+                        location_offset_port: 8923,
+                        code: "ams-probe-01".to_string(),
+                        parent_devices: vec![],
+                        metrics_publisher_pk: Pubkey::new_unique(),
+                        reference_count: 0,
+                        target_update_count: 0,
+                    },
+                ))
+            });
 
         client
             .expect_resolve_device_pk()
@@ -73,7 +102,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = AddParentGeoProbeCliCommand {
-            code: "ams-probe-01".to_string(),
+            probe: "ams-probe-01".to_string(),
             device: device_pk.to_string(),
         }
         .execute(&client, &mut output);

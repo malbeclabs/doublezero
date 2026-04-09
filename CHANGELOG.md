@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
   - Add `agent_version` (`[u8; 16]`) and `agent_commit` (`[u8; 8]`) fields to `DeviceLatencySamplesHeader`, carved from the existing reserved region; accept both fields in the `InitializeDeviceLatencySamples` instruction via incremental deserialization (fully backward compatible)
 - SDK
   - Deserialize `agent_version` and `agent_commit` from device latency samples in Go, TypeScript, and Python SDKs
+- Device Health Oracle
+  - Add `controller_success` activation criterion that verifies devices have consistent controller call coverage over a configurable burn-in period by querying ClickHouse
 - Client
   - Rank devices and tunnel endpoints by minimum observed latency (`min_latency_ns`) instead of average when selecting a connection target, preferring paths with the best achievable round-trip time
 - Tools

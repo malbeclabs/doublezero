@@ -121,6 +121,7 @@ fn main() -> eyre::Result<()> {
             UserCommands::List(args) => args.execute(&client, &mut handle),
             UserCommands::AddTarget(args) => args.execute(&client, &mut handle),
             UserCommands::RemoveTarget(args) => args.execute(&client, &mut handle),
+            UserCommands::SetResultDestination(args) => args.execute(&client, &mut handle),
             UserCommands::UpdatePayment(args) => args.execute(&client, &mut handle),
         },
         Command::InitConfig(args) => args.execute(&client, &mut handle),

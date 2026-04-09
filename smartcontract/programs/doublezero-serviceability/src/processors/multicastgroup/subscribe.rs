@@ -60,7 +60,7 @@ pub struct SubscribeUserResult {
 /// and post-activation subscription changes (add/remove toggle). The caller is
 /// responsible for setting `user.status = Updating` when
 /// `publisher_list_transitioned` is true and the user is already activated.
-pub fn subscribe_user_to_multicastgroup(
+pub fn update_user_multicastgroup_subscription(
     mgroup_account: &AccountInfo,
     accesspass: &AccessPass,
     user: &mut User,
@@ -130,7 +130,7 @@ pub fn subscribe_user_to_multicastgroup(
     })
 }
 
-pub fn process_subscribe_multicastgroup(
+pub fn process_update_multicastgroup_subscription(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     value: &MulticastGroupSubscribeArgs,
@@ -171,7 +171,7 @@ pub fn process_subscribe_multicastgroup(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_subscribe_multicastgroup({:?})", value);
+    msg!("process_update_multicastgroup_subscription({:?})", value);
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
@@ -201,14 +201,10 @@ pub fn process_subscribe_multicastgroup(
 
     // Parse and validate user
     let mut user: User = User::try_from(user_account)?;
-    // Allow pure-unsubscribe (both false) for any status so that users
-    // created atomically via CreateSubscribeUser can be cleaned up before
-    // activation.  Subscribe operations still require Activated/Updating.
-    let is_unsubscribe_only = !value.publisher && !value.subscriber;
-    if !is_unsubscribe_only
-        && user.status != UserStatus::Activated
-        && user.status != UserStatus::Updating
-    {
+    // Unsubscribe is allowed for any status so that users
+    // created via CreateSubscribeUser can be cleaned up before activation.
+    let is_subscribe = value.publisher || value.subscriber;
+    if is_subscribe && user.status != UserStatus::Activated && user.status != UserStatus::Updating {
         msg!("UserStatus: {:?}", user.status);
         return Err(DoubleZeroError::InvalidStatus.into());
     }
@@ -252,7 +248,7 @@ pub fn process_subscribe_multicastgroup(
         }
     }
 
-    let result = subscribe_user_to_multicastgroup(
+    let result = update_user_multicastgroup_subscription(
         mgroup_account,
         &accesspass,
         &mut user,

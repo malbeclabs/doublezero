@@ -47,6 +47,10 @@ type Config struct {
 	// DrainedSlotCount is used for reactivated devices/links (status = Drained, HardDrained, SoftDrained).
 	ProvisioningSlotCount uint64
 	DrainedSlotCount      uint64
+
+	// Health evaluators determine target health based on criteria.
+	DeviceEvaluator *DeviceHealthEvaluator
+	LinkEvaluator   *LinkHealthEvaluator
 }
 
 func (c *Config) Validate() error {
@@ -70,6 +74,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Interval <= 0 {
 		return errors.New("interval must be greater than 0")
+	}
+	if c.DeviceEvaluator == nil {
+		return errors.New("device evaluator is required")
+	}
+	if c.LinkEvaluator == nil {
+		return errors.New("link evaluator is required")
 	}
 	return nil
 }

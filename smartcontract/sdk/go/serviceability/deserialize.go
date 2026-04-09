@@ -80,19 +80,32 @@ func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
 	contributor.OpsManagerPK = reader.ReadPubkey()
 }
 
+// DeserializeInterface reads an on-chain Interface account from reader.
+//
+// Interface version history (discriminant byte):
+//
+//	0 — V1: original format (no CYOA/DIA/Bandwidth fields)
+//	1 — V2: adds CYOA, DIA, Bandwidth, Cir, Mtu, RoutingMode, and flex_algo_node_segments (RFC-18)
+//	       Pre-RFC-18 mainnet accounts also use discriminant 1 but lack the flex_algo bytes.
+//	       MigrateDeviceInterfaces must be run on all existing accounts before this SDK is
+//	       deployed, so that every V2 account on-chain has the flex_algo bytes present.
+//	2 — reserved, never written
+//
+// Design note: discriminant 3 (V3) was considered during RFC-18 implementation to distinguish
+// old V2 (no flex_algo bytes) from new V2 (with flex_algo bytes) in a shared Borsh buffer
+// reader. It was rejected in favour of a one-time migration (MigrateDeviceInterfaces) that
+// rewrites all pre-RFC-18 accounts into the new V2 layout, avoiding the need for a new
+// discriminant value entirely.
 func DeserializeInterface(reader *ByteReader, iface *Interface) {
 	iface.Version = reader.ReadU8()
 
-	if iface.Version > (CurrentInterfaceVersion - 1) { // subtract 1 because the discriminant starts from 0
-		log.Println("DeserializeInterface: Unsupported interface version", iface.Version)
-		return
-	}
-
 	switch iface.Version {
-	case 0: // version 1
+	case 0: // V1
 		DeserializeInterfaceV1(reader, iface)
-	case 1: // version 2
+	case 1: // V2: includes flex_algo_node_segments (RFC-18); requires MigrateDeviceInterfaces to have run
 		DeserializeInterfaceV2(reader, iface)
+	default:
+		log.Println("DeserializeInterface: Unsupported interface version", iface.Version)
 	}
 }
 
@@ -122,6 +135,13 @@ func DeserializeInterfaceV2(reader *ByteReader, iface *Interface) {
 	iface.IpNet = reader.ReadNetworkV4()
 	iface.NodeSegmentIdx = reader.ReadU16()
 	iface.UserTunnelEndpoint = (reader.ReadU8() != 0)
+	// flex_algo_node_segments (RFC-18): present in all V2 accounts after MigrateDeviceInterfaces.
+	length := reader.ReadU32()
+	iface.FlexAlgoNodeSegments = make([]FlexAlgoNodeSegment, length)
+	for i := uint32(0); i < length; i++ {
+		iface.FlexAlgoNodeSegments[i].Topology = reader.ReadPubkey()
+		iface.FlexAlgoNodeSegments[i].NodeSegmentIdx = reader.ReadU16()
+	}
 }
 
 func DeserializeDevice(reader *ByteReader, dev *Device) {

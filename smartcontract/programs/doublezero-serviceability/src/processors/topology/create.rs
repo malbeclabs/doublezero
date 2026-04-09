@@ -162,22 +162,22 @@ pub fn process_topology_create(
                     continue;
                 }
                 let node_segment_idx = allocate_id(segment_routing_ids_account)?;
-                // Mutate the interface in place — upgrade to V3 if needed
+                // Mutate the interface in place
                 match iface {
-                    Interface::V3(ref mut v3) => {
-                        v3.flex_algo_node_segments.push(FlexAlgoNodeSegment {
+                    Interface::V2(ref mut v2) => {
+                        v2.flex_algo_node_segments.push(FlexAlgoNodeSegment {
                             topology: *topology_account.key,
                             node_segment_idx,
                         });
                     }
                     _ => {
-                        // Upgrade to current version (V3) with the segment added
+                        // Upgrade to current version with the segment added
                         let mut upgraded = iface.into_current_version();
                         upgraded.flex_algo_node_segments.push(FlexAlgoNodeSegment {
                             topology: *topology_account.key,
                             node_segment_idx,
                         });
-                        *iface = Interface::V3(upgraded);
+                        *iface = Interface::V2(upgraded);
                     }
                 }
                 modified = true;

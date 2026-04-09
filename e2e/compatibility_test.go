@@ -91,24 +91,22 @@ func before(v string) []versionRange {
 }
 
 var knownIncompatibilities = map[string]knownIncompat{
-	// multicast_group_create: The MulticastGroupCreateArgs Borsh struct changed in v0.8.1.
-	// The index and bump_seed fields were removed. Older CLIs send the old format which
-	// causes Borsh deserialization failure in the current program.
-	"write/multicast_group_create": {ranges: before("0.8.1")},
+	// multicast_group_create: The CreateMulticastGroup instruction now requires an Index
+	// account for unique code enforcement. All CLIs before v0.17.0 don't pass this account,
+	// causing "insufficient account keys for instruction".
+	"write/multicast_group_create": {ranges: before("0.17.0")},
 
 	// All multicast operations that depend on multicast_group_create. When the group
-	// can't be created (< 0.8.1), these all fail with "MulticastGroup not found".
-	"write/multicast_group_wait_activated": {ranges: before("0.8.1")},
-	// multicast_group_update: In addition to the dependency above, v0.8.1-v0.8.8 parsed
-	// --max-bandwidth as a plain integer. v0.8.9 added validate_parse_bandwidth (a855ca7a)
-	// which accepts unit strings like "200Mbps".
-	"write/multicast_group_update":               {ranges: before("0.8.9")},
-	"write/multicast_group_pub_allowlist_add":    {ranges: before("0.8.1")},
-	"write/multicast_group_pub_allowlist_remove": {ranges: before("0.8.1")},
-	"write/multicast_group_sub_allowlist_add":    {ranges: before("0.8.1")},
-	"write/multicast_group_sub_allowlist_remove": {ranges: before("0.8.1")},
-	"write/multicast_group_get":                  {ranges: before("0.8.1")},
-	"write/multicast_group_delete":               {ranges: before("0.8.1")},
+	// can't be created, these all fail with "MulticastGroup not found".
+	"write/multicast_group_wait_activated":       {ranges: before("0.17.0")},
+	"write/multicast_group_update":               {ranges: before("0.17.0")},
+	"write/multicast_group_pub_allowlist_add":    {ranges: before("0.17.0")},
+	"write/multicast_group_pub_allowlist_remove": {ranges: before("0.17.0")},
+	"write/multicast_group_sub_allowlist_add":    {ranges: before("0.17.0")},
+	"write/multicast_group_sub_allowlist_remove": {ranges: before("0.17.0")},
+	"write/multicast_group_get":                  {ranges: before("0.17.0")},
+	"write/multicast_group_delete":               {ranges: before("0.17.0")},
+	"write/user_subscribe":                       {ranges: before("0.17.0")},
 
 	// set-health commands: The CLI subcommand was added in commit eb7ea308 (Jan 16).
 	// mainnet-beta v0.8.2 was built Jan 13 (before set-health) → doesn't have it.

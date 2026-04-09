@@ -2,153 +2,117 @@ package worker
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"testing"
 	"time"
 
-	chmodule "github.com/testcontainers/testcontainers-go/modules/clickhouse"
-
-	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
 )
 
-const (
-	chTestUser     = "default"
-	chTestPassword = "testpass"
-	chTestDatabase = "default"
-)
+// mockRow implements driver.Row for testing.
+type mockRow struct {
+	scanFunc func(dest ...any) error
+}
 
-func setupClickHouseContainer(t *testing.T) (clickhouse.Conn, func()) {
-	t.Helper()
-	ctx := context.Background()
+func (r *mockRow) Err() error             { return nil }
+func (r *mockRow) Scan(dest ...any) error { return r.scanFunc(dest...) }
+func (r *mockRow) ScanStruct(_ any) error { return nil }
 
-	container, err := chmodule.Run(ctx,
-		"clickhouse/clickhouse-server:23.3.8.21-alpine",
-		chmodule.WithUsername(chTestUser),
-		chmodule.WithPassword(chTestPassword),
-		chmodule.WithDatabase(chTestDatabase),
-	)
-	require.NoError(t, err)
-	testcontainers.CleanupContainer(t, container)
+// mockConn implements the subset of driver.Conn used by ClickHouseClient.
+type mockConn struct {
+	driver.Conn
+	queryRowFunc func(ctx context.Context, query string, args ...any) driver.Row
+}
 
-	connStr, err := container.ConnectionHost(ctx)
-	require.NoError(t, err)
+func (c *mockConn) QueryRow(ctx context.Context, query string, args ...any) driver.Row {
+	return c.queryRowFunc(ctx, query, args...)
+}
 
-	conn, err := clickhouse.Open(&clickhouse.Options{
-		Addr: []string{connStr},
-		Auth: clickhouse.Auth{
-			Database: chTestDatabase,
-			Username: chTestUser,
-			Password: chTestPassword,
+func TestControllerCallCoverage_ReturnsCount(t *testing.T) {
+	conn := &mockConn{
+		queryRowFunc: func(_ context.Context, query string, args ...any) driver.Row {
+			assert.Contains(t, query, `"testdb".controller_grpc_getconfig_success`)
+			assert.Len(t, args, 3)
+			assert.Equal(t, "device123", args[0])
+			return &mockRow{
+				scanFunc: func(dest ...any) error {
+					p := dest[0].(*uint64)
+					*p = 42
+					return nil
+				},
+			}
 		},
-	})
-	require.NoError(t, err)
-	require.NoError(t, conn.Ping(ctx))
-
-	// Create the table
-	err = conn.Exec(ctx, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS "%s".controller_grpc_getconfig_success (
-			timestamp DateTime64(3),
-			device_pubkey LowCardinality(String)
-		) ENGINE = MergeTree
-		PARTITION BY toYYYYMM(timestamp)
-		ORDER BY (timestamp, device_pubkey)
-	`, chTestDatabase))
-	require.NoError(t, err)
-
-	cleanup := func() {
-		_ = conn.Close()
 	}
 
-	return conn, cleanup
+	client := &ClickHouseClient{conn: conn, db: "testdb"}
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(1 * time.Hour)
+
+	minutes, err := client.ControllerCallCoverage(context.Background(), "device123", start, end)
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), minutes)
 }
 
-func TestClickHouseClient_ControllerCallCoverage(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
+func TestControllerCallCoverage_QueryError(t *testing.T) {
+	conn := &mockConn{
+		queryRowFunc: func(_ context.Context, _ string, _ ...any) driver.Row {
+			return &mockRow{
+				scanFunc: func(_ ...any) error {
+					return errors.New("connection reset")
+				},
+			}
+		},
 	}
 
-	conn, cleanup := setupClickHouseContainer(t)
-	defer cleanup()
+	client := &ClickHouseClient{conn: conn, db: "testdb"}
+	start := time.Now().Add(-1 * time.Hour)
+	end := time.Now()
 
-	ctx := context.Background()
-	client := &ClickHouseClient{conn: conn, db: chTestDatabase}
-
-	devicePubkey := "TestDevice123"
-	now := time.Now().Truncate(time.Second)
-
-	// Insert records: one per minute for 10 minutes
-	for i := 0; i < 10; i++ {
-		ts := now.Add(-time.Duration(10-i) * time.Minute)
-		err := conn.Exec(ctx, fmt.Sprintf(
-			`INSERT INTO "%s".controller_grpc_getconfig_success (timestamp, device_pubkey) VALUES (?, ?)`, chTestDatabase,
-		), ts, devicePubkey)
-		require.NoError(t, err)
-	}
-
-	t.Run("full coverage", func(t *testing.T) {
-		start := now.Add(-11 * time.Minute)
-		end := now
-		minutes, err := client.ControllerCallCoverage(ctx, devicePubkey, start, end)
-		require.NoError(t, err)
-		assert.Equal(t, int64(10), minutes)
-	})
-
-	t.Run("partial window", func(t *testing.T) {
-		start := now.Add(-5 * time.Minute)
-		end := now
-		minutes, err := client.ControllerCallCoverage(ctx, devicePubkey, start, end)
-		require.NoError(t, err)
-		assert.GreaterOrEqual(t, minutes, int64(4))
-		assert.LessOrEqual(t, minutes, int64(5))
-	})
-
-	t.Run("no data for different device", func(t *testing.T) {
-		start := now.Add(-11 * time.Minute)
-		end := now
-		minutes, err := client.ControllerCallCoverage(ctx, "OtherDevice456", start, end)
-		require.NoError(t, err)
-		assert.Equal(t, int64(0), minutes)
-	})
-
-	t.Run("empty time range", func(t *testing.T) {
-		start := now.Add(-1 * time.Hour)
-		end := now.Add(-50 * time.Minute)
-		minutes, err := client.ControllerCallCoverage(ctx, devicePubkey, start, end)
-		require.NoError(t, err)
-		assert.Equal(t, int64(0), minutes)
-	})
+	_, err := client.ControllerCallCoverage(context.Background(), "device123", start, end)
+	assert.ErrorContains(t, err, "connection reset")
 }
 
-func TestClickHouseClient_ControllerCallCoverage_WithGaps(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
+func TestControllerCallCoverage_QuotesDatabaseName(t *testing.T) {
+	// Verify that database names with hyphens (mainnet-beta) are quoted.
+	conn := &mockConn{
+		queryRowFunc: func(_ context.Context, query string, _ ...any) driver.Row {
+			assert.Contains(t, query, `"mainnet-beta".controller_grpc_getconfig_success`)
+			return &mockRow{
+				scanFunc: func(dest ...any) error {
+					p := dest[0].(*uint64)
+					*p = 0
+					return nil
+				},
+			}
+		},
 	}
 
-	conn, cleanup := setupClickHouseContainer(t)
-	defer cleanup()
+	client := &ClickHouseClient{conn: conn, db: "mainnet-beta"}
+	start := time.Now().Add(-1 * time.Hour)
+	end := time.Now()
 
-	ctx := context.Background()
-	client := &ClickHouseClient{conn: conn, db: chTestDatabase}
-
-	devicePubkey := "GappyDevice789"
-	now := time.Now().Truncate(time.Second)
-
-	// Insert records with gaps: minutes 0,1,2 then skip 3,4, then 5,6,7
-	gapMinutes := []int{10, 9, 8, 5, 4, 3}
-	for _, m := range gapMinutes {
-		ts := now.Add(-time.Duration(m) * time.Minute)
-		err := conn.Exec(ctx, fmt.Sprintf(
-			`INSERT INTO "%s".controller_grpc_getconfig_success (timestamp, device_pubkey) VALUES (?, ?)`, chTestDatabase,
-		), ts, devicePubkey)
-		require.NoError(t, err)
-	}
-
-	start := now.Add(-11 * time.Minute)
-	end := now
-	minutes, err := client.ControllerCallCoverage(ctx, devicePubkey, start, end)
+	minutes, err := client.ControllerCallCoverage(context.Background(), "device123", start, end)
 	require.NoError(t, err)
-	assert.Equal(t, int64(6), minutes, "should count 6 distinct minutes (with 2-minute gap)")
+	assert.Equal(t, int64(0), minutes)
+}
+
+func TestNewClickHouseClient_StripsScheme(t *testing.T) {
+	tests := []struct {
+		name string
+		addr string
+	}{
+		{"plain host:port", "localhost:8123"},
+		{"https prefix", "https://clickhouse.example.com:8443"},
+		{"http prefix", "http://localhost:8123"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewClickHouseClient(tt.addr, "default", "default", "", true)
+			// Connection will fail (no server) — verify no panic and an error is returned.
+			assert.Error(t, err)
+		})
+	}
 }

@@ -131,7 +131,7 @@ var knownIncompatibilities = map[string]knownIncompat{
 
 	// RFC-18 mandatory upgrade boundary: all operations that read device accounts
 	// (set_unlinked, link create/update/delete) require a CLI that understands the new
-	// InterfaceV2 format (flex_algo_node_segments). v0.17.0 was released before RFC-18
+	// InterfaceV3 format (flex_algo_node_segments). v0.17.0 was released before RFC-18
 	// and sends InterfaceV1, so it is incompatible. set_unlinked uses cascadeKnownFail
 	// so that downstream link phases are skipped rather than run-and-fail.
 	"write/device_interface_set_unlinked":   {ranges: []versionRange{{before: "0.19.0"}}},

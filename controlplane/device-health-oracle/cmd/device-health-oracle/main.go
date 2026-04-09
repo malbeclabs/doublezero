@@ -152,7 +152,7 @@ func main() {
 			deviceCriteria = append(deviceCriteria, controllerSuccess)
 		}
 	} else {
-		log.Info("ClickHouse disabled (CLICKHOUSE_ADDR not set), no controller_success criterion")
+		log.Error("ClickHouse disabled (CLICKHOUSE_ADDR not set), no controller_success criterion")
 	}
 
 	deviceEvaluator := &worker.DeviceHealthEvaluator{

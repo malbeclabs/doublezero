@@ -77,6 +77,8 @@ describe("DeviceLatencySamples fixture", () => {
       SamplingIntervalMicroseconds: d.samplingIntervalMicroseconds,
       StartTimestampMicroseconds: d.startTimestampMicroseconds,
       NextSampleIndex: d.nextSampleIndex,
+      AgentVersion: d.agentVersion,
+      AgentCommit: d.agentCommit,
       SamplesCount: d.samples.length,
     });
   });

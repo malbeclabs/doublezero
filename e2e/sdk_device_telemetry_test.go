@@ -183,6 +183,8 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			LinkPK:                       la2ToNy5LinkPK,
 			Epoch:                        &epoch,
 			SamplingIntervalMicroseconds: samplingIntervalMicroseconds,
+			AgentVersion:                 "test-version",
+			AgentCommit:                  "abc12345",
 		})
 		require.NoError(t, err)
 		for _, msg := range res.Meta.LogMessages {
@@ -210,6 +212,14 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		require.Equal(t, samplingIntervalMicroseconds, deviceLatencySamples.SamplingIntervalMicroseconds)
 		require.Equal(t, uint32(0), deviceLatencySamples.NextSampleIndex)
 		require.Empty(t, deviceLatencySamples.Samples)
+
+		// Verify agent version and commit were stored.
+		var expectedVersion [16]uint8
+		copy(expectedVersion[:], "test-version")
+		require.Equal(t, expectedVersion, deviceLatencySamples.AgentVersion)
+		var expectedCommit [8]uint8
+		copy(expectedCommit[:], "abc12345")
+		require.Equal(t, expectedCommit, deviceLatencySamples.AgentCommit)
 	})
 
 	// Write device latency samples.

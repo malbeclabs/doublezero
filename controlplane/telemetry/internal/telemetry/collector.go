@@ -64,6 +64,8 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		ProgramClient:      cfg.TelemetryProgramClient,
 		GetCurrentEpoch:    cfg.GetCurrentEpochFunc,
 		MaxConcurrency:     cfg.SubmitterMaxConcurrency,
+		AgentVersion:       cfg.AgentVersion,
+		AgentCommit:        cfg.AgentCommit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create submitter: %w", err)

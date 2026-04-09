@@ -1,0 +1,56 @@
+{
+  "name": "timestamp_index",
+  "account_type": 5,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "5",
+      "typ": "u8"
+    },
+    {
+      "name": "SamplesAccountPK",
+      "value": "3DpTLLwnVbLZUpy9nenjYabYYKeSJMMvGdBJcSEqnYpP",
+      "typ": "pubkey"
+    },
+    {
+      "name": "NextEntryIndex",
+      "value": "3",
+      "typ": "u32"
+    },
+    {
+      "name": "EntriesCount",
+      "value": "3",
+      "typ": "u32"
+    },
+    {
+      "name": "Entry0SampleIndex",
+      "value": "0",
+      "typ": "u32"
+    },
+    {
+      "name": "Entry0Timestamp",
+      "value": "1700000000000000",
+      "typ": "u64"
+    },
+    {
+      "name": "Entry1SampleIndex",
+      "value": "12",
+      "typ": "u32"
+    },
+    {
+      "name": "Entry1Timestamp",
+      "value": "1700000000060000",
+      "typ": "u64"
+    },
+    {
+      "name": "Entry2SampleIndex",
+      "value": "24",
+      "typ": "u32"
+    },
+    {
+      "name": "Entry2Timestamp",
+      "value": "1700000000120000",
+      "typ": "u64"
+    }
+  ]
+}

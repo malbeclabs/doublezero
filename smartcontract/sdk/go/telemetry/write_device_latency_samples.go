@@ -17,6 +17,7 @@ type WriteDeviceLatencySamplesInstructionConfig struct {
 	Samples                    []uint32
 	AgentVersion               string
 	AgentCommit                string
+	TimestampIndexPK           *solana.PublicKey // optional: if set, appends a timestamp index entry
 }
 
 func (c *WriteDeviceLatencySamplesInstructionConfig) Validate() error {
@@ -88,6 +89,11 @@ func BuildWriteDeviceLatencySamplesInstruction(
 		{PublicKey: pda, IsSigner: false, IsWritable: true},
 		{PublicKey: config.AgentPK, IsSigner: true, IsWritable: false},
 		{PublicKey: solana.SystemProgramID, IsSigner: false, IsWritable: false},
+	}
+	if config.TimestampIndexPK != nil {
+		accounts = append(accounts, &solana.AccountMeta{
+			PublicKey: *config.TimestampIndexPK, IsSigner: false, IsWritable: true,
+		})
 	}
 
 	return &solana.GenericInstruction{

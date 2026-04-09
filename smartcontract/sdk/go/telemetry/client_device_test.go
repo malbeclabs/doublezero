@@ -849,6 +849,66 @@ func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_CustomInstructionErrorAc
 	require.Nil(t, tx)
 }
 
+func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_CustomInstructionErrorTimestampIndexNotFound(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	customErr := &jsonrpc.RPCError{
+		Code:    -32000,
+		Message: "Transaction simulation failed",
+		Data: map[string]any{
+			"err": map[string]any{
+				"InstructionError": []any{
+					0,
+					map[string]any{
+						"Custom": json.Number(strconv.Itoa(telemetry.InstructionErrorTimestampIndexAccountDoesNotExist)),
+					},
+				},
+			},
+		},
+	}
+
+	mockRPC := &mockRPCClient{
+		GetLatestBlockhashFunc: func(_ context.Context, _ solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error) {
+			return &solanarpc.GetLatestBlockhashResult{
+				Value: &solanarpc.LatestBlockhashResult{
+					Blockhash: solana.MustHashFromBase58("5NzX7jrPWeTkGsDnVnszdEa7T3Yyr3nSgyc78z3CwjWQ"),
+				},
+			}, nil
+		},
+		SendTransactionWithOptsFunc: func(_ context.Context, _ *solana.Transaction, _ solanarpc.TransactionOpts) (solana.Signature, error) {
+			return solana.Signature{}, customErr
+		},
+		GetSignatureStatusesFunc: func(_ context.Context, _ bool, _ ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error) {
+			return nil, nil
+		},
+		GetTransactionFunc: func(_ context.Context, _ solana.Signature, _ *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error) {
+			return nil, nil
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	epoch := uint64(42)
+	config := telemetry.WriteDeviceLatencySamplesInstructionConfig{
+		AgentPK:                    signer.PublicKey(),
+		OriginDevicePK:             solana.NewWallet().PublicKey(),
+		TargetDevicePK:             solana.NewWallet().PublicKey(),
+		LinkPK:                     solana.NewWallet().PublicKey(),
+		Epoch:                      &epoch,
+		StartTimestampMicroseconds: 1_600_000_000,
+		Samples:                    []uint32{1, 2, 3},
+	}
+
+	sig, tx, err := client.WriteDeviceLatencySamples(context.Background(), config)
+
+	require.ErrorIs(t, err, telemetry.ErrTimestampIndexNotFound)
+	require.Equal(t, solana.Signature{}, sig)
+	require.Nil(t, tx)
+}
+
 func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_BuildFails(t *testing.T) {
 	t.Parallel()
 

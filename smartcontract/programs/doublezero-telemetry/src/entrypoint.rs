@@ -3,6 +3,7 @@ use crate::{
     processors::telemetry::{
         initialize_device_latency_samples::process_initialize_device_latency_samples,
         initialize_internet_latency_samples::process_initialize_internet_latency_samples,
+        initialize_timestamp_index::process_initialize_timestamp_index,
         write_device_latency_samples::process_write_device_latency_samples,
         write_internet_latency_samples::process_write_internet_latency_samples,
     },
@@ -36,6 +37,9 @@ pub fn process_instruction(
         }
         TelemetryInstruction::WriteInternetLatencySamples(args) => {
             process_write_internet_latency_samples(program_id, accounts, &args)?
+        }
+        TelemetryInstruction::InitializeTimestampIndex => {
+            process_initialize_timestamp_index(program_id, accounts)?
         }
     };
 

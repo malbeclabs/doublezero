@@ -117,6 +117,26 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 			}
 		}
 
+		// Derive the samples PDA so we can derive the timestamp index PDA from it.
+		samplesPDA, _, err := telemetry.DeriveInternetLatencySamplesPDA(
+			s.cfg.Telemetry.ProgramID(),
+			s.cfg.OracleAgentPK,
+			string(partitionKey.DataProvider),
+			partitionKey.SourceExchangePK,
+			partitionKey.TargetExchangePK,
+			partitionKey.Epoch,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to derive internet latency samples PDA: %w", err)
+		}
+		timestampIndexPDA, _, err := telemetry.DeriveTimestampIndexPDA(
+			s.cfg.Telemetry.ProgramID(),
+			samplesPDA,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to derive timestamp index PDA: %w", err)
+		}
+
 		writeConfig := telemetry.WriteInternetLatencySamplesInstructionConfig{
 			DataProviderName:           string(partitionKey.DataProvider),
 			OriginExchangePK:           partitionKey.SourceExchangePK,
@@ -124,11 +144,29 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 			Epoch:                      partitionKey.Epoch,
 			StartTimestampMicroseconds: uint64(minTimestamp.UnixMicro()),
 			Samples:                    rtts,
+			TimestampIndexPK:           &timestampIndexPDA,
 		}
 
-		_, _, err := s.cfg.Telemetry.WriteInternetLatencySamples(ctx, writeConfig)
+		_, _, err = s.cfg.Telemetry.WriteInternetLatencySamples(ctx, writeConfig)
 		if err != nil {
-			if errors.Is(err, telemetry.ErrAccountNotFound) {
+			if errors.Is(err, telemetry.ErrTimestampIndexNotFound) {
+				log.Info("Timestamp index account not found, initializing")
+				_, _, err = s.cfg.Telemetry.InitializeTimestampIndex(ctx, samplesPDA)
+				if err != nil {
+					log.Warn("Failed to initialize timestamp index, writes will proceed without it", "error", err)
+					writeConfig.TimestampIndexPK = nil
+				}
+				_, _, err = s.cfg.Telemetry.WriteInternetLatencySamples(ctx, writeConfig)
+				if err != nil {
+					if errors.Is(err, telemetry.ErrSamplesAccountFull) {
+						log.Warn("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
+						metrics.ExporterSubmitterAccountFull.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceExchangePK.String(), partitionKey.TargetExchangePK.String(), strconv.FormatUint(partitionKey.Epoch, 10)).Inc()
+						s.cfg.Buffer.Remove(partitionKey)
+						return nil
+					}
+					return fmt.Errorf("failed to write internet latency samples after timestamp index init: %w", err)
+				}
+			} else if errors.Is(err, telemetry.ErrAccountNotFound) {
 				log.Info("Account not found, initializing new account")
 				samplingInterval, ok := s.cfg.DataProviderSamplingIntervals[partitionKey.DataProvider]
 				if !ok {
@@ -143,6 +181,12 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 				})
 				if err != nil {
 					return fmt.Errorf("failed to initialize internet latency samples: %w", err)
+				}
+				// Initialize the companion timestamp index account.
+				_, _, err = s.cfg.Telemetry.InitializeTimestampIndex(ctx, samplesPDA)
+				if err != nil {
+					log.Warn("Failed to initialize timestamp index, writes will proceed without it", "error", err)
+					writeConfig.TimestampIndexPK = nil
 				}
 				_, _, err = s.cfg.Telemetry.WriteInternetLatencySamples(ctx, writeConfig)
 				if err != nil {

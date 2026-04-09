@@ -20,8 +20,14 @@ type ServiceabilityProgramClient interface {
 
 // TelemetryProgramClient is the client to the telemetry program.
 type TelemetryProgramClient interface {
+	// ProgramID returns the telemetry program ID.
+	ProgramID() solana.PublicKey
+
 	// InitializeDeviceLatencySamples initializes the device latency samples account.
 	InitializeDeviceLatencySamples(ctx context.Context, config telemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
+
+	// InitializeTimestampIndex initializes a timestamp index companion account.
+	InitializeTimestampIndex(ctx context.Context, samplesAccountPK solana.PublicKey) (solana.Signature, *solanarpc.GetTransactionResult, error)
 
 	// WriteDeviceLatencySamples writes the device latency samples to the account.
 	WriteDeviceLatencySamples(ctx context.Context, config telemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)

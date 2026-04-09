@@ -1,4 +1,6 @@
-use crate::seeds::{SEED_DEVICE_LATENCY_SAMPLES, SEED_INTERNET_LATENCY_SAMPLES, SEED_PREFIX};
+use crate::seeds::{
+    SEED_DEVICE_LATENCY_SAMPLES, SEED_INTERNET_LATENCY_SAMPLES, SEED_PREFIX, SEED_TIMESTAMP_INDEX,
+};
 use solana_program::pubkey::Pubkey;
 
 /// Derive PDA for DZ latency samples account.
@@ -17,6 +19,21 @@ pub fn derive_device_latency_samples_pda(
             target_device_pk.as_ref(),
             link_pk.as_ref(),
             &epoch.to_le_bytes(),
+        ],
+        program_id,
+    )
+}
+
+/// Derive PDA for a timestamp index companion account.
+pub fn derive_timestamp_index_pda(
+    program_id: &Pubkey,
+    samples_account_pk: &Pubkey,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            SEED_PREFIX,
+            SEED_TIMESTAMP_INDEX,
+            samples_account_pk.as_ref(),
         ],
         program_id,
     )

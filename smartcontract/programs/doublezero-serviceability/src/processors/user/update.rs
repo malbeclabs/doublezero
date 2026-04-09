@@ -41,13 +41,14 @@ pub struct UserUpdateArgs {
     pub dz_prefix_count: u8,
     #[incremental(default = 0)]
     pub multicast_publisher_count: u8,
+    pub tunnel_endpoint: Option<Ipv4Addr>,
 }
 
 impl fmt::Debug for UserUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}, validator_pubkey: {}, tenant_pk: {}, dz_prefix_count: {}, multicast_publisher_count: {}",
+            "user_type: {}, cyoa_type: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}, validator_pubkey: {}, tenant_pk: {}, dz_prefix_count: {}, multicast_publisher_count: {}, tunnel_endpoint: {}",
             format_option!(self.user_type),
             format_option!(self.cyoa_type),
             format_option!(self.dz_ip),
@@ -57,6 +58,7 @@ impl fmt::Debug for UserUpdateArgs {
             format_option!(self.tenant_pk),
             self.dz_prefix_count,
             self.multicast_publisher_count,
+            format_option!(self.tunnel_endpoint),
         )
     }
 }
@@ -327,6 +329,9 @@ pub fn process_update_user(
     }
     if let Some(value) = value.validator_pubkey {
         user.validator_pubkey = value;
+    }
+    if let Some(value) = value.tunnel_endpoint {
+        user.tunnel_endpoint = value;
     }
     if let Some(new_tenant_pk) = value.tenant_pk {
         // If tenant accounts are provided, update reference counts

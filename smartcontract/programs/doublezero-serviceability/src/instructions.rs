@@ -868,6 +868,7 @@ mod tests {
                 tenant_pk: Some(Pubkey::new_unique()),
                 dz_prefix_count: 0,
                 multicast_publisher_count: 0,
+                tunnel_endpoint: None,
             }),
             "UpdateUser",
         );

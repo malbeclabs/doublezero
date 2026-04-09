@@ -82,6 +82,7 @@ All notable changes to this project will be documented in this file.
   - Extend `validate_program_account!` migration to remaining user and multicastgroup allowlist processors (`set_bgp_status`, `delete`, `closeaccount`, publisher/subscriber `add`/`remove`)
   - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
   - Allow pending users with subs to be deleted
+  - Add `doublezero link topology {create,delete,clear,backfill,list}` subcommands for managing flex-algo topologies; `topology clear` auto-discovers tagged links when `--links` is omitted
   - Add `TopologyInfo` onchain account for IS-IS flex-algo link classification: auto-assigned TE admin-group bit (1–62), derived flex-algo number (128 + bit), and constraint type (`include-any`/`include-all`); capped at 62 topologies via `AdminGroupBits` resource extension
   - Add `link_topologies: Vec<Pubkey>` (capped at 8) and `link_flags: u32` (bit 0 = unicast-drained) to the `Link` account
   - Add `include_topologies` to the `Tenant` account for topology-filtered routing opt-in

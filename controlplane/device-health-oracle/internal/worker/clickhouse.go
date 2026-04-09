@@ -59,23 +59,19 @@ func (c *ClickHouseClient) ControllerCallCoverage(ctx context.Context, devicePub
 	query := fmt.Sprintf(
 		`SELECT count(DISTINCT toStartOfMinute(timestamp)) AS minutes_with_calls
 		 FROM "%s".controller_grpc_getconfig_success
-		 WHERE device_pubkey = {pubkey:String}
-		   AND timestamp >= {start:DateTime64(3)}
-		   AND timestamp <= {end:DateTime64(3)}`,
+		 WHERE device_pubkey = ?
+		   AND timestamp >= ?
+		   AND timestamp <= ?`,
 		c.db,
 	)
 
-	var minutesWithCalls int64
-	err := c.conn.QueryRow(ctx, query,
-		clickhouse.Named("pubkey", devicePubkey),
-		clickhouse.Named("start", start),
-		clickhouse.Named("end", end),
-	).Scan(&minutesWithCalls)
+	var minutesWithCalls uint64
+	err := c.conn.QueryRow(ctx, query, devicePubkey, start, end).Scan(&minutesWithCalls)
 	if err != nil {
 		return 0, fmt.Errorf("clickhouse query: %w", err)
 	}
 
-	return minutesWithCalls, nil
+	return int64(minutesWithCalls), nil
 }
 
 // Close closes the ClickHouse connection.

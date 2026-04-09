@@ -440,6 +440,25 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	log.Debug("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
 	require.Greater(t, len(account.Samples), 1)
 	require.Equal(t, len(account.Samples), int(account.NextSampleIndex))
+
+	// Verify that the telemetry agent posted its version and commit in the header.
+	hasNonZeroVersion := false
+	for _, b := range account.AgentVersion {
+		if b != 0 {
+			hasNonZeroVersion = true
+			break
+		}
+	}
+	require.True(t, hasNonZeroVersion, "agent_version should contain non-zero bytes")
+	hasNonZeroCommit := false
+	for _, b := range account.AgentCommit {
+		if b != 0 {
+			hasNonZeroCommit = true
+			break
+		}
+	}
+	require.True(t, hasNonZeroCommit, "agent_commit should contain non-zero bytes")
+
 	// If there are 0s, they should be at the beginning of the samples array, with all non-zero values after them.
 	initialZeroCount := 0
 	for _, rtt := range account.Samples {

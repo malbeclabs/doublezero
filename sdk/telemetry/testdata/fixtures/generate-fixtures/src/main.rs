@@ -81,7 +81,9 @@ fn generate_device_latency_samples(dir: &Path) {
             sampling_interval_microseconds: 5_000_000,
             start_timestamp_microseconds: 1_700_000_000_000_000,
             next_sample_index: samples.len() as u32,
-            _unused: [0; 128],
+            agent_version: *b"1.0.0-test\0\0\0\0\0\0",
+            agent_commit: *b"abcd1234",
+            _unused: [0; 104],
         },
         samples,
     };
@@ -103,6 +105,8 @@ fn generate_device_latency_samples(dir: &Path) {
             FieldValue { name: "SamplingIntervalMicroseconds".into(), value: "5000000".into(), typ: "u64".into() },
             FieldValue { name: "StartTimestampMicroseconds".into(), value: "1700000000000000".into(), typ: "u64".into() },
             FieldValue { name: "NextSampleIndex".into(), value: "5".into(), typ: "u32".into() },
+            FieldValue { name: "AgentVersion".into(), value: "1.0.0-test".into(), typ: "string".into() },
+            FieldValue { name: "AgentCommit".into(), value: "abcd1234".into(), typ: "string".into() },
             FieldValue { name: "SamplesCount".into(), value: "5".into(), typ: "u32".into() },
         ],
     };

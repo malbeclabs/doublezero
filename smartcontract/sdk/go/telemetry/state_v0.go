@@ -88,6 +88,15 @@ func (d *DeviceLatencySamplesV0) Deserialize(data []byte) error {
 }
 
 func (d *DeviceLatencySamplesV0) ToV1() *DeviceLatencySamples {
+	// The V0 Unused region (128 bytes) maps to AgentVersion (16) + AgentCommit (8) + Unused (104)
+	// in the current header layout. For V0 accounts these bytes are all zeros.
+	var agentVersion [16]uint8
+	var agentCommit [8]uint8
+	var unused [104]uint8
+	copy(agentVersion[:], d.DeviceLatencySamplesHeaderV0.Unused[0:16])
+	copy(agentCommit[:], d.DeviceLatencySamplesHeaderV0.Unused[16:24])
+	copy(unused[:], d.DeviceLatencySamplesHeaderV0.Unused[24:128])
+
 	return &DeviceLatencySamples{
 		DeviceLatencySamplesHeader: DeviceLatencySamplesHeader{
 			AccountType:                  AccountTypeDeviceLatencySamples,
@@ -101,7 +110,9 @@ func (d *DeviceLatencySamplesV0) ToV1() *DeviceLatencySamples {
 			SamplingIntervalMicroseconds: d.DeviceLatencySamplesHeaderV0.SamplingIntervalMicroseconds,
 			StartTimestampMicroseconds:   d.DeviceLatencySamplesHeaderV0.StartTimestampMicroseconds,
 			NextSampleIndex:              d.DeviceLatencySamplesHeaderV0.NextSampleIndex,
-			Unused:                       d.DeviceLatencySamplesHeaderV0.Unused,
+			AgentVersion:                 agentVersion,
+			AgentCommit:                  agentCommit,
+			Unused:                       unused,
 		},
 		Samples: d.Samples,
 	}

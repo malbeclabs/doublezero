@@ -40,6 +40,8 @@ class DeviceLatencySamples:
     sampling_interval_microseconds: int
     start_timestamp_microseconds: int
     next_sample_index: int
+    agent_version: str = ""
+    agent_commit: str = ""
     samples: list[int] = field(default_factory=list)
 
     @classmethod
@@ -63,7 +65,9 @@ class DeviceLatencySamples:
         start_timestamp = r.read_u64()
         next_sample_index = r.read_u32()
 
-        r.read_bytes(128)  # reserved
+        agent_version = r.read_bytes(16).rstrip(b"\x00").decode("utf-8", errors="replace")
+        agent_commit = r.read_bytes(8).rstrip(b"\x00").decode("utf-8", errors="replace")
+        r.read_bytes(104)  # reserved
 
         count = min(next_sample_index, MAX_DEVICE_LATENCY_SAMPLES_PER_ACCOUNT)
         samples: list[int] = []
@@ -84,6 +88,8 @@ class DeviceLatencySamples:
             sampling_interval_microseconds=sampling_interval,
             start_timestamp_microseconds=start_timestamp,
             next_sample_index=next_sample_index,
+            agent_version=agent_version,
+            agent_commit=agent_commit,
             samples=samples,
         )
 

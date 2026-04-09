@@ -32,6 +32,19 @@ func DeriveDeviceLatencySamplesPDA(
 	return solana.FindProgramAddress(seeds, programID)
 }
 
+// DeriveTimestampIndexPDA derives the PDA for a timestamp index companion account.
+func DeriveTimestampIndexPDA(
+	programID solana.PublicKey,
+	samplesAccountPK solana.PublicKey,
+) (solana.PublicKey, uint8, error) {
+	seeds := [][]byte{
+		[]byte(TelemetrySeedPrefix),
+		[]byte(TimestampIndexSeed),
+		samplesAccountPK[:],
+	}
+	return solana.FindProgramAddress(seeds, programID)
+}
+
 // Derives the PDA for internet latency samples account
 func DeriveInternetLatencySamplesPDA(
 	programID solana.PublicKey,

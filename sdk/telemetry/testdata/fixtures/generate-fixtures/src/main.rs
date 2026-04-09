@@ -13,6 +13,7 @@ use doublezero_telemetry::state::{
     accounttype::AccountType,
     device_latency_samples::{DeviceLatencySamples, DeviceLatencySamplesHeader},
     internet_latency_samples::{InternetLatencySamples, InternetLatencySamplesHeader},
+    timestamp_index::{TimestampIndex, TimestampIndexEntry, TimestampIndexHeader},
 };
 use serde::Serialize;
 use solana_program::pubkey::Pubkey;
@@ -55,6 +56,7 @@ fn main() {
 
     generate_device_latency_samples(&fixtures_dir);
     generate_internet_latency_samples(&fixtures_dir);
+    generate_timestamp_index(&fixtures_dir);
 
     println!("\nall fixtures generated in {}", fixtures_dir.display());
 }
@@ -156,4 +158,54 @@ fn generate_internet_latency_samples(dir: &Path) {
     };
 
     write_fixture(dir, "internet_latency_samples", &data, &meta);
+}
+
+fn generate_timestamp_index(dir: &Path) {
+    let samples_pk = pubkey_from_byte(0x21);
+
+    let entries = vec![
+        TimestampIndexEntry {
+            sample_index: 0,
+            timestamp_microseconds: 1_700_000_000_000_000,
+        },
+        TimestampIndexEntry {
+            sample_index: 12,
+            timestamp_microseconds: 1_700_000_000_060_000,
+        },
+        TimestampIndexEntry {
+            sample_index: 24,
+            timestamp_microseconds: 1_700_000_000_120_000,
+        },
+    ];
+
+    let val = TimestampIndex {
+        header: TimestampIndexHeader {
+            account_type: AccountType::TimestampIndex,
+            samples_account_pk: samples_pk,
+            next_entry_index: entries.len() as u32,
+            _unused: [0; 64],
+        },
+        entries: entries.clone(),
+    };
+
+    let data = borsh::to_vec(&val).unwrap();
+
+    let meta = FixtureMeta {
+        name: "timestamp_index".to_string(),
+        account_type: AccountType::TimestampIndex as u8,
+        fields: vec![
+            FieldValue { name: "AccountType".into(), value: "5".into(), typ: "u8".into() },
+            FieldValue { name: "SamplesAccountPK".into(), value: pubkey_bs58(&samples_pk), typ: "pubkey".into() },
+            FieldValue { name: "NextEntryIndex".into(), value: "3".into(), typ: "u32".into() },
+            FieldValue { name: "EntriesCount".into(), value: "3".into(), typ: "u32".into() },
+            FieldValue { name: "Entry0SampleIndex".into(), value: "0".into(), typ: "u32".into() },
+            FieldValue { name: "Entry0Timestamp".into(), value: "1700000000000000".into(), typ: "u64".into() },
+            FieldValue { name: "Entry1SampleIndex".into(), value: "12".into(), typ: "u32".into() },
+            FieldValue { name: "Entry1Timestamp".into(), value: "1700000000060000".into(), typ: "u64".into() },
+            FieldValue { name: "Entry2SampleIndex".into(), value: "24".into(), typ: "u32".into() },
+            FieldValue { name: "Entry2Timestamp".into(), value: "1700000000120000".into(), typ: "u64".into() },
+        ],
+    };
+
+    write_fixture(dir, "timestamp_index", &data, &meta);
 }

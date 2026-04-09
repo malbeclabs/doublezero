@@ -16,9 +16,10 @@ import (
 )
 
 var (
-	ErrAccountNotFound      = errors.New("account not found")
-	ErrSamplesBatchTooLarge = fmt.Errorf("samples batch too large, must not exceed %d samples", MaxSamplesPerBatch)
-	ErrSamplesAccountFull   = errors.New("samples account is full")
+	ErrAccountNotFound        = errors.New("account not found")
+	ErrSamplesBatchTooLarge   = fmt.Errorf("samples batch too large, must not exceed %d samples", MaxSamplesPerBatch)
+	ErrSamplesAccountFull     = errors.New("samples account is full")
+	ErrTimestampIndexNotFound = errors.New("timestamp index account not found")
 )
 
 type Client struct {
@@ -286,6 +287,29 @@ func (c *Client) InitializeDeviceLatencySamples(
 	return sig, res, nil
 }
 
+func (c *Client) InitializeTimestampIndex(
+	ctx context.Context,
+	samplesAccountPK solana.PublicKey,
+) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+	instruction, err := BuildInitializeTimestampIndexInstruction(
+		c.executor.programID,
+		c.executor.signer.PublicKey(),
+		samplesAccountPK,
+	)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)
+	}
+
+	sig, res, err := c.executor.ExecuteTransaction(ctx, instruction, &ExecuteTransactionOptions{
+		SkipPreflight: true,
+	})
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to execute instruction: %w", err)
+	}
+
+	return sig, res, nil
+}
+
 func (c *Client) WriteDeviceLatencySamples(
 	ctx context.Context,
 	config WriteDeviceLatencySamplesInstructionConfig,
@@ -319,6 +343,8 @@ func (c *Client) WriteDeviceLatencySamples(
 									return solana.Signature{}, nil, ErrAccountNotFound
 								case strconv.Itoa(InstructionErrorAccountSamplesAccountFull):
 									return solana.Signature{}, nil, ErrSamplesAccountFull
+								case strconv.Itoa(InstructionErrorTimestampIndexAccountDoesNotExist):
+									return solana.Signature{}, nil, ErrTimestampIndexNotFound
 								}
 							}
 						}
@@ -425,6 +451,8 @@ func (c *Client) WriteInternetLatencySamples(
 									return solana.Signature{}, nil, ErrAccountNotFound
 								case strconv.Itoa(InstructionErrorAccountSamplesAccountFull):
 									return solana.Signature{}, nil, ErrSamplesAccountFull
+								case strconv.Itoa(InstructionErrorTimestampIndexAccountDoesNotExist):
+									return solana.Signature{}, nil, ErrTimestampIndexNotFound
 								}
 							}
 						}

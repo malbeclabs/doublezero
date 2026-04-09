@@ -11,8 +11,8 @@ use doublezero_geolocation::{
         geo_probe::create::CreateGeoProbeArgs,
         geolocation_user::{
             add_target::AddTargetArgs, create::CreateGeolocationUserArgs,
-            remove_target::RemoveTargetArgs, update::UpdateGeolocationUserArgs,
-            update_payment_status::UpdatePaymentStatusArgs,
+            remove_target::RemoveTargetArgs, set_result_destination::SetResultDestinationArgs,
+            update::UpdateGeolocationUserArgs, update_payment_status::UpdatePaymentStatusArgs,
         },
     },
     serviceability_program_id,
@@ -112,6 +112,7 @@ async fn test_create_geolocation_user_success() {
         billing: GeolocationBillingConfig::default(),
         status: GeolocationUserStatus::Activated,
         targets: vec![],
+        result_destination: String::new(),
     };
     assert_eq!(user, expected);
 }
@@ -1441,6 +1442,448 @@ async fn test_update_payment_status_invalid_value() {
 
     let tx = Transaction::new_signed_with_payer(
         &[update_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    let result = banks_client.process_transaction(tx).await;
+    let err = result.unwrap_err().unwrap();
+    match err {
+        TransactionError::InstructionError(0, InstructionError::InvalidInstructionData) => {}
+        _ => panic!("Expected InvalidInstructionData error, got: {:?}", err),
+    }
+}
+
+// --- SetResultDestination tests ---
+
+fn build_set_result_destination_ix(
+    program_id: &Pubkey,
+    user_pda: &Pubkey,
+    payer: &Pubkey,
+    probe_pdas: &[Pubkey],
+    args: SetResultDestinationArgs,
+) -> Instruction {
+    let mut accounts = vec![
+        AccountMeta::new(*user_pda, false),
+        AccountMeta::new(*payer, true),
+        AccountMeta::new_readonly(solana_program::system_program::id(), false),
+    ];
+    for probe_pda in probe_pdas {
+        accounts.push(AccountMeta::new(*probe_pda, false));
+    }
+    Instruction::new_with_borsh(
+        *program_id,
+        &GeolocationInstruction::SetResultDestination(args),
+        accounts,
+    )
+}
+
+#[tokio::test]
+async fn test_set_result_destination_success() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-srd-ok",
+    )
+    .await;
+
+    let user_code = "user-srd-ok";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+
+    // Add an outbound target
+    let add_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            location_offset_port: 8923,
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[add_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Set result destination
+    let set_ix = build_set_result_destination_ix(
+        &program_id,
+        &user_pda,
+        &payer.pubkey(),
+        &[probe_pda],
+        SetResultDestinationArgs {
+            destination: "185.199.108.1:9000".to_string(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[set_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Verify user fields updated
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert_eq!(user.result_destination, "185.199.108.1:9000");
+
+    // Verify probe target_update_count bumped (1 from add + 1 from set_result_destination)
+    let probe_account = banks_client.get_account(probe_pda).await.unwrap().unwrap();
+    let probe = GeoProbe::try_from(&probe_account.data[..]).unwrap();
+    assert_eq!(probe.target_update_count, 2);
+}
+
+#[tokio::test]
+async fn test_set_result_destination_clear() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-srd-clr",
+    )
+    .await;
+
+    let user_code = "user-srd-clr";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+
+    // Add an outbound target
+    let add_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            location_offset_port: 8923,
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[add_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Set a destination first
+    let set_ix = build_set_result_destination_ix(
+        &program_id,
+        &user_pda,
+        &payer.pubkey(),
+        &[probe_pda],
+        SetResultDestinationArgs {
+            destination: "185.199.108.1:9000".to_string(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[set_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Clear it with empty string
+    let clear_ix = build_set_result_destination_ix(
+        &program_id,
+        &user_pda,
+        &payer.pubkey(),
+        &[probe_pda],
+        SetResultDestinationArgs {
+            destination: String::new(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[clear_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Verify fields reset
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert_eq!(user.result_destination, "");
+}
+
+#[tokio::test]
+async fn test_set_result_destination_unauthorized() {
+    let (mut banks_client, program_id, recent_blockhash, payer) = setup_test().await;
+
+    let user_code = "user-srd-auth";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+
+    // Fund a wrong signer
+    let wrong_signer = Keypair::new();
+    let transfer_ix = solana_program::system_instruction::transfer(
+        &payer.pubkey(),
+        &wrong_signer.pubkey(),
+        1_000_000_000,
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Try set_result_destination with wrong signer (no targets, so no probe accounts needed)
+    let set_ix = build_set_result_destination_ix(
+        &program_id,
+        &user_pda,
+        &wrong_signer.pubkey(),
+        &[],
+        SetResultDestinationArgs {
+            destination: "185.199.108.1:9000".to_string(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[set_ix],
+        Some(&wrong_signer.pubkey()),
+        &[&wrong_signer],
+        *recent_blockhash.read().await,
+    );
+    let result = banks_client.process_transaction(tx).await;
+    let err = result.unwrap_err().unwrap();
+    match err {
+        TransactionError::InstructionError(0, InstructionError::Custom(code)) => {
+            assert_eq!(code, GeolocationError::Unauthorized as u32);
+        }
+        _ => panic!("Expected Unauthorized error, got: {:?}", err),
+    }
+}
+
+#[tokio::test]
+async fn test_set_result_destination_invalid_ip() {
+    let (mut banks_client, program_id, recent_blockhash, payer) = setup_test().await;
+
+    let user_code = "user-srd-badip";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+
+    // Try with private IP (no targets, so no probe accounts needed)
+    let set_ix = build_set_result_destination_ix(
+        &program_id,
+        &user_pda,
+        &payer.pubkey(),
+        &[],
+        SetResultDestinationArgs {
+            destination: "10.0.0.1:9000".to_string(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[set_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    let result = banks_client.process_transaction(tx).await;
+    let err = result.unwrap_err().unwrap();
+    match err {
+        TransactionError::InstructionError(0, InstructionError::Custom(code)) => {
+            assert_eq!(code, GeolocationError::InvalidIpAddress as u32);
+        }
+        _ => panic!("Expected InvalidIpAddress error, got: {:?}", err),
+    }
+}
+
+#[tokio::test]
+async fn test_set_result_destination_no_targets() {
+    let (mut banks_client, program_id, recent_blockhash, payer) = setup_test().await;
+
+    let user_code = "user-srd-notgt";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+
+    // Set destination with no targets and no probe accounts
+    let set_ix = build_set_result_destination_ix(
+        &program_id,
+        &user_pda,
+        &payer.pubkey(),
+        &[],
+        SetResultDestinationArgs {
+            destination: "185.199.108.1:9000".to_string(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[set_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Verify fields set
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert_eq!(user.result_destination, "185.199.108.1:9000");
+}
+
+#[tokio::test]
+async fn test_set_result_destination_domain() {
+    let (mut banks_client, program_id, recent_blockhash, payer) = setup_test().await;
+
+    let user_code = "user-srd-dom";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+
+    let set_ix = build_set_result_destination_ix(
+        &program_id,
+        &user_pda,
+        &payer.pubkey(),
+        &[],
+        SetResultDestinationArgs {
+            destination: "results.example.com:9000".to_string(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[set_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert_eq!(user.result_destination, "results.example.com:9000");
+}
+
+#[tokio::test]
+async fn test_set_result_destination_invalid_format() {
+    let (mut banks_client, program_id, recent_blockhash, payer) = setup_test().await;
+
+    let user_code = "user-srd-badfmt";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+
+    let set_ix = build_set_result_destination_ix(
+        &program_id,
+        &user_pda,
+        &payer.pubkey(),
+        &[],
+        SetResultDestinationArgs {
+            destination: "no-port".to_string(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[set_ix],
         Some(&payer.pubkey()),
         &[&payer],
         *recent_blockhash.read().await,

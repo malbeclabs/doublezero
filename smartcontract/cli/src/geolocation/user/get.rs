@@ -35,6 +35,7 @@ struct GeolocationUserGetDisplay {
     pub status: String,
     pub payment_status: String,
     pub billing: String,
+    pub result_destination: String,
     pub target_count: usize,
     pub targets: Vec<TargetDisplay>,
 }
@@ -88,6 +89,12 @@ impl GetGeolocationUserCliCommand {
             }
         };
 
+        let result_dest_str = if user.result_destination.is_empty() {
+            "none".to_string()
+        } else {
+            user.result_destination.clone()
+        };
+
         let display = GeolocationUserGetDisplay {
             account: pubkey,
             code: user.code,
@@ -96,6 +103,7 @@ impl GetGeolocationUserCliCommand {
             status: user.status.to_string(),
             payment_status: user.payment_status.to_string(),
             billing: billing_str,
+            result_destination: result_dest_str,
             target_count: targets.len(),
             targets,
         };
@@ -116,6 +124,7 @@ impl GetGeolocationUserCliCommand {
                 ("status", display.status.clone()),
                 ("payment_status", display.payment_status.clone()),
                 ("billing", display.billing.clone()),
+                ("result_destination", display.result_destination.clone()),
                 ("target_count", display.target_count.to_string()),
             ];
             let max_len = rows.iter().map(|(h, _)| h.len()).max().unwrap_or(0);
@@ -165,6 +174,7 @@ mod tests {
             }),
             status: GeolocationUserStatus::Activated,
             targets,
+            result_destination: String::new(),
         }
     }
 
@@ -210,6 +220,7 @@ mod tests {
         assert!(has_row("code", "geo-user-01"));
         assert!(has_row("status", "activated"));
         assert!(has_row("payment_status", "paid"));
+        assert!(has_row("result_destination", "none"));
         assert!(has_row("target_count", "1"));
         assert!(output_str.contains("Targets:"));
         assert!(output_str.contains("8.8.8.8"));
@@ -243,6 +254,7 @@ mod tests {
         assert_eq!(json["code"].as_str().unwrap(), "geo-user-01");
         assert_eq!(json["status"].as_str().unwrap(), "activated");
         assert_eq!(json["payment_status"].as_str().unwrap(), "paid");
+        assert_eq!(json["result_destination"].as_str().unwrap(), "none");
         assert_eq!(json["target_count"].as_u64().unwrap(), 0);
         assert!(json["targets"].as_array().unwrap().is_empty());
     }

@@ -8,8 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
-- Telemetry
-  - Device telemetry agent now posts `agent_version` and `agent_commit` in the `DeviceLatencySamplesHeader` when initializing new sample accounts, enabling version attribution of onchain telemetry data
+- Activator
+  - Register tunnel endpoint to prevent duplicate IP allocation  ([#3511](https://github.com/malbeclabs/doublezero/pull/3511/))
 - Smartcontract
   - Add `agent_version` (`[u8; 16]`) and `agent_commit` (`[u8; 8]`) fields to `DeviceLatencySamplesHeader`, carved from the existing reserved region; accept both fields in the `InitializeDeviceLatencySamples` instruction via incremental deserialization (fully backward compatible)
 - SDK
@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
   - Add optional TLS support to state-ingest server via `--tls-cert-file` and `--tls-key-file` flags; when set, the server listens on both HTTP (`:8080`) and HTTPS (`:8443`) simultaneously
   - Remove `--additional-child-probes` CLI flag from telemetry-agent; child geoprobe discovery now relies entirely on the onchain Geolocation program
   - Add BGP status submitter: on each tick, reads BGP socket state from the device namespace, maps each activated user to their tunnel peer IP, and submits `SetUserBGPStatus` onchain; supports a configurable down grace period and periodic keepalive refresh; enabled via `--bgp-status-enable` with `--bgp-status-interval`, `--bgp-status-refresh-interval`, and `--bgp-status-down-grace-period` flags
+  - Device telemetry agent now posts `agent_version` and `agent_commit` in the `DeviceLatencySamplesHeader` when initializing new sample accounts, enabling version attribution of onchain telemetry data
 - Monitor
   - Add ClickHouse as a telemetry backend for the global monitor alongside existing InfluxDB
 - E2E tests

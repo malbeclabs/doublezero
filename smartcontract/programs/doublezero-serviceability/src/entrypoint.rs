@@ -32,6 +32,7 @@ use crate::{
                 reject::process_reject_device_interface, remove::process_remove_device_interface,
                 unlink::process_unlink_device_interface, update::process_update_device_interface,
             },
+            migrate_interfaces::process_migrate_device_interfaces,
             reject::process_reject_device,
             sethealth::process_set_health_device,
             update::process_update_device,
@@ -446,6 +447,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::BackfillTopology(value) => {
             process_topology_backfill(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::MigrateDeviceInterfaces(value) => {
+            process_migrate_device_interfaces(program_id, accounts, &value)?
         }
     };
     Ok(())

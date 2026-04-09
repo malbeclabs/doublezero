@@ -496,7 +496,7 @@ impl CreateValidatorMulticastPublishersCommand {
             min_stake: self.min_stake,
             max_stake: self.max_stake,
             clients: self.client,
-            ips: self.ip,
+            ips: self.ip.clone(),
             limit: self.limit,
         };
 
@@ -509,7 +509,40 @@ impl CreateValidatorMulticastPublishersCommand {
         );
 
         if candidates.is_empty() {
-            eprintln!("No candidates found — all matching validators already have a publisher.");
+            // If specific IPs were requested, explain why each was skipped.
+            if !self.ip.is_empty() {
+                let ibrl_ips: std::collections::HashSet<Ipv4Addr> = all_users
+                    .iter()
+                    .filter(|u| {
+                        u.user_type == doublezero_sdk::UserType::IBRL
+                            || u.user_type == doublezero_sdk::UserType::IBRLWithAllocatedIP
+                    })
+                    .map(|u| u.client_ip)
+                    .collect();
+                let publisher_ips: std::collections::HashSet<Ipv4Addr> = all_users
+                    .iter()
+                    .filter(|u| {
+                        u.user_type == doublezero_sdk::UserType::Multicast
+                            && u.publishers.contains(&multicast_group_pk)
+                    })
+                    .map(|u| u.client_ip)
+                    .collect();
+                eprintln!("No candidates found. Per-IP diagnosis:");
+                for ip in &self.ip {
+                    let reason = if !ibrl_ips.contains(ip) {
+                        "no IBRL user found for this IP"
+                    } else if publisher_ips.contains(ip) {
+                        "already a publisher for this multicast group"
+                    } else if !validators.contains_key(ip) {
+                        "not found in validator metadata service"
+                    } else {
+                        "filtered out by stake or client filter"
+                    };
+                    eprintln!("  {ip}: {reason}");
+                }
+            } else {
+                eprintln!("No candidates found — all matching validators already have a publisher.");
+            }
             return Ok(());
         }
 

@@ -38,6 +38,8 @@ All notable changes to this project will be documented in this file.
   - Extend `validate_program_account!` migration to remaining user and multicastgroup allowlist processors (`set_bgp_status`, `delete`, `closeaccount`, publisher/subscriber `add`/`remove`)
   - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
   - Allow pending users with subs to be deleted
+- Onchain programs
+  - Add `tunnel_endpoint` field to the `UpdateUser` instruction (`UserUpdateArgs`), allowing the activator to overwrite a user's tunnel endpoint onchain; field is optional and backward compatible via incremental deserialization
 - Geolocation
   - Standardize CLI flag naming: probe mutation commands use `--probe` (was `--code`) accepting pubkey or code; rename `--signing-keypair` → `--signing-pubkey` and `--target-pk` → `--target-signing-pubkey`; add `--json-compact` to `get` commands
   - geoprobe-target can now store LocationOffset messages in ClickHouse

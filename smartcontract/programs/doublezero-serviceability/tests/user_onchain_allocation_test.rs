@@ -85,13 +85,13 @@ async fn setup_user_onchain_allocation_test(
     // (user_tunnel_block is immutable once set, so we can't override it later)
     let program_id = Pubkey::new_unique();
 
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+    let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
-    )
-    .start()
-    .await;
+    );
+    program_test.set_compute_max_units(1_000_000);
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
@@ -108,6 +108,8 @@ async fn setup_user_onchain_allocation_test(
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Initialize global state
     execute_transaction(
@@ -147,6 +149,7 @@ async fn setup_user_onchain_allocation_test(
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )
@@ -1946,13 +1949,13 @@ async fn setup_user_infra_without_user(
 ) {
     let program_id = Pubkey::new_unique();
 
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+    let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
-    )
-    .start()
-    .await;
+    );
+    program_test.set_compute_max_units(1_000_000);
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
@@ -1969,6 +1972,8 @@ async fn setup_user_infra_without_user(
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Initialize global state
     execute_transaction(
@@ -2008,6 +2013,7 @@ async fn setup_user_infra_without_user(
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )

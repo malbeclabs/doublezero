@@ -64,6 +64,8 @@ async fn test_dzx_link() {
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     execute_transaction(
         &mut banks_client,
@@ -88,6 +90,7 @@ async fn test_dzx_link() {
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )
@@ -614,6 +617,15 @@ async fn test_dzx_link() {
     /*****************************************************************************************************************************************************/
     println!("🟢 13. Activate Link...");
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        config_pubkey,
+        &payer,
+    )
+    .await;
+
     // Regression: activation must fail if side A/Z accounts do not match link.side_{a,z}_pk
     let res = try_execute_transaction(
         &mut banks_client,
@@ -630,6 +642,7 @@ async fn test_dzx_link() {
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -652,6 +665,7 @@ async fn test_dzx_link() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
         ],
         &payer,
     )

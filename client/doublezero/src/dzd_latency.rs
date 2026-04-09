@@ -274,6 +274,7 @@ mod tests {
                     ip_net: NetworkV4::new(ip, 32).unwrap(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: true,
+                    flex_algo_node_segments: vec![],
                 })
             })
             .collect();

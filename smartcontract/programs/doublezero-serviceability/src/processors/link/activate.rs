@@ -232,15 +232,19 @@ pub fn process_activate_link(
 
     link.check_status_transition();
 
-    // Auto-tag with UNICAST-DEFAULT topology at activation
+    // Auto-tag with UNICAST-DEFAULT topology at activation.
+    // Always validate the PDA derivation to prevent callers passing a wrong account.
+    // Tagging is conditional: if the topology hasn't been created yet (e.g. fresh deployment),
+    // activation proceeds without the tag rather than failing.
     let (expected_unicast_default_pda, _) = get_topology_pda(program_id, "unicast-default");
-    if unicast_default_topology_account.owner != program_id
-        || unicast_default_topology_account.key != &expected_unicast_default_pda
-        || unicast_default_topology_account.data_is_empty()
-    {
+    if unicast_default_topology_account.key != &expected_unicast_default_pda {
         return Err(DoubleZeroError::InvalidArgument.into());
     }
-    link.link_topologies = vec![*unicast_default_topology_account.key];
+    if unicast_default_topology_account.owner == program_id
+        && !unicast_default_topology_account.data_is_empty()
+    {
+        link.link_topologies = vec![*unicast_default_topology_account.key];
+    }
 
     try_acc_write(&side_a_dev, side_a_device_account, payer_account, accounts)?;
     try_acc_write(&side_z_dev, side_z_device_account, payer_account, accounts)?;

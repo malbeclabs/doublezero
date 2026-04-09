@@ -8,7 +8,7 @@ pub use doublezero_serviceability::{
     pda::{
         get_contributor_pda, get_device_pda, get_exchange_pda, get_globalconfig_pda, get_link_pda,
         get_location_pda, get_multicastgroup_pda, get_permission_pda, get_resource_extension_pda,
-        get_tenant_pda, get_user_old_pda,
+        get_tenant_pda, get_topology_pda, get_user_old_pda,
     },
     programversion::ProgramVersion,
     resource::{IdOrIp, ResourceType},
@@ -30,6 +30,7 @@ pub use doublezero_serviceability::{
         programconfig::ProgramConfig,
         resource_extension::ResourceExtensionOwned,
         tenant::Tenant,
+        topology::{TopologyConstraint, TopologyInfo},
         user::{BGPStatus, User, UserCYOA, UserStatus, UserType},
     },
 };

@@ -317,7 +317,7 @@ impl InterfaceV2 {
     }
 
     pub fn to_interface(&self) -> Interface {
-        Interface::V3(self.clone())
+        Interface::V2(self.clone())
     }
 
     pub fn size_given_name_len(name_len: usize) -> usize {
@@ -407,12 +407,12 @@ impl Default for InterfaceV2 {
 #[borsh(use_discriminant = true)]
 pub enum Interface {
     V1(InterfaceV1) = 0,
-    /// Discriminant 1: old on-chain V2 format. Does NOT include
-    /// flex_algo_node_segments bytes. Read-only — new accounts use V3.
+    /// Discriminant 1: current format. Includes flex_algo_node_segments.
+    /// New accounts are written with this discriminant. Old on-chain accounts
+    /// (written before flex_algo_node_segments existed) are upgraded in-place
+    /// by the MigrateDeviceInterfaces instruction before this deserialization
+    /// path is used.
     V2(InterfaceV2) = 1,
-    /// Discriminant 3: current format. Includes flex_algo_node_segments.
-    /// Discriminant 2 is intentionally skipped (reserved for future use).
-    V3(InterfaceV2) = 3,
 }
 
 impl borsh::BorshDeserialize for Interface {
@@ -422,40 +422,15 @@ impl borsh::BorshDeserialize for Interface {
             0 => Ok(Interface::V1(borsh::BorshDeserialize::deserialize_reader(
                 reader,
             )?)),
-            1 | 2 => {
-                // Old on-chain V2 format. flex_algo_node_segments is NOT present
-                // in these accounts — reading it would consume bytes from the next
-                // field in the parent buffer and corrupt deserialization.
-                Ok(Interface::V2(InterfaceV2 {
-                    status: borsh::BorshDeserialize::deserialize_reader(reader).unwrap_or_default(),
-                    name: borsh::BorshDeserialize::deserialize_reader(reader).unwrap_or_default(),
-                    interface_type: borsh::BorshDeserialize::deserialize_reader(reader)
-                        .unwrap_or_default(),
-                    interface_cyoa: borsh::BorshDeserialize::deserialize_reader(reader)
-                        .unwrap_or_default(),
-                    interface_dia: borsh::BorshDeserialize::deserialize_reader(reader)
-                        .unwrap_or_default(),
-                    loopback_type: borsh::BorshDeserialize::deserialize_reader(reader)
-                        .unwrap_or_default(),
-                    bandwidth: borsh::BorshDeserialize::deserialize_reader(reader)
-                        .unwrap_or_default(),
-                    cir: borsh::BorshDeserialize::deserialize_reader(reader).unwrap_or_default(),
-                    mtu: borsh::BorshDeserialize::deserialize_reader(reader).unwrap_or_default(),
-                    routing_mode: borsh::BorshDeserialize::deserialize_reader(reader)
-                        .unwrap_or_default(),
-                    vlan_id: borsh::BorshDeserialize::deserialize_reader(reader)
-                        .unwrap_or_default(),
-                    ip_net: borsh::BorshDeserialize::deserialize_reader(reader).unwrap_or_default(),
-                    node_segment_idx: borsh::BorshDeserialize::deserialize_reader(reader)
-                        .unwrap_or_default(),
-                    user_tunnel_endpoint: borsh::BorshDeserialize::deserialize_reader(reader)
-                        .unwrap_or_default(),
-                    flex_algo_node_segments: vec![],
-                }))
+            1 => {
+                // Current format — includes flex_algo_node_segments. Assumes the
+                // account has been migrated by MigrateDeviceInterfaces before this
+                // path is reached (old pre-migration accounts used this same discriminant
+                // but lacked the trailing flex_algo bytes).
+                Ok(Interface::V2(borsh::BorshDeserialize::deserialize_reader(
+                    reader,
+                )?))
             }
-            3 => Ok(Interface::V3(borsh::BorshDeserialize::deserialize_reader(
-                reader,
-            )?)),
             _ => Ok(Interface::V2(InterfaceV2::default())),
         }
     }
@@ -467,14 +442,14 @@ impl Interface {
     pub fn into_current_version(&self) -> CurrentInterfaceVersion {
         match self {
             Interface::V1(v1) => v1.try_into().unwrap_or_default(),
-            Interface::V2(v2) | Interface::V3(v2) => v2.clone(),
+            Interface::V2(v2) => v2.clone(),
         }
     }
 
     pub fn size(&self) -> usize {
         let base_size = match self {
             Interface::V1(v1) => v1.size(),
-            Interface::V2(v2) | Interface::V3(v2) => v2.size(),
+            Interface::V2(v2) => v2.size(),
         };
         base_size + 1 // +1 for the enum discriminant
     }
@@ -541,6 +516,30 @@ impl TryFrom<&[u8]> for Interface {
     }
 }
 
+/// Reads a V2 interface in the pre-RFC-18 format (no flex_algo_node_segments bytes).
+/// Used exclusively by MigrateDeviceInterfaces to read old on-chain accounts.
+pub fn deserialize_legacy_v2_interface<R: borsh::io::Read>(
+    reader: &mut R,
+) -> borsh::io::Result<InterfaceV2> {
+    Ok(InterfaceV2 {
+        status: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        name: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        interface_type: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        interface_cyoa: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        interface_dia: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        loopback_type: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        bandwidth: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        cir: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        mtu: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        routing_mode: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        vlan_id: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        ip_net: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        node_segment_idx: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        user_tunnel_endpoint: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        flex_algo_node_segments: vec![],
+    })
+}
+
 #[test]
 fn test_interface_version() {
     let iface = InterfaceV1 {
@@ -588,8 +587,8 @@ fn test_interface_version() {
     .to_interface();
 
     assert!(
-        matches!(iface, Interface::V3(_)),
-        "iface is not Interface::V3"
+        matches!(iface, Interface::V2(_)),
+        "iface is not Interface::V2"
     );
     let iface_v2: CurrentInterfaceVersion = iface.into_current_version();
     assert_eq!(iface_v2.name, "Loopback0");

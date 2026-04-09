@@ -141,8 +141,8 @@ pub fn process_topology_backfill(
             }
             let node_segment_idx = allocate_id(segment_routing_ids_account)?;
             match iface {
-                Interface::V3(ref mut v3) => {
-                    v3.flex_algo_node_segments.push(FlexAlgoNodeSegment {
+                Interface::V2(ref mut v2) => {
+                    v2.flex_algo_node_segments.push(FlexAlgoNodeSegment {
                         topology: *topology_key,
                         node_segment_idx,
                     });
@@ -153,7 +153,7 @@ pub fn process_topology_backfill(
                         topology: *topology_key,
                         node_segment_idx,
                     });
-                    *iface = Interface::V3(upgraded);
+                    *iface = Interface::V2(upgraded);
                 }
             }
             modified = true;

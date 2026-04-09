@@ -258,8 +258,8 @@ func TestReadString(t *testing.T) {
 func TestDeserializeInterfaceV2CrossLanguage(t *testing.T) {
 	t.Parallel()
 
-	// These bytes are ACTUAL output from Rust test:
-	// Hex: [01, 03, 0b, 00, 00, 00, 4c, 6f, 6f, 70, 62, 61, 63, 6b, 31, 30, 36, 01, 00, 00, 02, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 28, 23, 00, 00, 00, cb, 00, 71, 28, 20, 00, 00, 01]
+	// These bytes are ACTUAL output from Rust test (RFC-18, V2 with flex_algo_node_segments):
+	// Hex: [01, 03, 0b, 00, 00, 00, 4c, 6f, 6f, 70, 62, 61, 63, 6b, 31, 30, 36, 01, 00, 00, 02, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 28, 23, 00, 00, 00, cb, 00, 71, 28, 20, 00, 00, 01, 00, 00, 00, 00]
 	//
 	// Field breakdown from Rust:
 	//   [0] enum discriminant (V2=1): 01
@@ -278,6 +278,7 @@ func TestDeserializeInterfaceV2CrossLanguage(t *testing.T) {
 	//   [42-46] ip_net: [cb, 00, 71, 28, 20] = 203.0.113.40/32
 	//   [47-48] node_segment_idx: 0
 	//   [49] user_tunnel_endpoint: 01 (true)
+	//   [50-53] flex_algo_node_segments length: 0 (empty vec)
 
 	// Use EXACT bytes from Rust serialization
 	data := []byte{
@@ -296,7 +297,8 @@ func TestDeserializeInterfaceV2CrossLanguage(t *testing.T) {
 		0x00, 0x00, // [40-41] vlan_id=0
 		0xcb, 0x00, 0x71, 0x28, 0x20, // [42-46] ip_net 203.0.113.40/32
 		0x00, 0x00, // [47-48] node_segment_idx=0
-		0x01, // [49] user_tunnel_endpoint=true
+		0x01,                   // [49] user_tunnel_endpoint=true
+		0x00, 0x00, 0x00, 0x00, // [50-53] flex_algo_node_segments length=0 (empty vec, RFC-18)
 	}
 
 	t.Logf("Test data (%d bytes): %s", len(data), hex.EncodeToString(data))

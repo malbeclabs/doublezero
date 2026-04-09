@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
   - Add optional TLS support to state-ingest server via `--tls-cert-file` and `--tls-key-file` flags; when set, the server listens on both HTTP (`:8080`) and HTTPS (`:8443`) simultaneously
   - Remove `--additional-child-probes` CLI flag from telemetry-agent; child geoprobe discovery now relies entirely on the onchain Geolocation program
   - Add BGP status submitter: on each tick, reads BGP socket state from the device namespace, maps each activated user to their tunnel peer IP, and submits `SetUserBGPStatus` onchain; supports a configurable down grace period and periodic keepalive refresh; enabled via `--bgp-status-enable` with `--bgp-status-interval`, `--bgp-status-refresh-interval`, and `--bgp-status-down-grace-period` flags
+  - Bound `CachingFetcher` RPC calls with an explicit 30s timeout; `context.WithoutCancel` drops the parent deadline as well as cancellation, so without this a hung Solana RPC would block all singleflight waiters indefinitely
 - Monitor
   - Add ClickHouse as a telemetry backend for the global monitor alongside existing InfluxDB
 - E2E tests

@@ -993,6 +993,7 @@ mod tests {
                 publisher_count: None,
                 subscriber_count: None,
                 use_onchain_allocation: false,
+                rename_index: false,
             }),
             "UpdateMulticastGroup",
         );

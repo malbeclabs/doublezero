@@ -14,8 +14,9 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
         get_accesspass_pda, get_contributor_pda, get_device_pda, get_exchange_pda,
-        get_globalconfig_pda, get_globalstate_pda, get_location_pda, get_multicastgroup_pda,
-        get_program_config_pda, get_resource_extension_pda, get_tenant_pda, get_user_pda,
+        get_globalconfig_pda, get_globalstate_pda, get_index_pda, get_location_pda,
+        get_multicastgroup_pda, get_program_config_pda, get_resource_extension_pda, get_tenant_pda,
+        get_user_pda,
     },
     processors::{
         accesspass::set::SetAccessPassArgs,
@@ -43,6 +44,7 @@ use doublezero_serviceability::{
         },
     },
     resource::ResourceType,
+    seeds::SEED_MULTICAST_GROUP,
     state::{
         accesspass::AccessPassType,
         device::DeviceType,
@@ -296,7 +298,9 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
     // Create and activate multicast group
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
-    execute_transaction(
+    let (index_pda_group1, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "group1");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -309,8 +313,10 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_group1, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -881,7 +887,9 @@ async fn test_create_subscribe_user_inactive_mgroup_fails() {
     let (pending_mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    execute_transaction(
+    let (index_pda_pending, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "pending");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -894,8 +902,10 @@ async fn test_create_subscribe_user_inactive_mgroup_fails() {
         vec![
             AccountMeta::new(pending_mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_pending, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -1730,6 +1740,7 @@ async fn test_create_subscribe_user_foundation_owner_override() {
     // Create and activate multicast group
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "group1");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1743,6 +1754,7 @@ async fn test_create_subscribe_user_foundation_owner_override() {
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
     )
@@ -2087,6 +2099,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
     // Create and activate multicast group
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "group1");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -2100,6 +2113,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
     )
@@ -2426,6 +2440,7 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
     // Create and activate multicast group
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "group1");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -2439,6 +2454,7 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
     )

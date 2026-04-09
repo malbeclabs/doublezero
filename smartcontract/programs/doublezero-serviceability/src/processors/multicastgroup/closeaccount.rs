@@ -1,10 +1,11 @@
 use crate::{
     error::DoubleZeroError,
-    pda::get_resource_extension_pda,
-    processors::resource::deallocate_ip,
+    pda::{get_index_pda, get_resource_extension_pda},
+    processors::{resource::deallocate_ip, validation::validate_program_account},
     resource::ResourceType,
+    seeds::SEED_MULTICAST_GROUP,
     serializer::try_acc_close,
-    state::{globalstate::GlobalState, multicastgroup::*},
+    state::{globalstate::GlobalState, index::Index, multicastgroup::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -47,11 +48,10 @@ pub fn process_closeaccount_multicastgroup(
     let owner_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension account for on-chain deallocation (before payer)
-    // Account layout WITH ResourceExtension (use_onchain_deallocation = true):
-    //   [multicastgroup, owner, globalstate, multicast_group_block, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_deallocation = false):
-    //   [multicastgroup, owner, globalstate, payer, system]
+    // Account layout WITH deallocation:
+    //   [multicastgroup, owner, globalstate, multicast_group_block, index, payer, system]
+    // Account layout WITHOUT deallocation:
+    //   [multicastgroup, owner, globalstate, index, payer, system]
     let resource_extension_account = if value.use_onchain_deallocation {
         let multicast_group_block_ext = next_account_info(accounts_iter)?;
         Some(multicast_group_block_ext)
@@ -59,6 +59,7 @@ pub fn process_closeaccount_multicastgroup(
         None
     };
 
+    let index_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -68,24 +69,23 @@ pub fn process_closeaccount_multicastgroup(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(
-        multicastgroup_account.owner, program_id,
-        "Invalid PDA Account Owner"
+    // Validate accounts
+    validate_program_account!(
+        multicastgroup_account,
+        program_id,
+        writable = true,
+        "MulticastGroup"
     );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
-    );
-    // Check if the account is writable
-    assert!(
-        multicastgroup_account.is_writable,
-        "PDA Account is not writable"
     );
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
@@ -107,25 +107,14 @@ pub fn process_closeaccount_multicastgroup(
     // Deallocate multicast_ip from ResourceExtension if account provided
     // Deallocation is idempotent - safe to call even if resource wasn't allocated
     if let Some(multicast_group_block_ext) = resource_extension_account {
-        // Validate multicast_group_block_ext (MulticastGroupBlock - global)
-        assert_eq!(
-            multicast_group_block_ext.owner, program_id,
-            "Invalid ResourceExtension Account Owner for MulticastGroupBlock"
-        );
-        assert!(
-            multicast_group_block_ext.is_writable,
-            "ResourceExtension Account for MulticastGroupBlock is not writable"
-        );
-        assert!(
-            !multicast_group_block_ext.data_is_empty(),
-            "ResourceExtension Account for MulticastGroupBlock is empty"
-        );
-
-        let (expected_multicast_group_pda, _, _) =
+        let (expected_pda, _, _) =
             get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
-        assert_eq!(
-            multicast_group_block_ext.key, &expected_multicast_group_pda,
-            "Invalid ResourceExtension PDA for MulticastGroupBlock"
+        validate_program_account!(
+            multicast_group_block_ext,
+            program_id,
+            writable = true,
+            pda = &expected_pda,
+            "MulticastGroupBlock"
         );
 
         // Deallocate multicast_ip from global MulticastGroupBlock
@@ -136,6 +125,27 @@ pub fn process_closeaccount_multicastgroup(
     }
 
     try_acc_close(multicastgroup_account, owner_account)?;
+
+    // Close the Index account (skip for pre-migration accounts using Pubkey::default())
+    if *index_account.key != Pubkey::default() {
+        let (expected_index_pda, _) =
+            get_index_pda(program_id, SEED_MULTICAST_GROUP, &multicastgroup.code);
+        validate_program_account!(
+            index_account,
+            program_id,
+            writable = true,
+            pda = &expected_index_pda,
+            "Index"
+        );
+
+        let index = Index::try_from(index_account)?;
+        assert_eq!(
+            index.pk, *multicastgroup_account.key,
+            "Index does not point to this MulticastGroup"
+        );
+
+        try_acc_close(index_account, payer_account)?;
+    }
 
     #[cfg(test)]
     msg!("Deactivated: MulticastGroup closed");

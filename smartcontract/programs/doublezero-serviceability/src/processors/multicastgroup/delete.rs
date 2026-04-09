@@ -1,12 +1,14 @@
 use crate::{
     error::DoubleZeroError,
-    pda::get_resource_extension_pda,
+    pda::{get_index_pda, get_resource_extension_pda},
     processors::{resource::deallocate_ip, validation::validate_program_account},
     resource::ResourceType,
+    seeds::SEED_MULTICAST_GROUP,
     serializer::{try_acc_close, try_acc_write},
     state::{
         feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
+        index::Index,
         multicastgroup::*,
     },
 };
@@ -50,11 +52,10 @@ pub fn process_delete_multicastgroup(
     let multicastgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: additional accounts for atomic deallocation (before payer)
-    // Account layout WITH deallocation (use_onchain_deallocation = true):
-    //   [mgroup, globalstate, multicast_group_block, owner, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_deallocation = false):
-    //   [mgroup, globalstate, payer, system]
+    // Account layout WITH deallocation:
+    //   [mgroup, globalstate, multicast_group_block, owner, index, payer, system]
+    // Account layout WITHOUT deallocation:
+    //   [mgroup, globalstate, index, payer, system]
     let deallocation_accounts = if value.use_onchain_deallocation {
         let multicast_group_block_ext = next_account_info(accounts_iter)?;
         let owner_account = next_account_info(accounts_iter)?;
@@ -63,6 +64,7 @@ pub fn process_delete_multicastgroup(
         None
     };
 
+    let index_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -72,23 +74,23 @@ pub fn process_delete_multicastgroup(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(
-        multicastgroup_account.owner, program_id,
-        "Invalid PDA Account Owner"
+    // Validate accounts
+    validate_program_account!(
+        multicastgroup_account,
+        program_id,
+        writable = true,
+        "MulticastGroup"
     );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
-    );
-    assert!(
-        multicastgroup_account.is_writable,
-        "PDA Account is not writable"
     );
 
     // Parse the global state account & check if the payer is in the allowlist
@@ -98,6 +100,7 @@ pub fn process_delete_multicastgroup(
     }
 
     let multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
+    let multicastgroup_code = multicastgroup.code.clone();
 
     if matches!(multicastgroup.status, MulticastGroupStatus::Deleting) {
         return Err(DoubleZeroError::InvalidStatus.into());
@@ -156,6 +159,28 @@ pub fn process_delete_multicastgroup(
 
         #[cfg(test)]
         msg!("Deleted: {:?}", multicastgroup_account);
+    }
+
+    // Close the Index account (skip for pre-migration accounts using Pubkey::default())
+    if *index_account.key != Pubkey::default() {
+        let (expected_index_pda, _) =
+            get_index_pda(program_id, SEED_MULTICAST_GROUP, &multicastgroup_code);
+        validate_program_account!(
+            index_account,
+            program_id,
+            writable = true,
+            pda = &expected_index_pda,
+            "Index"
+        );
+
+        // Verify it's an Index account pointing to this multicast group
+        let index = Index::try_from(index_account)?;
+        assert_eq!(
+            index.pk, *multicastgroup_account.key,
+            "Index does not point to this MulticastGroup"
+        );
+
+        try_acc_close(index_account, payer_account)?;
     }
 
     Ok(())

@@ -7,6 +7,7 @@ use doublezero_serviceability::{
         activate::MulticastGroupActivateArgs, closeaccount::MulticastGroupDeactivateArgs,
         create::*, delete::*, reactivate::*, suspend::*, update::*,
     },
+    seeds::SEED_MULTICAST_GROUP,
     state::{accounttype::AccountType, multicastgroup::*},
 };
 use solana_program_test::*;
@@ -51,7 +52,9 @@ async fn test_multicastgroup() {
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
-    execute_transaction(
+    let (index_pda_la, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "la");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -64,8 +67,10 @@ async fn test_multicastgroup() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_la, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -164,12 +169,15 @@ async fn test_multicastgroup() {
     println!("✅ MulticastGroup reactivated");
     /*****************************************************************************************************************************************************/
     println!("4. Testing MulticastGroup update...");
-    execute_transaction(
+    let (old_index_pda_la, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "la");
+    let (new_index_pda_lb, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "lb");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
-            code: Some("la2".to_string()),
+            code: Some("lb".to_string()),
             multicast_ip: Some([239, 1, 1, 2].into()),
             max_bandwidth: Some(2000),
             // Keep publisher/subscriber counts at zero so that DeactivateMulticastGroup
@@ -177,12 +185,16 @@ async fn test_multicastgroup() {
             publisher_count: None,
             subscriber_count: None,
             use_onchain_allocation: false,
+            rename_index: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(old_index_pda_la, false),
+            AccountMeta::new(new_index_pda_lb, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -192,7 +204,7 @@ async fn test_multicastgroup() {
         .get_multicastgroup()
         .unwrap();
     assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
-    assert_eq!(multicastgroup_la.code, "la2".to_string());
+    assert_eq!(multicastgroup_la.code, "lb".to_string());
     assert_eq!(multicastgroup_la.multicast_ip, Ipv4Addr::new(239, 1, 1, 2));
     assert_eq!(multicastgroup_la.max_bandwidth, 2000);
     assert_eq!(multicastgroup_la.publisher_count, 0);
@@ -202,7 +214,9 @@ async fn test_multicastgroup() {
     println!("✅ MulticastGroup updated");
     /*****************************************************************************************************************************************************/
     println!("5. Testing MulticastGroup deletion...");
-    execute_transaction(
+    let (index_pda_lb, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "lb");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -212,8 +226,10 @@ async fn test_multicastgroup() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_lb, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -223,13 +239,14 @@ async fn test_multicastgroup() {
         .get_multicastgroup()
         .unwrap();
     assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
-    assert_eq!(multicastgroup_la.code, "la2".to_string());
+    assert_eq!(multicastgroup_la.code, "lb".to_string());
     assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Deleting);
 
     println!("✅ MulticastGroup deleted");
     /*****************************************************************************************************************************************************/
     println!("6. Testing MulticastGroup deactivation (final delete)...");
-    execute_transaction(
+    // Index account was already closed by DeleteMulticastGroup, pass Pubkey::default() to skip
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -240,8 +257,10 @@ async fn test_multicastgroup() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(multicastgroup.owner, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(Pubkey::default(), false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -278,7 +297,9 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
-    execute_transaction(
+    let (index_pda_la, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "la");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -291,8 +312,10 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_la, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -324,6 +347,7 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
             publisher_count: Some(1),
             subscriber_count: Some(1),
             use_onchain_allocation: false,
+            rename_index: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -342,7 +366,7 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
     assert_eq!(multicastgroup.subscriber_count, 1);
 
     // DeleteMulticastGroup should fail because counts are non-zero
-    let result = try_execute_transaction(
+    let result = try_execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -352,8 +376,10 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_la, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -400,7 +426,9 @@ async fn test_multicastgroup_deactivate_fails_when_not_deleting() {
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
-    execute_transaction(
+    let (index_pda_la, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "la");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -413,8 +441,10 @@ async fn test_multicastgroup_deactivate_fails_when_not_deleting() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_la, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -442,7 +472,7 @@ async fn test_multicastgroup_deactivate_fails_when_not_deleting() {
     assert_eq!(multicastgroup.status, MulticastGroupStatus::Activated);
 
     // Try to deactivate without first deleting (status is Activated, not Deleting)
-    let result = try_execute_transaction(
+    let result = try_execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -453,8 +483,10 @@ async fn test_multicastgroup_deactivate_fails_when_not_deleting() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(multicastgroup.owner, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_la, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -504,8 +536,10 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
     // Derive PDA with the WRONG index (what a malicious/buggy client might do)
     let (wrong_multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, wrong_index);
 
+    let (index_pda_test, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "test");
+
     // Try to create with wrong index - should fail
-    let result = try_execute_transaction(
+    let result = try_execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -518,8 +552,10 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
         vec![
             AccountMeta::new(wrong_multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_test, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -533,7 +569,7 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
     println!("3. Testing MulticastGroup creation with correct index...");
     let (correct_multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, correct_index);
 
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -546,8 +582,10 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
         vec![
             AccountMeta::new(correct_multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_test, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -591,7 +629,9 @@ async fn test_multicastgroup_reactivate_invalid_status_fails() {
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
-    execute_transaction(
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "reactivate-test");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -604,8 +644,10 @@ async fn test_multicastgroup_reactivate_invalid_status_fails() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -665,7 +707,9 @@ async fn test_suspend_multicastgroup_from_pending_fails() {
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
-    execute_transaction(
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "test");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -678,8 +722,10 @@ async fn test_suspend_multicastgroup_from_pending_fails() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -743,7 +789,9 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
-    execute_transaction(
+    let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "delete-test");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -756,8 +804,10 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -796,6 +846,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             publisher_count: Some(1),
             subscriber_count: None,
             use_onchain_allocation: false,
+            rename_index: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -806,7 +857,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
     .await;
 
     println!("5. Try to delete with active publishers (should fail)...");
-    let result = try_execute_transaction(
+    let result = try_execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -816,8 +867,10 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -842,6 +895,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             publisher_count: Some(0),
             subscriber_count: Some(1),
             use_onchain_allocation: false,
+            rename_index: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -852,7 +906,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
     .await;
 
     println!("7. Try to delete with active subscribers (should fail)...");
-    let result = try_execute_transaction(
+    let result = try_execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -862,8 +916,10 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -888,6 +944,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             publisher_count: Some(0),
             subscriber_count: Some(0),
             use_onchain_allocation: false,
+            rename_index: false,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -898,7 +955,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
     .await;
 
     println!("9. Delete with zero counts (should succeed)...");
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -908,8 +965,10 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda, false),
         ],
         &payer,
+        &[],
     )
     .await;
 

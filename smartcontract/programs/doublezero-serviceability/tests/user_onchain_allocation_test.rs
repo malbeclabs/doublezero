@@ -14,8 +14,8 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
         get_accesspass_pda, get_contributor_pda, get_device_pda, get_exchange_pda,
-        get_globalconfig_pda, get_globalstate_pda, get_location_pda, get_multicastgroup_pda,
-        get_program_config_pda, get_resource_extension_pda, get_user_pda,
+        get_globalconfig_pda, get_globalstate_pda, get_index_pda, get_location_pda,
+        get_multicastgroup_pda, get_program_config_pda, get_resource_extension_pda, get_user_pda,
     },
     processors::{
         accesspass::set::SetAccessPassArgs,
@@ -42,6 +42,7 @@ use doublezero_serviceability::{
         },
     },
     resource::ResourceType,
+    seeds::SEED_MULTICAST_GROUP,
     state::{
         accesspass::AccessPassType,
         device::DeviceType,
@@ -1100,8 +1101,10 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
 
-    // Create multicast group (4 accounts: mgroup, globalstate, payer, system_program)
-    execute_transaction(
+    let (index_pda_mgroup, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "test-mgroup");
+
+    // Create multicast group (4 accounts: mgroup, globalstate, payer, system_program, index)
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -1114,8 +1117,10 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_mgroup, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -1418,7 +1423,9 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
 
-    execute_transaction(
+    let (index_pda_mgroup, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "test-mgroup");
+
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -1431,8 +1438,10 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_mgroup, false),
         ],
         &payer,
+        &[],
     )
     .await;
 
@@ -3643,6 +3652,8 @@ async fn test_activate_updating_does_not_set_multicast_publisher_for_non_publish
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
 
+    let (index_pda_mgroup, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "pub-test-mgroup");
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -3656,6 +3667,7 @@ async fn test_activate_updating_does_not_set_multicast_publisher_for_non_publish
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_mgroup, false),
         ],
         &payer,
     )
@@ -3896,6 +3908,8 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
 
+    let (index_pda_mgroup, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "pub-del-mgroup");
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -3909,6 +3923,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_mgroup, false),
         ],
         &payer,
     )
@@ -4168,6 +4183,8 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
 
+    let (index_pda_mgroup, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "sub-del-mgroup");
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -4181,6 +4198,7 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_mgroup, false),
         ],
         &payer,
     )
@@ -4468,6 +4486,8 @@ async fn test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_s
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
 
+    let (index_pda_mgroup, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "ca-pub-mgroup");
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -4481,6 +4501,7 @@ async fn test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_s
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_mgroup, false),
         ],
         &payer,
     )
@@ -4805,6 +4826,8 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
     let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
 
+    let (index_pda_mgroup, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "pub-mgroup");
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -4818,6 +4841,7 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(index_pda_mgroup, false),
         ],
         &payer,
     )

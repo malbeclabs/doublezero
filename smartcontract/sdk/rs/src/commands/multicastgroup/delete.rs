@@ -6,9 +6,10 @@ use crate::{
 };
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::get_resource_extension_pda,
+    pda::{get_index_pda, get_resource_extension_pda},
     processors::multicastgroup::delete::MulticastGroupDeleteArgs,
     resource::ResourceType,
+    seeds::SEED_MULTICAST_GROUP,
     state::feature_flags::{is_feature_enabled, FeatureFlag},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
@@ -29,18 +30,18 @@ impl DeleteMulticastGroupCommand {
 
         let mgroup_pubkey = self.pubkey;
 
+        let (_, mgroup) = GetMulticastGroupCommand {
+            pubkey_or_code: self.pubkey.to_string(),
+        }
+        .execute(client)
+        .map_err(|_err| eyre::eyre!("MulticastGroup not found"))?;
+
         let mut accounts = vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ];
 
         if use_onchain_deallocation {
-            let (_, mgroup) = GetMulticastGroupCommand {
-                pubkey_or_code: self.pubkey.to_string(),
-            }
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("MulticastGroup not found"))?;
-
             let (multicast_group_block_ext, _, _) = get_resource_extension_pda(
                 &client.get_program_id(),
                 ResourceType::MulticastGroupBlock,
@@ -48,6 +49,11 @@ impl DeleteMulticastGroupCommand {
             accounts.push(AccountMeta::new(multicast_group_block_ext, false));
             accounts.push(AccountMeta::new(mgroup.owner, false));
         }
+
+        // Close the associated Index account
+        let (index_pda, _) =
+            get_index_pda(&client.get_program_id(), SEED_MULTICAST_GROUP, &mgroup.code);
+        accounts.push(AccountMeta::new(index_pda, false));
 
         client.execute_transaction(
             DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
@@ -66,9 +72,12 @@ mod tests {
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_multicastgroup_pda, get_resource_extension_pda},
+        pda::{
+            get_globalstate_pda, get_index_pda, get_multicastgroup_pda, get_resource_extension_pda,
+        },
         processors::multicastgroup::delete::MulticastGroupDeleteArgs,
         resource::ResourceType,
+        seeds::SEED_MULTICAST_GROUP,
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
@@ -101,8 +110,9 @@ mod tests {
     fn test_commands_multicastgroup_delete_legacy() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let program_id = client.get_program_id();
+        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&program_id);
+        let (pda_pubkey, bump_seed) = get_multicastgroup_pda(&program_id, 1);
 
         let mgroup = make_test_mgroup(Pubkey::default(), bump_seed);
 
@@ -111,6 +121,8 @@ mod tests {
             .expect_get()
             .with(predicate::eq(pda_pubkey))
             .returning(move |_| Ok(AccountData::MulticastGroup(mgroup_cloned.clone())));
+
+        let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "mg01");
 
         client
             .expect_execute_transaction()
@@ -123,6 +135,7 @@ mod tests {
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(index_pda, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
@@ -176,6 +189,8 @@ mod tests {
         let (multicast_group_block_ext, _, _) =
             get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
 
+        let (index_pda, _) = get_index_pda(&program_id, SEED_MULTICAST_GROUP, "mg01");
+
         client
             .expect_execute_transaction()
             .with(
@@ -189,6 +204,7 @@ mod tests {
                     AccountMeta::new(globalstate_pubkey, false),
                     AccountMeta::new(multicast_group_block_ext, false),
                     AccountMeta::new(owner, false),
+                    AccountMeta::new(index_pda, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));

@@ -398,6 +398,14 @@ mod tests {
             // Insert it first so it can be removed
             multicastgroups.insert(pubkey, multicastgroup.clone());
 
+            // Mock get() for DeactivateMulticastGroupCommand which fetches the
+            // multicast group to derive the Index PDA
+            let mgroup_for_get = multicastgroup.clone();
+            client
+                .expect_get()
+                .with(predicate::eq(pubkey))
+                .returning(move |_| Ok(AccountData::MulticastGroup(mgroup_for_get.clone())));
+
             // Stateless mode: use_onchain_deallocation=true
             client
                 .expect_execute_transaction()

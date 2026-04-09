@@ -278,12 +278,10 @@ impl FindValidatorMulticastPublishersCommand {
                     .map(|d| d.code.clone())
                     .unwrap_or_else(|| user.device_pk.to_string());
 
-                let nearest_device_label = find_nearest_device_for_multicast(
-                    &user.device_pk,
-                    &device_infos,
-                )
-                .map(|d| d.code.clone())
-                .unwrap_or_default();
+                let nearest_device_label =
+                    find_nearest_device_for_multicast(&user.device_pk, &device_infos)
+                        .map(|d| d.code.clone())
+                        .unwrap_or_default();
 
                 rows.push(ValidatorPublisherRow {
                     owner: user.owner.to_string(),
@@ -539,7 +537,10 @@ impl CreateValidatorMulticastPublishersCommand {
                         let val = validators.get(ip).unwrap();
                         let client_mismatch = !filters.clients.is_empty() && {
                             let name = val.software_client.to_lowercase();
-                            !filters.clients.iter().any(|c| name.contains(&c.to_lowercase()))
+                            !filters
+                                .clients
+                                .iter()
+                                .any(|c| name.contains(&c.to_lowercase()))
                         };
                         let stake_mismatch = filters
                             .min_stake
@@ -561,7 +562,9 @@ impl CreateValidatorMulticastPublishersCommand {
                     eprintln!("  {ip}: {reason}");
                 }
             } else {
-                eprintln!("No candidates found — all matching validators already have a publisher.");
+                eprintln!(
+                    "No candidates found — all matching validators already have a publisher."
+                );
             }
             return Ok(());
         }
@@ -606,8 +609,7 @@ impl CreateValidatorMulticastPublishersCommand {
         let mut skipped = 0;
         for (i, candidate) in candidates.iter().enumerate() {
             // Re-evaluate nearest available device now, accounting for slots filled this run.
-            let target =
-                find_nearest_device_for_multicast(&candidate.device_pk, &device_infos);
+            let target = find_nearest_device_for_multicast(&candidate.device_pk, &device_infos);
             let (target_device_pk, target_device_label) = match target {
                 Some(d) => (d.pk, d.code.clone()),
                 None => {
@@ -662,8 +664,13 @@ impl CreateValidatorMulticastPublishersCommand {
                     .await?;
                 send_instruction(rpc_client, payer, &[ixs.add_allowlist], "add_pub_allowlist")
                     .await?;
-                send_instruction(rpc_client, payer, &[ixs.create_user], "create_subscribe_user")
-                    .await
+                send_instruction(
+                    rpc_client,
+                    payer,
+                    &[ixs.create_user],
+                    "create_subscribe_user",
+                )
+                .await
             }
             .await;
 

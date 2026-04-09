@@ -272,4 +272,47 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert!(!output_str.contains("Targets:"));
     }
+
+    #[test]
+    fn test_cli_geolocation_user_get_json_compact() {
+        let mut client = MockGeoCliCommand::new();
+        let user_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
+        let probe_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+
+        let user = make_user(
+            "geo-user-01",
+            vec![GeolocationTarget {
+                target_type: GeoLocationTargetType::Outbound,
+                ip_address: Ipv4Addr::new(8, 8, 8, 8),
+                location_offset_port: 8923,
+                target_pk: Pubkey::default(),
+                geoprobe_pk: probe_pk,
+            }],
+        );
+
+        client
+            .expect_get_geolocation_user()
+            .with(predicate::eq(GetGeolocationUserCommand {
+                pubkey_or_code: user_pk.to_string(),
+            }))
+            .returning(move |_| Ok((user_pk, user.clone())));
+
+        let mut output = Vec::new();
+        let res = GetGeolocationUserCliCommand {
+            user: user_pk.to_string(),
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        let trimmed = output_str.trim();
+        assert!(!trimmed.contains('\n'), "compact JSON must be single-line");
+        let json: serde_json::Value = serde_json::from_str(trimmed).unwrap();
+        assert_eq!(json["account"].as_str().unwrap(), user_pk.to_string());
+        assert_eq!(json["code"].as_str().unwrap(), "geo-user-01");
+        assert_eq!(json["target_count"].as_u64().unwrap(), 1);
+        assert_eq!(json["targets"].as_array().unwrap().len(), 1);
+        assert_eq!(json["targets"][0]["ip"].as_str().unwrap(), "8.8.8.8");
+    }
 }

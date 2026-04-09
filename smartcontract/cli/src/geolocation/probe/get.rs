@@ -223,4 +223,34 @@ mod tests {
         );
         assert_eq!(json["reference_count"].as_u64().unwrap(), 0);
     }
+
+    #[test]
+    fn test_cli_geo_probe_get_json_compact() {
+        let (mut client, probe_pk, owner_pk, exchange_pk, metrics_pk) = setup_client();
+        let parent_pk = Pubkey::from_str_const("AQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let probe = make_probe(owner_pk, exchange_pk, metrics_pk, vec![parent_pk]);
+
+        client
+            .expect_get_geo_probe()
+            .with(predicate::eq(GetGeoProbeCommand {
+                pubkey_or_code: probe_pk.to_string(),
+            }))
+            .returning(move |_| Ok((probe_pk, probe.clone())));
+
+        let mut output = Vec::new();
+        let res = GetGeoProbeCliCommand {
+            probe: probe_pk.to_string(),
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        let trimmed = output_str.trim();
+        assert!(!trimmed.contains('\n'), "compact JSON must be single-line");
+        let json: serde_json::Value = serde_json::from_str(trimmed).unwrap();
+        assert_eq!(json["account"].as_str().unwrap(), probe_pk.to_string());
+        assert_eq!(json["code"].as_str().unwrap(), "ams-probe-01");
+        assert_eq!(json["parent_devices"].as_array().unwrap().len(), 1);
+    }
 }

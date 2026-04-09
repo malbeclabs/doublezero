@@ -7,7 +7,7 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct DeleteGeolocationUserCliCommand {
-    /// User code to delete
+    /// User pubkey or code to delete
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub user: String,
     /// Skip confirmation prompt
@@ -18,7 +18,7 @@ pub struct DeleteGeolocationUserCliCommand {
 impl DeleteGeolocationUserCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let (_, resolved_user) = client.get_geolocation_user(GetGeolocationUserCommand {
-            pubkey_or_code: self.user.clone(),
+            pubkey_or_code: self.user,
         })?;
         let code = resolved_user.code;
 

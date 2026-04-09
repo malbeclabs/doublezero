@@ -3,9 +3,30 @@ package worker
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
+
+type burnInTimesKey struct{}
+
+// BurnInTimes holds the wall-clock start times for each burn-in category,
+// resolved from ledger slot numbers via GetBlockTime once per tick.
+type BurnInTimes struct {
+	ProvisioningStart time.Time
+	DrainedStart      time.Time
+}
+
+// ContextWithBurnInTimes returns a new context carrying the given BurnInTimes.
+func ContextWithBurnInTimes(ctx context.Context, times BurnInTimes) context.Context {
+	return context.WithValue(ctx, burnInTimesKey{}, times)
+}
+
+// BurnInTimesFromContext extracts BurnInTimes from the context.
+func BurnInTimesFromContext(ctx context.Context) (BurnInTimes, bool) {
+	v, ok := ctx.Value(burnInTimesKey{}).(BurnInTimes)
+	return v, ok
+}
 
 // DeviceCriterion evaluates whether a device meets a specific readiness requirement.
 // Check returns (passed, reason). Reason is a human-readable explanation when passed is false.

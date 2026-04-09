@@ -44,7 +44,6 @@ var (
 	slackWebhookURL         = flag.String("slack-webhook-url", "", "The Slack webhook URL to send alerts")
 	provisioningSlotCount   = flag.Uint64("provisioning-slot-count", defaultProvisioningSlotCount, "Burn-in slot count for new devices/links (~20 hours at 200000)")
 	drainedSlotCount        = flag.Uint64("drained-slot-count", defaultDrainedSlotCount, "Burn-in slot count for reactivated devices/links (~30 min at 5000)")
-	slotDurationMs          = flag.Uint64("slot-duration-ms", 400, "Duration of a ledger slot in milliseconds")
 	version                 = "dev"
 	commit                  = "none"
 	date                    = "unknown"
@@ -149,13 +148,7 @@ func main() {
 			log.Warn("ClickHouse connection failed, continuing without controller_success criterion", "addr", chAddr, "error", err)
 		} else {
 			log.Info("ClickHouse enabled", "addr", chAddr, "db", chDB, "user", chUser, "tls", !chTLSDisabled)
-			controllerSuccess := worker.NewControllerSuccessCriterion(
-				chClient,
-				*provisioningSlotCount,
-				*drainedSlotCount,
-				*slotDurationMs,
-				log,
-			)
+			controllerSuccess := worker.NewControllerSuccessCriterion(chClient, log)
 			deviceCriteria = append(deviceCriteria, controllerSuccess)
 		}
 	} else {

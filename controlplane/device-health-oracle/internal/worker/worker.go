@@ -74,6 +74,26 @@ func (w *Worker) tick(ctx context.Context) {
 		"drainedSlotCount", w.cfg.DrainedSlotCount,
 		"drainedSlot", drainedSlot)
 
+	// Resolve burn-in boundary slots to wall-clock times for criteria evaluation.
+	var burnIn BurnInTimes
+	if provisioningSlot > 0 {
+		bt, err := w.cfg.LedgerRPCClient.GetBlockTime(ctx, provisioningSlot)
+		if err != nil {
+			w.log.Error("Failed to get block time for provisioning slot", "slot", provisioningSlot, "error", err)
+			return
+		}
+		burnIn.ProvisioningStart = time.Unix(int64(*bt), 0)
+	}
+	if drainedSlot > 0 {
+		bt, err := w.cfg.LedgerRPCClient.GetBlockTime(ctx, drainedSlot)
+		if err != nil {
+			w.log.Error("Failed to get block time for drained slot", "slot", drainedSlot, "error", err)
+			return
+		}
+		burnIn.DrainedStart = time.Unix(int64(*bt), 0)
+	}
+	ctx = ContextWithBurnInTimes(ctx, burnIn)
+
 	programData, err := w.cfg.Serviceability.GetProgramData(ctx)
 	if err != nil {
 		w.log.Error("Failed to get program data", "error", err)

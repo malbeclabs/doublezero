@@ -17,6 +17,14 @@ type BurnInTimes struct {
 	DrainedStart      time.Time
 }
 
+// DeviceBurnInStart returns the appropriate burn-in start time for the given device status.
+func (b BurnInTimes) DeviceBurnInStart(status serviceability.DeviceStatus) time.Time {
+	if status == serviceability.DeviceStatusDrained {
+		return b.DrainedStart
+	}
+	return b.ProvisioningStart
+}
+
 // ContextWithBurnInTimes returns a new context carrying the given BurnInTimes.
 func ContextWithBurnInTimes(ctx context.Context, times BurnInTimes) context.Context {
 	return context.WithValue(ctx, burnInTimesKey{}, times)

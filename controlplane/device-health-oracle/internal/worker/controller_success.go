@@ -39,31 +39,23 @@ func (c *ControllerSuccessCriterion) Check(ctx context.Context, device serviceab
 		return false, "burn-in times not available in context"
 	}
 
-	start := burnIn.ProvisioningStart
-	if device.Status == serviceability.DeviceStatusDrained {
-		start = burnIn.DrainedStart
-	}
-
+	start := burnIn.DeviceBurnInStart(device.Status)
 	now := time.Now()
 	expectedMinutes := int64(now.Sub(start).Minutes())
 	if expectedMinutes <= 0 {
 		return true, ""
 	}
 
-	devicePubkey := solana.PublicKeyFromBytes(device.PubKey[:]).String()
-
-	minutesWithCalls, err := c.checker.ControllerCallCoverage(ctx, devicePubkey, start, now)
+	pubkey := solana.PublicKeyFromBytes(device.PubKey[:]).String()
+	minutesWithCalls, err := c.checker.ControllerCallCoverage(ctx, pubkey, start, now)
 	if err != nil {
 		c.log.Error("Failed to query controller call coverage",
-			"device", devicePubkey,
-			"code", device.Code,
-			"error", err)
+			"device", pubkey, "code", device.Code, "error", err)
 		return false, fmt.Sprintf("clickhouse query failed: %v", err)
 	}
 
 	c.log.Debug("Controller call coverage",
-		"device", devicePubkey,
-		"code", device.Code,
+		"device", pubkey, "code", device.Code,
 		"minutesWithCalls", minutesWithCalls,
 		"expectedMinutes", expectedMinutes,
 		"start", start)

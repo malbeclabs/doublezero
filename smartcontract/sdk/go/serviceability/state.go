@@ -385,6 +385,14 @@ func (l RoutingMode) MarshalJSON() ([]byte, error) {
 	return json.Marshal(l.String())
 }
 
+// FlexAlgoNodeSegment is a flex-algo node segment assigned to an interface.
+// Each entry pairs a TopologyInfo PDA with the segment-routing index allocated
+// for this device within that topology. Written as part of Interface V2 (RFC-18).
+type FlexAlgoNodeSegment struct {
+	Topology       [32]byte // TopologyInfo PDA pubkey
+	NodeSegmentIdx uint16   // allocated from SegmentRoutingIds ResourceExtension
+}
+
 type Interface struct {
 	Version            uint8
 	Status             InterfaceStatus
@@ -401,6 +409,10 @@ type Interface struct {
 	IpNet              [5]uint8
 	NodeSegmentIdx     uint16
 	UserTunnelEndpoint bool
+	// FlexAlgoNodeSegments holds flex-algo node segment assignments for this interface (RFC-18).
+	// Present in all V2 accounts after MigrateDeviceInterfaces has been run (empty vec for
+	// interfaces not yet assigned to any topology). Nil for V1 interfaces.
+	FlexAlgoNodeSegments []FlexAlgoNodeSegment `json:",omitempty"`
 }
 
 func (i Interface) MarshalJSON() ([]byte, error) {

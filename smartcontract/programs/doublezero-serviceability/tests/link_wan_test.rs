@@ -2671,7 +2671,9 @@ async fn test_link_activation_auto_tags_unicast_default() {
 }
 
 #[tokio::test]
-async fn test_link_activation_fails_without_unicast_default() {
+async fn test_link_activation_succeeds_without_unicast_default() {
+    // Activation must succeed even when the unicast-default topology hasn't been created yet
+    // (e.g. fresh deployment before topology creation). The link simply has no topology tags.
     let (
         mut banks_client,
         program_id,
@@ -2691,9 +2693,7 @@ async fn test_link_activation_fails_without_unicast_default() {
     // Derive the unicast-default PDA without creating it
     let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
 
-    // Attempt to activate — should fail because the unicast-default account is
-    // system-owned (not created), triggering the owner check before key validation.
-    let result = try_execute_transaction(
+    execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -2713,11 +2713,17 @@ async fn test_link_activation_fails_without_unicast_default() {
     )
     .await;
 
-    let error_string = format!("{:?}", result.unwrap_err());
+    // link_topologies should be empty since the topology account was not initialized
+    let link = get_account_data(&mut banks_client, tunnel_pubkey)
+        .await
+        .expect("Link not found")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link.status, LinkStatus::Activated);
     assert!(
-        error_string.contains("Custom(65)"),
-        "Expected InvalidArgument error (Custom(65)), got: {}",
-        error_string
+        link.link_topologies.is_empty(),
+        "link_topologies should be empty when unicast-default has not been created, got: {:?}",
+        link.link_topologies
     );
 }
 

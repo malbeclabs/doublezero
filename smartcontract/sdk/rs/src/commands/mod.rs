@@ -14,5 +14,4 @@ pub mod permission;
 pub mod programconfig;
 pub mod resource;
 pub mod tenant;
-pub mod topology;
 pub mod user;

@@ -137,9 +137,11 @@ func (s *Submitter) tick(ctx context.Context) {
 
 	// Prune userState entries for users no longer activated on this device to
 	// prevent unbounded memory growth as users come and go.
+	// Also clear pending flags so a reactivated user is not permanently blocked.
 	for pk := range s.userState {
 		if _, active := activeUserKeys[pk]; !active {
 			delete(s.userState, pk)
+			delete(s.pending, pk)
 		}
 	}
 }

@@ -529,14 +529,34 @@ impl CreateValidatorMulticastPublishersCommand {
                     .collect();
                 eprintln!("No candidates found. Per-IP diagnosis:");
                 for ip in &self.ip {
-                    let reason = if !ibrl_ips.contains(ip) {
-                        "no IBRL user found for this IP"
+                    let reason: String = if !ibrl_ips.contains(ip) {
+                        "no IBRL user found for this IP".to_string()
                     } else if publisher_ips.contains(ip) {
-                        "already a publisher for this multicast group"
+                        "already a publisher for this multicast group".to_string()
                     } else if !validators.contains_key(ip) {
-                        "not found in validator metadata service"
+                        "not found in validator metadata service".to_string()
                     } else {
-                        "filtered out by stake or client filter"
+                        let val = validators.get(ip).unwrap();
+                        let client_mismatch = !filters.clients.is_empty() && {
+                            let name = val.software_client.to_lowercase();
+                            !filters.clients.iter().any(|c| name.contains(&c.to_lowercase()))
+                        };
+                        let stake_mismatch = filters
+                            .min_stake
+                            .is_some_and(|m| val.activated_stake_sol < m)
+                            || filters
+                                .max_stake
+                                .is_some_and(|m| val.activated_stake_sol > m);
+                        if client_mismatch {
+                            format!(
+                                "client '{}' does not match --client filter {:?}",
+                                val.software_client, filters.clients
+                            )
+                        } else if stake_mismatch {
+                            "filtered out by stake filter".to_string()
+                        } else {
+                            "filtered out (unknown reason)".to_string()
+                        }
                     };
                     eprintln!("  {ip}: {reason}");
                 }

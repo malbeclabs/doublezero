@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- CLI upgrade required: the `InterfaceV2` onchain account format now includes `flex_algo_node_segments` (RFC-18). CLI versions prior to this release cannot deserialize device accounts written by the new program. Operators must upgrade the CLI before or alongside the program upgrade.
+
 ### Changes
 
 ## [v0.18.0](https://github.com/malbeclabs/doublezero/compare/client/v0.17.0...client/v0.18.0) - 2026-04-17

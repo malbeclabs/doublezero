@@ -53,6 +53,7 @@ const (
 	defaultStateCollectInterval       = 60 * time.Second
 	defaultBGPStatusInterval          = 60 * time.Second
 	defaultBGPStatusRefreshInterval   = 6 * time.Hour
+	defaultCachingFetcherRPCTimeout   = 30 * time.Second
 
 	waitForNamespaceTimeout             = 30 * time.Second
 	defaultStateIngestHTTPClientTimeout = 10 * time.Second
@@ -91,6 +92,9 @@ var (
 
 	// geoprobe flags
 	geolocationProgramID = flag.String("geolocation-program-id", "", "The ID of the geolocation program for onchain GeoProbe discovery. If env is provided, this flag is ignored.")
+
+	// caching fetcher flags
+	cachingFetcherRPCTimeout = flag.Duration("caching-fetcher-rpc-timeout", defaultCachingFetcherRPCTimeout, "Timeout for GetProgramData RPC calls inside the caching fetcher.")
 
 	// bgp status submitter flags
 	bgpStatusEnable          = flag.Bool("bgp-status-enable", false, "Enable onchain BGP status submission after each collection tick.")
@@ -282,7 +286,7 @@ func main() {
 	cachedSvcClient := telemetrysvc.NewCachingFetcher(
 		serviceability.New(rpcClient, serviceabilityProgramID),
 		telemetrysvc.DefaultCacheTTL,
-		telemetrysvc.DefaultRPCTimeout,
+		*cachingFetcherRPCTimeout,
 	)
 	peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(
 		&telemetry.LedgerPeerDiscoveryConfig{

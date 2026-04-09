@@ -65,8 +65,11 @@ func (f *CachingFetcher) GetProgramData(ctx context.Context) (*serviceability.Pr
 		cachedAge := time.Since(f.fetchedAt)
 		f.mu.RUnlock()
 
+		// Use a detached context so a cancellation from the first caller's ctx
+		// does not fail all other waiters sharing this singleflight call.
+		// context.WithoutCancel preserves the parent deadline while dropping cancellation.
 		start := time.Now()
-		data, err := f.provider.GetProgramData(ctx)
+		data, err := f.provider.GetProgramData(context.WithoutCancel(ctx))
 		metricFetchDuration.Observe(time.Since(start).Seconds())
 
 		if err != nil {

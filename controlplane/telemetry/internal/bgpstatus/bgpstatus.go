@@ -133,10 +133,12 @@ func (s *Submitter) Start(ctx context.Context, cancel context.CancelFunc) <-chan
 }
 
 // userStateFor returns or creates the per-user tracking entry (caller must hold s.mu).
-func (s *Submitter) userStateFor(key string) *userState {
+// initialStatus is used only when creating a new entry; it seeds lastOnchainStatus so
+// that a restarted submitter correctly handles users whose onchain state is already Up.
+func (s *Submitter) userStateFor(key string, initialStatus serviceability.BGPStatus) *userState {
 	us, ok := s.userState[key]
 	if !ok {
-		us = &userState{}
+		us = &userState{lastOnchainStatus: initialStatus}
 		s.userState[key] = us
 	}
 	return us

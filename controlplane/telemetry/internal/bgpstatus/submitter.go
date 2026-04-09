@@ -71,6 +71,8 @@ func (s *Submitter) tick(ctx context.Context) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	activeUserKeys := make(map[string]struct{})
+
 	for _, user := range programData.Users {
 		if user.Status != serviceability.UserStatusActivated {
 			continue
@@ -80,7 +82,12 @@ func (s *Submitter) tick(ctx context.Context) {
 		}
 
 		userPK := solana.PublicKeyFromBytes(user.PubKey[:]).String()
-		us := s.userStateFor(userPK)
+		activeUserKeys[userPK] = struct{}{}
+
+		// Seed lastOnchainStatus from the ledger on first observation (e.g. after
+		// a daemon restart) so a disappeared tunnel correctly transitions to Down
+		// rather than being skipped because Unknown != Up.
+		us := s.userStateFor(userPK, serviceability.BGPStatus(user.BgpStatus))
 
 		// Resolve the BGP peer IP for this user's /31 tunnel net.
 		tunnelNet := tunnelNetToIPNet(user.TunnelNet)
@@ -127,6 +134,14 @@ func (s *Submitter) tick(ctx context.Context) {
 			s.log.Warn("bgpstatus: task channel full, dropping update", "user", userPK)
 		}
 	}
+
+	// Prune userState entries for users no longer activated on this device to
+	// prevent unbounded memory growth as users come and go.
+	for pk := range s.userState {
+		if _, active := activeUserKeys[pk]; !active {
+			delete(s.userState, pk)
+		}
+	}
 }
 
 // worker drains the task channel and submits each update onchain with retry.
@@ -147,7 +162,7 @@ func (s *Submitter) worker(ctx context.Context) {
 			delete(s.pending, userPK)
 			if err == nil {
 				metricSubmissionsTotal.WithLabelValues(statusLabel, "success").Inc()
-				us := s.userStateFor(userPK)
+				us := s.userStateFor(userPK, serviceability.BGPStatusUnknown)
 				us.lastOnchainStatus = task.status
 				us.lastWriteTime = s.cfg.Clock.Now()
 				s.log.Info("bgpstatus: submitted BGP status",

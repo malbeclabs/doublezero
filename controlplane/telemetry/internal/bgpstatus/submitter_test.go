@@ -408,7 +408,7 @@ func TestPendingDedup_SecondEnqueueSkipped(t *testing.T) {
 	// Manually mark user as pending (simulating a task already in the channel).
 	s.mu.Lock()
 	s.pending[userPK] = true
-	us := s.userStateFor(userPK) // trigger creation
+	us := s.userStateFor(userPK, serviceability.BGPStatusUnknown) // trigger creation
 	_ = us
 	s.mu.Unlock()
 

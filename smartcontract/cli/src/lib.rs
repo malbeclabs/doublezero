@@ -30,6 +30,7 @@ pub mod resource;
 pub mod subscribe;
 pub mod tenant;
 pub mod tests;
+pub mod topology;
 pub mod user;
 pub mod util;
 pub mod validators;

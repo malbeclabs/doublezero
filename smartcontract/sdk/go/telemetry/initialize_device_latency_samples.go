@@ -14,6 +14,8 @@ type InitializeDeviceLatencySamplesInstructionConfig struct {
 	LinkPK                       solana.PublicKey
 	Epoch                        *uint64
 	SamplingIntervalMicroseconds uint64
+	AgentVersion                 string
+	AgentCommit                  string
 }
 
 func (c *InitializeDeviceLatencySamplesInstructionConfig) Validate() error {
@@ -47,15 +49,25 @@ func BuildInitializeDeviceLatencySamplesInstruction(
 	}
 	epoch := *config.Epoch
 
+	// Convert version and commit strings to fixed-size byte arrays.
+	var agentVersion [16]byte
+	copy(agentVersion[:], config.AgentVersion)
+	var agentCommit [8]byte
+	copy(agentCommit[:], config.AgentCommit)
+
 	// Serialize the instruction data
 	data, err := borsh.Serialize(struct {
 		Discriminator                uint8
 		Epoch                        uint64
 		SamplingIntervalMicroseconds uint64
+		AgentVersion                 [16]byte
+		AgentCommit                  [8]byte
 	}{
 		Discriminator:                uint8(InitializeDeviceLatencySamplesInstructionIndex),
 		Epoch:                        epoch,
 		SamplingIntervalMicroseconds: config.SamplingIntervalMicroseconds,
+		AgentVersion:                 agentVersion,
+		AgentCommit:                  agentCommit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize args: %w", err)

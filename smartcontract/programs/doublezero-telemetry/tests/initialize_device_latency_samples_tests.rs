@@ -452,6 +452,8 @@ async fn test_initialize_device_latency_samples_fail_agent_not_signer() {
     let args = InitializeDeviceLatencySamplesArgs {
         epoch: 1,
         sampling_interval_microseconds: 5_000_000,
+        agent_version: [0; 16],
+        agent_commit: [0; 8],
     };
 
     let instruction = TelemetryInstruction::InitializeDeviceLatencySamples(args.clone());

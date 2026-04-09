@@ -31,6 +31,8 @@ use solana_program::{
 pub struct InitializeDeviceLatencySamplesArgs {
     pub epoch: u64,
     pub sampling_interval_microseconds: u64,
+    pub agent_version: [u8; 16],
+    pub agent_commit: [u8; 8],
 }
 
 /// Initializes a new PDA account for collecting RTT latency samples.
@@ -206,7 +208,9 @@ pub fn process_initialize_device_latency_samples(
         sampling_interval_microseconds: args.sampling_interval_microseconds,
         start_timestamp_microseconds: 0, // Will be set on first write
         next_sample_index: 0,
-        _unused: [0; 128],
+        agent_version: args.agent_version,
+        agent_commit: args.agent_commit,
+        _unused: [0; 104],
     };
 
     // Write the account data.

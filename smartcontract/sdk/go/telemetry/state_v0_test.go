@@ -147,7 +147,16 @@ func TestSDK_Telemetry_State_DeviceLatencySamplesV0(t *testing.T) {
 		require.Equal(t, v0.SamplingIntervalMicroseconds, v1.SamplingIntervalMicroseconds)
 		require.Equal(t, v0.StartTimestampMicroseconds, v1.StartTimestampMicroseconds)
 		require.Equal(t, v0.NextSampleIndex, v1.NextSampleIndex)
-		require.Equal(t, v0.Unused, v1.Unused)
+		// V0 Unused[0:16] maps to V1 AgentVersion, [16:24] to AgentCommit, [24:128] to Unused.
+		var expectedVersion [16]uint8
+		copy(expectedVersion[:], v0.Unused[0:16])
+		require.Equal(t, expectedVersion, v1.AgentVersion)
+		var expectedCommit [8]uint8
+		copy(expectedCommit[:], v0.Unused[16:24])
+		require.Equal(t, expectedCommit, v1.AgentCommit)
+		var expectedUnused [104]uint8
+		copy(expectedUnused[:], v0.Unused[24:128])
+		require.Equal(t, expectedUnused, v1.Unused)
 		require.Equal(t, v0.Samples, v1.Samples)
 	})
 }

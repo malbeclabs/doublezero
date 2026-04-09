@@ -68,6 +68,12 @@ type Config struct {
 	// ProbeDiscoveryInterval is the interval at which to query onchain GeoProbe accounts.
 	// Defaults to 60s when GeolocationClient is set.
 	ProbeDiscoveryInterval time.Duration
+
+	// AgentVersion is the version string of this telemetry agent binary.
+	AgentVersion string
+
+	// AgentCommit is the short git commit hash of this telemetry agent binary.
+	AgentCommit string
 }
 
 func (c *Config) Validate() error {

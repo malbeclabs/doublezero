@@ -27,13 +27,17 @@ pub struct CreateMulticastPublisherInstructions {
 }
 
 /// Build the three instructions needed to create a multicast publisher for a user.
+///
+/// `payer` signs and pays for all transactions. `owner` is the validator's owner pubkey;
+/// the access pass and user account are created under this owner, not the payer.
 pub fn build_create_multicast_publisher_instructions(
     program_id: &Pubkey,
     payer: &Pubkey,
+    owner: &Pubkey,
     multicast_group_pk: &Pubkey,
     user: &DzUser,
 ) -> Result<CreateMulticastPublisherInstructions> {
-    let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, payer);
+    let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, owner);
     let (globalstate_pda, _) = get_globalstate_pda(program_id);
 
     // Step 1: set_access_pass
@@ -48,7 +52,7 @@ pub fn build_create_multicast_publisher_instructions(
         vec![
             AccountMeta::new(accesspass_pda, false),
             AccountMeta::new_readonly(globalstate_pda, false),
-            AccountMeta::new(*payer, false),
+            AccountMeta::new(*owner, false),
             AccountMeta::new(*payer, true),
             AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
         ],
@@ -59,7 +63,7 @@ pub fn build_create_multicast_publisher_instructions(
         program_id,
         DoubleZeroInstruction::AddMulticastGroupPubAllowlist(AddMulticastGroupPubAllowlistArgs {
             client_ip: user.client_ip,
-            user_payer: *payer,
+            user_payer: *owner,
         }),
         vec![
             AccountMeta::new(*multicast_group_pk, false),
@@ -82,7 +86,7 @@ pub fn build_create_multicast_publisher_instructions(
             subscriber: false,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
-            owner: Pubkey::default(),
+            owner: *owner,
         }),
         vec![
             AccountMeta::new(user_pda, false),
@@ -137,9 +141,12 @@ mod tests {
             publishers: vec![],
         };
 
+        let owner = Pubkey::new_unique();
+
         let ixs = build_create_multicast_publisher_instructions(
             &program_id,
             &payer,
+            &owner,
             &multicast_group,
             &user,
         )
@@ -155,7 +162,7 @@ mod tests {
         assert!(!ixs.add_allowlist.data.is_empty());
         assert!(!ixs.create_user.data.is_empty());
 
-        // set_access_pass: 5 accounts (accesspass_pda, globalstate, payer×2, system_program)
+        // set_access_pass: 5 accounts (accesspass_pda, globalstate, owner, payer, system_program)
         assert_eq!(ixs.set_access_pass.accounts.len(), 5);
         // add_allowlist: 5 accounts (multicast_group, accesspass_pda, globalstate, payer, system_program)
         assert_eq!(ixs.add_allowlist.accounts.len(), 5);
@@ -177,9 +184,12 @@ mod tests {
             publishers: vec![],
         };
 
+        let owner = Pubkey::new_unique();
+
         let ixs = build_create_multicast_publisher_instructions(
             &program_id,
             &payer,
+            &owner,
             &multicast_group,
             &user,
         )

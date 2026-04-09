@@ -5,6 +5,8 @@ package e2e_test
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
+	solana "github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,6 +51,36 @@ func TestE2E_SentinelMulticastPublisherCreatesPublishers(t *testing.T) {
 	})
 
 	var multicastGroupPK string
+	var sentinelKeypairPath string
+
+	// Generate a dedicated sentinel keypair distinct from the manager keypair.
+	// This ensures sentinel.payer != ibrl.owner so that the multicast publisher
+	// owner assertion can detect if owner is incorrectly set to the sentinel payer.
+	t.Run("setup-sentinel-keypair", func(t *testing.T) {
+		sentinelKeypairJSON, err := solana.GenerateKeypairJSON()
+		require.NoError(t, err)
+
+		sentinelPubkey, err := solana.PubkeyFromKeypairJSON(sentinelKeypairJSON)
+		require.NoError(t, err)
+		t.Logf("Sentinel pubkey: %s", sentinelPubkey)
+
+		sentinelKeypairPath = filepath.Join(deployDir, "sentinel-keypair.json")
+		err = os.WriteFile(sentinelKeypairPath, sentinelKeypairJSON, 0600)
+		require.NoError(t, err)
+
+		// Update global-config sentinel authority to the new keypair.
+		_, err = dn.Manager.Exec(ctx, []string{
+			"doublezero", "global-config", "authority", "set",
+			"--sentinel-authority", sentinelPubkey,
+		})
+		require.NoError(t, err)
+
+		// Fund the sentinel keypair for transaction fees.
+		_, err = dn.Manager.Exec(ctx, []string{
+			"bash", "-c", "solana airdrop 100 " + sentinelPubkey,
+		})
+		require.NoError(t, err)
+	})
 
 	t.Run("create-device-and-multicast-group", func(t *testing.T) {
 		// Create device (location, exchange, contributor already created by devnet init).
@@ -105,7 +138,7 @@ func TestE2E_SentinelMulticastPublisherCreatesPublishers(t *testing.T) {
 	})
 
 	t.Run("start-sentinel", func(t *testing.T) {
-		dn.Spec.Sentinel.KeypairPath = dn.Spec.Manager.ManagerKeypairPath
+		dn.Spec.Sentinel.KeypairPath = sentinelKeypairPath
 		dn.Spec.Sentinel.MulticastGroupPubkeys = multicastGroupPK
 		dn.Spec.Sentinel.MulticastPublisherPollSecs = 5
 
@@ -158,8 +191,10 @@ func TestE2E_SentinelMulticastPublisherCreatesPublishers(t *testing.T) {
 			require.Contains(t, u.publishersList(), multicastGroupPK,
 				"user %s should publish to the multicast group", ip)
 			require.Equal(t, "dev01", u.DeviceName, "user %s should be on device dev01", ip)
+			require.Equal(t, dn.Manager.Pubkey, u.Owner,
+				"multicast publisher %s owner should be the IBRL user owner, not the sentinel payer", ip)
 
-			t.Logf("Verified multicast publisher: ip=%s status=%s device=%s publishers=%v", ip, u.Status, u.DeviceName, u.Publishers)
+			t.Logf("Verified multicast publisher: ip=%s status=%s device=%s publishers=%v owner=%s", ip, u.Status, u.DeviceName, u.Publishers, u.Owner)
 		}
 	})
 }

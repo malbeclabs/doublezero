@@ -282,6 +282,7 @@ func main() {
 	cachedSvcClient := telemetrysvc.NewCachingFetcher(
 		serviceability.New(rpcClient, serviceabilityProgramID),
 		telemetrysvc.DefaultCacheTTL,
+		telemetrysvc.DefaultRPCTimeout,
 	)
 	peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(
 		&telemetry.LedgerPeerDiscoveryConfig{

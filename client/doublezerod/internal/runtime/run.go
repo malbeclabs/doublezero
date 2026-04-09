@@ -77,7 +77,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		return fmt.Errorf("error parsing program ID: %v", err)
 	}
 	svcClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), pid)
-	cachingFetcher := onchain.NewCachingFetcher(svcClient, onchain.DefaultCacheTTL)
+	cachingFetcher := onchain.NewCachingFetcher(svcClient, onchain.DefaultCacheTTL, onchain.DefaultRPCTimeout)
 
 	ip, method, err := DiscoverClientIP(clientIP)
 	if err != nil {

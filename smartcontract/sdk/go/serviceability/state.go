@@ -594,6 +594,31 @@ func (l LinkHealth) MarshalJSON() ([]byte, error) {
 	return json.Marshal(l.String())
 }
 
+type BGPStatus uint8
+
+const (
+	BGPStatusUnknown BGPStatus = 0
+	BGPStatusUp      BGPStatus = 1
+	BGPStatusDown    BGPStatus = 2
+)
+
+func (b BGPStatus) String() string {
+	switch b {
+	case BGPStatusUnknown:
+		return "unknown"
+	case BGPStatusUp:
+		return "up"
+	case BGPStatusDown:
+		return "down"
+	default:
+		return fmt.Sprintf("BGPStatus(%d)", b)
+	}
+}
+
+func (b BGPStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(b.String())
+}
+
 type LinkDesiredStatus uint8
 
 const (

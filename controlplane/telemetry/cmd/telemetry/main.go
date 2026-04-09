@@ -17,11 +17,13 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
 	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/bgpstatus"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/gnmitunnel"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
+	telemetrysvc "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/serviceability"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/state"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
@@ -49,6 +51,8 @@ const (
 	defaultLocalDevicePubkey          = ""
 	defaultSubmitterMaxConcurrency    = 10
 	defaultStateCollectInterval       = 60 * time.Second
+	defaultBGPStatusInterval          = 60 * time.Second
+	defaultBGPStatusRefreshInterval   = 6 * time.Hour
 
 	waitForNamespaceTimeout             = 30 * time.Second
 	defaultStateIngestHTTPClientTimeout = 10 * time.Second
@@ -87,6 +91,12 @@ var (
 
 	// geoprobe flags
 	geolocationProgramID = flag.String("geolocation-program-id", "", "The ID of the geolocation program for onchain GeoProbe discovery. If env is provided, this flag is ignored.")
+
+	// bgp status submitter flags
+	bgpStatusEnable          = flag.Bool("bgp-status-enable", false, "Enable onchain BGP status submission after each collection tick.")
+	bgpStatusInterval        = flag.Duration("bgp-status-interval", defaultBGPStatusInterval, "Interval between BGP status collection ticks.")
+	bgpStatusRefreshInterval = flag.Duration("bgp-status-refresh-interval", defaultBGPStatusRefreshInterval, "Periodic re-submission interval to keep last_bgp_reported_at fresh even when status is unchanged.")
+	bgpStatusDownGracePeriod = flag.Duration("bgp-status-down-grace-period", 0, "Minimum duration a user must be absent before reporting Down status (0 = report immediately).")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -269,11 +279,15 @@ func main() {
 		os.Exit(1)
 	}
 	localNet := netutil.NewLocalNet(log)
+	cachedSvcClient := telemetrysvc.NewCachingFetcher(
+		serviceability.New(rpcClient, serviceabilityProgramID),
+		telemetrysvc.DefaultCacheTTL,
+	)
 	peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(
 		&telemetry.LedgerPeerDiscoveryConfig{
 			Logger:          log,
 			LocalDevicePK:   localDevicePK,
-			ProgramClient:   serviceability.New(rpcClient, serviceabilityProgramID),
+			ProgramClient:   cachedSvcClient,
 			LocalNet:        localNet,
 			TWAMPPort:       uint16(*twampListenPort),
 			RefreshInterval: *peersRefreshInterval,
@@ -313,7 +327,7 @@ func main() {
 		TWAMPReflector:              reflector,
 		PeerDiscovery:               peerDiscovery,
 		TelemetryProgramClient:      sdktelemetry.New(log, rpcClient, &keypair, telemetryProgramID),
-		ServiceabilityProgramClient: serviceability.New(rpcClient, serviceabilityProgramID),
+		ServiceabilityProgramClient: cachedSvcClient,
 		RPCClient:                   rpcClient,
 		Keypair:                     keypair,
 		GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
@@ -333,7 +347,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 3)
 
 	// Run the onchain device-link latency collector.
 	go func() {
@@ -354,6 +368,13 @@ func main() {
 		gnmiTunnelClientErrCh = startGNMITunnelClient(ctx, cancel, log, localDevicePK)
 	}
 
+	// Run BGP status submitter if enabled.
+	var bgpStatusErrCh <-chan error
+	if *bgpStatusEnable {
+		bgpStatusErrCh = startBGPStatusSubmitter(ctx, cancel, log, keypair, localDevicePK,
+			serviceabilityProgramID, localNet, *bgpNamespace, cachedSvcClient, rpcClient)
+	}
+
 	// Wait for the context to be done or an error to be returned.
 	select {
 	case <-ctx.Done():
@@ -370,7 +391,49 @@ func main() {
 		log.Error("gnmi tunnel client exited with error", "error", err)
 		cancel()
 		os.Exit(1)
+	case err := <-bgpStatusErrCh:
+		log.Error("BGP status submitter exited with error", "error", err)
+		cancel()
+		os.Exit(1)
 	}
+}
+
+func startBGPStatusSubmitter(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	log *slog.Logger,
+	keypair solana.PrivateKey,
+	localDevicePK solana.PublicKey,
+	serviceabilityProgramID solana.PublicKey,
+	localNet netutil.LocalNet,
+	bgpNamespace string,
+	svcClient telemetrysvc.ProgramDataProvider,
+	rpcClient *solanarpc.Client,
+) <-chan error {
+	executor := serviceability.NewExecutor(log, rpcClient, &keypair, serviceabilityProgramID)
+
+	sub, err := bgpstatus.NewSubmitter(bgpstatus.Config{
+		Log:                     log,
+		Executor:                executor,
+		ServiceabilityClient:    svcClient,
+		LocalNet:                localNet,
+		LocalDevicePK:           localDevicePK,
+		BGPNamespace:            bgpNamespace,
+		Interval:                *bgpStatusInterval,
+		PeriodicRefreshInterval: *bgpStatusRefreshInterval,
+		DownGracePeriod:         *bgpStatusDownGracePeriod,
+	})
+	if err != nil {
+		log.Error("failed to create BGP status submitter", "error", err)
+		os.Exit(1)
+	}
+
+	log.Info("Starting BGP status submitter",
+		"interval", *bgpStatusInterval,
+		"refreshInterval", *bgpStatusRefreshInterval,
+		"downGracePeriod", *bgpStatusDownGracePeriod,
+	)
+	return sub.Start(ctx, cancel)
 }
 
 func startStateCollector(ctx context.Context, cancel context.CancelFunc, log *slog.Logger, keypair solana.PrivateKey, localDevicePK solana.PublicKey, bgpNamespace string) <-chan error {

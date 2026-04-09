@@ -117,6 +117,18 @@ type DeviceTelemetrySpec struct {
 
 	// MetricsAddr is the listen address for the prometheus metrics server.
 	MetricsAddr string
+
+	// BGPStatusEnable enables the BGP status submitter.
+	BGPStatusEnable bool
+
+	// BGPStatusInterval is the interval at which to collect and submit BGP status.
+	BGPStatusInterval time.Duration
+
+	// BGPStatusRefreshInterval is the interval at which to force a periodic re-submission.
+	BGPStatusRefreshInterval time.Duration
+
+	// BGPStatusDownGracePeriod is how long to keep reporting Up after the BGP session drops.
+	BGPStatusDownGracePeriod time.Duration
 }
 
 func (s *DeviceSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
@@ -625,6 +637,18 @@ func (d *Device) Start(ctx context.Context) error {
 	}
 	if d.dn.Manager.GeolocationProgramID != "" {
 		telemetryCommandArgs = append(telemetryCommandArgs, "-geolocation-program-id", d.dn.Manager.GeolocationProgramID)
+	}
+	if spec.Telemetry.BGPStatusEnable {
+		telemetryCommandArgs = append(telemetryCommandArgs, "-bgp-status-enable")
+	}
+	if spec.Telemetry.BGPStatusInterval > 0 {
+		telemetryCommandArgs = append(telemetryCommandArgs, "-bgp-status-interval", spec.Telemetry.BGPStatusInterval.String())
+	}
+	if spec.Telemetry.BGPStatusRefreshInterval > 0 {
+		telemetryCommandArgs = append(telemetryCommandArgs, "-bgp-status-refresh-interval", spec.Telemetry.BGPStatusRefreshInterval.String())
+	}
+	if spec.Telemetry.BGPStatusDownGracePeriod > 0 {
+		telemetryCommandArgs = append(telemetryCommandArgs, "-bgp-status-down-grace-period", spec.Telemetry.BGPStatusDownGracePeriod.String())
 	}
 
 	// Render the device config from go template.

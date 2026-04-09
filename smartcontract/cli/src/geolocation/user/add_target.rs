@@ -1,12 +1,12 @@
 use crate::{
     geoclicommand::GeoCliCommand,
-    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
+    validators::{validate_pubkey, validate_pubkey_or_code},
 };
 use clap::{Args, ValueEnum};
 use doublezero_geolocation::state::geolocation_user::GeoLocationTargetType;
 use doublezero_sdk::geolocation::{
     geo_probe::{get::GetGeoProbeCommand, list::ListGeoProbeCommand},
-    geolocation_user::add_target::AddTargetCommand,
+    geolocation_user::{add_target::AddTargetCommand, get::GetGeolocationUserCommand},
 };
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
@@ -21,8 +21,8 @@ pub enum TargetType {
 #[derive(Args, Debug)]
 #[command(group = clap::ArgGroup::new("probe_source").required(true))]
 pub struct AddTargetCliCommand {
-    /// User code
-    #[arg(long, value_parser = validate_code)]
+    /// User code or pubkey
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub user: String,
     /// Target type
     #[arg(long = "type", value_enum)]
@@ -35,7 +35,7 @@ pub struct AddTargetCliCommand {
     pub target_port: u16,
     /// Target signing pubkey (required for inbound)
     #[arg(long, value_parser = validate_pubkey)]
-    pub target_pk: Option<String>,
+    pub target_signing_pubkey: Option<String>,
     /// Probe code or pubkey
     #[arg(long, value_parser = validate_pubkey_or_code, group = "probe_source")]
     pub probe: Option<String>,
@@ -59,9 +59,9 @@ impl AddTargetCliCommand {
                 )
             }
             TargetType::Inbound => {
-                let pk_str = self
-                    .target_pk
-                    .ok_or_else(|| eyre::eyre!("--target-pk is required for inbound targets"))?;
+                let pk_str = self.target_signing_pubkey.ok_or_else(|| {
+                    eyre::eyre!("--target-signing-pubkey is required for inbound targets")
+                })?;
                 let pk: Pubkey = pk_str.parse().expect("validated by clap");
                 (GeoLocationTargetType::Inbound, Ipv4Addr::UNSPECIFIED, 0, pk)
             }
@@ -78,10 +78,14 @@ impl AddTargetCliCommand {
             }
         };
 
+        let (_, resolved_user) = client.get_geolocation_user(GetGeolocationUserCommand {
+            pubkey_or_code: self.user,
+        })?;
+
         let probe_pk = resolve_probe(client, self.probe, self.exchange)?;
 
         let sig = client.add_target(AddTargetCommand {
-            code: self.user,
+            code: resolved_user.code,
             probe_pk,
             target_type,
             ip_address,
@@ -134,10 +138,38 @@ pub(super) fn resolve_probe<C: GeoCliCommand>(
 mod tests {
     use super::*;
     use crate::geoclicommand::MockGeoCliCommand;
-    use doublezero_geolocation::state::{accounttype::AccountType, geo_probe::GeoProbe};
+    use doublezero_geolocation::state::{
+        accounttype::AccountType,
+        geo_probe::GeoProbe,
+        geolocation_user::{
+            FlatPerEpochConfig, GeolocationBillingConfig, GeolocationPaymentStatus,
+            GeolocationUser, GeolocationUserStatus,
+        },
+    };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::collections::HashMap;
+
+    fn mock_get_geolocation_user(client: &mut MockGeoCliCommand) {
+        client.expect_get_geolocation_user().returning(move |cmd| {
+            Ok((
+                Pubkey::new_unique(),
+                GeolocationUser {
+                    account_type: AccountType::GeolocationUser,
+                    owner: Pubkey::new_unique(),
+                    code: cmd.pubkey_or_code.clone(),
+                    token_account: Pubkey::new_unique(),
+                    payment_status: GeolocationPaymentStatus::Paid,
+                    billing: GeolocationBillingConfig::FlatPerEpoch(FlatPerEpochConfig {
+                        rate: 1000,
+                        last_deduction_dz_epoch: 42,
+                    }),
+                    status: GeolocationUserStatus::Activated,
+                    targets: vec![],
+                },
+            ))
+        });
+    }
 
     fn make_probe(exchange_pk: Pubkey) -> GeoProbe {
         GeoProbe {
@@ -162,6 +194,8 @@ mod tests {
         let exchange_pk = Pubkey::new_unique();
         let probe = make_probe(exchange_pk);
         let signature = Signature::new_unique();
+
+        mock_get_geolocation_user(&mut client);
 
         client
             .expect_get_geo_probe()
@@ -188,7 +222,7 @@ mod tests {
             target_type: TargetType::Outbound,
             target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
             target_port: 8923,
-            target_pk: None,
+            target_signing_pubkey: None,
             probe: Some("ams-probe-01".to_string()),
             exchange: None,
         }
@@ -207,6 +241,8 @@ mod tests {
         let probe = make_probe(exchange_pk);
         let target_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let signature = Signature::new_unique();
+
+        mock_get_geolocation_user(&mut client);
 
         client
             .expect_get_geo_probe()
@@ -233,7 +269,7 @@ mod tests {
             target_type: TargetType::Inbound,
             target_ip: None,
             target_port: 8923,
-            target_pk: Some(target_pk.to_string()),
+            target_signing_pubkey: Some(target_pk.to_string()),
             probe: Some(probe_pk.to_string()),
             exchange: None,
         }
@@ -251,6 +287,8 @@ mod tests {
         let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let probe = make_probe(exchange_pk);
         let signature = Signature::new_unique();
+
+        mock_get_geolocation_user(&mut client);
 
         client
             .expect_resolve_exchange_pk()
@@ -282,7 +320,7 @@ mod tests {
             target_type: TargetType::Outbound,
             target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
             target_port: 8923,
-            target_pk: None,
+            target_signing_pubkey: None,
             probe: None,
             exchange: Some(exchange_pk.to_string()),
         }
@@ -300,6 +338,8 @@ mod tests {
         let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let probe = make_probe(exchange_pk);
         let signature = Signature::new_unique();
+
+        mock_get_geolocation_user(&mut client);
 
         client
             .expect_resolve_exchange_pk()
@@ -331,7 +371,7 @@ mod tests {
             target_type: TargetType::Outbound,
             target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
             target_port: 8923,
-            target_pk: None,
+            target_signing_pubkey: None,
             probe: None,
             exchange: Some("xams".to_string()),
         }
@@ -349,6 +389,8 @@ mod tests {
         let exchange_pk = Pubkey::new_unique();
         let probe = make_probe(exchange_pk);
         let signature = Signature::new_unique();
+
+        mock_get_geolocation_user(&mut client);
 
         client
             .expect_get_geo_probe()
@@ -375,7 +417,7 @@ mod tests {
             target_type: TargetType::OutboundIcmp,
             target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
             target_port: 8923,
-            target_pk: None,
+            target_signing_pubkey: None,
             probe: Some("ams-probe-01".to_string()),
             exchange: None,
         }
@@ -395,7 +437,7 @@ mod tests {
             target_type: TargetType::OutboundIcmp,
             target_ip: None,
             target_port: 8923,
-            target_pk: None,
+            target_signing_pubkey: None,
             probe: Some("ams-probe-01".to_string()),
             exchange: None,
         }
@@ -422,7 +464,7 @@ mod tests {
             target_type: TargetType::Outbound,
             target_ip: None,
             target_port: 8923,
-            target_pk: None,
+            target_signing_pubkey: None,
             probe: Some("ams-probe-01".to_string()),
             exchange: None,
         }
@@ -441,13 +483,16 @@ mod tests {
             target_type: TargetType::Inbound,
             target_ip: None,
             target_port: 8923,
-            target_pk: None,
+            target_signing_pubkey: None,
             probe: Some("ams-probe-01".to_string()),
             exchange: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
-        assert!(res.unwrap_err().to_string().contains("--target-pk"));
+        assert!(res
+            .unwrap_err()
+            .to_string()
+            .contains("--target-signing-pubkey"));
     }
 
     #[test]
@@ -457,6 +502,8 @@ mod tests {
         let probe_pk1 = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
         let probe_pk2 = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+
+        mock_get_geolocation_user(&mut client);
 
         client
             .expect_resolve_exchange_pk()
@@ -477,7 +524,7 @@ mod tests {
             target_type: TargetType::Outbound,
             target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
             target_port: 8923,
-            target_pk: None,
+            target_signing_pubkey: None,
             probe: None,
             exchange: Some(exchange_pk.to_string()),
         }

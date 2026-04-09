@@ -15,9 +15,12 @@ pub struct GetGeolocationUserCliCommand {
     /// User pubkey or code to retrieve
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub user: String,
-    /// Output as JSON
-    #[arg(long)]
+    /// Output as pretty JSON
+    #[arg(long, default_value_t = false, conflicts_with = "json_compact")]
     pub json: bool,
+    /// Output as compact JSON
+    #[arg(long, default_value_t = false, conflicts_with = "json")]
+    pub json_compact: bool,
 }
 
 #[derive(Serialize)]
@@ -44,7 +47,7 @@ struct TargetDisplay {
     pub ip: String,
     pub port: u16,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
-    pub target_pk: Pubkey,
+    pub target_signing_pubkey: Pubkey,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(rename = "probe")]
     pub geoprobe_pk: Pubkey,
@@ -70,7 +73,7 @@ impl GetGeolocationUserCliCommand {
                     target_type: t.target_type.to_string(),
                     ip,
                     port,
-                    target_pk: t.target_pk,
+                    target_signing_pubkey: t.target_pk,
                     geoprobe_pk: t.geoprobe_pk,
                 }
             })
@@ -97,8 +100,12 @@ impl GetGeolocationUserCliCommand {
             targets,
         };
 
-        if self.json {
-            let json = serde_json::to_string_pretty(&display)?;
+        if self.json || self.json_compact {
+            let json = if self.json_compact {
+                serde_json::to_string(&display)?
+            } else {
+                serde_json::to_string_pretty(&display)?
+            };
             writeln!(out, "{json}")?;
         } else {
             let rows: Vec<(&str, String)> = vec![
@@ -189,6 +196,7 @@ mod tests {
         let res = GetGeolocationUserCliCommand {
             user: user_pk.to_string(),
             json: false,
+            json_compact: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -225,6 +233,7 @@ mod tests {
         let res = GetGeolocationUserCliCommand {
             user: user_pk.to_string(),
             json: true,
+            json_compact: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -256,10 +265,54 @@ mod tests {
         let res = GetGeolocationUserCliCommand {
             user: user_pk.to_string(),
             json: false,
+            json_compact: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(!output_str.contains("Targets:"));
+    }
+
+    #[test]
+    fn test_cli_geolocation_user_get_json_compact() {
+        let mut client = MockGeoCliCommand::new();
+        let user_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
+        let probe_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+
+        let user = make_user(
+            "geo-user-01",
+            vec![GeolocationTarget {
+                target_type: GeoLocationTargetType::Outbound,
+                ip_address: Ipv4Addr::new(8, 8, 8, 8),
+                location_offset_port: 8923,
+                target_pk: Pubkey::default(),
+                geoprobe_pk: probe_pk,
+            }],
+        );
+
+        client
+            .expect_get_geolocation_user()
+            .with(predicate::eq(GetGeolocationUserCommand {
+                pubkey_or_code: user_pk.to_string(),
+            }))
+            .returning(move |_| Ok((user_pk, user.clone())));
+
+        let mut output = Vec::new();
+        let res = GetGeolocationUserCliCommand {
+            user: user_pk.to_string(),
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        let trimmed = output_str.trim();
+        assert!(!trimmed.contains('\n'), "compact JSON must be single-line");
+        let json: serde_json::Value = serde_json::from_str(trimmed).unwrap();
+        assert_eq!(json["account"].as_str().unwrap(), user_pk.to_string());
+        assert_eq!(json["code"].as_str().unwrap(), "geo-user-01");
+        assert_eq!(json["target_count"].as_u64().unwrap(), 1);
+        assert_eq!(json["targets"].as_array().unwrap().len(), 1);
+        assert_eq!(json["targets"][0]["ip"].as_str().unwrap(), "8.8.8.8");
     }
 }

@@ -317,7 +317,7 @@ func createGeoprobeOnchain(t *testing.T, dn *devnet.Devnet, code, exchangePK, pu
 		"--exchange", exchangePK,
 		"--public-ip", publicIP,
 		"--port", "8923",
-		"--signing-keypair", signingKeypair,
+		"--signing-pubkey", signingKeypair,
 	})
 	require.NoError(t, err, "probe create failed: %s", string(output))
 
@@ -358,7 +358,7 @@ func addGeoprobeParent(t *testing.T, dn *devnet.Devnet, code, devicePK string) {
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
 		"doublezero-geolocation", "probe", "add-parent",
-		"--code", code,
+		"--probe", code,
 		"--device", devicePK,
 	})
 	require.NoError(t, err, "probe add-parent failed: %s", string(output))
@@ -912,7 +912,7 @@ func addGeolocationInboundTarget(t *testing.T, dn *devnet.Devnet, userCode, targ
 		"doublezero-geolocation", "user", "add-target",
 		"--user", userCode,
 		"--type", "inbound",
-		"--target-pk", targetPK,
+		"--target-signing-pubkey", targetPK,
 		"--probe", probeCode,
 	})
 	require.NoError(t, err, "user add-target inbound failed: %s", string(output))

@@ -44,6 +44,7 @@ var (
 	slackWebhookURL         = flag.String("slack-webhook-url", "", "The Slack webhook URL to send alerts")
 	provisioningSlotCount   = flag.Uint64("provisioning-slot-count", defaultProvisioningSlotCount, "Burn-in slot count for new devices/links (~20 hours at 200000)")
 	drainedSlotCount        = flag.Uint64("drained-slot-count", defaultDrainedSlotCount, "Burn-in slot count for reactivated devices/links (~30 min at 5000)")
+	slotDurationMs          = flag.Uint64("slot-duration-ms", 400, "Duration of a ledger slot in milliseconds")
 	version                 = "dev"
 	commit                  = "none"
 	date                    = "unknown"
@@ -129,6 +130,48 @@ func main() {
 	serviceabilityExecutor := serviceability.NewExecutor(log, rpcClient, &signer, networkConfig.ServiceabilityProgramID)
 	telemetryClient := telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID)
 
+	// Initialize ClickHouse-dependent criteria.
+	var deviceCriteria []worker.DeviceCriterion
+	if chAddr := os.Getenv("CLICKHOUSE_ADDR"); chAddr != "" {
+		chDB := os.Getenv("CLICKHOUSE_DB")
+		if chDB == "" {
+			chDB = *env
+		}
+		chUser := os.Getenv("CLICKHOUSE_USER")
+		if chUser == "" {
+			chUser = "default"
+		}
+		chPass := os.Getenv("CLICKHOUSE_PASS")
+		chTLSDisabled := os.Getenv("CLICKHOUSE_TLS_DISABLED") == "true"
+
+		chClient, err := worker.NewClickHouseClient(chAddr, chDB, chUser, chPass, chTLSDisabled)
+		if err != nil {
+			log.Warn("ClickHouse connection failed, continuing without controller_success criterion", "addr", chAddr, "error", err)
+		} else {
+			log.Info("ClickHouse enabled", "addr", chAddr, "db", chDB, "user", chUser, "tls", !chTLSDisabled)
+			controllerSuccess := worker.NewControllerSuccessCriterion(
+				chClient,
+				*provisioningSlotCount,
+				*drainedSlotCount,
+				*slotDurationMs,
+				log,
+			)
+			deviceCriteria = append(deviceCriteria, controllerSuccess)
+		}
+	} else {
+		log.Info("ClickHouse disabled (CLICKHOUSE_ADDR not set), no controller_success criterion")
+	}
+
+	deviceEvaluator := &worker.DeviceHealthEvaluator{
+		ReadyForLinksCriteria: deviceCriteria,
+		ReadyForUsersCriteria: nil,
+		Log:                   log,
+	}
+	linkEvaluator := &worker.LinkHealthEvaluator{
+		ReadyForServiceCriteria: nil,
+		Log:                     log,
+	}
+
 	worker.MetricBuildInfo.WithLabelValues(version, commit, date).Set(1)
 	go func() {
 		listener, err := net.Listen("tcp", *metricsAddr)
@@ -155,6 +198,8 @@ func main() {
 		Env:                     *env,
 		ProvisioningSlotCount:   *provisioningSlotCount,
 		DrainedSlotCount:        *drainedSlotCount,
+		DeviceEvaluator:         deviceEvaluator,
+		LinkEvaluator:           linkEvaluator,
 	})
 	if err != nil {
 		log.Error("Failed to create worker", "error", err)

@@ -105,14 +105,23 @@ func (w *Worker) updatePendingDeviceHealth(ctx context.Context, devices []servic
 			"health", device.DeviceHealth,
 			"healthValue", int(device.DeviceHealth))
 
+		targetHealth := w.cfg.DeviceEvaluator.Evaluate(ctx, device)
+
+		if targetHealth == device.DeviceHealth {
+			MetricUpdatesSkipped.WithLabelValues("device").Inc()
+			continue
+		}
+
 		updates = append(updates, serviceability.DeviceHealthUpdate{
 			DevicePubkey: devicePubkey,
-			Health:       serviceability.DeviceHealthReadyForUsers,
+			Health:       targetHealth,
 		})
 		w.log.Info("Queuing device health update",
 			"device", devicePubkey.String(),
 			"code", device.Code,
-			"status", device.Status.String())
+			"status", device.Status.String(),
+			"currentHealth", device.DeviceHealth.String(),
+			"targetHealth", targetHealth.String())
 	}
 
 	if len(updates) == 0 {
@@ -143,14 +152,24 @@ func (w *Worker) updatePendingLinkHealth(ctx context.Context, links []serviceabi
 	var updates []serviceability.LinkHealthUpdate
 	for _, link := range links {
 		linkPubkey := solana.PublicKeyFromBytes(link.PubKey[:])
+
+		targetHealth := w.cfg.LinkEvaluator.Evaluate(ctx, link)
+
+		if targetHealth == link.LinkHealth {
+			MetricUpdatesSkipped.WithLabelValues("link").Inc()
+			continue
+		}
+
 		updates = append(updates, serviceability.LinkHealthUpdate{
 			LinkPubkey: linkPubkey,
-			Health:     serviceability.LinkHealthReadyForService,
+			Health:     targetHealth,
 		})
 		w.log.Info("Queuing link health update",
 			"link", linkPubkey.String(),
 			"code", link.Code,
-			"status", link.Status.String())
+			"status", link.Status.String(),
+			"currentHealth", link.LinkHealth.String(),
+			"targetHealth", targetHealth.String())
 	}
 
 	if len(updates) == 0 {

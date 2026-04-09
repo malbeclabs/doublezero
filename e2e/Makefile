@@ -55,6 +55,8 @@ test-cleanup:
 	@docker rm -f $$(docker ps -aq --filter label=dz.malbeclabs.com) 2>/dev/null || true
 	@echo "Removing networks with label dz.malbeclabs.com..."
 	@docker network rm $$(docker network ls -q --filter label=dz.malbeclabs.com) 2>/dev/null || true
+	@echo "Removing volumes with label dz.malbeclabs.com..."
+	@docker volume rm $$(docker volume ls -q --filter label=dz.malbeclabs.com) 2>/dev/null || true
 
 # -----------------------------------------------------------------------------
 # Solana image build and push.

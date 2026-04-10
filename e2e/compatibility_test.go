@@ -131,30 +131,31 @@ var knownIncompatibilities = map[string]knownIncompat{
 
 	// RFC-18 mandatory upgrade boundary: all operations that read device accounts
 	// (set_unlinked, link create/update/delete) require a CLI that understands the new
-	// InterfaceV2 format (flex_algo_node_segments). All released versions prior to this
-	// release are incompatible. set_unlinked uses cascadeKnownFail so that downstream
-	// link phases are skipped rather than run-and-fail when this is a known incompatibility.
-	"write/device_interface_set_unlinked":   {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/device_interface_set_unlinked_2": {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/device_interface_set_unlinked_3": {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/device_interface_set_unlinked_4": {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/link_create_wan":                 {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/link_create_dzx":                 {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/link_accept_dzx":                 {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/link_update":                     {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/link_set_health":                 {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/link_set_health_dzx":             {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/link_get":                        {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/link_wait_activated":             {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/link_wait_activated_dzx":         {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/link_drain":                      {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/link_drain_dzx":                  {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/link_delete":                     {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/link_delete_dzx":                 {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/device_interface_delete":         {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/device_interface_delete_2":       {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/device_interface_delete_3":       {ranges: []versionRange{{before: "0.17.0"}}},
-	"write/device_interface_delete_4":       {ranges: []versionRange{{before: "0.17.0"}}},
+	// InterfaceV2 format (flex_algo_node_segments). v0.17.0 was released before the
+	// RFC-18 changes were merged, so it is also incompatible. set_unlinked uses
+	// cascadeKnownFail so that downstream link phases are skipped rather than
+	// run-and-fail when this is a known incompatibility.
+	"write/device_interface_set_unlinked":   {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/device_interface_set_unlinked_2": {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/device_interface_set_unlinked_3": {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/device_interface_set_unlinked_4": {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_create_wan":                 {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_create_dzx":                 {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_accept_dzx":                 {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_update":                     {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_set_health":                 {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_set_health_dzx":             {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_get":                        {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_wait_activated":             {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_wait_activated_dzx":         {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_drain":                      {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_drain_dzx":                  {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_delete":                     {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_delete_dzx":                 {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/device_interface_delete":         {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/device_interface_delete_2":       {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/device_interface_delete_3":       {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/device_interface_delete_4":       {ranges: []versionRange{{before: "0.18.0"}}},
 }
 
 // =============================================================================

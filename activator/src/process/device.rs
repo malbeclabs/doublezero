@@ -25,6 +25,7 @@ pub fn process_device_event(
     device: &Device,
     segment_routing_ids: &mut IDAllocator,
     link_ips: &mut IPBlockAllocator,
+    enable_flex_algo: bool,
 ) {
     match device.status {
         DeviceStatus::Pending => {
@@ -58,7 +59,12 @@ pub fn process_device_event(
             info!("{log_msg}");
         }
         DeviceStatus::DeviceProvisioning | DeviceStatus::LinkProvisioning => {
-            let mut mgr = InterfaceMgr::new(client, Some(segment_routing_ids), link_ips);
+            let mut mgr = InterfaceMgr::new(
+                client,
+                Some(segment_routing_ids),
+                link_ips,
+                enable_flex_algo,
+            );
             mgr.process_device_interfaces(pubkey, device);
 
             match devices.entry(*pubkey) {
@@ -76,7 +82,12 @@ pub fn process_device_event(
             }
         }
         DeviceStatus::Activated => {
-            let mut mgr = InterfaceMgr::new(client, Some(segment_routing_ids), link_ips);
+            let mut mgr = InterfaceMgr::new(
+                client,
+                Some(segment_routing_ids),
+                link_ips,
+                enable_flex_algo,
+            );
             mgr.process_device_interfaces(pubkey, device);
 
             match devices.entry(*pubkey) {
@@ -167,6 +178,7 @@ pub fn process_device_event_stateless(
     pubkey: &Pubkey,
     devices: &mut DeviceMapStateless,
     device: &Device,
+    enable_flex_algo: bool,
 ) {
     match device.status {
         DeviceStatus::Pending => {
@@ -200,7 +212,7 @@ pub fn process_device_event_stateless(
             info!("{log_msg}");
         }
         DeviceStatus::DeviceProvisioning | DeviceStatus::LinkProvisioning => {
-            let mgr = InterfaceMgrStateless::new(client);
+            let mgr = InterfaceMgrStateless::new(client, enable_flex_algo);
             mgr.process_device_interfaces(pubkey, device);
 
             match devices.entry(*pubkey) {
@@ -215,7 +227,7 @@ pub fn process_device_event_stateless(
             }
         }
         DeviceStatus::Activated => {
-            let mgr = InterfaceMgrStateless::new(client);
+            let mgr = InterfaceMgrStateless::new(client, enable_flex_algo);
             mgr.process_device_interfaces(pubkey, device);
 
             match devices.entry(*pubkey) {
@@ -396,6 +408,7 @@ mod tests {
                 &device,
                 &mut segment_ids,
                 &mut ip_block_allocator,
+                false,
             );
 
             assert!(devices.contains_key(&device_pubkey));
@@ -447,6 +460,7 @@ mod tests {
                 &device,
                 &mut segment_ids,
                 &mut ip_block_allocator,
+                false,
             );
 
             device.status = DeviceStatus::Deleting;
@@ -538,6 +552,7 @@ mod tests {
                 &device,
                 &mut segment_ids,
                 &mut ip_block_allocator,
+                false,
             );
             assert!(!devices.contains_key(&device_pubkey));
 
@@ -669,6 +684,7 @@ mod tests {
             &device,
             &mut segment_ids,
             &mut ip_block_allocator,
+            false,
         );
 
         assert!(devices.contains_key(&pubkey));
@@ -697,6 +713,7 @@ mod tests {
             &device,
             &mut segment_ids,
             &mut ip_block_allocator,
+            false,
         );
 
         assert!(devices.contains_key(&pubkey));
@@ -769,7 +786,13 @@ mod tests {
                 )
                 .returning(|_, _| Ok(Signature::new_unique()));
 
-            super::process_device_event_stateless(&client, &device_pubkey, &mut devices, &device);
+            super::process_device_event_stateless(
+                &client,
+                &device_pubkey,
+                &mut devices,
+                &device,
+                false,
+            );
 
             assert!(devices.contains_key(&device_pubkey));
 
@@ -896,7 +919,13 @@ mod tests {
                 )
                 .returning(|_, _| Ok(Signature::new_unique()));
 
-            super::process_device_event_stateless(&client, &device_pubkey, &mut devices, &device);
+            super::process_device_event_stateless(
+                &client,
+                &device_pubkey,
+                &mut devices,
+                &device,
+                false,
+            );
 
             assert!(!devices.contains_key(&device_pubkey));
 

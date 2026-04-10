@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.1)
+
+- uptick crate to v0.5.1 (#344)
 - add `--withdraw-excess-balance` to `revenue-distribution validator-deposit` (#343)
 - `shreds`: prepend `CheckCliVersion` instruction to all write transactions (pay, withdraw, validator-client-rewards) for onchain minimum CLI version enforcement (#342)
 - `shreds list`: filter by funder (withdraw-authority) by default, add `--all` flag (#328)

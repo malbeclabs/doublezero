@@ -12,6 +12,9 @@ import (
 
 const DefaultCacheTTL = 5 * time.Second
 
+// DefaultRPCTimeout is the maximum time allowed for a single GetProgramData RPC call.
+const DefaultRPCTimeout = 30 * time.Second
+
 // ProgramDataProvider is the interface for fetching onchain program data.
 type ProgramDataProvider interface {
 	GetProgramData(ctx context.Context) (*serviceability.ProgramData, error)
@@ -24,19 +27,21 @@ type ProgramDataProvider interface {
 // The mutex is only held briefly to read/write the cache — the RPC call itself
 // runs outside the lock via singleflight to avoid blocking concurrent callers.
 type CachingFetcher struct {
-	provider  ProgramDataProvider
-	cacheTTL  time.Duration
-	mu        sync.RWMutex
-	cached    *serviceability.ProgramData
-	fetchedAt time.Time
-	group     singleflight.Group
+	provider   ProgramDataProvider
+	cacheTTL   time.Duration
+	rpcTimeout time.Duration
+	mu         sync.RWMutex
+	cached     *serviceability.ProgramData
+	fetchedAt  time.Time
+	group      singleflight.Group
 }
 
-// NewCachingFetcher creates a CachingFetcher with the given provider and TTL.
-func NewCachingFetcher(provider ProgramDataProvider, cacheTTL time.Duration) *CachingFetcher {
+// NewCachingFetcher creates a CachingFetcher with the given provider, TTL, and RPC timeout.
+func NewCachingFetcher(provider ProgramDataProvider, cacheTTL, rpcTimeout time.Duration) *CachingFetcher {
 	return &CachingFetcher{
-		provider: provider,
-		cacheTTL: cacheTTL,
+		provider:   provider,
+		cacheTTL:   cacheTTL,
+		rpcTimeout: rpcTimeout,
 	}
 }
 
@@ -67,9 +72,12 @@ func (f *CachingFetcher) GetProgramData(ctx context.Context) (*serviceability.Pr
 
 		// Use a detached context so a cancellation from the first caller's ctx
 		// does not fail all other waiters sharing this singleflight call.
-		// context.WithoutCancel preserves the parent deadline while dropping cancellation.
+		// context.WithoutCancel drops both cancellation and deadline, so we
+		// add an explicit timeout to bound how long the RPC can block.
+		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), f.rpcTimeout)
+		defer cancel()
 		start := time.Now()
-		data, err := f.provider.GetProgramData(context.WithoutCancel(ctx))
+		data, err := f.provider.GetProgramData(fetchCtx)
 		metricFetchDuration.Observe(time.Since(start).Seconds())
 
 		if err != nil {

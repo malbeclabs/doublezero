@@ -39,7 +39,7 @@ func TestCachingFetcher_CacheHit(t *testing.T) {
 		Devices: []serviceability.Device{{Code: "dev1"}},
 	}
 	provider := &mockProvider{data: data}
-	fetcher := NewCachingFetcher(provider, 1*time.Second)
+	fetcher := NewCachingFetcher(provider, 1*time.Second, 30*time.Second)
 
 	ctx := context.Background()
 
@@ -70,7 +70,7 @@ func TestCachingFetcher_CacheExpiry(t *testing.T) {
 		Devices: []serviceability.Device{{Code: "dev1"}},
 	}
 	provider := &mockProvider{data: data}
-	fetcher := NewCachingFetcher(provider, 10*time.Millisecond)
+	fetcher := NewCachingFetcher(provider, 10*time.Millisecond, 30*time.Second)
 
 	ctx := context.Background()
 
@@ -96,7 +96,7 @@ func TestCachingFetcher_ErrorReturnsStaleData(t *testing.T) {
 		Devices: []serviceability.Device{{Code: "dev1"}},
 	}
 	provider := &mockProvider{data: data}
-	fetcher := NewCachingFetcher(provider, 10*time.Millisecond)
+	fetcher := NewCachingFetcher(provider, 10*time.Millisecond, 30*time.Second)
 
 	ctx := context.Background()
 
@@ -125,11 +125,32 @@ func TestCachingFetcher_ErrorReturnsStaleData(t *testing.T) {
 
 func TestCachingFetcher_ErrorWithNoCache(t *testing.T) {
 	provider := &mockProvider{err: errors.New("rpc error")}
-	fetcher := NewCachingFetcher(provider, 1*time.Second)
+	fetcher := NewCachingFetcher(provider, 1*time.Second, 30*time.Second)
 
 	_, err := fetcher.GetProgramData(context.Background())
 	if err == nil {
 		t.Fatal("expected error when no cache and provider fails")
+	}
+}
+
+// blockingProvider blocks until its context is cancelled, simulating a hung RPC.
+type blockingProvider struct{}
+
+func (b *blockingProvider) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestCachingFetcher_RPCTimeout(t *testing.T) {
+	fetcher := NewCachingFetcher(&blockingProvider{}, 1*time.Second, 50*time.Millisecond)
+
+	_, err := fetcher.GetProgramData(context.Background())
+
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected DeadlineExceeded, got: %v", err)
 	}
 }
 
@@ -138,7 +159,7 @@ func TestCachingFetcher_ConcurrentAccess(t *testing.T) {
 		Devices: []serviceability.Device{{Code: "dev1"}},
 	}
 	provider := &mockProvider{data: data}
-	fetcher := NewCachingFetcher(provider, 1*time.Second)
+	fetcher := NewCachingFetcher(provider, 1*time.Second, 30*time.Second)
 
 	ctx := context.Background()
 	var wg sync.WaitGroup

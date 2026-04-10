@@ -41,6 +41,7 @@ var (
 	clientIP                    = flag.String("client-ip", "", "public IP of this client, used to match onchain user accounts; auto-discovered if not set")
 	reconcilerPollInterval      = flag.Int("reconciler-poll-interval", 10, "reconciler poll interval in seconds")
 	reconcilerFetchTimeout      = flag.Int("reconciler-fetch-timeout", 60, "timeout in seconds for onchain data fetches during reconciliation")
+	onchainRPCTimeout           = flag.Duration("onchain-rpc-timeout", defaultOnchainRPCTimeout, "Timeout for GetProgramData RPC calls inside the onchain caching fetcher.")
 	stateDir                    = flag.String("state-dir", "/var/lib/doublezerod", "directory for persistent state files")
 
 	// Route liveness configuration flags.
@@ -65,6 +66,7 @@ var (
 )
 
 const (
+	defaultOnchainRPCTimeout       = 30 * time.Second
 	defaultRouteLivenessTxMin      = 1 * time.Second
 	defaultRouteLivenessRxMin      = 1 * time.Second
 	defaultRouteLivenessDetectMult = 3
@@ -186,7 +188,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, *latencySingleSocket, networkConfig, *probeInterval, *cacheUpdateInterval, lmc, *clientIP, *reconcilerPollInterval, *reconcilerFetchTimeout, *stateDir); err != nil {
+	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, *latencySingleSocket, networkConfig, *probeInterval, *cacheUpdateInterval, lmc, *clientIP, *reconcilerPollInterval, *reconcilerFetchTimeout, *stateDir, *onchainRPCTimeout); err != nil {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}

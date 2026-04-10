@@ -15,6 +15,7 @@ import (
 // interface_state (matches "interfaces" + "interface" + "state") since ifindex paths
 // contain all three elements.
 var DefaultExtractors = []ExtractorDef{
+	{Name: "isis_global_state", Match: PathContains("isis", "global", "state"), Extract: extractIsisGlobalState},
 	{Name: "isis_adjacencies", Match: PathContains("isis", "adjacencies"), Extract: extractIsisAdjacencies},
 	{Name: "system_state", Match: PathContains("system", "state"), Extract: extractSystemState},
 	{Name: "bgp_neighbors", Match: PathContains("bgp", "neighbors"), Extract: extractBgpNeighbors},
@@ -374,6 +375,44 @@ func extractInterfaceState(device *oc.Device, meta Metadata) []Record {
 		}
 
 		records = append(records, record)
+	}
+
+	return records
+}
+
+// extractIsisGlobalState extracts ISIS global state records from an oc.Device.
+func extractIsisGlobalState(device *oc.Device, meta Metadata) []Record {
+	var records []Record
+
+	if device.NetworkInstances == nil {
+		return nil
+	}
+
+	for niName, ni := range device.NetworkInstances.NetworkInstance {
+		if ni.Protocols == nil {
+			continue
+		}
+		for _, proto := range ni.Protocols.Protocol {
+			if proto.Isis == nil || proto.Isis.Global == nil || proto.Isis.Global.State == nil {
+				continue
+			}
+			state := proto.Isis.Global.State
+			record := IsisGlobalStateRecord{
+				Timestamp:       meta.Timestamp,
+				DevicePubkey:    meta.DevicePubkey,
+				NetworkInstance: niName,
+			}
+			if state.Instance != nil {
+				record.Instance = *state.Instance
+			}
+			if len(state.Net) > 0 {
+				record.Net = strings.Join(state.Net, ",")
+			}
+			if state.LevelCapability != 0 {
+				record.LevelCapability = state.LevelCapability.String()
+			}
+			records = append(records, record)
+		}
 	}
 
 	return records

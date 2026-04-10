@@ -19,6 +19,8 @@ export interface DeviceLatencySamples {
   samplingIntervalMicroseconds: bigint;
   startTimestampMicroseconds: bigint;
   nextSampleIndex: number;
+  agentVersion: string;
+  agentCommit: string;
   samples: number[];
 }
 
@@ -37,6 +39,13 @@ export interface InternetLatencySamples {
 
 function readPubkey(r: DefensiveReader): PublicKey {
   return new PublicKey(r.readPubkeyRaw());
+}
+
+function readFixedString(r: DefensiveReader, len: number): string {
+  const bytes = r.readBytes(len);
+  const end = bytes.indexOf(0);
+  const trimmed = end === -1 ? bytes : bytes.subarray(0, end);
+  return new TextDecoder().decode(trimmed);
 }
 
 export function deserializeDeviceLatencySamples(
@@ -62,7 +71,9 @@ export function deserializeDeviceLatencySamples(
   const startTimestampMicroseconds = r.readU64();
   const nextSampleIndex = r.readU32();
 
-  r.readBytes(128); // _unused
+  const agentVersion = readFixedString(r, 16);
+  const agentCommit = readFixedString(r, 8);
+  r.readBytes(104); // _unused
 
   const count = Math.min(nextSampleIndex, MAX_DEVICE_LATENCY_SAMPLES);
   const samples: number[] = [];
@@ -83,6 +94,8 @@ export function deserializeDeviceLatencySamples(
     samplingIntervalMicroseconds,
     startTimestampMicroseconds,
     nextSampleIndex,
+    agentVersion,
+    agentCommit,
     samples,
   };
 }

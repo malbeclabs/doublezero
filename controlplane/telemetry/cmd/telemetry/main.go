@@ -346,6 +346,8 @@ func main() {
 		SubmitterMaxConcurrency:    *submitterMaxConcurrency,
 		MaxConsecutiveSenderLosses: *maxConsecutiveSenderLosses,
 		GeolocationClient:          geolocationClient,
+		AgentVersion:               version,
+		AgentCommit:                commit,
 	})
 	if err != nil {
 		log.Error("failed to create telemetry collector", "error", err)

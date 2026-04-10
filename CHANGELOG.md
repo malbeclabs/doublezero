@@ -8,6 +8,14 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.17.0](https://github.com/malbeclabs/doublezero/compare/client/v0.16.0...client/v0.17.0) - 2026-04-10
+
+### Breaking
+
+### Changes
+
+- Activator
+  - Fix duplicate tunnel underlay pairs after restart by registering `device.public_ip` as in-use for legacy users with unset `tunnel_endpoint` during allocation reload
 - Client
   - Rank devices and tunnel endpoints by minimum observed latency (`min_latency_ns`) instead of average when selecting a connection target, preferring paths with the best achievable round-trip time
 - Tools
@@ -23,9 +31,13 @@ All notable changes to this project will be documented in this file.
   - Add `TestE2E_GeoprobeIcmpTargets` verifying end-to-end ICMP outbound offset delivery via onchain `outbound-icmp` targets
   - Refactor geoprobe E2E tests to use testcontainers entrypoints and onchain target discovery
   - Add `TestE2E_UserBGPStatus` verifying that the telemetry BGP status submitter correctly reports onchain status transitions as clients connect and establish BGP sessions
+- Monitor
+  - Add ClickHouse as a telemetry backend for the global monitor alongside existing InfluxDB
 - SDK
+  - Deserialize `agent_version` and `agent_commit` from device latency samples in Go, TypeScript, and Python SDKs
   - Add `BGPStatus` type (Unknown/Up/Down) and `SetUserBGPStatus` executor instruction to the Go serviceability SDK
 - Smartcontract
+  - Add `agent_version` (`[u8; 16]`) and `agent_commit` (`[u8; 8]`) fields to `DeviceLatencySamplesHeader`, carved from the existing reserved region; accept both fields in the `InitializeDeviceLatencySamples` instruction via incremental deserialization (fully backward compatible)
   - Implement `SetUserBGPStatus` processor: validates metrics publisher authorization, updates `bgp_status`, `last_bgp_reported_at`, and `last_bgp_up_at` fields on the user account
   - Add human-readable error messages for serviceability program errors in the Go SDK, including program log extraction for enhanced debugging
   - `user get` no longer fails when no Access Pass exists; it prints a warning to stderr and continues, showing an empty access pass field
@@ -33,6 +45,15 @@ All notable changes to this project will be documented in this file.
   - Extend `validate_program_account!` migration to remaining user and multicastgroup allowlist processors (`set_bgp_status`, `delete`, `closeaccount`, publisher/subscriber `add`/`remove`)
   - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
   - Allow pending users with subs to be deleted
+- Onchain programs
+  - Add `tunnel_endpoint` field to the `UpdateUser` instruction (`UserUpdateArgs`), allowing the activator to overwrite a user's tunnel endpoint onchain; field is optional and backward compatible via incremental deserialization
+- Telemetry
+  - Device telemetry agent now posts `agent_version` and `agent_commit` in the `DeviceLatencySamplesHeader` when initializing new sample accounts, enabling version attribution of onchain telemetry data
+  - Add optional TLS support to state-ingest server via `--tls-cert-file` and `--tls-key-file` flags; when set, the server listens on both HTTP (`:8080`) and HTTPS (`:8443`) simultaneously
+  - Remove `--additional-child-probes` CLI flag from telemetry-agent; child geoprobe discovery now relies entirely on the onchain Geolocation program
+  - Add BGP status submitter: on each tick, reads BGP socket state from the device namespace, maps each activated user to their tunnel peer IP, and submits `SetUserBGPStatus` onchain; supports a configurable down grace period and periodic keepalive refresh; enabled via `--bgp-status-enable` with `--bgp-status-interval`, `--bgp-status-refresh-interval`, and `--bgp-status-down-grace-period` flags
+- Tools
+  - Add `IsRetryableFunc` field to `RetryOptions` for configurable retry criteria in the Solana JSON-RPC client; add `"rate limited"` string match and RPC code `-32429` to the default implementation
 - Geolocation
   - Standardize CLI flag naming: probe mutation commands use `--probe` (was `--code`) accepting pubkey or code; rename `--signing-keypair` → `--signing-pubkey` and `--target-pk` → `--target-signing-pubkey`; add `--json-compact` to `get` commands
   - geoprobe-target can now store LocationOffset messages in ClickHouse

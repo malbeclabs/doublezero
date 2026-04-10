@@ -511,6 +511,8 @@ impl TelemetryProgramHelper {
         let args = InitializeDeviceLatencySamplesArgs {
             epoch,
             sampling_interval_microseconds: interval_us,
+            agent_version: [0; 16],
+            agent_commit: [0; 8],
         };
 
         self.execute_transaction(

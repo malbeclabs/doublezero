@@ -682,9 +682,9 @@ type Link struct {
 	DelayOverrideNs   uint64            `influx:"field,delay_override_ns"`
 	LinkHealth        LinkHealth        `influx:"field,link_health"`
 	LinkDesiredStatus LinkDesiredStatus `influx:"tag,link_desired_status"`
-	LinkTopologies    [][32]byte `json:",omitempty"`
-	LinkFlags         uint8      `json:",omitempty"`
-	PubKey            [32]byte   `influx:"tag,pubkey,pubkey"`
+	LinkTopologies    [][32]byte        `json:",omitempty"`
+	LinkFlags         uint8             `json:",omitempty"`
+	PubKey            [32]byte          `influx:"tag,pubkey,pubkey"`
 }
 
 func (l Link) MarshalJSON() ([]byte, error) {
@@ -811,8 +811,8 @@ type Tenant struct {
 	BillingDiscriminant         uint8               `influx:"-"`
 	BillingRate                 uint64              `influx:"field,billing_rate"`
 	BillingLastDeductionDzEpoch uint64              `influx:"field,billing_last_deduction_dz_epoch"`
-	IncludeTopologies           [][32]byte `json:",omitempty"`
-	PubKey                      [32]byte   `influx:"tag,pubkey,pubkey"`
+	IncludeTopologies           [][32]byte          `json:",omitempty"`
+	PubKey                      [32]byte            `influx:"tag,pubkey,pubkey"`
 }
 
 func (t Tenant) MarshalJSON() ([]byte, error) {

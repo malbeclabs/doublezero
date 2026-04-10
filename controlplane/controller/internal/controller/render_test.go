@@ -879,7 +879,7 @@ func TestRenderConfig(t *testing.T) {
 				TelemetryTWAMPListenPort: 862,
 				LocalASN:                 65342,
 				UnicastVrfs:              []uint16{1},
-				Config:                   nil,
+				Config:                   &FeaturesConfig{},
 				AllTopologies: []TopologyModel{
 					{
 						Name:           "unicast-default",

@@ -75,7 +75,7 @@ func (w *Worker) tick(ctx context.Context) {
 		"drainedSlot", drainedSlot)
 
 	// Resolve burn-in boundary slots to wall-clock times for criteria evaluation.
-	var burnIn BurnInTimes
+	burnIn := BurnInTimes{Now: time.Now()}
 	if provisioningSlot > 0 {
 		bt, err := w.cfg.LedgerRPCClient.GetBlockTime(ctx, provisioningSlot)
 		if err != nil {

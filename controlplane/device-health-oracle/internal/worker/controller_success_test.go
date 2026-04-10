@@ -37,6 +37,7 @@ func TestControllerSuccessCriterion_Passes(t *testing.T) {
 	start := now.Add(-33 * time.Minute)
 	ctx := ContextWithBurnInTimes(context.Background(), BurnInTimes{
 		DrainedStart: start,
+		Now:          now,
 	})
 
 	checker := &mockControllerCallChecker{minutesWithCalls: 33}
@@ -53,6 +54,7 @@ func TestControllerSuccessCriterion_Fails_InsufficientCoverage(t *testing.T) {
 	start := now.Add(-33 * time.Minute)
 	ctx := ContextWithBurnInTimes(context.Background(), BurnInTimes{
 		DrainedStart: start,
+		Now:          now,
 	})
 
 	checker := &mockControllerCallChecker{minutesWithCalls: 20}
@@ -69,6 +71,7 @@ func TestControllerSuccessCriterion_Fails_ClickHouseError(t *testing.T) {
 	start := now.Add(-1 * time.Hour)
 	ctx := ContextWithBurnInTimes(context.Background(), BurnInTimes{
 		ProvisioningStart: start,
+		Now:               now,
 	})
 
 	checker := &mockControllerCallChecker{err: errors.New("connection refused")}
@@ -95,6 +98,7 @@ func TestControllerSuccessCriterion_UsesProvisioningStart(t *testing.T) {
 	ctx := ContextWithBurnInTimes(context.Background(), BurnInTimes{
 		ProvisioningStart: now.Add(-60 * time.Minute),
 		DrainedStart:      now.Add(-10 * time.Minute),
+		Now:               now,
 	})
 
 	// Provide enough coverage for provisioning (60 min) but check that
@@ -112,6 +116,7 @@ func TestControllerSuccessCriterion_UsesDrainedStart(t *testing.T) {
 	ctx := ContextWithBurnInTimes(context.Background(), BurnInTimes{
 		ProvisioningStart: now.Add(-60 * time.Minute),
 		DrainedStart:      now.Add(-10 * time.Minute),
+		Now:               now,
 	})
 
 	// Only 10 minutes of coverage — enough for drained but not provisioning.
@@ -121,4 +126,23 @@ func TestControllerSuccessCriterion_UsesDrainedStart(t *testing.T) {
 	device := serviceability.Device{Status: serviceability.DeviceStatusDrained}
 	passed, _ := c.Check(ctx, device)
 	assert.True(t, passed)
+}
+
+func TestControllerSuccessCriterion_ZeroBurnIn_Passes(t *testing.T) {
+	// When burn-in start == now (zero-length window), the criterion should pass
+	// without querying ClickHouse. This happens in newly created environments
+	// where the burn-in slot is 0.
+	now := time.Now()
+	ctx := ContextWithBurnInTimes(context.Background(), BurnInTimes{
+		ProvisioningStart: now,
+		Now:               now,
+	})
+
+	checker := &mockControllerCallChecker{err: errors.New("should not be called")}
+	c := NewControllerSuccessCriterion(checker, testLoggerSlog())
+
+	device := serviceability.Device{Status: serviceability.DeviceStatusDeviceProvisioning}
+	passed, reason := c.Check(ctx, device)
+	assert.True(t, passed)
+	assert.Empty(t, reason)
 }

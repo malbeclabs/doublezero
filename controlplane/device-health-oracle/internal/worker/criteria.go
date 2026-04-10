@@ -15,6 +15,7 @@ type burnInTimesKey struct{}
 type BurnInTimes struct {
 	ProvisioningStart time.Time
 	DrainedStart      time.Time
+	Now               time.Time // tick timestamp, used as the end of the burn-in window
 }
 
 // ContextWithBurnInTimes returns a new context carrying the given BurnInTimes.
@@ -26,20 +27,17 @@ func ContextWithBurnInTimes(ctx context.Context, times BurnInTimes) context.Cont
 // start time and expected number of minutes for the given device status.
 // Returns ok=false if the context has no BurnInTimes, and expectedMinutes=0
 // when the burn-in window has zero length (e.g. a newly created environment).
-func DeviceBurnIn(ctx context.Context, status serviceability.DeviceStatus) (start time.Time, expectedMinutes int64, ok bool) {
+func DeviceBurnIn(ctx context.Context, status serviceability.DeviceStatus) (start time.Time, now time.Time, expectedMinutes int64, ok bool) {
 	burnIn, ok := ctx.Value(burnInTimesKey{}).(BurnInTimes)
 	if !ok {
-		return time.Time{}, 0, false
+		return time.Time{}, time.Time{}, 0, false
 	}
 	start = burnIn.ProvisioningStart
-	if status == serviceability.DeviceStatusDrained {
+	if status.IsDrained() {
 		start = burnIn.DrainedStart
 	}
-	expectedMinutes = int64(time.Since(start).Minutes())
-	if expectedMinutes < 0 {
-		expectedMinutes = 0
-	}
-	return start, expectedMinutes, true
+	expectedMinutes = max(int64(burnIn.Now.Sub(start).Minutes()), 0)
+	return start, burnIn.Now, expectedMinutes, true
 }
 
 // DeviceCriterion evaluates whether a device meets a specific readiness requirement.
@@ -73,7 +71,9 @@ func (e *DeviceHealthEvaluator) Evaluate(ctx context.Context, device serviceabil
 		return current
 	}
 
-	// Stage 1: Pending/Unknown → ReadyForLinks
+	// Stage 1: Pending/Unknown → ReadyForLinks.
+	// Evaluate advances at most one stage per call, so a device needs a minimum
+	// of two ticks (two worker intervals) to go from Pending to ReadyForUsers.
 	if current < serviceability.DeviceHealthReadyForLinks {
 		if !e.checkAll(ctx, device, e.ReadyForLinksCriteria) {
 			return current

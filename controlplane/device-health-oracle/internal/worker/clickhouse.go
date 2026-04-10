@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
+
+var validDBName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 // ControllerCallChecker queries ClickHouse for controller call records.
 type ControllerCallChecker interface {
@@ -22,8 +25,11 @@ type ClickHouseClient struct {
 	db   string
 }
 
-// NewClickHouseClient creates a new ClickHouse client connection.
 func NewClickHouseClient(addr, db, user, pass string, disableTLS bool) (*ClickHouseClient, error) {
+	if !validDBName.MatchString(db) {
+		return nil, fmt.Errorf("invalid clickhouse database name: %q", db)
+	}
+
 	addr = strings.TrimPrefix(addr, "https://")
 	addr = strings.TrimPrefix(addr, "http://")
 
@@ -74,7 +80,6 @@ func (c *ClickHouseClient) ControllerCallCoverage(ctx context.Context, devicePub
 	return int64(minutesWithCalls), nil
 }
 
-// Close closes the ClickHouse connection.
 func (c *ClickHouseClient) Close() error {
 	return c.conn.Close()
 }

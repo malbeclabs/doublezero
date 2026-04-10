@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -21,7 +20,6 @@ type ControllerSuccessCriterion struct {
 	log     *slog.Logger
 }
 
-// NewControllerSuccessCriterion creates a new ControllerSuccessCriterion.
 func NewControllerSuccessCriterion(checker ControllerCallChecker, log *slog.Logger) *ControllerSuccessCriterion {
 	return &ControllerSuccessCriterion{
 		checker: checker,
@@ -34,7 +32,7 @@ func (c *ControllerSuccessCriterion) Name() string {
 }
 
 func (c *ControllerSuccessCriterion) Check(ctx context.Context, device serviceability.Device) (bool, string) {
-	start, expectedMinutes, ok := DeviceBurnIn(ctx, device.Status)
+	start, now, expectedMinutes, ok := DeviceBurnIn(ctx, device.Status)
 	if !ok {
 		return false, "burn-in times not available in context"
 	}
@@ -43,7 +41,7 @@ func (c *ControllerSuccessCriterion) Check(ctx context.Context, device serviceab
 	}
 
 	pubkey := solana.PublicKeyFromBytes(device.PubKey[:]).String()
-	minutesWithCalls, err := c.checker.ControllerCallCoverage(ctx, pubkey, start, time.Now())
+	minutesWithCalls, err := c.checker.ControllerCallCoverage(ctx, pubkey, start, now)
 	if err != nil {
 		c.log.Error("Failed to query controller call coverage",
 			"device", pubkey, "code", device.Code, "error", err)

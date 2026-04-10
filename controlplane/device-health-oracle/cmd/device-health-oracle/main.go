@@ -147,6 +147,7 @@ func main() {
 		if err != nil {
 			log.Warn("ClickHouse connection failed, continuing without controller_success criterion", "addr", chAddr, "error", err)
 		} else {
+			defer chClient.Close()
 			log.Info("ClickHouse enabled", "addr", chAddr, "db", chDB, "user", chUser, "tls", !chTLSDisabled)
 			controllerSuccess := worker.NewControllerSuccessCriterion(chClient, log)
 			deviceCriteria = append(deviceCriteria, controllerSuccess)

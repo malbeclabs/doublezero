@@ -178,7 +178,16 @@ describe("compat: getProgramData", () => {
     }
 
     const { Client } = await import("../client.js");
-    const client = Client.mainnetBeta();
+    // Use a longer per-request timeout for this test: getProgramAccounts returns all program
+    // accounts in a single response that can take 60-90s to stream on mainnet. The 30s default
+    // would abort the request mid-stream and trigger indefinite retries.
+    const connection = newConnection(LEDGER_RPC_URLS["mainnet-beta"], {
+      requestTimeoutMs: 120_000,
+    });
+    const client = new Client(
+      connection,
+      new PublicKey(PROGRAM_IDS["mainnet-beta"]),
+    );
     const pd = await client.getProgramData();
 
     expect(pd.globalState).not.toBeNull();

@@ -46,6 +46,7 @@ impl UpdateUserCliCommand {
                 .map(|s| Pubkey::from_str(&s))
                 .transpose()?,
             tenant_pk: None,
+            tunnel_endpoint: None,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -131,6 +132,7 @@ mod tests {
                 tunnel_net: Some("10.2.2.3/24".parse().unwrap()),
                 validator_pubkey: None,
                 tenant_pk: None,
+                tunnel_endpoint: None,
             }))
             .returning(move |_| Ok(signature));
 

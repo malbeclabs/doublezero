@@ -29,6 +29,7 @@ pub struct UpdateUserCommand {
     pub tunnel_net: Option<NetworkV4>,
     pub validator_pubkey: Option<Pubkey>,
     pub tenant_pk: Option<Pubkey>,
+    pub tunnel_endpoint: Option<Ipv4Addr>,
 }
 
 impl UpdateUserCommand {
@@ -125,6 +126,7 @@ impl UpdateUserCommand {
                 tenant_pk: self.tenant_pk,
                 dz_prefix_count,
                 multicast_publisher_count,
+                tunnel_endpoint: self.tunnel_endpoint,
             }),
             accounts,
         )
@@ -178,6 +180,7 @@ mod tests {
                     tenant_pk: None,
                     dz_prefix_count: 0,
                     multicast_publisher_count: 0,
+                    tunnel_endpoint: None,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
@@ -195,6 +198,7 @@ mod tests {
             tunnel_net: Some("169.254.0.0/31".parse().unwrap()),
             validator_pubkey: None,
             tenant_pk: None,
+            tunnel_endpoint: None,
         }
         .execute(&client);
 
@@ -300,6 +304,7 @@ mod tests {
                     tenant_pk: None,
                     dz_prefix_count: 1,
                     multicast_publisher_count: 1,
+                    tunnel_endpoint: None,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
@@ -321,6 +326,7 @@ mod tests {
             tunnel_net: None,
             validator_pubkey: None,
             tenant_pk: None,
+            tunnel_endpoint: None,
         }
         .execute(&client);
 
@@ -373,6 +379,7 @@ mod tests {
                     tenant_pk: None,
                     dz_prefix_count: 0,
                     multicast_publisher_count: 0,
+                    tunnel_endpoint: None,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
@@ -390,6 +397,7 @@ mod tests {
             tunnel_net: None,
             validator_pubkey: None,
             tenant_pk: None,
+            tunnel_endpoint: None,
         }
         .execute(&client);
 

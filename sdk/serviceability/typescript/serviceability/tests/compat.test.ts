@@ -15,7 +15,7 @@ import { describe, expect, test, setDefaultTimeout } from "bun:test";
 // Compat tests hit public RPC endpoints which may be slow or rate-limited.
 // The getProgramData test fetches all mainnet accounts and can take 60-90s during busy periods.
 setDefaultTimeout(120_000);
-import { Connection, PublicKey } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import { PROGRAM_IDS, LEDGER_RPC_URLS } from "../config.js";
 import { newConnection } from "../rpc.js";
 import {
@@ -178,16 +178,7 @@ describe("compat: getProgramData", () => {
     }
 
     const { Client } = await import("../client.js");
-    // Use a longer per-request timeout for this test: getProgramAccounts returns all program
-    // accounts in a single response that can take 60-90s to stream on mainnet. The 30s default
-    // would abort the request mid-stream and trigger indefinite retries.
-    const connection = newConnection(LEDGER_RPC_URLS["mainnet-beta"], {
-      requestTimeoutMs: 120_000,
-    });
-    const client = new Client(
-      connection,
-      new PublicKey(PROGRAM_IDS["mainnet-beta"]),
-    );
+    const client = Client.mainnetBeta();
     const pd = await client.getProgramData();
 
     expect(pd.globalState).not.toBeNull();

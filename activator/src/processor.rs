@@ -8,6 +8,7 @@ use crate::{
         link::{process_link_event, process_link_event_stateless},
         location::process_location_event,
         multicastgroup::{process_multicastgroup_event, process_multicastgroup_event_stateless},
+        topology::process_topology_event,
         user::{process_user_event, process_user_event_stateless},
     },
     states::devicestate::{DeviceState, DeviceStateStateless},
@@ -54,6 +55,7 @@ pub struct Processor<T: DoubleZeroClient> {
     locations: LocationMap,
     exchanges: ExchangeMap,
     multicastgroups: MulticastGroupMap,
+    enable_flex_algo: bool,
 }
 
 /// Stateless processor for onchain allocation mode.
@@ -63,6 +65,7 @@ pub struct ProcessorStateless<T: DoubleZeroClient> {
     client: Arc<T>,
     devices: DeviceMapStateless,
     multicastgroups: MulticastGroupMap,
+    enable_flex_algo: bool,
 }
 
 /// Reserve segment routing IDs and loopback IPs for devices that have active allocations.
@@ -184,6 +187,7 @@ impl<T: DoubleZeroClient> Processor<T> {
     pub fn new(
         rx: mpsc::Receiver<(Box<Pubkey>, Box<AccountData>)>,
         client: Arc<T>,
+        enable_flex_algo: bool,
     ) -> eyre::Result<Self> {
         let builder = ExponentialBuilder::new()
             .with_max_times(5)
@@ -269,6 +273,7 @@ impl<T: DoubleZeroClient> Processor<T> {
             locations,
             exchanges,
             multicastgroups: HashMap::new(),
+            enable_flex_algo,
         })
     }
 
@@ -294,6 +299,7 @@ impl<T: DoubleZeroClient> Processor<T> {
                     device,
                     &mut self.segment_routing_ids,
                     &mut self.link_ips,
+                    self.enable_flex_algo,
                 );
             }
             AccountData::Link(link) => {
@@ -346,6 +352,11 @@ impl<T: DoubleZeroClient> Processor<T> {
                             error!("Error processing access pass event: {e}");
                         });
             }
+            AccountData::Topology(topology) => {
+                if self.enable_flex_algo {
+                    process_topology_event(self.client.as_ref(), &topology.name);
+                }
+            }
             _ => {}
         };
         metrics::counter!("doublezero_activator_event_handled").increment(1);
@@ -356,6 +367,7 @@ impl<T: DoubleZeroClient> ProcessorStateless<T> {
     pub fn new(
         rx: mpsc::Receiver<(Box<Pubkey>, Box<AccountData>)>,
         client: Arc<T>,
+        enable_flex_algo: bool,
     ) -> eyre::Result<Self> {
         let builder = ExponentialBuilder::new()
             .with_max_times(5)
@@ -393,6 +405,7 @@ impl<T: DoubleZeroClient> ProcessorStateless<T> {
             client,
             devices: device_map,
             multicastgroups: HashMap::new(),
+            enable_flex_algo,
         })
     }
 
@@ -416,6 +429,7 @@ impl<T: DoubleZeroClient> ProcessorStateless<T> {
                     pubkey,
                     &mut self.devices,
                     device,
+                    self.enable_flex_algo,
                 );
             }
             AccountData::Link(link) => {
@@ -444,6 +458,11 @@ impl<T: DoubleZeroClient> ProcessorStateless<T> {
                         .inspect_err(|e| {
                             error!("Error processing access pass event: {e}");
                         });
+            }
+            AccountData::Topology(topology) => {
+                if self.enable_flex_algo {
+                    process_topology_event(self.client.as_ref(), &topology.name);
+                }
             }
             _ => {}
         };
@@ -497,7 +516,7 @@ mod tests {
         config.device_tunnel_block = NetworkV4::default();
         let client = mock_client_with_config(config);
         let (_tx, rx) = mpsc::channel(1);
-        let result = Processor::new(rx, client);
+        let result = Processor::new(rx, client, false);
         let err = result.err().expect("expected error").to_string();
         assert!(err.contains("device_tunnel_block"), "error was: {err}");
     }
@@ -508,7 +527,7 @@ mod tests {
         config.user_tunnel_block = NetworkV4::default();
         let client = mock_client_with_config(config);
         let (_tx, rx) = mpsc::channel(1);
-        let result = Processor::new(rx, client);
+        let result = Processor::new(rx, client, false);
         let err = result.err().expect("expected error").to_string();
         assert!(err.contains("user_tunnel_block"), "error was: {err}");
     }
@@ -519,7 +538,7 @@ mod tests {
         config.multicastgroup_block = NetworkV4::default();
         let client = mock_client_with_config(config);
         let (_tx, rx) = mpsc::channel(1);
-        let result = Processor::new(rx, client);
+        let result = Processor::new(rx, client, false);
         let err = result.err().expect("expected error").to_string();
         assert!(err.contains("multicastgroup_block"), "error was: {err}");
     }
@@ -530,7 +549,7 @@ mod tests {
         config.multicast_publisher_block = NetworkV4::default();
         let client = mock_client_with_config(config);
         let (_tx, rx) = mpsc::channel(1);
-        let result = Processor::new(rx, client);
+        let result = Processor::new(rx, client, false);
         let err = result.err().expect("expected error").to_string();
         assert!(
             err.contains("multicast_publisher_block"),

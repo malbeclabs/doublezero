@@ -21,6 +21,7 @@ pub async fn run_activator(
     websocket_url: Option<String>,
     program_id: Option<String>,
     keypair: Option<PathBuf>,
+    enable_flex_algo: bool,
 ) -> eyre::Result<()> {
     let client = create_client(rpc_url, websocket_url, program_id, keypair)?;
 
@@ -34,13 +35,20 @@ pub async fn run_activator(
 
     let use_onchain_allocation = read_onchain_allocation_flag(client.as_ref())?;
 
-    run_activator_with_client(client, async_client_factory, use_onchain_allocation).await
+    run_activator_with_client(
+        client,
+        async_client_factory,
+        use_onchain_allocation,
+        enable_flex_algo,
+    )
+    .await
 }
 
 async fn run_activator_with_client<C, F, R, A>(
     client: Arc<C>,
     async_client_factory: F,
     use_onchain_allocation: bool,
+    enable_flex_algo: bool,
 ) -> eyre::Result<()>
 where
     C: DoubleZeroClient + Send + Sync + 'static,
@@ -49,15 +57,16 @@ where
     A: AsyncDoubleZeroClient + Send + Sync + 'static,
 {
     if use_onchain_allocation {
-        run_activator_stateless(client, async_client_factory).await
+        run_activator_stateless(client, async_client_factory, enable_flex_algo).await
     } else {
-        run_activator_stateful(client, async_client_factory).await
+        run_activator_stateful(client, async_client_factory, enable_flex_algo).await
     }
 }
 
 async fn run_activator_stateful<C, F, R, A>(
     client: Arc<C>,
     async_client_factory: F,
+    enable_flex_algo: bool,
 ) -> eyre::Result<()>
 where
     C: DoubleZeroClient + Send + Sync + 'static,
@@ -69,7 +78,7 @@ where
         info!("Activator handler loop started (stateful mode)");
 
         let (tx, rx) = mpsc::channel(128);
-        let mut processor = Processor::new(rx, client.clone())?;
+        let mut processor = Processor::new(rx, client.clone(), enable_flex_algo)?;
 
         let shutdown = Arc::new(AtomicBool::new(false));
 
@@ -105,6 +114,7 @@ where
 async fn run_activator_stateless<C, F, R, A>(
     client: Arc<C>,
     async_client_factory: F,
+    enable_flex_algo: bool,
 ) -> eyre::Result<()>
 where
     C: DoubleZeroClient + Send + Sync + 'static,
@@ -116,7 +126,7 @@ where
         info!("Activator handler loop started stateless mode (onchain allocation)");
 
         let (tx, rx) = mpsc::channel(128);
-        let mut processor = ProcessorStateless::new(rx, client.clone())?;
+        let mut processor = ProcessorStateless::new(rx, client.clone(), enable_flex_algo)?;
 
         let shutdown = Arc::new(AtomicBool::new(false));
 
@@ -489,7 +499,7 @@ mod tests {
                 libc::raise(libc::SIGTERM);
             }
         });
-        let result = run_activator_with_client(client, client_factory, false).await;
+        let result = run_activator_with_client(client, client_factory, false, false).await;
         assert!(result.is_ok());
     }
 }

@@ -107,6 +107,15 @@ interface {{ .Name }}
    {{- end }}
    {{- if and .IsVpnv4Loopback .NodeSegmentIdx}}
    node-segment ipv4 index {{ .NodeSegmentIdx }}
+   {{- if $.FlexAlgoEnabled }}
+   {{- range .FlexAlgoNodeSegments }}
+   node-segment ipv4 index {{ .NodeSegmentIdx }} flex-algo {{ .TopologyName }}
+   {{- end }}
+   {{- else }}
+   {{- range .FlexAlgoNodeSegments }}
+   no node-segment ipv4 index {{ .NodeSegmentIdx }} flex-algo {{ .TopologyName }}
+   {{- end }}
+   {{- end }}
    {{- end }}
    {{- if and .Ip.IsValid .IsLoopback }}
    isis enable 1
@@ -123,6 +132,21 @@ interface {{ .Name }}
    {{- end }}
    isis hello padding
    isis network point-to-point
+   {{- if and .Ip.IsValid .IsPhysical .Metric .IsLink (not .IsSubInterfaceParent) (not .IsCYOA) (not .IsDIA) }}
+   {{- if $.FlexAlgoEnabled }}
+   traffic-engineering
+   {{- if and .LinkTopologies (not ($.Config.Features.FlexAlgo.LinkTagging.IsExcluded .PubKey)) }}
+   traffic-engineering administrative-group {{ $.Strings.Join " " ($.Strings.ToUpperEach .LinkTopologies) }}{{ if .UnicastDrained }} UNICAST-DRAINED{{ end }}
+   {{- else if .UnicastDrained }}
+   traffic-engineering administrative-group UNICAST-DRAINED
+   {{- else }}
+   no traffic-engineering administrative-group
+   {{- end }}
+   {{- else }}
+   no traffic-engineering administrative-group
+   no traffic-engineering
+   {{- end }}
+   {{- end }}
    {{- end }}
 !
 {{- end }}
@@ -247,6 +271,11 @@ router bgp 65342
       {{- range .UnknownBgpPeers }}
       no neighbor {{ . }}
       {{- end }}
+      {{- if $.FlexAlgoEnabled }}
+      next-hop resolution ribs tunnel-rib colored system-colored-tunnel-rib tunnel-rib system-tunnel-rib
+      {{- else }}
+      no next-hop resolution ribs
+      {{- end }}
    !
 {{- range $vrfId := .UnicastVrfs }}
    vrf vrf{{ $vrfId }}
@@ -284,10 +313,48 @@ router isis 1
    !
    segment-routing mpls
       no shutdown
+      {{- if $.FlexAlgoEnabled }}
+      {{- range $.AllTopologies }}
+      flex-algo {{ .Name }} level-2 advertised
+      {{- end }}
+      {{- else }}
+      {{- range $.AllTopologies }}
+      no flex-algo {{ .Name }} level-2
+      {{- end }}
+      {{- end }}
+   {{- if $.FlexAlgoEnabled }}
+   traffic-engineering
+      no shutdown
+      is-type level-2
+   {{- else }}
+   no traffic-engineering
+   {{- end }}
 {{- if $.Device.Status.IsDrained }}
    set-overload-bit
 {{- else }}
    no set-overload-bit
+{{- end }}
+!
+{{- if $.FlexAlgoEnabled }}
+router traffic-engineering
+   router-id ipv4 {{ $.Device.Vpn4vLoopbackIP }}
+   segment-routing
+      rib system-colored-tunnel-rib
+   administrative-group alias UNICAST-DRAINED group 0
+   {{- range $.AllTopologies }}
+   administrative-group alias {{ $.Strings.ToUpper .Name }} group {{ .AdminGroupBit }}
+   {{- end }}
+   flex-algo
+   {{- range $.AllTopologies }}
+      {{- if eq .ConstraintStr "include-any" }}
+      flex-algo {{ .FlexAlgoNumber }} {{ .Name }}
+         administrative-group include any {{ .AdminGroupBit }} exclude 0
+         color {{ .Color }}
+      !
+      {{- end }}
+   {{- end }}
+{{- else }}
+no router traffic-engineering
 {{- end }}
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
@@ -313,6 +380,11 @@ route-map RM-USER-{{ .Id }}-IN permit 10
    match ip address prefix-list PL-USER-{{ .Id }}
    match as-path length = 1
    set community 21682:{{ if eq true .IsMulticast }}1300{{ else }}1200{{ end }} 21682:{{ $.Device.BgpCommunity }}
+   {{- if and $.FlexAlgoEnabled (not .IsMulticast) .TenantTopologyColors }}
+   {{- if $.Config.Features.FlexAlgo.CommunityStamping.ShouldStamp .TenantPubKey $.Device.PubKey }}
+   set extcommunity {{ .TenantTopologyColors }}
+   {{- end }}
+   {{- end }}
 {{- end }}
 !
 {{- end }}

@@ -174,6 +174,7 @@ router bgp 65342
       neighbor 169.254.0.7 activate
    !
    address-family vpn-ipv4
+      no next-hop resolution ribs
    !
    vrf vrf1
       rd 65342:1
@@ -199,7 +200,10 @@ router isis 1
    !
    segment-routing mpls
       no shutdown
+   no traffic-engineering
    no set-overload-bit
+!
+no router traffic-engineering
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300

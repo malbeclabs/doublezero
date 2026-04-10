@@ -199,6 +199,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -240,6 +241,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -303,6 +305,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -337,6 +340,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -373,6 +377,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -416,6 +421,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -449,6 +455,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -487,6 +494,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -514,6 +522,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 	}

@@ -77,6 +77,7 @@ router bgp 65342
    address-family ipv4
    !
    address-family vpn-ipv4
+      no next-hop resolution ribs
    !
    vrf vrf1
       rd 65342:1

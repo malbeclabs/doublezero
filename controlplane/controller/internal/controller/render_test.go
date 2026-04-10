@@ -797,6 +797,136 @@ func TestRenderConfig(t *testing.T) {
 			},
 			Want: "fixtures/multi.vrf.mixed.metro.routing.tunnel.tmpl",
 		},
+		{
+			Name:        "render_flex_algo_enabled_successfully",
+			Description: "render config with flex-algo enabled: interface admin-groups, node-segments, router TE block, BGP color stamping",
+			Data: templateData{
+				Strings:                  StringsHelper{},
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
+				LocalASN:                 65342,
+				UnicastVrfs:              []uint16{1},
+				Config: func() *FeaturesConfig {
+					cfg := &FeaturesConfig{}
+					cfg.Features.FlexAlgo.Enabled = true
+					cfg.Features.FlexAlgo.CommunityStamping.All = true
+					return cfg
+				}(),
+				AllTopologies: []TopologyModel{
+					{
+						Name:           "unicast-default",
+						AdminGroupBit:  1,
+						FlexAlgoNumber: 129,
+						Color:          2,
+						ConstraintStr:  "include-any",
+					},
+				},
+				Device: &Device{
+					PubKey:                "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+					PublicIP:              net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+					ExchangeCode:          "tst",
+					BgpCommunity:          10050,
+					Interfaces: []Interface{
+						{
+							Name:           "Ethernet1/1",
+							Ip:             netip.MustParsePrefix("172.16.0.2/31"),
+							Mtu:            2048,
+							InterfaceType:  InterfaceTypePhysical,
+							Metric:         40000,
+							IsLink:         true,
+							LinkStatus:     serviceability.LinkStatusActivated,
+							LinkTopologies: []string{"unicast-default"},
+						},
+						{
+							Name:           "Loopback255",
+							Ip:             netip.MustParsePrefix("14.14.14.14/32"),
+							NodeSegmentIdx: 100,
+							InterfaceType:  InterfaceTypeLoopback,
+							LoopbackType:   LoopbackTypeVpnv4,
+							FlexAlgoNodeSegments: []FlexAlgoNodeSegmentModel{
+								{NodeSegmentIdx: 200, TopologyName: "unicast-default"},
+							},
+						},
+					},
+					Tunnels: []*Tunnel{
+						{
+							Id:                   500,
+							UnderlaySrcIP:        net.IP{1, 1, 1, 1},
+							UnderlayDstIP:        net.IP{2, 2, 2, 2},
+							OverlaySrcIP:         net.IP{169, 254, 0, 0},
+							OverlayDstIP:         net.IP{169, 254, 0, 1},
+							DzIp:                 net.IP{100, 0, 0, 0},
+							Allocated:            true,
+							VrfId:                1,
+							MetroRouting:         true,
+							TenantPubKey:         "g35TxFqwMx95vCk63fTxGTHb6ei4W24qg5t2x6xD3cT",
+							TenantTopologyColors: "color 2",
+						},
+					},
+				},
+			},
+			Want: "fixtures/base.config.flex-algo.txt",
+		},
+		{
+			Name:        "render_flex_algo_disabled_cleanup_successfully",
+			Description: "render config with flex-algo disabled but topologies present: cleanup commands emitted, no TE config",
+			Data: templateData{
+				Strings:                  StringsHelper{},
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
+				LocalASN:                 65342,
+				UnicastVrfs:              []uint16{1},
+				Config:                   nil,
+				AllTopologies: []TopologyModel{
+					{
+						Name:           "unicast-default",
+						AdminGroupBit:  0,
+						FlexAlgoNumber: 128,
+						Color:          1,
+						ConstraintStr:  "include-any",
+					},
+				},
+				Device: &Device{
+					PublicIP:              net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+					ExchangeCode:          "tst",
+					BgpCommunity:          10050,
+					Interfaces: []Interface{
+						{
+							Name:           "Ethernet1/1",
+							Ip:             netip.MustParsePrefix("172.16.0.2/31"),
+							Mtu:            2048,
+							InterfaceType:  InterfaceTypePhysical,
+							Metric:         40000,
+							IsLink:         true,
+							LinkStatus:     serviceability.LinkStatusActivated,
+							LinkTopologies: []string{"unicast-default"},
+						},
+					},
+					Tunnels: []*Tunnel{
+						{
+							Id:                   500,
+							UnderlaySrcIP:        net.IP{1, 1, 1, 1},
+							UnderlayDstIP:        net.IP{2, 2, 2, 2},
+							OverlaySrcIP:         net.IP{169, 254, 0, 0},
+							OverlayDstIP:         net.IP{169, 254, 0, 1},
+							DzIp:                 net.IP{100, 0, 0, 0},
+							Allocated:            true,
+							VrfId:                1,
+							MetroRouting:         true,
+							TenantPubKey:         "g35TxFqwMx95vCk63fTxGTHb6ei4W24qg5t2x6xD3cT",
+							TenantTopologyColors: "color 1",
+						},
+					},
+				},
+			},
+			Want: "fixtures/base.config.flex-algo-disabled.txt",
+		},
 	}
 
 	for _, test := range tests {

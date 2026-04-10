@@ -372,3 +372,14 @@ func DeserializePermission(reader *ByteReader, perm *Permission) {
 	perm.PermissionsLo = reader.ReadU64() // bits 0-63 (low u64 of u128)
 	perm.PermissionsHi = reader.ReadU64() // bits 64-127 (high u64 of u128)
 }
+
+func DeserializeTopologyInfo(reader *ByteReader, t *TopologyInfo) {
+	t.AccountType = AccountType(reader.ReadU8())
+	t.Owner = reader.ReadPubkey()
+	t.BumpSeed = reader.ReadU8()
+	t.Name = reader.ReadString()
+	t.AdminGroupBit = reader.ReadU8()
+	t.FlexAlgoNumber = reader.ReadU8()
+	t.Constraint = TopologyConstraint(reader.ReadU8())
+	// Note: t.PubKey is set from the account address in client.go after deserialization
+}

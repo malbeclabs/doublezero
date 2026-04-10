@@ -87,6 +87,7 @@ mod tests {
             billing: GeolocationBillingConfig::default(),
             status: GeolocationUserStatus::Activated,
             targets: vec![],
+            result_destination: String::new(),
         }
     }
 

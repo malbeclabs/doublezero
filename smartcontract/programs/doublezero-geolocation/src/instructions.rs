@@ -7,8 +7,8 @@ pub use crate::processors::{
     },
     geolocation_user::{
         add_target::AddTargetArgs, create::CreateGeolocationUserArgs,
-        remove_target::RemoveTargetArgs, update::UpdateGeolocationUserArgs,
-        update_payment_status::UpdatePaymentStatusArgs,
+        remove_target::RemoveTargetArgs, set_result_destination::SetResultDestinationArgs,
+        update::UpdateGeolocationUserArgs, update_payment_status::UpdatePaymentStatusArgs,
     },
     program_config::{init::InitProgramConfigArgs, update::UpdateProgramConfigArgs},
 };
@@ -28,6 +28,7 @@ pub enum GeolocationInstruction {
     AddTarget(AddTargetArgs),
     RemoveTarget(RemoveTargetArgs),
     UpdatePaymentStatus(UpdatePaymentStatusArgs),
+    SetResultDestination(SetResultDestinationArgs),
 }
 
 #[cfg(test)]
@@ -122,6 +123,16 @@ mod tests {
             UpdatePaymentStatusArgs {
                 payment_status: GeolocationPaymentStatus::Delinquent,
                 last_deduction_dz_epoch: None,
+            },
+        ));
+        test_instruction(GeolocationInstruction::SetResultDestination(
+            SetResultDestinationArgs {
+                destination: "185.199.108.1:9000".to_string(),
+            },
+        ));
+        test_instruction(GeolocationInstruction::SetResultDestination(
+            SetResultDestinationArgs {
+                destination: String::new(),
             },
         ));
     }

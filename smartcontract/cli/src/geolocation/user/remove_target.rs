@@ -113,6 +113,7 @@ mod tests {
                     }),
                     status: GeolocationUserStatus::Activated,
                     targets: vec![],
+                    result_destination: String::new(),
                 },
             ))
         });

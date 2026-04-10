@@ -2,6 +2,21 @@ package gnmi
 
 import "time"
 
+// IsisGlobalStateRecord represents ISIS global state for storage in ClickHouse.
+type IsisGlobalStateRecord struct {
+	Timestamp       time.Time `json:"timestamp" ch:"timestamp"`
+	DevicePubkey    string    `json:"device_pubkey" ch:"device_pubkey"`
+	NetworkInstance string    `json:"network_instance" ch:"network_instance"`
+	Instance        string    `json:"instance,omitempty" ch:"instance"`
+	Net             string    `json:"net,omitempty" ch:"net"`
+	LevelCapability string    `json:"level_capability,omitempty" ch:"level_capability"`
+}
+
+// TableName returns the ClickHouse table name for ISIS global state.
+func (r IsisGlobalStateRecord) TableName() string {
+	return "isis_global_state"
+}
+
 // IsisAdjacencyRecord represents an ISIS adjacency for storage in ClickHouse.
 type IsisAdjacencyRecord struct {
 	Timestamp           time.Time `json:"timestamp" ch:"timestamp"`

@@ -205,6 +205,14 @@ echo "doublezero-solana revenue-distribution fetch validator-debts -ul --node-id
 $CLI_BIN revenue-distribution fetch validator-debts -ul --node-id $NODE_ID --dz-env mainnet-beta
 echo
 
+echo "doublezero-solana revenue-distribution validator-deposit --withdraw-excess-balance -ul -v --node-id $DUMMY_KEY"
+$CLI_BIN revenue-distribution validator-deposit \
+    --withdraw-excess-balance \
+    -ul \
+    -v \
+    --node-id $DUMMY_KEY
+echo
+
 ### Clean up.
 
 echo "rm dummy.json another_payer.json rewards_manager.json " \

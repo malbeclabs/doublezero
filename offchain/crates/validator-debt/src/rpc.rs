@@ -330,11 +330,9 @@ pub async fn try_fetch_debt_records_and_distributions(
         .collect::<Vec<_>>();
 
     let distributions = solana_connection
-        .get_multiple_accounts(&distribution_keys)
+        .try_fetch_multiple_zero_copy_data::<Distribution>(&distribution_keys)
         .await?
-        .iter()
-        .flatten()
-        .filter_map(ZeroCopyAccountOwnedData::<Distribution>::from_account)
+        .into_iter()
         .filter(|distribution| {
             distribution.solana_validator_debt_merkle_root != Default::default()
                 && distribution.is_debt_calculation_finalized()
@@ -356,7 +354,7 @@ pub async fn try_fetch_debt_records_and_distributions(
         .collect::<Vec<_>>();
 
     let debt_records = dz_connection
-        .get_multiple_accounts(&debt_record_keys)
+        .try_fetch_multiple_accounts(&debt_record_keys)
         .await?
         .iter()
         .flatten()

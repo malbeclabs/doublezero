@@ -1,4 +1,4 @@
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use clap::Args;
 use doublezero_solana_client_tools::{
     instruction::take_instruction,
@@ -11,7 +11,10 @@ use doublezero_solana_sdk::{
         ID,
         fetch::SolConversionState,
         instruction::{
-            RevenueDistributionInstructionData, account::InitializeSolanaValidatorDepositAccounts,
+            RevenueDistributionInstructionData,
+            account::{
+                InitializeSolanaValidatorDepositAccounts, WithdrawSolanaValidatorDepositAccounts,
+            },
         },
         state::SolanaValidatorDeposit,
         try_is_processed_leaf,
@@ -46,6 +49,19 @@ pub struct ValidatorDepositCommand {
     #[arg(long)]
     fund_outstanding_debt: bool,
 
+    /// Withdraw excess balance from the Solana validator deposit account. This
+    /// argument cannot be used with `--fund` or `--fund-outstanding-debt`.
+    #[arg(long)]
+    withdraw_excess_balance: bool,
+
+    /// The public key of the account that will receive the excess balance. This
+    /// argument is required when `--withdraw-excess-balance` is specified.
+    ///
+    /// NOTE: The keypair invoking the command must be the validator identity
+    /// relevant to the deposit account.
+    #[arg(long, value_name = "PUBKEY")]
+    excess_balance_beneficiary: Option<Pubkey>,
+
     /// Fund with 2Z limited by specified conversion rate for 2Z -> SOL.
     #[arg(long, value_name = "PRICE_LIMIT")]
     convert_2z_limit_price: Option<String>,
@@ -72,6 +88,8 @@ impl ValidatorDepositCommand {
             initialize: mut should_initialize,
             fund: fund_amount_str,
             fund_outstanding_debt: should_fund_outstanding_debt,
+            withdraw_excess_balance: should_withdraw_excess_balance,
+            excess_balance_beneficiary: excess_balance_beneficiary_key,
             convert_2z_limit_price: convert_2z_limit_price_str,
             source_2z_account: source_2z_account_key,
             solana_payer_options,
@@ -81,6 +99,23 @@ impl ValidatorDepositCommand {
 
         let wallet = Wallet::try_from(solana_payer_options)?;
         let wallet_key = wallet.pubkey();
+
+        let exclusive_flag_count = u8::from(should_withdraw_excess_balance)
+            + u8::from(should_fund_outstanding_debt)
+            + u8::from(fund_amount_str.is_some());
+        ensure!(
+            exclusive_flag_count <= 1,
+            "Cannot use --withdraw-excess-balance, --fund-outstanding-debt or --fund together"
+        );
+
+        if should_withdraw_excess_balance {
+            return try_withdraw_excess_balance(
+                &wallet,
+                &node_id,
+                excess_balance_beneficiary_key.as_ref(),
+            )
+            .await;
+        }
 
         // First check if the Solana validator deposit is already initialized.
         let (deposit_key, deposit, mut deposit_balance) =
@@ -326,4 +361,51 @@ async fn try_compute_outstanding_debt(
         amount: total_debt.saturating_sub(deposit_balance),
         last_solana_epoch,
     })
+}
+
+async fn try_withdraw_excess_balance(
+    wallet: &Wallet,
+    node_id: &Pubkey,
+    excess_balance_beneficiary_key: Option<&Pubkey>,
+) -> Result<()> {
+    ensure!(
+        excess_balance_beneficiary_key.is_none() || wallet.pubkey() == *node_id,
+        "The keypair invoking the command must be the validator identity relevant to the deposit account"
+    );
+
+    let (deposit_key, deposit, deposit_balance) =
+        super::try_fetch_solana_validator_deposit(&wallet.connection, node_id).await?;
+
+    let deposit =
+        deposit.with_context(|| format!("No deposit account found for node ID {node_id}"))?;
+    ensure!(
+        deposit_balance.saturating_sub(deposit.written_off_sol_debt) > 0,
+        "No excess balance found for node ID {node_id}"
+    );
+
+    let mut instructions = vec![
+        try_build_instruction(
+            &ID,
+            WithdrawSolanaValidatorDepositAccounts::new(node_id, excess_balance_beneficiary_key),
+            &RevenueDistributionInstructionData::WithdrawSolanaValidatorDeposit,
+        )?,
+        build_memo_instruction(b"Withdrawn excess balance"),
+        ComputeBudgetInstruction::set_compute_unit_limit(20_000),
+    ];
+
+    if let Some(ref compute_unit_price_ix) = wallet.compute_unit_price_ix {
+        instructions.push(compute_unit_price_ix.clone());
+    }
+
+    let transaction = wallet.new_transaction(&instructions).await?;
+    let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
+
+    if let TransactionOutcome::Executed(tx_sig) = tx_sig {
+        println!("Solana validator deposit: {deposit_key}");
+        println!("Withdrawn excess balance: {tx_sig}");
+        println!("Node ID: {node_id}");
+        println!("Withdrawn {:.9} SOL", deposit_balance as f64 * 1e-9);
+    }
+
+    Ok(())
 }

@@ -6,13 +6,14 @@ use doublezero_sdk::{
         contributor::{get::GetContributorCommand, list::ListContributorCommand},
         device::list::ListDeviceCommand,
         link::list::ListLinkCommand,
+        topology::list::ListTopologyCommand,
     },
-    Link, LinkLinkType, LinkStatus,
+    Link, LinkLinkType, LinkStatus, TopologyInfo,
 };
 use doublezero_serviceability::state::link::{LinkDesiredStatus, LinkHealth};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::{io::Write, str::FromStr};
+use std::{collections::HashMap, io::Write, str::FromStr};
 use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
@@ -41,6 +42,9 @@ pub struct ListLinkCliCommand {
     /// Filter by link code (partial match)
     #[arg(long)]
     pub code: Option<String>,
+    /// Filter by topology name (use "default" for links with no topology assignment)
+    #[arg(long)]
+    pub topology: Option<String>,
     /// List only WAN links.
     #[arg(long, default_value_t = false)]
     pub wan: bool,
@@ -92,6 +96,28 @@ pub struct LinkDisplay {
     pub health: LinkHealth,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
+    pub link_topologies: String,
+    pub unicast_drained: bool,
+}
+
+fn resolve_topology_names(
+    pubkeys: &[Pubkey],
+    topology_map: &HashMap<Pubkey, TopologyInfo>,
+) -> String {
+    if pubkeys.is_empty() {
+        "default".to_string()
+    } else {
+        pubkeys
+            .iter()
+            .map(|pk| {
+                topology_map
+                    .get(pk)
+                    .map(|t| t.name.clone())
+                    .unwrap_or_else(|| pk.to_string())
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
 }
 
 impl ListLinkCliCommand {
@@ -99,6 +125,9 @@ impl ListLinkCliCommand {
         let contributors = client.list_contributor(ListContributorCommand {})?;
         let devices = client.list_device(ListDeviceCommand)?;
         let mut links = client.list_link(ListLinkCommand)?;
+        let topology_map = client
+            .list_topology(ListTopologyCommand)
+            .unwrap_or_default();
 
         // Filter by contributor if specified
         if let Some(contributor_filter) = &self.contributor {
@@ -179,6 +208,20 @@ impl ListLinkCliCommand {
             links.retain(|(_, link)| link.code.contains(code_filter));
         }
 
+        // Filter by topology if specified
+        if let Some(topology_filter) = &self.topology {
+            if topology_filter == "default" {
+                links.retain(|(_, link)| link.link_topologies.is_empty());
+            } else {
+                let topology_pk = topology_map
+                    .iter()
+                    .find(|(_, t)| t.name == *topology_filter)
+                    .map(|(pk, _)| *pk)
+                    .ok_or_else(|| eyre::eyre!("Topology '{}' not found", topology_filter))?;
+                links.retain(|(_, link)| link.link_topologies.contains(&topology_pk));
+            }
+        }
+
         let mut tunnel_displays: Vec<LinkDisplay> = links
             .into_iter()
             .map(|(pubkey, link)| {
@@ -217,6 +260,10 @@ impl ListLinkCliCommand {
                     status: link.status,
                     health: link.link_health,
                     owner: link.owner,
+                    link_topologies: resolve_topology_names(&link.link_topologies, &topology_map),
+                    unicast_drained: link.link_flags
+                        & doublezero_serviceability::state::link::LINK_FLAG_UNICAST_DRAINED
+                        != 0,
                 }
             })
             .collect();
@@ -377,7 +424,8 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
-            link_topologies: vec![],
+
+            link_topologies: Vec::new(),
             link_flags: 0,
         };
 
@@ -386,6 +434,9 @@ mod tests {
             tunnels.insert(tunnel1_pubkey, tunnel1.clone());
             Ok(tunnels)
         });
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
 
         let mut output = Vec::new();
         let res = ListLinkCliCommand {
@@ -397,6 +448,7 @@ mod tests {
             health: None,
             desired_status: None,
             code: None,
+            topology: None,
             wan: false,
             dzx: false,
             json: false,
@@ -406,7 +458,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code        | contributor       | side_a_name  | side_a_iface_name | side_z_name  | side_z_iface_name | link_type | bandwidth | mtu  | delay_ms | jitter_ms | delay_override_ms | tunnel_id | tunnel_net | status    | health            | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | contributor1_code | device2_code | eth0              | device2_code | eth1              | WAN       | 10Gbps    | 4500 | 0.02ms   | 0.00ms    | 0.00ms            | 1234      | 1.2.3.4/32 | activated | ready-for-service | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | code        | contributor       | side_a_name  | side_a_iface_name | side_z_name  | side_z_iface_name | link_type | bandwidth | mtu  | delay_ms | jitter_ms | delay_override_ms | tunnel_id | tunnel_net | status    | health            | owner                                     | link_topologies | unicast_drained \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | contributor1_code | device2_code | eth0              | device2_code | eth1              | WAN       | 10Gbps    | 4500 | 0.02ms   | 0.00ms    | 0.00ms            | 1234      | 1.2.3.4/32 | activated | ready-for-service | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | default         | false           \n");
 
         let mut output = Vec::new();
         let res = ListLinkCliCommand {
@@ -418,6 +470,7 @@ mod tests {
             health: None,
             desired_status: None,
             code: None,
+            topology: None,
             wan: false,
             dzx: false,
             json: false,
@@ -427,7 +480,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"WAN\",\"bandwidth\":10000000000,\"mtu\":4500,\"delay_ns\":20000,\"jitter_ns\":1121,\"delay_override_ns\":0,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"desired_status\":\"Activated\",\"status\":\"Activated\",\"health\":\"ReadyForService\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"WAN\",\"bandwidth\":10000000000,\"mtu\":4500,\"delay_ns\":20000,\"jitter_ns\":1121,\"delay_override_ns\":0,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"desired_status\":\"Activated\",\"status\":\"Activated\",\"health\":\"ReadyForService\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"link_topologies\":\"default\",\"unicast_drained\":false}]\n");
     }
 
     #[test]
@@ -573,7 +626,8 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
-            link_topologies: vec![],
+
+            link_topologies: Vec::new(),
             link_flags: 0,
         };
         let tunnel2_pubkey = Pubkey::new_unique();
@@ -587,7 +641,7 @@ mod tests {
             side_z_pk: device1_pubkey,
             link_type: LinkLinkType::WAN,
             bandwidth: 5_000_000_000,
-            mtu: 9000,
+            mtu: 1500,
             delay_ns: 40_000,
             jitter_ns: 2000,
             delay_override_ns: 0,
@@ -599,7 +653,8 @@ mod tests {
             side_z_iface_name: "eth3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
-            link_topologies: vec![],
+
+            link_topologies: Vec::new(),
             link_flags: 0,
         };
 
@@ -609,6 +664,9 @@ mod tests {
             tunnels.insert(tunnel2_pubkey, tunnel2.clone());
             Ok(tunnels)
         });
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
 
         let mut output = Vec::new();
         let res = ListLinkCliCommand {
@@ -620,6 +678,7 @@ mod tests {
             health: None,
             desired_status: None,
             code: None,
+            topology: None,
             wan: false,
             dzx: false,
             json: false,
@@ -749,7 +808,8 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
-            link_topologies: vec![],
+
+            link_topologies: Vec::new(),
             link_flags: 0,
         };
 
@@ -764,7 +824,7 @@ mod tests {
             side_z_pk: device2_pubkey,
             link_type: LinkLinkType::DZX,
             bandwidth: 5_000_000_000,
-            mtu: 9000,
+            mtu: 1500,
             delay_ns: 10_000,
             jitter_ns: 500,
             delay_override_ns: 0,
@@ -776,7 +836,8 @@ mod tests {
             side_z_iface_name: "eth3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
-            link_topologies: vec![],
+
+            link_topologies: Vec::new(),
             link_flags: 0,
         };
 
@@ -786,6 +847,9 @@ mod tests {
             links.insert(link2_pubkey, link2.clone());
             Ok(links)
         });
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
 
         // Test filter by link_type=WAN (should return only link1)
         let mut output = Vec::new();
@@ -798,6 +862,7 @@ mod tests {
             health: None,
             desired_status: None,
             code: None,
+            topology: None,
             wan: false,
             dzx: false,
             json: false,
@@ -926,7 +991,8 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
-            link_topologies: vec![],
+
+            link_topologies: Vec::new(),
             link_flags: 0,
         };
 
@@ -941,7 +1007,7 @@ mod tests {
             side_z_pk: device1_pubkey,
             link_type: LinkLinkType::WAN,
             bandwidth: 5_000_000_000,
-            mtu: 9000,
+            mtu: 1500,
             delay_ns: 10_000,
             jitter_ns: 500,
             delay_override_ns: 0,
@@ -953,7 +1019,8 @@ mod tests {
             side_z_iface_name: "eth3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
-            link_topologies: vec![],
+
+            link_topologies: Vec::new(),
             link_flags: 0,
         };
 
@@ -963,6 +1030,9 @@ mod tests {
             links.insert(link2_pubkey, link2.clone());
             Ok(links)
         });
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
 
         // Test filter by side_a=device_ams (should return only link1)
         let mut output = Vec::new();
@@ -975,6 +1045,7 @@ mod tests {
             health: None,
             desired_status: None,
             code: None,
+            topology: None,
             wan: false,
             dzx: false,
             json: false,
@@ -1070,7 +1141,8 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
-            link_topologies: vec![],
+
+            link_topologies: Vec::new(),
             link_flags: 0,
         };
 
@@ -1085,7 +1157,7 @@ mod tests {
             side_z_pk: device1_pubkey,
             link_type: LinkLinkType::WAN,
             bandwidth: 5_000_000_000,
-            mtu: 9000,
+            mtu: 1500,
             delay_ns: 10_000,
             jitter_ns: 500,
             delay_override_ns: 0,
@@ -1097,7 +1169,8 @@ mod tests {
             side_z_iface_name: "eth3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
-            link_topologies: vec![],
+
+            link_topologies: Vec::new(),
             link_flags: 0,
         };
 
@@ -1107,6 +1180,9 @@ mod tests {
             links.insert(link2_pubkey, link2.clone());
             Ok(links)
         });
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
 
         // Test filter by code=production (should return only link1)
         let mut output = Vec::new();
@@ -1119,6 +1195,7 @@ mod tests {
             health: None,
             desired_status: None,
             code: Some("production".to_string()),
+            topology: None,
             wan: false,
             dzx: false,
             json: false,

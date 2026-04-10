@@ -134,18 +134,18 @@ func NewControllerCommand() *ControllerCommand {
 }
 
 type ControllerCommand struct {
-	fs             *flag.FlagSet
-	description    string
-	listenAddr     string
-	listenPort     string
-	env            string
-	programID      string
-	rpcEndpoint    string
-	deviceLocalASN uint64
-	noHardware     bool
-	showVersion    bool
-	tlsCertFile    string
-	tlsKeyFile     string
+	fs                 *flag.FlagSet
+	description        string
+	listenAddr         string
+	listenPort         string
+	env                string
+	programID          string
+	rpcEndpoint        string
+	deviceLocalASN     uint64
+	noHardware         bool
+	showVersion        bool
+	tlsCertFile        string
+	tlsKeyFile         string
 	tlsListenPort      string
 	enablePprof        bool
 	featuresConfigPath string

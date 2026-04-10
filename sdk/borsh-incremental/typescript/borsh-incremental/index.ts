@@ -185,6 +185,8 @@ export class IncrementalReader {
 
   tryReadString(def: string = ""): string {
     if (this.remaining < 4) return def;
+    const len = this.data.getUint32(this._offset, true);
+    if (this._offset + 4 + len > this.raw.byteLength) return def;
     return this.readString();
   }
 

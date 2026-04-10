@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.17.0](https://github.com/malbeclabs/doublezero/compare/client/v0.16.0...client/v0.17.0) - 2026-04-10
+
+### Breaking
+
+### Changes
+
 - Activator
   - Fix duplicate tunnel underlay pairs after restart by registering `device.public_ip` as in-use for legacy users with unset `tunnel_endpoint` during allocation reload
 - Client

@@ -35,9 +35,12 @@ All notable changes to this project will be documented in this file.
   - Add `TestE2E_UserBGPStatus` verifying that the telemetry BGP status submitter correctly reports onchain status transitions as clients connect and establish BGP sessions
 - Monitor
   - Add ClickHouse as a telemetry backend for the global monitor alongside existing InfluxDB
+- Controller
+  - Add `--features-config` flag accepting a YAML file with a `flex_algo.enabled` toggle; when enabled, populates topology data into the state cache, resolves tenant color communities, and emits IS-IS flex-algo node segment and BGP color community stamping blocks into the Arista EOS template (disabled by default)
 - SDK
   - Deserialize `agent_version` and `agent_commit` from device latency samples in Go, TypeScript, and Python SDKs
   - Add `BGPStatus` type (Unknown/Up/Down) and `SetUserBGPStatus` executor instruction to the Go serviceability SDK
+  - Go serviceability SDK adds `TopologyInfo` account type with `TopologyConstraint` and `TopologyType`; extends `Link` with `LinkTopologies` and `LinkFlags`; extends `Tenant` with `IncludeTopologies`
 - Smartcontract
   - Add `agent_version` (`[u8; 16]`) and `agent_commit` (`[u8; 8]`) fields to `DeviceLatencySamplesHeader`, carved from the existing reserved region; accept both fields in the `InitializeDeviceLatencySamples` instruction via incremental deserialization (fully backward compatible)
   - Implement `SetUserBGPStatus` processor: validates metrics publisher authorization, updates `bgp_status`, `last_bgp_reported_at`, and `last_bgp_up_at` fields on the user account

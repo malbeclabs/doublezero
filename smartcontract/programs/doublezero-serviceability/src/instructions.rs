@@ -22,6 +22,7 @@ use crate::processors::{
             remove::DeviceInterfaceRemoveArgs, unlink::DeviceInterfaceUnlinkArgs,
             update::DeviceInterfaceUpdateArgs,
         },
+        migrate_interfaces::MigrateDeviceInterfacesArgs,
         reject::DeviceRejectArgs,
         sethealth::DeviceSetHealthArgs,
         update::DeviceUpdateArgs,
@@ -79,6 +80,10 @@ use crate::processors::{
         add_administrator::TenantAddAdministratorArgs, create::TenantCreateArgs,
         delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
         update::TenantUpdateArgs, update_payment_status::UpdatePaymentStatusArgs,
+    },
+    topology::{
+        backfill::TopologyBackfillArgs, clear::TopologyClearArgs, create::TopologyCreateArgs,
+        delete::TopologyDeleteArgs,
     },
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
@@ -224,6 +229,13 @@ pub enum DoubleZeroInstruction {
     CreateIndex(IndexCreateArgs),           // variant 104
     DeleteIndex(IndexDeleteArgs),           // variant 105
     SetUserBGPStatus(SetUserBGPStatusArgs), // variant 106
+
+    CreateTopology(TopologyCreateArgs),     // variant 107
+    DeleteTopology(TopologyDeleteArgs),     // variant 108
+    ClearTopology(TopologyClearArgs),       // variant 109
+    BackfillTopology(TopologyBackfillArgs), // variant 110
+
+    MigrateDeviceInterfaces(MigrateDeviceInterfacesArgs), // variant 111
 }
 
 impl DoubleZeroInstruction {
@@ -359,6 +371,12 @@ impl DoubleZeroInstruction {
             104 => Ok(Self::CreateIndex(IndexCreateArgs::try_from(rest).unwrap())),
             105 => Ok(Self::DeleteIndex(IndexDeleteArgs::try_from(rest).unwrap())),
             106 => Ok(Self::SetUserBGPStatus(SetUserBGPStatusArgs::try_from(rest).unwrap())),
+
+            107 => Ok(Self::CreateTopology(TopologyCreateArgs::try_from(rest).unwrap())),
+            108 => Ok(Self::DeleteTopology(TopologyDeleteArgs::try_from(rest).unwrap())),
+            109 => Ok(Self::ClearTopology(TopologyClearArgs::try_from(rest).unwrap())),
+            110 => Ok(Self::BackfillTopology(TopologyBackfillArgs::try_from(rest).unwrap())),
+            111 => Ok(Self::MigrateDeviceInterfaces(MigrateDeviceInterfacesArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -497,6 +515,12 @@ impl DoubleZeroInstruction {
             Self::CreateIndex(_) => "CreateIndex".to_string(), // variant 104
             Self::DeleteIndex(_) => "DeleteIndex".to_string(), // variant 105
             Self::SetUserBGPStatus(_) => "SetUserBGPStatus".to_string(), // variant 106
+
+            Self::CreateTopology(_) => "CreateTopology".to_string(), // variant 107
+            Self::DeleteTopology(_) => "DeleteTopology".to_string(), // variant 108
+            Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 109
+            Self::BackfillTopology(_) => "BackfillTopology".to_string(), // variant 110
+            Self::MigrateDeviceInterfaces(_) => "MigrateDeviceInterfaces".to_string(), // variant 111
         }
     }
 
@@ -627,6 +651,12 @@ impl DoubleZeroInstruction {
             Self::CreateIndex(args) => format!("{args:?}"), // variant 104
             Self::DeleteIndex(args) => format!("{args:?}"), // variant 105
             Self::SetUserBGPStatus(args) => format!("{args:?}"), // variant 106
+
+            Self::CreateTopology(args) => format!("{args:?}"), // variant 107
+            Self::DeleteTopology(args) => format!("{args:?}"), // variant 108
+            Self::ClearTopology(args) => format!("{args:?}"),  // variant 109
+            Self::BackfillTopology(args) => format!("{args:?}"), // variant 110
+            Self::MigrateDeviceInterfaces(args) => format!("{args:?}"), // variant 111
         }
     }
 }
@@ -826,6 +856,8 @@ mod tests {
                 tunnel_id: None,
                 tunnel_net: None,
                 use_onchain_allocation: false,
+                link_topologies: None,
+                unicast_drained: None,
             }),
             "UpdateLink",
         );
@@ -1277,6 +1309,7 @@ mod tests {
                 metro_routing: Some(true),
                 route_liveness: Some(false),
                 billing: None,
+                include_topologies: None,
             }),
             "UpdateTenant",
         );
@@ -1322,6 +1355,31 @@ mod tests {
                 bgp_status: BGPStatus::Up,
             }),
             "SetUserBGPStatus",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+                name: "unicast-default".to_string(),
+                constraint: crate::state::topology::TopologyConstraint::IncludeAny,
+            }),
+            "CreateTopology",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteTopology(TopologyDeleteArgs {
+                name: "unicast-default".to_string(),
+            }),
+            "DeleteTopology",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
+                name: "unicast-default".to_string(),
+            }),
+            "ClearTopology",
+        );
+        test_instruction(
+            DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
+                name: "unicast-default".to_string(),
+            }),
+            "BackfillTopology",
         );
     }
 }

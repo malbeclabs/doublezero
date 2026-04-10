@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
   
 ### Breaking
 
+- CLI upgrade required: the `InterfaceV2` onchain account format now includes `flex_algo_node_segments` (RFC-18). CLI versions prior to this release cannot deserialize device accounts written by the new program. Operators must upgrade the CLI before or alongside the program upgrade.
+
 ### Changes
 
 ## [v0.17.0](https://github.com/malbeclabs/doublezero/compare/client/v0.16.0...client/v0.17.0) - 2026-04-10
@@ -33,9 +35,12 @@ All notable changes to this project will be documented in this file.
   - Add `TestE2E_UserBGPStatus` verifying that the telemetry BGP status submitter correctly reports onchain status transitions as clients connect and establish BGP sessions
 - Monitor
   - Add ClickHouse as a telemetry backend for the global monitor alongside existing InfluxDB
+- Controller
+  - Add `--features-config` flag accepting a YAML file with a `flex_algo.enabled` toggle; when enabled, populates topology data into the state cache, resolves tenant color communities, and emits IS-IS flex-algo node segment and BGP color community stamping blocks into the Arista EOS template (disabled by default)
 - SDK
   - Deserialize `agent_version` and `agent_commit` from device latency samples in Go, TypeScript, and Python SDKs
   - Add `BGPStatus` type (Unknown/Up/Down) and `SetUserBGPStatus` executor instruction to the Go serviceability SDK
+  - Go serviceability SDK adds `TopologyInfo` account type with `TopologyConstraint` and `TopologyType`; extends `Link` with `LinkTopologies` and `LinkFlags`; extends `Tenant` with `IncludeTopologies`
 - Smartcontract
   - Add `agent_version` (`[u8; 16]`) and `agent_commit` (`[u8; 8]`) fields to `DeviceLatencySamplesHeader`, carved from the existing reserved region; accept both fields in the `InitializeDeviceLatencySamples` instruction via incremental deserialization (fully backward compatible)
   - Implement `SetUserBGPStatus` processor: validates metrics publisher authorization, updates `bgp_status`, `last_bgp_reported_at`, and `last_bgp_up_at` fields on the user account
@@ -47,6 +52,10 @@ All notable changes to this project will be documented in this file.
   - Allow pending users with subs to be deleted
 - Onchain programs
   - Add `tunnel_endpoint` field to the `UpdateUser` instruction (`UserUpdateArgs`), allowing the activator to overwrite a user's tunnel endpoint onchain; field is optional and backward compatible via incremental deserialization
+  - Add `TopologyInfo` onchain account for IS-IS flex-algo link classification: auto-assigned TE admin-group bit (1–62), derived flex-algo number (128 + bit), and constraint type (`include-any`/`include-all`); capped at 62 topologies via `AdminGroupBits` resource extension
+  - Add `link_topologies: Vec<Pubkey>` (capped at 8) and `link_flags: u8` (bit 0 = unicast-drained) to the `Link` account
+  - Add `include_topologies` to the `Tenant` account for topology-filtered routing opt-in
+  - Enforce UNICAST-DEFAULT topology existence as a precondition for link activation
 - Telemetry
   - Device telemetry agent now posts `agent_version` and `agent_commit` in the `DeviceLatencySamplesHeader` when initializing new sample accounts, enabling version attribution of onchain telemetry data
   - Add optional TLS support to state-ingest server via `--tls-cert-file` and `--tls-key-file` flags; when set, the server listens on both HTTP (`:8080`) and HTTPS (`:8443`) simultaneously

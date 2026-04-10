@@ -342,6 +342,15 @@ async fn setup_two_devices_with_link() -> (
     .await;
 
     // Activate the link (interfaces become Activated with tunnel IPs)
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        config_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -356,6 +365,7 @@ async fn setup_two_devices_with_link() -> (
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
         ],
         &payer,
     )

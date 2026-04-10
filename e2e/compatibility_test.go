@@ -121,34 +121,41 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/device_drain":   {ranges: before("0.8.1")},
 	"write/device_drain_2": {ranges: before("0.8.1")},
 
-	// device interface / link commands: --mtu requirement changed from 2048 to 9000.
-	// Versions before 0.12.0 didn't have these commands; versions 0.12.0–0.15.x send
-	// the old MTU value which the current program rejects.
-	"write/device_interface_create":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_create_2":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_create_3":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_create_4":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_set_unlinked":   {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_set_unlinked_2": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_set_unlinked_3": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_set_unlinked_4": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_create_wan":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_create_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_accept_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_update":                     {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_set_health":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_set_health_dzx":             {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_get":                        {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_wait_activated":             {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_wait_activated_dzx":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_drain":                      {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_drain_dzx":                  {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_delete":                     {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/link_delete_dzx":                 {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_delete":         {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_delete_2":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_delete_3":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
-	"write/device_interface_delete_4":       {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	// device interface create: versions 0.12.0–0.15.x sent MTU 2048; the current program
+	// requires 9000. Versions ≤0.11.0 and 0.16.0 can still create interfaces successfully
+	// (the create instruction does not require reading back the account).
+	"write/device_interface_create":   {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_create_2": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_create_3": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_create_4": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+
+	// RFC-18 mandatory upgrade boundary: all operations that read device accounts
+	// (set_unlinked, link create/update/delete) require a CLI that understands the new
+	// InterfaceV2 format (flex_algo_node_segments). v0.17.0 was released before the
+	// RFC-18 changes were merged, so it is also incompatible. set_unlinked uses
+	// cascadeKnownFail so that downstream link phases are skipped rather than
+	// run-and-fail when this is a known incompatibility.
+	"write/device_interface_set_unlinked":   {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/device_interface_set_unlinked_2": {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/device_interface_set_unlinked_3": {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/device_interface_set_unlinked_4": {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_create_wan":                 {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_create_dzx":                 {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_accept_dzx":                 {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_update":                     {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_set_health":                 {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_set_health_dzx":             {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_get":                        {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_wait_activated":             {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_wait_activated_dzx":         {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_drain":                      {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_drain_dzx":                  {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_delete":                     {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/link_delete_dzx":                 {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/device_interface_delete":         {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/device_interface_delete_2":       {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/device_interface_delete_3":       {ranges: []versionRange{{before: "0.18.0"}}},
+	"write/device_interface_delete_4":       {ranges: []versionRange{{before: "0.18.0"}}},
 }
 
 // =============================================================================
@@ -1170,14 +1177,16 @@ func runWriteWorkflows(
 		}},
 
 		// Transition all 4 interfaces to "unlinked" (required before link creation).
+		// cascadeKnownFail: when these are known-incompatible, downstream phases are
+		// skipped rather than allowed to run and fail independently.
 		{name: "activate_interfaces", parallel: true, steps: []writeStep{
-			{name: "device_interface_set_unlinked", cmd: cli + " device interface update " + deviceCode + " " + ifaceName +
+			{name: "device_interface_set_unlinked", cascadeKnownFail: true, cmd: cli + " device interface update " + deviceCode + " " + ifaceName +
 				" --status unlinked"},
-			{name: "device_interface_set_unlinked_2", cmd: cli + " device interface update " + deviceCode2 + " " + ifaceName +
+			{name: "device_interface_set_unlinked_2", cascadeKnownFail: true, cmd: cli + " device interface update " + deviceCode2 + " " + ifaceName +
 				" --status unlinked"},
-			{name: "device_interface_set_unlinked_3", cmd: cli + " device interface update " + deviceCode + " " + ifaceName2 +
+			{name: "device_interface_set_unlinked_3", cascadeKnownFail: true, cmd: cli + " device interface update " + deviceCode + " " + ifaceName2 +
 				" --status unlinked"},
-			{name: "device_interface_set_unlinked_4", cmd: cli + " device interface update " + deviceCode2 + " " + ifaceName2 +
+			{name: "device_interface_set_unlinked_4", cascadeKnownFail: true, cmd: cli + " device interface update " + deviceCode2 + " " + ifaceName2 +
 				" --status unlinked"},
 		}},
 

@@ -308,6 +308,7 @@ pub struct InterfaceV2 {
     pub ip_net: NetworkV4,             // 4 IPv4 address + 1 subnet mask
     pub node_segment_idx: u16,         // 2
     pub user_tunnel_endpoint: bool,    // 1
+    pub flex_algo_node_segments: Vec<crate::state::topology::FlexAlgoNodeSegment>,
 }
 
 impl InterfaceV2 {
@@ -320,7 +321,7 @@ impl InterfaceV2 {
     }
 
     pub fn size_given_name_len(name_len: usize) -> usize {
-        1 + 4 + name_len + 1 + 1 + 1 + 1 + 8 + 8 + 2 + 1 + 2 + 5 + 2 + 1
+        1 + 4 + name_len + 1 + 1 + 1 + 1 + 8 + 8 + 2 + 1 + 2 + 5 + 2 + 1 + 4 // +4 for empty flex_algo_node_segments vec (Borsh length prefix)
     }
 }
 
@@ -346,6 +347,10 @@ impl TryFrom<&[u8]> for InterfaceV2 {
                 let val: u8 = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
                 val != 0
             },
+            // flex_algo_node_segments was added in the same version as this field set.
+            // Old on-chain V2 accounts (written before this field existed) will have no
+            // trailing bytes here — unwrap_or_default() yields an empty vec.
+            flex_algo_node_segments: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         })
     }
 }
@@ -369,6 +374,7 @@ impl TryFrom<&InterfaceV1> for InterfaceV2 {
             ip_net: data.ip_net,
             node_segment_idx: data.node_segment_idx,
             user_tunnel_endpoint: data.user_tunnel_endpoint,
+            flex_algo_node_segments: vec![],
         })
     }
 }
@@ -390,17 +396,44 @@ impl Default for InterfaceV2 {
             ip_net: NetworkV4::default(),
             node_segment_idx: 0,
             user_tunnel_endpoint: false,
+            flex_algo_node_segments: vec![],
         }
     }
 }
 
 #[repr(u8)]
-#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[borsh(use_discriminant = true)]
 pub enum Interface {
-    V1(InterfaceV1),
-    V2(InterfaceV2),
+    V1(InterfaceV1) = 0,
+    /// Discriminant 1: current format. Includes flex_algo_node_segments.
+    /// New accounts are written with this discriminant. Old on-chain accounts
+    /// (written before flex_algo_node_segments existed) are upgraded in-place
+    /// by the MigrateDeviceInterfaces instruction before this deserialization
+    /// path is used.
+    V2(InterfaceV2) = 1,
+}
+
+impl borsh::BorshDeserialize for Interface {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
+        let discriminant: u8 = borsh::BorshDeserialize::deserialize_reader(reader)?;
+        match discriminant {
+            0 => Ok(Interface::V1(borsh::BorshDeserialize::deserialize_reader(
+                reader,
+            )?)),
+            1 => {
+                // Current format — includes flex_algo_node_segments. Assumes the
+                // account has been migrated by MigrateDeviceInterfaces before this
+                // path is reached (old pre-migration accounts used this same discriminant
+                // but lacked the trailing flex_algo bytes).
+                Ok(Interface::V2(borsh::BorshDeserialize::deserialize_reader(
+                    reader,
+                )?))
+            }
+            _ => Ok(Interface::V2(InterfaceV2::default())),
+        }
+    }
 }
 
 pub type CurrentInterfaceVersion = InterfaceV2;
@@ -478,12 +511,33 @@ impl Validate for Interface {
 impl TryFrom<&[u8]> for Interface {
     type Error = ProgramError;
 
-    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
-        match BorshDeserialize::deserialize(&mut data) {
-            Ok(0) => Ok(Interface::V1(InterfaceV1::try_from(data)?)),
-            _ => Ok(Interface::V1(InterfaceV1::default())), // Default case
-        }
+    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+        BorshDeserialize::deserialize(&mut &data[..]).map_err(|_| ProgramError::InvalidAccountData)
     }
+}
+
+/// Reads a V2 interface in the pre-RFC-18 format (no flex_algo_node_segments bytes).
+/// Used exclusively by MigrateDeviceInterfaces to read old on-chain accounts.
+pub fn deserialize_legacy_v2_interface<R: borsh::io::Read>(
+    reader: &mut R,
+) -> borsh::io::Result<InterfaceV2> {
+    Ok(InterfaceV2 {
+        status: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        name: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        interface_type: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        interface_cyoa: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        interface_dia: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        loopback_type: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        bandwidth: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        cir: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        mtu: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        routing_mode: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        vlan_id: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        ip_net: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        node_segment_idx: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        user_tunnel_endpoint: borsh::BorshDeserialize::deserialize_reader(reader)?,
+        flex_algo_node_segments: vec![],
+    })
 }
 
 #[test]
@@ -528,6 +582,7 @@ fn test_interface_version() {
         ip_net: "10.0.0.0/24".parse().unwrap(),
         node_segment_idx: 200,
         user_tunnel_endpoint: true,
+        flex_algo_node_segments: vec![],
     }
     .to_interface();
 
@@ -566,6 +621,7 @@ mod test_interface_validate {
             ip_net: NetworkV4::default(),
             node_segment_idx: 0,
             user_tunnel_endpoint: false,
+            flex_algo_node_segments: vec![],
         }
     }
 
@@ -671,6 +727,7 @@ mod test_interface_validate {
             ip_net: "203.0.113.40/32".parse().unwrap(),
             node_segment_idx: 0,
             user_tunnel_endpoint: true,
+            flex_algo_node_segments: vec![],
         };
 
         // Serialize as Interface::V2 (with enum discriminant)

@@ -2,10 +2,10 @@ use super::multicast::MulticastCliCommand;
 use crate::{
     cli::{
         accesspass::AccessPassCliCommand, config::ConfigCliCommand,
-        contributor::ContributorCliCommand, device::DeviceCliCommand, exchange::ExchangeCliCommand,
-        globalconfig::GlobalConfigCliCommand, link::LinkCliCommand, location::LocationCliCommand,
-        permission::PermissionCliCommand, resource::ResourceCliCommand, tenant::TenantCliCommand,
-        user::UserCliCommand,
+        contributor::ContributorCliCommand, device::DeviceCliCommand, edge::EdgeCliCommand,
+        exchange::ExchangeCliCommand, globalconfig::GlobalConfigCliCommand, link::LinkCliCommand,
+        location::LocationCliCommand, permission::PermissionCliCommand,
+        resource::ResourceCliCommand, tenant::TenantCliCommand, user::UserCliCommand,
     },
     command::{
         connect::ProvisioningCliCommand, disable::DisableCliCommand,
@@ -97,6 +97,9 @@ pub enum Command {
     /// Manage multicast
     #[command()]
     Multicast(MulticastCliCommand),
+    /// Manage edge feed parsing
+    #[command()]
+    Edge(EdgeCliCommand),
     /// Export all data to files
     #[command()]
     Export(ExportCliCommand),

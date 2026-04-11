@@ -3,6 +3,7 @@ pub mod command;
 pub mod config;
 pub mod contributor;
 pub mod device;
+pub mod edge;
 pub mod exchange;
 pub mod globalconfig;
 pub mod link;

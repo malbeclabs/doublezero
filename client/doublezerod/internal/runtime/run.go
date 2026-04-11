@@ -14,6 +14,7 @@ import (
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/edge"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
@@ -142,6 +143,35 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		errCh <- err
 	}()
 
+	// Edge feed manager for decoding multicast feed data.
+	edgeMgr := edge.NewManager(func(code string) (net.IP, error) {
+		// Resolve multicast group code to IP via onchain state.
+		fetchCtx, fetchCancel := context.WithTimeout(ctx, fetchTimeout)
+		defer fetchCancel()
+		data, err := cachingFetcher.GetProgramData(fetchCtx)
+		if err != nil {
+			return nil, fmt.Errorf("fetching program data: %w", err)
+		}
+		for _, mg := range data.MulticastGroups {
+			if mg.Code == code {
+				return net.IP(mg.MulticastIp[:]).To4(), nil
+			}
+		}
+		return nil, fmt.Errorf("multicast group %q not found", code)
+	}, func(groupIP net.IP) bool {
+		// Check whether the user has an active multicast subscription
+		// that includes this group IP.
+		for _, pr := range nlm.GetProvisionedServices() {
+			for _, subIP := range pr.MulticastSubGroups {
+				if subIP.Equal(groupIP) {
+					return true
+				}
+			}
+		}
+		return false
+	})
+	defer edgeMgr.Close()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /provision", nlm.ServeProvision)
 	mux.HandleFunc("POST /remove", nlm.ServeRemove)
@@ -151,6 +181,9 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	mux.HandleFunc("GET /v2/status", nlm.ServeV2Status)
 	mux.HandleFunc("GET /routes", api.ServeRoutesHandler(nlr, lm, nlm, networkConfig))
 	mux.HandleFunc("POST /resolve-route", api.ServeResolveRouteHandler(nlr, networkConfig))
+	mux.HandleFunc("POST /edge/enable", edgeMgr.ServeEnable)
+	mux.HandleFunc("POST /edge/disable", edgeMgr.ServeDisable)
+	mux.HandleFunc("GET /edge/status", edgeMgr.ServeStatus)
 
 	if latencyManager != nil {
 		go func() {

@@ -180,6 +180,17 @@ pub struct V2StatusResponse {
     pub services: Vec<V2ServiceStatus>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EdgeFeedStatus {
+    pub code: String,
+    pub parser: String,
+    pub format: String,
+    pub output: String,
+    pub records_written: u64,
+    pub buffered: i64,
+    pub running: bool,
+}
+
 #[automock]
 pub trait ServiceController {
     fn service_controller_check(&self) -> bool;
@@ -192,6 +203,17 @@ pub trait ServiceController {
     async fn enable(&self) -> eyre::Result<()>;
     async fn disable(&self) -> eyre::Result<()>;
     async fn routes(&self) -> eyre::Result<Vec<RouteRecord>>;
+    async fn edge_enable(
+        &self,
+        code: &str,
+        parser: &str,
+        format: &str,
+        output: &str,
+        marketdata_port: u16,
+        refdata_port: u16,
+    ) -> eyre::Result<()>;
+    async fn edge_disable(&self, code: &str) -> eyre::Result<()>;
+    async fn edge_status(&self) -> eyre::Result<Vec<EdgeFeedStatus>>;
 }
 
 pub struct ServiceControllerImpl {
@@ -356,6 +378,79 @@ impl ServiceController for ServiceControllerImpl {
         let data = res.into_body().collect().await?.to_bytes();
         let response = serde_json::from_slice::<Vec<RouteRecord>>(&data)?;
         Ok(response)
+    }
+
+    async fn edge_enable(
+        &self,
+        code: &str,
+        parser: &str,
+        format: &str,
+        output: &str,
+        marketdata_port: u16,
+        refdata_port: u16,
+    ) -> eyre::Result<()> {
+        let body = serde_json::json!({
+            "code": code,
+            "parser": parser,
+            "format": format,
+            "output": output,
+            "marketdata_port": marketdata_port,
+            "refdata_port": refdata_port,
+        });
+        let client: Client<UnixConnector, Full<Bytes>> =
+            Client::builder(TokioExecutor::new()).build(UnixConnector);
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri(Uri::new(&self.socket_path, "/edge/enable"))
+            .header("content-type", "application/json")
+            .body(Full::from(Bytes::from(body.to_string())))?;
+        let res = client
+            .request(req)
+            .await
+            .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
+        let data = res.into_body().collect().await?.to_bytes();
+        if let Ok(err_resp) = serde_json::from_slice::<ErrorResponse>(&data) {
+            if err_resp.status == "error" {
+                eyre::bail!(err_resp.description);
+            }
+        }
+        Ok(())
+    }
+
+    async fn edge_disable(&self, code: &str) -> eyre::Result<()> {
+        let body = serde_json::json!({"code": code});
+        let client: Client<UnixConnector, Full<Bytes>> =
+            Client::builder(TokioExecutor::new()).build(UnixConnector);
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri(Uri::new(&self.socket_path, "/edge/disable"))
+            .header("content-type", "application/json")
+            .body(Full::from(Bytes::from(body.to_string())))?;
+        let res = client
+            .request(req)
+            .await
+            .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
+        let data = res.into_body().collect().await?.to_bytes();
+        if let Ok(err_resp) = serde_json::from_slice::<ErrorResponse>(&data) {
+            if err_resp.status == "error" {
+                eyre::bail!(err_resp.description);
+            }
+        }
+        Ok(())
+    }
+
+    async fn edge_status(&self) -> eyre::Result<Vec<EdgeFeedStatus>> {
+        let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
+        let req = Request::builder()
+            .method(Method::GET)
+            .uri(Uri::new(&self.socket_path, "/edge/status"))
+            .body(Empty::<Bytes>::new())?;
+        let res = client
+            .request(req)
+            .await
+            .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
+        let data = res.into_body().collect().await?.to_bytes();
+        parse_daemon_response::<Vec<EdgeFeedStatus>>(&data, "/edge/status")
     }
 }
 

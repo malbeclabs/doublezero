@@ -12,6 +12,7 @@ use crate::cli::{
     command::Command,
     config::ConfigCommands,
     device::{DeviceCommands, InterfaceCommands},
+    edge::EdgeCommands,
     exchange::ExchangeCommands,
     globalconfig::{
         AirdropCommands, AuthorityCommands, FeatureFlagsCommands, FoundationAllowlistCommands,
@@ -303,6 +304,12 @@ async fn main() -> eyre::Result<()> {
                     args.execute(&client, &mut handle)
                 }
             },
+        },
+
+        Command::Edge(command) => match command.command {
+            EdgeCommands::Enable(args) => args.execute(&client).await,
+            EdgeCommands::Disable(args) => args.execute(&client).await,
+            EdgeCommands::Status(args) => args.execute(&client).await,
         },
 
         Command::Resource(command) => match command.command {

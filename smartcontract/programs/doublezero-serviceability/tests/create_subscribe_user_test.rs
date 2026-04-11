@@ -51,12 +51,7 @@ use doublezero_serviceability::{
     },
 };
 use solana_program_test::*;
-use solana_sdk::{
-    instruction::{AccountMeta, InstructionError},
-    pubkey::Pubkey,
-    signature::Signer,
-    transaction::TransactionError,
-};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
 use std::net::Ipv4Addr;
 
 mod test_helpers;
@@ -2635,9 +2630,12 @@ async fn test_unsubscribe_pending_user_created_via_create_subscribe() {
     assert_eq!(mgroup.publisher_count, 0);
 }
 
-/// Subscribing (publisher: true) a Pending user must still be rejected.
+/// Subscribing a Pending user must succeed so that CreateSubscribeUser (which
+/// only takes one mgroup) can be followed by additional SubscribeMulticastGroup
+/// calls before the activator runs.  This mirrors the shred oracle flow where a
+/// user is subscribed to multiple multicast groups at creation time.
 #[tokio::test]
-async fn test_subscribe_pending_user_still_rejected() {
+async fn test_subscribe_pending_user_succeeds() {
     let client_ip = [100, 0, 0, 98];
     let f = setup_create_subscribe_fixture(client_ip).await;
     let CreateSubscribeFixture {
@@ -2655,7 +2653,7 @@ async fn test_subscribe_pending_user_still_rejected() {
     let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    // Create user via legacy path — user is Pending.
+    // Create user via legacy path — user is Pending with publisher subscription.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -2681,15 +2679,25 @@ async fn test_subscribe_pending_user_still_rejected() {
     )
     .await;
 
-    // Attempting to subscribe (add) a Pending user should still fail.
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Pending);
+    assert_eq!(user.publishers, vec![mgroup_pubkey]);
+
+    // Subscribe the Pending user as subscriber to the same group.
+    // Note: publisher must remain true to keep the existing subscription
+    // (false means "unsubscribe from publisher").
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    let result = try_execute_transaction(
+    try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
             client_ip: user_ip,
-            publisher: false,
+            publisher: true,
             subscriber: true,
             use_onchain_allocation: false,
         }),
@@ -2700,16 +2708,19 @@ async fn test_subscribe_pending_user_still_rejected() {
         ],
         &payer,
     )
-    .await;
+    .await
+    .expect("Subscribe should succeed for Pending user");
 
-    assert!(
-        result.is_err(),
-        "Subscribe should still be rejected for Pending user"
-    );
-    let err = result.unwrap_err();
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
     assert_eq!(
-        err.unwrap(),
-        TransactionError::InstructionError(0, InstructionError::Custom(7)),
-        "Should return InvalidStatus (0x7)"
+        user.status,
+        UserStatus::Pending,
+        "User should remain Pending"
     );
+    assert_eq!(user.publishers, vec![mgroup_pubkey]);
+    assert_eq!(user.subscribers, vec![mgroup_pubkey]);
 }

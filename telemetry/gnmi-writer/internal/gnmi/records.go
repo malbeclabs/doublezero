@@ -17,6 +17,19 @@ func (r IsisGlobalStateRecord) TableName() string {
 	return "isis_global_state"
 }
 
+// IsisOverloadBitRecord represents the ISIS overload bit state for storage in ClickHouse.
+type IsisOverloadBitRecord struct {
+	Timestamp       time.Time `json:"timestamp" ch:"timestamp"`
+	DevicePubkey    string    `json:"device_pubkey" ch:"device_pubkey"`
+	NetworkInstance string    `json:"network_instance" ch:"network_instance"`
+	OverloadBit     bool      `json:"overload_bit" ch:"overload_bit"`
+}
+
+// TableName returns the ClickHouse table name for ISIS overload bit state.
+func (r IsisOverloadBitRecord) TableName() string {
+	return "isis_overload_bit"
+}
+
 // IsisAdjacencyRecord represents an ISIS adjacency for storage in ClickHouse.
 type IsisAdjacencyRecord struct {
 	Timestamp           time.Time `json:"timestamp" ch:"timestamp"`

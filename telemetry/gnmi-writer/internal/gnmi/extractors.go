@@ -15,6 +15,7 @@ import (
 // interface_state (matches "interfaces" + "interface" + "state") since ifindex paths
 // contain all three elements.
 var DefaultExtractors = []ExtractorDef{
+	{Name: "isis_overload_bit", Match: PathContains("isis", "overload-bit"), Extract: extractIsisOverloadBit},
 	{Name: "isis_global_state", Match: PathContains("isis", "global", "state"), Extract: extractIsisGlobalState},
 	{Name: "isis_adjacencies", Match: PathContains("isis", "adjacencies"), Extract: extractIsisAdjacencies},
 	{Name: "system_state", Match: PathContains("system", "state"), Extract: extractSystemState},
@@ -375,6 +376,38 @@ func extractInterfaceState(device *oc.Device, meta Metadata) []Record {
 		}
 
 		records = append(records, record)
+	}
+
+	return records
+}
+
+// extractIsisOverloadBit extracts ISIS overload bit state from an oc.Device.
+func extractIsisOverloadBit(device *oc.Device, meta Metadata) []Record {
+	var records []Record
+
+	if device.NetworkInstances == nil {
+		return nil
+	}
+
+	for niName, ni := range device.NetworkInstances.NetworkInstance {
+		if ni.Protocols == nil {
+			continue
+		}
+		for _, proto := range ni.Protocols.Protocol {
+			if proto.Isis == nil || proto.Isis.Global == nil ||
+				proto.Isis.Global.LspBit == nil || proto.Isis.Global.LspBit.OverloadBit == nil ||
+				proto.Isis.Global.LspBit.OverloadBit.State == nil {
+				continue
+			}
+			state := proto.Isis.Global.LspBit.OverloadBit.State
+			overloadBit := state.SetBit != nil && *state.SetBit
+			records = append(records, IsisOverloadBitRecord{
+				Timestamp:       meta.Timestamp,
+				DevicePubkey:    meta.DevicePubkey,
+				NetworkInstance: niName,
+				OverloadBit:     overloadBit,
+			})
+		}
 	}
 
 	return records

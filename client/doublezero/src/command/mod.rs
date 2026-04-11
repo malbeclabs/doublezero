@@ -1,6 +1,7 @@
 pub mod connect;
 pub mod disable;
 pub mod disconnect;
+pub mod edge;
 pub mod enable;
 pub mod helpers;
 pub mod latency;

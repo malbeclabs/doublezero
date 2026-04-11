@@ -9,6 +9,9 @@ import { PublicKey } from "@solana/web3.js";
 import {
   deserializeDeviceLatencySamples,
   deserializeInternetLatencySamples,
+  deserializeTimestampIndex,
+  reconstructTimestamp,
+  reconstructTimestamps,
 } from "../state.js";
 
 const FIXTURES_DIR = join(
@@ -100,5 +103,86 @@ describe("InternetLatencySamples fixture", () => {
       NextSampleIndex: d.nextSampleIndex,
       SamplesCount: d.samples.length,
     });
+  });
+});
+
+describe("TimestampIndex fixture", () => {
+  test("deserialize", () => {
+    const [data, meta] = loadFixture("timestamp_index");
+    const d = deserializeTimestampIndex(data);
+    const got: Record<string, unknown> = {
+      AccountType: d.accountType,
+      SamplesAccountPK: d.samplesAccountPK,
+      NextEntryIndex: d.nextEntryIndex,
+      EntriesCount: d.entries.length,
+    };
+    if (d.entries.length > 0) {
+      got.Entry0SampleIndex = d.entries[0].sampleIndex;
+      got.Entry0Timestamp = d.entries[0].timestampMicroseconds;
+    }
+    if (d.entries.length > 1) {
+      got.Entry1SampleIndex = d.entries[1].sampleIndex;
+      got.Entry1Timestamp = d.entries[1].timestampMicroseconds;
+    }
+    if (d.entries.length > 2) {
+      got.Entry2SampleIndex = d.entries[2].sampleIndex;
+      got.Entry2Timestamp = d.entries[2].timestampMicroseconds;
+    }
+    assertFields(meta.fields, got);
+  });
+});
+
+describe("reconstructTimestamp", () => {
+  const interval = 5_000_000n;
+  const entries = [
+    { sampleIndex: 0, timestampMicroseconds: 1_700_000_000_000_000n },
+    { sampleIndex: 12, timestampMicroseconds: 1_700_000_000_120_000n },
+    { sampleIndex: 24, timestampMicroseconds: 1_700_000_000_240_000n },
+  ];
+
+  test("uses correct entry for each sample", () => {
+    expect(reconstructTimestamp(entries, 0, 0n, interval)).toBe(1_700_000_000_000_000n);
+    expect(reconstructTimestamp(entries, 5, 0n, interval)).toBe(1_700_000_000_000_000n + 5n * interval);
+    expect(reconstructTimestamp(entries, 12, 0n, interval)).toBe(1_700_000_000_120_000n);
+    expect(reconstructTimestamp(entries, 15, 0n, interval)).toBe(1_700_000_000_120_000n + 3n * interval);
+    expect(reconstructTimestamp(entries, 30, 0n, interval)).toBe(1_700_000_000_240_000n + 6n * interval);
+  });
+
+  test("falls back to implicit model with no entries", () => {
+    const ts = reconstructTimestamp([], 10, 1_700_000_000_000_000n, 5_000_000n);
+    expect(ts).toBe(1_700_000_000_000_000n + 10n * 5_000_000n);
+  });
+
+  test("late start falls back to implicit model for early samples", () => {
+    const startTS = 1_700_000_000_000_000n;
+    const lateEntries = [
+      { sampleIndex: 120, timestampMicroseconds: 1_700_000_000_800_000n },
+      { sampleIndex: 240, timestampMicroseconds: 1_700_000_001_600_000n },
+    ];
+    // Before first entry: implicit model
+    expect(reconstructTimestamp(lateEntries, 0, startTS, interval)).toBe(startTS);
+    expect(reconstructTimestamp(lateEntries, 50, startTS, interval)).toBe(startTS + 50n * interval);
+    expect(reconstructTimestamp(lateEntries, 119, startTS, interval)).toBe(startTS + 119n * interval);
+    // At and after first entry
+    expect(reconstructTimestamp(lateEntries, 120, startTS, interval)).toBe(1_700_000_000_800_000n);
+    expect(reconstructTimestamp(lateEntries, 125, startTS, interval)).toBe(1_700_000_000_800_000n + 5n * interval);
+    expect(reconstructTimestamp(lateEntries, 240, startTS, interval)).toBe(1_700_000_001_600_000n);
+  });
+
+  test("reconstructTimestamps returns all timestamps", () => {
+    const e = [
+      { sampleIndex: 0, timestampMicroseconds: 1000n },
+      { sampleIndex: 3, timestampMicroseconds: 5000n },
+    ];
+    const ts = reconstructTimestamps(5, e, 0n, 100n);
+    expect(ts).toEqual([1000n, 1100n, 1200n, 5000n, 5100n]);
+  });
+
+  test("reconstructTimestamps late start falls back for early samples", () => {
+    const e = [
+      { sampleIndex: 3, timestampMicroseconds: 5000n },
+    ];
+    const ts = reconstructTimestamps(5, e, 1000n, 100n);
+    expect(ts).toEqual([1000n, 1100n, 1200n, 5000n, 5100n]);
   });
 });

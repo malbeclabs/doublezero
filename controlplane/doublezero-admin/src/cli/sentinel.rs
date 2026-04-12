@@ -3,10 +3,11 @@ use std::{collections::HashMap, io::Write, net::Ipv4Addr};
 use clap::{Args, Subcommand};
 use doublezero_sdk::{DZClient, UserType};
 use doublezero_sentinel::{
-    dz_ledger_reader::{self, DzLedgerReader, DzUser, RpcDzLedgerReader},
+    dz_ledger_reader::{self, DzDeviceInfo, DzLedgerReader, DzUser, RpcDzLedgerReader},
     dz_ledger_writer::build_create_multicast_publisher_instructions,
     multicast_create::{find_candidates, CandidateFilters},
     multicast_find::{apply_filters, FindFilters},
+    nearest_device::find_nearest_device_for_multicast,
     output::{print_table, OutputOptions},
     validator_metadata_reader::{
         HttpValidatorMetadataReader, ValidatorMetadataReader, DEFAULT_VALIDATOR_METADATA_URL,
@@ -52,6 +53,8 @@ struct ValidatorPublisherRow {
     client_ip: String,
     #[tabled(rename = "DEVICE")]
     device: String,
+    #[tabled(rename = "NEAREST DEVICE")]
+    nearest_device: String,
     #[tabled(rename = "VOTE ACCOUNT")]
     vote_account: String,
     #[tabled(rename = "STAKE (SOL)")]
@@ -103,9 +106,9 @@ pub struct FindValidatorMulticastPublishersCommand {
     #[arg(long, value_name = "SOL")]
     max_stake: Option<f64>,
 
-    /// Filter by validator client name (e.g. "JitoLabs", "AgaveBam", "Frankendancer").
+    /// Filter by validator client name (e.g. "JitoLabs", "AgaveBam", "Frankendancer"). Repeatable.
     #[arg(long, value_name = "NAME")]
-    client: Option<String>,
+    client: Vec<String>,
 
     /// Include validators not yet connected to DZ.
     #[arg(long)]
@@ -128,7 +131,8 @@ impl FindValidatorMulticastPublishersCommand {
         let program_id = *dzclient.get_program_id();
         let rpc_client = dzclient.rpc_client();
 
-        let codes = dz_ledger_reader::fetch_device_codes(rpc_client, &program_id).ok();
+        let device_infos: HashMap<Pubkey, DzDeviceInfo> =
+            dz_ledger_reader::fetch_device_infos(rpc_client, &program_id).unwrap_or_default();
 
         let validator_metadata = HttpValidatorMetadataReader {
             api_url: self.validator_metadata_url.clone(),
@@ -248,7 +252,7 @@ impl FindValidatorMulticastPublishersCommand {
         let filters = FindFilters {
             min_stake: self.min_stake,
             max_stake: self.max_stake,
-            client: self.client.clone(),
+            clients: self.client.clone(),
             is_publisher: self.is_publisher,
             not_publisher: self.not_publisher,
         };
@@ -269,15 +273,21 @@ impl FindValidatorMulticastPublishersCommand {
                     continue;
                 }
 
-                let device_label = codes
-                    .as_ref()
-                    .and_then(|c| c.device_codes.get(&user.device_pk).cloned())
+                let device_label = device_infos
+                    .get(&user.device_pk)
+                    .map(|d| d.code.clone())
                     .unwrap_or_else(|| user.device_pk.to_string());
+
+                let nearest_device_label =
+                    find_nearest_device_for_multicast(&user.device_pk, &device_infos)
+                        .map(|d| d.code.clone())
+                        .unwrap_or_default();
 
                 rows.push(ValidatorPublisherRow {
                     owner: user.owner.to_string(),
                     client_ip: user.client_ip.to_string(),
                     device: device_label,
+                    nearest_device: nearest_device_label,
                     vote_account: val.vote_account.clone(),
                     stake_sol: format!("{:.2}", val.activated_stake_sol),
                     client: val.software_client.clone(),
@@ -302,6 +312,7 @@ impl FindValidatorMulticastPublishersCommand {
                     owner: String::new(),
                     client_ip: val.gossip_ip.to_string(),
                     device: String::new(),
+                    nearest_device: String::new(),
                     vote_account: val.vote_account.clone(),
                     stake_sol: format!("{:.2}", val.activated_stake_sol),
                     client: val.software_client.clone(),
@@ -371,8 +382,8 @@ impl FindValidatorMulticastPublishersCommand {
                 eprintln!("\nFound {} IBRL validator(s)\n", rows.len());
             }
 
-            // right-align: STAKE (SOL) is column index 4
-            print_table(rows, &self.output, &[4]);
+            // right-align: STAKE (SOL) is column index 5
+            print_table(rows, &self.output, &[5]);
         }
 
         Ok(())
@@ -402,9 +413,13 @@ pub struct CreateValidatorMulticastPublishersCommand {
     #[arg(long, value_name = "SOL")]
     max_stake: Option<f64>,
 
-    /// Filter by validator client name (e.g. "JitoLabs", "AgaveBam", "Frankendancer").
+    /// Filter by validator client name (e.g. "JitoLabs", "AgaveBam", "Frankendancer"). Repeatable.
     #[arg(long, value_name = "NAME")]
-    client: Option<String>,
+    client: Vec<String>,
+
+    /// Filter by client IP address. Repeatable.
+    #[arg(long, value_name = "IP")]
+    ip: Vec<Ipv4Addr>,
 
     /// Validator metadata service URL.
     #[arg(long, value_name = "URL", default_value = DEFAULT_VALIDATOR_METADATA_URL)]
@@ -424,7 +439,8 @@ impl CreateValidatorMulticastPublishersCommand {
             .ok_or_else(|| eyre::eyre!("No keypair configured. Use --keypair to specify one."))?;
         let payer_pk = payer.pubkey();
 
-        let codes = dz_ledger_reader::fetch_device_codes(rpc_client, &program_id).ok();
+        let mut device_infos: HashMap<Pubkey, DzDeviceInfo> =
+            dz_ledger_reader::fetch_device_infos(rpc_client, &program_id).unwrap_or_default();
 
         let validator_metadata = HttpValidatorMetadataReader {
             api_url: self.validator_metadata_url.clone(),
@@ -474,15 +490,11 @@ impl CreateValidatorMulticastPublishersCommand {
             .filter(|u| u.tenant_pk == solana_tenant_pk || u.tenant_pk == default_tenant_pk)
             .collect();
 
-        let device_labels: HashMap<Pubkey, String> = codes
-            .as_ref()
-            .map(|c| c.device_codes.clone())
-            .unwrap_or_default();
-
         let filters = CandidateFilters {
             min_stake: self.min_stake,
             max_stake: self.max_stake,
-            client: self.client,
+            clients: self.client,
+            ips: self.ip.clone(),
             limit: self.limit,
         };
 
@@ -491,15 +503,73 @@ impl CreateValidatorMulticastPublishersCommand {
             &validators,
             &multicast_group_pk,
             &filters,
-            &device_labels,
+            &device_infos,
         );
 
         if candidates.is_empty() {
-            eprintln!("No candidates found — all matching validators already have a publisher.");
+            // If specific IPs were requested, explain why each was skipped.
+            if !self.ip.is_empty() {
+                let ibrl_ips: std::collections::HashSet<Ipv4Addr> = all_users
+                    .iter()
+                    .filter(|u| {
+                        u.user_type == doublezero_sdk::UserType::IBRL
+                            || u.user_type == doublezero_sdk::UserType::IBRLWithAllocatedIP
+                    })
+                    .map(|u| u.client_ip)
+                    .collect();
+                let publisher_ips: std::collections::HashSet<Ipv4Addr> = all_users
+                    .iter()
+                    .filter(|u| {
+                        u.user_type == doublezero_sdk::UserType::Multicast
+                            && u.publishers.contains(&multicast_group_pk)
+                    })
+                    .map(|u| u.client_ip)
+                    .collect();
+                eprintln!("No candidates found. Per-IP diagnosis:");
+                for ip in &self.ip {
+                    let reason: String = if !ibrl_ips.contains(ip) {
+                        "no IBRL user found for this IP".to_string()
+                    } else if publisher_ips.contains(ip) {
+                        "already a publisher for this multicast group".to_string()
+                    } else if !validators.contains_key(ip) {
+                        "not found in validator metadata service".to_string()
+                    } else {
+                        let val = validators.get(ip).unwrap();
+                        let client_mismatch = !filters.clients.is_empty() && {
+                            let name = val.software_client.to_lowercase();
+                            !filters
+                                .clients
+                                .iter()
+                                .any(|c| name.contains(&c.to_lowercase()))
+                        };
+                        let stake_mismatch = filters
+                            .min_stake
+                            .is_some_and(|m| val.activated_stake_sol < m)
+                            || filters
+                                .max_stake
+                                .is_some_and(|m| val.activated_stake_sol > m);
+                        if client_mismatch {
+                            format!(
+                                "client '{}' does not match --client filter {:?}",
+                                val.software_client, filters.clients
+                            )
+                        } else if stake_mismatch {
+                            "filtered out by stake filter".to_string()
+                        } else {
+                            "filtered out (unknown reason)".to_string()
+                        }
+                    };
+                    eprintln!("  {ip}: {reason}");
+                }
+            } else {
+                eprintln!(
+                    "No candidates found — all matching validators already have a publisher."
+                );
+            }
             return Ok(());
         }
 
-        // Display plan.
+        // Display plan (snapshot — target devices are re-evaluated at execution time).
         eprintln!(
             "\nWill create {} multicast publisher user(s) on group {}:\n",
             candidates.len(),
@@ -533,53 +603,104 @@ impl CreateValidatorMulticastPublishersCommand {
             eyre::bail!("Aborted");
         }
 
-        // Execute: for each candidate, run the 3-step creation flow.
+        // Execute: for each candidate, re-evaluate the target device at execution time so
+        // that slots filled earlier in this run are reflected in subsequent picks.
+        let mut created = 0;
+        let mut skipped = 0;
         for (i, candidate) in candidates.iter().enumerate() {
+            // Re-evaluate nearest available device now, accounting for slots filled this run.
+            let target = find_nearest_device_for_multicast(&candidate.device_pk, &device_infos);
+            let (target_device_pk, target_device_label) = match target {
+                Some(d) => (d.pk, d.code.clone()),
+                None => {
+                    eprintln!(
+                        "\n[{}/{}] Skipping {} (ip: {}) — no device with available capacity.",
+                        i + 1,
+                        candidates.len(),
+                        candidate.owner,
+                        candidate.client_ip,
+                    );
+                    skipped += 1;
+                    continue;
+                }
+            };
+
             eprintln!(
-                "\n[{}/{}] Creating multicast publisher for {} (ip: {}, device: {})...",
+                "\n[{}/{}] Creating multicast publisher for {} (ip: {}, device: {}, target: {})...",
                 i + 1,
                 candidates.len(),
                 candidate.owner,
                 candidate.client_ip,
                 candidate.device_label,
+                target_device_label,
             );
 
             let dz_user = DzUser {
                 owner: candidate.owner,
                 client_ip: candidate.client_ip,
-                device_pk: candidate.device_pk,
+                device_pk: target_device_pk,
                 tenant_pk: Pubkey::default(),
                 user_type: doublezero_sdk::UserType::IBRL,
                 publishers: vec![],
             };
 
-            let ixs = build_create_multicast_publisher_instructions(
+            let ixs = match build_create_multicast_publisher_instructions(
                 &program_id,
                 &payer_pk,
+                &candidate.owner,
                 &multicast_group_pk,
                 &dz_user,
-            )
-            .map_err(|e| eyre::eyre!(e))?;
+            ) {
+                Ok(ixs) => ixs,
+                Err(e) => {
+                    eprintln!("  Error building instructions: {e} — skipping.");
+                    skipped += 1;
+                    continue;
+                }
+            };
 
-            send_instruction(rpc_client, payer, &[ixs.set_access_pass], "set_access_pass").await?;
-            send_instruction(rpc_client, payer, &[ixs.add_allowlist], "add_pub_allowlist").await?;
-            send_instruction(
-                rpc_client,
-                payer,
-                &[ixs.create_user],
-                "create_subscribe_user",
-            )
-            .await?;
+            let result = async {
+                send_instruction(rpc_client, payer, &[ixs.set_access_pass], "set_access_pass")
+                    .await?;
+                send_instruction(rpc_client, payer, &[ixs.add_allowlist], "add_pub_allowlist")
+                    .await?;
+                send_instruction(
+                    rpc_client,
+                    payer,
+                    &[ixs.create_user],
+                    "create_subscribe_user",
+                )
+                .await
+            }
+            .await;
 
-            eprintln!(
-                "  Created multicast publisher for {} on {}",
-                candidate.client_ip, candidate.device_label,
-            );
+            match result {
+                Ok(()) => {
+                    eprintln!(
+                        "  Created multicast publisher for {} on {}",
+                        candidate.client_ip, target_device_label,
+                    );
+                    // Decrement local capacity so subsequent candidates see the updated state.
+                    if let Some(d) = device_infos.get_mut(&target_device_pk) {
+                        d.users_count += 1;
+                        d.multicast_publishers_count += 1;
+                    }
+                    created += 1;
+                }
+                Err(e) => {
+                    eprintln!("  Error: {e} — skipping.");
+                    skipped += 1;
+                }
+            }
         }
 
         eprintln!(
-            "\nDone — created {} multicast publisher(s).",
-            candidates.len()
+            "\nDone — created {created} multicast publisher(s){}.",
+            if skipped > 0 {
+                format!(", skipped {skipped}")
+            } else {
+                String::new()
+            }
         );
 
         Ok(())

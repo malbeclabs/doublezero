@@ -4,6 +4,7 @@ pub mod error;
 pub mod multicast_create;
 pub mod multicast_find;
 pub mod multicast_publisher;
+pub mod nearest_device;
 pub mod output;
 pub mod settings;
 pub mod validator_metadata_reader;

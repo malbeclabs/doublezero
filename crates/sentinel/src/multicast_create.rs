@@ -6,7 +6,10 @@ use std::{
 use doublezero_sdk::UserType;
 use solana_sdk::pubkey::Pubkey;
 
-use crate::{dz_ledger_reader::DzUser, validator_metadata_reader::ValidatorRecord};
+use crate::{
+    dz_ledger_reader::{DzDeviceInfo, DzUser},
+    validator_metadata_reader::ValidatorRecord,
+};
 
 /// A validator that needs a multicast publisher user created.
 pub struct Candidate {
@@ -23,7 +26,8 @@ pub struct Candidate {
 pub struct CandidateFilters {
     pub min_stake: Option<f64>,
     pub max_stake: Option<f64>,
-    pub client: Option<String>,
+    pub clients: Vec<String>,
+    pub ips: Vec<Ipv4Addr>,
     pub limit: Option<usize>,
 }
 
@@ -36,7 +40,7 @@ pub fn find_candidates(
     validators: &HashMap<Ipv4Addr, ValidatorRecord>,
     multicast_group_pk: &Pubkey,
     filters: &CandidateFilters,
-    device_labels: &HashMap<Pubkey, String>,
+    device_infos: &HashMap<Pubkey, DzDeviceInfo>,
 ) -> Vec<Candidate> {
     let ibrl_users: Vec<_> = all_users
         .iter()
@@ -70,19 +74,23 @@ pub fn find_candidates(
                 continue;
             }
         }
-        if let Some(ref client_filter) = filters.client {
-            if !val
-                .software_client
-                .to_lowercase()
-                .contains(&client_filter.to_lowercase())
+        if !filters.clients.is_empty() {
+            let name = val.software_client.to_lowercase();
+            if !filters
+                .clients
+                .iter()
+                .any(|c| name.contains(&c.to_lowercase()))
             {
                 continue;
             }
         }
+        if !filters.ips.is_empty() && !filters.ips.contains(&user.client_ip) {
+            continue;
+        }
 
-        let device_label = device_labels
+        let device_label = device_infos
             .get(&user.device_pk)
-            .cloned()
+            .map(|d| d.code.clone())
             .unwrap_or_else(|| user.device_pk.to_string());
 
         candidates.push(Candidate {
@@ -158,7 +166,8 @@ mod tests {
         CandidateFilters {
             min_stake: None,
             max_stake: None,
-            client: None,
+            clients: vec![],
+            ips: vec![],
             limit: None,
         }
     }
@@ -269,13 +278,43 @@ mod tests {
         validators.insert(ip2, make_validator(ip2, 1000.0, "Agave"));
 
         let filters = CandidateFilters {
-            client: Some("jito".to_string()),
+            clients: vec!["jito".to_string()],
             ..no_filters()
         };
 
         let result = find_candidates(&users, &validators, &group, &filters, &HashMap::new());
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].client_ip, ip1);
+    }
+
+    #[test]
+    fn ip_filter() {
+        let group = Pubkey::new_unique();
+        let ip1 = Ipv4Addr::new(10, 0, 0, 1);
+        let ip2 = Ipv4Addr::new(10, 0, 0, 2);
+        let ip3 = Ipv4Addr::new(10, 0, 0, 3);
+
+        let users = vec![
+            make_ibrl_user([10, 0, 0, 1], Pubkey::new_unique(), Pubkey::new_unique()),
+            make_ibrl_user([10, 0, 0, 2], Pubkey::new_unique(), Pubkey::new_unique()),
+            make_ibrl_user([10, 0, 0, 3], Pubkey::new_unique(), Pubkey::new_unique()),
+        ];
+        let mut validators = HashMap::new();
+        validators.insert(ip1, make_validator(ip1, 1000.0, "agave"));
+        validators.insert(ip2, make_validator(ip2, 1000.0, "agave"));
+        validators.insert(ip3, make_validator(ip3, 1000.0, "agave"));
+
+        let filters = CandidateFilters {
+            ips: vec![ip1, ip3],
+            ..no_filters()
+        };
+
+        let result = find_candidates(&users, &validators, &group, &filters, &HashMap::new());
+        assert_eq!(result.len(), 2);
+        let ips: Vec<_> = result.iter().map(|c| c.client_ip).collect();
+        assert!(ips.contains(&ip1));
+        assert!(ips.contains(&ip3));
+        assert!(!ips.contains(&ip2));
     }
 
     #[test]

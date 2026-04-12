@@ -37,6 +37,9 @@ url.workspace = true
 [dev-dependencies]
 mockall.workspace = true
 
+[lib]
+path = "src/lib.rs"
+
 [[bin]]
 name = "doublezero-sentinel"
 path = "src/main.rs"

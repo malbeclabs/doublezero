@@ -4,7 +4,7 @@ use crate::validator_metadata_reader::ValidatorRecord;
 pub struct FindFilters {
     pub min_stake: Option<f64>,
     pub max_stake: Option<f64>,
-    pub client: Option<String>,
+    pub clients: Vec<String>,
     pub is_publisher: bool,
     pub not_publisher: bool,
 }
@@ -21,11 +21,12 @@ pub fn apply_filters(filters: &FindFilters, val: &ValidatorRecord, is_pub: bool)
             return false;
         }
     }
-    if let Some(ref client_filter) = filters.client {
-        if !val
-            .software_client
-            .to_lowercase()
-            .contains(&client_filter.to_lowercase())
+    if !filters.clients.is_empty() {
+        let name = val.software_client.to_lowercase();
+        if !filters
+            .clients
+            .iter()
+            .any(|c| name.contains(&c.to_lowercase()))
         {
             return false;
         }
@@ -63,7 +64,7 @@ mod tests {
         FindFilters {
             min_stake: None,
             max_stake: None,
-            client: None,
+            clients: vec![],
             is_publisher: false,
             not_publisher: false,
         }
@@ -106,16 +107,31 @@ mod tests {
         let val = make_validator(Ipv4Addr::new(1, 2, 3, 4), 1000.0, "Jito-Solana");
 
         let filters = FindFilters {
-            client: Some("jito".to_string()),
+            clients: vec!["jito".to_string()],
             ..base_filters()
         };
         assert!(apply_filters(&filters, &val, false));
 
         let filters = FindFilters {
-            client: Some("agave".to_string()),
+            clients: vec!["agave".to_string()],
             ..base_filters()
         };
         assert!(!apply_filters(&filters, &val, false));
+    }
+
+    #[test]
+    fn filter_client_multiple_values() {
+        let jito = make_validator(Ipv4Addr::new(1, 2, 3, 4), 1000.0, "Jito-Solana");
+        let agave = make_validator(Ipv4Addr::new(1, 2, 3, 5), 1000.0, "Agave");
+        let frank = make_validator(Ipv4Addr::new(1, 2, 3, 6), 1000.0, "Frankendancer");
+
+        let filters = FindFilters {
+            clients: vec!["jito".to_string(), "agave".to_string()],
+            ..base_filters()
+        };
+        assert!(apply_filters(&filters, &jito, false));
+        assert!(apply_filters(&filters, &agave, false));
+        assert!(!apply_filters(&filters, &frank, false));
     }
 
     #[test]
@@ -150,7 +166,7 @@ mod tests {
         let filters = FindFilters {
             min_stake: Some(1000.0),
             max_stake: Some(2000.0),
-            client: Some("jito".to_string()),
+            clients: vec!["jito".to_string()],
             is_publisher: true,
             not_publisher: false,
         };

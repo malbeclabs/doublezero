@@ -9,9 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Telemetry
-  - Add `GET /device-link/agent-versions` endpoint to data-api and `agent-versions` subcommand to data-cli, exposing per-device telemetry agent version and commit from onchain `DeviceLatencySamplesHeader` ([#3530](https://github.com/malbeclabs/doublezero/pull/3530))
-- SDK
-  - Add `GetDeviceLatencySamplesHeader` to the Go telemetry SDK using Solana RPC `DataSlice` to fetch only the 350-byte header instead of the full account ([#3530](https://github.com/malbeclabs/doublezero/pull/3530))
+  - Add `GET /device-link/agent-versions` endpoint to data-api and `agent-versions` subcommand to data-cli, exposing per-device telemetry agent version and commit from onchain `DeviceLatencySamplesHeader`
 - Smartcontract
   - Allow `SubscribeMulticastGroup` for users in `Pending` status so that `CreateSubscribeUser` can be followed by additional subscribe calls before the activator runs ([#3521](https://github.com/malbeclabs/doublezero/pull/3521))
 

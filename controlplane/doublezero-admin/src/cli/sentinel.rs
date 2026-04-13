@@ -576,14 +576,17 @@ impl CreateValidatorMulticastPublishersCommand {
             self.multicast_group,
         );
         eprintln!(
-            "  {:<44}  {:<15}  {:<24}  {:<20}  {:>14}",
-            "OWNER", "CLIENT IP", "DEVICE", "CLIENT", "STAKE (SOL)",
+            "  {:<44}  {:<15}  {:<24}  {:<24}  {:<20}  {:>14}",
+            "OWNER", "CLIENT IP", "DEVICE", "NEAREST DEVICE", "CLIENT", "STAKE (SOL)",
         );
-        eprintln!("  {}", "-".repeat(125));
+        eprintln!("  {}", "-".repeat(150));
         for c in &candidates {
+            let nearest = find_nearest_device_for_multicast(&c.device_pk, &device_infos)
+                .map(|d| d.code.clone())
+                .unwrap_or_else(|| "none".to_string());
             eprintln!(
-                "  {:<44}  {:<15}  {:<24}  {:<20}  {:>14.2}",
-                c.owner, c.client_ip, c.device_label, c.software_client, c.stake_sol,
+                "  {:<44}  {:<15}  {:<24}  {:<24}  {:<20}  {:>14.2}",
+                c.owner, c.client_ip, c.device_label, nearest, c.software_client, c.stake_sol,
             );
         }
         eprintln!();

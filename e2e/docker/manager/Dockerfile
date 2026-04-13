@@ -9,6 +9,7 @@ RUN apt-get update && \
     apt-get install -y curl perl jq vim iproute2
 
 COPY --from=base /doublezero/bin/doublezero /doublezero/bin/.
+COPY --from=base /doublezero/bin/doublezero-admin /doublezero/bin/.
 COPY --from=base /doublezero/bin/doublezero_serviceability.so /doublezero/bin/.
 COPY --from=base /doublezero/bin/doublezero_telemetry.so /doublezero/bin/.
 COPY --from=base /doublezero/bin/doublezero_geolocation.so /doublezero/bin/.

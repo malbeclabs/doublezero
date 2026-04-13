@@ -149,6 +149,15 @@ pub fn process_update_link(
         None
     };
 
+    // Validate cap before consuming accounts from the iterator: if > 8, return
+    // InvalidArgument immediately so we don't exhaust the iterator on fake pubkeys.
+    if let Some(ref link_topologies) = value.link_topologies {
+        if link_topologies.len() > 8 {
+            msg!("link_topologies exceeds maximum of 8 entries");
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+    }
+
     // Topology PDAs come before payer/system, matching the SDK account ordering
     // (execute_transaction appends payer+system at the end of the accounts list).
     let topology_count = value.link_topologies.as_ref().map(|t| t.len()).unwrap_or(0);
@@ -390,10 +399,6 @@ pub fn process_update_link(
         if !globalstate.foundation_allowlist.contains(payer_account.key) {
             msg!("link_topologies update requires foundation allowlist");
             return Err(DoubleZeroError::NotAllowed.into());
-        }
-        if link_topologies.len() > 8 {
-            msg!("link_topologies exceeds maximum of 8 entries");
-            return Err(DoubleZeroError::InvalidArgument.into());
         }
         if link_topologies.len() != topology_accounts.len() {
             msg!("link_topologies count does not match provided topology accounts");

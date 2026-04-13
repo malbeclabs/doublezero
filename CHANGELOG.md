@@ -3,11 +3,13 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
-  
+
 ### Breaking
 
 ### Changes
 
+- Controlplane
+  - Add `controller_success` activation criterion to device-health-oracle that verifies devices have consistent controller call coverage over a configurable burn-in period by querying ClickHouse
 - Smartcontract
   - Allow `SubscribeMulticastGroup` for users in `Pending` status so that `CreateSubscribeUser` can be followed by additional subscribe calls before the activator runs ([#3521](https://github.com/malbeclabs/doublezero/pull/3521))
 

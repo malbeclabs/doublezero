@@ -129,6 +129,43 @@ func main() {
 	serviceabilityExecutor := serviceability.NewExecutor(log, rpcClient, &signer, networkConfig.ServiceabilityProgramID)
 	telemetryClient := telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID)
 
+	// Initialize ClickHouse-dependent criteria.
+	var deviceCriteria []worker.DeviceCriterion
+	if chAddr := os.Getenv("CLICKHOUSE_ADDR"); chAddr != "" {
+		chDB := os.Getenv("CLICKHOUSE_DB")
+		if chDB == "" {
+			chDB = *env
+		}
+		chUser := os.Getenv("CLICKHOUSE_USER")
+		if chUser == "" {
+			chUser = "default"
+		}
+		chPass := os.Getenv("CLICKHOUSE_PASS")
+		chTLSDisabled := os.Getenv("CLICKHOUSE_TLS_DISABLED") == "true"
+
+		chClient, err := worker.NewClickHouseClient(chAddr, chDB, chUser, chPass, chTLSDisabled)
+		if err != nil {
+			log.Warn("ClickHouse connection failed, continuing without controller_success criterion", "addr", chAddr, "error", err)
+		} else {
+			defer chClient.Close()
+			log.Info("ClickHouse enabled", "addr", chAddr, "db", chDB, "user", chUser, "tls", !chTLSDisabled)
+			controllerSuccess := worker.NewControllerSuccessCriterion(chClient, log)
+			deviceCriteria = append(deviceCriteria, controllerSuccess)
+		}
+	} else {
+		log.Error("ClickHouse disabled (CLICKHOUSE_ADDR not set), no controller_success criterion")
+	}
+
+	deviceEvaluator := &worker.DeviceHealthEvaluator{
+		ReadyForLinksCriteria: deviceCriteria,
+		ReadyForUsersCriteria: nil,
+		Log:                   log,
+	}
+	linkEvaluator := &worker.LinkHealthEvaluator{
+		ReadyForServiceCriteria: nil,
+		Log:                     log,
+	}
+
 	worker.MetricBuildInfo.WithLabelValues(version, commit, date).Set(1)
 	go func() {
 		listener, err := net.Listen("tcp", *metricsAddr)
@@ -155,6 +192,8 @@ func main() {
 		Env:                     *env,
 		ProvisioningSlotCount:   *provisioningSlotCount,
 		DrainedSlotCount:        *drainedSlotCount,
+		DeviceEvaluator:         deviceEvaluator,
+		LinkEvaluator:           linkEvaluator,
 	})
 	if err != nil {
 		log.Error("Failed to create worker", "error", err)

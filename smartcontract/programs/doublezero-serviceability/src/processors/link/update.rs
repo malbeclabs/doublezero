@@ -151,11 +151,7 @@ pub fn process_update_link(
 
     // Topology PDAs come before payer/system, matching the SDK account ordering
     // (execute_transaction appends payer+system at the end of the accounts list).
-    let topology_count = value
-        .link_topologies
-        .as_ref()
-        .map(|t| t.len())
-        .unwrap_or(0);
+    let topology_count = value.link_topologies.as_ref().map(|t| t.len()).unwrap_or(0);
     let topology_accounts: Vec<&AccountInfo> = (0..topology_count)
         .map(|_| next_account_info(accounts_iter))
         .collect::<Result<_, _>>()?;

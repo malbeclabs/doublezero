@@ -133,6 +133,8 @@ impl UpdateLinkCliCommand {
             desired_status: self.desired_status,
             tunnel_id: self.tunnel_id,
             tunnel_net: self.tunnel_net,
+            link_topologies: None,
+            unicast_drained: None,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -286,6 +288,8 @@ mod tests {
                 desired_status: None,
                 tunnel_id: None,
                 tunnel_net: None,
+                link_topologies: None,
+                unicast_drained: None,
             }))
             .returning(move |_| Ok(signature));
 

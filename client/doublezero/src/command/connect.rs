@@ -7,7 +7,7 @@ use backon::{BlockingRetryable, ExponentialBuilder};
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
-    helpers::{init_command, parse_pubkey},
+    helpers::init_command,
     requirements::{check_accesspass, check_requirements, CHECK_BALANCE, CHECK_ID_JSON},
 };
 use doublezero_sdk::{
@@ -112,10 +112,7 @@ impl ProvisioningCliCommand {
         check_requirements(client, Some(&spinner), CHECK_ID_JSON | CHECK_BALANCE)?;
         check_doublezero(controller, client, Some(&spinner)).await?;
 
-        spinner.println(format!(
-            "⚡  Connecting to {}...",
-            client.get_environment()
-        ));
+        spinner.println(format!("⚡  Connecting to {}...", client.get_environment()));
 
         // Deprecation warning for --client-ip flag
         if self.client_ip.is_some() {

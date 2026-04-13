@@ -26,7 +26,8 @@ const (
 	TenantType            // 13
 	// 14 is reserved
 	PermissionType AccountType = 15
-	TopologyType   AccountType = 16
+	IndexType      AccountType = 16
+	TopologyType   AccountType = 17
 )
 
 type LocationStatus uint8

@@ -207,6 +207,8 @@ func DeserializeLink(reader *ByteReader, link *Link) {
 	link.DelayOverrideNs = reader.ReadU64()
 	link.LinkHealth = LinkHealth(reader.ReadU8())
 	link.LinkDesiredStatus = LinkDesiredStatus(reader.ReadU8())
+	link.LinkTopologies = reader.ReadPubkeySlice()
+	link.LinkFlags = reader.ReadU8()
 }
 
 func DeserializeUser(reader *ByteReader, user *User) {

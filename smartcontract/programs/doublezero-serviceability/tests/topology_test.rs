@@ -1063,11 +1063,17 @@ async fn assign_link_topology(
     payer: &Keypair,
 ) {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    let extra_accounts: Vec<AccountMeta> = topology_pubkeys
+    let topology_account_metas: Vec<AccountMeta> = topology_pubkeys
         .iter()
         .map(|pk| AccountMeta::new_readonly(*pk, false))
         .collect();
-    execute_transaction_with_extra_accounts(
+    let mut accounts = vec![
+        AccountMeta::new(link_pubkey, false),
+        AccountMeta::new(contributor_pubkey, false),
+        AccountMeta::new_readonly(globalstate_pubkey, false),
+    ];
+    accounts.extend(topology_account_metas);
+    execute_transaction(
         banks_client,
         recent_blockhash,
         program_id,
@@ -1075,13 +1081,8 @@ async fn assign_link_topology(
             link_topologies: Some(topology_pubkeys),
             ..Default::default()
         }),
-        vec![
-            AccountMeta::new(link_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-        ],
+        accounts,
         payer,
-        &extra_accounts,
     )
     .await;
 }

@@ -118,6 +118,10 @@ pub struct FindValidatorMulticastPublishersCommand {
     #[arg(long)]
     summary: bool,
 
+    /// Use geographic distance (Haversine) instead of onchain link latency for nearest-device.
+    #[arg(long)]
+    nearest_via_geo: bool,
+
     /// Validator metadata service URL.
     #[arg(long, value_name = "URL", default_value = DEFAULT_VALIDATOR_METADATA_URL)]
     validator_metadata_url: String,
@@ -133,6 +137,21 @@ impl FindValidatorMulticastPublishersCommand {
 
         let device_infos: HashMap<Pubkey, DzDeviceInfo> =
             dz_ledger_reader::fetch_device_infos(rpc_client, &program_id).unwrap_or_default();
+
+        let latency_map = if self.nearest_via_geo {
+            None
+        } else {
+            let telemetry_id = dzclient
+                .get_environment()
+                .config()
+                .ok()
+                .map(|c| c.telemetry_program_id);
+            telemetry_id.and_then(|tid| {
+                dz_ledger_reader::fetch_device_latency_map(rpc_client, &tid)
+                    .map_err(|e| eprintln!("Warning: could not fetch latency data: {e}"))
+                    .ok()
+            })
+        };
 
         let validator_metadata = HttpValidatorMetadataReader {
             api_url: self.validator_metadata_url.clone(),
@@ -278,10 +297,13 @@ impl FindValidatorMulticastPublishersCommand {
                     .map(|d| d.code.clone())
                     .unwrap_or_else(|| user.device_pk.to_string());
 
-                let nearest_device_label =
-                    find_nearest_device_for_multicast(&user.device_pk, &device_infos)
-                        .map(|d| d.code.clone())
-                        .unwrap_or_default();
+                let nearest_device_label = find_nearest_device_for_multicast(
+                    &user.device_pk,
+                    &device_infos,
+                    latency_map.as_ref(),
+                )
+                .map(|d| d.code.clone())
+                .unwrap_or_default();
 
                 rows.push(ValidatorPublisherRow {
                     owner: user.owner.to_string(),
@@ -425,6 +447,10 @@ pub struct CreateValidatorMulticastPublishersCommand {
     #[arg(long, value_name = "URL", default_value = DEFAULT_VALIDATOR_METADATA_URL)]
     validator_metadata_url: String,
 
+    /// Use geographic distance (Haversine) instead of onchain link latency for nearest-device.
+    #[arg(long)]
+    nearest_via_geo: bool,
+
     /// Simulate transactions without sending.
     #[arg(long)]
     dry_run: bool,
@@ -441,6 +467,21 @@ impl CreateValidatorMulticastPublishersCommand {
 
         let mut device_infos: HashMap<Pubkey, DzDeviceInfo> =
             dz_ledger_reader::fetch_device_infos(rpc_client, &program_id).unwrap_or_default();
+
+        let latency_map = if self.nearest_via_geo {
+            None
+        } else {
+            let telemetry_id = dzclient
+                .get_environment()
+                .config()
+                .ok()
+                .map(|c| c.telemetry_program_id);
+            telemetry_id.and_then(|tid| {
+                dz_ledger_reader::fetch_device_latency_map(rpc_client, &tid)
+                    .map_err(|e| eprintln!("Warning: could not fetch latency data: {e}"))
+                    .ok()
+            })
+        };
 
         let validator_metadata = HttpValidatorMetadataReader {
             api_url: self.validator_metadata_url.clone(),
@@ -594,9 +635,13 @@ impl CreateValidatorMulticastPublishersCommand {
         let plan_rows: Vec<PlanRow> = candidates
             .iter()
             .map(|c| {
-                let nearest = find_nearest_device_for_multicast(&c.device_pk, &device_infos)
-                    .map(|d| d.code.clone())
-                    .unwrap_or_else(|| "none".to_string());
+                let nearest = find_nearest_device_for_multicast(
+                    &c.device_pk,
+                    &device_infos,
+                    latency_map.as_ref(),
+                )
+                .map(|d| d.code.clone())
+                .unwrap_or_else(|| "none".to_string());
                 PlanRow {
                     owner: c.owner.to_string(),
                     client_ip: c.client_ip.to_string(),
@@ -631,7 +676,11 @@ impl CreateValidatorMulticastPublishersCommand {
         let mut skipped = 0;
         for (i, candidate) in candidates.iter().enumerate() {
             // Re-evaluate nearest available device now, accounting for slots filled this run.
-            let target = find_nearest_device_for_multicast(&candidate.device_pk, &device_infos);
+            let target = find_nearest_device_for_multicast(
+                &candidate.device_pk,
+                &device_infos,
+                latency_map.as_ref(),
+            );
             let (target_device_pk, target_device_label) = match target {
                 Some(d) => (d.pk, d.code.clone()),
                 None => {

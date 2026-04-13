@@ -5,6 +5,7 @@ use doublezero_sdk::{
     AccountData, AccountType, DeviceStatus, LocationStatus, MulticastGroupStatus, UserStatus,
     UserType,
 };
+use doublezero_telemetry::state::device_latency_samples::DeviceLatencySamples;
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
     nonblocking::rpc_client::RpcClient as NonblockingRpcClient,
@@ -292,6 +293,76 @@ pub fn fetch_device_infos(
     }
 
     Ok(infos)
+}
+
+/// Fetch a map of min-latency (in microseconds) between device pairs for the current epoch.
+///
+/// Returns `HashMap<(origin_device_pk, target_device_pk), min_latency_us>`.
+/// The map is derived from `DeviceLatencySamples` onchain telemetry accounts.
+pub fn fetch_device_latency_map(
+    client: &RpcClient,
+    telemetry_program_id: &Pubkey,
+) -> Result<HashMap<(Pubkey, Pubkey), f64>> {
+    const DEVICE_LATENCY_SAMPLES_ACCOUNT_TYPE: u8 = 3;
+
+    let epoch_info = client
+        .get_epoch_info()
+        .context("failed to fetch epoch info")?;
+    let epoch = epoch_info.epoch;
+
+    let accounts = client
+        .get_program_accounts_with_config(
+            telemetry_program_id,
+            RpcProgramAccountsConfig {
+                filters: Some(vec![
+                    RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
+                        0,
+                        vec![DEVICE_LATENCY_SAMPLES_ACCOUNT_TYPE],
+                    )),
+                    RpcFilterType::Memcmp(Memcmp::new_raw_bytes(1, epoch.to_le_bytes().to_vec())),
+                ]),
+                account_config: RpcAccountInfoConfig {
+                    encoding: Some(UiAccountEncoding::Base64),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .context("failed to fetch DeviceLatencySamples accounts")?;
+
+    let mut map: HashMap<(Pubkey, Pubkey), f64> = HashMap::new();
+
+    for (_pk, account) in accounts {
+        let Ok(samples) = DeviceLatencySamples::try_from(account.data.as_slice()) else {
+            continue;
+        };
+        if samples.samples.is_empty() {
+            continue;
+        }
+        let origin = samples.header.origin_device_pk;
+        let target = samples.header.target_device_pk;
+        // Zero RTT indicates packet loss — exclude from min calculation.
+        // If all samples are zero (total loss), skip this account entirely.
+        let Some(min_us) = samples
+            .samples
+            .iter()
+            .copied()
+            .filter(|&s| s > 0)
+            .min()
+            .map(|v| v as f64)
+        else {
+            continue;
+        };
+        map.entry((origin, target))
+            .and_modify(|e| {
+                if min_us < *e {
+                    *e = min_us;
+                }
+            })
+            .or_insert(min_us);
+    }
+
+    Ok(map)
 }
 
 /// Resolve a multicast group key-or-code to a pubkey.

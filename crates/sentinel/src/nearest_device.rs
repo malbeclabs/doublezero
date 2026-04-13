@@ -32,12 +32,16 @@ pub fn haversine_km(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {
 
 /// Find the device to use for a new multicast publisher for an IBRL user on `current_device_pk`.
 ///
-/// Returns the current device if it has capacity. Otherwise returns the geographically
-/// nearest activated device that has capacity, based on device Location coordinates.
-/// Returns `None` if no device with capacity exists.
+/// When `latency_map` is provided, ranks by min RTT (µs) from `DeviceLatencySamples` telemetry,
+/// falling back to Haversine for any pair with no latency data.
+/// When `latency_map` is `None`, ranks purely by Haversine distance.
+///
+/// Returns the current device if it has capacity. Otherwise returns the nearest device
+/// with capacity. Returns `None` if no device with capacity exists.
 pub fn find_nearest_device_for_multicast<'a>(
     current_device_pk: &Pubkey,
     all_devices: &'a HashMap<Pubkey, DzDeviceInfo>,
+    latency_map: Option<&HashMap<(Pubkey, Pubkey), f64>>,
 ) -> Option<&'a DzDeviceInfo> {
     let current = all_devices.get(current_device_pk)?;
 
@@ -50,10 +54,34 @@ pub fn find_nearest_device_for_multicast<'a>(
         .values()
         .filter(|d| d.pk != *current_device_pk && device_has_multicast_publisher_capacity(d))
         .min_by(|a, b| {
-            let da = haversine_km(current.lat, current.lng, a.lat, a.lng);
-            let db = haversine_km(current.lat, current.lng, b.lat, b.lng);
+            let da = proximity(current, a, latency_map);
+            let db = proximity(current, b, latency_map);
             da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
         })
+}
+
+/// Return a proximity score (lower = closer) between `from` and `to`.
+///
+/// When `latency_map` is `Some`, uses min RTT (µs) from onchain `DeviceLatencySamples`.
+/// Device pairs with no latency data score `f64::INFINITY` (sorted last).
+/// When `latency_map` is `None`, uses Haversine distance (km).
+fn proximity(
+    from: &DzDeviceInfo,
+    to: &DzDeviceInfo,
+    latency_map: Option<&HashMap<(Pubkey, Pubkey), f64>>,
+) -> f64 {
+    if let Some(map) = latency_map {
+        let fwd = map.get(&(from.pk, to.pk)).copied();
+        let rev = map.get(&(to.pk, from.pk)).copied();
+        match (fwd, rev) {
+            (Some(f), Some(r)) => f.min(r),
+            (Some(f), None) => f,
+            (None, Some(r)) => r,
+            (None, None) => f64::INFINITY,
+        }
+    } else {
+        haversine_km(from.lat, from.lng, to.lat, to.lng)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -99,7 +127,7 @@ mod tests {
         let mut devices = HashMap::new();
         devices.insert(pk, make_device(pk, "ams", 52.37, 4.90));
 
-        let result = find_nearest_device_for_multicast(&pk, &devices);
+        let result = find_nearest_device_for_multicast(&pk, &devices, None);
         assert_eq!(result.map(|d| d.pk), Some(pk));
     }
 
@@ -127,7 +155,7 @@ mod tests {
         devices.insert(pk, make_full_device(pk, "ams", 52.37, 4.90));
         devices.insert(pk2, make_full_device(pk2, "fra", 50.11, 8.68));
 
-        let result = find_nearest_device_for_multicast(&pk, &devices);
+        let result = find_nearest_device_for_multicast(&pk, &devices, None);
         assert!(result.is_none());
     }
 

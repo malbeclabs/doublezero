@@ -2848,7 +2848,7 @@ async fn test_link_topology_invalid_account_rejected() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     // Pass a bogus pubkey that has no onchain data — data_is_empty() → InvalidArgument
     let bogus_pubkey = Pubkey::new_unique();
-    let result = try_execute_transaction_with_extra_accounts(
+    let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -2860,9 +2860,9 @@ async fn test_link_topology_invalid_account_rejected() {
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(bogus_pubkey, false),
         ],
         &payer,
-        &[AccountMeta::new_readonly(bogus_pubkey, false)],
     )
     .await;
 
@@ -2943,7 +2943,7 @@ async fn test_link_topology_valid_accepted() {
 
     // Assign the topology to the link — should succeed
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    try_execute_transaction_with_extra_accounts(
+    try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -2955,9 +2955,9 @@ async fn test_link_topology_valid_accepted() {
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(topo_a_pda, false),
         ],
         &payer,
-        &[AccountMeta::new_readonly(topo_a_pda, false)],
     )
     .await
     .expect("Setting valid topology on link should succeed");
@@ -3047,7 +3047,7 @@ async fn test_link_topology_reassigned_by_foundation() {
 
     // Foundation reassigns link_topologies to high-bandwidth
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    execute_transaction_with_extra_accounts(
+    execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -3072,9 +3072,9 @@ async fn test_link_topology_reassigned_by_foundation() {
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(_contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(high_bandwidth_pda, false),
         ],
         &payer,
-        &[AccountMeta::new_readonly(high_bandwidth_pda, false)],
     )
     .await;
 
@@ -3279,6 +3279,7 @@ async fn test_link_topology_update_rejected_for_non_foundation() {
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(unicast_default_pda, false),
         ],
         &non_foundation,
     )

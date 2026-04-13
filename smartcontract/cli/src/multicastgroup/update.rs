@@ -2,7 +2,9 @@ use crate::{
     doublezerocommand::CliCommand,
     poll_for_activation::poll_for_multicastgroup_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{validate_code, validate_parse_bandwidth, validate_pubkey_or_code},
+    validators::{
+        validate_code, validate_parse_bandwidth, validate_pubkey, validate_pubkey_or_code,
+    },
 };
 use clap::Args;
 use doublezero_sdk::commands::multicastgroup::{
@@ -30,6 +32,9 @@ pub struct UpdateMulticastGroupCliCommand {
     /// Updated subscriber count
     #[arg(long)]
     pub subscriber_count: Option<u32>,
+    /// Updated owner pubkey for the multicast group
+    #[arg(long, value_parser = validate_pubkey)]
+    pub owner: Option<String>,
     /// Wait for the multicast group to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -51,6 +56,13 @@ impl UpdateMulticastGroupCliCommand {
             max_bandwidth: self.max_bandwidth,
             publisher_count: self.publisher_count,
             subscriber_count: self.subscriber_count,
+            owner: self.owner.as_deref().map(|s| {
+                if s.eq_ignore_ascii_case("me") {
+                    client.get_payer()
+                } else {
+                    s.parse().unwrap()
+                }
+            }),
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -80,11 +92,35 @@ mod tests {
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
+    const SIGNATURE_BYTES: [u8; 64] = [
+        120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222, 82,
+        64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240, 139, 130,
+        217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139, 100, 221, 20,
+        137, 4, 5,
+    ];
+
+    const EXPECTED_SIGNATURE_STR: &str = "Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n";
+
+    fn make_multicastgroup(pda_pubkey: Pubkey) -> MulticastGroup {
+        MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            index: 1,
+            bump_seed: 255,
+            code: "test".to_string(),
+            tenant_pk: Pubkey::new_unique(),
+            multicast_ip: [10, 0, 0, 1].into(),
+            max_bandwidth: 1000000000,
+            status: MulticastGroupStatus::Activated,
+            owner: pda_pubkey,
+            publisher_count: 5,
+            subscriber_count: 10,
+        }
+    }
+
     #[test]
     fn test_cli_multicastgroup_update_bandwidth_parsing() {
         use clap::Parser;
 
-        // Define a test CLI structure to parse arguments
         #[derive(Parser, Debug)]
         struct TestCli {
             #[command(subcommand)]
@@ -96,14 +132,13 @@ mod tests {
             Update(UpdateMulticastGroupCliCommand),
         }
 
-        // Test various bandwidth formats
         let test_cases = vec![
             ("1Gbps", 1_000_000_000u64),
             ("100Mbps", 100_000_000u64),
             ("500Kbps", 500_000u64),
             ("1000bps", 1_000u64),
-            ("10gbps", 10_000_000_000u64), // lowercase
-            ("2.5Gbps", 2_500_000_000u64), // decimal
+            ("10gbps", 10_000_000_000u64),
+            ("2.5Gbps", 2_500_000_000u64),
         ];
 
         for (input, expected) in test_cases {
@@ -139,7 +174,6 @@ mod tests {
             }
         }
 
-        // Test invalid bandwidth formats
         let invalid_cases = vec!["invalid", "abc", "Gbps", ""];
 
         for input in invalid_cases {
@@ -162,30 +196,67 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_multicastgroup_update_owner_parsing() {
+        use clap::Parser;
+
+        #[derive(Parser, Debug)]
+        struct TestCli {
+            #[command(subcommand)]
+            command: TestCommand,
+        }
+
+        #[derive(clap::Subcommand, Debug)]
+        enum TestCommand {
+            Update(UpdateMulticastGroupCliCommand),
+        }
+
+        let valid_pubkey = Pubkey::new_unique().to_string();
+
+        let valid_cases = vec!["me", valid_pubkey.as_str()];
+        for input in valid_cases {
+            let args = vec![
+                "test",
+                "update",
+                "--pubkey",
+                "test-pubkey",
+                "--owner",
+                input,
+            ];
+            let result = TestCli::try_parse_from(args);
+            assert!(
+                result.is_ok(),
+                "Should have accepted owner '{}': {:?}",
+                input,
+                result.err()
+            );
+        }
+
+        let invalid_cases = vec!["not_a_pubkey", "invalid key!"];
+        for input in invalid_cases {
+            let args = vec![
+                "test",
+                "update",
+                "--pubkey",
+                "test-pubkey",
+                "--owner",
+                input,
+            ];
+            let result = TestCli::try_parse_from(args);
+            assert!(
+                result.is_err(),
+                "Should have rejected invalid owner '{}'",
+                input
+            );
+        }
+    }
+
+    #[test]
     fn test_cli_multicastgroup_update() {
         let mut client = create_test_client();
 
         let (pda_pubkey, _bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
-        let signature = Signature::from([
-            120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
-            82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
-            139, 130, 217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139,
-            100, 221, 20, 137, 4, 5,
-        ]);
-
-        let multicastgroup = MulticastGroup {
-            account_type: AccountType::MulticastGroup,
-            index: 1,
-            bump_seed: 255,
-            code: "test".to_string(),
-            tenant_pk: Pubkey::new_unique(),
-            multicast_ip: [10, 0, 0, 1].into(),
-            max_bandwidth: 1000000000,
-            status: MulticastGroupStatus::Activated,
-            owner: pda_pubkey,
-            publisher_count: 5,
-            subscriber_count: 10,
-        };
+        let signature = Signature::from(SIGNATURE_BYTES);
+        let multicastgroup = make_multicastgroup(pda_pubkey);
 
         client
             .expect_check_requirements()
@@ -206,10 +277,10 @@ mod tests {
                 max_bandwidth: Some(1000000000),
                 publisher_count: Some(5),
                 subscriber_count: Some(10),
+                owner: None,
             }))
             .returning(move |_| Ok(signature));
 
-        /*****************************************************************************************************/
         let mut output = Vec::new();
         let res = UpdateMulticastGroupCliCommand {
             pubkey: pda_pubkey.to_string(),
@@ -218,13 +289,108 @@ mod tests {
             max_bandwidth: Some(1000000000),
             publisher_count: Some(5),
             subscriber_count: Some(10),
+            owner: None,
             wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
-        let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(
-            output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
-        );
+        assert_eq!(String::from_utf8(output).unwrap(), EXPECTED_SIGNATURE_STR);
+    }
+
+    #[test]
+    fn test_cli_multicastgroup_update_with_explicit_owner() {
+        let mut client = create_test_client();
+
+        let (pda_pubkey, _bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let explicit_owner = Pubkey::new_unique();
+        let signature = Signature::from(SIGNATURE_BYTES);
+        let multicastgroup = make_multicastgroup(pda_pubkey);
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_multicastgroup()
+            .with(predicate::eq(GetMulticastGroupCommand {
+                pubkey_or_code: pda_pubkey.to_string(),
+            }))
+            .returning(move |_| Ok((pda_pubkey, multicastgroup.clone())));
+        client
+            .expect_update_multicastgroup()
+            .with(predicate::eq(UpdateMulticastGroupCommand {
+                pubkey: pda_pubkey,
+                code: None,
+                multicast_ip: None,
+                max_bandwidth: None,
+                publisher_count: None,
+                subscriber_count: None,
+                owner: Some(explicit_owner),
+            }))
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let res = UpdateMulticastGroupCliCommand {
+            pubkey: pda_pubkey.to_string(),
+            code: None,
+            multicast_ip: None,
+            max_bandwidth: None,
+            publisher_count: None,
+            subscriber_count: None,
+            owner: Some(explicit_owner.to_string()),
+            wait: false,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        assert_eq!(String::from_utf8(output).unwrap(), EXPECTED_SIGNATURE_STR);
+    }
+
+    #[test]
+    fn test_cli_multicastgroup_update_owner_me() {
+        let mut client = create_test_client();
+
+        let (pda_pubkey, _bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        // The payer configured in create_test_client()
+        let payer = Pubkey::from_str_const("DDddB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt");
+        let signature = Signature::from(SIGNATURE_BYTES);
+        let multicastgroup = make_multicastgroup(pda_pubkey);
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_multicastgroup()
+            .with(predicate::eq(GetMulticastGroupCommand {
+                pubkey_or_code: pda_pubkey.to_string(),
+            }))
+            .returning(move |_| Ok((pda_pubkey, multicastgroup.clone())));
+        client
+            .expect_update_multicastgroup()
+            .with(predicate::eq(UpdateMulticastGroupCommand {
+                pubkey: pda_pubkey,
+                code: None,
+                multicast_ip: None,
+                max_bandwidth: None,
+                publisher_count: None,
+                subscriber_count: None,
+                owner: Some(payer),
+            }))
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let res = UpdateMulticastGroupCliCommand {
+            pubkey: pda_pubkey.to_string(),
+            code: None,
+            multicast_ip: None,
+            max_bandwidth: None,
+            publisher_count: None,
+            subscriber_count: None,
+            owner: Some("me".to_string()),
+            wait: false,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        assert_eq!(String::from_utf8(output).unwrap(), EXPECTED_SIGNATURE_STR);
     }
 }

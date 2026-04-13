@@ -410,6 +410,7 @@ async fn test_update_multicastgroup_with_onchain_reallocation() {
             publisher_count: None,
             subscriber_count: None,
             use_onchain_allocation: true,
+            owner: None,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -490,6 +491,7 @@ async fn test_update_multicastgroup_backward_compat() {
             publisher_count: None,
             subscriber_count: None,
             use_onchain_allocation: false,
+            owner: None,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -557,6 +559,7 @@ async fn test_update_multicastgroup_feature_flag_disabled() {
             publisher_count: None,
             subscriber_count: None,
             use_onchain_allocation: true,
+            owner: None,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),

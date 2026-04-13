@@ -164,6 +164,7 @@ async fn test_multicastgroup() {
     println!("✅ MulticastGroup reactivated");
     /*****************************************************************************************************************************************************/
     println!("4. Testing MulticastGroup update...");
+    let new_owner = Pubkey::new_unique();
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -177,6 +178,7 @@ async fn test_multicastgroup() {
             publisher_count: None,
             subscriber_count: None,
             use_onchain_allocation: false,
+            owner: Some(new_owner),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -198,6 +200,7 @@ async fn test_multicastgroup() {
     assert_eq!(multicastgroup_la.publisher_count, 0);
     assert_eq!(multicastgroup_la.subscriber_count, 0);
     assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Activated);
+    assert_eq!(multicastgroup_la.owner, new_owner);
 
     println!("✅ MulticastGroup updated");
     /*****************************************************************************************************************************************************/
@@ -238,7 +241,7 @@ async fn test_multicastgroup() {
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(multicastgroup.owner, false),
+            AccountMeta::new(new_owner, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -324,6 +327,7 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
             publisher_count: Some(1),
             subscriber_count: Some(1),
             use_onchain_allocation: false,
+            owner: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -796,6 +800,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             publisher_count: Some(1),
             subscriber_count: None,
             use_onchain_allocation: false,
+            owner: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -842,6 +847,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             publisher_count: Some(0),
             subscriber_count: Some(1),
             use_onchain_allocation: false,
+            owner: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -888,6 +894,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             publisher_count: Some(0),
             subscriber_count: Some(0),
             use_onchain_allocation: false,
+            owner: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),

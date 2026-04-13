@@ -456,40 +456,36 @@ impl ProvisioningCliCommand {
                     })?;
 
                 // Determine tenant: 1) from CLI argument, 2) from config file, 3) from access pass allowlist
-                let tenant = if let Some(t) = tenant {
-                    Some(t)
+                let tenant_with_source: Option<(String, &str)> = if let Some(t) = tenant {
+                    Some((t, "CLI argument"))
                 } else {
                     let cfg_tenant = doublezero_sdk::read_doublezero_config()
                         .ok()
                         .and_then(|(_, cfg)| cfg.tenant);
-                    if let Some(ref t) = cfg_tenant {
-                        spinner.println(format!("    Using tenant '{t}' from configuration file."));
-                    }
-                    cfg_tenant.or_else(|| {
+                    if let Some(t) = cfg_tenant {
+                        Some((t, "configuration file"))
+                    } else {
                         accesspass
                             .tenant_allowlist
                             .first()
                             .filter(|pk| **pk != Pubkey::default())
-                            .map(|pk| {
-                                let t = pk.to_string();
-                                spinner.println(format!("    Using tenant '{t}' from Access Pass."));
-                                t
-                            })
-                    })
+                            .map(|pk| (pk.to_string(), "Access Pass"))
+                    }
                 };
 
-                let tenant_pk = match tenant {
-                    Some(tenant_str) => match parse_pubkey(&tenant_str) {
-                        Some(pk) => Some(pk),
-                        None => {
-                            let (pubkey, _) = client
-                                .get_tenant(GetTenantCommand {
-                                    pubkey_or_code: tenant_str.clone(),
-                                })
-                                .map_err(|_| eyre::eyre!("Tenant not found"))?;
-                            Some(pubkey)
-                        }
-                    },
+                let tenant_pk = match tenant_with_source {
+                    Some((tenant_str, source)) => {
+                        let (pubkey, tenant_account) = client
+                            .get_tenant(GetTenantCommand {
+                                pubkey_or_code: tenant_str.clone(),
+                            })
+                            .map_err(|_| eyre::eyre!("Tenant '{}' not found", tenant_str))?;
+                        spinner.println(format!(
+                            "    Using tenant '{}' from {}.",
+                            tenant_account.code, source
+                        ));
+                        Some(pubkey)
+                    }
                     None => None,
                 };
 

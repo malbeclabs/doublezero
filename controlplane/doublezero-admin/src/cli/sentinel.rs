@@ -575,20 +575,39 @@ impl CreateValidatorMulticastPublishersCommand {
             candidates.len(),
             self.multicast_group,
         );
-        eprintln!(
-            "  {:<44}  {:<15}  {:<24}  {:<24}  {:<20}  {:>14}",
-            "OWNER", "CLIENT IP", "DEVICE", "NEAREST DEVICE", "CLIENT", "STAKE (SOL)",
-        );
-        eprintln!("  {}", "-".repeat(150));
-        for c in &candidates {
-            let nearest = find_nearest_device_for_multicast(&c.device_pk, &device_infos)
-                .map(|d| d.code.clone())
-                .unwrap_or_else(|| "none".to_string());
-            eprintln!(
-                "  {:<44}  {:<15}  {:<24}  {:<24}  {:<20}  {:>14.2}",
-                c.owner, c.client_ip, c.device_label, nearest, c.software_client, c.stake_sol,
-            );
+        #[derive(Tabled, Serialize)]
+        struct PlanRow {
+            #[tabled(rename = "OWNER")]
+            owner: String,
+            #[tabled(rename = "CLIENT IP")]
+            client_ip: String,
+            #[tabled(rename = "DEVICE")]
+            device: String,
+            #[tabled(rename = "NEAREST DEVICE")]
+            nearest_device: String,
+            #[tabled(rename = "CLIENT")]
+            client: String,
+            #[tabled(rename = "STAKE (SOL)")]
+            stake_sol: String,
         }
+
+        let plan_rows: Vec<PlanRow> = candidates
+            .iter()
+            .map(|c| {
+                let nearest = find_nearest_device_for_multicast(&c.device_pk, &device_infos)
+                    .map(|d| d.code.clone())
+                    .unwrap_or_else(|| "none".to_string());
+                PlanRow {
+                    owner: c.owner.to_string(),
+                    client_ip: c.client_ip.to_string(),
+                    device: c.device_label.clone(),
+                    nearest_device: nearest,
+                    client: c.software_client.clone(),
+                    stake_sol: format!("{:.2}", c.stake_sol),
+                }
+            })
+            .collect();
+        print_table(plan_rows, &OutputOptions { json: false }, &[5]);
         eprintln!();
 
         if self.dry_run {

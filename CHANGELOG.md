@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 
 - Smartcontract
   - Allow `SubscribeMulticastGroup` for users in `Pending` status so that `CreateSubscribeUser` can be followed by additional subscribe calls before the activator runs ([#3521](https://github.com/malbeclabs/doublezero/pull/3521))
+  - Add optional `owner` field to `UpdateMulticastGroup` instruction, allowing foundation members to reassign ownership of a multicast group ([#3527](https://github.com/malbeclabs/doublezero/pull/3527))
+- CLI
+  - Add `--owner` flag to `multicast group update`, accepting a pubkey or `me` ([#3527](https://github.com/malbeclabs/doublezero/pull/3527))
 
 ## [v0.17.0](https://github.com/malbeclabs/doublezero/compare/client/v0.16.0...client/v0.17.0) - 2026-04-10
 

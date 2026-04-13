@@ -154,7 +154,7 @@ mod tests {
         devices.insert(pk_fra, make_device(pk_fra, "fra", 50.11, 8.68)); // ~365 km from ams
         devices.insert(pk_nyc, make_device(pk_nyc, "nyc", 40.71, -74.01)); // ~5,860 km from ams
 
-        let result = find_nearest_device_for_multicast(&pk_ams, &devices);
+        let result = find_nearest_device_for_multicast(&pk_ams, &devices, None);
         assert_eq!(result.map(|d| d.pk), Some(pk_fra));
     }
 
@@ -178,7 +178,7 @@ mod tests {
         let mut devices = HashMap::new();
         devices.insert(pk, make_device(pk, "ams", 52.37, 4.90));
 
-        let result = find_nearest_device_for_multicast(&unknown, &devices);
+        let result = find_nearest_device_for_multicast(&unknown, &devices, None);
         assert!(result.is_none());
     }
 

@@ -113,7 +113,7 @@ impl ProvisioningCliCommand {
         check_doublezero(controller, client, Some(&spinner)).await?;
 
         spinner.println(format!(
-            "🔗  Start Provisioning User to {}...",
+            "⚡  Connecting to {}...",
             client.get_environment()
         ));
 
@@ -141,7 +141,7 @@ impl ProvisioningCliCommand {
 
         spinner.inc(1);
         spinner.println(format!("    DoubleZero ID: {}", client.get_payer()));
-        spinner.println(format!("🔍  Provisioning User for IP: {client_ip_str}"));
+        spinner.println(format!("⚡  Provisioning for IP: {client_ip_str}"));
 
         match self.parse_dz_mode()? {
             ParsedDzMode::Ibrl(user_type, tenant) => {
@@ -432,8 +432,8 @@ impl ProvisioningCliCommand {
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
                     .await?;
 
-                spinner.println("    Creating user account...");
-                spinner.println(format!("    Device selected: {} ", device.code));
+                spinner.println("    Creating account...");
+                spinner.println(format!("    Device selected: {}", device.code));
                 spinner.inc(1);
 
                 // Check per-type user limit before attempting to create
@@ -463,7 +463,7 @@ impl ProvisioningCliCommand {
                         .ok()
                         .and_then(|(_, cfg)| cfg.tenant);
                     if let Some(ref t) = cfg_tenant {
-                        spinner.println(format!("Using tenant '{t}' from configuration file."));
+                        spinner.println(format!("    Using tenant '{t}' from configuration file."));
                     }
                     cfg_tenant.or_else(|| {
                         accesspass
@@ -472,7 +472,7 @@ impl ProvisioningCliCommand {
                             .filter(|pk| **pk != Pubkey::default())
                             .map(|pk| {
                                 let t = pk.to_string();
-                                spinner.println(format!("Using tenant '{t}' from Access Pass."));
+                                spinner.println(format!("    Using tenant '{t}' from Access Pass."));
                                 t
                             })
                     })
@@ -582,10 +582,7 @@ impl ProvisioningCliCommand {
                     "    Creating separate Multicast user for concurrent tunnels (IBRL user: {})",
                     ibrl_user_pk
                 ));
-                spinner.println(format!(
-                    "    The Device has been selected: {} ",
-                    device.code
-                ));
+                spinner.println(format!("    Device selected: {}", device.code));
 
                 // Check per-type user limit before attempting to create
                 if let Some(err_msg) =
@@ -719,11 +716,8 @@ impl ProvisioningCliCommand {
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
                     .await?;
 
-                spinner.println(format!("    Creating an account for the IP: {client_ip}"));
-                spinner.println(format!(
-                    "    The Device has been selected: {} ",
-                    device.code
-                ));
+                spinner.println(format!("    Creating account for IP: {client_ip}"));
+                spinner.println(format!("    Device selected: {}", device.code));
                 spinner.inc(1);
 
                 // Check per-type user limit before attempting to create

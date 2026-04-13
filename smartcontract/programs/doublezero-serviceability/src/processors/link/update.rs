@@ -112,9 +112,10 @@ pub fn process_update_link(
     let contributor_account = next_account_info(accounts_iter)?;
 
     // Account layout (all optional accounts included):
-    //   [link, contributor, side_z?, globalstate, device_a?, device_z?, device_tunnel_block?, link_ids?, payer, system]
+    //   [link, contributor, side_z?, globalstate, device_a?, device_z?, device_tunnel_block?, link_ids?, topology*, payer, system]
     // device_a/device_z: present when tunnel_net is being updated (needed for interface IP update)
     // device_tunnel_block/link_ids: present when use_onchain_allocation is true
+    // topology*: N topology PDAs when link_topologies is being updated, passed before payer/system
     let mut expected_without_side_z: usize = 5; // link, contributor, globalstate, payer, system
     if value.tunnel_net.is_some() {
         expected_without_side_z += 2; // device_a, device_z
@@ -122,8 +123,6 @@ pub fn process_update_link(
     if value.use_onchain_allocation {
         expected_without_side_z += 2; // device_tunnel_block, link_ids
     }
-    // Topology accounts are passed as trailing accounts after system_program.
-    // Include them in the expected count so side_z detection is not confused.
     if let Some(ref link_topologies) = value.link_topologies {
         expected_without_side_z += link_topologies.len();
     }
@@ -150,9 +149,19 @@ pub fn process_update_link(
         None
     };
 
+    // Topology PDAs come before payer/system, matching the SDK account ordering
+    // (execute_transaction appends payer+system at the end of the accounts list).
+    let topology_count = value
+        .link_topologies
+        .as_ref()
+        .map(|t| t.len())
+        .unwrap_or(0);
+    let topology_accounts: Vec<&AccountInfo> = (0..topology_count)
+        .map(|_| next_account_info(accounts_iter))
+        .collect::<Result<_, _>>()?;
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
-    let topology_accounts: Vec<&AccountInfo> = accounts_iter.collect();
 
     #[cfg(test)]
     msg!("process_update_link({:?})", value);

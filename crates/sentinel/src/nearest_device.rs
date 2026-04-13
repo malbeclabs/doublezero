@@ -60,6 +60,18 @@ pub fn find_nearest_device_for_multicast<'a>(
         })
 }
 
+/// Return the proximity score between two devices (lower = closer).
+///
+/// Exposed so callers can display the score alongside the device code.
+/// Returns `f64::INFINITY` when using latency mode and no data exists for the pair.
+pub fn device_proximity_score(
+    from: &DzDeviceInfo,
+    to: &DzDeviceInfo,
+    latency_map: Option<&HashMap<(Pubkey, Pubkey), f64>>,
+) -> f64 {
+    proximity(from, to, latency_map)
+}
+
 /// Return a proximity score (lower = closer) between `from` and `to`.
 ///
 /// When `latency_map` is `Some`, uses min RTT (µs) from onchain `DeviceLatencySamples`.

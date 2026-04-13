@@ -7,7 +7,7 @@ use doublezero_sentinel::{
     dz_ledger_writer::build_create_multicast_publisher_instructions,
     multicast_create::{find_candidates, CandidateFilters},
     multicast_find::{apply_filters, FindFilters},
-    nearest_device::find_nearest_device_for_multicast,
+    nearest_device::{device_proximity_score, find_nearest_device_for_multicast},
     output::{print_table, OutputOptions},
     validator_metadata_reader::{
         HttpValidatorMetadataReader, ValidatorMetadataReader, DEFAULT_VALIDATOR_METADATA_URL,
@@ -297,13 +297,21 @@ impl FindValidatorMulticastPublishersCommand {
                     .map(|d| d.code.clone())
                     .unwrap_or_else(|| user.device_pk.to_string());
 
-                let nearest_device_label = find_nearest_device_for_multicast(
+                let nearest_device_label = match find_nearest_device_for_multicast(
                     &user.device_pk,
                     &device_infos,
                     latency_map.as_ref(),
-                )
-                .map(|d| d.code.clone())
-                .unwrap_or_default();
+                ) {
+                    None => String::new(),
+                    Some(d) if d.pk == user.device_pk => d.code.clone(),
+                    Some(d) => {
+                        let score = device_infos
+                            .get(&user.device_pk)
+                            .map(|from| device_proximity_score(from, d, latency_map.as_ref()))
+                            .unwrap_or(f64::INFINITY);
+                        fmt_nearest_label(&d.code, score, self.nearest_via_geo)
+                    }
+                };
 
                 rows.push(ValidatorPublisherRow {
                     owner: user.owner.to_string(),
@@ -635,13 +643,21 @@ impl CreateValidatorMulticastPublishersCommand {
         let plan_rows: Vec<PlanRow> = candidates
             .iter()
             .map(|c| {
-                let nearest = find_nearest_device_for_multicast(
+                let nearest = match find_nearest_device_for_multicast(
                     &c.device_pk,
                     &device_infos,
                     latency_map.as_ref(),
-                )
-                .map(|d| d.code.clone())
-                .unwrap_or_else(|| "none".to_string());
+                ) {
+                    None => "none".to_string(),
+                    Some(d) if d.pk == c.device_pk => d.code.clone(),
+                    Some(d) => {
+                        let score = device_infos
+                            .get(&c.device_pk)
+                            .map(|from| device_proximity_score(from, d, latency_map.as_ref()))
+                            .unwrap_or(f64::INFINITY);
+                        fmt_nearest_label(&d.code, score, self.nearest_via_geo)
+                    }
+                };
                 PlanRow {
                     owner: c.owner.to_string(),
                     client_ip: c.client_ip.to_string(),
@@ -781,6 +797,21 @@ impl CreateValidatorMulticastPublishersCommand {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Format a nearest-device label with its proximity score.
+/// Shows `"code (1234 µs)"` in latency mode or `"code (365 km)"` in geo mode.
+/// Falls back to plain `code` when the score is infinite (no latency data).
+fn fmt_nearest_label(code: &str, score: f64, geo_mode: bool) -> String {
+    if score.is_finite() {
+        if geo_mode {
+            format!("{code} ({:.0} km)", score)
+        } else {
+            format!("{code} ({:.0} µs)", score)
+        }
+    } else {
+        code.to_string()
+    }
+}
 
 async fn send_instruction(
     rpc_client: &RpcClient,

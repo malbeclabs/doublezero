@@ -86,7 +86,7 @@ func TestGetAgentVersions_ReturnsVersions(t *testing.T) {
 	contributorPK := solana.NewWallet().PublicKey()
 
 	now := time.Now().UTC()
-	startMicros := uint64(now.Add(-1*time.Hour).UnixMicro())
+	startMicros := uint64(now.Add(-1 * time.Hour).UnixMicro())
 
 	pd := makeProgramData(deviceA, deviceZ, linkPK, contributorPK)
 

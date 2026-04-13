@@ -116,6 +116,6 @@ func (d *DeviceLatencySamplesHeaderV0) ToV1Header() DeviceLatencySamplesHeader {
 func (d *DeviceLatencySamplesV0) ToV1() *DeviceLatencySamples {
 	return &DeviceLatencySamples{
 		DeviceLatencySamplesHeader: d.DeviceLatencySamplesHeaderV0.ToV1Header(),
-		Samples:                   d.Samples,
+		Samples:                    d.Samples,
 	}
 }

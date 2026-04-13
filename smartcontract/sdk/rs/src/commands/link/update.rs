@@ -85,6 +85,14 @@ impl UpdateLinkCommand {
             accounts.push(AccountMeta::new(link_ids_ext, false));
         }
 
+        // Topology PDAs must be passed as remaining accounts so the onchain
+        // processor can verify each entry in link_topologies.
+        if let Some(ref link_topologies) = self.link_topologies {
+            for topology_pk in link_topologies {
+                accounts.push(AccountMeta::new_readonly(*topology_pk, false));
+            }
+        }
+
         client.execute_transaction(
             DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
                 code,

@@ -30,7 +30,7 @@ pub struct ListCommand {
 
     /// Filter seats by funder (withdraw authority). Accepts a public key or a
     /// path to a keypair file. When omitted, defaults to the default keypair's
-    /// public key (use --all to show every seat instead).
+    /// public key; if no default keypair is found, shows all seats.
     #[arg(long, short = 'k')]
     funder: Option<String>,
 
@@ -134,8 +134,7 @@ impl ListCommand {
                 Some(keypair.pubkey())
             }
         } else if !self.all {
-            let keypair = try_load_keypair(None)?;
-            Some(keypair.pubkey())
+            try_load_keypair(None).ok().map(|kp| kp.pubkey())
         } else {
             None
         };

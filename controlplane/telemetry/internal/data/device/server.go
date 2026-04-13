@@ -66,6 +66,7 @@ func (s *Server) registerRoutes() {
 	s.Mux.HandleFunc("/device-link/contributors", s.handleContributors)
 	s.Mux.HandleFunc("/device-link/circuit-latencies", s.handleDeviceCircuitLatencies)
 	s.Mux.HandleFunc("/device-link/summary", s.handlSummary)
+	s.Mux.HandleFunc("/device-link/agent-versions", s.handleAgentVersions)
 }
 
 func (s *Server) handleDeviceLinkTypes(w http.ResponseWriter, r *http.Request) {
@@ -309,6 +310,31 @@ func (s *Server) handlSummary(w http.ResponseWriter, r *http.Request) {
 	if err := encoder.Encode(output); err != nil {
 		s.log.Error("failed to encode latencies", "error", err)
 		http.Error(w, fmt.Sprintf("failed to encode latencies: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (s *Server) handleAgentVersions(w http.ResponseWriter, r *http.Request) {
+	env := r.URL.Query().Get("env")
+	s.log.Debug("[/device-link/agent-versions]", "env", env, "full", r.URL.String())
+
+	provider, err := s.provider(env)
+	if err != nil {
+		s.log.Warn("invalid environment", "env", env)
+		http.Error(w, fmt.Sprintf("invalid environment %q", env), http.StatusBadRequest)
+		return
+	}
+
+	versions, err := provider.GetAgentVersions(r.Context())
+	if err != nil {
+		s.log.Error("failed to get agent versions", "error", err)
+		http.Error(w, fmt.Sprintf("failed to get agent versions: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(versions); err != nil {
+		s.log.Error("failed to encode agent versions", "error", err)
+		http.Error(w, fmt.Sprintf("failed to encode agent versions: %v", err), http.StatusInternalServerError)
 		return
 	}
 }

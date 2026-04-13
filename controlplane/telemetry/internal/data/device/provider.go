@@ -86,10 +86,19 @@ type CircuitSummary struct {
 	CommittedJitterChangeRatio float64 `json:"committed_jitter_change_ratio"`
 }
 
+type DeviceAgentVersion struct {
+	DevicePK   string `json:"device_pk"`
+	DeviceCode string `json:"device_code"`
+	Version    string `json:"version"`
+	Commit     string `json:"commit"`
+	Timestamp  string `json:"timestamp"`
+}
+
 type Provider interface {
 	GetCircuits(ctx context.Context) ([]Circuit, error)
 	GetCircuitLatencies(ctx context.Context, cfg GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error)
 	GetSummaryForCircuits(ctx context.Context, cfg GetSummaryForCircuitsConfig) ([]CircuitSummary, error)
+	GetAgentVersions(ctx context.Context) ([]DeviceAgentVersion, error)
 }
 
 type provider struct {
@@ -168,4 +177,5 @@ type ServiceabilityClient interface {
 
 type TelemetryClient interface {
 	GetDeviceLatencySamples(ctx context.Context, originDevicePubKey, targetDevicePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error)
+	GetDeviceLatencySamplesHeader(ctx context.Context, originDevicePubKey, targetDevicePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamplesHeader, error)
 }

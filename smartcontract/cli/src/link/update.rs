@@ -60,7 +60,7 @@ pub struct UpdateLinkCliCommand {
     /// Reassign tunnel network (foundation-only, e.g. 172.16.1.100/31)
     #[arg(long)]
     pub tunnel_net: Option<NetworkV4>,
-    /// Topology name to tag this link with (foundation-only). Use "default" to clear.
+    /// Comma-separated topology names to tag this link with (foundation-only). Use "default" to clear.
     #[arg(long)]
     pub link_topology: Option<String>,
     /// Mark this link as unicast-drained (contributor or foundation)
@@ -124,16 +124,21 @@ impl UpdateLinkCliCommand {
 
         let link_topologies = match self.link_topology {
             None => None,
-            Some(ref name) if name == "default" => Some(vec![]),
-            Some(ref name) => {
-                let name = name.to_lowercase();
+            Some(ref names_str) if names_str == "default" => Some(vec![]),
+            Some(ref names_str) => {
                 let topology_map = client.list_topology(ListTopologyCommand)?;
-                let topology_pk = topology_map
-                    .iter()
-                    .find(|(_, t)| t.name.to_lowercase() == name)
-                    .map(|(pk, _)| *pk)
-                    .ok_or_else(|| eyre!("Topology '{}' not found", name))?;
-                Some(vec![topology_pk])
+                let pubkeys: eyre::Result<Vec<_>> = names_str
+                    .split(',')
+                    .map(|name| {
+                        let name = name.trim().to_lowercase();
+                        topology_map
+                            .iter()
+                            .find(|(_, t)| t.name.to_lowercase() == name)
+                            .map(|(pk, _)| *pk)
+                            .ok_or_else(|| eyre!("Topology '{}' not found", name))
+                    })
+                    .collect();
+                Some(pubkeys?)
             }
         };
 

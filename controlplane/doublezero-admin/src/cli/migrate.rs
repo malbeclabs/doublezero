@@ -33,7 +33,7 @@ impl FlexAlgoMigrateCliCommand {
         let program_id = client.get_program_id();
 
         // Verify UNICAST-DEFAULT topology PDA exists on chain.
-        let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
+        let (unicast_default_pda, _) = get_topology_pda(&program_id, "UNICAST-DEFAULT");
         client
             .get_account(unicast_default_pda)
             .map_err(|_| eyre::eyre!("UNICAST-DEFAULT topology PDA {unicast_default_pda} not found on chain — cannot proceed"))?;

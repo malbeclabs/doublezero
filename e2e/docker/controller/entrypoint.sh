@@ -25,26 +25,5 @@ if [ -n "${ALLOY_PROMETHEUS_URL:-}" ]; then
   alloy run /etc/alloy/config.alloy &
 fi
 
-# Write the features config on first start (preserve across restarts so step-9
-# enable can be applied by editing the file and restarting the container).
-FEATURES_CONFIG=/etc/doublezero-controller/features.yaml
-if [ ! -f "${FEATURES_CONFIG}" ]; then
-  mkdir -p /etc/doublezero-controller
-  cat > "${FEATURES_CONFIG}" << 'EOF'
-features:
-  flex_algo:
-    enabled: false
-    link_tagging:
-      exclude:
-        links: []
-    community_stamping:
-      all: false
-      tenants: []
-      devices: []
-      exclude:
-        devices: []
-EOF
-fi
-
 # Start the controller.
-doublezero-controller start -listen-addr 0.0.0.0 -listen-port 7000 -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -device-local-asn 65342 -no-hardware -features-config ${FEATURES_CONFIG}
+doublezero-controller start -listen-addr 0.0.0.0 -listen-port 7000 -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -device-local-asn 65342 -no-hardware

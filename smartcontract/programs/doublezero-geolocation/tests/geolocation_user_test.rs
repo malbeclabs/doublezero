@@ -1463,14 +1463,15 @@ fn build_set_result_destination_ix(
     probe_pdas: &[Pubkey],
     args: SetResultDestinationArgs,
 ) -> Instruction {
-    let mut accounts = vec![
-        AccountMeta::new(*user_pda, false),
-        AccountMeta::new(*payer, true),
-        AccountMeta::new_readonly(solana_program::system_program::id(), false),
-    ];
+    let mut accounts = vec![AccountMeta::new(*user_pda, false)];
     for probe_pda in probe_pdas {
         accounts.push(AccountMeta::new(*probe_pda, false));
     }
+    accounts.push(AccountMeta::new(*payer, true));
+    accounts.push(AccountMeta::new_readonly(
+        solana_program::system_program::id(),
+        false,
+    ));
     Instruction::new_with_borsh(
         *program_id,
         &GeolocationInstruction::SetResultDestination(args),
@@ -1893,5 +1894,179 @@ async fn test_set_result_destination_invalid_format() {
     match err {
         TransactionError::InstructionError(0, InstructionError::InvalidInstructionData) => {}
         _ => panic!("Expected InvalidInstructionData error, got: {:?}", err),
+    }
+}
+
+#[tokio::test]
+async fn test_set_result_destination_unrelated_probe() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-srd-rel",
+    )
+    .await;
+
+    let unrelated_probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-srd-unrel",
+    )
+    .await;
+
+    let user_code = "user-srd-unrel";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+
+    let add_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            location_offset_port: 8923,
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[add_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Pass unrelated_probe_pda instead of probe_pda
+    let set_ix = build_set_result_destination_ix(
+        &program_id,
+        &user_pda,
+        &payer.pubkey(),
+        &[unrelated_probe_pda],
+        SetResultDestinationArgs {
+            destination: "185.199.108.1:9000".to_string(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[set_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    let result = banks_client.process_transaction(tx).await;
+    let err = result.unwrap_err().unwrap();
+    match err {
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData) => {}
+        _ => panic!("Expected InvalidAccountData error, got: {:?}", err),
+    }
+}
+
+#[tokio::test]
+async fn test_set_result_destination_wrong_probe_count() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-srd-cnt",
+    )
+    .await;
+
+    let extra_probe_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-srd-extra",
+    )
+    .await;
+
+    let user_code = "user-srd-cnt";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+
+    let add_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe_pda,
+        &payer.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            location_offset_port: 8923,
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[add_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Pass two probe accounts when user only has one unique probe
+    let set_ix = build_set_result_destination_ix(
+        &program_id,
+        &user_pda,
+        &payer.pubkey(),
+        &[probe_pda, extra_probe_pda],
+        SetResultDestinationArgs {
+            destination: "185.199.108.1:9000".to_string(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[set_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    let result = banks_client.process_transaction(tx).await;
+    let err = result.unwrap_err().unwrap();
+    match err {
+        TransactionError::InstructionError(0, InstructionError::Custom(code)) => {
+            assert_eq!(code, GeolocationError::ProbeAccountCountMismatch as u32);
+        }
+        _ => panic!("Expected ProbeAccountCountMismatch error, got: {:?}", err),
     }
 }

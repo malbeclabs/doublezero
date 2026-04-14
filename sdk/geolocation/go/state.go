@@ -327,14 +327,15 @@ type KeyedGeolocationUser struct {
 }
 
 type GeolocationUser struct {
-	AccountType   AccountType              // 1 byte
-	Owner         solana.PublicKey         // 32 bytes
-	Code          string                   // 4-byte length prefix + UTF-8 bytes
-	TokenAccount  solana.PublicKey         // 32 bytes
-	PaymentStatus GeolocationPaymentStatus // 1 byte
-	Billing       GeolocationBillingConfig // 1 + 16 = 17 bytes
-	Status        GeolocationUserStatus    // 1 byte
-	Targets       []GeolocationTarget      // 4-byte count + 71*N bytes
+	AccountType       AccountType              // 1 byte
+	Owner             solana.PublicKey         // 32 bytes
+	Code              string                   // 4-byte length prefix + UTF-8 bytes
+	TokenAccount      solana.PublicKey         // 32 bytes
+	PaymentStatus     GeolocationPaymentStatus // 1 byte
+	Billing           GeolocationBillingConfig // 1 + 16 = 17 bytes
+	Status            GeolocationUserStatus    // 1 byte
+	Targets           []GeolocationTarget      // 4-byte count + 71*N bytes
+	ResultDestination string                   // 4-byte length prefix + UTF-8 bytes (empty = unset)
 }
 
 func (g *GeolocationUser) Serialize(w io.Writer) error {
@@ -368,6 +369,9 @@ func (g *GeolocationUser) Serialize(w io.Writer) error {
 		if err := g.Targets[i].Serialize(w); err != nil {
 			return err
 		}
+	}
+	if err := enc.Encode(g.ResultDestination); err != nil {
+		return err
 	}
 	return nil
 }
@@ -445,6 +449,11 @@ func (g *GeolocationUser) Deserialize(data []byte) error {
 		if err := g.Targets[i].Deserialize(dec); err != nil {
 			return err
 		}
+	}
+	// ResultDestination is appended; old accounts without it default to empty string.
+	if err := dec.Decode(&g.ResultDestination); err != nil {
+		g.ResultDestination = ""
+		return nil
 	}
 	return nil
 }

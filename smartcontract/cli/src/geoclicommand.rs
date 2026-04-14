@@ -11,6 +11,7 @@ use doublezero_sdk::{
             add_target::AddTargetCommand, create::CreateGeolocationUserCommand,
             delete::DeleteGeolocationUserCommand, get::GetGeolocationUserCommand,
             list::ListGeolocationUserCommand, remove_target::RemoveTargetCommand,
+            set_result_destination::SetResultDestinationCommand,
             update_payment_status::UpdatePaymentStatusCommand,
         },
         programconfig::init::InitProgramConfigCommand,
@@ -53,6 +54,7 @@ pub trait GeoCliCommand {
     ) -> eyre::Result<HashMap<Pubkey, GeolocationUser>>;
     fn add_target(&self, cmd: AddTargetCommand) -> eyre::Result<Signature>;
     fn remove_target(&self, cmd: RemoveTargetCommand) -> eyre::Result<Signature>;
+    fn set_result_destination(&self, cmd: SetResultDestinationCommand) -> eyre::Result<Signature>;
     fn update_payment_status(&self, cmd: UpdatePaymentStatusCommand) -> eyre::Result<Signature>;
 
     fn resolve_exchange_pk(&self, pubkey_or_code: String) -> eyre::Result<Pubkey>;
@@ -152,6 +154,10 @@ impl GeoCliCommand for GeoCliCommandImpl<'_> {
     }
 
     fn remove_target(&self, cmd: RemoveTargetCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+
+    fn set_result_destination(&self, cmd: SetResultDestinationCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
 

@@ -51,7 +51,7 @@ impl DecommissioningCliCommand {
         check_requirements(client, Some(&spinner), CHECK_ID_JSON | CHECK_BALANCE)?;
         check_doublezero(&controller, client, Some(&spinner)).await?;
         // READY
-        spinner.println("🔍  Decommissioning User");
+        spinner.println("⚡  Disconnecting...");
 
         // Get client IP from daemon (same source as connect)
         let client_ip = super::helpers::resolve_client_ip(&controller).await?;
@@ -71,7 +71,7 @@ impl DecommissioningCliCommand {
             .await
         {
             Ok(()) => {
-                spinner.println("    Daemon confirmed tunnel(s) removed");
+                spinner.println("    Tunnel confirmed removed");
             }
             Err(e) => {
                 spinner.println(format!(
@@ -139,14 +139,14 @@ impl DecommissioningCliCommand {
             }
 
             spinner.inc(1);
-            println!("🔍  Deleting User Account for: {pubkey}");
+            spinner.println(format!("⚡  Removing account: {pubkey}"));
             let res = client.delete_user(DeleteUserCommand { pubkey: *pubkey });
             match res {
                 Ok(_) => {
-                    spinner.println("🔍  User Account deleting...");
+                    spinner.println("    Account deletion submitted");
                 }
                 Err(e) => {
-                    spinner.println(format!("🔍  Failed to delete user account: {e}"));
+                    spinner.println(format!("❌  Failed to remove account: {e}"));
                 }
             }
 

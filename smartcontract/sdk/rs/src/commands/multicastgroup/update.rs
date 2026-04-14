@@ -18,6 +18,7 @@ pub struct UpdateMulticastGroupCommand {
     pub max_bandwidth: Option<u64>,
     pub publisher_count: Option<u32>,
     pub subscriber_count: Option<u32>,
+    pub owner: Option<Pubkey>,
 }
 
 impl UpdateMulticastGroupCommand {
@@ -56,6 +57,7 @@ impl UpdateMulticastGroupCommand {
                 publisher_count: self.publisher_count,
                 subscriber_count: self.subscriber_count,
                 use_onchain_allocation,
+                owner: self.owner,
             }),
             accounts,
         )
@@ -99,6 +101,7 @@ mod tests {
                         publisher_count: Some(10),
                         subscriber_count: Some(100),
                         use_onchain_allocation: false,
+                        owner: None,
                     },
                 )),
                 predicate::eq(vec![
@@ -115,6 +118,7 @@ mod tests {
             max_bandwidth: Some(1000),
             publisher_count: Some(10),
             subscriber_count: Some(100),
+            owner: None,
         };
 
         let update_invalid_command = UpdateMulticastGroupCommand {
@@ -175,6 +179,7 @@ mod tests {
                         publisher_count: None,
                         subscriber_count: None,
                         use_onchain_allocation: true,
+                        owner: None,
                     },
                 )),
                 predicate::eq(vec![
@@ -192,6 +197,7 @@ mod tests {
             max_bandwidth: None,
             publisher_count: None,
             subscriber_count: None,
+            owner: None,
         }
         .execute(&client);
 

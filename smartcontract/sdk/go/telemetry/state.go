@@ -17,6 +17,9 @@ const (
 	AccountTypeInternetLatencySamples
 )
 
+// Covers both V0 (350 bytes) and V1 (349 bytes) header layouts.
+const DeviceLatencySamplesHeaderSize = 350
+
 type DeviceLatencySamplesHeaderOnlyAccountType struct {
 	AccountType AccountType // 1
 }

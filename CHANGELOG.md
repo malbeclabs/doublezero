@@ -8,10 +8,18 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
-- Controlplane
-  - Add `controller_success` activation criterion to device-health-oracle that verifies devices have consistent controller call coverage over a configurable burn-in period by querying ClickHouse
+- Device Health Oracle
+  - Add `controller_success` activation criterion to device-health-oracle to verify devices have consistent controller call coverage over a configurable burn-in period by querying ClickHouse
+- Telemetry
+  - Add `GET /device-link/agent-versions` endpoint to data-api and `agent-versions` subcommand to data-cli, exposing per-device telemetry agent version and commit from onchain `DeviceLatencySamplesHeader`
 - Smartcontract
   - Allow `SubscribeMulticastGroup` for users in `Pending` status so that `CreateSubscribeUser` can be followed by additional subscribe calls before the activator runs ([#3521](https://github.com/malbeclabs/doublezero/pull/3521))
+  - Add optional `owner` field to `UpdateMulticastGroup` instruction, allowing foundation members to reassign ownership of a multicast group ([#3527](https://github.com/malbeclabs/doublezero/pull/3527))
+- Geolocation
+  - Add optional result destination to `GeolocationUser` so LocationOffsets can be sent to an alternate endpoint instead of the target IP; supports both IP and domain destinations (e.g., `185.199.108.1:9000` or `results.example.com:9000`); includes `SetResultDestination` onchain instruction, CLI `user set-result-destination` command, and Go SDK deserialization (backwards-compatible with existing accounts)
+- CLI
+  - Add `--owner` flag to `multicast group update`, accepting a pubkey or `me` ([#3527](https://github.com/malbeclabs/doublezero/pull/3527))
+  - Polish terminal output of `connect` and `disconnect`: fix emoji semantics, normalize message phrasing across IBRL and multicast code paths, resolve tenant to human-readable code on connect (errors if tenant not found), and fix progress bar not clearing before output in `disconnect` ([#3529](https://github.com/malbeclabs/doublezero/pull/3529))
 
 ## [v0.17.0](https://github.com/malbeclabs/doublezero/compare/client/v0.16.0...client/v0.17.0) - 2026-04-10
 

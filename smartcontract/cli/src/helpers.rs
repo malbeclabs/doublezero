@@ -87,7 +87,7 @@ pub fn init_command(len: u64) -> ProgressBar {
     );
     spinner.enable_steady_tick(Duration::from_millis(100));
 
-    spinner.println("DoubleZero Service Provisioning");
+    spinner.println("DoubleZero Network");
 
     spinner
 }

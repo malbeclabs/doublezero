@@ -26,15 +26,17 @@ impl ClearTopologyCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
+        let name = self.name.to_lowercase();
+
         let link_pubkeys: Vec<Pubkey> = if self.links.is_empty() {
             // Auto-discover: find all links tagged with this topology.
             let topology_map = client
                 .list_topology(doublezero_sdk::commands::topology::list::ListTopologyCommand)?;
             let topology_pk = topology_map
                 .iter()
-                .find(|(_, t)| t.name == self.name)
+                .find(|(_, t)| t.name.to_lowercase() == name)
                 .map(|(pk, _)| *pk)
-                .ok_or_else(|| eyre::eyre!("Topology '{}' not found", self.name))?;
+                .ok_or_else(|| eyre::eyre!("Topology '{}' not found", name))?;
 
             let links = client.list_link(doublezero_sdk::commands::link::list::ListLinkCommand)?;
             links
@@ -58,7 +60,7 @@ impl ClearTopologyCliCommand {
             writeln!(
                 out,
                 "No links tagged with topology '{}'. Nothing to clear.",
-                self.name
+                name
             )?;
             return Ok(());
         }
@@ -66,7 +68,7 @@ impl ClearTopologyCliCommand {
         // Batch into chunks that fit within Solana's account limit.
         for chunk in link_pubkeys.chunks(CLEAR_BATCH_SIZE) {
             client.clear_topology(ClearTopologyCommand {
-                name: self.name.clone(),
+                name: name.clone(),
                 link_pubkeys: chunk.to_vec(),
             })?;
         }
@@ -74,7 +76,7 @@ impl ClearTopologyCliCommand {
         writeln!(
             out,
             "Cleared topology '{}' from {} link(s).",
-            self.name, total
+            name, total
         )?;
 
         Ok(())

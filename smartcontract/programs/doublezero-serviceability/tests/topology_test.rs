@@ -183,7 +183,7 @@ async fn test_topology_create_bit_1_first() {
     let topology = get_topology(&mut banks_client, topology_pda).await;
 
     assert_eq!(topology.account_type, AccountType::Topology);
-    assert_eq!(topology.name, "unicast-default");
+    assert_eq!(topology.name, "UNICAST-DEFAULT");
     // Bit 0 is reserved for UNICAST-DRAINED (implicit via IdRange(1, 127)),
     // so the first user topology gets bit 1.
     assert_eq!(topology.admin_group_bit, 1);
@@ -229,7 +229,7 @@ async fn test_topology_create_consecutive_bits() {
 
     let topology = get_topology(&mut banks_client, topology_pda).await;
 
-    assert_eq!(topology.name, "shelby");
+    assert_eq!(topology.name, "SHELBY");
     assert_eq!(topology.admin_group_bit, 2);
     assert_eq!(topology.flex_algo_number, 130);
 
@@ -1114,7 +1114,7 @@ async fn test_topology_delete_succeeds_when_no_links() {
 
     // Verify it exists
     let topology = get_topology(&mut banks_client, topology_pda).await;
-    assert_eq!(topology.name, "test-topology");
+    assert_eq!(topology.name, "TEST-TOPOLOGY");
 
     // Delete it with no link accounts
     delete_topology(

@@ -62,8 +62,11 @@ pub fn process_topology_create(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
+    // Normalize name to uppercase
+    let name = value.name.to_ascii_uppercase();
+
     // Validate name length
-    if value.name.len() > MAX_TOPOLOGY_NAME_LEN {
+    if name.len() > MAX_TOPOLOGY_NAME_LEN {
         msg!(
             "TopologyCreate: name exceeds {} bytes",
             MAX_TOPOLOGY_NAME_LEN
@@ -72,15 +75,15 @@ pub fn process_topology_create(
     }
 
     // Validate and verify topology PDA
-    let (expected_pda, bump_seed) = get_topology_pda(program_id, &value.name);
+    let (expected_pda, bump_seed) = get_topology_pda(program_id, &name);
     assert_eq!(
         topology_account.key, &expected_pda,
         "TopologyCreate: invalid topology PDA for name '{}'",
-        value.name
+        name
     );
 
     if !topology_account.data_is_empty() {
-        msg!("TopologyCreate: topology '{}' already exists", value.name);
+        msg!("TopologyCreate: topology '{}' already exists", name);
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
@@ -106,7 +109,7 @@ pub fn process_topology_create(
         account_type: AccountType::Topology,
         owner: *payer_account.key,
         bump_seed,
-        name: value.name.clone(),
+        name: name.clone(),
         admin_group_bit,
         flex_algo_number,
         constraint: value.constraint,
@@ -118,12 +121,7 @@ pub fn process_topology_create(
         payer_account,
         system_program,
         program_id,
-        &[
-            SEED_PREFIX,
-            SEED_TOPOLOGY,
-            value.name.as_bytes(),
-            &[bump_seed],
-        ],
+        &[SEED_PREFIX, SEED_TOPOLOGY, name.as_bytes(), &[bump_seed]],
     )?;
 
     // Backfill Vpnv4 loopbacks (remaining accounts after system_program)
@@ -190,7 +188,7 @@ pub fn process_topology_create(
 
     msg!(
         "TopologyCreate: created '{}' bit={} algo={} constraint={:?}",
-        value.name,
+        name,
         admin_group_bit,
         flex_algo_number,
         value.constraint

@@ -29,7 +29,7 @@ var (
 	env                         = flag.String("env", config.EnvTestnet, "environment to use")
 	programId                   = flag.String("program-id", "", "override smartcontract program id to monitor")
 	rpcEndpoint                 = flag.String("solana-rpc-endpoint", "", "override solana rpc endpoint url")
-	probeInterval               = flag.Int("probe-interval", 30, "latency probe interval in seconds")
+	probeInterval               = flag.Int("probe-interval", 300, "latency probe interval in seconds")
 	cacheUpdateInterval         = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
 	enableVerboseLogging        = flag.Bool("v", false, "enables verbose logging")
 	enableLatencyMetrics        = flag.Bool("enable-latency-metrics", false, "enables latency metrics")

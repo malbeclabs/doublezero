@@ -104,7 +104,8 @@ pub fn get_accesspass_pda(
 }
 
 pub fn get_topology_pda(program_id: &Pubkey, name: &str) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[SEED_PREFIX, SEED_TOPOLOGY, name.as_bytes()], program_id)
+    let upper = name.to_ascii_uppercase();
+    Pubkey::find_program_address(&[SEED_PREFIX, SEED_TOPOLOGY, upper.as_bytes()], program_id)
 }
 
 pub fn get_index_pda(program_id: &Pubkey, entity_seed: &[u8], key: &str) -> (Pubkey, u8) {

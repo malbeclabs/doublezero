@@ -201,13 +201,15 @@ pub fn process_subscribe_multicastgroup(
 
     // Parse and validate user
     let mut user: User = User::try_from(user_account)?;
-    // Allow pure-unsubscribe (both false) for any status so that users
-    // created atomically via CreateSubscribeUser can be cleaned up before
-    // activation.  Subscribe operations still require Activated/Updating.
+    // Allow subscribe for Pending users so that CreateSubscribeUser (which
+    // only takes one mgroup) can be followed by additional SubscribeMulticastGroup
+    // calls before the activator runs.  Also allow pure-unsubscribe (both false)
+    // for any status so cleanup works before activation.
     let is_unsubscribe_only = !value.publisher && !value.subscriber;
     if !is_unsubscribe_only
         && user.status != UserStatus::Activated
         && user.status != UserStatus::Updating
+        && user.status != UserStatus::Pending
     {
         msg!("UserStatus: {:?}", user.status);
         return Err(DoubleZeroError::InvalidStatus.into());

@@ -181,8 +181,11 @@ func TestE2E_UserBGPStatus(t *testing.T) {
 		// the user account onchain, leaving no record to check BGP status on.
 		// With an ungraceful kill the user stays activated onchain, giving the
 		// BGP status submitter a chance to detect the dropped session and submit Down.
-		_, err := client.Exec(t.Context(), []string{"bash", "-c", "pkill -9 doublezerod || true"})
-		require.NoError(t, err)
+		//
+		// Ignore the error: killing doublezerod (PID 1) can tear down the
+		// container, which terminates the exec session with exit 137 before
+		// the "|| true" runs.
+		client.Exec(t.Context(), []string{"bash", "-c", "pkill -9 doublezerod || true"}) //nolint:errcheck
 	}) {
 		t.FailNow()
 	}

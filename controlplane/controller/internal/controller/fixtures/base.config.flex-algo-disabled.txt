@@ -82,7 +82,7 @@ interface Ethernet1/1
 interface Loopback255
    ip address 14.14.14.14/32
    node-segment ipv4 index 100
-   no node-segment ipv4 index 200 flex-algo unicast-default
+   no node-segment ipv4 index 200 flex-algo UNICAST-DEFAULT
    isis enable 1
 !
 interface Loopback1000
@@ -141,7 +141,7 @@ router isis 1
    !
    segment-routing mpls
       no shutdown
-      no flex-algo unicast-default level-2
+      no flex-algo UNICAST-DEFAULT level-2
    no traffic-engineering
    no set-overload-bit
 !

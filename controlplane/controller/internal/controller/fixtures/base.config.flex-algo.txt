@@ -82,7 +82,7 @@ interface Ethernet1/1
 interface Loopback255
    ip address 14.14.14.14/32
    node-segment ipv4 index 100
-   node-segment ipv4 index 200 flex-algo unicast-default
+   node-segment ipv4 index 200 flex-algo UNICAST-DEFAULT
    isis enable 1
 !
 interface Loopback1000
@@ -141,7 +141,7 @@ router isis 1
    !
    segment-routing mpls
       no shutdown
-      flex-algo unicast-default level-2 advertised
+      flex-algo UNICAST-DEFAULT level-2 advertised
    traffic-engineering
       no shutdown
       is-type level-2
@@ -154,7 +154,7 @@ router traffic-engineering
    administrative-group alias UNICAST-DRAINED group 0
    administrative-group alias UNICAST-DEFAULT group 1
    flex-algo
-      flex-algo 129 unicast-default
+      flex-algo 129 UNICAST-DEFAULT
          administrative-group include any 1 exclude 0
          color 2
       !

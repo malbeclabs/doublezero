@@ -788,7 +788,7 @@ func resolveTenantColors(includeTopologies [][32]byte, topologyMap map[string]se
 	} else {
 		// default: use unicast-default topology
 		for _, topo := range topologyMap {
-			if topo.Name == "unicast-default" {
+			if strings.EqualFold(topo.Name, "unicast-default") {
 				colors = append(colors, fmt.Sprintf("color %d", int(topo.AdminGroupBit)+1))
 				break
 			}

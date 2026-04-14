@@ -265,6 +265,7 @@ func DeserializeTenant(reader *ByteReader, tenant *Tenant) {
 	tenant.BillingDiscriminant = reader.ReadU8()
 	tenant.BillingRate = reader.ReadU64()
 	tenant.BillingLastDeductionDzEpoch = reader.ReadU64()
+	tenant.IncludeTopologies = reader.ReadPubkeySlice()
 	// Note: tenant.PubKey is set separately in client.go after deserialization
 }
 

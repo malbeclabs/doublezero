@@ -109,11 +109,11 @@ interface {{ .Name }}
    node-segment ipv4 index {{ .NodeSegmentIdx }}
    {{- if $.FlexAlgoEnabled }}
    {{- range .FlexAlgoNodeSegments }}
-   node-segment ipv4 index {{ .NodeSegmentIdx }} flex-algo {{ .TopologyName }}
+   node-segment ipv4 index {{ .NodeSegmentIdx }} flex-algo {{ $.Strings.ToUpper .TopologyName }}
    {{- end }}
    {{- else }}
    {{- range .FlexAlgoNodeSegments }}
-   no node-segment ipv4 index {{ .NodeSegmentIdx }} flex-algo {{ .TopologyName }}
+   no node-segment ipv4 index {{ .NodeSegmentIdx }} flex-algo {{ $.Strings.ToUpper .TopologyName }}
    {{- end }}
    {{- end }}
    {{- end }}
@@ -315,11 +315,11 @@ router isis 1
       no shutdown
       {{- if $.FlexAlgoEnabled }}
       {{- range $.AllTopologies }}
-      flex-algo {{ .Name }} level-2 advertised
+      flex-algo {{ $.Strings.ToUpper .Name }} level-2 advertised
       {{- end }}
       {{- else }}
       {{- range $.AllTopologies }}
-      no flex-algo {{ .Name }} level-2
+      no flex-algo {{ $.Strings.ToUpper .Name }} level-2
       {{- end }}
       {{- end }}
    {{- if $.FlexAlgoEnabled }}
@@ -347,7 +347,7 @@ router traffic-engineering
    flex-algo
    {{- range $.AllTopologies }}
       {{- if eq .ConstraintStr "include-any" }}
-      flex-algo {{ .FlexAlgoNumber }} {{ .Name }}
+      flex-algo {{ .FlexAlgoNumber }} {{ $.Strings.ToUpper .Name }}
          administrative-group include any {{ .AdminGroupBit }} exclude 0
          color {{ .Color }}
       !

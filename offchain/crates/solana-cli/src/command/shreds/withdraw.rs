@@ -20,7 +20,7 @@ use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
 /*
    doublezero-solana shreds withdraw \
        --device <PUBKEY> | --device-code <CODE> \
-       --client-ip <IP> [--usdc-mint <PUBKEY>] [--refund-token-account <PUBKEY>]
+       --client-ip <IP> [--funds-only] [--usdc-mint <PUBKEY>] [--refund-token-account <PUBKEY>]
 */
 
 #[derive(Debug, Args)]
@@ -30,6 +30,10 @@ pub struct WithdrawCommand {
     /// Client IPv4 address
     #[arg(long)]
     client_ip: Ipv4Addr,
+    /// Only close the payment escrow and withdraw USDC funds, without
+    /// requesting an instant seat withdrawal.
+    #[arg(long)]
+    funds_only: bool,
     /// USDC mint (auto-detected from network: mainnet or development)
     #[arg(long, hide = true)]
     usdc_mint: Option<Pubkey>,
@@ -82,7 +86,6 @@ impl WithdrawCommand {
         // Pop in reverse order: escrow (index 1) first, then seat (index 0).
         let escrow_exists = accounts.pop().flatten().is_some();
 
-        // The seat must exist and be active in the current epoch to withdraw.
         let seat_data = accounts
             .pop()
             .flatten()
@@ -90,19 +93,29 @@ impl WithdrawCommand {
         let (_, _, _, _, active_epoch) = state::parse_client_seat(&seat_data.data)
             .with_context(|| format!("Failed to parse client seat {client_seat_key}"))?;
         let current_epoch = wallet.connection.get_epoch_info().await?.epoch;
-        if active_epoch < current_epoch {
-            bail!("Client seat {client_seat_key} does not have active service");
+        let has_active_service = active_epoch >= current_epoch;
+
+        // Only request instant withdrawal when the seat is active. Stale seats
+        // (or --funds-only) skip the request and just close the payment escrow.
+        let request_instant_withdrawal = has_active_service && !self.funds_only;
+
+        if !request_instant_withdrawal && !escrow_exists {
+            bail!(
+                "Client seat {client_seat_key} has no payment escrow to close and no active service to withdraw"
+            );
         }
 
         let mut instructions = vec![super::build_check_cli_version_instruction()?];
         let mut compute_unit_limit = 5_000 + 30_000;
 
-        instructions.push(try_build_instruction(
-            &ID,
-            RequestInstantSeatWithdrawalAccounts::new(&device, client_ip_bits, &wallet_key),
-            &ShredSubscriptionInstructionData::RequestInstantSeatWithdrawal,
-        )?);
-        compute_unit_limit += 50_000;
+        if request_instant_withdrawal {
+            instructions.push(try_build_instruction(
+                &ID,
+                RequestInstantSeatWithdrawalAccounts::new(&device, client_ip_bits, &wallet_key),
+                &ShredSubscriptionInstructionData::RequestInstantSeatWithdrawal,
+            )?);
+            compute_unit_limit += 50_000;
+        }
 
         if escrow_exists {
             instructions.push(try_build_instruction(

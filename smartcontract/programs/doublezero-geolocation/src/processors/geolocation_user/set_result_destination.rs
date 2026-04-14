@@ -133,7 +133,7 @@ pub fn process_set_result_destination(
             unique_probes.len(),
             probe_accounts.len()
         );
-        return Err(GeolocationError::TooManyReferencedProbes.into());
+        return Err(GeolocationError::ProbeAccountCountMismatch.into());
     }
 
     for probe_account in probe_accounts {

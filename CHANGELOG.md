@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Telemetry
+  - Add `GET /device-link/agent-versions` endpoint to data-api and `agent-versions` subcommand to data-cli, exposing per-device telemetry agent version and commit from onchain `DeviceLatencySamplesHeader`
 - Smartcontract
   - Allow `SubscribeMulticastGroup` for users in `Pending` status so that `CreateSubscribeUser` can be followed by additional subscribe calls before the activator runs ([#3521](https://github.com/malbeclabs/doublezero/pull/3521))
   - Add optional `owner` field to `UpdateMulticastGroup` instruction, allowing foundation members to reassign ownership of a multicast group ([#3527](https://github.com/malbeclabs/doublezero/pull/3527))

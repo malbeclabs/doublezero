@@ -868,6 +868,76 @@ func TestTelemetry_Data_Device_Server_Summary(t *testing.T) {
 	})
 }
 
+func TestTelemetry_Data_Device_Server_AgentVersions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("GET /device-link/agent-versions returns versions", func(t *testing.T) {
+		t.Parallel()
+
+		expected := []data.DeviceAgentVersion{
+			{DevicePK: "pk1", DeviceCode: "dev-a", Version: "v1.2.3", Commit: "abc1234", Timestamp: "2026-01-01T00:00:00Z"},
+		}
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{}, &mockProvider{
+			GetAgentVersionsFunc: func(ctx context.Context) ([]data.DeviceAgentVersion, error) {
+				return expected, nil
+			},
+		})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/device-link/agent-versions", url.Values{"env": {"devnet"}})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var got []data.DeviceAgentVersion
+		require.NoError(t, json.Unmarshal(body, &got))
+		require.Len(t, got, 1)
+		assert.Equal(t, "v1.2.3", got[0].Version)
+		assert.Equal(t, "dev-a", got[0].DeviceCode)
+	})
+
+	t.Run("GET /device-link/agent-versions with invalid env", func(t *testing.T) {
+		t.Parallel()
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{}, &mockProvider{})
+		defer closeFn()
+
+		res, _ := get(t, baseURL, "/device-link/agent-versions", url.Values{"env": {"invalid"}})
+		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	})
+
+	t.Run("GET /device-link/agent-versions returns empty list", func(t *testing.T) {
+		t.Parallel()
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{}, &mockProvider{
+			GetAgentVersionsFunc: func(ctx context.Context) ([]data.DeviceAgentVersion, error) {
+				return []data.DeviceAgentVersion{}, nil
+			},
+		})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/device-link/agent-versions", url.Values{"env": {"devnet"}})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var got []data.DeviceAgentVersion
+		require.NoError(t, json.Unmarshal(body, &got))
+		assert.Empty(t, got)
+	})
+
+	t.Run("GET /device-link/agent-versions returns 500 on error", func(t *testing.T) {
+		t.Parallel()
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{}, &mockProvider{
+			GetAgentVersionsFunc: func(ctx context.Context) ([]data.DeviceAgentVersion, error) {
+				return nil, errors.New("telemetry failure")
+			},
+		})
+		defer closeFn()
+
+		res, _ := get(t, baseURL, "/device-link/agent-versions", url.Values{"env": {"devnet"}})
+		assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	})
+}
+
 func startServer(t *testing.T, mainnet, testnet, devnet data.Provider) (baseURL string, closeFn func()) {
 	t.Helper()
 

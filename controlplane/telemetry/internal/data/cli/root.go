@@ -40,6 +40,7 @@ func Run() ExitCode {
 	rootCmd.AddCommand(
 		NewDeviceCmd().Command(),
 		NewInternetCmd().Command(),
+		NewAgentVersionsCmd().Command(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

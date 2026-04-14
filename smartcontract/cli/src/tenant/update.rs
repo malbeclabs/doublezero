@@ -68,8 +68,8 @@ impl UpdateTenantCliCommand {
                 let pubkeys: eyre::Result<Vec<_>> = topo_arg
                     .split(',')
                     .map(|name| {
-                        let name = name.trim();
-                        let pda = get_topology_pda(&program_id, name).0;
+                        let name = name.trim().to_lowercase();
+                        let pda = get_topology_pda(&program_id, &name).0;
                         client
                             .get_account(pda)
                             .map_err(|_| eyre::eyre!("Topology '{}' not found", name))?;

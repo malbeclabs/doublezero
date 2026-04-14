@@ -126,10 +126,11 @@ impl UpdateLinkCliCommand {
             None => None,
             Some(ref name) if name == "default" => Some(vec![]),
             Some(ref name) => {
+                let name = name.to_lowercase();
                 let topology_map = client.list_topology(ListTopologyCommand)?;
                 let topology_pk = topology_map
                     .iter()
-                    .find(|(_, t)| t.name == *name)
+                    .find(|(_, t)| t.name.to_lowercase() == name)
                     .map(|(pk, _)| *pk)
                     .ok_or_else(|| eyre!("Topology '{}' not found", name))?;
                 Some(vec![topology_pk])

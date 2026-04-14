@@ -1463,14 +1463,15 @@ fn build_set_result_destination_ix(
     probe_pdas: &[Pubkey],
     args: SetResultDestinationArgs,
 ) -> Instruction {
-    let mut accounts = vec![
-        AccountMeta::new(*user_pda, false),
-        AccountMeta::new(*payer, true),
-        AccountMeta::new_readonly(solana_program::system_program::id(), false),
-    ];
+    let mut accounts = vec![AccountMeta::new(*user_pda, false)];
     for probe_pda in probe_pdas {
         accounts.push(AccountMeta::new(*probe_pda, false));
     }
+    accounts.push(AccountMeta::new(*payer, true));
+    accounts.push(AccountMeta::new_readonly(
+        solana_program::system_program::id(),
+        false,
+    ));
     Instruction::new_with_borsh(
         *program_id,
         &GeolocationInstruction::SetResultDestination(args),

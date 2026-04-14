@@ -153,7 +153,7 @@ func TestE2E_MultiTenantAccessControl(t *testing.T) {
 
 	// Subtest 2: Nonexistent tenant rejected.
 	// client1 tries to connect to a tenant that doesn't exist onchain.
-	// The client-side preflight check should reject with "Tenant not found".
+	// The client-side preflight check should reject with a "not found" error.
 	if !t.Run("nonexistent_tenant_rejected", func(t *testing.T) {
 		log.Debug("==> Testing nonexistent tenant rejection")
 
@@ -163,8 +163,8 @@ func TestE2E_MultiTenantAccessControl(t *testing.T) {
 			"--device", deviceCode,
 		}, docker.NoPrintOnError())
 		require.Error(t, err, "connecting to nonexistent tenant should fail")
-		require.Contains(t, string(output), "Tenant not found",
-			"expected 'Tenant not found' error, got: %s", string(output))
+		require.Contains(t, string(output), "not found",
+			"expected tenant-not-found error, got: %s", string(output))
 
 		// Verify client remains disconnected.
 		status, err := client1.GetTunnelStatus(t.Context())

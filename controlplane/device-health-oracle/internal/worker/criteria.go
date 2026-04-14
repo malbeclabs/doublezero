@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
@@ -93,7 +94,7 @@ func (e *DeviceHealthEvaluator) Evaluate(ctx context.Context, device serviceabil
 }
 
 func (e *DeviceHealthEvaluator) checkAll(ctx context.Context, device serviceability.Device, criteria []DeviceCriterion) bool {
-	devicePubkey := device.PubKey[:]
+	devicePubkey := solana.PublicKeyFromBytes(device.PubKey[:]).String()
 	for _, c := range criteria {
 		passed, reason := c.Check(ctx, device)
 		if !passed {
@@ -125,7 +126,7 @@ func (e *LinkHealthEvaluator) Evaluate(ctx context.Context, link serviceability.
 		return current
 	}
 
-	linkPubkey := link.PubKey[:]
+	linkPubkey := solana.PublicKeyFromBytes(link.PubKey[:]).String()
 	for _, c := range e.ReadyForServiceCriteria {
 		passed, reason := c.Check(ctx, link)
 		if !passed {

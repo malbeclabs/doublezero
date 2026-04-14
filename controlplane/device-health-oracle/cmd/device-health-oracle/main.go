@@ -134,7 +134,7 @@ func main() {
 	if chAddr := os.Getenv("CLICKHOUSE_ADDR"); chAddr != "" {
 		chDB := os.Getenv("CLICKHOUSE_DB")
 		if chDB == "" {
-			chDB = *env
+			chDB = "default"
 		}
 		chUser := os.Getenv("CLICKHOUSE_USER")
 		if chUser == "" {

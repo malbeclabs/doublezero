@@ -52,6 +52,10 @@ func (w *Worker) Run(ctx context.Context) error {
 }
 
 func (w *Worker) tick(ctx context.Context) {
+	if len(w.cfg.DeviceEvaluator.ReadyForLinksCriteria) == 0 {
+		w.log.Error("No device health criteria configured (is CLICKHOUSE_ADDR set?)")
+	}
+
 	currentSlot, err := w.cfg.LedgerRPCClient.GetSlot(ctx, solanarpc.CommitmentFinalized)
 	if err != nil {
 		w.log.Error("Failed to get current slot", "error", err)
@@ -75,6 +79,8 @@ func (w *Worker) tick(ctx context.Context) {
 		"drainedSlot", drainedSlot)
 
 	// Resolve burn-in boundary slots to wall-clock times for criteria evaluation.
+	// When a slot is 0 (environment too new for the full burn-in window), set the
+	// start to Now so the window has zero length and criteria pass immediately.
 	burnIn := BurnInTimes{Now: time.Now()}
 	if provisioningSlot > 0 {
 		bt, err := w.cfg.LedgerRPCClient.GetBlockTime(ctx, provisioningSlot)
@@ -83,6 +89,8 @@ func (w *Worker) tick(ctx context.Context) {
 			return
 		}
 		burnIn.ProvisioningStart = time.Unix(int64(*bt), 0)
+	} else {
+		burnIn.ProvisioningStart = burnIn.Now
 	}
 	if drainedSlot > 0 {
 		bt, err := w.cfg.LedgerRPCClient.GetBlockTime(ctx, drainedSlot)
@@ -91,6 +99,8 @@ func (w *Worker) tick(ctx context.Context) {
 			return
 		}
 		burnIn.DrainedStart = time.Unix(int64(*bt), 0)
+	} else {
+		burnIn.DrainedStart = burnIn.Now
 	}
 	ctx = ContextWithBurnInTimes(ctx, burnIn)
 

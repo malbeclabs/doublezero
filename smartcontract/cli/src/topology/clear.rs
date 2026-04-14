@@ -73,11 +73,7 @@ impl ClearTopologyCliCommand {
             })?;
         }
 
-        writeln!(
-            out,
-            "Cleared topology '{}' from {} link(s).",
-            name, total
-        )?;
+        writeln!(out, "Cleared topology '{}' from {} link(s).", name, total)?;
 
         Ok(())
     }

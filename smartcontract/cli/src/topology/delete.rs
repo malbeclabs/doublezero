@@ -39,9 +39,7 @@ impl DeleteTopologyCliCommand {
             ));
         }
 
-        client.delete_topology(DeleteTopologyCommand {
-            name: name.clone(),
-        })?;
+        client.delete_topology(DeleteTopologyCommand { name: name.clone() })?;
         writeln!(out, "Deleted topology '{}' successfully.", name)?;
 
         Ok(())

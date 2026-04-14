@@ -34,11 +34,7 @@ impl BackfillTopologyCliCommand {
             device_pubkeys: self.device_pubkeys,
         })?;
 
-        writeln!(
-            out,
-            "Backfilled topology '{}'. Signature: {}",
-            name, sig
-        )?;
+        writeln!(out, "Backfilled topology '{}'. Signature: {}", name, sig)?;
 
         Ok(())
     }

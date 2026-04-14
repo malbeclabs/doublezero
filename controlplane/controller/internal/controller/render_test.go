@@ -907,6 +907,16 @@ func TestRenderConfig(t *testing.T) {
 							LinkStatus:     serviceability.LinkStatusActivated,
 							LinkTopologies: []string{"unicast-default"},
 						},
+						{
+							Name:           "Loopback255",
+							Ip:             netip.MustParsePrefix("14.14.14.14/32"),
+							NodeSegmentIdx: 100,
+							InterfaceType:  InterfaceTypeLoopback,
+							LoopbackType:   LoopbackTypeVpnv4,
+							FlexAlgoNodeSegments: []FlexAlgoNodeSegmentModel{
+								{NodeSegmentIdx: 200, TopologyName: "unicast-default"},
+							},
+						},
 					},
 					Tunnels: []*Tunnel{
 						{

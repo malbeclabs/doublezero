@@ -426,8 +426,10 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))
 		}
 
-		// Populate flex-algo node-segment data for VPNv4 loopback interfaces
-		if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled {
+		// Populate flex-algo node-segment data for VPNv4 loopback interfaces.
+		// Populated whenever a features config is loaded (not just when enabled) so that
+		// the template can emit cleanup ("no node-segment") lines on rollback.
+		if c.featuresConfig != nil {
 			for i, intf := range d.Interfaces {
 				if !intf.IsVpnv4Loopback() {
 					continue

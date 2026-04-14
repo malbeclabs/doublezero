@@ -79,6 +79,12 @@ interface Ethernet1/1
    no traffic-engineering administrative-group
    no traffic-engineering
 !
+interface Loopback255
+   ip address 14.14.14.14/32
+   node-segment ipv4 index 100
+   no node-segment ipv4 index 200 flex-algo unicast-default
+   isis enable 1
+!
 interface Loopback1000
    description RP Address
    ip address 10.0.0.0/32

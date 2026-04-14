@@ -6,10 +6,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::{next_account_info, AccountInfo},
-    entrypoint::ProgramResult,
-    msg,
-    program_error::ProgramError,
+    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
     pubkey::Pubkey,
 };
 use std::{collections::HashSet, net::Ipv4Addr};
@@ -82,11 +79,17 @@ pub fn process_set_result_destination(
     accounts: &[AccountInfo],
     args: &SetResultDestinationArgs,
 ) -> ProgramResult {
-    let accounts_iter = &mut accounts.iter();
-
-    let user_account = next_account_info(accounts_iter)?;
-    let payer_account = next_account_info(accounts_iter)?;
-    let _system_program = next_account_info(accounts_iter)?;
+    if accounts.len() < 3 {
+        msg!("Not enough accounts");
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    // Account layout: [user, probe_0..probe_N, payer, system_program]
+    // Payer and system_program are always the last two accounts (appended by
+    // execute_transaction in the SDK), with variable-length probe accounts
+    // between the user and the payer.
+    let user_account = &accounts[0];
+    let payer_account = &accounts[accounts.len() - 2];
+    let probe_accounts = &accounts[1..accounts.len() - 2];
 
     if !payer_account.is_signer {
         msg!("Payer must be a signer");
@@ -124,18 +127,16 @@ pub fn process_set_result_destination(
         }
     }
 
-    // Remaining accounts are the probe accounts to bump target_update_count on.
-    let remaining: Vec<&AccountInfo> = accounts_iter.collect();
-    if remaining.len() != unique_probes.len() {
+    if probe_accounts.len() != unique_probes.len() {
         msg!(
             "Expected {} probe accounts, got {}",
             unique_probes.len(),
-            remaining.len()
+            probe_accounts.len()
         );
-        return Err(GeolocationError::TooManyReferencedProbes.into());
+        return Err(GeolocationError::ProbeAccountCountMismatch.into());
     }
 
-    for probe_account in &remaining {
+    for probe_account in probe_accounts {
         if probe_account.owner != program_id {
             msg!("Invalid GeoProbe account owner");
             return Err(ProgramError::IllegalOwner);
@@ -155,8 +156,8 @@ pub fn process_set_result_destination(
 
     try_acc_write(&user, user_account, payer_account, accounts)?;
 
-    for probe_account in &remaining {
-        let mut probe = GeoProbe::try_from(*probe_account)?;
+    for probe_account in probe_accounts {
+        let mut probe = GeoProbe::try_from(probe_account)?;
         probe.target_update_count = probe.target_update_count.wrapping_add(1); // Probe uses change in this value to check for updates.
         try_acc_write(&probe, probe_account, payer_account, accounts)?;
     }

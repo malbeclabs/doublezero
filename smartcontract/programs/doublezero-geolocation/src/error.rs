@@ -40,8 +40,8 @@ pub enum GeolocationError {
     TargetAlreadyExists = 23,
     #[error("Invalid payment status")]
     InvalidPaymentStatus = 24,
-    #[error("Too many referenced probes to update in a single transaction")]
-    TooManyReferencedProbes = 25,
+    #[error("Probe account count does not match user targets")]
+    ProbeAccountCountMismatch = 25,
 }
 
 impl From<GeolocationError> for ProgramError {
@@ -74,7 +74,7 @@ mod tests {
             (GeolocationError::TargetNotFound, 22),
             (GeolocationError::TargetAlreadyExists, 23),
             (GeolocationError::InvalidPaymentStatus, 24),
-            (GeolocationError::TooManyReferencedProbes, 25),
+            (GeolocationError::ProbeAccountCountMismatch, 25),
         ]
     }
 

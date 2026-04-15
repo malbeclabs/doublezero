@@ -19,7 +19,7 @@ type ControllerCallChecker interface {
 	Close() error
 }
 
-// ClickHouseClient wraps a ClickHouse connection for reading controller call data.
+// ClickHouseClient wraps a connection for reading device health data from ClickHouse.
 type ClickHouseClient struct {
 	conn clickhouse.Conn
 	db   string

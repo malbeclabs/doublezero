@@ -65,8 +65,8 @@ All notable changes to this project will be documented in this file.
   - Add `link_topologies: Vec<Pubkey>` (capped at 8) and `link_flags: u8` (bit 0 = unicast-drained) to the `Link` account
   - Add `include_topologies` to the `Tenant` account for topology-filtered routing opt-in
   - Enforce UNICAST-DEFAULT topology existence as a precondition for link activation
-  - Extend `link get` and `link list` to display topology assignments and drain status; add `--link-topology <name>` filter to `link list` and `--link-topology`/`--unicast-drained` flags to `link update`
-  - Extend `tenant get` and `tenant list` to display included topologies; add `--include-topologies` flag to `tenant update`
+  - Extend `link get` and `link list` to display topology assignments and drain status; add `--link-topology <name>` filter to `link list` and `--link-topology` (comma-separated topology names) / `--unicast-drained` flags to `link update`; use `default` as the value to clear all topology assignments
+  - Extend `tenant get` and `tenant list` to display included topologies; add `--include-topologies` (comma-separated topology names) flag to `tenant update`; use `default` to clear
 - Onchain programs
   - Add `tunnel_endpoint` field to the `UpdateUser` instruction (`UserUpdateArgs`), allowing the activator to overwrite a user's tunnel endpoint onchain; field is optional and backward compatible via incremental deserialization
 - Telemetry

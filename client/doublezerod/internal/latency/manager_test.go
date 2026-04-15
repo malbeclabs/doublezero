@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1571,6 +1572,84 @@ func TestLatencyManager_ProbeWaitsForDeviceFetch(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for probe to run")
+	}
+}
+
+// TestLatencyManager_FastRetryWhenUnreachable verifies that when the first probe
+// finds no reachable devices, the manager retries at a fast interval (<=30s)
+// rather than the configured steady-state interval. probeReady is set after the
+// first probe regardless, so the CLI can proceed with unreachable results.
+func TestLatencyManager_FastRetryWhenUnreachable(t *testing.T) {
+	var probeCount atomic.Int32
+
+	mockSmartContractFunc := func(ctx context.Context) (*latency.ContractData, error) {
+		return &latency.ContractData{
+			Devices: []serviceability.Device{
+				{
+					AccountType: serviceability.DeviceType,
+					PublicIp:    [4]uint8{192, 0, 2, 1},
+					PubKey:      [32]byte{1},
+					Code:        "dev01",
+				},
+			},
+		}, nil
+	}
+
+	mockProber := func(ctx context.Context, target latency.ProbeTarget) latency.LatencyResult {
+		n := probeCount.Add(1)
+		// First probe: unreachable. Second probe onwards: reachable.
+		return latency.LatencyResult{
+			Device:    target.Device,
+			IP:        target.IP,
+			Reachable: n >= 2,
+		}
+	}
+
+	manager := latency.NewLatencyManager(
+		latency.WithSmartContractFunc(mockSmartContractFunc),
+		latency.WithProberFunc(mockProber),
+		latency.WithProbeInterval(time.Hour),       // large so only the fast retry fires
+		latency.WithCacheUpdateInterval(time.Hour), // don't refetch devices
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	go func() {
+		_ = manager.Start(ctx)
+	}()
+
+	// Wait for the first probe to complete.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if probeCount.Load() >= 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if probeCount.Load() < 1 {
+		t.Fatal("timed out waiting for first probe")
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	// probeReady should be true even though nothing was reachable — the daemon
+	// has completed a probe pass and the CLI needs to know it can read results.
+	if !manager.IsProbeReady() {
+		t.Fatal("expected probeReady=true after first probe")
+	}
+
+	// The manager should retry quickly (<=30s) rather than waiting the full
+	// probe interval (1h). Wait for the second probe with a generous timeout
+	// that is still well below the steady-state interval.
+	deadline = time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		if probeCount.Load() >= 2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if probeCount.Load() < 2 {
+		t.Fatal("timed out waiting for second probe — fast retry interval may not be working")
 	}
 }
 

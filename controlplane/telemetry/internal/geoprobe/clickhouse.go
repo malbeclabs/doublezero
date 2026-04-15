@@ -123,41 +123,76 @@ func OffsetRowFromLocationOffset(offset *LocationOffset, sourceAddr string, sigV
 	return row
 }
 
+const maxBufferedRows = 10_000
+
 type ClickhouseWriter struct {
+	cfg  ClickhouseConfig
 	conn driver.Conn
-	db   string
 	buf  []OffsetRow
 	mu   sync.Mutex
 	log  *slog.Logger
 }
 
-func NewClickhouseWriter(conn driver.Conn, db string, log *slog.Logger) *ClickhouseWriter {
+func NewClickhouseWriter(cfg ClickhouseConfig, log *slog.Logger) *ClickhouseWriter {
 	return &ClickhouseWriter{
-		conn: conn,
-		db:   db,
-		buf:  make([]OffsetRow, 0, 64),
-		log:  log,
+		cfg: cfg,
+		buf: make([]OffsetRow, 0, 64),
+		log: log,
 	}
 }
 
 func (w *ClickhouseWriter) Record(row OffsetRow) {
 	w.mu.Lock()
+	if len(w.buf) >= maxBufferedRows {
+		w.mu.Unlock()
+		w.log.Warn("clickhouse buffer full, dropping row", "max", maxBufferedRows)
+		return
+	}
 	w.buf = append(w.buf, row)
 	w.mu.Unlock()
+}
+
+func (w *ClickhouseWriter) connect(ctx context.Context) error {
+	if err := RunMigrations(w.cfg, w.log); err != nil {
+		return fmt.Errorf("migrations: %w", err)
+	}
+	conn, err := NewClickhouseConn(w.cfg)
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	w.conn = conn
+	w.log.Info("clickhouse connected", "addr", w.cfg.Addr, "db", w.cfg.Database)
+	return nil
+}
+
+func (w *ClickhouseWriter) Close() {
+	if w.conn != nil {
+		_ = w.conn.Close()
+		w.conn = nil
+	}
 }
 
 func (w *ClickhouseWriter) Run(ctx context.Context) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
+	defer w.Close()
 
 	for {
 		select {
 		case <-ctx.Done():
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			w.flush(shutdownCtx)
-			cancel()
+			if w.conn != nil {
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				w.flush(shutdownCtx)
+				cancel()
+			}
 			return
 		case <-ticker.C:
+			if w.conn == nil {
+				if err := w.connect(ctx); err != nil {
+					w.log.Error("clickhouse connection failed, will retry", "error", err)
+					continue
+				}
+			}
 			w.flush(ctx)
 		}
 	}
@@ -174,10 +209,11 @@ func (w *ClickhouseWriter) flush(ctx context.Context) {
 	w.mu.Unlock()
 
 	batch, err := w.conn.PrepareBatch(ctx, fmt.Sprintf(
-		`INSERT INTO "%s".location_offsets`, w.db,
+		`INSERT INTO "%s".location_offsets`, w.cfg.Database,
 	))
 	if err != nil {
 		w.log.Error("failed to prepare batch", "error", err, "dropped_rows", len(rows))
+		w.Close()
 		return
 	}
 
@@ -204,6 +240,7 @@ func (w *ClickhouseWriter) flush(ctx context.Context) {
 		); err != nil {
 			w.log.Error("failed to append row", "error", err, "dropped_rows", len(rows))
 			_ = batch.Abort()
+			w.Close()
 			return
 		}
 	}
@@ -211,6 +248,7 @@ func (w *ClickhouseWriter) flush(ctx context.Context) {
 	if err := batch.Send(); err != nil {
 		w.log.Error("failed to send batch", "error", err, "dropped_rows", len(rows))
 		_ = batch.Close()
+		w.Close()
 		return
 	}
 	_ = batch.Close()

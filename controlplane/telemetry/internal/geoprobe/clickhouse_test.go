@@ -1,6 +1,8 @@
 package geoprobe
 
 import (
+	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -96,13 +98,22 @@ func TestClickhouseConfigFromEnv(t *testing.T) {
 }
 
 func TestClickhouseWriterRecordBuffers(t *testing.T) {
-	w := &ClickhouseWriter{
-		buf: make([]OffsetRow, 0),
-	}
+	w := NewClickhouseWriter(ClickhouseConfig{Addr: "unused"}, slog.Default())
 	w.Record(OffsetRow{SourceAddr: "a"})
 	w.Record(OffsetRow{SourceAddr: "b"})
 
 	w.mu.Lock()
 	require.Len(t, w.buf, 2)
+	w.mu.Unlock()
+}
+
+func TestClickhouseWriterRecordBufferCap(t *testing.T) {
+	w := NewClickhouseWriter(ClickhouseConfig{Addr: "unused"}, slog.Default())
+	for i := range maxBufferedRows + 100 {
+		w.Record(OffsetRow{SourceAddr: fmt.Sprintf("addr-%d", i)})
+	}
+
+	w.mu.Lock()
+	require.Len(t, w.buf, maxBufferedRows)
 	w.mu.Unlock()
 }

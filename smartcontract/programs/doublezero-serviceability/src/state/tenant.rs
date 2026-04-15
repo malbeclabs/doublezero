@@ -110,14 +110,22 @@ pub struct Tenant {
     pub metro_routing: bool, // 1 byte - enables tenant to be routed through metro for VRF requests
     pub route_liveness: bool, // 1 byte - enables tenant to be check for aliveness before routing
     pub billing: TenantBillingConfig, // 17 bytes (1 discriminant + 8 rate + 8 last_deduction_dz_epoch)
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkeylist_from_string"
+        )
+    )]
+    pub include_topologies: Vec<Pubkey>, // 4 + (32 * len) — foundation-only: flex-algo topologies for unicast VPN route steering
 }
 
 impl fmt::Display for Tenant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, bump_seed: {}, code: {}, vrf_id: {}, administrators: {:?}, payment_status: {}, token_account: {}, metro_routing: {}, route_liveness: {}, billing: {}",
-            self.account_type, self.owner, self.bump_seed, self.code, self.vrf_id, self.administrators, self.payment_status, self.token_account, self.metro_routing, self.route_liveness, self.billing
+            "account_type: {}, owner: {}, bump_seed: {}, code: {}, vrf_id: {}, administrators: {:?}, payment_status: {}, token_account: {}, metro_routing: {}, route_liveness: {}, billing: {}, include_topologies: {:?}",
+            self.account_type, self.owner, self.bump_seed, self.code, self.vrf_id, self.administrators, self.payment_status, self.token_account, self.metro_routing, self.route_liveness, self.billing, self.include_topologies
         )
     }
 }
@@ -139,6 +147,7 @@ impl TryFrom<&[u8]> for Tenant {
             metro_routing: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             route_liveness: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             billing: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            include_topologies: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Tenant {
@@ -196,6 +205,7 @@ mod tests {
         assert_eq!(val.administrators, Vec::<Pubkey>::new());
         assert_eq!(val.payment_status, TenantPaymentStatus::Delinquent);
         assert_eq!(val.token_account, Pubkey::default());
+        assert_eq!(val.include_topologies, Vec::<Pubkey>::new());
     }
 
     #[test]
@@ -213,6 +223,7 @@ mod tests {
             metro_routing: true,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -255,6 +266,7 @@ mod tests {
             metro_routing: true,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -276,6 +288,7 @@ mod tests {
             metro_routing: true,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
         let err = val.validate();
         assert!(err.is_err());

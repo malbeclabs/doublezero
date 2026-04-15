@@ -3,6 +3,7 @@ pub mod closeaccount;
 pub mod create;
 pub mod delete;
 pub mod interface;
+pub mod migrate_interfaces;
 pub mod reject;
 pub mod sethealth;
 pub mod update;

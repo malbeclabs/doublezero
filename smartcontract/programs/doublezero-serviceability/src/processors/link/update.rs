@@ -1,5 +1,5 @@
 use crate::{
-    error::DoubleZeroError,
+    error::{DoubleZeroError, Validate},
     pda::get_resource_extension_pda,
     processors::{
         resource::{allocate_specific_id, allocate_specific_ip, deallocate_id, deallocate_ip},
@@ -13,6 +13,7 @@ use crate::{
         feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         link::*,
+        topology::TopologyInfo,
     },
 };
 use borsh::BorshSerialize;
@@ -43,6 +44,9 @@ pub struct LinkUpdateArgs {
     pub tunnel_net: Option<NetworkV4>,
     #[incremental(default = false)]
     pub use_onchain_allocation: bool,
+    pub link_topologies: Option<Vec<Pubkey>>,
+    #[incremental(default = None)]
+    pub unicast_drained: Option<bool>,
 }
 
 impl fmt::Debug for LinkUpdateArgs {
@@ -87,6 +91,12 @@ impl fmt::Debug for LinkUpdateArgs {
         if self.use_onchain_allocation {
             parts.push("use_onchain_allocation: true".to_string());
         }
+        if let Some(ref link_topologies) = self.link_topologies {
+            parts.push(format!("link_topologies: {:?}", link_topologies));
+        }
+        if let Some(unicast_drained) = self.unicast_drained {
+            parts.push(format!("unicast_drained: {:?}", unicast_drained));
+        }
         write!(f, "{}", parts.join(", "))
     }
 }
@@ -102,15 +112,19 @@ pub fn process_update_link(
     let contributor_account = next_account_info(accounts_iter)?;
 
     // Account layout (all optional accounts included):
-    //   [link, contributor, side_z?, globalstate, device_a?, device_z?, device_tunnel_block?, link_ids?, payer, system]
+    //   [link, contributor, side_z?, globalstate, device_a?, device_z?, device_tunnel_block?, link_ids?, topology*, payer, system]
     // device_a/device_z: present when tunnel_net is being updated (needed for interface IP update)
     // device_tunnel_block/link_ids: present when use_onchain_allocation is true
+    // topology*: N topology PDAs when link_topologies is being updated, passed before payer/system
     let mut expected_without_side_z: usize = 5; // link, contributor, globalstate, payer, system
     if value.tunnel_net.is_some() {
         expected_without_side_z += 2; // device_a, device_z
     }
     if value.use_onchain_allocation {
         expected_without_side_z += 2; // device_tunnel_block, link_ids
+    }
+    if let Some(ref link_topologies) = value.link_topologies {
+        expected_without_side_z += link_topologies.len();
     }
     let side_z_account: Option<&AccountInfo> = if accounts.len() > expected_without_side_z {
         Some(next_account_info(accounts_iter)?)
@@ -134,6 +148,22 @@ pub fn process_update_link(
     } else {
         None
     };
+
+    // Validate cap before consuming accounts from the iterator: if > 8, return
+    // InvalidArgument immediately so we don't exhaust the iterator on fake pubkeys.
+    if let Some(ref link_topologies) = value.link_topologies {
+        if link_topologies.len() > 8 {
+            msg!("link_topologies exceeds maximum of 8 entries");
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+    }
+
+    // Topology PDAs come before payer/system, matching the SDK account ordering
+    // (execute_transaction appends payer+system at the end of the accounts list).
+    let topology_count = value.link_topologies.as_ref().map(|t| t.len()).unwrap_or(0);
+    let topology_accounts: Vec<&AccountInfo> = (0..topology_count)
+        .map(|_| next_account_info(accounts_iter))
+        .collect::<Result<_, _>>()?;
 
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -364,7 +394,45 @@ pub fn process_update_link(
         try_acc_write(&side_z_dev, device_z_account, payer_account, accounts)?;
     }
 
+    // link_topologies is foundation-only
+    if let Some(link_topologies) = &value.link_topologies {
+        if !globalstate.foundation_allowlist.contains(payer_account.key) {
+            msg!("link_topologies update requires foundation allowlist");
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+        if link_topologies.len() != topology_accounts.len() {
+            msg!("link_topologies count does not match provided topology accounts");
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+        for (pk, acc) in link_topologies.iter().zip(topology_accounts.iter()) {
+            if acc.key != pk || acc.owner != program_id || acc.data_is_empty() {
+                return Err(DoubleZeroError::InvalidArgument.into());
+            }
+            TopologyInfo::try_from(*acc)
+                .map_err(|_| DoubleZeroError::InvalidAccountType)?
+                .validate()
+                .map_err(ProgramError::from)?;
+        }
+        link.link_topologies = link_topologies.clone();
+    }
+
+    // unicast_drained (LINK_FLAG_UNICAST_DRAINED bit 0): contributor A or foundation
+    if let Some(unicast_drained) = value.unicast_drained {
+        if link.contributor_pk != *contributor_account.key
+            && !globalstate.foundation_allowlist.contains(payer_account.key)
+        {
+            msg!("unicast_drained update requires contributor A or foundation allowlist");
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+        if unicast_drained {
+            link.link_flags |= crate::state::link::LINK_FLAG_UNICAST_DRAINED;
+        } else {
+            link.link_flags &= !crate::state::link::LINK_FLAG_UNICAST_DRAINED;
+        }
+    }
+
     link.check_status_transition();
+    link.validate()?;
 
     try_acc_write(&link, link_account, payer_account, accounts)?;
 
@@ -419,6 +487,8 @@ mod tests {
             tunnel_id: None,
             tunnel_net: None,
             use_onchain_allocation: false,
+            link_topologies: None,
+            unicast_drained: None,
         };
 
         let serialized = borsh::to_vec(&args_before).unwrap();
@@ -472,6 +542,8 @@ mod tests {
             tunnel_id: None,
             tunnel_net: None,
             use_onchain_allocation: false,
+            link_topologies: None,
+            unicast_drained: None,
         };
 
         let serialized = borsh::to_vec(&args_before).unwrap();

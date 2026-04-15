@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"sort"
 	"sync/atomic"
 
@@ -190,6 +191,13 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []Probe
 		}
 
 		resultDest := user.ResultDestination
+		if resultDest != "" {
+			if _, _, err := net.SplitHostPort(resultDest); err != nil {
+				d.log.Warn("Skipping invalid result destination",
+					"user", users[i].Code, "resultDestination", resultDest, "error", err)
+				resultDest = ""
+			}
+		}
 
 		for j := range user.Targets {
 			target := &user.Targets[j]

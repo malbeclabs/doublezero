@@ -48,8 +48,12 @@ func (c *DNSCache) Resolve(hostPort string) (*net.UDPAddr, error) {
 		return nil, fmt.Errorf("invalid port in %q: %w", hostPort, err)
 	}
 
-	// If host is already an IP, use directly.
+	// If host is already an IP, validate scope and use directly.
 	if ip := net.ParseIP(host); ip != nil {
+		scopeCheck := ProbeAddress{Host: host}
+		if err := scopeCheck.ValidateScope(); err != nil {
+			return nil, fmt.Errorf("delivery address rejected: %w", err)
+		}
 		return &net.UDPAddr{IP: ip, Port: port}, nil
 	}
 
@@ -74,6 +78,17 @@ func (c *DNSCache) Resolve(hostPort string) (*net.UDPAddr, error) {
 	}
 
 	resolved := ips[0]
+	resolvedIP := net.ParseIP(resolved)
+	if resolvedIP == nil {
+		return nil, fmt.Errorf("DNS lookup for %q returned unparseable IP %q", host, resolved)
+	}
+
+	// Validate resolved IP against scope check to prevent DNS rebinding attacks
+	// (e.g., domain initially resolves to public IP but later rebinds to internal).
+	scopeCheck := ProbeAddress{Host: resolved}
+	if err := scopeCheck.ValidateScope(); err != nil {
+		return nil, fmt.Errorf("DNS-resolved address for %q rejected: %w", host, err)
+	}
 
 	c.mu.Lock()
 	c.entries[host] = dnsCacheEntry{
@@ -82,5 +97,5 @@ func (c *DNSCache) Resolve(hostPort string) (*net.UDPAddr, error) {
 	}
 	c.mu.Unlock()
 
-	return &net.UDPAddr{IP: net.ParseIP(resolved), Port: port}, nil
+	return &net.UDPAddr{IP: resolvedIP, Port: port}, nil
 }

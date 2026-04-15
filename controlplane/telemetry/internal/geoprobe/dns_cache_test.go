@@ -32,7 +32,7 @@ func TestDNSCache_ResolveIPAddress_NoCaching(t *testing.T) {
 
 	// IP addresses should not trigger DNS lookup.
 	for i := 0; i < 3; i++ {
-		_, err := cache.Resolve("10.0.0.1:8080")
+		_, err := cache.Resolve("44.0.0.1:8080")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -217,5 +217,54 @@ func TestDNSCache_DifferentPortsSameDomain(t *testing.T) {
 	}
 	if addr2.Port != 8080 {
 		t.Errorf("expected port 8080, got %d", addr2.Port)
+	}
+}
+
+func TestDNSCache_RejectsPrivateIPAddress(t *testing.T) {
+	cache := NewDNSCache(5 * time.Minute)
+
+	tests := []struct {
+		name    string
+		address string
+	}{
+		{"loopback", "127.0.0.1:9000"},
+		{"private 10/8", "10.0.0.1:9000"},
+		{"private 172.16/12", "172.16.0.1:9000"},
+		{"private 192.168/16", "192.168.1.1:9000"},
+		{"link-local", "169.254.1.1:9000"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := cache.Resolve(tt.address)
+			if err == nil {
+				t.Errorf("expected error for non-public IP %s", tt.address)
+			}
+		})
+	}
+}
+
+func TestDNSCache_RejectsDNSRebindingToPrivateIP(t *testing.T) {
+	cache := NewDNSCache(5 * time.Minute)
+	cache.lookup = func(host string) ([]string, error) {
+		// Simulate DNS rebinding: domain resolves to a private IP.
+		return []string{"127.0.0.1"}, nil
+	}
+
+	_, err := cache.Resolve("malicious.example.com:9000")
+	if err == nil {
+		t.Error("expected error when DNS resolves to private IP")
+	}
+}
+
+func TestDNSCache_AcceptsPublicIPAddress(t *testing.T) {
+	cache := NewDNSCache(5 * time.Minute)
+
+	addr, err := cache.Resolve("44.0.0.1:9000")
+	if err != nil {
+		t.Fatalf("unexpected error for public IP: %v", err)
+	}
+	if addr.IP.String() != "44.0.0.1" {
+		t.Errorf("expected 44.0.0.1, got %s", addr.IP)
 	}
 }

@@ -849,14 +849,43 @@ func TestTargetDiscovery_DeliveryAddrsChangeTriggersUpdate(t *testing.T) {
 	}
 
 	// Change delivery address — should trigger update even though targets are the same.
-	client.users[0].GeolocationUser.ResultDestination = "10.0.0.1:8080"
+	client.users[0].GeolocationUser.ResultDestination = "44.0.0.99:8080"
 	td.discoverAndSend(ctx, targetCh, keyCh, icmpTargetCh)
 	if len(targetCh) != 1 {
 		t.Fatalf("expected 1 target update after delivery change, got %d", len(targetCh))
 	}
 	update = <-targetCh
 	addr := ProbeAddress{Host: "44.0.0.1", Port: 9000, TWAMPPort: 8925}
-	if update.DeliveryAddrs[addr] != "10.0.0.1:8080" {
+	if update.DeliveryAddrs[addr] != "44.0.0.99:8080" {
 		t.Errorf("expected updated delivery address, got %s", update.DeliveryAddrs[addr])
+	}
+}
+
+func TestTargetDiscovery_InvalidResultDestination_Ignored(t *testing.T) {
+	probePK := testProbePubkey()
+	client := &mockGeolocationUserClient{
+		users: []geolocation.KeyedGeolocationUser{
+			makeUserWithResultDest(
+				geolocation.GeolocationUserStatusActivated,
+				geolocation.GeolocationPaymentStatusPaid,
+				"user1",
+				[]geolocation.GeolocationTarget{
+					outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
+				},
+				"not-a-valid-address", // missing port
+			),
+		},
+	}
+
+	td := newTestTargetDiscovery(client)
+	targets, _, _, delivery, err := td.discover(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 target (address still valid), got %d", len(targets))
+	}
+	if len(delivery) != 0 {
+		t.Errorf("expected no delivery overrides for invalid result destination, got %d", len(delivery))
 	}
 }

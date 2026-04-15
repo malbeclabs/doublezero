@@ -61,6 +61,40 @@ func TestOffsetRowFromLocationOffset(t *testing.T) {
 	require.WithinDuration(t, time.Now(), row.ReceivedAt, 2*time.Second)
 }
 
+func TestClickhouseConfigFromEnv(t *testing.T) {
+	tests := []struct {
+		name     string
+		addr     string
+		wantAddr string
+	}{
+		{
+			name:     "plain host:port",
+			addr:     "clickhouse.example.com:8443",
+			wantAddr: "clickhouse.example.com:8443",
+		},
+		{
+			name:     "strips https:// scheme prefix",
+			addr:     "https://clickhouse.example.com:8443",
+			wantAddr: "clickhouse.example.com:8443",
+		},
+		{
+			name:     "strips http:// scheme prefix",
+			addr:     "http://localhost:8123",
+			wantAddr: "localhost:8123",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("CLICKHOUSE_ADDR", tt.addr)
+			t.Setenv("CLICKHOUSE_DB", "testdb")
+			cfg := ClickhouseConfigFromEnv()
+			require.NotNil(t, cfg)
+			require.Equal(t, tt.wantAddr, cfg.Addr)
+		})
+	}
+}
+
 func TestClickhouseWriterRecordBuffers(t *testing.T) {
 	w := &ClickhouseWriter{
 		buf: make([]OffsetRow, 0),

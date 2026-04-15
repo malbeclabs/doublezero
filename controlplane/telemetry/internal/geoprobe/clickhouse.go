@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +29,8 @@ func ClickhouseConfigFromEnv() *ClickhouseConfig {
 	if addr == "" {
 		return nil
 	}
+	addr = strings.TrimPrefix(addr, "https://")
+	addr = strings.TrimPrefix(addr, "http://")
 	db := os.Getenv("CLICKHOUSE_DB")
 	if db == "" {
 		db = "default"
@@ -47,7 +50,8 @@ func ClickhouseConfigFromEnv() *ClickhouseConfig {
 
 func NewClickhouseConn(cfg ClickhouseConfig) (driver.Conn, error) {
 	opts := &clickhouse.Options{
-		Addr: []string{cfg.Addr},
+		Protocol: clickhouse.HTTP,
+		Addr:     []string{cfg.Addr},
 		Auth: clickhouse.Auth{
 			Database: cfg.Database,
 			Username: cfg.Username,

@@ -18,6 +18,7 @@ import (
 
 const (
 	serviceabilityProgramDataFetchTimeout = 20 * time.Second
+	maxInitialProbeInterval               = 30 * time.Second
 )
 
 // DeviceInfo contains the minimal device information needed for latency probing and reporting.
@@ -424,13 +425,35 @@ func (l *LatencyManager) Start(ctx context.Context) error {
 		probe()
 		l.probeReady.Store(true)
 
-		ticker := time.NewTicker(l.probeInterval)
+		hasReachable := func() bool {
+			l.ResultsCache.Lock.RLock()
+			defer l.ResultsCache.Lock.RUnlock()
+			for _, r := range l.ResultsCache.Results {
+				if r.Reachable {
+					return true
+				}
+			}
+			return false
+		}
+
+		// If no device was reachable on the first probe, use a fast interval
+		// until one responds, then switch to the steady-state interval.
+		converged := hasReachable()
+		interval := l.probeInterval
+		if !converged {
+			interval = min(l.probeInterval, maxInitialProbeInterval)
+		}
+		ticker := time.NewTicker(interval)
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
 				probe()
+				if !converged && hasReachable() {
+					converged = true
+					ticker.Reset(l.probeInterval)
+				}
 			}
 		}
 	}()

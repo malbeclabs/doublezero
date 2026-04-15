@@ -23,13 +23,13 @@ const (
 	MetricNameIcmpMeasurementCycleDuration = "doublezero_geoprobe_icmp_measurement_cycle_duration_seconds"
 
 	// Labels.
-	LabelSource       = "source"
-	LabelDevicePubkey = "device_pubkey"
-	LabelVersion      = "version"
-	LabelCommit       = "commit"
-	LabelDate         = "date"
-	LabelErrorType    = "error_type"
-	LabelReason       = "reason"
+	LabelSource         = "source"
+	LabelGeoProbePubkey = "geoprobe_pubkey"
+	LabelVersion        = "version"
+	LabelCommit         = "commit"
+	LabelDate           = "date"
+	LabelErrorType      = "error_type"
+	LabelReason         = "reason"
 
 	// Error types.
 	ErrorTypeMeasurementCycle     = "measurement_cycle"
@@ -70,11 +70,11 @@ type Metrics struct {
 }
 
 // NewMetrics creates and registers all geoprobe Prometheus collectors.
-// The source and devicePubkey values are applied as constant labels on every metric.
-func NewMetrics(source, devicePubkey string, reg prometheus.Registerer) *Metrics {
+// The source and geoProbePubkey values are applied as constant labels on every metric.
+func NewMetrics(source, geoProbePubkey string, reg prometheus.Registerer) *Metrics {
 	constLabels := prometheus.Labels{
-		LabelSource:       source,
-		LabelDevicePubkey: devicePubkey,
+		LabelSource:         source,
+		LabelGeoProbePubkey: geoProbePubkey,
 	}
 
 	m := &Metrics{

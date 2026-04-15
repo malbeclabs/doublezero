@@ -67,7 +67,7 @@ func TestNewMetrics_ConstantLabels(t *testing.T) {
 			found = true
 			metric := mf.GetMetric()[0]
 			assertLabel(t, metric, LabelSource, SourceGeoProbeAgent)
-			assertLabel(t, metric, LabelDevicePubkey, "DevPK456")
+			assertLabel(t, metric, LabelGeoProbePubkey, "DevPK456")
 			assertLabel(t, metric, LabelErrorType, ErrorTypeMeasurementCycle)
 		}
 	}

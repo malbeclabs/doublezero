@@ -544,11 +544,16 @@ func startGeoprobeTarget(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoa
 		env["CLICKHOUSE_TLS_DISABLED"] = "true"
 	}
 
+	containerName := "geoprobe-target"
+	if opts != nil && opts.nameSuffix != "" {
+		containerName = opts.nameSuffix
+	}
+
 	req := testcontainers.ContainerRequest{
 		Image: geoprobeImage,
-		Name:  dn.Spec.DeployID + "-geoprobe-target",
+		Name:  dn.Spec.DeployID + "-" + containerName,
 		ConfigModifier: func(cfg *dockercontainer.Config) {
-			cfg.Hostname = "geoprobe-target"
+			cfg.Hostname = containerName
 		},
 		Cmd:        []string{"doublezero-geoprobe-target", "-twamp-port", "8925", "-udp-port", "8923"},
 		Env:        env,
@@ -583,7 +588,7 @@ func startGeoprobeTarget(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoa
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		dumpContainerLogs(ctx, containerID, "geoprobe-target")
+		dumpContainerLogs(ctx, containerID, containerName)
 	})
 
 	return containerID
@@ -592,6 +597,7 @@ func startGeoprobeTarget(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoa
 type geoprobeTargetOpts struct {
 	clickhouseAddr string
 	clickhousePass string
+	nameSuffix     string // optional: overrides container name/hostname (default: "geoprobe-target")
 }
 
 // waitForTargetOffsetReceived polls the geoprobe-target container logs until they show
@@ -836,6 +842,11 @@ func TestE2E_GeoprobeIcmpTargets(t *testing.T) {
 	log.Debug("==> Adding outbound-icmp target")
 	addGeolocationOutboundIcmpTarget(t, dn, "geo-user-01", targetIPStr, 8923, "geoprobe1")
 
+	// ICMP targets require a result destination for offset delivery (no UDP listener on the
+	// measurement target itself). Point it at the target container's UDP listener.
+	log.Debug("==> Setting result destination for ICMP offset delivery")
+	setGeolocationUserResultDestination(t, dn, "geo-user-01", targetIPStr+":8923")
+
 	// Start agent with CAP_NET_RAW for ICMP probing.
 	log.Debug("==> Starting geoprobe agent (ICMP target discovery)")
 	_ = startGeoprobeAgent(t, log, dn, geoprobeIPStr, geoprobeAccountPK,
@@ -875,6 +886,17 @@ func updateGeolocationUserPayment(t *testing.T, dn *devnet.Devnet, code, status 
 		"--status", status,
 	})
 	require.NoError(t, err, "user update-payment failed: %s", string(output))
+}
+
+// setGeolocationUserResultDestination sets the result destination on a GeolocationUser.
+func setGeolocationUserResultDestination(t *testing.T, dn *devnet.Devnet, userCode, destination string) {
+	t.Helper()
+	output, err := dn.Manager.Exec(t.Context(), []string{
+		"doublezero-geolocation", "user", "set-result-destination",
+		"--user", userCode,
+		"--destination", destination,
+	})
+	require.NoError(t, err, "user set-result-destination failed: %s", string(output))
 }
 
 // addGeolocationOutboundTarget adds an outbound target to a GeolocationUser.
@@ -1018,4 +1040,226 @@ func waitForInboundProbeSuccess(t *testing.T, containerID string, timeout time.D
 		}
 		return false
 	}, timeout, 5*time.Second, "Expected target-sender log to contain a successful probe pair with valid signatures and offsets")
+}
+
+// TestE2E_GeoprobeResultDestination verifies that composite offsets are routed to a
+// ResultDestination instead of the measurement target. The test sets up an outbound target
+// at one IP and a result destination listener at a different IP, then confirms the offset
+// arrives at the result destination.
+func TestE2E_GeoprobeResultDestination(t *testing.T) {
+	t.Parallel()
+
+	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
+	log := newTestLoggerForTest(t)
+
+	currentDir, err := os.Getwd()
+	require.NoError(t, err)
+	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
+
+	minBalanceSOL := 3.0
+	topUpSOL := 5.0
+	dn, err := devnet.New(devnet.DevnetSpec{
+		DeployID:  deployID,
+		DeployDir: t.TempDir(),
+		CYOANetwork: devnet.CYOANetworkSpec{
+			CIDRPrefix: subnetCIDRPrefix,
+		},
+		DeviceTunnelNet: "192.168.99.0/24",
+		Manager: devnet.ManagerSpec{
+			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
+		},
+		Funder: devnet.FunderSpec{
+			Verbose:       true,
+			MinBalanceSOL: minBalanceSOL,
+			TopUpSOL:      topUpSOL,
+			Interval:      3 * time.Second,
+		},
+	}, log, dockerClient, subnetAllocator)
+	require.NoError(t, err)
+
+	log.Debug("==> Starting containernet")
+	err = dn.Start(t.Context(), nil)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		var buf strings.Builder
+		fmt.Fprintf(&buf, "\n=== GEOPROBE RESULT-DEST DIAGNOSTIC DUMP (deploy=%s) ===\n", deployID)
+		for code, device := range dn.Devices {
+			for _, cmd := range []struct {
+				label   string
+				command []string
+			}{
+				{"doublezero-telemetry log (last 200 lines)", []string{"tail", "-200", "/var/log/agents-latest/doublezero-telemetry"}},
+			} {
+				output, err := device.Exec(ctx, cmd.command)
+				if err != nil {
+					fmt.Fprintf(&buf, "\n--- Device %s: %s (ERROR: %v)\n", code, cmd.label, err)
+				} else {
+					fmt.Fprintf(&buf, "\n--- Device %s: %s\n%s", code, cmd.label, string(output))
+				}
+			}
+		}
+		fmt.Fprintf(&buf, "\n=== GEOPROBE RESULT-DEST DIAGNOSTIC DUMP END ===\n")
+		fmt.Fprint(os.Stderr, buf.String())
+	})
+
+	linkNetwork := devnet.NewMiscNetwork(dn, log, "ams-dz01:ams-dz02")
+	_, err = linkNetwork.CreateIfNotExists(t.Context())
+	require.NoError(t, err)
+
+	// Add 2 devices in parallel.
+	var (
+		dz1TelemetryKeypairPK solana.PublicKey
+		dz2TelemetryKeypairPK solana.PublicKey
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		telemetryKeypair := solana.NewWallet().PrivateKey
+		telemetryKeypairJSON, _ := json.Marshal(telemetryKeypair[:])
+		telemetryKeypairPath := t.TempDir() + "/ams-dz01-telemetry-keypair.json"
+		require.NoError(t, os.WriteFile(telemetryKeypairPath, telemetryKeypairJSON, 0600))
+		dz1TelemetryKeypairPK = telemetryKeypair.PublicKey()
+
+		_, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
+			Code:                         "ams-dz01",
+			Location:                     "ams",
+			Exchange:                     "xams",
+			MetricsPublisherPK:           dz1TelemetryKeypairPK.String(),
+			CYOANetworkIPHostID:          8,
+			CYOANetworkAllocatablePrefix: 29,
+			Telemetry: devnet.DeviceTelemetrySpec{
+				Enabled:              true,
+				KeypairPath:          telemetryKeypairPath,
+				TWAMPListenPort:      862,
+				ProbeInterval:        2 * time.Second,
+				SubmissionInterval:   5 * time.Second,
+				PeersRefreshInterval: 5 * time.Second,
+				Verbose:              true,
+			},
+			AdditionalNetworks: []string{linkNetwork.Name},
+			Interfaces: map[string]string{
+				"Ethernet2": "physical",
+			},
+		})
+		require.NoError(t, err)
+		requireEventuallyFunded(t, log, dn.Ledger.GetRPCClient(), dz1TelemetryKeypairPK, minBalanceSOL, "dz1 telemetry publisher")
+	}()
+	go func() {
+		defer wg.Done()
+		telemetryKeypair := solana.NewWallet().PrivateKey
+		telemetryKeypairJSON, _ := json.Marshal(telemetryKeypair[:])
+		telemetryKeypairPath := t.TempDir() + "/ams-dz02-telemetry-keypair.json"
+		require.NoError(t, os.WriteFile(telemetryKeypairPath, telemetryKeypairJSON, 0600))
+		dz2TelemetryKeypairPK = telemetryKeypair.PublicKey()
+
+		_, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
+			Code:                         "ams-dz02",
+			Location:                     "ams",
+			Exchange:                     "xams",
+			MetricsPublisherPK:           dz2TelemetryKeypairPK.String(),
+			CYOANetworkIPHostID:          16,
+			CYOANetworkAllocatablePrefix: 29,
+			Telemetry: devnet.DeviceTelemetrySpec{
+				Enabled:              true,
+				KeypairPath:          telemetryKeypairPath,
+				TWAMPListenPort:      862,
+				ProbeInterval:        2 * time.Second,
+				SubmissionInterval:   5 * time.Second,
+				PeersRefreshInterval: 5 * time.Second,
+				Verbose:              true,
+			},
+			AdditionalNetworks: []string{linkNetwork.Name},
+			Interfaces: map[string]string{
+				"Ethernet2": "physical",
+			},
+		})
+		require.NoError(t, err)
+		requireEventuallyFunded(t, log, dn.Ledger.GetRPCClient(), dz2TelemetryKeypairPK, minBalanceSOL, "dz2 telemetry publisher")
+	}()
+	wg.Wait()
+
+	_ = dz2TelemetryKeypairPK // dz2 exists to form a link pair; not directly used below.
+
+	dz1 := dn.Devices["ams-dz01"]
+	require.NotNil(t, dz1)
+
+	geoprobeHostID := uint32(32)
+	geoprobeIP, err := netutil.DeriveIPFromCIDR(dn.CYOANetwork.SubnetCIDR, geoprobeHostID)
+	require.NoError(t, err)
+	geoprobeIPStr := geoprobeIP.To4().String()
+
+	exchangePK := getExchangePK(t, dn, "xams")
+
+	dz1DevicePK := dz1.ID
+	require.NotEmpty(t, dz1DevicePK)
+
+	log.Debug("==> Creating geoprobe onchain")
+	geoprobeAccountPK := createGeoprobeOnchain(t, dn, "geoprobe1", exchangePK, geoprobeIPStr, dz1TelemetryKeypairPK.String())
+
+	log.Debug("==> Adding dz1 as geoprobe parent")
+	addGeoprobeParent(t, dn, "geoprobe1", dz1DevicePK)
+
+	// Measurement target: geoprobe-target container that the agent probes via TWAMP.
+	measurementHostID := uint32(40)
+	measurementIP, err := netutil.DeriveIPFromCIDR(dn.CYOANetwork.SubnetCIDR, measurementHostID)
+	require.NoError(t, err)
+	measurementIPStr := measurementIP.To4().String()
+
+	// Result destination: separate geoprobe-target container that receives the composite offset.
+	resultDestHostID := uint32(48)
+	resultDestIP, err := netutil.DeriveIPFromCIDR(dn.CYOANetwork.SubnetCIDR, resultDestHostID)
+	require.NoError(t, err)
+	resultDestIPStr := resultDestIP.To4().String()
+
+	log.Debug("==> Starting measurement target container", "ip", measurementIPStr)
+	_ = startGeoprobeTarget(t, log, dn, measurementIPStr, &geoprobeTargetOpts{
+		nameSuffix: "measurement-target",
+	})
+
+	log.Debug("==> Starting result destination container", "ip", resultDestIPStr)
+	resultDestContainerID := startGeoprobeTarget(t, log, dn, resultDestIPStr, &geoprobeTargetOpts{
+		nameSuffix: "result-dest",
+	})
+
+	// Create a GeolocationUser with an outbound target pointing at the measurement container.
+	tokenAccount := solana.NewWallet().PublicKey().String()
+	log.Debug("==> Creating GeolocationUser onchain")
+	createGeolocationUser(t, dn, "geo-user-01", tokenAccount)
+	updateGeolocationUserPayment(t, dn, "geo-user-01", "paid")
+
+	log.Debug("==> Adding outbound target (measurement)")
+	addGeolocationOutboundTarget(t, dn, "geo-user-01", measurementIPStr, 8923, "geoprobe1")
+
+	// Set result destination to the separate container — offsets should land here, not
+	// at the measurement target.
+	log.Debug("==> Setting result destination", "destination", resultDestIPStr+":8923")
+	setGeolocationUserResultDestination(t, dn, "geo-user-01", resultDestIPStr+":8923")
+
+	// Start agent — it will discover the target and result destination from onchain state.
+	log.Debug("==> Starting geoprobe agent")
+	_ = startGeoprobeAgent(t, log, dn, geoprobeIPStr, geoprobeAccountPK,
+		dn.Manager.GeolocationProgramID, dn.Manager.ServiceabilityProgramID,
+		&geoprobeAgentOpts{
+			probeInterval: 5 * time.Second,
+		})
+
+	// --- Outbound flow with result destination ---
+	// Wait for dz1's telemetry agent to discover the geoprobe and successfully probe it.
+	log.Debug("==> Waiting for geoprobe discovery and successful measurement")
+	waitForGeoprobeSuccess(t, dz1, geoprobeIPStr, 180*time.Second)
+
+	// Wait for the result destination container (not the measurement target) to receive
+	// the composite offset. This proves the offset was routed to the alternate address.
+	log.Debug("==> Waiting for result destination to receive composite offset")
+	waitForTargetOffsetReceived(t, resultDestContainerID, 120*time.Second)
+	log.Debug("==> Result destination received valid composite offset — routing verified")
 }

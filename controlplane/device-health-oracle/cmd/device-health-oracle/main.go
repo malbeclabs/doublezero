@@ -150,7 +150,8 @@ func main() {
 			defer chClient.Close()
 			log.Info("ClickHouse enabled", "addr", chAddr, "db", chDB, "user", chUser, "tls", !chTLSDisabled)
 			controllerSuccess := worker.NewControllerSuccessCriterion(chClient, log)
-			deviceCriteria = append(deviceCriteria, controllerSuccess)
+			interfaceCounters := worker.NewInterfaceCountersCriterion(chClient, log)
+			deviceCriteria = append(deviceCriteria, controllerSuccess, interfaceCounters)
 		}
 	} else {
 		log.Error("ClickHouse disabled (CLICKHOUSE_ADDR not set), no controller_success criterion")

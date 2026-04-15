@@ -20,9 +20,11 @@ impl DeleteTopologyCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
+        let name = self.name.to_lowercase();
+
         // Guard: check if any links still reference this topology
         let program_id = client.get_program_id();
-        let topology_pda = get_topology_pda(&program_id, &self.name).0;
+        let topology_pda = get_topology_pda(&program_id, &name).0;
         let links = client.list_link(ListLinkCommand)?;
         let referencing_count = links
             .values()
@@ -31,16 +33,14 @@ impl DeleteTopologyCliCommand {
         if referencing_count > 0 {
             return Err(eyre::eyre!(
                 "Cannot delete topology '{}': {} link(s) still reference it. Run 'doublezero link topology clear --name {}' first.",
-                self.name,
+                name,
                 referencing_count,
-                self.name,
+                name,
             ));
         }
 
-        client.delete_topology(DeleteTopologyCommand {
-            name: self.name.clone(),
-        })?;
-        writeln!(out, "Deleted topology '{}' successfully.", self.name)?;
+        client.delete_topology(DeleteTopologyCommand { name: name.clone() })?;
+        writeln!(out, "Deleted topology '{}' successfully.", name)?;
 
         Ok(())
     }

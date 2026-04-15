@@ -4,7 +4,10 @@ use crate::{
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
-use doublezero_sdk::commands::tenant::{get::GetTenantCommand, update::UpdateTenantCommand};
+use doublezero_sdk::{
+    commands::tenant::{get::GetTenantCommand, update::UpdateTenantCommand},
+    get_topology_pda,
+};
 use doublezero_serviceability::state::tenant::{FlatPerEpochConfig, TenantBillingConfig};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
@@ -29,6 +32,9 @@ pub struct UpdateTenantCliCommand {
     /// Flat billing rate per epoch (in lamports)
     #[arg(long)]
     pub billing_rate: Option<u64>,
+    /// Comma-separated topology names to assign to this tenant (foundation-only). Use "default" to clear.
+    #[arg(long)]
+    pub include_topologies: Option<String>,
 }
 
 impl UpdateTenantCliCommand {
@@ -54,6 +60,28 @@ impl UpdateTenantCliCommand {
             })
         });
 
+        let include_topologies = if let Some(ref topo_arg) = self.include_topologies {
+            if topo_arg == "default" {
+                Some(vec![])
+            } else {
+                let program_id = client.get_program_id();
+                let pubkeys: eyre::Result<Vec<_>> = topo_arg
+                    .split(',')
+                    .map(|name| {
+                        let name = name.trim().to_lowercase();
+                        let pda = get_topology_pda(&program_id, &name).0;
+                        client
+                            .get_account(pda)
+                            .map_err(|_| eyre::eyre!("Topology '{}' not found", name))?;
+                        Ok(pda)
+                    })
+                    .collect();
+                Some(pubkeys?)
+            }
+        } else {
+            None
+        };
+
         let signature = client.update_tenant(UpdateTenantCommand {
             tenant_pubkey,
             vrf_id: self.vrf_id,
@@ -61,6 +89,7 @@ impl UpdateTenantCliCommand {
             metro_routing: self.metro_routing,
             route_liveness: self.route_liveness,
             billing,
+            include_topologies,
         })?;
 
         writeln!(out, "Signature: {signature}")?;
@@ -133,6 +162,7 @@ mod tests {
                 metro_routing: Some(true),
                 route_liveness: None,
                 billing: None,
+                include_topologies: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -145,6 +175,7 @@ mod tests {
             metro_routing: Some(true),
             route_liveness: None,
             billing_rate: None,
+            include_topologies: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

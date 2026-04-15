@@ -65,6 +65,8 @@ All notable changes to this project will be documented in this file.
   - Add `link_topologies: Vec<Pubkey>` (capped at 8) and `link_flags: u8` (bit 0 = unicast-drained) to the `Link` account
   - Add `include_topologies` to the `Tenant` account for topology-filtered routing opt-in
   - Enforce UNICAST-DEFAULT topology existence as a precondition for link activation
+  - Extend `link get` and `link list` to display topology assignments and drain status; add `--link-topology <name>` filter to `link list` and `--link-topology` (comma-separated topology names) / `--unicast-drained` flags to `link update`; use `default` as the value to clear all topology assignments
+  - Extend `tenant get` and `tenant list` to display included topologies; add `--include-topologies` (comma-separated topology names) flag to `tenant update`; use `default` to clear
 - Onchain programs
   - Add `tunnel_endpoint` field to the `UpdateUser` instruction (`UserUpdateArgs`), allowing the activator to overwrite a user's tunnel endpoint onchain; field is optional and backward compatible via incremental deserialization
 - Telemetry
@@ -74,6 +76,7 @@ All notable changes to this project will be documented in this file.
   - Add BGP status submitter: on each tick, reads BGP socket state from the device namespace, maps each activated user to their tunnel peer IP, and submits `SetUserBGPStatus` onchain; supports a configurable down grace period and periodic keepalive refresh; enabled via `--bgp-status-enable` with `--bgp-status-interval`, `--bgp-status-refresh-interval`, and `--bgp-status-down-grace-period` flags
 - Tools
   - Add `IsRetryableFunc` field to `RetryOptions` for configurable retry criteria in the Solana JSON-RPC client; add `"rate limited"` string match and RPC code `-32429` to the default implementation
+  - Add `doublezero-admin migrate flex-algo [--dry-run]` command to backfill link topology assignments and VPNv4 loopback flex-algo node segments across all existing devices and links
 - Geolocation
   - Standardize CLI flag naming: probe mutation commands use `--probe` (was `--code`) accepting pubkey or code; rename `--signing-keypair` → `--signing-pubkey` and `--target-pk` → `--target-signing-pubkey`; add `--json-compact` to `get` commands
   - geoprobe-target can now store LocationOffset messages in ClickHouse

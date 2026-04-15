@@ -30,23 +30,24 @@ fn parse_constraint(s: &str) -> Result<TopologyConstraint, String> {
 
 impl CreateTopologyCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        if self.name.len() > 32 {
+        let name = self.name.to_lowercase();
+        if name.len() > 32 {
             eyre::bail!(
                 "topology name must be 32 characters or fewer (got {})",
-                self.name.len()
+                name.len()
             );
         }
 
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let (_, topology_pda) = client.create_topology(CreateTopologyCommand {
-            name: self.name.clone(),
+            name: name.clone(),
             constraint: self.constraint,
         })?;
         writeln!(
             out,
             "Created topology '{}' successfully. PDA: {}",
-            self.name, topology_pda
+            name, topology_pda
         )?;
 
         Ok(())

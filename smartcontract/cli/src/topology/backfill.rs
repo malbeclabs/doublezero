@@ -27,16 +27,14 @@ impl BackfillTopologyCliCommand {
             ));
         }
 
+        let name = self.name.to_lowercase();
+
         let sig = client.backfill_topology(BackfillTopologyCommand {
-            name: self.name.clone(),
+            name: name.clone(),
             device_pubkeys: self.device_pubkeys,
         })?;
 
-        writeln!(
-            out,
-            "Backfilled topology '{}'. Signature: {}",
-            self.name, sig
-        )?;
+        writeln!(out, "Backfilled topology '{}'. Signature: {}", name, sig)?;
 
         Ok(())
     }

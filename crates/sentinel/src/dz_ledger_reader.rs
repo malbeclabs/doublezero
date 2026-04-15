@@ -2,8 +2,10 @@ use std::{collections::HashMap, net::Ipv4Addr};
 
 use anyhow::{bail, Context, Result};
 use doublezero_sdk::{
-    AccountData, AccountType, DeviceStatus, MulticastGroupStatus, UserStatus, UserType,
+    AccountData, AccountType, DeviceStatus, LocationStatus, MulticastGroupStatus, UserStatus,
+    UserType,
 };
+use doublezero_telemetry::state::device_latency_samples::DeviceLatencySamples;
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
     nonblocking::rpc_client::RpcClient as NonblockingRpcClient,
@@ -31,6 +33,20 @@ pub struct DzUser {
 /// Maps device pubkey → device code.
 pub struct DzLedgerCodes {
     pub device_codes: HashMap<Pubkey, String>,
+}
+
+/// Device info used for nearest-device calculations.
+#[derive(Debug, Clone)]
+pub struct DzDeviceInfo {
+    pub pk: Pubkey,
+    pub code: String,
+    pub lat: f64,
+    pub lng: f64,
+    pub users_count: u16,
+    pub max_users: u16,
+    pub reserved_seats: u16,
+    pub multicast_publishers_count: u16,
+    pub max_multicast_publishers: u16,
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +200,169 @@ pub fn fetch_device_codes(client: &RpcClient, program_id: &Pubkey) -> Result<DzL
     }
 
     Ok(DzLedgerCodes { device_codes })
+}
+
+/// Fetch activated devices with their location coordinates.
+///
+/// Makes two RPC calls: one for all Device accounts, one for all Location accounts.
+pub fn fetch_device_infos(
+    client: &RpcClient,
+    program_id: &Pubkey,
+) -> Result<HashMap<Pubkey, DzDeviceInfo>> {
+    // Fetch all Device accounts.
+    let device_accounts = client
+        .get_program_accounts_with_config(
+            program_id,
+            RpcProgramAccountsConfig {
+                filters: Some(vec![RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
+                    0,
+                    vec![AccountType::Device as u8],
+                ))]),
+                account_config: RpcAccountInfoConfig {
+                    encoding: Some(UiAccountEncoding::Base64),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .context("failed to fetch Device accounts from DZ Ledger")?;
+
+    // Collect activated devices and their location pubkeys.
+    let mut devices: Vec<(Pubkey, doublezero_sdk::Device)> = Vec::new();
+    let mut location_pks: Vec<Pubkey> = Vec::new();
+    for (pk, account) in &device_accounts {
+        let Ok(ad) = AccountData::try_from(account.data.as_slice()) else {
+            continue;
+        };
+        let Ok(device) = ad.get_device() else {
+            continue;
+        };
+        if device.status == DeviceStatus::Activated {
+            location_pks.push(device.location_pk);
+            devices.push((*pk, device));
+        }
+    }
+
+    if devices.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // Fetch all Location accounts in one batch call.
+    let location_accounts = client
+        .get_multiple_accounts(&location_pks)
+        .context("failed to fetch Location accounts from DZ Ledger")?;
+
+    // Build location_pk → (lat, lng) map.
+    let mut location_coords: HashMap<Pubkey, (f64, f64)> = HashMap::new();
+    for (pk, maybe_account) in location_pks.iter().zip(location_accounts.iter()) {
+        let Some(account) = maybe_account else {
+            continue;
+        };
+        let Ok(ad) = AccountData::try_from(account.data.as_slice()) else {
+            continue;
+        };
+        let Ok(loc) = ad.get_location() else {
+            continue;
+        };
+        if loc.status == LocationStatus::Activated {
+            location_coords.insert(*pk, (loc.lat, loc.lng));
+        }
+    }
+
+    // Join devices with their location coordinates.
+    let mut infos = HashMap::new();
+    for (pk, device) in devices {
+        let (lat, lng) = location_coords
+            .get(&device.location_pk)
+            .copied()
+            .unwrap_or((0.0, 0.0));
+        infos.insert(
+            pk,
+            DzDeviceInfo {
+                pk,
+                code: device.code.clone(),
+                lat,
+                lng,
+                users_count: device.users_count,
+                max_users: device.max_users,
+                reserved_seats: device.reserved_seats,
+                multicast_publishers_count: device.multicast_publishers_count,
+                max_multicast_publishers: device.max_multicast_publishers,
+            },
+        );
+    }
+
+    Ok(infos)
+}
+
+/// Fetch a map of min-latency (in microseconds) between device pairs for the current epoch.
+///
+/// Returns `HashMap<(origin_device_pk, target_device_pk), min_latency_us>`.
+/// The map is derived from `DeviceLatencySamples` onchain telemetry accounts.
+pub fn fetch_device_latency_map(
+    client: &RpcClient,
+    telemetry_program_id: &Pubkey,
+) -> Result<HashMap<(Pubkey, Pubkey), f64>> {
+    const DEVICE_LATENCY_SAMPLES_ACCOUNT_TYPE: u8 = 3;
+
+    let epoch_info = client
+        .get_epoch_info()
+        .context("failed to fetch epoch info")?;
+    let epoch = epoch_info.epoch;
+
+    let accounts = client
+        .get_program_accounts_with_config(
+            telemetry_program_id,
+            RpcProgramAccountsConfig {
+                filters: Some(vec![
+                    RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
+                        0,
+                        vec![DEVICE_LATENCY_SAMPLES_ACCOUNT_TYPE],
+                    )),
+                    RpcFilterType::Memcmp(Memcmp::new_raw_bytes(1, epoch.to_le_bytes().to_vec())),
+                ]),
+                account_config: RpcAccountInfoConfig {
+                    encoding: Some(UiAccountEncoding::Base64),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .context("failed to fetch DeviceLatencySamples accounts")?;
+
+    let mut map: HashMap<(Pubkey, Pubkey), f64> = HashMap::new();
+
+    for (_pk, account) in accounts {
+        let Ok(samples) = DeviceLatencySamples::try_from(account.data.as_slice()) else {
+            continue;
+        };
+        if samples.samples.is_empty() {
+            continue;
+        }
+        let origin = samples.header.origin_device_pk;
+        let target = samples.header.target_device_pk;
+        // Zero RTT indicates packet loss — exclude from min calculation.
+        // If all samples are zero (total loss), skip this account entirely.
+        let Some(min_us) = samples
+            .samples
+            .iter()
+            .copied()
+            .filter(|&s| s > 0)
+            .min()
+            .map(|v| v as f64)
+        else {
+            continue;
+        };
+        map.entry((origin, target))
+            .and_modify(|e| {
+                if min_us < *e {
+                    *e = min_us;
+                }
+            })
+            .or_insert(min_us);
+    }
+
+    Ok(map)
 }
 
 /// Resolve a multicast group key-or-code to a pubkey.

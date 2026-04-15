@@ -14,8 +14,10 @@ async-trait.workspace = true
 backon.workspace = true
 borsh.workspace = true
 clap.workspace = true
+doublezero-config.workspace = true
 doublezero_sdk.workspace = true
 doublezero-serviceability.workspace = true
+doublezero-telemetry.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
 reqwest.workspace = true
@@ -36,6 +38,9 @@ url.workspace = true
 
 [dev-dependencies]
 mockall.workspace = true
+
+[lib]
+path = "src/lib.rs"
 
 [[bin]]
 name = "doublezero-sentinel"

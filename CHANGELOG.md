@@ -49,6 +49,8 @@ All notable changes to this project will be documented in this file.
 - SDK
   - Deserialize `agent_version` and `agent_commit` from device latency samples in Go, TypeScript, and Python SDKs
   - Add `BGPStatus` type (Unknown/Up/Down) and `SetUserBGPStatus` executor instruction to the Go serviceability SDK
+- Sentinel
+  - Improve `find-validator-multicast-publishers` and `create-validator-multicast-publishers` with multi-value `--client` filter, `--ip` filter, nearest-device selection, dynamic capacity re-evaluation, and a fix for multicast publisher owner being set to the sentinel payer instead of the validator's owner
 - Smartcontract
   - Add `agent_version` (`[u8; 16]`) and `agent_commit` (`[u8; 8]`) fields to `DeviceLatencySamplesHeader`, carved from the existing reserved region; accept both fields in the `InitializeDeviceLatencySamples` instruction via incremental deserialization (fully backward compatible)
   - Implement `SetUserBGPStatus` processor: validates metrics publisher authorization, updates `bgp_status`, `last_bgp_reported_at`, and `last_bgp_up_at` fields on the user account

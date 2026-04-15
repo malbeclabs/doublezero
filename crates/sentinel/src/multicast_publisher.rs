@@ -403,6 +403,7 @@ impl MulticastDzLedgerClient for RpcMulticastDzLedgerClient {
         let ixs = build_create_multicast_publisher_instructions(
             &self.serviceability_id,
             &payer_pk,
+            &user.owner,
             mgroup_pk,
             user,
         )

@@ -5,7 +5,7 @@ use crate::{
         device::get::GetDeviceCommand,
         globalstate::get::GetGlobalStateCommand,
         multicastgroup::{
-            list::ListMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+            list::ListMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand,
         },
         user::get::GetUserCommand,
     },
@@ -54,7 +54,7 @@ impl RequestBanUserCommand {
             let multicastgroups = ListMulticastGroupCommand {}.execute(client)?;
             for mgroup_pk in &unique_mgroup_pks {
                 if multicastgroups.contains_key(mgroup_pk) {
-                    SubscribeMulticastGroupCommand {
+                    UpdateMulticastGroupRolesCommand {
                         group_pk: *mgroup_pk,
                         user_pk: self.pubkey,
                         client_ip: user.client_ip,

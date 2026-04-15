@@ -77,7 +77,7 @@ use crate::{
             delete::process_delete_multicastgroup,
             reactivate::process_reactivate_multicastgroup,
             reject::process_reject_multicastgroup,
-            subscribe::process_subscribe_multicastgroup,
+            subscribe::process_update_multicastgroup_roles,
             suspend::process_suspend_multicastgroup,
             update::process_update_multicastgroup,
         },
@@ -293,8 +293,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(value) => {
             process_remove_multicast_sub_allowlist(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::SubscribeMulticastGroup(value) => {
-            process_subscribe_multicastgroup(program_id, accounts, &value)?
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(value) => {
+            process_update_multicastgroup_roles(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CreateSubscribeUser(value) => {
             process_create_subscribe_user(program_id, accounts, &value)?

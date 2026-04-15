@@ -6,7 +6,7 @@ use crate::{
         device::get::GetDeviceCommand,
         globalstate::get::GetGlobalStateCommand,
         multicastgroup::{
-            list::ListMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+            list::ListMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand,
         },
         user::get::GetUserCommand,
     },
@@ -53,7 +53,7 @@ impl DeleteUserCommand {
         let multicastgroups = ListMulticastGroupCommand {}.execute(client)?;
         for mgroup_pk in &unique_mgroup_pks {
             if multicastgroups.contains_key(mgroup_pk) {
-                SubscribeMulticastGroupCommand {
+                UpdateMulticastGroupRolesCommand {
                     group_pk: *mgroup_pk,
                     user_pk: self.pubkey,
                     client_ip: user.client_ip,
@@ -192,7 +192,7 @@ mod tests {
             get_resource_extension_pda,
         },
         processors::{
-            multicastgroup::subscribe::MulticastGroupSubscribeArgs, user::delete::UserDeleteArgs,
+            multicastgroup::subscribe::UpdateMulticastGroupRolesArgs, user::delete::UserDeleteArgs,
         },
         resource::ResourceType,
         state::{
@@ -320,7 +320,7 @@ mod tests {
                 Ok(map)
             });
 
-        // Call 3: MulticastGroup fetch in SubscribeMulticastGroupCommand
+        // Call 3: MulticastGroup fetch in UpdateMulticastGroupRolesCommand
         let mgroup_clone = mgroup.clone();
         client
             .expect_get()
@@ -329,7 +329,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::MulticastGroup(mgroup_clone.clone())));
 
-        // Call 4: User fetch inside SubscribeMulticastGroupCommand - needs Activated
+        // Call 4: User fetch inside UpdateMulticastGroupRolesCommand - needs Activated
         let user_clone2 = user_activated_with_sub.clone();
         client
             .expect_get()
@@ -338,7 +338,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::User(user_clone2.clone())));
 
-        // Call 5: AccessPass fetch in SubscribeMulticastGroupCommand
+        // Call 5: AccessPass fetch in UpdateMulticastGroupRolesCommand
         let accesspass_clone1 = accesspass.clone();
         client
             .expect_get()
@@ -347,12 +347,12 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone1.clone())));
 
-        // Execute transaction for SubscribeMulticastGroupCommand (unsubscribe)
+        // Execute transaction for UpdateMulticastGroupRolesCommand (unsubscribe)
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::SubscribeMulticastGroup(
-                    MulticastGroupSubscribeArgs {
+                predicate::eq(DoubleZeroInstruction::UpdateMulticastGroupRoles(
+                    UpdateMulticastGroupRolesArgs {
                         publisher: false,
                         subscriber: false,
                         client_ip,
@@ -558,8 +558,8 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::SubscribeMulticastGroup(
-                    MulticastGroupSubscribeArgs {
+                predicate::eq(DoubleZeroInstruction::UpdateMulticastGroupRoles(
+                    UpdateMulticastGroupRolesArgs {
                         publisher: false,
                         subscriber: false,
                         client_ip,
@@ -753,7 +753,7 @@ mod tests {
                 Ok(map)
             });
 
-        // Call 3: MulticastGroup fetch in SubscribeMulticastGroupCommand
+        // Call 3: MulticastGroup fetch in UpdateMulticastGroupRolesCommand
         let mgroup_clone = mgroup.clone();
         client
             .expect_get()
@@ -762,7 +762,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::MulticastGroup(mgroup_clone.clone())));
 
-        // Call 4: User fetch inside SubscribeMulticastGroupCommand
+        // Call 4: User fetch inside UpdateMulticastGroupRolesCommand
         let user_clone2 = user_with_sub.clone();
         client
             .expect_get()
@@ -771,7 +771,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::User(user_clone2.clone())));
 
-        // Call 5a: UNSPECIFIED AccessPass lookup fails (fallback path) — SubscribeMulticastGroupCommand
+        // Call 5a: UNSPECIFIED AccessPass lookup fails (fallback path) — UpdateMulticastGroupRolesCommand
         let user_clone_fallback1 = user_with_sub.clone();
         client
             .expect_get()
@@ -793,8 +793,8 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::SubscribeMulticastGroup(
-                    MulticastGroupSubscribeArgs {
+                predicate::eq(DoubleZeroInstruction::UpdateMulticastGroupRoles(
+                    UpdateMulticastGroupRolesArgs {
                         publisher: false,
                         subscriber: false,
                         client_ip,

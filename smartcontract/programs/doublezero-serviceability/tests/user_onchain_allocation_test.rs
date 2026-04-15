@@ -34,7 +34,7 @@ use doublezero_serviceability::{
                 subscriber::add::AddMulticastGroupSubAllowlistArgs,
             },
             create::MulticastGroupCreateArgs,
-            subscribe::MulticastGroupSubscribeArgs,
+            subscribe::UpdateMulticastGroupRolesArgs,
         },
         user::{
             activate::UserActivateArgs, closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
@@ -1165,12 +1165,12 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
     // =========================================================================
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
-    // SubscribeMulticastGroup (6 accounts: mgroup, accesspass, user, globalstate, payer, system_program)
+    // UpdateMulticastGroupRoles (6 accounts: mgroup, accesspass, user, globalstate, payer, system_program)
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: client_ip.into(),
             publisher: true,
             subscriber: false,
@@ -1478,7 +1478,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: client_ip.into(),
             publisher: true,
             subscriber: false,
@@ -1569,7 +1569,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: client_ip.into(),
             publisher: false,
             subscriber: false,
@@ -1756,7 +1756,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: client_ip.into(),
             publisher: true,
             subscriber: false,
@@ -3705,7 +3705,7 @@ async fn test_activate_updating_does_not_set_multicast_publisher_for_non_publish
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: client_ip.into(),
             publisher: true,
             subscriber: false,
@@ -3838,7 +3838,7 @@ async fn test_activate_sets_multicast_publisher_false_for_subscriber() {
 /// Verify that atomic DeleteUser decrements `multicast_subscribers_count` (not
 /// `multicast_publishers_count`) when the user was created as a non-publisher via
 /// CreateUser (is_publisher=false → subscribers_count++). Even after the user subscribes
-/// as a publisher via SubscribeMulticastGroup and is re-activated, tunnel_flags stays
+/// as a publisher via UpdateMulticastGroupRoles and is re-activated, tunnel_flags stays
 /// false (re-activation/Updating does not set the flag), so the correct counter is decremented.
 #[tokio::test]
 async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher() {
@@ -3958,7 +3958,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: client_ip.into(),
             publisher: true,
             subscriber: false,
@@ -4024,7 +4024,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: client_ip.into(),
             publisher: false,
             subscriber: false,
@@ -4258,7 +4258,7 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: client_ip.into(),
             publisher: false,
             subscriber: true,
@@ -4297,7 +4297,7 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: client_ip.into(),
             publisher: false,
             subscriber: false,
@@ -4410,7 +4410,7 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
 ///
 /// Verify that legacy CloseAccountUser correctly decrements `multicast_subscribers_count`
 /// when the user was created as a non-publisher (via CreateUser, is_publisher=false).
-/// Even though the user later subscribed as a publisher via SubscribeMulticastGroup,
+/// Even though the user later subscribed as a publisher via UpdateMulticastGroupRoles,
 /// the device counter that was incremented at creation time (subscribers_count) is what
 /// must be decremented at delete time. tunnel_flags stays clear throughout.
 #[tokio::test]
@@ -4529,7 +4529,7 @@ async fn test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_s
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: client_ip.into(),
             publisher: true,
             subscriber: false,
@@ -4594,7 +4594,7 @@ async fn test_closeaccount_user_legacy_after_publisher_unsubscribed_decrements_s
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: client_ip.into(),
             publisher: false,
             subscriber: false,
@@ -4867,7 +4867,7 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: client_ip.into(),
             publisher: true,
             subscriber: false,
@@ -4968,7 +4968,7 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: client_ip.into(),
             publisher: false,
             subscriber: false,

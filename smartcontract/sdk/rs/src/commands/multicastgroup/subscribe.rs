@@ -10,7 +10,7 @@ use crate::{
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::get_resource_extension_pda,
-    processors::multicastgroup::subscribe::MulticastGroupSubscribeArgs,
+    processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
     resource::ResourceType,
     state::{
         feature_flags::{is_feature_enabled, FeatureFlag},
@@ -21,7 +21,7 @@ use doublezero_serviceability::{
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct SubscribeMulticastGroupCommand {
+pub struct UpdateMulticastGroupRolesCommand {
     pub group_pk: Pubkey,
     pub client_ip: Ipv4Addr,
     pub user_pk: Pubkey,
@@ -29,7 +29,7 @@ pub struct SubscribeMulticastGroupCommand {
     pub subscriber: bool,
 }
 
-impl SubscribeMulticastGroupCommand {
+impl UpdateMulticastGroupRolesCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
@@ -97,7 +97,7 @@ impl SubscribeMulticastGroupCommand {
         }
 
         client.execute_transaction(
-            DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
                 publisher: self.publisher,
                 subscriber: self.subscriber,
                 client_ip: user.client_ip,
@@ -111,7 +111,7 @@ impl SubscribeMulticastGroupCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::multicastgroup::subscribe::SubscribeMulticastGroupCommand,
+        commands::multicastgroup::subscribe::UpdateMulticastGroupRolesCommand,
         tests::utils::create_test_client, DoubleZeroClient, MockDoubleZeroClient,
     };
     use doublezero_program_common::types::NetworkV4;
@@ -121,7 +121,7 @@ mod tests {
             get_accesspass_pda, get_globalstate_pda, get_multicastgroup_pda,
             get_resource_extension_pda,
         },
-        processors::multicastgroup::subscribe::MulticastGroupSubscribeArgs,
+        processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
         resource::ResourceType,
         state::{
             accountdata::AccountData,
@@ -208,7 +208,7 @@ mod tests {
             flags: 0,
         };
 
-        // First call in SubscribeMulticastGroupCommand::execute tries the dynamic (UNSPECIFIED) PDA,
+        // First call in UpdateMulticastGroupRolesCommand::execute tries the dynamic (UNSPECIFIED) PDA,
         // which should fail with a non-AccessPass to trigger the fallback to the fixed client_ip PDA.
         let (dynamic_accesspass_pubkey, _) = get_accesspass_pda(
             &client.get_program_id(),
@@ -236,8 +236,8 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::SubscribeMulticastGroup(
-                    MulticastGroupSubscribeArgs {
+                predicate::eq(DoubleZeroInstruction::UpdateMulticastGroupRoles(
+                    UpdateMulticastGroupRolesArgs {
                         client_ip,
                         publisher: true,
                         subscriber: false,
@@ -253,7 +253,7 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = SubscribeMulticastGroupCommand {
+        let res = UpdateMulticastGroupRolesCommand {
             group_pk: mgroup_pubkey,
             user_pk: user_pubkey,
             client_ip,
@@ -373,8 +373,8 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::SubscribeMulticastGroup(
-                    MulticastGroupSubscribeArgs {
+                predicate::eq(DoubleZeroInstruction::UpdateMulticastGroupRoles(
+                    UpdateMulticastGroupRolesArgs {
                         client_ip,
                         publisher: true,
                         subscriber: false,
@@ -391,7 +391,7 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = SubscribeMulticastGroupCommand {
+        let res = UpdateMulticastGroupRolesCommand {
             group_pk: mgroup_pubkey,
             user_pk: user_pubkey,
             client_ip,

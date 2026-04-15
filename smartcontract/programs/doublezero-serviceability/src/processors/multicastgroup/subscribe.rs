@@ -54,13 +54,13 @@ pub struct SubscribeUserResult {
     pub publisher_list_transitioned: bool,
 }
 
-/// Toggle a user's multicast group subscription.
+/// Toggle a user's multicast group roles.
 ///
 /// Handles both create-time subscription (user lists start empty, only adds)
 /// and post-activation subscription changes (add/remove toggle). The caller is
 /// responsible for setting `user.status = Updating` when
 /// `publisher_list_transitioned` is true and the user is already activated.
-pub fn update_user_multicastgroup_subscription(
+pub fn update_user_multicastgroup_roles(
     mgroup_account: &AccountInfo,
     accesspass: &AccessPass,
     user: &mut User,
@@ -130,7 +130,7 @@ pub fn update_user_multicastgroup_subscription(
     })
 }
 
-pub fn process_update_multicastgroup_subscription(
+pub fn process_update_multicastgroup_roles(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     value: &MulticastGroupSubscribeArgs,
@@ -171,7 +171,7 @@ pub fn process_update_multicastgroup_subscription(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_update_multicastgroup_subscription({:?})", value);
+    msg!("process_update_multicastgroup_roles({:?})", value);
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
@@ -201,12 +201,12 @@ pub fn process_update_multicastgroup_subscription(
 
     // Parse and validate user
     let mut user: User = User::try_from(user_account)?;
-    // Unsubscribe is allowed for any status so that users
+    // Removing all roles is allowed for any status so that users
     // created via CreateSubscribeUser can be cleaned up before activation.
-    // Subscribe is also allowed for Pending users so that CreateSubscribeUser
+    // Adding roles is also allowed for Pending users so that CreateSubscribeUser
     // (which only takes one mgroup) can be followed by additional calls.
-    let is_subscribe = value.publisher || value.subscriber;
-    if is_subscribe
+    let has_role = value.publisher || value.subscriber;
+    if has_role
         && user.status != UserStatus::Activated
         && user.status != UserStatus::Updating
         && user.status != UserStatus::Pending
@@ -254,7 +254,7 @@ pub fn process_update_multicastgroup_subscription(
         }
     }
 
-    let result = update_user_multicastgroup_subscription(
+    let result = update_user_multicastgroup_roles(
         mgroup_account,
         &accesspass,
         &mut user,

@@ -969,7 +969,7 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
 }
 
 /// Foundation admin (payer != user.owner) can subscribe a user to a multicast group.
-/// Regression test for the bug where process_update_multicastgroup_subscription derived the AccessPass PDA
+/// Regression test for the bug where process_update_multicastgroup_roles derived the AccessPass PDA
 /// using payer_account.key instead of user.owner.
 #[tokio::test]
 async fn test_subscribe_foundation_admin_payer_differs_from_user_owner() {

@@ -27,7 +27,7 @@ use solana_program::{
 };
 use std::{fmt, net::Ipv4Addr};
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
-pub struct MulticastGroupSubscribeArgs {
+pub struct UpdateMulticastGroupRolesArgs {
     #[incremental(default = Ipv4Addr::UNSPECIFIED)]
     pub client_ip: Ipv4Addr,
     pub publisher: bool,
@@ -36,7 +36,7 @@ pub struct MulticastGroupSubscribeArgs {
     pub use_onchain_allocation: bool,
 }
 
-impl fmt::Debug for MulticastGroupSubscribeArgs {
+impl fmt::Debug for UpdateMulticastGroupRolesArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -133,7 +133,7 @@ pub fn update_user_multicastgroup_roles(
 pub fn process_update_multicastgroup_roles(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &MulticastGroupSubscribeArgs,
+    value: &UpdateMulticastGroupRolesArgs,
 ) -> ProgramResult {
     let num_accounts = accounts.len();
     let accounts_iter = &mut accounts.iter();

@@ -63,7 +63,7 @@ use crate::processors::{
         delete::MulticastGroupDeleteArgs,
         reactivate::MulticastGroupReactivateArgs,
         reject::MulticastGroupRejectArgs,
-        subscribe::MulticastGroupSubscribeArgs,
+        subscribe::UpdateMulticastGroupRolesArgs,
         suspend::MulticastGroupSuspendArgs,
         update::MulticastGroupUpdateArgs,
     },
@@ -162,8 +162,8 @@ pub enum DoubleZeroInstruction {
     AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs), // variant 56
     RemoveMulticastGroupSubAllowlist(RemoveMulticastGroupSubAllowlistArgs), // variant 57
 
-    SubscribeMulticastGroup(MulticastGroupSubscribeArgs), // variant 58
-    CreateSubscribeUser(UserCreateSubscribeArgs),         // variant 59
+    UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs), // variant 58
+    CreateSubscribeUser(UserCreateSubscribeArgs),             // variant 59
 
     CreateContributor(ContributorCreateArgs),   // variant 60
     UpdateContributor(ContributorUpdateArgs),   // variant 61
@@ -304,7 +304,7 @@ impl DoubleZeroInstruction {
             55 => Ok(Self::RemoveMulticastGroupPubAllowlist(RemoveMulticastGroupPubAllowlistArgs::try_from(rest).unwrap())),
             56 => Ok(Self::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs::try_from(rest).unwrap())),
             57 => Ok(Self::RemoveMulticastGroupSubAllowlist(RemoveMulticastGroupSubAllowlistArgs::try_from(rest).unwrap())),
-            58 => Ok(Self::SubscribeMulticastGroup(MulticastGroupSubscribeArgs::try_from(rest).unwrap())),
+            58 => Ok(Self::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs::try_from(rest).unwrap())),
             59 => Ok(Self::CreateSubscribeUser(UserCreateSubscribeArgs::try_from(rest).unwrap())),
 
             60 => Ok(Self::CreateContributor(ContributorCreateArgs::try_from(rest).unwrap())),
@@ -438,8 +438,8 @@ impl DoubleZeroInstruction {
                 "RemoveMulticastGroupSubAllowlist".to_string()
             } // variant 57
 
-            Self::SubscribeMulticastGroup(_) => "SubscribeMulticastGroup".to_string(), // variant 58
-            Self::CreateSubscribeUser(_) => "CreateSubscribeUser".to_string(),         // variant 59
+            Self::UpdateMulticastGroupRoles(_) => "UpdateMulticastGroupRoles".to_string(), // variant 58
+            Self::CreateSubscribeUser(_) => "CreateSubscribeUser".to_string(), // variant 59
 
             Self::CreateContributor(_) => "CreateContributor".to_string(), // variant 60
             Self::UpdateContributor(_) => "UpdateContributor".to_string(), // variant 61
@@ -564,7 +564,7 @@ impl DoubleZeroInstruction {
             Self::DeleteMulticastGroup(args) => format!("{args:?}"), // variant 51
             Self::UpdateMulticastGroup(args) => format!("{args:?}"), // variant 52
             Self::DeactivateMulticastGroup(args) => format!("{args:?}"), // variant 53
-            Self::SubscribeMulticastGroup(args) => format!("{args:?}"), // variant 54
+            Self::UpdateMulticastGroupRoles(args) => format!("{args:?}"), // variant 54
             Self::AddMulticastGroupPubAllowlist(args) => format!("{args:?}"), // variant 55
             Self::RemoveMulticastGroupPubAllowlist(args) => format!("{args:?}"), // variant 56
             Self::AddMulticastGroupSubAllowlist(args) => format!("{args:?}"), // variant 57
@@ -1060,13 +1060,13 @@ mod tests {
             "RemoveMulticastGroupSubAllowlist",
         );
         test_instruction(
-            DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
                 client_ip: [1, 2, 3, 4].into(),
                 publisher: false,
                 subscriber: true,
                 use_onchain_allocation: false,
             }),
-            "SubscribeMulticastGroup",
+            "UpdateMulticastGroupRoles",
         );
         test_instruction(
             DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {

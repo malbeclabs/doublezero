@@ -17,7 +17,7 @@ use doublezero_serviceability::{
                 subscriber::add::AddMulticastGroupSubAllowlistArgs,
             },
             create::MulticastGroupCreateArgs,
-            subscribe::MulticastGroupSubscribeArgs,
+            subscribe::UpdateMulticastGroupRolesArgs,
         },
         user::{activate::UserActivateArgs, create::UserCreateArgs},
     },
@@ -484,7 +484,7 @@ async fn test_subscribe_first_publisher_sets_updating() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: true,
             subscriber: false,
@@ -542,7 +542,7 @@ async fn test_subscribe_second_publisher_does_not_set_updating() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: true,
             subscriber: false,
@@ -591,7 +591,7 @@ async fn test_subscribe_second_publisher_does_not_set_updating() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: true,
             subscriber: false,
@@ -655,7 +655,7 @@ async fn test_subscribe_subscriber_does_not_set_updating() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: true,
@@ -688,7 +688,7 @@ async fn test_subscribe_subscriber_does_not_set_updating() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: true,
@@ -753,7 +753,7 @@ async fn test_unsubscribe_last_publisher_sets_updating() {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
                 client_ip: [100, 0, 0, 1].into(),
                 publisher: true,
                 subscriber: false,
@@ -804,7 +804,7 @@ async fn test_unsubscribe_last_publisher_sets_updating() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: false,
@@ -837,7 +837,7 @@ async fn test_unsubscribe_last_publisher_sets_updating() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: false,
@@ -887,7 +887,7 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: true,
             subscriber: false,
@@ -929,7 +929,7 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: true,
             subscriber: false,
@@ -1017,7 +1017,7 @@ async fn test_subscribe_foundation_admin_payer_differs_from_user_owner() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: true,
@@ -1067,7 +1067,7 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: true,
@@ -1123,7 +1123,7 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: false,
@@ -1172,7 +1172,7 @@ async fn test_subscribe_unauthorized_payer_rejected() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: true,
@@ -1220,7 +1220,7 @@ async fn test_subscribe_unauthorized_payer_rejected_without_globalstate() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: true,
@@ -1309,7 +1309,7 @@ async fn test_subscribe_onchain_first_publisher_allocates_dz_ip() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: true,
             subscriber: false,
@@ -1391,7 +1391,7 @@ async fn test_subscribe_onchain_subscriber_no_allocation() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: true,
@@ -1447,7 +1447,7 @@ async fn test_subscribe_onchain_feature_flag_disabled_fails() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: true,
             subscriber: false,
@@ -1511,7 +1511,7 @@ async fn test_subscribe_onchain_second_publisher_no_reallocation() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: true,
             subscriber: false,
@@ -1541,7 +1541,7 @@ async fn test_subscribe_onchain_second_publisher_no_reallocation() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: [100, 0, 0, 1].into(),
             publisher: true,
             subscriber: false,

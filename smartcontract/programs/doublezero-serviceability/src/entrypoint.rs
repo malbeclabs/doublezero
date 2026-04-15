@@ -293,7 +293,7 @@ pub fn process_instruction(
         DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(value) => {
             process_remove_multicast_sub_allowlist(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::SubscribeMulticastGroup(value) => {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(value) => {
             process_update_multicastgroup_roles(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CreateSubscribeUser(value) => {

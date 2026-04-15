@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.
 - Smartcontract
   - Allow `SubscribeMulticastGroup` for users in `Pending` status so that `CreateSubscribeUser` can be followed by additional subscribe calls before the activator runs ([#3521](https://github.com/malbeclabs/doublezero/pull/3521))
   - Add optional `owner` field to `UpdateMulticastGroup` instruction, allowing foundation members to reassign ownership of a multicast group ([#3527](https://github.com/malbeclabs/doublezero/pull/3527))
-  - Rename subscribe processor functions (`process_subscribe_multicastgroup` → `process_update_multicastgroup_roles`) to clarify they manage publisher/subscriber roles, not just subscriptions
+  - Rename `SubscribeMulticastGroup` instruction variant to `UpdateMulticastGroupRoles` and rename associated processor functions, args struct, and SDK command to use "roles" terminology, clarifying they manage publisher/subscriber roles rather than just subscriptions
 - Geolocation
   - Add optional result destination to `GeolocationUser` so LocationOffsets can be sent to an alternate endpoint instead of the target IP; supports both IP and domain destinations (e.g., `185.199.108.1:9000` or `results.example.com:9000`); includes `SetResultDestination` onchain instruction, CLI `user set-result-destination` command, and Go SDK deserialization (backwards-compatible with existing accounts)
 - CLI

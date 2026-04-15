@@ -7,7 +7,7 @@ use crate::{
 };
 use clap::Args;
 use doublezero_sdk::commands::{
-    multicastgroup::{get::GetMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand},
+    multicastgroup::{get::GetMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand},
     user::get::GetUserCommand,
 };
 use std::io::Write;
@@ -59,13 +59,14 @@ impl SubscribeUserCliCommand {
 
         // Subscribe to each group
         for group_pk in &group_pks {
-            let signature = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
-                user_pk,
-                group_pk: *group_pk,
-                client_ip: user.client_ip,
-                publisher: self.publisher,
-                subscriber: self.subscriber,
-            })?;
+            let signature =
+                client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
+                    user_pk,
+                    group_pk: *group_pk,
+                    client_ip: user.client_ip,
+                    publisher: self.publisher,
+                    subscriber: self.subscriber,
+                })?;
             writeln!(out, "Subscribed to {group_pk}: {signature}")?;
         }
 
@@ -93,7 +94,7 @@ mod tests {
     use doublezero_sdk::{
         commands::{
             multicastgroup::{
-                get::GetMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+                get::GetMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand,
             },
             user::get::GetUserCommand,
         },
@@ -172,8 +173,8 @@ mod tests {
             }))
             .returning(move |_| Ok((mgroup_pubkey, mgroup.clone())));
         client
-            .expect_subscribe_multicastgroup()
-            .with(predicate::eq(SubscribeMulticastGroupCommand {
+            .expect_update_multicastgroup_roles()
+            .with(predicate::eq(UpdateMulticastGroupRolesCommand {
                 user_pk: user_pubkey,
                 group_pk: mgroup_pubkey,
                 client_ip,
@@ -292,7 +293,7 @@ mod tests {
             }))
             .returning(move |_| Ok((mgroup_pubkey2, mgroup2.clone())));
         client
-            .expect_subscribe_multicastgroup()
+            .expect_update_multicastgroup_roles()
             .times(2)
             .returning(move |_| Ok(signature));
 

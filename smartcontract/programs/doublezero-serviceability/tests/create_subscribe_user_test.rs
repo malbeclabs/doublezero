@@ -34,7 +34,7 @@ use doublezero_serviceability::{
                 subscriber::add::AddMulticastGroupSubAllowlistArgs,
             },
             create::MulticastGroupCreateArgs,
-            subscribe::MulticastGroupSubscribeArgs,
+            subscribe::UpdateMulticastGroupRolesArgs,
         },
         tenant::create::TenantCreateArgs,
         user::{
@@ -1095,7 +1095,7 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
 /// unsubscribing (the Updating→Activated path must NOT reset the flag).
 ///
 /// This covers the exact E2E failure scenario: publisher connects (CreateSubscribeUser →
-/// ActivateUser), then disconnects (SubscribeMulticastGroup publisher=false → ActivateUser).
+/// ActivateUser), then disconnects (UpdateMulticastGroupRoles publisher=false → ActivateUser).
 /// After disconnect, CreatedAsPublisher flag must still be set so delete decrements publishers_count.
 #[tokio::test]
 async fn test_publisher_multicast_publisher_persists_through_disconnect() {
@@ -1217,7 +1217,7 @@ async fn test_publisher_multicast_publisher_persists_through_disconnect() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: user_ip,
             publisher: false,
             subscriber: false,
@@ -1240,7 +1240,7 @@ async fn test_publisher_multicast_publisher_persists_through_disconnect() {
         .unwrap();
     assert_eq!(user_updating.status, UserStatus::Updating);
     assert!(user_updating.publishers.is_empty());
-    // CreatedAsPublisher flag should still be set (SubscribeMulticastGroup doesn't touch it)
+    // CreatedAsPublisher flag should still be set (UpdateMulticastGroupRoles doesn't touch it)
     assert!(
         TunnelFlags::is_set(user_updating.tunnel_flags, TunnelFlags::CreatedAsPublisher),
         "CreatedAsPublisher flag must still be set after unsubscribing (only activate.rs touches tunnel_flags)"
@@ -1383,7 +1383,7 @@ async fn test_publisher_disconnect_delete_decrements_publishers_count() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: user_ip,
             publisher: false,
             subscriber: false,
@@ -2598,7 +2598,7 @@ async fn test_unsubscribe_pending_user_created_via_create_subscribe() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: user_ip,
             publisher: false,
             subscriber: false,
@@ -2631,7 +2631,7 @@ async fn test_unsubscribe_pending_user_created_via_create_subscribe() {
 }
 
 /// Subscribing a Pending user must succeed so that CreateSubscribeUser (which
-/// only takes one mgroup) can be followed by additional SubscribeMulticastGroup
+/// only takes one mgroup) can be followed by additional UpdateMulticastGroupRoles
 /// calls before the activator runs.  This mirrors the shred oracle flow where a
 /// user is subscribed to multiple multicast groups at creation time.
 #[tokio::test]
@@ -2695,7 +2695,7 @@ async fn test_subscribe_pending_user_succeeds() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: user_ip,
             publisher: true,
             subscriber: true,

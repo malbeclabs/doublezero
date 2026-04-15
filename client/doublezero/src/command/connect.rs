@@ -15,7 +15,7 @@ use doublezero_sdk::{
         accesspass::get::GetAccessPassCommand,
         device::{get::GetDeviceCommand, list::ListDeviceCommand},
         multicastgroup::{
-            list::ListMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+            list::ListMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand,
         },
         tenant::get::GetTenantCommand,
         user::{
@@ -621,7 +621,7 @@ impl ProvisioningCliCommand {
                 // Subscribe to remaining groups
                 for group_pk in all_group_pks.iter().skip(1) {
                     spinner.println(format!("    Subscribing to group: {group_pk}"));
-                    client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
+                    client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
                         user_pk,
                         group_pk: *group_pk,
                         client_ip: *client_ip,
@@ -647,13 +647,14 @@ impl ProvisioningCliCommand {
                             user_pk
                         ));
 
-                        let res = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
-                            user_pk: *user_pk,
-                            group_pk: *group_pk,
-                            client_ip: *client_ip,
-                            publisher: true,
-                            subscriber: false,
-                        });
+                        let res =
+                            client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
+                                user_pk: *user_pk,
+                                group_pk: *group_pk,
+                                client_ip: *client_ip,
+                                publisher: true,
+                                subscriber: false,
+                            });
 
                         match res {
                             Ok(_) => {
@@ -676,13 +677,14 @@ impl ProvisioningCliCommand {
                             user_pk
                         ));
 
-                        let res = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
-                            user_pk: *user_pk,
-                            group_pk: *group_pk,
-                            client_ip: *client_ip,
-                            publisher: false,
-                            subscriber: true,
-                        });
+                        let res =
+                            client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
+                                user_pk: *user_pk,
+                                group_pk: *group_pk,
+                                client_ip: *client_ip,
+                                publisher: false,
+                                subscriber: true,
+                            });
 
                         match res {
                             Ok(_) => {
@@ -757,7 +759,7 @@ impl ProvisioningCliCommand {
                 // Subscribe to remaining groups
                 for group_pk in all_group_pks.iter().skip(1) {
                     spinner.println(format!("    Subscribing to group: {group_pk}"));
-                    client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
+                    client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
                         user_pk,
                         group_pk: *group_pk,
                         client_ip: *client_ip,
@@ -1518,7 +1520,7 @@ mod tests {
         }
 
         #[allow(dead_code)]
-        pub fn expect_subscribe_multicastgroup(
+        pub fn expect_update_multicastgroup_roles(
             &mut self,
             user_pk: Pubkey,
             mcast_group_pk: Pubkey,
@@ -1526,7 +1528,7 @@ mod tests {
             publisher: bool,
             subscriber: bool,
         ) {
-            let expected_command = SubscribeMulticastGroupCommand {
+            let expected_command = UpdateMulticastGroupRolesCommand {
                 user_pk,
                 group_pk: mcast_group_pk,
                 client_ip,
@@ -1537,7 +1539,7 @@ mod tests {
             let users = self.users.clone();
             let provisioned = self.provisioned_services.clone();
             self.client
-                .expect_subscribe_multicastgroup()
+                .expect_update_multicastgroup_roles()
                 .times(1)
                 .with(predicate::eq(expected_command))
                 .returning_st(move |cmd| {
@@ -1887,7 +1889,7 @@ mod tests {
         let user_pk = fixture.add_user(&user);
 
         // Expect subscribe to second group
-        fixture.expect_subscribe_multicastgroup(
+        fixture.expect_update_multicastgroup_roles(
             user_pk,
             mcast_group2_pk,
             user.client_ip,
@@ -1963,8 +1965,8 @@ mod tests {
         user.publishers.push(mcast_group_pk);
         let user_pk = fixture.add_user(&user);
 
-        // Expect subscribe_multicastgroup call for the new subscriber group
-        fixture.expect_subscribe_multicastgroup(
+        // Expect update_multicastgroup_roles call for the new subscriber group
+        fixture.expect_update_multicastgroup_roles(
             user_pk,
             mcast_group2_pk,
             user.client_ip,
@@ -2005,8 +2007,8 @@ mod tests {
         user.subscribers.push(mcast_group_pk);
         let user_pk = fixture.add_user(&user);
 
-        // Expect subscribe_multicastgroup call for the new publisher group
-        fixture.expect_subscribe_multicastgroup(
+        // Expect update_multicastgroup_roles call for the new publisher group
+        fixture.expect_update_multicastgroup_roles(
             user_pk,
             mcast_group2_pk,
             user.client_ip,

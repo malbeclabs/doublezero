@@ -36,7 +36,7 @@ pub fn validate_and_allocate_link_resources<'a>(
         device_tunnel_block_ext,
         program_id,
         writable = true,
-        pda = Some(&expected_device_tunnel_pda),
+        pda = &expected_device_tunnel_pda,
         "DeviceTunnelBlock"
     );
 
@@ -47,7 +47,7 @@ pub fn validate_and_allocate_link_resources<'a>(
         link_ids_ext,
         program_id,
         writable = true,
-        pda = Some(&expected_link_ids_pda),
+        pda = &expected_link_ids_pda,
         "LinkIds"
     );
 
@@ -86,7 +86,7 @@ pub fn validate_and_deallocate_link_resources<'a>(
         device_tunnel_block_ext,
         program_id,
         writable = true,
-        pda = Some(&expected_device_tunnel_pda),
+        pda = &expected_device_tunnel_pda,
         "DeviceTunnelBlock"
     );
 
@@ -97,7 +97,7 @@ pub fn validate_and_deallocate_link_resources<'a>(
         link_ids_ext,
         program_id,
         writable = true,
-        pda = Some(&expected_link_ids_pda),
+        pda = &expected_link_ids_pda,
         "LinkIds"
     );
 

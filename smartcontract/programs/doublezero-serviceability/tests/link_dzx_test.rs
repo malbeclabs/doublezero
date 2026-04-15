@@ -267,7 +267,7 @@ async fn test_dzx_link() {
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -359,7 +359,7 @@ async fn test_dzx_link() {
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -525,6 +525,7 @@ async fn test_dzx_link() {
         program_id,
         DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
             side_z_iface_name: "Ethernet1".to_string(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
@@ -556,6 +557,7 @@ async fn test_dzx_link() {
         program_id,
         DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
             side_z_iface_name: "Ethernet1".to_string(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),

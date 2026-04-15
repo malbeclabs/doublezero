@@ -13,7 +13,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/require"
 )
 
@@ -319,7 +319,7 @@ func TestE2E_ContributorAuth(t *testing.T) {
 
 		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 			set -euo pipefail
-			DOUBLEZERO_KEYPAIR=/tmp/random-signer.json doublezero device interface update test-dev-co04 Ethernet1 --mtu 9001 2>&1
+			DOUBLEZERO_KEYPAIR=/tmp/random-signer.json doublezero device interface update test-dev-co04 Ethernet1 --bandwidth 10G 2>&1
 		`})
 		require.Error(t, err, "random keypair should not be able to update interface on another contributor's device")
 

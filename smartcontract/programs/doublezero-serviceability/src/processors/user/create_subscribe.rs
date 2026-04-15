@@ -34,18 +34,23 @@ pub struct UserCreateSubscribeArgs {
     /// When 0, legacy behavior is used (Pending status). When > 0, atomic create+allocate+activate.
     #[incremental(default = 0)]
     pub dz_prefix_count: u8,
+    /// Custom owner pubkey. When set (non-default), the payer must be in the foundation allowlist.
+    /// The access pass is looked up using this owner instead of the payer.
+    #[incremental(default = Pubkey::default())]
+    pub owner: Pubkey,
 }
 
 impl fmt::Debug for UserCreateSubscribeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}",
+            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}, owner: {}",
             self.user_type,
             self.cyoa_type,
             &self.client_ip,
             &self.tunnel_endpoint,
             self.dz_prefix_count,
+            self.owner,
         )
     }
 }
@@ -87,6 +92,12 @@ pub fn process_create_subscribe_user(
         payer_account,
     };
 
+    let owner_override = if value.owner != Pubkey::default() {
+        Some(value.owner)
+    } else {
+        None
+    };
+
     let mut result = create_user_core(
         program_id,
         accounts,
@@ -96,6 +107,7 @@ pub fn process_create_subscribe_user(
         value.client_ip,
         value.tunnel_endpoint,
         value.publisher,
+        owner_override,
     )?;
 
     // Subscribe user to multicast group

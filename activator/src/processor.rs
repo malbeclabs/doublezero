@@ -143,9 +143,15 @@ fn reserve_user_allocations(
                         );
                     }
                 }
-                // Register tunnel endpoint if set
+                // Register tunnel endpoint as in use for this client.
+                // Legacy users with tunnel_endpoint=0.0.0.0 are effectively using
+                // device.public_ip, so register that to prevent the activator from
+                // handing out the same endpoint to a second tunnel for the same client.
                 if user.has_tunnel_endpoint() {
                     device_state.register_tunnel_endpoint(user.client_ip, user.tunnel_endpoint);
+                } else {
+                    device_state
+                        .register_tunnel_endpoint(user.client_ip, device_state.device.public_ip);
                 }
             }
             Ok::<(), eyre::Error>(())
@@ -597,6 +603,10 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let mut users: HashMap<Pubkey, User> = HashMap::new();

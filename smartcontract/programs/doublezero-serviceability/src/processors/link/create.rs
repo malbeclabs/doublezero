@@ -1,6 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_link_pda,
+    processors::validation::validate_program_account,
     seeds::{SEED_LINK, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
@@ -8,7 +9,7 @@ use crate::{
         contributor::Contributor,
         device::Device,
         globalstate::GlobalState,
-        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus},
+        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LINK_MTU},
         link::*,
     },
 };
@@ -94,21 +95,19 @@ pub fn process_create_link(
         validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
     code.make_ascii_lowercase();
 
-    assert_eq!(
-        contributor_account.owner, program_id,
-        "Invalid Contributor Account Owner"
+    validate_program_account!(
+        contributor_account,
+        program_id,
+        writable = true,
+        "Contributor"
     );
-    assert_eq!(
-        side_a_account.owner, program_id,
-        "Invalid Side A Account Owner"
-    );
-    assert_eq!(
-        side_z_account.owner, program_id,
-        "Invalid Side Z Account Owner"
-    );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(side_a_account, program_id, writable = true, "SideA");
+    validate_program_account!(side_z_account, program_id, writable = true, "SideZ");
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = true,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
@@ -190,6 +189,10 @@ pub fn process_create_link(
         return Err(DoubleZeroError::InvalidInterfaceZForExternal.into());
     }
 
+    if value.mtu != LINK_MTU {
+        return Err(DoubleZeroError::InvalidMtu.into());
+    }
+
     let status = if value.link_type == LinkLinkType::DZX {
         LinkStatus::Requested
     } else {
@@ -230,49 +233,53 @@ pub fn process_create_link(
 
     // Atomic create+allocate+activate if onchain allocation is enabled
     if let Some((device_tunnel_block_ext, link_ids_ext)) = resource_extension_accounts {
-        let globalstate_ref = GlobalState::try_from(globalstate_account)?;
-        resource_onchain_helpers::validate_and_allocate_link_resources(
-            program_id,
-            &mut link,
-            device_tunnel_block_ext,
-            link_ids_ext,
-            &globalstate_ref,
-        )?;
+        if link.status == LinkStatus::Pending {
+            // activate here, but do not activate if LinkStatus::Requested
+            let globalstate_ref = GlobalState::try_from(globalstate_account)?;
+            resource_onchain_helpers::validate_and_allocate_link_resources(
+                program_id,
+                &mut link,
+                device_tunnel_block_ext,
+                link_ids_ext,
+                &globalstate_ref,
+            )?;
 
-        // Validate interfaces are Unlinked (required for activation)
-        let (idx_a, side_a_iface) = side_a_dev
-            .find_interface(&link.side_a_iface_name)
-            .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
-        if side_a_iface.status != InterfaceStatus::Unlinked {
-            return Err(DoubleZeroError::InvalidStatus.into());
-        }
-
-        // Set side A interface to Activated with IP from tunnel_net
-        let mut updated_iface_a = side_a_iface.clone();
-        updated_iface_a.status = InterfaceStatus::Activated;
-        if updated_iface_a.ip_net == NetworkV4::default() {
-            updated_iface_a.ip_net =
-                NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix()).unwrap();
-        }
-        side_a_dev.interfaces[idx_a] = updated_iface_a.to_interface();
-
-        // Set side Z interface to Activated with IP from tunnel_net
-        if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface(&link.side_z_iface_name) {
-            if side_z_iface.status != InterfaceStatus::Unlinked {
+            // Validate interfaces are Unlinked (required for activation)
+            let (idx_a, side_a_iface) = side_a_dev
+                .find_interface(&link.side_a_iface_name)
+                .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
+            if side_a_iface.status != InterfaceStatus::Unlinked {
                 return Err(DoubleZeroError::InvalidStatus.into());
             }
-            let mut updated_iface_z = side_z_iface.clone();
-            updated_iface_z.status = InterfaceStatus::Activated;
-            if updated_iface_z.ip_net == NetworkV4::default() {
-                updated_iface_z.ip_net =
-                    NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix())
+
+            // Set side A interface to Activated with IP from tunnel_net
+            let mut updated_iface_a = side_a_iface.clone();
+            updated_iface_a.status = InterfaceStatus::Activated;
+            if updated_iface_a.ip_net == NetworkV4::default() {
+                updated_iface_a.ip_net =
+                    NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix())
                         .unwrap();
             }
-            side_z_dev.interfaces[idx_z] = updated_iface_z.to_interface();
-        }
+            side_a_dev.interfaces[idx_a] = updated_iface_a.to_interface();
 
-        link.status = LinkStatus::Activated;
-        link.check_status_transition();
+            // Set side Z interface to Activated with IP from tunnel_net
+            if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface(&link.side_z_iface_name) {
+                if side_z_iface.status != InterfaceStatus::Unlinked {
+                    return Err(DoubleZeroError::InvalidStatus.into());
+                }
+                let mut updated_iface_z = side_z_iface.clone();
+                updated_iface_z.status = InterfaceStatus::Activated;
+                if updated_iface_z.ip_net == NetworkV4::default() {
+                    updated_iface_z.ip_net =
+                        NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix())
+                            .unwrap();
+                }
+                side_z_dev.interfaces[idx_z] = updated_iface_z.to_interface();
+            }
+
+            link.status = LinkStatus::Activated;
+            link.check_status_transition();
+        }
     }
 
     try_acc_create(

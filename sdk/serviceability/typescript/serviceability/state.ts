@@ -246,6 +246,19 @@ export function userStatusString(v: number): string {
   return USER_STATUS_NAMES[v] ?? "unknown";
 }
 
+export const BGP_STATUS_UNKNOWN = 0;
+export const BGP_STATUS_UP = 1;
+export const BGP_STATUS_DOWN = 2;
+
+const BGP_STATUS_NAMES: Record<number, string> = {
+  0: "unknown",
+  1: "up",
+  2: "down",
+};
+export function bgpStatusString(v: number): string {
+  return BGP_STATUS_NAMES[v] ?? "unknown";
+}
+
 const MULTICAST_GROUP_STATUS_NAMES: Record<number, string> = {
   0: "pending",
   1: "activated",
@@ -709,6 +722,11 @@ export interface User {
   publishers: PublicKey[];
   subscribers: PublicKey[];
   validatorPubKey: PublicKey;
+  tunnelEndpoint: Uint8Array;
+  tunnelFlags: number;
+  bgpStatus: number;
+  lastBgpUpAt: bigint;
+  lastBgpReportedAt: bigint;
 }
 
 export function deserializeUser(data: Uint8Array): User {
@@ -730,6 +748,11 @@ export function deserializeUser(data: Uint8Array): User {
     publishers: readPubkeyVec(r),
     subscribers: readPubkeyVec(r),
     validatorPubKey: readPubkey(r),
+    tunnelEndpoint: r.readIPv4(),
+    tunnelFlags: r.readU8(),
+    bgpStatus: r.readU8(),
+    lastBgpUpAt: r.readU64(),
+    lastBgpReportedAt: r.readU64(),
   };
 }
 

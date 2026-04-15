@@ -28,7 +28,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/require"
 )
 
@@ -76,7 +76,7 @@ func TestMain(m *testing.M) {
 	if vFlag := flag.Lookup("test.v"); vFlag != nil && vFlag.Value.String() == "true" {
 		verbose = true
 	}
-	if os.Getenv("DZ_E2E_DEBUG") != "" {
+	if os.Getenv("DEBUG") != "" {
 		debug = true
 	}
 
@@ -235,29 +235,29 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt --desired-status activated
 
 		# TODO: When the controller supports dzd metadata, this will have to be updated to reflect actual interfaces
-		doublezero device interface create ny5-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ny5-dz01 "Vlan4001" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ny5-dz01 "Ethernet4" --bandwidth 10G --mtu 2048 -w      # For testing link.delay_override_ms
-		doublezero device interface create ny5-dz01 "Ethernet5" --bandwidth 10G --mtu 2048 -w      # For testing link.status=soft-drained
-		doublezero device interface create ny5-dz01 "Ethernet6" --bandwidth 10G --mtu 2048 -w      # For testing link.status=soft-drained
-		doublezero device interface create la2-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create la2-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create la2-dz01 "Ethernet4" --bandwidth 10G --mtu 2048 -w      # For testing link.delay_override_ms
-		doublezero device interface create la2-dz01 "Ethernet5" --bandwidth 10G --mtu 2048 -w	# For testing link.status=soft-drained
-		doublezero device interface create la2-dz01 "Ethernet6" --bandwidth 10G --mtu 2048 -w      # For testing link.status=hard-drained
-		doublezero device interface create ld4-dz01 "Vlan4001" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ld4-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ld4-dz01 "Ethernet4" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create frk-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create frk-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create sg1-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create sg1-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ty2-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ty2-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create pit-dzd01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create pit-dzd01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ams-dz001 "Ethernet2" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ams-dz001 "Ethernet3" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create ny5-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Vlan4001" --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Ethernet4" --bandwidth 10G -w      # For testing link.delay_override_ms
+		doublezero device interface create ny5-dz01 "Ethernet5" --bandwidth 10G -w      # For testing link.status=soft-drained
+		doublezero device interface create ny5-dz01 "Ethernet6" --bandwidth 10G -w      # For testing link.status=soft-drained
+		doublezero device interface create la2-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create la2-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create la2-dz01 "Ethernet4" --bandwidth 10G -w      # For testing link.delay_override_ms
+		doublezero device interface create la2-dz01 "Ethernet5" --bandwidth 10G -w	# For testing link.status=soft-drained
+		doublezero device interface create la2-dz01 "Ethernet6" --bandwidth 10G -w      # For testing link.status=hard-drained
+		doublezero device interface create ld4-dz01 "Vlan4001" --bandwidth 10G -w
+		doublezero device interface create ld4-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create ld4-dz01 "Ethernet4" --bandwidth 10G -w
+		doublezero device interface create frk-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create frk-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create sg1-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create sg1-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create ty2-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create ty2-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create pit-dzd01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create pit-dzd01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create ams-dz001 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create ams-dz001 "Ethernet3" --bandwidth 10G -w
 
 		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
 		doublezero device interface create la2-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
@@ -284,21 +284,21 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		doublezero device update --pubkey pit-dzd01 --max-users 128
 		doublezero device update --pubkey ams-dz001 --max-users 128
 
-		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 40 --jitter-ms 3 --desired-status activated -w
-		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Vlan4001 --side-z ld4-dz01 --side-z-interface Vlan4001 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
-		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 25 --jitter-ms 10 --desired-status activated -w
-		doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 120 --jitter-ms 9 --desired-status activated -w
-		doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 40 --jitter-ms 7 --desired-status activated -w
-		doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Ethernet3 --side-z la2-dz01 --side-z-interface Ethernet3 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 30 --jitter-ms 10 --desired-status activated -w
+		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 40 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Vlan4001 --side-z ld4-dz01 --side-z-interface Vlan4001 --bandwidth "10 Gbps" --delay-ms 30 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 25 --jitter-ms 10 --desired-status activated -w
+		doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 120 --jitter-ms 9 --desired-status activated -w
+		doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 40 --jitter-ms 7 --desired-status activated -w
+		doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Ethernet3 --side-z la2-dz01 --side-z-interface Ethernet3 --bandwidth "10 Gbps" --delay-ms 30 --jitter-ms 10 --desired-status activated -w
 
 		# For testing link.delay_override_ms:
-		doublezero link create wan --code "ny5-dz01:la2-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet4 --side-z la2-dz01 --side-z-interface Ethernet4 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ny5-dz01:la2-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet4 --side-z la2-dz01 --side-z-interface Ethernet4 --bandwidth "10 Gbps" --delay-ms 30 --jitter-ms 3 --desired-status activated -w
 
 		# For testing link.status=soft-drained:
-		doublezero link create wan --code "ny5-dz01_e5:la2-dz01_e5" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet5 --side-z la2-dz01 --side-z-interface Ethernet5 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ny5-dz01_e5:la2-dz01_e5" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet5 --side-z la2-dz01 --side-z-interface Ethernet5 --bandwidth "10 Gbps" --delay-ms 30 --jitter-ms 3 --desired-status activated -w
 
 		# For testing link.status=hard-drained:
-		doublezero link create wan --code "ny5-dz01_e6:la2-dz01_e6" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet6 --side-z la2-dz01 --side-z-interface Ethernet6 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 8 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ny5-dz01_e6:la2-dz01_e6" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet6 --side-z la2-dz01 --side-z-interface Ethernet6 --bandwidth "10 Gbps" --delay-ms 8 --jitter-ms 3 --desired-status activated -w
 
 		doublezero link update --pubkey "ny5-dz01:la2-dz01" --delay-override-ms 500
 		doublezero link update --pubkey "ny5-dz01_e5:la2-dz01_e5" --status=soft-drained
@@ -534,6 +534,30 @@ func (dn *TestDevnet) ConnectMulticastSubscriberSkipAccessPass(t *testing.T, cli
 	dn.log.Debug("--> Multicast subscriber connected")
 }
 
+// AddMulticastPublisherGroupSkipAccessPass incrementally adds publish groups to
+// an existing multicast service without disconnecting.
+func (dn *TestDevnet) AddMulticastPublisherGroupSkipAccessPass(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
+	dn.log.Debug("==> Adding multicast publisher groups incrementally", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+
+	groupArgs := strings.Join(multicastGroupCodes, " ")
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast --publish " + groupArgs})
+	require.NoError(t, err)
+
+	dn.log.Debug("--> Multicast publisher groups added incrementally")
+}
+
+// AddMulticastSubscriberGroupSkipAccessPass incrementally adds subscribe groups to
+// an existing multicast service without disconnecting.
+func (dn *TestDevnet) AddMulticastSubscriberGroupSkipAccessPass(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
+	dn.log.Debug("==> Adding multicast subscriber groups incrementally", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+
+	groupArgs := strings.Join(multicastGroupCodes, " ")
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast --subscribe " + groupArgs})
+	require.NoError(t, err)
+
+	dn.log.Debug("--> Multicast subscriber groups added incrementally")
+}
+
 func (dn *TestDevnet) DisconnectMulticastSubscriber(t *testing.T, client *devnet.Client) {
 	dn.log.Debug("==> Disconnecting multicast subscriber", "clientIP", client.CYOANetworkIP)
 
@@ -765,7 +789,7 @@ func (dn *TestDevnet) BuildAgentConfigData(t *testing.T, deviceCode string, extr
 
 // newTestLoggerForTest creates a logger for individual test runs.
 // Logs are written to t.Log() so they only appear on test failure (unless -v is passed).
-// With DZ_E2E_DEBUG=1, shows DEBUG level logs; otherwise shows INFO level.
+// With DEBUG=1, shows DEBUG level logs; otherwise shows INFO level.
 func newTestLoggerForTest(t *testing.T) *slog.Logger {
 	w := &testWriter{t: t}
 	logLevel := slog.LevelInfo

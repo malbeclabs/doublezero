@@ -26,19 +26,27 @@ const (
 	defaultProbePort = 8924
 	defaultInterval  = 30 * time.Second
 	defaultTimeout   = 2 * time.Second
+
+	// Illustrative speed-of-light constants for converting RTT to an upper-bound
+	// distance estimate. Real-world distance will be shorter because signals
+	// travel through fiber (~0.67c) and encounter switching/queuing delays.
+	speedOfLightMilesPerMs = 124.0
+	nanosecondsPerMs       = 1_000_000.0
+	kmPerMile              = 1.60934
 )
 
 var (
-	probeIP     = flag.String("probe-ip", "", "IP address of the GeoProbe to probe (required)")
-	probePort   = flag.Uint("probe-port", defaultProbePort, "TWAMP port on the probe")
-	probePK     = flag.String("probe-pk", "", "Base58 Ed25519 public key of the GeoProbe's signing authority (required)")
-	keypairPath = flag.String("keypair", "", "Path to this target's Ed25519 keypair file for signing outbound message (required)")
-	interval    = flag.Duration("interval", defaultInterval, "Interval between probe pairs")
-	count       = flag.Uint("count", 0, "Number of probe pairs to send (0 = infinite)")
-	timeout     = flag.Duration("timeout", defaultTimeout, "Per-probe timeout")
-	logFormat   = flag.String("log-format", "text", "Log format: text or json")
-	verbose     = flag.Bool("verbose", false, "Enable debug logging")
-	showVersion = flag.Bool("version", false, "Print version and exit")
+	probeIP           = flag.String("probe-ip", "", "IP address of the GeoProbe to probe (required)")
+	probePort         = flag.Uint("probe-port", defaultProbePort, "TWAMP port on the probe")
+	probePK           = flag.String("probe-pk", "", "Base58 Ed25519 public key of the GeoProbe's signing authority (required)")
+	keypairPath       = flag.String("keypair", "", "Path to this target's Ed25519 keypair file for signing outbound message (required)")
+	interval          = flag.Duration("interval", defaultInterval, "Interval between probe pairs")
+	count             = flag.Uint("count", 0, "Number of probe pairs to send (0 = infinite)")
+	timeout           = flag.Duration("timeout", defaultTimeout, "Per-probe timeout")
+	maxMeasurementAge = flag.Duration("max-measurement-age", 1*time.Hour, "TTL for measurement tracking; best/second-best window")
+	logFormat         = flag.String("log-format", "text", "Log format: text or json")
+	verbose           = flag.Bool("verbose", false, "Enable debug logging")
+	showVersion       = flag.Bool("version", false, "Print version and exit")
 
 	version = "dev"
 	commit  = "none"
@@ -68,7 +76,12 @@ func main() {
 		"interval", *interval,
 		"timeout", *timeout,
 		"count", *count,
+		"max_measurement_age", *maxMeasurementAge,
 	)
+
+	cache := geoprobe.NewMinCache[measurement](*maxMeasurementAge, func(m measurement) uint64 {
+		return m.probeMeasuredRttNs
+	})
 
 	// Load target keypair.
 	keypair, err := solana.PrivateKeyFromSolanaKeygenFile(*keypairPath)
@@ -124,7 +137,7 @@ func main() {
 
 		seq++
 		log.Debug("starting probe pair iteration", "seq", seq, "target", remoteAddr.String())
-		probePair(ctx, log, sender, seq)
+		probePair(ctx, log, sender, seq, cache)
 
 		if *count > 0 && seq >= uint32(*count) {
 			log.Info("completed all probe pairs", "count", *count)
@@ -144,7 +157,7 @@ func main() {
 // Both probes are pre-signed before any network I/O so that probe 1 fires
 // immediately after reply 0 arrives. Reply 1's SinceLastRxNs gives the
 // probe-measured RTT.
-func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq uint32) {
+func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq uint32, cache *geoprobe.MinCache[measurement]) {
 	probeCtx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
 
@@ -179,16 +192,33 @@ func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq 
 		"reply1_probe_sig", reply1ProbeSigValid,
 		"reply1_sig", reply1SigValid)
 
-	logPairedResult(log, seq, probeMeasuredRttNs, targetMeasuredRtt,
-		reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid, result.Reply1)
+	m := measurement{
+		probeMeasuredRttNs:  probeMeasuredRttNs,
+		targetMeasuredRtt:   targetMeasuredRtt,
+		seq:                 seq,
+		reply:               result.Reply1,
+		reply0ProbeSigValid: reply0ProbeSigValid,
+		reply0SigValid:      reply0SigValid,
+		reply1ProbeSigValid: reply1ProbeSigValid,
+		reply1SigValid:      reply1SigValid,
+	}
+
+	info := cache.Update(m)
+
+	if *verbose || info.Changed() {
+		logPairedResult(log, seq, probeMeasuredRttNs, targetMeasuredRtt,
+			reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid,
+			result.Reply1, info)
+	}
 }
 
-func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid bool, reply *signed.ReplyPacket) {
+func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid bool, reply *signed.ReplyPacket, info geoprobe.UpdateInfo) {
 	authorityPK := solana.PublicKeyFromBytes(reply.AuthorityPubkey[:])
 	geoprobePK := solana.PublicKeyFromBytes(reply.GeoprobePubkey[:])
 	offsets := parseOffsets(reply.Offsets)
 
 	if *logFormat == "json" {
+		distMiles := calculateMaxDistance(reply.RttNs)
 		output := probeOutput{
 			Timestamp:           time.Now().UTC().Format(time.RFC3339),
 			Seq:                 seq,
@@ -202,10 +232,20 @@ func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, ta
 			Lat:                 reply.Lat,
 			Lng:                 reply.Lng,
 			RttNs:               reply.RttNs,
+			MaxDistanceMiles:    distMiles,
+			MaxDistanceKm:       distMiles * kmPerMile,
 			SinceLastRxNs:       reply.SinceLastRxNs,
 			AuthorityPubkey:     authorityPK.String(),
 			GeoprobePubkey:      geoprobePK.String(),
 			Offsets:             offsets,
+			CacheUpdate:         info.Result.String(),
+		}
+		if info.Promoted {
+			output.CacheUpdate = "promoted+" + info.Result.String()
+		}
+		if info.Changed() && info.HadPrevBest {
+			prevMs := float64(info.PrevBestRttNs) / 1e6
+			output.PreviousBestRttMs = &prevMs
 		}
 		data, err := json.Marshal(output)
 		if err != nil {
@@ -214,9 +254,17 @@ func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, ta
 		}
 		fmt.Println(string(data))
 	} else {
-		fmt.Print(formatTextResult(seq, probeMeasuredRttNs, targetMeasuredRtt,
+		text := formatTextResult(seq, probeMeasuredRttNs, targetMeasuredRtt,
 			reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid,
-			authorityPK, geoprobePK, reply, offsets))
+			authorityPK, geoprobePK, reply, offsets)
+		if *verbose {
+			text += fmt.Sprintf("  Cache: result=%s promoted=%v\n\n", info.Result.String(), info.Promoted)
+		} else if info.Promoted && info.HadPrevBest {
+			text += fmt.Sprintf("  * Backup promoted to best (previous best: %.3fms)\n\n", float64(info.PrevBestRttNs)/1e6)
+		} else if info.Result == geoprobe.UpdateBest && info.HadPrevBest {
+			text += fmt.Sprintf("  * New best measurement (previous best: %.3fms)\n\n", float64(info.PrevBestRttNs)/1e6)
+		}
+		fmt.Print(text)
 	}
 }
 
@@ -245,6 +293,17 @@ func logProbeError(log *slog.Logger, seq uint32, probeErr error) {
 	}
 }
 
+type measurement struct {
+	probeMeasuredRttNs  uint64
+	targetMeasuredRtt   time.Duration
+	seq                 uint32
+	reply               *signed.ReplyPacket
+	reply0ProbeSigValid bool
+	reply0SigValid      bool
+	reply1ProbeSigValid bool
+	reply1SigValid      bool
+}
+
 type probeOutput struct {
 	Timestamp           string         `json:"timestamp"`
 	Seq                 uint32         `json:"seq"`
@@ -258,21 +317,27 @@ type probeOutput struct {
 	Lat                 float64        `json:"lat,omitempty"`
 	Lng                 float64        `json:"lng,omitempty"`
 	RttNs               uint64         `json:"rtt_ns,omitempty"`
+	MaxDistanceMiles    float64        `json:"max_distance_miles,omitempty"`
+	MaxDistanceKm       float64        `json:"max_distance_km,omitempty"`
 	SinceLastRxNs       uint64         `json:"since_last_rx_ns,omitempty"`
 	AuthorityPubkey     string         `json:"authority_pubkey,omitempty"`
 	GeoprobePubkey      string         `json:"geoprobe_pubkey,omitempty"`
 	Offsets             []offsetOutput `json:"offsets,omitempty"`
+	CacheUpdate         string         `json:"cache_update,omitempty"`
+	PreviousBestRttMs   *float64       `json:"previous_best_rtt_ms,omitempty"`
 	Error               string         `json:"error,omitempty"`
 }
 
 type offsetOutput struct {
-	AuthorityPubkey string  `json:"authority_pubkey"`
-	SenderPubkey    string  `json:"sender_pubkey"`
-	Lat             float64 `json:"lat"`
-	Lng             float64 `json:"lng"`
-	RttNs           uint64  `json:"rtt_ns"`
-	MeasuredRttNs   uint64  `json:"measured_rtt_ns"`
-	SigValid        bool    `json:"sig_valid"`
+	AuthorityPubkey  string  `json:"authority_pubkey"`
+	SenderPubkey     string  `json:"sender_pubkey"`
+	Lat              float64 `json:"lat"`
+	Lng              float64 `json:"lng"`
+	RttNs            uint64  `json:"rtt_ns"`
+	MaxDistanceMiles float64 `json:"max_distance_miles"`
+	MaxDistanceKm    float64 `json:"max_distance_km"`
+	MeasuredRttNs    uint64  `json:"measured_rtt_ns"`
+	SigValid         bool    `json:"sig_valid"`
 }
 
 func validateFlags() error {
@@ -339,6 +404,14 @@ func formatNsAsMs(ns uint64) string {
 	return fmt.Sprintf("%.3fms", float64(ns)/1e6)
 }
 
+// calculateMaxDistance returns the theoretical maximum one-way distance in
+// miles for a given round-trip time, assuming vacuum speed of light. Actual
+// distances will be shorter (see constants above).
+func calculateMaxDistance(rttNs uint64) float64 {
+	rttMs := float64(rttNs) / (2 * nanosecondsPerMs)
+	return rttMs * speedOfLightMilesPerMs
+}
+
 func formatTextResult(seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt time.Duration, reply0ProbeSigValid, reply0SigValid, reply1ProbeSigValid, reply1SigValid bool, authorityPK, geoprobePK solana.PublicKey, reply *signed.ReplyPacket, offsets []offsetOutput) string {
 	var sb strings.Builder
 
@@ -346,8 +419,11 @@ func formatTextResult(seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt t
 	fmt.Fprintf(&sb, "[%s] Probe Pair #%d\n", time.Now().UTC().Format("2006-01-02 15:04:05 MST"), seq)
 	fmt.Fprintf(&sb, "  Probe-Measured RTT:  %s\n", formatNsAsMs(probeMeasuredRttNs))
 	fmt.Fprintf(&sb, "  Target-Measured RTT: %s\n", formatRTT(targetMeasuredRtt))
+	accumDistMiles := calculateMaxDistance(reply.RttNs)
+	accumDistKm := accumDistMiles * kmPerMile
 	fmt.Fprintf(&sb, "  Reference Point: %s\n", formatCoordinate(reply.Lat, reply.Lng))
 	fmt.Fprintf(&sb, "  Accumulated RTT: %s\n", formatNsAsMs(reply.RttNs))
+	fmt.Fprintf(&sb, "  Max Distance: %.0f miles (%.0f km)\n", accumDistMiles, accumDistKm)
 	fmt.Fprintf(&sb, "  Measurement Slot: %d\n", reply.MeasurementSlot)
 	fmt.Fprintf(&sb, "  Authority: %s\n", authorityPK.String())
 	fmt.Fprintf(&sb, "  GeoProbe:  %s\n", geoprobePK.String())
@@ -360,7 +436,10 @@ func formatTextResult(seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt t
 			fmt.Fprintf(&sb, "    [%d] Authority: %s\n", i+1, o.AuthorityPubkey)
 			fmt.Fprintf(&sb, "        Sender:    %s\n", o.SenderPubkey)
 			fmt.Fprintf(&sb, "        Location:  %s\n", formatCoordinate(o.Lat, o.Lng))
+			oDistMiles := calculateMaxDistance(o.RttNs)
+			oDistKm := oDistMiles * kmPerMile
 			fmt.Fprintf(&sb, "        RTT: %s  Measured RTT: %s\n", formatNsAsMs(o.RttNs), formatNsAsMs(o.MeasuredRttNs))
+			fmt.Fprintf(&sb, "        Max Distance: %.0f miles (%.0f km)\n", oDistMiles, oDistKm)
 			fmt.Fprintf(&sb, "        Signature: %s\n", sigMark(o.SigValid))
 		}
 	}
@@ -400,14 +479,17 @@ func parseOffsets(blobs [][]byte) []offsetOutput {
 			continue
 		}
 		sigValid := geoprobe.VerifyOffsetChain(&offset) == nil
+		oDistMiles := calculateMaxDistance(offset.RttNs)
 		results = append(results, offsetOutput{
-			AuthorityPubkey: solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(),
-			SenderPubkey:    solana.PublicKeyFromBytes(offset.SenderPubkey[:]).String(),
-			Lat:             offset.Lat,
-			Lng:             offset.Lng,
-			RttNs:           offset.RttNs,
-			MeasuredRttNs:   offset.MeasuredRttNs,
-			SigValid:        sigValid,
+			AuthorityPubkey:  solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(),
+			SenderPubkey:     solana.PublicKeyFromBytes(offset.SenderPubkey[:]).String(),
+			Lat:              offset.Lat,
+			Lng:              offset.Lng,
+			RttNs:            offset.RttNs,
+			MaxDistanceMiles: oDistMiles,
+			MaxDistanceKm:    oDistMiles * kmPerMile,
+			MeasuredRttNs:    offset.MeasuredRttNs,
+			SigValid:         sigValid,
 		})
 	}
 	return results

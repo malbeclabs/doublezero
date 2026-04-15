@@ -14,7 +14,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/allocation"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/require"
 )
@@ -440,11 +440,11 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
 		doublezero device update --pubkey test-dz02 --max-users 128 2>&1
 		doublezero device update --pubkey test-dz03 --max-users 128 2>&1
-		doublezero device interface create test-dz01 "Ethernet1" --bandwidth 10G --mtu 2048 2>&1
-		doublezero device interface create test-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 2>&1
-		doublezero device interface create test-dz02 "Ethernet1" --bandwidth 10G --mtu 2048 2>&1
-		doublezero device interface create test-dz02 "Ethernet2" --bandwidth 10G --mtu 2048 2>&1
-		doublezero device interface create test-dz03 "Ethernet1" --bandwidth 10G --mtu 2048 2>&1
+		doublezero device interface create test-dz01 "Ethernet1" --bandwidth 10G 2>&1
+		doublezero device interface create test-dz01 "Ethernet2" --bandwidth 10G 2>&1
+		doublezero device interface create test-dz02 "Ethernet1" --bandwidth 10G 2>&1
+		doublezero device interface create test-dz02 "Ethernet2" --bandwidth 10G 2>&1
+		doublezero device interface create test-dz03 "Ethernet1" --bandwidth 10G 2>&1
 	`})
 	log.Debug("Device creation output", "output", string(output))
 	require.NoError(t, err, "Device creation failed")
@@ -486,8 +486,8 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 	log.Debug("==> Creating multiple links")
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
-		doublezero link create wan --code "test-dz01:test-dz02" --contributor co01 --side-a test-dz01 --side-a-interface Ethernet1 --side-z test-dz02 --side-z-interface Ethernet1 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 10 --jitter-ms 1 --desired-status activated -w
-		doublezero link create wan --code "test-dz02:test-dz03" --contributor co01 --side-a test-dz02 --side-a-interface Ethernet2 --side-z test-dz03 --side-z-interface Ethernet1 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 15 --jitter-ms 1 --desired-status activated -w
+		doublezero link create wan --code "test-dz01:test-dz02" --contributor co01 --side-a test-dz01 --side-a-interface Ethernet1 --side-z test-dz02 --side-z-interface Ethernet1 --bandwidth "10 Gbps" --delay-ms 10 --jitter-ms 1 --desired-status activated -w
+		doublezero link create wan --code "test-dz02:test-dz03" --contributor co01 --side-a test-dz02 --side-a-interface Ethernet2 --side-z test-dz03 --side-z-interface Ethernet1 --bandwidth "10 Gbps" --delay-ms 15 --jitter-ms 1 --desired-status activated -w
 	`})
 	require.NoError(t, err)
 

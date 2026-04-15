@@ -35,6 +35,7 @@ use crate::processors::{
         setairdrop::SetAirdropArgs, setauthority::SetAuthorityArgs,
         setfeatureflags::SetFeatureFlagsArgs, setversion::SetVersionArgs,
     },
+    index::{create::IndexCreateArgs, delete::IndexDeleteArgs},
     link::{
         accept::LinkAcceptArgs, activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
         create::LinkCreateArgs, delete::LinkDeleteArgs, reject::LinkRejectArgs,
@@ -83,7 +84,8 @@ use crate::processors::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
         closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
         create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs, reject::UserRejectArgs,
-        requestban::UserRequestBanArgs, update::UserUpdateArgs,
+        requestban::UserRequestBanArgs, set_bgp_status::SetUserBGPStatusArgs,
+        update::UserUpdateArgs,
     },
 };
 use borsh::BorshSerialize;
@@ -218,6 +220,10 @@ pub enum DoubleZeroInstruction {
 
     Deprecated102(), // variant 102 (was CreateReservedSubscribeUser)
     Deprecated103(), // variant 103 (was DeleteReservedSubscribeUser)
+
+    CreateIndex(IndexCreateArgs),           // variant 104
+    DeleteIndex(IndexDeleteArgs),           // variant 105
+    SetUserBGPStatus(SetUserBGPStatusArgs), // variant 106
 }
 
 impl DoubleZeroInstruction {
@@ -349,6 +355,10 @@ impl DoubleZeroInstruction {
             100 => Ok(Self::ResumePermission(PermissionResumeArgs::try_from(rest).unwrap())),
             101 => Ok(Self::DeletePermission(PermissionDeleteArgs::try_from(rest).unwrap())),
 
+
+            104 => Ok(Self::CreateIndex(IndexCreateArgs::try_from(rest).unwrap())),
+            105 => Ok(Self::DeleteIndex(IndexDeleteArgs::try_from(rest).unwrap())),
+            106 => Ok(Self::SetUserBGPStatus(SetUserBGPStatusArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -483,6 +493,10 @@ impl DoubleZeroInstruction {
 
             Self::Deprecated102() => "Deprecated102".to_string(),
             Self::Deprecated103() => "Deprecated103".to_string(),
+
+            Self::CreateIndex(_) => "CreateIndex".to_string(), // variant 104
+            Self::DeleteIndex(_) => "DeleteIndex".to_string(), // variant 105
+            Self::SetUserBGPStatus(_) => "SetUserBGPStatus".to_string(), // variant 106
         }
     }
 
@@ -609,6 +623,10 @@ impl DoubleZeroInstruction {
 
             Self::Deprecated102() => String::new(),
             Self::Deprecated103() => String::new(),
+
+            Self::CreateIndex(args) => format!("{args:?}"), // variant 104
+            Self::DeleteIndex(args) => format!("{args:?}"), // variant 105
+            Self::SetUserBGPStatus(args) => format!("{args:?}"), // variant 106
         }
     }
 }
@@ -623,7 +641,7 @@ mod tests {
             interface::{LoopbackType, RoutingMode},
             link::{LinkHealth, LinkLinkType},
             permission::permission_flags,
-            user::{UserCYOA, UserType},
+            user::{BGPStatus, UserCYOA, UserType},
         },
     };
     use solana_program::pubkey::Pubkey;
@@ -850,6 +868,7 @@ mod tests {
                 tenant_pk: Some(Pubkey::new_unique()),
                 dz_prefix_count: 0,
                 multicast_publisher_count: 0,
+                tunnel_endpoint: None,
             }),
             "UpdateUser",
         );
@@ -975,6 +994,7 @@ mod tests {
                 publisher_count: None,
                 subscriber_count: None,
                 use_onchain_allocation: false,
+                owner: None,
             }),
             "UpdateMulticastGroup",
         );
@@ -1057,6 +1077,7 @@ mod tests {
                 subscriber: true,
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 dz_prefix_count: 0,
+                owner: Pubkey::default(),
             }),
             "CreateSubscribeUser",
         );
@@ -1089,6 +1110,7 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
                 side_z_iface_name: "AcceptLink".to_string(),
+                use_onchain_allocation: false,
             }),
             "AcceptLink",
         );
@@ -1295,6 +1317,12 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::DeletePermission(PermissionDeleteArgs {}),
             "DeletePermission",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetUserBGPStatus(SetUserBGPStatusArgs {
+                bgp_status: BGPStatus::Up,
+            }),
+            "SetUserBGPStatus",
         );
     }
 }

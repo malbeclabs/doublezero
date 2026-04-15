@@ -144,7 +144,7 @@ impl LinkCreateArgsExt for LinkCreateArgs {
             code: "".to_string(),
             link_type: LinkLinkType::WAN,
             bandwidth: 10_000_000_000,
-            mtu: 4500,
+            mtu: 9000,
             delay_ns: 10000,
             jitter_ns: 10000,
             side_a_iface_name: String::default(),
@@ -371,7 +371,7 @@ impl LedgerHelper {
                     code: "LINK1".to_string(),
                     link_type: LinkLinkType::WAN,
                     bandwidth: 10_000_000_000,
-                    mtu: 4500,
+                    mtu: 9000,
                     delay_ns: 1000000,
                     jitter_ns: 100000,
                     side_a_iface_name: "Ethernet0".to_string(),
@@ -511,6 +511,8 @@ impl TelemetryProgramHelper {
         let args = InitializeDeviceLatencySamplesArgs {
             epoch,
             sampling_interval_microseconds: interval_us,
+            agent_version: [0; 16],
+            agent_commit: [0; 8],
         };
 
         self.execute_transaction(
@@ -1057,7 +1059,7 @@ impl ServiceabilityProgramHelper {
                 bandwidth: 0,
                 cir: 0,
                 ip_net: None,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,

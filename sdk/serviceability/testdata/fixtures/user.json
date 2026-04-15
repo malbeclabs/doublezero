@@ -96,6 +96,26 @@
       "name": "TunnelEndpoint",
       "value": "0.0.0.0",
       "typ": "ipv4"
+    },
+    {
+      "name": "TunnelFlags",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "BgpStatus",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "LastBgpUpAt",
+      "value": "1700000000",
+      "typ": "u64"
+    },
+    {
+      "name": "LastBgpReportedAt",
+      "value": "1700000100",
+      "typ": "u64"
     }
   ]
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 )
 
@@ -67,6 +67,15 @@ func (t *Test) RandomClient() *Client {
 		clients = append(clients, client)
 	}
 	return clients[t.rand.Intn(len(clients))]
+}
+
+func (t *Test) ClientByHost(host string) (*Client, bool) {
+	for _, client := range t.clients {
+		if client.Host == host {
+			return client, true
+		}
+	}
+	return nil, false
 }
 
 func (t *Test) RandomMulticastGroupCode() string {

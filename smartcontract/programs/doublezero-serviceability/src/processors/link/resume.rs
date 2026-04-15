@@ -1,5 +1,6 @@
 use crate::{
     error::DoubleZeroError,
+    processors::validation::validate_program_account,
     serializer::try_acc_write,
     state::{contributor::Contributor, globalstate::GlobalState, link::*},
 };
@@ -41,18 +42,10 @@ pub fn process_resume_link(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
-    // Check the owner of the accounts
-    assert_eq!(
-        contributor_account.owner, program_id,
-        "Invalid Contributor Account Owner"
-    );
-
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
-    );
+    // Validate accounts
+    validate_program_account!(link_account, program_id, writable = true, "Link");
+    validate_program_account!(contributor_account, program_id, writable = false, "Contributor");
+    validate_program_account!(globalstate_account, program_id, writable = false, "GlobalState");
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,

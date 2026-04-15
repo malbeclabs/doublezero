@@ -105,6 +105,14 @@ impl DZClient {
         &self.rpc_url
     }
 
+    pub fn rpc_client(&self) -> &RpcClient {
+        &self.client
+    }
+
+    pub fn payer_keypair(&self) -> Option<&Keypair> {
+        self.payer.as_ref()
+    }
+
     pub fn get_ws(&self) -> &String {
         &self.rpc_ws_url
     }
@@ -404,6 +412,20 @@ impl DoubleZeroClient for DZClient {
             .call()
             .map_err(|e| eyre!(e))
             .map(|info| info.epoch)
+    }
+
+    fn get_block_time(&self, slot: u64) -> eyre::Result<Option<i64>> {
+        match self.client.get_block_time(slot) {
+            Ok(ts) => Ok(Some(ts)),
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("Block not available") || msg.contains("was skipped") {
+                    Ok(None)
+                } else {
+                    Err(eyre!(e))
+                }
+            }
+        }
     }
 
     fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>> {

@@ -8,8 +8,126 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Device Health Oracle
+  - Add `controller_success` activation criterion to device-health-oracle to verify devices have consistent controller call coverage over a configurable burn-in period by querying ClickHouse
+- Telemetry
+  - Add `GET /device-link/agent-versions` endpoint to data-api and `agent-versions` subcommand to data-cli, exposing per-device telemetry agent version and commit from onchain `DeviceLatencySamplesHeader`
+- Smartcontract
+  - Allow `SubscribeMulticastGroup` for users in `Pending` status so that `CreateSubscribeUser` can be followed by additional subscribe calls before the activator runs ([#3521](https://github.com/malbeclabs/doublezero/pull/3521))
+  - Add optional `owner` field to `UpdateMulticastGroup` instruction, allowing foundation members to reassign ownership of a multicast group ([#3527](https://github.com/malbeclabs/doublezero/pull/3527))
+- Geolocation
+  - Add optional result destination to `GeolocationUser` so LocationOffsets can be sent to an alternate endpoint instead of the target IP; supports both IP and domain destinations (e.g., `185.199.108.1:9000` or `results.example.com:9000`); includes `SetResultDestination` onchain instruction, CLI `user set-result-destination` command, and Go SDK deserialization (backwards-compatible with existing accounts)
+- CLI
+  - Add `--owner` flag to `multicast group update`, accepting a pubkey or `me` ([#3527](https://github.com/malbeclabs/doublezero/pull/3527))
+  - Polish terminal output of `connect` and `disconnect`: fix emoji semantics, normalize message phrasing across IBRL and multicast code paths, resolve tenant to human-readable code on connect (errors if tenant not found), and fix progress bar not clearing before output in `disconnect` ([#3529](https://github.com/malbeclabs/doublezero/pull/3529))
 - Device agents
-  - Reduce agent CPU usage by continuing to fetch the full config every 5 seconds but only applying when it has changed or after 60s timeout
+  - Reduce device config agent CPU usage by continuing to fetch the full config every 5 seconds but only applying when it has changed or after 60s timeout
+
+## [v0.17.0](https://github.com/malbeclabs/doublezero/compare/client/v0.16.0...client/v0.17.0) - 2026-04-10
+
+### Breaking
+
+### Changes
+
+- Activator
+  - Fix duplicate tunnel underlay pairs after restart by registering `device.public_ip` as in-use for legacy users with unset `tunnel_endpoint` during allocation reload
+- Client
+  - Rank devices and tunnel endpoints by minimum observed latency (`min_latency_ns`) instead of average when selecting a connection target, preferring paths with the best achievable round-trip time
+- Tools
+  - Add `IsRetryableFunc` field to `RetryOptions` for configurable retry criteria in the Solana JSON-RPC client; add `"rate limited"` string match and RPC code `-32429` to the default implementation
+- Telemetry
+  - Add optional TLS support to state-ingest server via `--tls-cert-file` and `--tls-key-file` flags; when set, the server listens on both HTTP (`:8080`) and HTTPS (`:8443`) simultaneously
+  - Remove `--additional-child-probes` CLI flag from telemetry-agent; child geoprobe discovery now relies entirely on the onchain Geolocation program
+  - Add BGP status submitter: on each tick, reads BGP socket state from the device namespace, maps each activated user to their tunnel peer IP, and submits `SetUserBGPStatus` onchain; supports a configurable down grace period and periodic keepalive refresh; enabled via `--bgp-status-enable` with `--bgp-status-interval`, `--bgp-status-refresh-interval`, and `--bgp-status-down-grace-period` flags
+  - Bound `CachingFetcher` RPC calls with an explicit 30s timeout; `context.WithoutCancel` drops the parent deadline as well as cancellation, so without this a hung Solana RPC would block all singleflight waiters indefinitely
+- Monitor
+  - Add ClickHouse as a telemetry backend for the global monitor alongside existing InfluxDB
+- E2E tests
+  - Add `TestE2E_GeoprobeIcmpTargets` verifying end-to-end ICMP outbound offset delivery via onchain `outbound-icmp` targets
+  - Refactor geoprobe E2E tests to use testcontainers entrypoints and onchain target discovery
+  - Add `TestE2E_UserBGPStatus` verifying that the telemetry BGP status submitter correctly reports onchain status transitions as clients connect and establish BGP sessions
+- Monitor
+  - Add ClickHouse as a telemetry backend for the global monitor alongside existing InfluxDB
+- SDK
+  - Deserialize `agent_version` and `agent_commit` from device latency samples in Go, TypeScript, and Python SDKs
+  - Add `BGPStatus` type (Unknown/Up/Down) and `SetUserBGPStatus` executor instruction to the Go serviceability SDK
+- Smartcontract
+  - Add `agent_version` (`[u8; 16]`) and `agent_commit` (`[u8; 8]`) fields to `DeviceLatencySamplesHeader`, carved from the existing reserved region; accept both fields in the `InitializeDeviceLatencySamples` instruction via incremental deserialization (fully backward compatible)
+  - Implement `SetUserBGPStatus` processor: validates metrics publisher authorization, updates `bgp_status`, `last_bgp_reported_at`, and `last_bgp_up_at` fields on the user account
+  - Add human-readable error messages for serviceability program errors in the Go SDK, including program log extraction for enhanced debugging
+  - `user get` no longer fails when no Access Pass exists; it prints a warning to stderr and continues, showing an empty access pass field
+  - Replace manual account validation assertions with `validate_program_account!` macro across serviceability processor files, adding consistent `data_is_empty` checks and fixing a missing `is_writable` validation in `ResumeLink` ([#3436](https://github.com/malbeclabs/doublezero/pull/3436))
+  - Extend `validate_program_account!` migration to remaining user and multicastgroup allowlist processors (`set_bgp_status`, `delete`, `closeaccount`, publisher/subscriber `add`/`remove`)
+  - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
+  - Allow pending users with subs to be deleted
+- Onchain programs
+  - Add `tunnel_endpoint` field to the `UpdateUser` instruction (`UserUpdateArgs`), allowing the activator to overwrite a user's tunnel endpoint onchain; field is optional and backward compatible via incremental deserialization
+- Telemetry
+  - Device telemetry agent now posts `agent_version` and `agent_commit` in the `DeviceLatencySamplesHeader` when initializing new sample accounts, enabling version attribution of onchain telemetry data
+  - Add optional TLS support to state-ingest server via `--tls-cert-file` and `--tls-key-file` flags; when set, the server listens on both HTTP (`:8080`) and HTTPS (`:8443`) simultaneously
+  - Remove `--additional-child-probes` CLI flag from telemetry-agent; child geoprobe discovery now relies entirely on the onchain Geolocation program
+  - Add BGP status submitter: on each tick, reads BGP socket state from the device namespace, maps each activated user to their tunnel peer IP, and submits `SetUserBGPStatus` onchain; supports a configurable down grace period and periodic keepalive refresh; enabled via `--bgp-status-enable` with `--bgp-status-interval`, `--bgp-status-refresh-interval`, and `--bgp-status-down-grace-period` flags
+- Tools
+  - Add `IsRetryableFunc` field to `RetryOptions` for configurable retry criteria in the Solana JSON-RPC client; add `"rate limited"` string match and RPC code `-32429` to the default implementation
+- Geolocation
+  - Standardize CLI flag naming: probe mutation commands use `--probe` (was `--code`) accepting pubkey or code; rename `--signing-keypair` → `--signing-pubkey` and `--target-pk` → `--target-signing-pubkey`; add `--json-compact` to `get` commands
+  - geoprobe-target can now store LocationOffset messages in ClickHouse
+  - Add ICMP pinger to geoprobe-agent for measuring outbound ICMP targets with interleaved batch send/receive, integrated into the existing measurement cycle alongside TWAMP
+  - Remove `--additional-parent`, `--additional-targets`, `--additional-icmp-targets`, and `--allowed-pubkeys` CLI flags from geoprobe-agent; all configuration now comes from onchain state via parent and target discovery
+  - Add `MinCache` for tracking minimum-RTT measurements with best/backup promotion over a rolling TTL window, used by both geoprobe-target and geoprobe-target-sender to suppress redundant output and surface only new-best events
+
+## [v0.16.0](https://github.com/malbeclabs/doublezero/compare/client/v0.15.0...client/v0.16.0) - 2026-04-03
+
+### Breaking
+
+### Changes
+
+- Smartcontract
+  - Require that the access pass provided to `SubscribeMulticastGroup` belongs to the payer; foundation allowlist members may use any access pass.
+  - Add Index account for onchain key uniqueness enforcement and O(1) key-to-pubkey lookup, with standalone CreateIndex/DeleteIndex instructions for migration backfill
+  - Set minimum client version to 0.10.0
+  - Enforce 9000-byte MTU on links and non-CYOA/non-DIA device interfaces; CYOA/DIA interfaces must be 1500. Onchain validation now returns `InvalidMtu` (error 46) for non-conforming values.
+  - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
+- CLI
+  - Allow incremental multicast group addition without disconnecting
+  - Reset SIGPIPE to SIG_DFL at the start of main() in all 3 CLI binaries (doublezero, doublezero-geolocation, doublezero-admin) so the process exits silently like standard CLI tools
+  - Support `--type outbound-icmp` in geolocation `user add-target`, `remove-target`, and `get` commands
+  - Add sentinel admin commands to find and create multicast publishers for IBRL validators
+  - handle non-user owned disconnects gracefully
+  - Add user's multicast pub/sub groups if applicable to `status`
+- Sentinel
+  - Add multicast publisher worker with Solana RPC-based validator discovery
+  - Add e2e tests for multicast publisher worker with validator-metadata-service mock
+- SDK
+  - Add Go SDK for shred subscription program with read-only account deserialization (epoch state, seat assignments, pricing, settlement, validator client rewards), PDA derivation helpers, RPC fetchers, compatibility tests, and a fetch example CLI
+  - Add `GeoLocationTargetTypeOutboundIcmp` to Go geolocation SDK with deserialization and round-trip test support
+- Device Health Oracle
+  - Update link.health and device.health to `ready-for-service` and `ready-for-users` when they are not already in that state
+- Tools
+  - Add `twamp-debug` diagnostic tool for testing kernel timestamping support on switches; sends real TWAMP probes to verify which SO_TIMESTAMPING modes (RX/TX software/hardware/sched) actually deliver timestamps, and reports RTT statistics comparing userspace vs kernel timestamp sources
+- E2E Tests
+  - Switch backward compatibility test to install versioned CLI binaries from GitHub releases instead of Cloudsmith apt repos; version enumeration now uses the GitHub API directly from Go rather than querying apt-cache inside the container
+- Client
+  - Add `doublezero_connection_info` Prometheus metric exposing connection metadata (user_type, network, current_device, metro, tunnel_name, tunnel_src, tunnel_dst) ([#3201](https://github.com/malbeclabs/doublezero/pull/3201))
+  - Add `doublezero_connection_rtt_nanoseconds` and `doublezero_connection_loss_percentage` Prometheus metrics reporting RTT and packet loss to the current connected device
+
+## [v0.15.0](https://github.com/malbeclabs/doublezero/compare/client/v0.14.0...client/v0.15.0) - 2026-03-27
+
+- Client
+  - fix(client): fix latency field overflow by changing i32 to i64 ([#3382](https://github.com/malbeclabs/doublezero/pull/3382))
+  - fix(client): add user feedback to latency, add flag to limit icmp probe concurrency ([#3385](https://github.com/malbeclabs/doublezero/pull/3385))
+
+### Breaking
+
+### Changes
+
+- Funder
+  - Top up contributor owner keys alongside device metrics publishers, multicast group owners, and the internet latency collector
+- Smartcontract
+  - Fix multicast publisher/subscriber device counter divergence: `multicast_publishers_count` never decremented and `multicast_subscribers_count` over-decremented on user disconnect because the decrement logic checked `!publishers.is_empty()`, which is always false at delete time. Add a durable `tunnel_flags` field to the `User` struct with a `CreatedAsPublisher` bit, set at activation, and use it in the delete and closeaccount instructions.
+  - Allow foundation allowlist members and the sentinel to create multicast users with a custom `owner` via a new `owner` field on `CreateSubscribeUser`, enabling user creation on behalf of another identity's access pass
+- CLI
+  - Add `--owner` flag to `doublezero user create-subscribe` for specifying a custom user owner (foundation/sentinel only)
 
 ## [v0.14.0](https://github.com/malbeclabs/doublezero/compare/client/v0.13.0...client/v0.14.0) - 2026-03-24
 
@@ -21,6 +139,7 @@ All notable changes to this project will be documented in this file.
   - Log an error when duplicate tunnel-id assignments are detected on the same device during state cache update, instead of silently overwriting
 - Onchain Programs
   - Serviceability: update device interface IPs when `tunnel_net` is changed via `UpdateLink`, matching the existing `ActivateLink` behavior ([#3365](https://github.com/malbeclabs/doublezero/pull/3365))
+  - Serviceability: `AcceptLink` supports combined accept+activate via `use_onchain_allocation` flag, gated on `OnChainAllocation` feature flag ([#3369](https://github.com/malbeclabs/doublezero/pull/3369))
   - Serviceability: add `feed_authority` to `RemoveMulticastGroupSubAllowlist` auth check, matching `AddMulticastGroupSubAllowlist`
 - Client
   - Get client IP from the daemon in the disconnect command, matching the connect command's behavior, to avoid IP mismatches behind NAT
@@ -30,6 +149,7 @@ All notable changes to this project will be documented in this file.
   - Add `TargetUpdateCount` field to Go GeoProbe struct with backward-compatible deserialization
 - Telemetry
   - Skip expensive `GetGeolocationUsers` RPC scan in geoprobe-agent when the probe's `target_update_count` is unchanged, with a forced full refresh every ~5 minutes as safety net
+  - Add Prometheus metrics to geoprobe-agent: build info, error counters by type, discovery/measurement cycle durations, offset send/receive/reject counters, and discovered target/parent gauges; exposed via optional `--metrics-enable` flag
 
 ## [v0.13.0](https://github.com/malbeclabs/doublezero/compare/client/v0.12.0...client/v0.13.0) - 2026-03-20
 
@@ -52,7 +172,7 @@ All notable changes to this project will be documented in this file.
   - Include feed authority in `global-config authority get` output
   - Add `geolocation user` subcommands to manage GeolocationUser accounts and targets: `create`, `delete`, `get`, `list`, `add-target`, `remove-target`, and `update-payment-status`
 - Monitor
-  - Fix slack user reporting 
+  - Fix slack user reporting
 - SDK
   - Add GeolocationUser types, Borsh deserialization, PDA derivation, and read-only client methods (`GetGeolocationUserByCode`, `GetGeolocationUsers`) to the Go geolocation SDK
 - Telemetry

@@ -85,6 +85,7 @@ impl SubscribeMulticastGroupCommand {
             AccountMeta::new(self.group_pk, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(self.user_pk, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ];
 
         if use_onchain_allocation {
@@ -92,7 +93,6 @@ impl SubscribeMulticastGroupCommand {
                 &client.get_program_id(),
                 ResourceType::MulticastPublisherBlock,
             );
-            accounts.push(AccountMeta::new(globalstate_pubkey, false));
             accounts.push(AccountMeta::new(multicast_publisher_block_ext, false));
         }
 
@@ -181,6 +181,10 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(
@@ -227,6 +231,8 @@ mod tests {
             .with(predicate::eq(user_pubkey))
             .returning(move |_| Ok(AccountData::User(user.clone())));
 
+        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+
         client
             .expect_execute_transaction()
             .with(
@@ -242,6 +248,7 @@ mod tests {
                     AccountMeta::new(mgroup_pubkey, false),
                     AccountMeta::new(accesspass_pubkey, false),
                     AccountMeta::new(user_pubkey, false),
+                    AccountMeta::new(globalstate_pubkey, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
@@ -319,6 +326,10 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer);

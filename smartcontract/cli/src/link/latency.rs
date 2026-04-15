@@ -178,7 +178,7 @@ mod tests {
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
             bandwidth: 1000000000,
-            mtu: 1500,
+            mtu: 9000,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
             tunnel_id: 1,

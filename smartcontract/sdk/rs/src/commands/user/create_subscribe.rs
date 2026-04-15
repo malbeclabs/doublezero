@@ -30,6 +30,9 @@ pub struct CreateSubscribeUserCommand {
     pub publisher: bool,
     pub subscriber: bool,
     pub tunnel_endpoint: Ipv4Addr,
+    /// Custom owner pubkey (foundation allowlist only). When set, the access pass
+    /// is looked up for this owner instead of the payer.
+    pub owner: Option<Pubkey>,
 }
 
 impl CreateSubscribeUserCommand {
@@ -51,22 +54,25 @@ impl CreateSubscribeUserCommand {
             eyre::bail!("MulticastGroup not active");
         }
 
+        // When a custom owner is set, look up the access pass for that owner
+        let accesspass_payer = self.owner.unwrap_or_else(|| client.get_payer());
+
         // First try to get AccessPass for the client IP
         let (accesspass_pk, _) = GetAccessPassCommand {
             client_ip: self.client_ip,
-            user_payer: client.get_payer(),
+            user_payer: accesspass_payer,
         }
         .execute(client)?
         .or_else(|| {
             GetAccessPassCommand {
                 client_ip: Ipv4Addr::UNSPECIFIED,
-                user_payer: client.get_payer(),
+                user_payer: accesspass_payer,
             }
             .execute(client)
             .ok()
             .flatten()
         })
-        .ok_or_else(|| eyre::eyre!("You have no Access Pass"))?;
+        .ok_or_else(|| eyre::eyre!("No Access Pass found for owner"))?;
 
         let (pda_pubkey, _) =
             get_user_pda(&client.get_program_id(), &self.client_ip, self.user_type);
@@ -126,6 +132,7 @@ impl CreateSubscribeUserCommand {
                     subscriber: self.subscriber,
                     tunnel_endpoint: self.tunnel_endpoint,
                     dz_prefix_count,
+                    owner: self.owner.unwrap_or_default(),
                 }),
                 accounts,
             )
@@ -216,6 +223,7 @@ mod tests {
                         subscriber: false,
                         tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                         dz_prefix_count: 0,
+                        owner: Pubkey::default(),
                     },
                 )),
                 predicate::eq(vec![
@@ -237,6 +245,7 @@ mod tests {
             publisher: true,
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            owner: None,
         }
         .execute(&client);
 
@@ -345,6 +354,7 @@ mod tests {
                         subscriber: false,
                         tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                         dz_prefix_count: 1,
+                        owner: Pubkey::default(),
                     },
                 )),
                 predicate::eq(vec![
@@ -370,6 +380,7 @@ mod tests {
             publisher: true,
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            owner: None,
         }
         .execute(&client);
 

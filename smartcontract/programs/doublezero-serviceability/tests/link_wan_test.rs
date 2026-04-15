@@ -228,7 +228,7 @@ async fn test_wan_link() {
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -359,7 +359,7 @@ async fn test_wan_link() {
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -597,7 +597,7 @@ async fn test_wan_link() {
             contributor_pk: Some(contributor_pubkey),
             tunnel_type: Some(LinkLinkType::WAN),
             bandwidth: Some(20000000000),
-            mtu: Some(8900),
+            mtu: Some(9000),
             delay_ns: Some(1000000),
             jitter_ns: Some(100000),
             delay_override_ns: Some(0),
@@ -624,7 +624,7 @@ async fn test_wan_link() {
     assert_eq!(tunnel_la.account_type, AccountType::Link);
     assert_eq!(tunnel_la.code, "la2".to_string());
     assert_eq!(tunnel_la.bandwidth, 20000000000);
-    assert_eq!(tunnel_la.mtu, 8900);
+    assert_eq!(tunnel_la.mtu, 9000);
     assert_eq!(tunnel_la.delay_ns, 1000000);
     assert_eq!(tunnel_la.status, LinkStatus::Activated);
     assert_eq!(tunnel_la.desired_status, LinkDesiredStatus::Activated);
@@ -808,7 +808,7 @@ async fn test_wan_link() {
     assert_eq!(tunnel_la.account_type, AccountType::Link);
     assert_eq!(tunnel_la.code, "la2".to_string());
     assert_eq!(tunnel_la.bandwidth, 20000000000);
-    assert_eq!(tunnel_la.mtu, 8900);
+    assert_eq!(tunnel_la.mtu, 9000);
     assert_eq!(tunnel_la.delay_ns, 1000000);
     assert_eq!(tunnel_la.status, LinkStatus::Deleting);
 
@@ -1131,7 +1131,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -1231,7 +1231,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             loopback_type: None,
             bandwidth: None,
             cir: None,
-            mtu: None,
+            mtu: Some(9000),
             routing_mode: None,
             vlan_id: None,
             user_tunnel_endpoint: None,
@@ -1259,7 +1259,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             loopback_type: None,
             bandwidth: None,
             cir: None,
-            mtu: None,
+            mtu: Some(1500),
             routing_mode: None,
             vlan_id: None,
             user_tunnel_endpoint: None,
@@ -1323,7 +1323,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             loopback_type: None,
             bandwidth: None,
             cir: None,
-            mtu: None,
+            mtu: Some(9000),
             routing_mode: None,
             vlan_id: None,
             user_tunnel_endpoint: None,
@@ -1380,7 +1380,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             loopback_type: None,
             bandwidth: None,
             cir: None,
-            mtu: None,
+            mtu: Some(1500),
             routing_mode: None,
             vlan_id: None,
             user_tunnel_endpoint: None,
@@ -1592,7 +1592,7 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -1683,7 +1683,7 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -2044,7 +2044,7 @@ async fn setup_link_env() -> (
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -2132,7 +2132,7 @@ async fn setup_link_env() -> (
                 bandwidth: 0,
                 ip_net: None,
                 cir: 0,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -2483,4 +2483,58 @@ async fn test_link_delete_from_hard_drained() {
         .get_tunnel()
         .unwrap();
     assert_eq!(link.status, LinkStatus::Deleting);
+}
+
+#[tokio::test]
+async fn test_link_create_invalid_mtu() {
+    let (
+        mut banks_client,
+        program_id,
+        payer,
+        globalstate_pubkey,
+        contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+        _tunnel_pubkey,
+    ) = setup_link_env().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Create link with MTU 1500 (should fail, must be 9000)
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (tunnel_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
+            code: "invalid-mtu".to_string(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 20000000000,
+            mtu: 1500,
+            delay_ns: 1000000,
+            jitter_ns: 100000,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: Some("Ethernet1".to_string()),
+            desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let error_string = format!("{:?}", res.unwrap_err());
+    assert!(
+        error_string.contains("Custom(46)"),
+        "Expected InvalidMtu error (Custom(46)), got: {}",
+        error_string
+    );
 }

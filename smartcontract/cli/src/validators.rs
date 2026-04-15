@@ -29,18 +29,6 @@ pub fn validate_parse_bandwidth(val: &str) -> Result<u64, String> {
     }
 }
 
-pub fn validate_parse_mtu(val: &str) -> Result<u32, String> {
-    if let Ok(mtu) = val.parse::<u32>() {
-        if (2048..=10218).contains(&mtu) {
-            Ok(mtu)
-        } else {
-            Err(String::from("MTU must be between 2048 and 10218"))
-        }
-    } else {
-        Err(String::from("invalid MTU format"))
-    }
-}
-
 pub fn validate_parse_delay_ms(val: &str) -> Result<f64, String> {
     if let Ok(delay) = val.parse::<f64>() {
         if (0.01..=1000.0).contains(&delay) {
@@ -117,15 +105,6 @@ mod tests {
         assert!(validate_parse_bandwidth("invalid").is_err());
         assert!(validate_parse_bandwidth("1000").is_err());
         assert!(validate_parse_bandwidth("0").is_err());
-    }
-
-    #[test]
-    fn test_validate_mtu() {
-        assert!(validate_parse_mtu("2048").is_ok());
-        assert!(validate_parse_mtu("10218").is_ok());
-        assert!(validate_parse_mtu("2047").is_err());
-        assert!(validate_parse_mtu("10219").is_err());
-        assert!(validate_parse_mtu("not_a_number").is_err());
     }
 
     #[test]

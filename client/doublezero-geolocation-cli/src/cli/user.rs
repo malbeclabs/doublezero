@@ -3,6 +3,7 @@ use doublezero_cli::geolocation::user::{
     add_target::AddTargetCliCommand, create::CreateGeolocationUserCliCommand,
     delete::DeleteGeolocationUserCliCommand, get::GetGeolocationUserCliCommand,
     list::ListGeolocationUserCliCommand, remove_target::RemoveTargetCliCommand,
+    set_result_destination::SetResultDestinationCliCommand,
     update_payment_status::UpdatePaymentStatusCliCommand,
 };
 
@@ -26,6 +27,8 @@ pub enum UserCommands {
     AddTarget(AddTargetCliCommand),
     /// Remove a target from a user
     RemoveTarget(RemoveTargetCliCommand),
+    /// Set result destination for geolocation results
+    SetResultDestination(SetResultDestinationCliCommand),
     /// Update payment status (foundation-only)
     UpdatePayment(UpdatePaymentStatusCliCommand),
 }

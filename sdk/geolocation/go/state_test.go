@@ -190,6 +190,7 @@ func TestSDK_Geolocation_State_GeolocationUser_RoundTrip(t *testing.T) {
 				GeoProbePK:         solana.NewWallet().PublicKey(),
 			},
 		},
+		ResultDestination: "185.199.108.1:9000",
 	}
 
 	var buf bytes.Buffer
@@ -208,6 +209,7 @@ func TestSDK_Geolocation_State_GeolocationUser_RoundTrip(t *testing.T) {
 	require.Len(t, decoded.Targets, 2)
 	require.Equal(t, original.Targets[0], decoded.Targets[0])
 	require.Equal(t, original.Targets[1], decoded.Targets[1])
+	require.Equal(t, original.ResultDestination, decoded.ResultDestination)
 }
 
 func TestSDK_Geolocation_State_GeolocationUser_EmptyTargets(t *testing.T) {
@@ -226,8 +228,9 @@ func TestSDK_Geolocation_State_GeolocationUser_EmptyTargets(t *testing.T) {
 				LastDeductionDzEpoch: 0,
 			},
 		},
-		Status:  geolocation.GeolocationUserStatusSuspended,
-		Targets: []geolocation.GeolocationTarget{},
+		Status:            geolocation.GeolocationUserStatusSuspended,
+		Targets:           []geolocation.GeolocationTarget{},
+		ResultDestination: "",
 	}
 
 	var buf bytes.Buffer
@@ -240,6 +243,50 @@ func TestSDK_Geolocation_State_GeolocationUser_EmptyTargets(t *testing.T) {
 	require.Empty(t, decoded.Targets)
 	require.Equal(t, geolocation.GeolocationUserStatusSuspended, decoded.Status)
 	require.Equal(t, geolocation.GeolocationPaymentStatusDelinquent, decoded.PaymentStatus)
+}
+
+func TestSDK_Geolocation_State_GeolocationUser_BackwardCompat_NoResultDestination(t *testing.T) {
+	t.Parallel()
+
+	original := &geolocation.GeolocationUser{
+		AccountType:   geolocation.AccountTypeGeolocationUser,
+		Owner:         solana.NewWallet().PublicKey(),
+		Code:          "old-user",
+		TokenAccount:  solana.NewWallet().PublicKey(),
+		PaymentStatus: geolocation.GeolocationPaymentStatusPaid,
+		Billing: geolocation.GeolocationBillingConfig{
+			Variant: geolocation.BillingConfigFlatPerEpoch,
+			FlatPerEpoch: geolocation.FlatPerEpochConfig{
+				Rate:                 1000,
+				LastDeductionDzEpoch: 42,
+			},
+		},
+		Status: geolocation.GeolocationUserStatusActivated,
+		Targets: []geolocation.GeolocationTarget{
+			{
+				TargetType:         geolocation.GeoLocationTargetTypeOutbound,
+				IPAddress:          [4]uint8{8, 8, 8, 8},
+				LocationOffsetPort: 8923,
+				TargetPK:           solana.PublicKey{},
+				GeoProbePK:         solana.NewWallet().PublicKey(),
+			},
+		},
+		ResultDestination: "",
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, original.Serialize(&buf))
+
+	// Truncate the trailing 4 bytes (empty Borsh string = 4-byte length prefix)
+	// to simulate old data without the result_destination field.
+	data := buf.Bytes()[:buf.Len()-4]
+
+	var decoded geolocation.GeolocationUser
+	require.NoError(t, decoded.Deserialize(data))
+
+	require.Equal(t, original.Owner, decoded.Owner)
+	require.Equal(t, original.Targets[0], decoded.Targets[0])
+	require.Equal(t, "", decoded.ResultDestination)
 }
 
 func TestSDK_Geolocation_State_GeolocationTarget_RoundTrip(t *testing.T) {
@@ -284,6 +331,47 @@ func TestSDK_Geolocation_State_GeolocationTarget_RoundTrip(t *testing.T) {
 	require.Equal(t, original, decoded.Targets[0])
 }
 
+func TestSDK_Geolocation_State_GeolocationTarget_OutboundIcmp_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	original := geolocation.GeolocationTarget{
+		TargetType:         geolocation.GeoLocationTargetTypeOutboundIcmp,
+		IPAddress:          [4]uint8{8, 8, 8, 8},
+		LocationOffsetPort: 8923,
+		TargetPK:           solana.NewWallet().PublicKey(),
+		GeoProbePK:         solana.NewWallet().PublicKey(),
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, original.Serialize(&buf))
+
+	user := &geolocation.GeolocationUser{
+		AccountType:   geolocation.AccountTypeGeolocationUser,
+		Owner:         solana.NewWallet().PublicKey(),
+		Code:          "icmp-test",
+		TokenAccount:  solana.NewWallet().PublicKey(),
+		PaymentStatus: geolocation.GeolocationPaymentStatusPaid,
+		Billing: geolocation.GeolocationBillingConfig{
+			Variant: geolocation.BillingConfigFlatPerEpoch,
+			FlatPerEpoch: geolocation.FlatPerEpochConfig{
+				Rate:                 500,
+				LastDeductionDzEpoch: 10,
+			},
+		},
+		Status:  geolocation.GeolocationUserStatusActivated,
+		Targets: []geolocation.GeolocationTarget{original},
+	}
+
+	var userBuf bytes.Buffer
+	require.NoError(t, user.Serialize(&userBuf))
+
+	var decoded geolocation.GeolocationUser
+	require.NoError(t, decoded.Deserialize(userBuf.Bytes()))
+
+	require.Len(t, decoded.Targets, 1)
+	require.Equal(t, original, decoded.Targets[0])
+}
+
 func TestSDK_Geolocation_State_EnumStrings(t *testing.T) {
 	t.Parallel()
 
@@ -293,4 +381,5 @@ func TestSDK_Geolocation_State_EnumStrings(t *testing.T) {
 	require.Equal(t, "suspended", geolocation.GeolocationUserStatusSuspended.String())
 	require.Equal(t, "outbound", geolocation.GeoLocationTargetTypeOutbound.String())
 	require.Equal(t, "inbound", geolocation.GeoLocationTargetTypeInbound.String())
+	require.Equal(t, "outbound-icmp", geolocation.GeoLocationTargetTypeOutboundIcmp.String())
 }

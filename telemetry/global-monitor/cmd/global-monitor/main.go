@@ -18,6 +18,7 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	chwriter "github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/clickhouse"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/dz"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/gm"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/metrics"
@@ -228,6 +229,37 @@ func run() error {
 		defer influxAPI.Flush()
 	}
 
+	// ClickHouse configuration.
+	chAddr := os.Getenv("CLICKHOUSE_ADDR")
+	chDatabase := os.Getenv("CLICKHOUSE_DATABASE")
+	chUsername := os.Getenv("CLICKHOUSE_USER")
+	chPassword := os.Getenv("CLICKHOUSE_PASS")
+	chSecure := os.Getenv("CLICKHOUSE_SECURE") == "true"
+	chRunMigrations := os.Getenv("CLICKHOUSE_RUN_MIGRATIONS") == "true"
+	chEnabled := chAddr != "" && chDatabase != ""
+	var clickHouseWriter *chwriter.Writer
+	if chEnabled {
+		log.Info("clickhouse enabled", "addr", chAddr, "database", chDatabase, "secure", chSecure, "run_migrations", chRunMigrations)
+		if chRunMigrations {
+			if err := chwriter.RunMigrations(chAddr, chDatabase, chUsername, chPassword, chSecure, log); err != nil {
+				log.Error("failed to run clickhouse migrations", "error", err)
+				return err
+			}
+			log.Info("clickhouse migrations applied")
+		}
+
+		w, err := chwriter.NewWriter(chAddr, chDatabase, chUsername, chPassword, chSecure, log)
+		if err != nil {
+			log.Error("failed to create clickhouse writer", "error", err)
+			return err
+		}
+		defer w.Close()
+		clickHouseWriter = w
+		log.Info("clickhouse writer created")
+	} else {
+		log.Info("clickhouse disabled (CLICKHOUSE_ADDR and CLICKHOUSE_DATABASE required)")
+	}
+
 	nlr := netlink.NewNetlinker()
 
 	geoIP, err := geoip.NewResolver(log, cityDB, asnDB, metroDB)
@@ -270,6 +302,9 @@ func run() error {
 
 		// InfluxDB configuration.
 		InfluxAPI: influxAPI,
+
+		// ClickHouse configuration.
+		ClickHouseWriter: clickHouseWriter,
 
 		// GeoIP configuration.
 		GeoIP: geoIP,

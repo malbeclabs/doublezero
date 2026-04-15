@@ -21,7 +21,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/prometheus"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	telemetrysdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -215,15 +215,15 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt --desired-status activated
 			doublezero device update --pubkey ams-dz001 --desired-status activated
 
-			doublezero device interface create ld4-dz01 "Ethernet2" --bandwidth 10G --mtu 2048
-			doublezero device interface create ld4-dz01 "Ethernet3" --bandwidth 10G --mtu 2048
-			doublezero device interface create ld4-dz01 "Ethernet4" --bandwidth 10G --mtu 2048
-			doublezero device interface create frk-dz01 "Ethernet2" --bandwidth 10G --mtu 2048
-			doublezero device interface create sg1-dz01 "Ethernet2" --bandwidth 10G --mtu 2048
-			doublezero device interface create sg1-dz01 "Ethernet3" --bandwidth 10G --mtu 2048
-			doublezero device interface create ty2-dz01 "Ethernet2" --bandwidth 10G --mtu 2048
-			doublezero device interface create pit-dzd01 "Ethernet2" --bandwidth 10G --mtu 2048
-			doublezero device interface create ams-dz001 "Ethernet2" --bandwidth 10G --mtu 2048
+			doublezero device interface create ld4-dz01 "Ethernet2" --bandwidth 10G
+			doublezero device interface create ld4-dz01 "Ethernet3" --bandwidth 10G
+			doublezero device interface create ld4-dz01 "Ethernet4" --bandwidth 10G
+			doublezero device interface create frk-dz01 "Ethernet2" --bandwidth 10G
+			doublezero device interface create sg1-dz01 "Ethernet2" --bandwidth 10G
+			doublezero device interface create sg1-dz01 "Ethernet3" --bandwidth 10G
+			doublezero device interface create ty2-dz01 "Ethernet2" --bandwidth 10G
+			doublezero device interface create pit-dzd01 "Ethernet2" --bandwidth 10G
+			doublezero device interface create ams-dz001 "Ethernet2" --bandwidth 10G
 
 			doublezero device interface create ld4-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
 			doublezero device interface create frk-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
@@ -253,11 +253,11 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 			set -euo pipefail
 
-			doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 40 --jitter-ms 3 --desired-status activated
-			doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet3 --side-z ld4-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 30 --jitter-ms 3 --desired-status activated
-			doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 25 --jitter-ms 10 --desired-status activated
-			doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 120 --jitter-ms 9 --desired-status activated
-			doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 40 --jitter-ms 7 --desired-status activated
+			doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 40 --jitter-ms 3 --desired-status activated
+			doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet3 --side-z ld4-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 30 --jitter-ms 3 --desired-status activated
+			doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 25 --jitter-ms 10 --desired-status activated
+			doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 120 --jitter-ms 9 --desired-status activated
+			doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 40 --jitter-ms 7 --desired-status activated
 		`})
 	require.NoError(t, err)
 
@@ -440,6 +440,25 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	log.Debug("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
 	require.Greater(t, len(account.Samples), 1)
 	require.Equal(t, len(account.Samples), int(account.NextSampleIndex))
+
+	// Verify that the telemetry agent posted its version and commit in the header.
+	hasNonZeroVersion := false
+	for _, b := range account.AgentVersion {
+		if b != 0 {
+			hasNonZeroVersion = true
+			break
+		}
+	}
+	require.True(t, hasNonZeroVersion, "agent_version should contain non-zero bytes")
+	hasNonZeroCommit := false
+	for _, b := range account.AgentCommit {
+		if b != 0 {
+			hasNonZeroCommit = true
+			break
+		}
+	}
+	require.True(t, hasNonZeroCommit, "agent_commit should contain non-zero bytes")
+
 	// If there are 0s, they should be at the beginning of the samples array, with all non-zero values after them.
 	initialZeroCount := 0
 	for _, rtt := range account.Samples {

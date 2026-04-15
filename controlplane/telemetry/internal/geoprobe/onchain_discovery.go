@@ -41,7 +41,6 @@ type ParentDiscoveryConfig struct {
 	GeoProbePubkey         solana.PublicKey
 	Client                 GeoProbeAccountClient
 	Resolver               DeviceResolver
-	CLIParents             map[[32]byte][32]byte // static parents from --additional-parent
 	Logger                 *slog.Logger
 	ProbeTargetUpdateCount *atomic.Uint32 // shared counter for target discovery change detection
 }
@@ -52,7 +51,6 @@ type ParentDiscovery struct {
 	geoProbePubkey         solana.PublicKey
 	client                 GeoProbeAccountClient
 	resolver               DeviceResolver
-	cliParents             map[[32]byte][32]byte
 	probeTargetUpdateCount *atomic.Uint32
 
 	cachedParentDevices []solana.PublicKey
@@ -73,17 +71,11 @@ func NewParentDiscovery(cfg *ParentDiscoveryConfig) (*ParentDiscovery, error) {
 	if cfg.GeoProbePubkey.IsZero() {
 		return nil, fmt.Errorf("geoprobe pubkey is required")
 	}
-	cliParents := cfg.CLIParents
-	if cliParents == nil {
-		cliParents = make(map[[32]byte][32]byte)
-	}
-
 	return &ParentDiscovery{
 		log:                    cfg.Logger,
 		geoProbePubkey:         cfg.GeoProbePubkey,
 		client:                 cfg.Client,
 		resolver:               cfg.Resolver,
-		cliParents:             cliParents,
 		probeTargetUpdateCount: cfg.ProbeTargetUpdateCount,
 	}, nil
 }
@@ -118,14 +110,14 @@ func (d *ParentDiscovery) discover(ctx context.Context) (*ParentUpdate, error) {
 	probe, err := d.client.GetGeoProbeByPubkey(ctx, d.geoProbePubkey)
 	if err != nil {
 		if errors.Is(err, geolocation.ErrAccountNotFound) {
-			d.log.Warn("GeoProbe account not found onchain, using CLI parents only",
+			d.log.Warn("GeoProbe account not found onchain",
 				"geoProbePubkey", d.geoProbePubkey)
-			return d.cliOnlyUpdate(), nil
+			return d.emptyUpdate(), nil
 		}
 		return nil, fmt.Errorf("failed to fetch GeoProbe account: %w", err)
 	}
 	if probe == nil {
-		return d.cliOnlyUpdate(), nil
+		return d.emptyUpdate(), nil
 	}
 
 	// Publish the probe's target_update_count for target discovery change detection.
@@ -141,7 +133,7 @@ func (d *ParentDiscovery) discover(ctx context.Context) (*ParentUpdate, error) {
 	}
 
 	// Resolve each parent device.
-	authorities := make(map[[32]byte][32]byte, len(probe.ParentDevices)+len(d.cliParents))
+	authorities := make(map[[32]byte][32]byte, len(probe.ParentDevices))
 	var allowedKeys [][32]byte
 	var zeroKey [32]byte
 	resolvedCount := 0
@@ -171,21 +163,12 @@ func (d *ParentDiscovery) discover(ctx context.Context) (*ParentUpdate, error) {
 				device.PublicIp[2], device.PublicIp[3]))
 	}
 
-	// Merge CLI parents (always included, onchain takes precedence for same key).
-	for pk, authPK := range d.cliParents {
-		if _, exists := authorities[pk]; !exists {
-			authorities[pk] = authPK
-			allowedKeys = append(allowedKeys, authPK)
-		}
-	}
-
 	d.cachedParentDevices = make([]solana.PublicKey, len(probe.ParentDevices))
 	copy(d.cachedParentDevices, probe.ParentDevices)
 
 	d.log.Debug("Parent discovery tick",
 		"onchainParents", len(probe.ParentDevices),
 		"resolvedOnchain", resolvedCount,
-		"cliParents", len(d.cliParents),
 		"totalAuthorities", len(authorities),
 	)
 
@@ -195,22 +178,10 @@ func (d *ParentDiscovery) discover(ctx context.Context) (*ParentUpdate, error) {
 	}, nil
 }
 
-// cliOnlyUpdate builds a ParentUpdate containing only CLI-configured parents.
-func (d *ParentDiscovery) cliOnlyUpdate() *ParentUpdate {
-	if len(d.cliParents) == 0 {
-		return &ParentUpdate{
-			Authorities: make(map[[32]byte][32]byte),
-		}
-	}
-	authorities := make(map[[32]byte][32]byte, len(d.cliParents))
-	var allowedKeys [][32]byte
-	for pk, authPK := range d.cliParents {
-		authorities[pk] = authPK
-		allowedKeys = append(allowedKeys, authPK)
-	}
+// emptyUpdate returns an empty ParentUpdate (no parents known).
+func (d *ParentDiscovery) emptyUpdate() *ParentUpdate {
 	return &ParentUpdate{
-		Authorities: authorities,
-		AllowedKeys: allowedKeys,
+		Authorities: make(map[[32]byte][32]byte),
 	}
 }
 

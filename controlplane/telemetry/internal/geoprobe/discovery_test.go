@@ -170,7 +170,7 @@ func TestDiscovery_FiltersParentDevices(t *testing.T) {
 	}
 }
 
-func TestDiscovery_MergeWithCLIProbes(t *testing.T) {
+func TestDiscovery_OnchainOnlyProbes(t *testing.T) {
 	t.Parallel()
 
 	localDevice := solana.NewWallet().PublicKey()
@@ -186,14 +186,11 @@ func TestDiscovery_MergeWithCLIProbes(t *testing.T) {
 		},
 	}
 
-	cliProbe := ProbeAddress{Host: "192.168.1.1", Port: 8923, TWAMPPort: 8925}
-
 	ch := make(chan []ProbeAddress, 1)
 	cfg := &DiscoveryConfig{
 		Logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
 		Client:        mock,
 		LocalDevicePK: localDevice,
-		InitialProbes: []ProbeAddress{cliProbe},
 		ProbeUpdateCh: ch,
 		Interval:      10 * time.Millisecond,
 	}
@@ -210,60 +207,7 @@ func TestDiscovery_MergeWithCLIProbes(t *testing.T) {
 
 	select {
 	case probes := <-ch:
-		assert.Len(t, probes, 2)
-		hosts := make(map[string]bool)
-		for _, p := range probes {
-			hosts[p.Host] = true
-		}
-		assert.True(t, hosts["192.168.1.1"], "CLI probe should be included")
-		assert.True(t, hosts["10.0.0.1"], "onchain probe should be included")
-	case <-ctx.Done():
-		t.Fatal("timed out waiting for probe update")
-	}
-}
-
-func TestDiscovery_DeduplicatesCLIAndOnchain(t *testing.T) {
-	t.Parallel()
-
-	localDevice := solana.NewWallet().PublicKey()
-
-	mock := &mockGeolocationClient{
-		probes: []geolocation.KeyedGeoProbe{
-			{GeoProbe: geolocation.GeoProbe{
-				PublicIP:           [4]uint8{10, 0, 0, 1},
-				LocationOffsetPort: 8923,
-				ParentDevices:      []solana.PublicKey{localDevice},
-				Code:               "probe1",
-			}},
-		},
-	}
-
-	// CLI probe with same address as onchain probe.
-	cliProbe := ProbeAddress{Host: "10.0.0.1", Port: 8923, TWAMPPort: 8925}
-
-	ch := make(chan []ProbeAddress, 1)
-	cfg := &DiscoveryConfig{
-		Logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		Client:        mock,
-		LocalDevicePK: localDevice,
-		InitialProbes: []ProbeAddress{cliProbe},
-		ProbeUpdateCh: ch,
-		Interval:      10 * time.Millisecond,
-	}
-
-	d, err := NewDiscovery(cfg)
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-
-	go func() {
-		_ = d.Run(ctx)
-	}()
-
-	select {
-	case probes := <-ch:
-		assert.Len(t, probes, 1, "duplicate should be removed")
+		assert.Len(t, probes, 1)
 		assert.Equal(t, "10.0.0.1", probes[0].Host)
 	case <-ctx.Done():
 		t.Fatal("timed out waiting for probe update")
@@ -305,21 +249,18 @@ func TestDiscovery_RPCError(t *testing.T) {
 	}
 }
 
-func TestDiscovery_EmptyResults_CLIProbesStillSent(t *testing.T) {
+func TestDiscovery_EmptyOnchainResults(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockGeolocationClient{
 		probes: []geolocation.KeyedGeoProbe{},
 	}
 
-	cliProbe := ProbeAddress{Host: "192.168.1.1", Port: 8923, TWAMPPort: 8925}
-
 	ch := make(chan []ProbeAddress, 1)
 	cfg := &DiscoveryConfig{
 		Logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
 		Client:        mock,
 		LocalDevicePK: solana.NewWallet().PublicKey(),
-		InitialProbes: []ProbeAddress{cliProbe},
 		ProbeUpdateCh: ch,
 		Interval:      10 * time.Millisecond,
 	}
@@ -336,8 +277,7 @@ func TestDiscovery_EmptyResults_CLIProbesStillSent(t *testing.T) {
 
 	select {
 	case probes := <-ch:
-		assert.Len(t, probes, 1)
-		assert.Equal(t, "192.168.1.1", probes[0].Host)
+		assert.Empty(t, probes)
 	case <-ctx.Done():
 		t.Fatal("timed out waiting for probe update")
 	}
@@ -355,40 +295,6 @@ func TestDiscovery_ContextCancellation(t *testing.T) {
 
 	err = d.Run(ctx)
 	assert.NoError(t, err)
-}
-
-func TestMergeProbes(t *testing.T) {
-	t.Parallel()
-
-	a := []ProbeAddress{
-		{Host: "10.0.0.1", Port: 8923, TWAMPPort: 8925},
-		{Host: "10.0.0.2", Port: 8923, TWAMPPort: 8925},
-	}
-	b := []ProbeAddress{
-		{Host: "10.0.0.2", Port: 8923, TWAMPPort: 8925}, // duplicate
-		{Host: "10.0.0.3", Port: 8923, TWAMPPort: 8925},
-	}
-
-	merged := mergeProbes(a, b)
-	assert.Len(t, merged, 3)
-
-	hosts := make(map[string]bool)
-	for _, p := range merged {
-		hosts[p.Host] = true
-	}
-	assert.True(t, hosts["10.0.0.1"])
-	assert.True(t, hosts["10.0.0.2"])
-	assert.True(t, hosts["10.0.0.3"])
-}
-
-func TestMergeProbes_Empty(t *testing.T) {
-	t.Parallel()
-
-	merged := mergeProbes(nil, nil)
-	assert.Empty(t, merged)
-
-	merged = mergeProbes([]ProbeAddress{{Host: "10.0.0.1", Port: 8923, TWAMPPort: 8925}}, nil)
-	assert.Len(t, merged, 1)
 }
 
 // --- Caching tests ---

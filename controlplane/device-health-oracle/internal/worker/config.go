@@ -22,24 +22,35 @@ type ServiceabilityClient interface {
 	GetProgramData(context.Context) (*serviceability.ProgramData, error)
 }
 
+type ServiceabilityExecutor interface {
+	SetDeviceHealthBatch(ctx context.Context, updates []serviceability.DeviceHealthUpdate, globalStatePubkey solana.PublicKey) (solana.Signature, error)
+	SetLinkHealthBatch(ctx context.Context, updates []serviceability.LinkHealthUpdate, globalStatePubkey solana.PublicKey) (solana.Signature, error)
+}
+
 type TelemetryProgramClient interface {
 	GetDeviceLatencySamples(ctx context.Context, originDevicePubKey, targetDevicePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error)
 }
 
 type Config struct {
-	Logger          *slog.Logger
-	LedgerRPCClient LedgerRPCClient
-	Serviceability  ServiceabilityClient
-	Telemetry       TelemetryProgramClient
-	Interval        time.Duration
-	SlackWebhookURL string
-	Env             string
+	Logger                  *slog.Logger
+	LedgerRPCClient         LedgerRPCClient
+	Serviceability          ServiceabilityClient
+	ServiceabilityExecutor  ServiceabilityExecutor
+	ServiceabilityProgramID solana.PublicKey
+	Telemetry               TelemetryProgramClient
+	Interval                time.Duration
+	SlackWebhookURL         string
+	Env                     string
 
 	// Burn-in slot counts for devices/links.
 	// ProvisioningSlotCount is used for new devices/links (status = Provisioning, DeviceProvisioning, LinkProvisioning).
 	// DrainedSlotCount is used for reactivated devices/links (status = Drained, HardDrained, SoftDrained).
 	ProvisioningSlotCount uint64
 	DrainedSlotCount      uint64
+
+	// Health evaluators determine target health based on criteria.
+	DeviceEvaluator *DeviceHealthEvaluator
+	LinkEvaluator   *LinkHealthEvaluator
 }
 
 func (c *Config) Validate() error {
@@ -52,11 +63,23 @@ func (c *Config) Validate() error {
 	if c.Serviceability == nil {
 		return errors.New("serviceability client is required")
 	}
+	if c.ServiceabilityExecutor == nil {
+		return errors.New("serviceability executor is required")
+	}
+	if c.ServiceabilityProgramID.IsZero() {
+		return errors.New("serviceability program ID is required")
+	}
 	if c.Telemetry == nil {
 		return errors.New("telemetry client is required")
 	}
 	if c.Interval <= 0 {
 		return errors.New("interval must be greater than 0")
+	}
+	if c.DeviceEvaluator == nil {
+		return errors.New("device evaluator is required")
+	}
+	if c.LinkEvaluator == nil {
+		return errors.New("link evaluator is required")
 	}
 	return nil
 }

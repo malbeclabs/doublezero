@@ -14,7 +14,7 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/stretchr/testify/require"
 )
@@ -67,12 +67,12 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		doublezero device update --pubkey ld4-dz01 --max-users 128 --desired-status activated
 		doublezero device update --pubkey frk-dz01 --max-users 128 --desired-status activated
 
-		doublezero device interface create la2-dz01 "Switch1/1/1" --bandwidth 10G --mtu 2048
-		doublezero device interface create ny5-dz01 "Switch1/1/1" --bandwidth 10G --mtu 2048
-		doublezero device interface create ny5-dz01 "Switch1/1/2" --bandwidth 10G --mtu 2048
-		doublezero device interface create ld4-dz01 "Switch1/1/1" --bandwidth 10G --mtu 2048
-		doublezero device interface create ld4-dz01 "Switch1/1/2" --bandwidth 10G --mtu 2048
-		doublezero device interface create frk-dz01 "Switch1/1/1" --bandwidth 10G --mtu 2048
+		doublezero device interface create la2-dz01 "Switch1/1/1" --bandwidth 10G
+		doublezero device interface create ny5-dz01 "Switch1/1/1" --bandwidth 10G
+		doublezero device interface create ny5-dz01 "Switch1/1/2" --bandwidth 10G
+		doublezero device interface create ld4-dz01 "Switch1/1/1" --bandwidth 10G
+		doublezero device interface create ld4-dz01 "Switch1/1/2" --bandwidth 10G
+		doublezero device interface create frk-dz01 "Switch1/1/1" --bandwidth 10G
 
 		doublezero device interface create la2-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
 		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G
@@ -84,11 +84,11 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		doublezero device interface create ld4-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G
 		doublezero device interface create frk-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G
 
-		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Switch1/1/1 --side-z ny5-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 40 --jitter-ms 3
+		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Switch1/1/1 --side-z ny5-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --delay-ms 40 --jitter-ms 3
 		doublezero link update --pubkey "la2-dz01:ny5-dz01" --desired-status activated
-		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Switch1/1/2 --side-z ld4-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 30 --jitter-ms 3
+		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Switch1/1/2 --side-z ld4-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --delay-ms 30 --jitter-ms 3
 		doublezero link update --pubkey "ny5-dz01:ld4-dz01" --desired-status activated
-		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/2 --side-z frk-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 25 --jitter-ms 10
+		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/2 --side-z frk-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --delay-ms 25 --jitter-ms 10
 		doublezero link update --pubkey "ld4-dz01:frk-dz01" --desired-status activated
 	`})
 	require.NoError(t, err)
@@ -183,6 +183,8 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			LinkPK:                       la2ToNy5LinkPK,
 			Epoch:                        &epoch,
 			SamplingIntervalMicroseconds: samplingIntervalMicroseconds,
+			AgentVersion:                 "test-version",
+			AgentCommit:                  "abc12345",
 		})
 		require.NoError(t, err)
 		for _, msg := range res.Meta.LogMessages {
@@ -210,6 +212,14 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		require.Equal(t, samplingIntervalMicroseconds, deviceLatencySamples.SamplingIntervalMicroseconds)
 		require.Equal(t, uint32(0), deviceLatencySamples.NextSampleIndex)
 		require.Empty(t, deviceLatencySamples.Samples)
+
+		// Verify agent version and commit were stored.
+		var expectedVersion [16]uint8
+		copy(expectedVersion[:], "test-version")
+		require.Equal(t, expectedVersion, deviceLatencySamples.AgentVersion)
+		var expectedCommit [8]uint8
+		copy(expectedCommit[:], "abc12345")
+		require.Equal(t, expectedCommit, deviceLatencySamples.AgentCommit)
 	})
 
 	// Write device latency samples.

@@ -346,7 +346,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.10.0"
+version = "0.16.0"
 dependencies = [
  "borsh 1.6.0",
  "byteorder",
@@ -358,7 +358,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.10.0"
+version = "0.16.0"
 dependencies = [
  "bitflags",
  "borsh 1.6.0",

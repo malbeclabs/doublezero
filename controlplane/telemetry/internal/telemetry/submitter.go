@@ -31,6 +31,8 @@ type SubmitterConfig struct {
 	MaxAttempts        int                             // optional, defaults to 5
 	MaxConcurrency     int
 	GetCurrentEpoch    func(ctx context.Context) (uint64, error)
+	AgentVersion       string
+	AgentCommit        string
 }
 
 // Submitter periodically flushes collected telemetry samples from the sample
@@ -135,6 +137,8 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 					LinkPK:                       partitionKey.LinkPK,
 					Epoch:                        &partitionKey.Epoch,
 					SamplingIntervalMicroseconds: uint64(s.cfg.ProbeInterval.Microseconds()),
+					AgentVersion:                 s.cfg.AgentVersion,
+					AgentCommit:                  s.cfg.AgentCommit,
 				})
 				if err != nil {
 					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToInitializeAccount).Inc()

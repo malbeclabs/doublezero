@@ -64,6 +64,8 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		ProgramClient:      cfg.TelemetryProgramClient,
 		GetCurrentEpoch:    cfg.GetCurrentEpochFunc,
 		MaxConcurrency:     cfg.SubmitterMaxConcurrency,
+		AgentVersion:       cfg.AgentVersion,
+		AgentCommit:        cfg.AgentCommit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create submitter: %w", err)
@@ -80,12 +82,11 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		RecordProbeResult: c.recordProbeResult,
 	})
 
-	// Initialize geoprobe coordinator if child probes or discovery are configured.
-	if len(cfg.InitialChildGeoProbes) > 0 || cfg.GeolocationClient != nil {
+	// Initialize geoprobe coordinator if onchain discovery is configured.
+	if cfg.GeolocationClient != nil {
 		probeUpdateCh := make(chan []geoprobe.ProbeAddress, 1)
 		c.geoprobeCoordinator, err = geoprobe.NewCoordinator(&geoprobe.CoordinatorConfig{
 			Logger:               log,
-			InitialProbes:        cfg.InitialChildGeoProbes,
 			ProbeUpdateCh:        probeUpdateCh,
 			Interval:             cfg.ProbeInterval,
 			ProbeTimeout:         cfg.TWAMPSenderTimeout,
@@ -97,22 +98,19 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create geoprobe coordinator: %w", err)
 		}
-		log.Info("Initialized geoprobe coordinator", "probeCount", len(cfg.InitialChildGeoProbes))
+		log.Info("Initialized geoprobe coordinator")
 
-		if cfg.GeolocationClient != nil {
-			c.geoprobeDiscovery, err = geoprobe.NewDiscovery(&geoprobe.DiscoveryConfig{
-				Logger:        log,
-				Client:        cfg.GeolocationClient,
-				LocalDevicePK: cfg.LocalDevicePK,
-				InitialProbes: cfg.InitialChildGeoProbes,
-				ProbeUpdateCh: probeUpdateCh,
-				Interval:      cfg.ProbeDiscoveryInterval,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("failed to create geoprobe discovery: %w", err)
-			}
-			log.Info("Initialized geoprobe discovery", "interval", cfg.ProbeDiscoveryInterval)
+		c.geoprobeDiscovery, err = geoprobe.NewDiscovery(&geoprobe.DiscoveryConfig{
+			Logger:        log,
+			Client:        cfg.GeolocationClient,
+			LocalDevicePK: cfg.LocalDevicePK,
+			ProbeUpdateCh: probeUpdateCh,
+			Interval:      cfg.ProbeDiscoveryInterval,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create geoprobe discovery: %w", err)
 		}
+		log.Info("Initialized geoprobe discovery", "interval", cfg.ProbeDiscoveryInterval)
 	}
 
 	return c, nil

@@ -46,6 +46,7 @@ impl UpdateUserCliCommand {
                 .map(|s| Pubkey::from_str(&s))
                 .transpose()?,
             tenant_pk: None,
+            tunnel_endpoint: None,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -101,6 +102,10 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
         };
 
         client
@@ -127,6 +132,7 @@ mod tests {
                 tunnel_net: Some("10.2.2.3/24".parse().unwrap()),
                 validator_pubkey: None,
                 tenant_pk: None,
+                tunnel_endpoint: None,
             }))
             .returning(move |_| Ok(signature));
 

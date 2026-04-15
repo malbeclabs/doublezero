@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	instructionSetDeviceHealth = 83
-	instructionSetLinkHealth   = 84
+	instructionSetDeviceHealth  = 83
+	instructionSetLinkHealth    = 84
+	instructionSetUserBGPStatus = 106
 )
 
 var (
@@ -111,7 +112,8 @@ func (e *Executor) SetDeviceHealthBatch(ctx context.Context, updates []DeviceHea
 			"failingIndex", failingIdx,
 			"devicePubkey", failedUpdate.DevicePubkey.String(),
 			"remainingBefore", len(remaining),
-			"error", err)
+			"error", formatRPCError(err),
+		)
 
 		remaining = append(remaining[:failingIdx], remaining[failingIdx+1:]...)
 	}
@@ -153,12 +155,41 @@ func (e *Executor) SetLinkHealthBatch(ctx context.Context, updates []LinkHealthU
 			"failingIndex", failingIdx,
 			"linkPubkey", failedUpdate.LinkPubkey.String(),
 			"remainingBefore", len(remaining),
-			"error", err)
+			"error", formatRPCError(err),
+		)
 
 		remaining = append(remaining[:failingIdx], remaining[failingIdx+1:]...)
 	}
 
 	return lastSig, ErrAllUpdatesFailed
+}
+
+// UserBGPStatusUpdate holds the parameters for a single SetUserBGPStatus submission.
+type UserBGPStatusUpdate struct {
+	UserPubkey   solana.PublicKey
+	DevicePubkey solana.PublicKey
+	Status       BGPStatus
+}
+
+// SetUserBGPStatus submits a SetUserBGPStatus instruction for a single user.
+// The executor's signer must be the device's metrics_publisher_pk.
+func (e *Executor) SetUserBGPStatus(ctx context.Context, u UserBGPStatusUpdate) (solana.Signature, error) {
+	instr := e.buildSetUserBGPStatusInstruction(u.UserPubkey, u.DevicePubkey, u.Status)
+	sig, _, err := e.executeTransaction(ctx, []solana.Instruction{instr})
+	return sig, err
+}
+
+func (e *Executor) buildSetUserBGPStatusInstruction(userPubkey, devicePubkey solana.PublicKey, status BGPStatus) solana.Instruction {
+	return &genericInstruction{
+		programID: e.programID,
+		accounts: solana.AccountMetaSlice{
+			solana.Meta(userPubkey).WRITE(),
+			solana.Meta(devicePubkey),
+			solana.Meta(e.signer.PublicKey()).SIGNER().WRITE(),
+			solana.Meta(solana.SystemProgramID),
+		},
+		data: []byte{instructionSetUserBGPStatus, byte(status)},
+	}
 }
 
 func (e *Executor) buildSetDeviceHealthInstruction(devicePubkey, globalStatePubkey solana.PublicKey, health DeviceHealth) solana.Instruction {
@@ -345,16 +376,6 @@ func (e *Executor) waitForTransactionFinalized(ctx context.Context, sig solana.S
 		return nil, errors.New("transaction not found or missing metadata after finalization")
 	}
 	return tx, nil
-}
-
-func GetGlobalStatePDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
-	return solana.FindProgramAddress(
-		[][]byte{
-			[]byte("doublezero"),
-			[]byte("globalstate"),
-		},
-		programID,
-	)
 }
 
 // parseFailingInstructionIndex extracts the failing instruction index from a Solana RPC error.

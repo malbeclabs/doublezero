@@ -30,7 +30,7 @@ const (
 	updateInstalledRoutesGaugeInterval = 10 * time.Second
 )
 
-func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig, clientIP string, reconcilerPollInterval int, reconcilerFetchTimeout int, stateDir string) error {
+func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints, latencySingleSocket bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig, clientIP string, reconcilerPollInterval int, reconcilerFetchTimeout int, stateDir string, onchainRPCTimeout time.Duration) error {
 	nlr := routing.Netlink{}
 	var crw bgp.RouteReaderWriter
 	var cr *routing.ConfiguredRoutes
@@ -77,7 +77,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		return fmt.Errorf("error parsing program ID: %v", err)
 	}
 	svcClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), pid)
-	cachingFetcher := onchain.NewCachingFetcher(svcClient, onchain.DefaultCacheTTL)
+	cachingFetcher := onchain.NewCachingFetcher(svcClient, onchain.DefaultCacheTTL, onchainRPCTimeout)
 
 	ip, method, err := DiscoverClientIP(clientIP)
 	if err != nil {
@@ -100,13 +100,17 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	// as a LatencyProvider for status enrichment.
 	var latencyManager *latency.LatencyManager
 	if enableLatencyProbing {
-		latencyManager = latency.NewLatencyManager(
+		opts := []latency.Option{
 			latency.WithFetcher(cachingFetcher),
-			latency.WithProbeInterval(time.Duration(probeInterval)*time.Second),
-			latency.WithCacheUpdateInterval(time.Duration(cacheUpdateInterval)*time.Second),
+			latency.WithProbeInterval(time.Duration(probeInterval) * time.Second),
+			latency.WithCacheUpdateInterval(time.Duration(cacheUpdateInterval) * time.Second),
 			latency.WithMetricsEnabled(enableLatencyMetrics),
 			latency.WithProbeTunnelEndpoints(latencyProbeTunnelEndpoints),
-		)
+		}
+		if latencySingleSocket {
+			opts = append(opts, latency.WithBatchProberFunc(latency.SingleSocketPing))
+		}
+		latencyManager = latency.NewLatencyManager(opts...)
 	}
 
 	fetchTimeout := time.Duration(reconcilerFetchTimeout) * time.Second
@@ -154,6 +158,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 			errCh <- err
 		}()
 		mux.HandleFunc("GET /latency", latencyManager.ServeLatency)
+		mux.HandleFunc("GET /v2/latency", latencyManager.ServeV2Latency)
 	}
 
 	// /config endpoint returns:

@@ -17,6 +17,9 @@ const (
 	AccountTypeInternetLatencySamples
 )
 
+// Covers both V0 (350 bytes) and V1 (349 bytes) header layouts.
+const DeviceLatencySamplesHeaderSize = 350
+
 type DeviceLatencySamplesHeaderOnlyAccountType struct {
 	AccountType AccountType // 1
 }
@@ -73,8 +76,14 @@ type DeviceLatencySamplesHeader struct {
 	// Tracks how many samples have been appended.
 	NextSampleIndex uint32 // 4
 
+	// Version string of the telemetry agent that created this account.
+	AgentVersion [16]uint8 // 16
+
+	// Short git commit hash of the telemetry agent binary.
+	AgentCommit [8]uint8 // 8
+
 	// Reserved for future use.
-	Unused [128]uint8 // 128
+	Unused [104]uint8 // 104
 }
 
 type DeviceLatencySamples struct {

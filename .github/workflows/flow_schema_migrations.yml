@@ -7,7 +7,6 @@ on:
   pull_request:
     paths:
       - "telemetry/flow-enricher/clickhouse/**"
-    branches: [ main, 'hotfix/**' ]
 
 jobs:
   validate:

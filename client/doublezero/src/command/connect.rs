@@ -7,7 +7,7 @@ use backon::{BlockingRetryable, ExponentialBuilder};
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
-    helpers::{init_command, parse_pubkey},
+    helpers::init_command,
     requirements::{check_accesspass, check_requirements, CHECK_BALANCE, CHECK_ID_JSON},
 };
 use doublezero_sdk::{
@@ -112,10 +112,7 @@ impl ProvisioningCliCommand {
         check_requirements(client, Some(&spinner), CHECK_ID_JSON | CHECK_BALANCE)?;
         check_doublezero(controller, client, Some(&spinner)).await?;
 
-        spinner.println(format!(
-            "🔗  Start Provisioning User to {}...",
-            client.get_environment()
-        ));
+        spinner.println(format!("⚡  Connecting to {}...", client.get_environment()));
 
         // Deprecation warning for --client-ip flag
         if self.client_ip.is_some() {
@@ -141,7 +138,7 @@ impl ProvisioningCliCommand {
 
         spinner.inc(1);
         spinner.println(format!("    DoubleZero ID: {}", client.get_payer()));
-        spinner.println(format!("🔍  Provisioning User for IP: {client_ip_str}"));
+        spinner.println(format!("⚡  Provisioning for IP: {client_ip_str}"));
 
         match self.parse_dz_mode()? {
             ParsedDzMode::Ibrl(user_type, tenant) => {
@@ -204,23 +201,6 @@ impl ProvisioningCliCommand {
         client_ip: Ipv4Addr,
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {
-        // Check if the daemon already has a multicast service running. The daemon
-        // does not support updating an existing service — both publisher and subscriber
-        // roles must be specified in a single connect command.
-        if let Ok(statuses) = controller.status().await {
-            if statuses.iter().any(|s| {
-                s.user_type
-                    .as_ref()
-                    .is_some_and(|t| t.eq_ignore_ascii_case("multicast"))
-            }) {
-                eyre::bail!(
-                    "A multicast service is already running. Disconnect first with \
-                     `doublezero disconnect multicast`, then reconnect with all desired \
-                     groups in a single command (e.g. --publish and --subscribe)."
-                );
-            }
-        }
-
         let mcast_groups = client.list_multicastgroup(ListMulticastGroupCommand)?;
 
         // Resolve pub group codes to pubkeys
@@ -449,8 +429,8 @@ impl ProvisioningCliCommand {
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
                     .await?;
 
-                spinner.println("    Creating user account...");
-                spinner.println(format!("    Device selected: {} ", device.code));
+                spinner.println("    Creating account...");
+                spinner.println(format!("    Device selected: {}", device.code));
                 spinner.inc(1);
 
                 // Check per-type user limit before attempting to create
@@ -473,40 +453,36 @@ impl ProvisioningCliCommand {
                     })?;
 
                 // Determine tenant: 1) from CLI argument, 2) from config file, 3) from access pass allowlist
-                let tenant = if let Some(t) = tenant {
-                    Some(t)
+                let tenant_with_source: Option<(String, &str)> = if let Some(t) = tenant {
+                    Some((t, "CLI argument"))
                 } else {
                     let cfg_tenant = doublezero_sdk::read_doublezero_config()
                         .ok()
                         .and_then(|(_, cfg)| cfg.tenant);
-                    if let Some(ref t) = cfg_tenant {
-                        spinner.println(format!("Using tenant '{t}' from configuration file."));
-                    }
-                    cfg_tenant.or_else(|| {
+                    if let Some(t) = cfg_tenant {
+                        Some((t, "configuration file"))
+                    } else {
                         accesspass
                             .tenant_allowlist
                             .first()
                             .filter(|pk| **pk != Pubkey::default())
-                            .map(|pk| {
-                                let t = pk.to_string();
-                                spinner.println(format!("Using tenant '{t}' from Access Pass."));
-                                t
-                            })
-                    })
+                            .map(|pk| (pk.to_string(), "Access Pass"))
+                    }
                 };
 
-                let tenant_pk = match tenant {
-                    Some(tenant_str) => match parse_pubkey(&tenant_str) {
-                        Some(pk) => Some(pk),
-                        None => {
-                            let (pubkey, _) = client
-                                .get_tenant(GetTenantCommand {
-                                    pubkey_or_code: tenant_str.clone(),
-                                })
-                                .map_err(|_| eyre::eyre!("Tenant not found"))?;
-                            Some(pubkey)
-                        }
-                    },
+                let tenant_pk = match tenant_with_source {
+                    Some((tenant_str, source)) => {
+                        let (pubkey, tenant_account) = client
+                            .get_tenant(GetTenantCommand {
+                                pubkey_or_code: tenant_str.clone(),
+                            })
+                            .map_err(|_| eyre::eyre!("Tenant '{}' not found", tenant_str))?;
+                        spinner.println(format!(
+                            "    Using tenant '{}' from {}.",
+                            tenant_account.code, source
+                        ));
+                        Some(pubkey)
+                    }
                     None => None,
                 };
 
@@ -599,10 +575,7 @@ impl ProvisioningCliCommand {
                     "    Creating separate Multicast user for concurrent tunnels (IBRL user: {})",
                     ibrl_user_pk
                 ));
-                spinner.println(format!(
-                    "    The Device has been selected: {} ",
-                    device.code
-                ));
+                spinner.println(format!("    Device selected: {}", device.code));
 
                 // Check per-type user limit before attempting to create
                 if let Some(err_msg) =
@@ -625,6 +598,7 @@ impl ProvisioningCliCommand {
                     publisher: pub_group_pks.contains(first_group_pk),
                     subscriber: sub_group_pks.contains(first_group_pk),
                     tunnel_endpoint,
+                    owner: None,
                 });
 
                 let user_pk = match res {
@@ -735,11 +709,8 @@ impl ProvisioningCliCommand {
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
                     .await?;
 
-                spinner.println(format!("    Creating an account for the IP: {client_ip}"));
-                spinner.println(format!(
-                    "    The Device has been selected: {} ",
-                    device.code
-                ));
+                spinner.println(format!("    Creating account for IP: {client_ip}"));
+                spinner.println(format!("    Device selected: {}", device.code));
                 spinner.inc(1);
 
                 // Check per-type user limit before attempting to create
@@ -763,6 +734,7 @@ impl ProvisioningCliCommand {
                     publisher: pub_group_pks.contains(first_group_pk),
                     subscriber: sub_group_pks.contains(first_group_pk),
                     tunnel_endpoint,
+                    owner: None,
                 });
 
                 let user_pk = match res {
@@ -980,7 +952,8 @@ fn exclude_ips(
 mod tests {
     use super::*;
     use crate::servicecontroller::{
-        DoubleZeroStatus, LatencyRecord, MockServiceController, StatusResponse, V2StatusResponse,
+        DoubleZeroStatus, LatencyRecord, LatencyResponse, MockServiceController, StatusResponse,
+        V2StatusResponse,
     };
     use doublezero_cli::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
     use doublezero_config::Environment;
@@ -1200,10 +1173,11 @@ mod tests {
             });
 
             let latencies = fixture.latencies.clone();
-            fixture
-                .controller
-                .expect_latency()
-                .returning_st(move || Ok(latencies.lock().unwrap().clone()));
+            fixture.controller.expect_latency().returning_st(move || {
+                let results = latencies.lock().unwrap().clone();
+                let ready = !results.is_empty();
+                Ok(LatencyResponse { ready, results })
+            });
 
             let global_cfg = fixture.global_cfg.clone();
             fixture
@@ -1319,7 +1293,7 @@ mod tests {
         pub fn add_device(
             &mut self,
             device_type: DeviceType,
-            latency_ns: i32,
+            latency_ns: i64,
             reachable: bool,
         ) -> (Pubkey, Device) {
             let mut devices = self.devices.lock().unwrap();
@@ -1448,6 +1422,10 @@ mod tests {
                 subscribers: vec![],
                 validator_pubkey: Pubkey::new_unique(),
                 tunnel_endpoint,
+                tunnel_flags: 0,
+                bgp_status: Default::default(),
+                last_bgp_up_at: 0,
+                last_bgp_reported_at: 0,
             }
         }
 
@@ -1514,6 +1492,7 @@ mod tests {
                 publisher,
                 subscriber,
                 tunnel_endpoint: user.tunnel_endpoint,
+                owner: None,
             };
 
             let users = self.users.clone();

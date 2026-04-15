@@ -17,7 +17,7 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -70,6 +70,16 @@ func FindIBRLStatus(statuses []*pb.Status) *pb.Status {
 	return nil
 }
 
+// FindMulticastStatus returns the first Multicast status from the given list.
+func FindMulticastStatus(statuses []*pb.Status) *pb.Status {
+	for _, s := range statuses {
+		if s.UserType == "Multicast" {
+			return s
+		}
+	}
+	return nil
+}
+
 type Device struct {
 	PubKey       string
 	Code         string
@@ -101,6 +111,15 @@ type Client struct {
 	// Exported as a simple configuration field (unlike publicIP which uses a setter
 	// because it has a non-nil invariant enforced by SetPublicIP).
 	ClientIP string
+
+	// Settlement config passed to doublezero-solana shreds commands.
+	// SolanaRPCURL is the Solana RPC endpoint for settlement transactions (--url).
+	// On testnet this is the DZ ledger URL; on mainnet it's the public Solana RPC.
+	SolanaRPCURL               string
+	ShredSubscriptionProgramID string
+	DZLedgerURL                string
+	USDCMint                   string
+	Keypair                    string
 }
 
 func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int, networkConfig *config.NetworkConfig, devices map[string]*Device, allocateAddr bool) (*Client, error) {
@@ -125,6 +144,14 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 
 	serviceabilityClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
 
+	// Settlement transactions on testnet/devnet use the DZ ledger RPC endpoint
+	// (which hosts the settlement programs). Mainnet and localnet use the
+	// standard Solana RPC.
+	solanaRPCURL := networkConfig.SolanaRPCURL
+	if networkConfig.Moniker == config.EnvTestnet || networkConfig.Moniker == config.EnvDevnet {
+		solanaRPCURL = networkConfig.LedgerPublicRPCURL
+	}
+
 	return &Client{
 		log:            log,
 		grpcClient:     grpcClient,
@@ -133,8 +160,12 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 		serviceability: serviceabilityClient,
 		devices:        devices,
 
-		Host:         hostname,
-		AllocateAddr: allocateAddr,
+		Host:                       hostname,
+		AllocateAddr:               allocateAddr,
+		SolanaRPCURL:               solanaRPCURL,
+		ShredSubscriptionProgramID: networkConfig.ShredSubscriptionProgramID,
+		DZLedgerURL:                networkConfig.LedgerPublicRPCURL,
+		USDCMint:                   networkConfig.USDCMint,
 	}, nil
 }
 

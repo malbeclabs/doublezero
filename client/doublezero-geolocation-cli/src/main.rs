@@ -34,6 +34,10 @@ struct App {
 }
 
 fn main() -> eyre::Result<()> {
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let app = App::parse();
 
     let stdout = std::io::stdout();
@@ -117,6 +121,7 @@ fn main() -> eyre::Result<()> {
             UserCommands::List(args) => args.execute(&client, &mut handle),
             UserCommands::AddTarget(args) => args.execute(&client, &mut handle),
             UserCommands::RemoveTarget(args) => args.execute(&client, &mut handle),
+            UserCommands::SetResultDestination(args) => args.execute(&client, &mut handle),
             UserCommands::UpdatePayment(args) => args.execute(&client, &mut handle),
         },
         Command::InitConfig(args) => args.execute(&client, &mut handle),

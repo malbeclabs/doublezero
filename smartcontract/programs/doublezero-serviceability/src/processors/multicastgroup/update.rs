@@ -37,14 +37,15 @@ pub struct MulticastGroupUpdateArgs {
     /// Requires ResourceExtension account (MulticastGroupBlock).
     #[incremental(default = false)]
     pub use_onchain_allocation: bool,
+    pub owner: Option<Pubkey>,
 }
 
 impl fmt::Debug for MulticastGroupUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {:?}, multicast_ip: {:?}, max_bandwidth: {:?}, publisher_count: {:?}, subscriber_count: {:?}, use_onchain_allocation: {}",
-            self.code, self.multicast_ip, self.max_bandwidth, self.publisher_count, self.subscriber_count, self.use_onchain_allocation
+            "code: {:?}, multicast_ip: {:?}, max_bandwidth: {:?}, publisher_count: {:?}, subscriber_count: {:?}, use_onchain_allocation: {}, owner: {:?}",
+            self.code, self.multicast_ip, self.max_bandwidth, self.publisher_count, self.subscriber_count, self.use_onchain_allocation, self.owner
         )
     }
 }
@@ -123,7 +124,7 @@ pub fn process_update_multicastgroup(
                 multicast_group_block_ext,
                 program_id,
                 writable = true,
-                pda = Some(&expected_pda),
+                pda = &expected_pda,
                 "MulticastGroupBlock"
             );
 
@@ -151,6 +152,9 @@ pub fn process_update_multicastgroup(
     }
     if let Some(ref subscriber_count) = value.subscriber_count {
         multicastgroup.subscriber_count = *subscriber_count;
+    }
+    if let Some(ref owner) = value.owner {
+        multicastgroup.owner = *owner;
     }
 
     try_acc_write(

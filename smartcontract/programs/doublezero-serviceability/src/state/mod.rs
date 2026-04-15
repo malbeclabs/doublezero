@@ -7,6 +7,7 @@ pub mod exchange;
 pub mod feature_flags;
 pub mod globalconfig;
 pub mod globalstate;
+pub mod index;
 pub mod interface;
 pub mod link;
 pub mod location;

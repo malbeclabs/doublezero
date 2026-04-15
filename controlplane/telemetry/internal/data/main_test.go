@@ -42,6 +42,7 @@ type mockDeviceProvider struct {
 	GetCircuitsFunc           func(context.Context) ([]devicedata.Circuit, error)
 	GetCircuitLatenciesFunc   func(context.Context, devicedata.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error)
 	GetSummaryForCircuitsFunc func(context.Context, devicedata.GetSummaryForCircuitsConfig) ([]devicedata.CircuitSummary, error)
+	GetAgentVersionsFunc      func(context.Context) ([]devicedata.DeviceAgentVersion, error)
 }
 
 func (m *mockDeviceProvider) GetCircuits(ctx context.Context) ([]devicedata.Circuit, error) {
@@ -54,6 +55,13 @@ func (m *mockDeviceProvider) GetCircuitLatencies(ctx context.Context, cfg device
 
 func (m *mockDeviceProvider) GetSummaryForCircuits(ctx context.Context, cfg devicedata.GetSummaryForCircuitsConfig) ([]devicedata.CircuitSummary, error) {
 	return m.GetSummaryForCircuitsFunc(ctx, cfg)
+}
+
+func (m *mockDeviceProvider) GetAgentVersions(ctx context.Context) ([]devicedata.DeviceAgentVersion, error) {
+	if m.GetAgentVersionsFunc != nil {
+		return m.GetAgentVersionsFunc(ctx)
+	}
+	return nil, nil
 }
 
 type mockInternetProvider struct {

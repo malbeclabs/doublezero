@@ -47,6 +47,10 @@ struct App {
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let app = App::parse();
 
     if let Some(keypair) = &app.keypair {
@@ -241,6 +245,15 @@ async fn main() -> eyre::Result<()> {
                     args.execute(&client, &mut handle)
                 }
             },
+        },
+
+        Command::Sentinel(args) => match args.command {
+            cli::sentinel::SentinelCommands::FindValidatorMulticastPublishers(cmd) => {
+                cmd.execute(&dzclient).await
+            }
+            cli::sentinel::SentinelCommands::CreateValidatorMulticastPublishers(cmd) => {
+                cmd.execute(&dzclient).await
+            }
         },
 
         Command::Export(args) => args.execute(&client, &mut handle),

@@ -41,13 +41,14 @@ pub struct UserUpdateArgs {
     pub dz_prefix_count: u8,
     #[incremental(default = 0)]
     pub multicast_publisher_count: u8,
+    pub tunnel_endpoint: Option<Ipv4Addr>,
 }
 
 impl fmt::Debug for UserUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}, validator_pubkey: {}, tenant_pk: {}, dz_prefix_count: {}, multicast_publisher_count: {}",
+            "user_type: {}, cyoa_type: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}, validator_pubkey: {}, tenant_pk: {}, dz_prefix_count: {}, multicast_publisher_count: {}, tunnel_endpoint: {}",
             format_option!(self.user_type),
             format_option!(self.cyoa_type),
             format_option!(self.dz_ip),
@@ -57,6 +58,7 @@ impl fmt::Debug for UserUpdateArgs {
             format_option!(self.tenant_pk),
             self.dz_prefix_count,
             self.multicast_publisher_count,
+            format_option!(self.tunnel_endpoint),
         )
     }
 }
@@ -125,14 +127,14 @@ pub fn process_update_user(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    // Validate accounts
+    validate_program_account!(user_account, program_id, writable = true, "User");
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        "GlobalState"
     );
-    // Check if the account is writable
-    assert!(user_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
@@ -161,7 +163,7 @@ pub fn process_update_user(
             user_tunnel_block_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_user_tunnel_pda),
+            pda = &expected_user_tunnel_pda,
             "UserTunnelBlock"
         );
 
@@ -173,7 +175,7 @@ pub fn process_update_user(
                 multicast_publisher_ext,
                 program_id,
                 writable = true,
-                pda = Some(&expected_multicast_publisher_pda),
+                pda = &expected_multicast_publisher_pda,
                 "MulticastPublisherBlock"
             );
         }
@@ -185,7 +187,7 @@ pub fn process_update_user(
             device_tunnel_ids_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_tunnel_ids_pda),
+            pda = &expected_tunnel_ids_pda,
             "TunnelIds"
         );
 
@@ -199,7 +201,7 @@ pub fn process_update_user(
                 dz_prefix_account,
                 program_id,
                 writable = true,
-                pda = Some(&expected_dz_prefix_pda),
+                pda = &expected_dz_prefix_pda,
                 &format!("DzPrefixBlock[{idx}]")
             );
         }
@@ -327,6 +329,9 @@ pub fn process_update_user(
     }
     if let Some(value) = value.validator_pubkey {
         user.validator_pubkey = value;
+    }
+    if let Some(value) = value.tunnel_endpoint {
+        user.tunnel_endpoint = value;
     }
     if let Some(new_tenant_pk) = value.tenant_pk {
         // If tenant accounts are provided, update reference counts

@@ -17,7 +17,7 @@ import (
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 )
 
@@ -376,7 +376,6 @@ func (p *ProvisioningTest) CreateInterface(ctx context.Context, deviceCode, ifac
 		"device", "interface", "create",
 		deviceCode, ifaceName,
 		"--bandwidth", "10G",
-		"--mtu", "2048",
 		"-w", // wait for completion
 	}
 
@@ -504,7 +503,6 @@ func (p *ProvisioningTest) CreateLink(ctx context.Context, link *LinkInfo) error
 		"--side-z", link.SideZCode,
 		"--side-z-interface", link.SideZIfaceName,
 		"--bandwidth", formatBandwidth(link.Bandwidth),
-		"--mtu", fmt.Sprintf("%d", link.Mtu),
 		"--delay-ms", fmt.Sprintf("%d", link.DelayMs),
 		"--jitter-ms", fmt.Sprintf("%d", link.JitterMs),
 		"-w", // wait for completion
@@ -599,29 +597,4 @@ func formatBandwidth(bps uint64) string {
 		return fmt.Sprintf("%d Kbps", bps/1_000)
 	}
 	return fmt.Sprintf("%d bps", bps)
-}
-
-type CLIDeviceOutput struct {
-	Account         string   `json:"account"`
-	Code            string   `json:"code"`
-	ContributorCode string   `json:"contributor_code"`
-	LocationCode    string   `json:"location_code"`
-	ExchangeCode    string   `json:"exchange_code"`
-	DeviceType      string   `json:"device_type"`
-	PublicIP        string   `json:"public_ip"`
-	DzPrefixes      []string `json:"dz_prefixes"`
-	Users           int      `json:"users"`
-	MaxUsers        int      `json:"max_users"`
-	Status          string   `json:"status"`
-	Health          string   `json:"health"`
-	MgmtVrf         string   `json:"mgmt_vrf"`
-	Owner           string   `json:"owner"`
-}
-
-func parseDeviceListJSON(output []byte) ([]CLIDeviceOutput, error) {
-	var devices []CLIDeviceOutput
-	if err := json.Unmarshal(output, &devices); err != nil {
-		return nil, fmt.Errorf("failed to parse device list JSON: %w", err)
-	}
-	return devices, nil
 }

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, fs::File, path::Path};
 use tabled::{derive::display, Tabled};
 
-const NANOS_TO_MS: f32 = 1000000.0;
+const NANOS_TO_MS: f64 = 1000000.0;
 
 #[derive(Clone, Tabled, Deserialize, Serialize, Debug)]
 pub struct LatencyRecord {
@@ -21,16 +21,16 @@ pub struct LatencyRecord {
     #[tabled(rename = "IP")]
     pub device_ip: String,
     #[tabled(display = "display_as_ms", rename = "Min")]
-    pub min_latency_ns: i32,
+    pub min_latency_ns: i64,
     #[tabled(display = "display_as_ms", rename = "Max")]
-    pub max_latency_ns: i32,
+    pub max_latency_ns: i64,
     #[tabled(display = "display_as_ms", rename = "Avg")]
-    pub avg_latency_ns: i32,
+    pub avg_latency_ns: i64,
     pub reachable: bool,
 }
 
-fn display_as_ms(latency: &i32) -> String {
-    format!("{:.2}ms", (*latency as f32 / NANOS_TO_MS))
+fn display_as_ms(latency: &i64) -> String {
+    format!("{:.2}ms", (*latency as f64 / NANOS_TO_MS))
 }
 
 impl fmt::Display for LatencyRecord {
@@ -47,6 +47,12 @@ impl fmt::Display for LatencyRecord {
             self.reachable
         )
     }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct LatencyResponse {
+    pub ready: bool,
+    pub results: Vec<LatencyRecord>,
 }
 
 #[derive(Tabled, Serialize, Deserialize, Debug, Clone)]
@@ -140,6 +146,14 @@ fn parse_daemon_response<T: serde::de::DeserializeOwned>(
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct MulticastGroups {
+    #[serde(default)]
+    pub publisher: Vec<String>,
+    #[serde(default)]
+    pub subscriber: Vec<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct V2ServiceStatus {
     #[serde(flatten)]
@@ -152,6 +166,8 @@ pub struct V2ServiceStatus {
     pub metro: String,
     #[serde(default)]
     pub tenant: String,
+    #[serde(default)]
+    pub multicast_groups: MulticastGroups,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -170,7 +186,7 @@ pub trait ServiceController {
     fn service_controller_can_open(&self) -> bool;
     async fn get_config(&self) -> eyre::Result<GetConfigResponse>;
     async fn get_env(&self) -> eyre::Result<Environment>;
-    async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>>;
+    async fn latency(&self) -> eyre::Result<LatencyResponse>;
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>>;
     async fn v2_status(&self) -> eyre::Result<V2StatusResponse>;
     async fn enable(&self) -> eyre::Result<()>;
@@ -230,8 +246,8 @@ impl ServiceController for ServiceControllerImpl {
         Ok(Environment::from_program_id(&config.program_id).unwrap_or_default())
     }
 
-    async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>> {
-        let uri = Uri::new(&self.socket_path, "/latency").into();
+    async fn latency(&self) -> eyre::Result<LatencyResponse> {
+        let uri = Uri::new(&self.socket_path, "/v2/latency").into();
         let client: Client<UnixConnector, Full<Bytes>> =
             Client::builder(TokioExecutor::new()).build(UnixConnector);
         let res = client
@@ -246,7 +262,7 @@ impl ServiceController for ServiceControllerImpl {
             .map_err(|e| eyre!("Unable to read response body: {e}"))?
             .to_bytes();
 
-        parse_daemon_response::<Vec<LatencyRecord>>(&data, "/latency")
+        parse_daemon_response::<LatencyResponse>(&data, "/v2/latency")
     }
 
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>> {

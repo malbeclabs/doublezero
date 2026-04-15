@@ -47,6 +47,7 @@ use crate::{
             setauthority::process_set_authority, setfeatureflags::process_set_feature_flags,
             setversion::process_set_version,
         },
+        index::{create::process_create_index, delete::process_delete_index},
         link::{
             accept::process_accept_link, activate::process_activate_link,
             closeaccount::process_closeaccount_link, create::process_create_link,
@@ -102,7 +103,7 @@ use crate::{
             closeaccount::process_closeaccount_user, create::process_create_user,
             create_subscribe::process_create_subscribe_user, delete::process_delete_user,
             reject::process_reject_user, requestban::process_request_ban_user,
-            update::process_update_user,
+            set_bgp_status::process_set_bgp_status_user, update::process_update_user,
         },
     },
 };
@@ -420,6 +421,15 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::DeletePermission(value) => {
             process_delete_permission(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CreateIndex(value) => {
+            process_create_index(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeleteIndex(value) => {
+            process_delete_index(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetUserBGPStatus(value) => {
+            process_set_bgp_status_user(program_id, accounts, &value)?
         }
     };
     Ok(())

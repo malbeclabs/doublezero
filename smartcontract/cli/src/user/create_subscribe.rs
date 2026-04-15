@@ -35,6 +35,9 @@ pub struct CreateSubscribeUserCliCommand {
     /// Wait for the user to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
+    /// Custom owner pubkey (foundation allowlist only)
+    #[arg(long)]
+    pub owner: Option<String>,
 }
 
 impl CreateSubscribeUserCliCommand {
@@ -84,6 +87,12 @@ impl CreateSubscribeUserCliCommand {
             },
         };
 
+        let owner_pk = self
+            .owner
+            .as_deref()
+            .map(|s| parse_pubkey(s).ok_or_else(|| eyre::eyre!("Invalid owner pubkey: {}", s)))
+            .transpose()?;
+
         let (signature, pubkey) = client.create_subscribe_user(CreateSubscribeUserCommand {
             user_type: UserType::Multicast,
             device_pk,
@@ -95,6 +104,7 @@ impl CreateSubscribeUserCliCommand {
                 .or(subscriber_pk)
                 .ok_or(eyre::eyre!("Subscriber is required if publisher is not"))?,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            owner: owner_pk,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -214,6 +224,7 @@ mod tests {
                 subscriber: true,
                 mgroup_pk: mgroup_pubkey,
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                owner: None,
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
@@ -227,6 +238,7 @@ mod tests {
             publisher: None,
             subscriber: Some(mgroup_pubkey.to_string()),
             wait: false,
+            owner: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

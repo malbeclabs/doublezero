@@ -17,7 +17,7 @@ use doublezero_cli::{
 
 use doublezero_sdk::{
     commands::user::{delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand},
-    UserType,
+    GetGlobalStateCommand, UserType,
 };
 
 #[allow(clippy::upper_case_acronyms)]
@@ -51,12 +51,51 @@ impl DecommissioningCliCommand {
         check_requirements(client, Some(&spinner), CHECK_ID_JSON | CHECK_BALANCE)?;
         check_doublezero(&controller, client, Some(&spinner)).await?;
         // READY
-        spinner.println("🔍  Decommissioning User");
+        spinner.println("⚡  Disconnecting...");
 
         // Get client IP from daemon (same source as connect)
         let client_ip = super::helpers::resolve_client_ip(&controller).await?;
         spinner.println(format!("    Client IP: {client_ip}"));
 
+        let (_, gstate) = client.get_globalstate(GetGlobalStateCommand)?;
+        self.delete_users(client, client_ip, gstate.feed_authority_pk, &spinner)?;
+
+        // Wait for daemon to deprovision the tunnel(s)
+        let user_type_filter: Option<&str> = match self.dz_mode {
+            Some(DzMode::IBRL) => Some("IBRL"),
+            Some(DzMode::Multicast) => Some("Multicast"),
+            None => None,
+        };
+        match self
+            .poll_for_daemon_deprovisioned(&controller, user_type_filter, &spinner)
+            .await
+        {
+            Ok(()) => {
+                spinner.println("    Tunnel confirmed removed");
+            }
+            Err(e) => {
+                spinner.println(format!(
+                    "    Daemon deprovisioning in progress (will complete automatically): {e}"
+                ));
+            }
+        }
+
+        spinner.println("✅  Deprovisioning Complete");
+        spinner.finish_and_clear();
+
+        Ok(())
+    }
+
+    /// Delete DZ Ledger users matching `client_ip`, skipping any that are
+    /// owned by a different keypair (e.g. the shred oracle). Extracted from
+    /// `execute` so it can be tested without filesystem/daemon dependencies.
+    fn delete_users(
+        &self,
+        client: &dyn CliCommand,
+        client_ip: std::net::Ipv4Addr,
+        feed_authority: Pubkey,
+        spinner: &ProgressBar,
+    ) -> eyre::Result<()> {
         spinner.inc(1);
         spinner.set_message("deleting user account...");
 
@@ -79,43 +118,40 @@ impl DecommissioningCliCommand {
                 None => {}
             }
 
+            // Skip users owned by a different keypair — only the owner can delete them.
+            if user.owner != client.get_payer() {
+                if user.owner == feed_authority {
+                    // User is managed by the shred oracle.
+                    // The validator must withdraw via doublezero-solana first.
+                    spinner.println(format!(
+                        "⚠️  User {pubkey} is managed by the shred oracle (owner: {}). \
+                         Use `doublezero-solana shreds withdraw` to disconnect.",
+                        user.owner,
+                    ));
+                } else {
+                    spinner.println(format!(
+                        "⚠️  User {pubkey} is managed by an external service (owner: {}). \
+                         It will be cleaned up automatically.",
+                        user.owner,
+                    ));
+                }
+                continue;
+            }
+
             spinner.inc(1);
-            println!("🔍  Deleting User Account for: {pubkey}");
+            spinner.println(format!("⚡  Removing account: {pubkey}"));
             let res = client.delete_user(DeleteUserCommand { pubkey: *pubkey });
             match res {
                 Ok(_) => {
-                    spinner.println("🔍  User Account deleting...");
+                    spinner.println("    Account deletion submitted");
                 }
-                Err(_) => {
-                    spinner.println("🔍  User Account not found");
+                Err(e) => {
+                    spinner.println(format!("❌  Failed to remove account: {e}"));
                 }
             }
 
-            self.poll_for_user_closed(client, pubkey, &spinner)?;
+            self.poll_for_user_closed(client, pubkey, spinner)?;
         }
-
-        // Wait for daemon to deprovision the tunnel(s)
-        let user_type_filter: Option<&str> = match self.dz_mode {
-            Some(DzMode::IBRL) => Some("IBRL"),
-            Some(DzMode::Multicast) => Some("Multicast"),
-            None => None,
-        };
-        match self
-            .poll_for_daemon_deprovisioned(&controller, user_type_filter, &spinner)
-            .await
-        {
-            Ok(()) => {
-                spinner.println("    Daemon confirmed tunnel(s) removed");
-            }
-            Err(e) => {
-                spinner.println(format!(
-                    "    Daemon deprovisioning in progress (will complete automatically): {e}"
-                ));
-            }
-        }
-
-        spinner.println("✅  Deprovisioning Complete");
-        spinner.finish_and_clear();
 
         Ok(())
     }
@@ -429,5 +465,161 @@ mod tests {
             err.to_string().contains("connection refused"),
             "unexpected error: {err}"
         );
+    }
+
+    // --- delete_users tests ---
+
+    use doublezero_cli::tests::utils::create_test_client;
+    use doublezero_sdk::{AccountType, User, UserCYOA, UserStatus};
+    use std::collections::HashMap;
+
+    fn make_test_user(client_ip: Ipv4Addr, owner: Pubkey, user_type: UserType) -> User {
+        User {
+            account_type: AccountType::User,
+            owner,
+            index: 0,
+            bump_seed: 0,
+            user_type,
+            tenant_pk: Pubkey::default(),
+            device_pk: Pubkey::default(),
+            cyoa_type: UserCYOA::None,
+            client_ip,
+            dz_ip: Ipv4Addr::UNSPECIFIED,
+            tunnel_id: 0,
+            tunnel_net: Default::default(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+        }
+    }
+
+    #[test]
+    fn test_delete_users_skips_oracle_owned_user() {
+        let mut client = create_test_client();
+        let payer = client.get_payer();
+        let oracle_key = Pubkey::new_unique();
+        let ip = Ipv4Addr::new(10, 0, 0, 1);
+
+        let user_pk = Pubkey::new_unique();
+        let user = make_test_user(ip, oracle_key, UserType::Multicast);
+
+        let mut users = HashMap::new();
+        users.insert(user_pk, user);
+
+        client
+            .expect_list_user()
+            .returning(move |_| Ok(users.clone()));
+        // delete_user should NOT be called for oracle-owned user.
+        client.expect_delete_user().never();
+
+        let cmd = test_cmd();
+        let spinner = hidden_spinner();
+        let result = cmd.delete_users(&client, ip, oracle_key, &spinner);
+        assert!(result.is_ok());
+
+        // Verify payer != oracle_key to confirm the test is meaningful.
+        assert_ne!(payer, oracle_key);
+    }
+
+    #[test]
+    fn test_delete_users_deletes_self_owned_user() {
+        let mut client = create_test_client();
+        let payer = client.get_payer();
+        let feed_authority = Pubkey::new_unique();
+        let ip = Ipv4Addr::new(10, 0, 0, 1);
+
+        let user_pk = Pubkey::new_unique();
+        let user = make_test_user(ip, payer, UserType::Multicast);
+
+        let mut users = HashMap::new();
+        users.insert(user_pk, user);
+
+        client
+            .expect_list_user()
+            .returning(move |_| Ok(users.clone()));
+        // delete_user SHOULD be called for self-owned user.
+        client
+            .expect_delete_user()
+            .once()
+            .returning(|_| Err(eyre::eyre!("simulated not found")));
+        // get_user for poll_for_user_closed — return "not found" immediately.
+        client
+            .expect_get_user()
+            .returning(|_| Err(eyre::eyre!("User not found")));
+
+        let cmd = test_cmd();
+        let spinner = hidden_spinner();
+        let result = cmd.delete_users(&client, ip, feed_authority, &spinner);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_delete_users_skips_externally_owned_non_oracle_user() {
+        let mut client = create_test_client();
+        let payer = client.get_payer();
+        let external_owner = Pubkey::new_unique();
+        let feed_authority = Pubkey::new_unique();
+        let ip = Ipv4Addr::new(10, 0, 0, 1);
+
+        let user_pk = Pubkey::new_unique();
+        let user = make_test_user(ip, external_owner, UserType::IBRL);
+
+        let mut users = HashMap::new();
+        users.insert(user_pk, user);
+
+        client
+            .expect_list_user()
+            .returning(move |_| Ok(users.clone()));
+        // delete_user should NOT be called for externally-owned user.
+        client.expect_delete_user().never();
+
+        let cmd = test_cmd();
+        let spinner = hidden_spinner();
+        let result = cmd.delete_users(&client, ip, feed_authority, &spinner);
+        assert!(result.is_ok());
+
+        assert_ne!(payer, external_owner);
+        assert_ne!(external_owner, feed_authority);
+    }
+
+    #[test]
+    fn test_delete_users_mixed_ownership() {
+        let mut client = create_test_client();
+        let payer = client.get_payer();
+        let oracle_key = Pubkey::new_unique();
+        let ip = Ipv4Addr::new(10, 0, 0, 1);
+
+        let self_owned_pk = Pubkey::new_unique();
+        let self_owned = make_test_user(ip, payer, UserType::IBRL);
+
+        let oracle_owned_pk = Pubkey::new_unique();
+        let oracle_owned = make_test_user(ip, oracle_key, UserType::Multicast);
+
+        let mut users = HashMap::new();
+        users.insert(self_owned_pk, self_owned);
+        users.insert(oracle_owned_pk, oracle_owned);
+
+        client
+            .expect_list_user()
+            .returning(move |_| Ok(users.clone()));
+        // delete_user should be called exactly once (for the self-owned user only).
+        client
+            .expect_delete_user()
+            .once()
+            .returning(|_| Err(eyre::eyre!("simulated not found")));
+        client
+            .expect_get_user()
+            .returning(|_| Err(eyre::eyre!("User not found")));
+
+        let cmd = test_cmd();
+        let spinner = hidden_spinner();
+        let result = cmd.delete_users(&client, ip, oracle_key, &spinner);
+        assert!(result.is_ok());
     }
 }

@@ -1,6 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_accesspass_pda,
+    processors::validation::validate_program_account,
     serializer::{try_acc_close, try_acc_write},
     state::{
         accesspass::{AccessPass, AccessPassStatus},
@@ -119,26 +120,28 @@ pub fn process_delete_user(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
+    // Validate accounts
+    validate_program_account!(user_account, program_id, writable = true, "User");
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        accesspass_account,
+        program_id,
+        writable = true,
+        "AccessPass"
     );
-    assert_eq!(
-        accesspass_account.owner, program_id,
-        "Invalid AccessPass Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
-    assert!(user_account.is_writable, "PDA Account is not writable");
 
     let user: User = User::try_from(user_account)?;
 
@@ -218,10 +221,7 @@ pub fn process_delete_user(
         let owner_account = owner_account.unwrap();
 
         // Validate additional accounts
-        assert_eq!(
-            device_account.owner, program_id,
-            "Invalid Device Account Owner"
-        );
+        validate_program_account!(device_account, program_id, writable = false, "Device");
 
         if user.device_pk != *device_account.key {
             return Err(ProgramError::InvalidAccountData);
@@ -247,8 +247,7 @@ pub fn process_delete_user(
                 tenant_acc.key, &user.tenant_pk,
                 "Tenant account doesn't match user's tenant"
             );
-            assert_eq!(tenant_acc.owner, program_id, "Invalid Tenant Account Owner");
-            assert!(tenant_acc.is_writable, "Tenant Account is not writable");
+            validate_program_account!(tenant_acc, program_id, writable = true, "Tenant");
 
             let mut tenant = Tenant::try_from(tenant_acc)?;
             tenant.reference_count = tenant.reference_count.saturating_sub(1);
@@ -262,7 +261,7 @@ pub fn process_delete_user(
         device.users_count = device.users_count.saturating_sub(1);
         match user.user_type {
             UserType::Multicast => {
-                if !user.publishers.is_empty() {
+                if TunnelFlags::is_set(user.tunnel_flags, TunnelFlags::CreatedAsPublisher) {
                     device.multicast_publishers_count =
                         device.multicast_publishers_count.saturating_sub(1);
                 } else {

@@ -56,4 +56,28 @@ var (
 		},
 		[]string{labelServiceType},
 	)
+
+	metricConnectionInfo = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "doublezero_connection_info",
+			Help: "Connection metadata for active DoubleZero services",
+		},
+		[]string{"user_type", "network", "current_device", "metro", "tunnel_name", "tunnel_src", "tunnel_dst"},
+	)
+
+	metricConnectionRttNanoseconds = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "doublezero_connection_rtt_nanoseconds",
+			Help: "Average round-trip time to the current connected DoubleZero device in nanoseconds",
+		},
+		[]string{"user_type", "network", "current_device", "metro"},
+	)
+
+	metricConnectionLossPercentage = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "doublezero_connection_loss_percentage",
+			Help: "Packet loss percentage to the current connected DoubleZero device",
+		},
+		[]string{"user_type", "network", "current_device", "metro"},
+	)
 )

@@ -1,5 +1,6 @@
 use crate::{
     error::DoubleZeroError,
+    processors::validation::validate_program_account,
     serializer::{try_acc_close, try_acc_write},
     state::{
         accounttype::AccountType,
@@ -85,16 +86,19 @@ pub fn process_delete_link(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(
-        contributor_account.owner, program_id,
-        "Invalid Contributor Account Owner"
+    // Validate accounts
+    validate_program_account!(link_account, program_id, writable = true, "Link");
+    validate_program_account!(
+        contributor_account,
+        program_id,
+        writable = true,
+        "Contributor"
     );
-
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
@@ -132,15 +136,9 @@ pub fn process_delete_link(
         owner_account,
     )) = deallocation_accounts
     {
-        // Validate additional account owners
-        assert_eq!(
-            side_a_account.owner, program_id,
-            "Invalid Side A Account Owner"
-        );
-        assert_eq!(
-            side_z_account.owner, program_id,
-            "Invalid Side Z Account Owner"
-        );
+        // Validate additional accounts
+        validate_program_account!(side_a_account, program_id, writable = true, "SideA");
+        validate_program_account!(side_z_account, program_id, writable = true, "SideZ");
 
         // Validate link references match accounts
         if link.owner != *owner_account.key

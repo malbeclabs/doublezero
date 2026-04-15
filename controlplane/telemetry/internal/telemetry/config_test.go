@@ -8,12 +8,22 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
+	geolocation "github.com/malbeclabs/doublezero/sdk/geolocation/go"
 	"github.com/stretchr/testify/require"
 
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	telemetryprog "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
+
+type mockGeolocationClient struct{}
+
+func (m *mockGeolocationClient) GetGeoProbes(_ context.Context) ([]geolocation.KeyedGeoProbe, error) {
+	return nil, nil
+}
+
+func (m *mockGeolocationClient) GetGeoProbeKeys(_ context.Context) ([]solana.PublicKey, error) {
+	return nil, nil
+}
 
 type mockReflector struct{}
 
@@ -87,7 +97,7 @@ func TestConfig_Validate_GeoprobeFields(t *testing.T) {
 		{
 			name: "valid config with geoprobe",
 			modify: func(c *Config) {
-				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080, TWAMPPort: 8925}}
+				c.GeolocationClient = &mockGeolocationClient{}
 				c.ServiceabilityProgramClient = serviceabilityClient
 				c.RPCClient = rpcClient
 			},
@@ -96,7 +106,7 @@ func TestConfig_Validate_GeoprobeFields(t *testing.T) {
 		{
 			name: "geoprobe enabled but missing serviceability client",
 			modify: func(c *Config) {
-				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080, TWAMPPort: 8925}}
+				c.GeolocationClient = &mockGeolocationClient{}
 				c.RPCClient = rpcClient
 			},
 			expectError: "serviceability client is required when geoprobe is enabled",
@@ -104,7 +114,7 @@ func TestConfig_Validate_GeoprobeFields(t *testing.T) {
 		{
 			name: "geoprobe enabled but missing rpc client",
 			modify: func(c *Config) {
-				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080, TWAMPPort: 8925}}
+				c.GeolocationClient = &mockGeolocationClient{}
 				c.ServiceabilityProgramClient = serviceabilityClient
 			},
 			expectError: "rpc client is required when geoprobe is enabled",
@@ -112,7 +122,7 @@ func TestConfig_Validate_GeoprobeFields(t *testing.T) {
 		{
 			name: "geoprobe enabled but missing keypair",
 			modify: func(c *Config) {
-				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080, TWAMPPort: 8925}}
+				c.GeolocationClient = &mockGeolocationClient{}
 				c.ServiceabilityProgramClient = serviceabilityClient
 				c.RPCClient = rpcClient
 				c.Keypair = nil

@@ -15,7 +15,7 @@ use crate::{
         globalstate::GlobalState,
         interface::{
             CurrentInterfaceVersion, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType,
-            LoopbackType, RoutingMode,
+            LoopbackType, RoutingMode, CYOA_DIA_INTERFACE_MTU, INTERFACE_MTU,
         },
     },
 };
@@ -108,16 +108,19 @@ pub fn process_create_device_interface(
 
     let name = validate_iface(&value.name).map_err(|_| DoubleZeroError::InvalidInterfaceName)?;
 
-    assert_eq!(
-        contributor_account.owner, program_id,
-        "Invalid Contributor Account Owner"
+    validate_program_account!(device_account, program_id, writable = true, "Device");
+    validate_program_account!(
+        contributor_account,
+        program_id,
+        writable = false,
+        "Contributor"
     );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        "GlobalState"
     );
-
-    assert!(device_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
@@ -154,6 +157,17 @@ pub fn process_create_device_interface(
         return Err(DoubleZeroError::InvalidInterfaceIp.into());
     }
 
+    // Validate MTU: CYOA/DIA interfaces must be 1500, all others must be 9000
+    let is_cyoa_or_dia =
+        value.interface_cyoa != InterfaceCYOA::None || value.interface_dia != InterfaceDIA::None;
+    if is_cyoa_or_dia {
+        if value.mtu != CYOA_DIA_INTERFACE_MTU {
+            return Err(DoubleZeroError::InvalidMtu.into());
+        }
+    } else if value.mtu != INTERFACE_MTU {
+        return Err(DoubleZeroError::InvalidMtu.into());
+    }
+
     let mut device: Device = Device::try_from(device_account)?;
 
     if device.find_interface(&name).is_ok() {
@@ -176,7 +190,7 @@ pub fn process_create_device_interface(
             device_tunnel_block_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_dtb_pda),
+            pda = &expected_dtb_pda,
             "DeviceTunnelBlock"
         );
 
@@ -186,7 +200,7 @@ pub fn process_create_device_interface(
             segment_routing_ids_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_sr_pda),
+            pda = &expected_sr_pda,
             "SegmentRoutingIds"
         );
 

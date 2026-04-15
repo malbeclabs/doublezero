@@ -87,22 +87,35 @@ func (d *DeviceLatencySamplesV0) Deserialize(data []byte) error {
 	return nil
 }
 
+func (d *DeviceLatencySamplesHeaderV0) ToV1Header() DeviceLatencySamplesHeader {
+	var agentVersion [16]uint8
+	var agentCommit [8]uint8
+	var unused [104]uint8
+	copy(agentVersion[:], d.Unused[0:16])
+	copy(agentCommit[:], d.Unused[16:24])
+	copy(unused[:], d.Unused[24:128])
+
+	return DeviceLatencySamplesHeader{
+		AccountType:                  AccountTypeDeviceLatencySamples,
+		Epoch:                        d.Epoch,
+		OriginDeviceAgentPK:          d.OriginDeviceAgentPK,
+		OriginDevicePK:               d.OriginDevicePK,
+		TargetDevicePK:               d.TargetDevicePK,
+		OriginDeviceLocationPK:       d.OriginDeviceLocationPK,
+		TargetDeviceLocationPK:       d.TargetDeviceLocationPK,
+		LinkPK:                       d.LinkPK,
+		SamplingIntervalMicroseconds: d.SamplingIntervalMicroseconds,
+		StartTimestampMicroseconds:   d.StartTimestampMicroseconds,
+		NextSampleIndex:              d.NextSampleIndex,
+		AgentVersion:                 agentVersion,
+		AgentCommit:                  agentCommit,
+		Unused:                       unused,
+	}
+}
+
 func (d *DeviceLatencySamplesV0) ToV1() *DeviceLatencySamples {
 	return &DeviceLatencySamples{
-		DeviceLatencySamplesHeader: DeviceLatencySamplesHeader{
-			AccountType:                  AccountTypeDeviceLatencySamples,
-			Epoch:                        d.DeviceLatencySamplesHeaderV0.Epoch,
-			OriginDeviceAgentPK:          d.DeviceLatencySamplesHeaderV0.OriginDeviceAgentPK,
-			OriginDevicePK:               d.DeviceLatencySamplesHeaderV0.OriginDevicePK,
-			TargetDevicePK:               d.DeviceLatencySamplesHeaderV0.TargetDevicePK,
-			OriginDeviceLocationPK:       d.DeviceLatencySamplesHeaderV0.OriginDeviceLocationPK,
-			TargetDeviceLocationPK:       d.DeviceLatencySamplesHeaderV0.TargetDeviceLocationPK,
-			LinkPK:                       d.DeviceLatencySamplesHeaderV0.LinkPK,
-			SamplingIntervalMicroseconds: d.DeviceLatencySamplesHeaderV0.SamplingIntervalMicroseconds,
-			StartTimestampMicroseconds:   d.DeviceLatencySamplesHeaderV0.StartTimestampMicroseconds,
-			NextSampleIndex:              d.DeviceLatencySamplesHeaderV0.NextSampleIndex,
-			Unused:                       d.DeviceLatencySamplesHeaderV0.Unused,
-		},
-		Samples: d.Samples,
+		DeviceLatencySamplesHeader: d.DeviceLatencySamplesHeaderV0.ToV1Header(),
+		Samples:                    d.Samples,
 	}
 }

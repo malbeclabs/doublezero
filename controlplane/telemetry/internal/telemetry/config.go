@@ -8,7 +8,6 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
 
@@ -53,11 +52,8 @@ type Config struct {
 	// before a sender is evicted from the cache and recreated.
 	MaxConsecutiveSenderLosses int
 
-	// InitialChildGeoProbes is the startup probe list from CLI; runtime updates happen via channel.
-	InitialChildGeoProbes []geoprobe.ProbeAddress
-
 	// ServiceabilityProgramClient is the client to the serviceability program (for fetching Device/Location).
-	ServiceabilityProgramClient *serviceability.Client
+	ServiceabilityProgramClient ServiceabilityProgramClient
 
 	// RPCClient is the Solana RPC client (for fetching slot).
 	RPCClient *solanarpc.Client
@@ -72,6 +68,12 @@ type Config struct {
 	// ProbeDiscoveryInterval is the interval at which to query onchain GeoProbe accounts.
 	// Defaults to 60s when GeolocationClient is set.
 	ProbeDiscoveryInterval time.Duration
+
+	// AgentVersion is the version string of this telemetry agent binary.
+	AgentVersion string
+
+	// AgentCommit is the short git commit hash of this telemetry agent binary.
+	AgentCommit string
 }
 
 func (c *Config) Validate() error {
@@ -114,7 +116,7 @@ func (c *Config) Validate() error {
 		c.MaxConsecutiveSenderLosses = 30
 	}
 
-	geoprobeEnabled := len(c.InitialChildGeoProbes) > 0 || c.GeolocationClient != nil
+	geoprobeEnabled := c.GeolocationClient != nil
 	if geoprobeEnabled {
 		if c.ServiceabilityProgramClient == nil {
 			return errors.New("serviceability client is required when geoprobe is enabled")

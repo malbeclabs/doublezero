@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -33,6 +34,7 @@ var (
 
 const (
 	defaultPort                   = "8080"
+	defaultTLSPort                = "8443"
 	defaultMetricsAddr            = ":2112"
 	defaultMetricsShutdownTimeout = 10 * time.Second
 )
@@ -96,14 +98,30 @@ func run() error {
 		return fmt.Errorf("failed to create server: %w", err)
 	}
 
-	listener, err := net.Listen("tcp", ":"+cfg.Port)
+	httpListener, err := net.Listen("tcp", ":"+cfg.Port)
 	if err != nil {
 		return fmt.Errorf("failed to create listener: %w", err)
 	}
-	defer listener.Close()
+	defer httpListener.Close()
+	log.Info("listening on", "address", httpListener.Addr().String())
 
-	log.Info("listening on", "address", listener.Addr().String())
-	errCh := srv.Start(ctx, cancel, listener)
+	listeners := []net.Listener{httpListener}
+
+	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
+		if err != nil {
+			return fmt.Errorf("failed to load TLS key pair: %w", err)
+		}
+		tlsListener, err := net.Listen("tcp", ":"+cfg.TLSPort)
+		if err != nil {
+			return fmt.Errorf("failed to create TLS listener: %w", err)
+		}
+		defer tlsListener.Close()
+		listeners = append(listeners, tls.NewListener(tlsListener, &tls.Config{Certificates: []tls.Certificate{cert}}))
+		log.Info("listening on", "address", tlsListener.Addr().String(), "tls", true)
+	}
+
+	errCh := srv.Start(ctx, cancel, listeners...)
 
 	for {
 		select {
@@ -197,9 +215,12 @@ type Config struct {
 	MetricsAddr string
 	Env         string
 
-	Port     string
-	S3Bucket string
-	S3Prefix string
+	Port        string
+	TLSPort     string
+	TLSCertFile string
+	TLSKeyFile  string
+	S3Bucket    string
+	S3Prefix    string
 }
 
 func getenv(key, def string) string {
@@ -218,6 +239,9 @@ func loadConfig() (Config, error) {
 	flag.StringVar(&cfg.MetricsAddr, "metrics-addr", getenv("METRICS_ADDR", defaultMetricsAddr), "address to listen on for prometheus metrics (env: METRICS_ADDR)")
 	flag.StringVar(&cfg.Env, "env", getenv("DZ_ENV", config.EnvDevnet), "doublezero environment to use (env: DZ_ENV)")
 	flag.StringVar(&cfg.Port, "port", getenv("PORT", defaultPort), "http listen port (env: PORT)")
+	flag.StringVar(&cfg.TLSPort, "tls-port", getenv("TLS_PORT", defaultTLSPort), "https listen port, used when tls-cert-file and tls-key-file are set (env: TLS_PORT)")
+	flag.StringVar(&cfg.TLSCertFile, "tls-cert-file", getenv("TLS_CERT_FILE", ""), "path to TLS certificate file (env: TLS_CERT_FILE)")
+	flag.StringVar(&cfg.TLSKeyFile, "tls-key-file", getenv("TLS_KEY_FILE", ""), "path to TLS key file (env: TLS_KEY_FILE)")
 
 	flag.StringVar(&cfg.S3Bucket, "s3-bucket", getenv("S3_BUCKET", ""), "s3 bucket name (env: S3_BUCKET)")
 	flag.StringVar(&cfg.S3Prefix, "s3-prefix", getenv("S3_PREFIX", ""), "s3 prefix/path (env: S3_PREFIX)")

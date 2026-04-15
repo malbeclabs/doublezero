@@ -13,7 +13,8 @@ import (
 
 func RunMigrations(cfg ClickhouseConfig, log *slog.Logger) error {
 	opts := &clickhouse.Options{
-		Addr: []string{cfg.Addr},
+		Protocol: clickhouse.HTTP,
+		Addr:     []string{cfg.Addr},
 		Auth: clickhouse.Auth{
 			Database: cfg.Database,
 			Username: cfg.Username,

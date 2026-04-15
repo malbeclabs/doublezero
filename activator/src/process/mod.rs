@@ -5,4 +5,5 @@ pub mod iface_mgr;
 pub mod link;
 pub mod location;
 pub mod multicastgroup;
+pub mod topology;
 pub mod user;

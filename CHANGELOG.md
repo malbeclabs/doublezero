@@ -31,6 +31,7 @@ All notable changes to this project will be documented in this file.
 
 - Activator
   - Fix duplicate tunnel underlay pairs after restart by registering `device.public_ip` as in-use for legacy users with unset `tunnel_endpoint` during allocation reload
+  - Add flex-algo topology event handler: when a `TopologyInfo` account is created or updated, calls `BackfillTopology` on all devices with an activated VPNv4 loopback; enabled via `--enable-flex-algo` flag (default: off)
 - Client
   - Rank devices and tunnel endpoints by minimum observed latency (`min_latency_ns`) instead of average when selecting a connection target, preferring paths with the best achievable round-trip time
 - Tools
@@ -51,6 +52,8 @@ All notable changes to this project will be documented in this file.
 - SDK
   - Deserialize `agent_version` and `agent_commit` from device latency samples in Go, TypeScript, and Python SDKs
   - Add `BGPStatus` type (Unknown/Up/Down) and `SetUserBGPStatus` executor instruction to the Go serviceability SDK
+  - Python serviceability SDK deserializes `TopologyConstraint`, `TopologyInfo`, and `FlexAlgoNodeSegment`; reads `flex_algo_node_segments` from V2 interface accounts
+  - TypeScript serviceability SDK deserializes `FlexAlgoNodeSegment` from V2 interface accounts; adds configurable request timeout to the RPC client
 - Smartcontract
   - Add `agent_version` (`[u8; 16]`) and `agent_commit` (`[u8; 8]`) fields to `DeviceLatencySamplesHeader`, carved from the existing reserved region; accept both fields in the `InitializeDeviceLatencySamples` instruction via incremental deserialization (fully backward compatible)
   - Implement `SetUserBGPStatus` processor: validates metrics publisher authorization, updates `bgp_status`, `last_bgp_reported_at`, and `last_bgp_up_at` fields on the user account

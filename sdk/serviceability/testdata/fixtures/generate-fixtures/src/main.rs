@@ -323,6 +323,7 @@ fn generate_device(dir: &Path) {
                 ip_net: "172.16.0.1/30".parse().unwrap(),
                 node_segment_idx: 200,
                 user_tunnel_endpoint: true,
+                flex_algo_node_segments: vec![],
             }),
         ],
         reference_count: 12,
@@ -433,6 +434,8 @@ fn generate_link(dir: &Path) {
         delay_override_ns: 0,
         link_health: LinkHealth::ReadyForService,
         desired_status: LinkDesiredStatus::Activated,
+        link_topologies: vec![],
+        link_flags: 0,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -759,6 +762,7 @@ fn generate_tenant(dir: &Path) {
         metro_routing: true,
         route_liveness: false,
         billing: TenantBillingConfig::default(),
+        include_topologies: vec![],
     };
 
     let data = borsh::to_vec(&val).unwrap();

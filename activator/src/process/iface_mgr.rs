@@ -1,4 +1,7 @@
-use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator};
+use crate::{
+    idallocator::IDAllocator, ipblockallocator::IPBlockAllocator,
+    process::topology::backfill_all_topologies_for_device,
+};
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::device::interface::{
@@ -15,11 +18,15 @@ use solana_sdk::pubkey::Pubkey;
 /// Does not use local allocators - all allocation is handled by the smart contract.
 pub struct InterfaceMgrStateless<'a> {
     client: &'a dyn DoubleZeroClient,
+    enable_flex_algo: bool,
 }
 
 impl<'a> InterfaceMgrStateless<'a> {
-    pub fn new(client: &'a dyn DoubleZeroClient) -> Self {
-        Self { client }
+    pub fn new(client: &'a dyn DoubleZeroClient, enable_flex_algo: bool) -> Self {
+        Self {
+            client,
+            enable_flex_algo,
+        }
     }
 
     /// Process all interfaces for a device based on their current state
@@ -67,13 +74,19 @@ impl<'a> InterfaceMgrStateless<'a> {
         device: &Device,
         iface: &CurrentInterfaceVersion,
     ) {
-        self.activate(
+        let activated = self.activate(
             device_pubkey,
             &device.code,
             &iface.name,
             &NetworkV4::default(),
             0,
         );
+
+        // Gap 2: after activating a Vpnv4 loopback, backfill all existing topologies
+        // so this device receives FlexAlgoNodeSegments for every topology.
+        if activated && self.enable_flex_algo && iface.loopback_type == LoopbackType::Vpnv4 {
+            backfill_all_topologies_for_device(self.client, device_pubkey);
+        }
     }
 
     /// Handle interface deletion (stateless mode - no local deallocation)
@@ -94,7 +107,7 @@ impl<'a> InterfaceMgrStateless<'a> {
         name: &str,
         ip_net: &NetworkV4,
         node_segment_idx: u16,
-    ) {
+    ) -> bool {
         let cmd = ActivateDeviceInterfaceCommand {
             pubkey: *pubkey,
             name: name.to_string(),
@@ -103,8 +116,15 @@ impl<'a> InterfaceMgrStateless<'a> {
             use_onchain_allocation: true,
         };
 
-        if let Err(e) = cmd.execute(self.client) {
-            error!("Failed to activate interface {name} on {context}: {e}");
+        match cmd.execute(self.client) {
+            Ok(signature) => {
+                info!("Activated interface {name} on {context}: {signature}");
+                true
+            }
+            Err(e) => {
+                error!("Failed to activate interface {name} on {context}: {e}");
+                false
+            }
         }
     }
 
@@ -147,6 +167,7 @@ pub struct InterfaceMgr<'a> {
     // Optional because it's not required for process_link_event
     segment_routing_ids: Option<&'a mut IDAllocator>,
     link_ips: &'a mut IPBlockAllocator,
+    enable_flex_algo: bool,
 }
 
 impl<'a> InterfaceMgr<'a> {
@@ -154,11 +175,13 @@ impl<'a> InterfaceMgr<'a> {
         client: &'a dyn DoubleZeroClient,
         segment_routing_ids: Option<&'a mut IDAllocator>,
         link_ips: &'a mut IPBlockAllocator,
+        enable_flex_algo: bool,
     ) -> Self {
         Self {
             client,
             segment_routing_ids,
             link_ips,
+            enable_flex_algo,
         }
     }
 
@@ -247,13 +270,19 @@ impl<'a> InterfaceMgr<'a> {
         }
 
         // Activate with allocated resources
-        self.activate(
+        let activated = self.activate(
             device_pubkey,
             &device.code,
             &iface.name,
             &iface.ip_net,
             iface.node_segment_idx,
         );
+
+        // Gap 2: after activating a Vpnv4 loopback, backfill all existing topologies
+        // so this device receives FlexAlgoNodeSegments for every topology.
+        if activated && self.enable_flex_algo && iface.loopback_type == LoopbackType::Vpnv4 {
+            backfill_all_topologies_for_device(self.client, device_pubkey);
+        }
     }
 
     /// Handle interface deletion and resource cleanup
@@ -292,7 +321,7 @@ impl<'a> InterfaceMgr<'a> {
         name: &str,
         ip_net: &NetworkV4,
         node_segment_idx: u16,
-    ) {
+    ) -> bool {
         let cmd = ActivateDeviceInterfaceCommand {
             pubkey: *pubkey,
             name: name.to_string(),
@@ -301,8 +330,15 @@ impl<'a> InterfaceMgr<'a> {
             use_onchain_allocation: false,
         };
 
-        if let Err(e) = cmd.execute(self.client) {
-            error!("Failed to activate interface {name} on {context}: {e}");
+        match cmd.execute(self.client) {
+            Ok(signature) => {
+                info!("Activated interface {name} on {context}: {signature}");
+                true
+            }
+            Err(e) => {
+                error!("Failed to activate interface {name} on {context}: {e}");
+                false
+            }
         }
     }
 

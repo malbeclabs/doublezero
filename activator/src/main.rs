@@ -40,6 +40,11 @@ struct AppArgs {
 
     #[arg(long, default_value = "info")]
     log_level: String,
+
+    /// Enable flex-algo topology automation: automatically backfill FlexAlgoNodeSegments
+    /// when new topologies are created or Vpnv4 loopbacks are activated.
+    #[arg(long, default_value_t = false)]
+    enable_flex_algo: bool,
 }
 
 #[tokio::main]
@@ -80,6 +85,7 @@ async fn main() -> eyre::Result<()> {
         Some(ws_url.clone()),
         Some(program_id.clone()),
         Some(keypair.clone()),
+        args.enable_flex_algo,
     )
     .await?;
 

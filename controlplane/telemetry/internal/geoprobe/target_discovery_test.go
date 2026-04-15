@@ -110,7 +110,7 @@ func TestTargetDiscovery_HappyPath(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, keys, _, err := td.discover(context.Background())
+	targets, _, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestTargetDiscovery_StatusFilter(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, keys, _, err := td.discover(context.Background())
+	targets, _, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestTargetDiscovery_PaymentFilter(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, keys, _, err := td.discover(context.Background())
+	targets, _, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestTargetDiscovery_CombinedFilter(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, _, _, err := td.discover(context.Background())
+	targets, _, _, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestTargetDiscovery_ProbePKFilter(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, _, _, err := td.discover(context.Background())
+	targets, _, _, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestTargetDiscovery_InboundTargets(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, keys, _, err := td.discover(context.Background())
+	targets, _, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestTargetDiscovery_MixedTargets(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, keys, _, err := td.discover(context.Background())
+	targets, _, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -332,7 +332,7 @@ func TestTargetDiscovery_DeduplicateInboundKeys(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	_, _, keys, _, err := td.discover(context.Background())
+	_, _, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -386,7 +386,7 @@ func TestTargetDiscovery_TargetUpdateCountUnchanged_SkipsScan(t *testing.T) {
 	})
 
 	// First call (tick 0): always does full scan (forceFullRefresh).
-	targets, _, _, _, err := td.discover(context.Background())
+	targets, _, _, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -398,7 +398,7 @@ func TestTargetDiscovery_TargetUpdateCountUnchanged_SkipsScan(t *testing.T) {
 	}
 
 	// Second call: counter unchanged → should skip.
-	targets, _, keys, _, err := td.discover(context.Background())
+	targets, _, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -431,11 +431,11 @@ func TestTargetDiscovery_TargetUpdateCountChanged_DoesFullScan(t *testing.T) {
 	})
 
 	// First call: full scan.
-	_, _, _, _, _ = td.discover(context.Background())
+	_, _, _, _, _, _ = td.discover(context.Background())
 
 	// Change counter, second call should do full scan.
 	counter.Store(6)
-	targets, _, _, _, err := td.discover(context.Background())
+	targets, _, _, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -470,12 +470,12 @@ func TestTargetDiscovery_ForcedFullRefresh_IgnoresCounter(t *testing.T) {
 	// Tick through to the next forced refresh (every 5th tick).
 	// Tick 0: forced (0 % 5 == 0), tick 1-4: skipped (counter unchanged), tick 5: forced.
 	for i := 0; i < targetDiscoveryFullRefreshEvery; i++ {
-		_, _, _, _, _ = td.discover(context.Background())
+		_, _, _, _, _, _ = td.discover(context.Background())
 	}
 	callsBefore := client.calls
 
 	// Next tick (tick 5): forced full refresh even though counter unchanged.
-	targets, _, _, _, err := td.discover(context.Background())
+	targets, _, _, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -501,7 +501,7 @@ func TestTargetDiscovery_NilProbeTargetUpdateCount_AlwaysScans(t *testing.T) {
 	td := newTestTargetDiscovery(client)
 
 	for i := 0; i < 3; i++ {
-		_, _, _, _, _ = td.discover(context.Background())
+		_, _, _, _, _, _ = td.discover(context.Background())
 	}
 	if client.calls != 3 {
 		t.Errorf("expected 3 RPC calls without ProbeTargetUpdateCount, got %d", client.calls)
@@ -533,7 +533,7 @@ func TestTargetDiscovery_RejectsNonPublicOutboundTargets(t *testing.T) {
 				},
 			}
 			td := newTestTargetDiscovery(client)
-			targets, _, _, _, err := td.discover(context.Background())
+			targets, _, _, _, _, err := td.discover(context.Background())
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -555,7 +555,7 @@ func TestTargetDiscovery_OutboundIcmpTargets(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, icmpTargets, keys, _, err := td.discover(context.Background())
+	targets, icmpTargets, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -588,7 +588,7 @@ func TestTargetDiscovery_MixedOutboundAndIcmp(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, icmpTargets, keys, _, err := td.discover(context.Background())
+	targets, icmpTargets, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -620,7 +620,7 @@ func TestTargetDiscovery_OutboundIcmpPrivateIPRejected(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	_, icmpTargets, _, _, err := td.discover(context.Background())
+	_, icmpTargets, _, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -646,7 +646,7 @@ func TestTargetDiscovery_ResultDestination_OutboundOverride(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, _, delivery, err := td.discover(context.Background())
+	targets, _, _, delivery, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -681,7 +681,7 @@ func TestTargetDiscovery_NoResultDestination_NoDeliveryOverride(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, _, delivery, err := td.discover(context.Background())
+	targets, _, _, delivery, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -710,7 +710,7 @@ func TestTargetDiscovery_ResultDestination_ICMPOverride(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	_, icmpTargets, _, delivery, err := td.discover(context.Background())
+	_, icmpTargets, _, _, delivery, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -753,7 +753,7 @@ func TestTargetDiscovery_ResultDestination_MixedUsers(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, _, delivery, err := td.discover(context.Background())
+	targets, _, _, delivery, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -793,7 +793,7 @@ func TestTargetDiscovery_ResultDestination_DomainName(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, _, delivery, err := td.discover(context.Background())
+	targets, _, _, delivery, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -878,7 +878,7 @@ func TestTargetDiscovery_InvalidResultDestination_Ignored(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, _, delivery, err := td.discover(context.Background())
+	targets, _, _, delivery, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

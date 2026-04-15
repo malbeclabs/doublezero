@@ -91,7 +91,7 @@ func (d *TargetDiscovery) Tick(ctx context.Context, targetCh chan<- TargetUpdate
 }
 
 func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate, icmpTargetCh chan<- ICMPTargetUpdate) {
-	targets, icmpTargets, inboundKeys, deliveryAddrs, err := d.discover(ctx)
+	targets, icmpTargets, inboundKeys, outboundDelivery, icmpDelivery, err := d.discover(ctx)
 	if err != nil {
 		d.log.Warn("Target discovery tick failed", "error", err)
 		return
@@ -100,21 +100,6 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 	// nil targets means the scan was skipped (target_update_count unchanged).
 	if targets == nil && inboundKeys == nil && icmpTargets == nil {
 		return
-	}
-
-	// Split delivery addrs by target type.
-	outboundDelivery := make(map[ProbeAddress]string)
-	icmpDelivery := make(map[ProbeAddress]string)
-	outboundSet := make(map[ProbeAddress]struct{}, len(targets))
-	for _, t := range targets {
-		outboundSet[t] = struct{}{}
-	}
-	for addr, dest := range deliveryAddrs {
-		if _, ok := outboundSet[addr]; ok {
-			outboundDelivery[addr] = dest
-		} else {
-			icmpDelivery[addr] = dest
-		}
 	}
 
 	if !probeAddressSlicesEqual(targets, d.cachedTargets) || !deliveryAddrsEqual(outboundDelivery, d.cachedOutboundDelivery) {
@@ -148,10 +133,10 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 }
 
 // discover performs a single discovery cycle: fetch users, filter, extract targets/keys,
-// merge with CLI values. Returns nil, nil, nil, nil, nil when the scan is skipped.
-// The returned deliveryAddrs maps measurement target → result destination for all targets
-// whose user has a non-empty ResultDestination.
-func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []ProbeAddress, [][32]byte, map[ProbeAddress]string, error) {
+// merge with CLI values. Returns nil, nil, nil, nil, nil, nil when the scan is skipped.
+// The returned delivery maps map measurement target → result destination for targets
+// whose user has a non-empty ResultDestination, split by target type.
+func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []ProbeAddress, [][32]byte, map[ProbeAddress]string, map[ProbeAddress]string, error) {
 	forceFullRefresh := d.tickCount%targetDiscoveryFullRefreshEvery == 0
 	d.tickCount++
 
@@ -160,14 +145,14 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []Probe
 		if current == d.lastSeenTargetUpdateCount && d.tickCount > 1 {
 			d.log.Debug("GeoProbe target_update_count unchanged, skipping target scan",
 				"targetUpdateCount", current)
-			return nil, nil, nil, nil, nil
+			return nil, nil, nil, nil, nil, nil
 		}
 		d.lastSeenTargetUpdateCount = current
 	}
 
 	users, err := d.client.GetGeolocationUsers(ctx)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("failed to fetch GeolocationUser accounts: %w", err)
+		return nil, nil, nil, nil, nil, fmt.Errorf("failed to fetch GeolocationUser accounts: %w", err)
 	}
 
 	var probePKBytes [32]byte
@@ -176,7 +161,8 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []Probe
 	var onchainTargets []ProbeAddress
 	var onchainIcmpTargets []ProbeAddress
 	var onchainKeys [][32]byte
-	deliveryAddrs := make(map[ProbeAddress]string)
+	outboundDelivery := make(map[ProbeAddress]string)
+	icmpDelivery := make(map[ProbeAddress]string)
 	seenKeys := make(map[[32]byte]struct{})
 
 	for i := range users {
@@ -222,7 +208,7 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []Probe
 				}
 				onchainTargets = append(onchainTargets, addr)
 				if resultDest != "" {
-					deliveryAddrs[addr] = resultDest
+					outboundDelivery[addr] = resultDest
 				}
 
 			case geolocation.GeoLocationTargetTypeInbound:
@@ -247,7 +233,7 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []Probe
 				}
 				onchainIcmpTargets = append(onchainIcmpTargets, addr)
 				if resultDest != "" {
-					deliveryAddrs[addr] = resultDest
+					icmpDelivery[addr] = resultDest
 				}
 			}
 		}
@@ -263,10 +249,11 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []Probe
 		"onchainOutbound", len(onchainTargets),
 		"onchainOutboundIcmp", len(onchainIcmpTargets),
 		"onchainInbound", len(onchainKeys),
-		"deliveryOverrides", len(deliveryAddrs),
+		"outboundDeliveryOverrides", len(outboundDelivery),
+		"icmpDeliveryOverrides", len(icmpDelivery),
 	)
 
-	return onchainTargets, onchainIcmpTargets, onchainKeys, deliveryAddrs, nil
+	return onchainTargets, onchainIcmpTargets, onchainKeys, outboundDelivery, icmpDelivery, nil
 }
 
 // targetToProbeAddress converts a GeolocationTarget to a ProbeAddress.

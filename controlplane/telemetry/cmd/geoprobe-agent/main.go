@@ -823,7 +823,7 @@ func (ml *measurementLoop) run() error {
 			ml.metrics.TargetsDiscovered.Set(float64(len(ml.targets)))
 			ml.log.Info("Updated targets from discovery", "totalTargets", len(ml.targets))
 			if len(rttData) > 0 {
-				sendCompositeOffsets(ml.ctx, ml.log, rttData, ml.cache, ml.signer, ml.senderConn, ml.getCurrentSlot, ml.metrics, ml.deliveryAddrs, nil, ml.dnsCache)
+				ml.sendCompositeOffsets(rttData, ml.deliveryAddrs, nil)
 			}
 
 		case icmpUpdate := <-ml.icmpTargetUpdateCh:
@@ -843,7 +843,7 @@ func (ml *measurementLoop) run() error {
 				for addr := range rttData {
 					icmpSet[addr] = struct{}{}
 				}
-				sendCompositeOffsets(ml.ctx, ml.log, rttData, ml.cache, ml.signer, ml.senderConn, ml.getCurrentSlot, ml.metrics, ml.icmpDeliveryAddrs, icmpSet, ml.dnsCache)
+				ml.sendCompositeOffsets(rttData, ml.icmpDeliveryAddrs, icmpSet)
 			}
 
 		case keyUpdate := <-ml.inboundKeyCh:
@@ -904,6 +904,7 @@ func (ml *measurementLoop) runCycle() {
 	}
 
 	// Merge delivery addrs from both target types and build ICMP set.
+	// Keys are disjoint: outbound targets have TWAMPPort set, ICMP targets have TWAMPPort=0.
 	mergedDelivery := make(map[geoprobe.ProbeAddress]string, len(ml.deliveryAddrs)+len(ml.icmpDeliveryAddrs))
 	for k, v := range ml.deliveryAddrs {
 		mergedDelivery[k] = v
@@ -916,7 +917,7 @@ func (ml *measurementLoop) runCycle() {
 		icmpSet[t] = struct{}{}
 	}
 
-	sent := sendCompositeOffsets(ml.ctx, ml.log, rttData, ml.cache, ml.signer, ml.senderConn, ml.getCurrentSlot, ml.metrics, mergedDelivery, icmpSet, ml.dnsCache)
+	sent := ml.sendCompositeOffsets(rttData, mergedDelivery, icmpSet)
 
 	ml.log.Info("Completed measurement cycle",
 		"measured", len(rttData),
@@ -925,33 +926,25 @@ func (ml *measurementLoop) runCycle() {
 		"total_icmp_targets", len(ml.icmpTargets))
 }
 
-func sendCompositeOffsets(
-	ctx context.Context,
-	log *slog.Logger,
+func (ml *measurementLoop) sendCompositeOffsets(
 	rttData map[geoprobe.ProbeAddress]uint64,
-	cache *offsetCache,
-	signer *geoprobe.OffsetSigner,
-	senderConn *net.UDPConn,
-	getCurrentSlot func(ctx context.Context) (uint64, error),
-	m *geoprobe.Metrics,
 	deliveryAddrs map[geoprobe.ProbeAddress]string,
 	icmpTargets map[geoprobe.ProbeAddress]struct{},
-	dnsCache *geoprobe.DNSCache,
 ) int {
-	dzdOffset := cache.GetBest()
+	dzdOffset := ml.cache.GetBest()
 	if dzdOffset == nil {
-		log.Warn("No valid DZD offsets in cache, skipping composite generation")
+		ml.log.Warn("No valid DZD offsets in cache, skipping composite generation")
 		return 0
 	}
 
-	slot, err := getCurrentSlot(ctx)
+	slot, err := ml.getCurrentSlot(ml.ctx)
 	if err != nil {
-		log.Error("Failed to get current slot", "error", err)
-		m.Errors.WithLabelValues(geoprobe.ErrorTypeSlotFetch).Inc()
+		ml.log.Error("Failed to get current slot", "error", err)
+		ml.metrics.Errors.WithLabelValues(geoprobe.ErrorTypeSlotFetch).Inc()
 		return 0
 	}
 
-	log.Debug("fetched current slot", "slot", slot)
+	ml.log.Debug("fetched current slot", "slot", slot)
 
 	sentCount := 0
 	for addr, measuredRttNs := range rttData {
@@ -962,16 +955,16 @@ func sendCompositeOffsets(
 
 		if hasDelivery {
 			// Result destination override — resolve (may involve DNS).
-			resolved, resolveErr := dnsCache.Resolve(deliveryDest)
+			resolved, resolveErr := ml.dnsCache.Resolve(deliveryDest)
 			if resolveErr != nil {
-				log.Warn("Failed to resolve delivery address, skipping target",
+				ml.log.Warn("Failed to resolve delivery address, skipping target",
 					"target", addr, "delivery", deliveryDest, "error", resolveErr)
 				continue
 			}
 			targetAddr = resolved
 		} else if isICMP {
 			// ICMP target without a result destination — nothing is listening.
-			log.Warn("ICMP target has no result destination, skipping offset delivery",
+			ml.log.Debug("ICMP target has no result destination, skipping offset delivery",
 				"target", addr.Host)
 			continue
 		} else {
@@ -991,21 +984,21 @@ func sendCompositeOffsets(
 			References:      []geoprobe.LocationOffset{*dzdOffset},
 		}
 
-		if err := signer.SignOffset(&compositeOffset); err != nil {
-			log.Error("Failed to sign composite offset", "target", addr, "error", err)
-			m.Errors.WithLabelValues(geoprobe.ErrorTypeSignOffset).Inc()
+		if err := ml.signer.SignOffset(&compositeOffset); err != nil {
+			ml.log.Error("Failed to sign composite offset", "target", addr, "error", err)
+			ml.metrics.Errors.WithLabelValues(geoprobe.ErrorTypeSignOffset).Inc()
 			continue
 		}
 
-		if err := geoprobe.SendOffset(senderConn, targetAddr, &compositeOffset); err != nil {
-			log.Error("Failed to send composite offset", "target", addr, "error", err)
-			m.Errors.WithLabelValues(geoprobe.ErrorTypeSendOffset).Inc()
+		if err := geoprobe.SendOffset(ml.senderConn, targetAddr, &compositeOffset); err != nil {
+			ml.log.Error("Failed to send composite offset", "target", addr, "error", err)
+			ml.metrics.Errors.WithLabelValues(geoprobe.ErrorTypeSendOffset).Inc()
 			continue
 		}
 
 		sentCount++
-		m.CompositeOffsetsSent.Inc()
-		log.Debug("Sent composite offset",
+		ml.metrics.CompositeOffsetsSent.Inc()
+		ml.log.Debug("Sent composite offset",
 			"target", addr,
 			"delivery", targetAddr,
 			"slot", slot,

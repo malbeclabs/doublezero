@@ -454,6 +454,90 @@ type CLIStatusResponse struct {
 	Tenant              string               `json:"tenant"`
 }
 
+// DaemonMulticastGroups represents the multicast group subscriptions in the
+// daemon's V2 status response.
+type DaemonMulticastGroups struct {
+	Publisher  []string `json:"publisher"`
+	Subscriber []string `json:"subscriber"`
+}
+
+// DaemonV2ServiceStatus represents a single service entry in the daemon's
+// /v2/status endpoint response.
+type DaemonV2ServiceStatus struct {
+	ClientStatusResponse
+	MulticastGroups DaemonMulticastGroups `json:"multicast_groups"`
+}
+
+// DaemonV2StatusResponse is the response from the doublezerod /v2/status endpoint.
+type DaemonV2StatusResponse struct {
+	ReconcilerEnabled bool                    `json:"reconciler_enabled"`
+	ClientIP          string                  `json:"client_ip"`
+	Network           string                  `json:"network"`
+	Services          []DaemonV2ServiceStatus `json:"services"`
+}
+
+// GetDaemonV2Status retrieves the full V2 status from the doublezerod daemon,
+// which includes multicast group information.
+func (c *Client) GetDaemonV2Status(ctx context.Context) (*DaemonV2StatusResponse, error) {
+	resp, err := docker.ExecReturnObject[DaemonV2StatusResponse](ctx, c.dn.dockerClient, c.ContainerID, []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/v2/status"})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get daemon v2 status: %w", err)
+	}
+	return &resp, nil
+}
+
+// WaitForMulticastGroups polls the daemon's V2 status endpoint until the
+// multicast groups for any service match the expected publisher and subscriber
+// group lists. This is useful after adding a group incrementally, since the
+// tunnel may already be up but the reconciler hasn't reflected the new group yet.
+func (c *Client) WaitForMulticastGroups(ctx context.Context, wantPublisher, wantSubscriber []string, timeout time.Duration) error {
+	c.log.Debug("==> Waiting for multicast groups", "wantPublisher", wantPublisher, "wantSubscriber", wantSubscriber, "timeout", timeout)
+
+	attempts := 0
+	start := time.Now()
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.GetDaemonV2Status(ctx)
+		if err != nil {
+			return false, fmt.Errorf("failed to get daemon v2 status: %w", err)
+		}
+
+		for _, svc := range resp.Services {
+			pubMatch := wantPublisher == nil || slicesEqual(svc.MulticastGroups.Publisher, wantPublisher)
+			subMatch := wantSubscriber == nil || slicesEqual(svc.MulticastGroups.Subscriber, wantSubscriber)
+			if pubMatch && subMatch {
+				c.log.Debug("✅ Got expected multicast groups", "duration", time.Since(start))
+				return true, nil
+			}
+		}
+
+		if attempts == 1 || attempts%5 == 0 {
+			c.log.Debug("--> Waiting for multicast groups", "services", resp.Services, "attempts", attempts)
+		}
+		attempts++
+
+		return false, nil
+	}, timeout, 1*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to wait for multicast groups (publisher=%v, subscriber=%v): %w", wantPublisher, wantSubscriber, err)
+	}
+
+	return nil
+}
+
+// slicesEqual returns true if two string slices have the same elements
+// (order-sensitive).
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // GetCLIStatus retrieves the full status output from `doublezero status --json`,
 // which includes current_device, metro, and other fields computed by the CLI.
 // This is useful for verifying that the CLI correctly associates tunnels with devices.

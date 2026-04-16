@@ -199,7 +199,7 @@ func TestE2E_Multicast(t *testing.T) {
 
 		// Incrementally add second publish group without disconnecting.
 		tdn.AddMulticastPublisherGroupSkipAccessPass(t, publisherClient, "mg02")
-		err = publisherClient.WaitForTunnelUp(t.Context(), 90*time.Second)
+		err = publisherClient.WaitForMulticastGroups(t.Context(), []string{"mg01", "mg02"}, nil, 90*time.Second)
 		require.NoError(t, err)
 
 		// Connect subscriber to first group only.
@@ -209,7 +209,7 @@ func TestE2E_Multicast(t *testing.T) {
 
 		// Incrementally add second subscribe group without disconnecting.
 		tdn.AddMulticastSubscriberGroupSkipAccessPass(t, subscriberClient, "mg02")
-		err = subscriberClient.WaitForTunnelUp(t.Context(), 90*time.Second)
+		err = subscriberClient.WaitForMulticastGroups(t.Context(), nil, []string{"mg01", "mg02"}, 90*time.Second)
 		require.NoError(t, err)
 
 		// Check agent config with both users.

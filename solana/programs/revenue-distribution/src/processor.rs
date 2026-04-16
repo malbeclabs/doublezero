@@ -1815,16 +1815,6 @@ fn try_initialize_rewards_integration(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    // Reject re-registration attempts explicitly. If the account is already
-    // owned by this program, it was initialized by a previous call.
-    if new_rewards_integration_info.owner == &ID {
-        msg!(
-            "Rewards integration already initialized (account {})",
-            account_index
-        );
-        return Err(ProgramError::InvalidAccountData);
-    }
-
     // Account 4 must be the integration program. Its pubkey must match the
     // program ID carried in the instruction data and it must be executable.
     let (account_index, integration_program_info) = try_next_enumerated_account(

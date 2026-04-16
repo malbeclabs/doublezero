@@ -216,6 +216,6 @@ async fn test_initialize_rewards_integration_already_registered() {
         .unwrap();
     assert_eq!(
         tx_err,
-        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+        TransactionError::InstructionError(0, InstructionError::Custom(0))
     );
 }

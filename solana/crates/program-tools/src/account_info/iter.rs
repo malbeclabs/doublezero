@@ -18,6 +18,7 @@ pub trait TryNextAccounts<'a, 'b: 'a, ExtraArgs>: Sized {
 pub struct NextAccountOptions<'a> {
     pub must_be_signer: bool,
     pub must_be_writable: bool,
+    pub must_be_executable: bool,
     pub owned_by: Option<&'a Pubkey>,
 }
 
@@ -33,6 +34,7 @@ pub fn try_next_enumerated_account<'a, 'b>(
     let NextAccountOptions {
         must_be_signer,
         must_be_writable,
+        must_be_executable,
         owned_by,
     } = opts;
 
@@ -43,6 +45,11 @@ pub fn try_next_enumerated_account<'a, 'b>(
 
     if must_be_writable && !account_info.is_writable {
         msg!("Account {} must be writable", index);
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    if must_be_executable && !account_info.executable {
+        msg!("Account {} must be executable", index);
         return Err(ProgramError::InvalidAccountData);
     }
 

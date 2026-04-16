@@ -31,8 +31,8 @@ use doublezero_revenue_distribution::{
             FinalizeDistributionDebtAccounts, FinalizeDistributionRewardsAccounts,
             InitializeContributorRewardsAccounts, InitializeDistributionAccounts,
             InitializeJournalAccounts, InitializeProgramAccounts,
-            InitializeSolanaValidatorDepositAccounts, InitializeSwapDestinationAccounts,
-            PaySolanaValidatorDebtAccounts, SetAdminAccounts,
+            InitializeRewardsIntegrationAccounts, InitializeSolanaValidatorDepositAccounts,
+            InitializeSwapDestinationAccounts, PaySolanaValidatorDebtAccounts, SetAdminAccounts,
             SetDistributionEconomicBurnRateAccounts, SetRewardsManagerAccounts,
             SweepDistributionTokensAccounts, VerifyDistributionMerkleRootAccounts,
             WithdrawSolanaValidatorDepositAccounts, WriteOffSolanaValidatorDebtAccounts,
@@ -41,7 +41,8 @@ use doublezero_revenue_distribution::{
         ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{
-        self, ContributorRewards, Distribution, Journal, ProgramConfig, SolanaValidatorDeposit,
+        self, ContributorRewards, Distribution, Journal, ProgramConfig, RewardsIntegration,
+        SolanaValidatorDeposit,
     },
     types::{DoubleZeroEpoch, RewardShare, SolanaValidatorDebt},
     DOUBLEZERO_MINT_KEY, ID,
@@ -869,6 +870,37 @@ impl ProgramTestWithOwner {
         Ok(self)
     }
 
+    pub async fn initialize_rewards_integration(
+        &mut self,
+        admin_signer: &Keypair,
+        integration_program_id: &Pubkey,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.context.payer;
+
+        let initialize_rewards_integration_ix = try_build_instruction(
+            &ID,
+            InitializeRewardsIntegrationAccounts::new(
+                &admin_signer.pubkey(),
+                &payer_signer.pubkey(),
+                integration_program_id,
+            ),
+            &RevenueDistributionInstructionData::InitializeRewardsIntegration(
+                *integration_program_id,
+            ),
+        )
+        .unwrap();
+
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
+            &[initialize_rewards_integration_ix],
+            &[payer_signer, admin_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
     pub async fn pay_solana_validator_debt(
         &mut self,
         dz_epoch: DoubleZeroEpoch,
@@ -1220,6 +1252,29 @@ impl ProgramTestWithOwner {
                 .0;
 
         (contributor_rewards_key, contributor_rewards)
+    }
+
+    pub async fn fetch_rewards_integration(
+        &self,
+        integration_program_id: &Pubkey,
+    ) -> (Pubkey, RewardsIntegration) {
+        let rewards_integration_key = RewardsIntegration::find_address(integration_program_id).0;
+
+        let rewards_integration_account_data = self
+            .context
+            .banks_client
+            .get_account(rewards_integration_key)
+            .await
+            .unwrap()
+            .unwrap()
+            .data;
+
+        (
+            rewards_integration_key,
+            *checked_from_bytes_with_discriminator(&rewards_integration_account_data)
+                .unwrap()
+                .0,
+        )
     }
 
     pub async fn fetch_solana_validator_deposit(

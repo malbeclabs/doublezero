@@ -33,8 +33,8 @@ use crate::{
     },
     state::{
         self, CommunityBurnRateParameters, ContributorRewards, Distribution, Journal,
-        ProgramConfig, RecipientShare, RecipientShares, RelayParameters, SolanaValidatorDeposit,
-        SolanaValidatorFeeParameters,
+        ProgramConfig, RecipientShare, RecipientShares, RelayParameters, RewardsIntegration,
+        SolanaValidatorDeposit, SolanaValidatorFeeParameters,
     },
     types::{BurnRate, ByteFlags, RewardShare, SolanaValidatorDebt, ValidatorFee},
     DOUBLEZERO_MINT_KEY, ID,
@@ -48,6 +48,7 @@ use crate::{
 // allocated to each of those accounts.
 const _: () = assert!(size_of::<ContributorRewards>() == 600);
 const _: () = assert!(size_of::<Distribution>() == 448);
+const _: () = assert!(size_of::<RewardsIntegration>() == 176);
 const _: () = assert!(size_of::<SolanaValidatorDeposit>() == 96);
 
 solana_program_entrypoint::entrypoint!(try_process_instruction);
@@ -140,6 +141,9 @@ fn try_process_instruction(
         RevenueDistributionInstructionData::WithdrawSolanaValidatorDeposit => {
             try_withdraw_solana_validator_deposit(accounts)
         }
+        RevenueDistributionInstructionData::InitializeRewardsIntegration(
+            integration_program_id,
+        ) => try_initialize_rewards_integration(accounts, integration_program_id),
     }
 }
 
@@ -1764,6 +1768,104 @@ fn try_initialize_solana_validator_deposit(
     let (mut solana_validator_deposit, _) =
         zero_copy::try_initialize::<SolanaValidatorDeposit>(new_solana_validator_deposit_info)?;
     solana_validator_deposit.node_id = node_id;
+
+    Ok(())
+}
+
+fn try_initialize_rewards_integration(
+    accounts: &[AccountInfo],
+    integration_program_id: Pubkey,
+) -> ProgramResult {
+    msg!("Initialize rewards integration");
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Admin.
+    // - 2: Payer (funder for new account).
+    // - 3: New rewards integration.
+    // - 4: Integration program (must be executable).
+    // - 5: System program.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Accounts 0 and 1 must be the program config and admin. This call ensures
+    // that the admin is a signer and is the same admin encoded in the program
+    // config.
+    let _authorized_use =
+        VerifiedProgramAuthority::try_next_accounts(&mut accounts_iter, Authority::Admin)?;
+
+    // Account 2 must be a signer and writable because it will send lamports to
+    // the new rewards integration account. We do not check these fields because
+    // the create-account workflow requires that this account is writable and a
+    // signer.
+    let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    // Account 3 must be the new rewards integration account. The create-account
+    // workflow requires that this account does not exist yet and is writable.
+    let (account_index, new_rewards_integration_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    let (expected_rewards_integration_key, rewards_integration_bump) =
+        RewardsIntegration::find_address(&integration_program_id);
+
+    if new_rewards_integration_info.key != &expected_rewards_integration_key {
+        msg!(
+            "Invalid seeds for rewards integration (account {})",
+            account_index
+        );
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    // Reject re-registration attempts explicitly. If the account is already
+    // owned by this program, it was initialized by a previous call.
+    if new_rewards_integration_info.owner == &ID {
+        msg!(
+            "Rewards integration already initialized (account {})",
+            account_index
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Account 4 must be the integration program. Its pubkey must match the
+    // program ID carried in the instruction data and it must be executable.
+    let (account_index, integration_program_info) = try_next_enumerated_account(
+        &mut accounts_iter,
+        NextAccountOptions {
+            must_be_executable: true,
+            ..Default::default()
+        },
+    )?;
+
+    if integration_program_info.key != &integration_program_id {
+        msg!(
+            "Integration program key mismatch (account {})",
+            account_index
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    try_create_account(
+        Invoker::Signer(payer_info.key),
+        Invoker::Pda {
+            key: &expected_rewards_integration_key,
+            signer_seeds: &[
+                RewardsIntegration::SEED_PREFIX,
+                integration_program_id.as_ref(),
+                &[rewards_integration_bump],
+            ],
+        },
+        new_rewards_integration_info.lamports(),
+        zero_copy::data_end::<RewardsIntegration>(),
+        &ID,
+        accounts,
+        Default::default(),
+    )?;
+
+    // Finally, initialize the rewards integration with the bump seed and the
+    // integration program ID.
+    let (mut rewards_integration, _) =
+        zero_copy::try_initialize::<RewardsIntegration>(new_rewards_integration_info)?;
+    rewards_integration.bump_seed = rewards_integration_bump;
+    rewards_integration.program_id = integration_program_id;
 
     Ok(())
 }

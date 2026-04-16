@@ -112,6 +112,13 @@ pub enum RevenueDistributionInstructionData {
     WithdrawSol(u64),
     SetDistributionEconomicBurnRate(u32),
     WithdrawSolanaValidatorDeposit,
+
+    /// Only the admin can register a program as a rewards integration. The
+    /// integration program account must be passed in and must be executable.
+    /// This creates a `RewardsIntegration` PDA that stores the integration's
+    /// program ID. Registration is a prerequisite for that program to drive
+    /// `DistributeIntegrationRewards`.
+    InitializeRewardsIntegration(Pubkey),
 }
 
 impl RevenueDistributionInstructionData {
@@ -161,6 +168,8 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::set_distribution_economic_burn_rate");
     pub const WITHDRAW_SOLANA_VALIDATOR_DEPOSIT: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::withdraw_solana_validator_deposit");
+    pub const INITIALIZE_REWARDS_INTEGRATION: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::initialize_rewards_integration");
 
     //
     // Versioned instruction selectors.
@@ -259,6 +268,9 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
                     .map(Self::SetDistributionEconomicBurnRate)
             }
             Self::WITHDRAW_SOLANA_VALIDATOR_DEPOSIT => Ok(Self::WithdrawSolanaValidatorDeposit),
+            Self::INITIALIZE_REWARDS_INTEGRATION => {
+                BorshDeserialize::deserialize_reader(reader).map(Self::InitializeRewardsIntegration)
+            }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid discriminator",
@@ -360,6 +372,10 @@ impl BorshSerialize for RevenueDistributionInstructionData {
             }
             Self::WithdrawSolanaValidatorDeposit => {
                 Self::WITHDRAW_SOLANA_VALIDATOR_DEPOSIT.serialize(writer)
+            }
+            Self::InitializeRewardsIntegration(integration_program_id) => {
+                Self::INITIALIZE_REWARDS_INTEGRATION.serialize(writer)?;
+                integration_program_id.serialize(writer)
             }
         }
     }

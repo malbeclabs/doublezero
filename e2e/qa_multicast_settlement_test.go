@@ -15,9 +15,9 @@ import (
 )
 
 // balanceSettleTimeout bounds how long we wait for a USDC balance change to
-// become visible at CommitmentFinalized after a settlement transaction is
-// confirmed. Mainnet finalization lag is ~13s in practice; 30s gives a
-// comfortable margin.
+// become visible after a settlement transaction is submitted. 30s covers
+// the lag between FeedSeatPay/FeedSeatWithdraw returning and the balance
+// RPC reflecting the debit/credit.
 const balanceSettleTimeout = 30 * time.Second
 
 var (
@@ -153,10 +153,9 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("validate_balance_after_pay", func(t *testing.T) {
-		// Poll until the finalized balance reflects the debit. FeedSeatPay
-		// returns after the tx is confirmed, but mainnet finalization lags
-		// confirmation by ~13s, so a one-shot read at CommitmentFinalized
-		// will race.
+		// Poll until the balance reflects the debit. FeedSeatPay returns
+		// after the tx is submitted, and the RPC balance view can lag the
+		// confirmed state briefly, so a one-shot read races.
 		var lastBalance uint64
 		var lastDebit uint64
 		require.Eventually(t, func() bool {

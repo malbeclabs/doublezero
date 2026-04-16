@@ -197,7 +197,7 @@ func (c *Client) GetUSDCBalance(ctx context.Context) (uint64, error) {
 	}
 
 	solanaClient := rpc.New(c.SolanaRPCURL)
-	result, err := solanaClient.GetTokenAccountBalance(ctx, ata, rpc.CommitmentFinalized)
+	result, err := solanaClient.GetTokenAccountBalance(ctx, ata, rpc.CommitmentConfirmed)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get token account balance for ATA %s on host %s: %w", ata, c.Host, err)
 	}

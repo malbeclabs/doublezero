@@ -19,7 +19,7 @@ type ControllerCallChecker interface {
 	Close() error
 }
 
-// ClickHouseClient wraps a ClickHouse connection for reading controller call data.
+// ClickHouseClient wraps a connection for reading device health data from ClickHouse.
 type ClickHouseClient struct {
 	conn clickhouse.Conn
 	db   string
@@ -78,6 +78,32 @@ func (c *ClickHouseClient) ControllerCallCoverage(ctx context.Context, devicePub
 	}
 
 	return int64(minutesWithCalls), nil
+}
+
+// InterfaceCountersChecker queries ClickHouse for device interface counter records.
+type InterfaceCountersChecker interface {
+	InterfaceCountersCoverage(ctx context.Context, devicePubkey string, start, end time.Time) (minutesWithRecords int64, err error)
+}
+
+// InterfaceCountersCoverage returns the number of distinct minutes in [start, end] that have
+// at least one fact_dz_device_interface_counters record for the given device.
+func (c *ClickHouseClient) InterfaceCountersCoverage(ctx context.Context, devicePubkey string, start, end time.Time) (int64, error) {
+	query := fmt.Sprintf(
+		`SELECT count(DISTINCT toStartOfMinute(event_ts)) AS minutes_with_records
+		 FROM "%s".fact_dz_device_interface_counters
+		 WHERE device_pk = ?
+		   AND event_ts >= ?
+		   AND event_ts <= ?`,
+		c.db,
+	)
+
+	var minutesWithRecords uint64
+	err := c.conn.QueryRow(ctx, query, devicePubkey, start, end).Scan(&minutesWithRecords)
+	if err != nil {
+		return 0, fmt.Errorf("clickhouse query: %w", err)
+	}
+
+	return int64(minutesWithRecords), nil
 }
 
 func (c *ClickHouseClient) Close() error {

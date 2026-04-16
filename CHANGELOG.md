@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Device Health Oracle
+  - Add `interface_counters` activation criterion to device-health-oracle to verify devices have recent interface counter data in ClickHouse before activation
   - Add `controller_success` activation criterion to device-health-oracle to verify devices have consistent controller call coverage over a configurable burn-in period by querying ClickHouse
 - Telemetry
   - Add `GET /device-link/agent-versions` endpoint to data-api and `agent-versions` subcommand to data-cli, exposing per-device telemetry agent version and commit from onchain `DeviceLatencySamplesHeader`

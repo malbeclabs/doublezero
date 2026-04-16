@@ -98,6 +98,75 @@ func TestControllerCallCoverage_QuotesDatabaseName(t *testing.T) {
 	assert.Equal(t, int64(0), minutes)
 }
 
+func TestInterfaceCountersCoverage_ReturnsCount(t *testing.T) {
+	conn := &mockConn{
+		queryRowFunc: func(_ context.Context, query string, args ...any) driver.Row {
+			assert.Contains(t, query, `"testdb".fact_dz_device_interface_counters`)
+			assert.Contains(t, query, "event_ts")
+			assert.Contains(t, query, "device_pk")
+			assert.Len(t, args, 3)
+			assert.Equal(t, "device123", args[0])
+			return &mockRow{
+				scanFunc: func(dest ...any) error {
+					p := dest[0].(*uint64)
+					*p = 55
+					return nil
+				},
+			}
+		},
+	}
+
+	client := &ClickHouseClient{conn: conn, db: "testdb"}
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(1 * time.Hour)
+
+	minutes, err := client.InterfaceCountersCoverage(context.Background(), "device123", start, end)
+	require.NoError(t, err)
+	assert.Equal(t, int64(55), minutes)
+}
+
+func TestInterfaceCountersCoverage_QueryError(t *testing.T) {
+	conn := &mockConn{
+		queryRowFunc: func(_ context.Context, _ string, _ ...any) driver.Row {
+			return &mockRow{
+				scanFunc: func(_ ...any) error {
+					return errors.New("connection reset")
+				},
+			}
+		},
+	}
+
+	client := &ClickHouseClient{conn: conn, db: "testdb"}
+	start := time.Now().Add(-1 * time.Hour)
+	end := time.Now()
+
+	_, err := client.InterfaceCountersCoverage(context.Background(), "device123", start, end)
+	assert.ErrorContains(t, err, "connection reset")
+}
+
+func TestInterfaceCountersCoverage_QuotesDatabaseName(t *testing.T) {
+	conn := &mockConn{
+		queryRowFunc: func(_ context.Context, query string, _ ...any) driver.Row {
+			assert.Contains(t, query, `"mainnet-beta".fact_dz_device_interface_counters`)
+			return &mockRow{
+				scanFunc: func(dest ...any) error {
+					p := dest[0].(*uint64)
+					*p = 0
+					return nil
+				},
+			}
+		},
+	}
+
+	client := &ClickHouseClient{conn: conn, db: "mainnet-beta"}
+	start := time.Now().Add(-1 * time.Hour)
+	end := time.Now()
+
+	minutes, err := client.InterfaceCountersCoverage(context.Background(), "device123", start, end)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), minutes)
+}
+
 func TestNewClickHouseClient_StripsScheme(t *testing.T) {
 	tests := []struct {
 		name string

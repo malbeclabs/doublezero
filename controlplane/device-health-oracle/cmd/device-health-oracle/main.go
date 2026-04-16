@@ -145,15 +145,16 @@ func main() {
 
 		chClient, err := worker.NewClickHouseClient(chAddr, chDB, chUser, chPass, chTLSDisabled)
 		if err != nil {
-			log.Warn("ClickHouse connection failed, continuing without controller_success criterion", "addr", chAddr, "error", err)
+			log.Warn("ClickHouse connection failed, continuing without ClickHouse-based criteria", "addr", chAddr, "error", err)
 		} else {
 			defer chClient.Close()
 			log.Info("ClickHouse enabled", "addr", chAddr, "db", chDB, "user", chUser, "tls", !chTLSDisabled)
 			controllerSuccess := worker.NewControllerSuccessCriterion(chClient, log)
-			deviceCriteria = append(deviceCriteria, controllerSuccess)
+			interfaceCounters := worker.NewInterfaceCountersCriterion(chClient, log)
+			deviceCriteria = append(deviceCriteria, controllerSuccess, interfaceCounters)
 		}
 	} else {
-		log.Error("ClickHouse disabled (CLICKHOUSE_ADDR not set), no controller_success criterion")
+		log.Error("ClickHouse disabled (CLICKHOUSE_ADDR not set), no ClickHouse-based criteria")
 	}
 
 	deviceEvaluator := &worker.DeviceHealthEvaluator{

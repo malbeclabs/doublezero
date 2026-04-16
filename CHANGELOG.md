@@ -26,6 +26,8 @@ All notable changes to this project will be documented in this file.
   - Reduce default probing interval to 5m from 30s since DZDs don't generally move.
 - Dependencies
   - Bump vulnerable packages across Rust, Go, and Python to address Dependabot security alerts (14 packages fixed)
+- DevContainer
+  - Add optional `DZ_WORKTREES_DIR` mount exposing a host worktrees directory at `/workspaces/worktrees` inside the container; useful when `docker exec`-ing into the persistent dev container to work on git worktrees outside the repo. Defaults to `/tmp/worktrees` (empty, harmless) when unset
 
 ## [v0.17.0](https://github.com/malbeclabs/doublezero/compare/client/v0.16.0...client/v0.17.0) - 2026-04-10
 

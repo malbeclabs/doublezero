@@ -20,12 +20,11 @@ All notable changes to this project will be documented in this file.
   - Add optional result destination to `GeolocationUser` so LocationOffsets can be sent to an alternate endpoint instead of the target IP; supports both IP and domain destinations (e.g., `185.199.108.1:9000` or `results.example.com:9000`); includes `SetResultDestination` onchain instruction, CLI `user set-result-destination` command, and Go SDK deserialization (backwards-compatible with existing accounts)
 - CLI
   - Add `--owner` flag to `multicast group update`, accepting a pubkey or `me` ([#3527](https://github.com/malbeclabs/doublezero/pull/3527))
-<<<<<<< HEAD
   - Polish terminal output of `connect` and `disconnect`: fix emoji semantics, normalize message phrasing across IBRL and multicast code paths, resolve tenant to human-readable code on connect (errors if tenant not found), and fix progress bar not clearing before output in `disconnect` ([#3529](https://github.com/malbeclabs/doublezero/pull/3529))
-=======
 - Client
   - Reduce default probing interval to 5m from 30s since DZDs don't generally move.
->>>>>>> 413643f70 (client: increase default latency probe interval from 30s to 5m)
+- Dependencies
+  - Bump vulnerable packages across Rust, Go, and Python to address Dependabot security alerts (14 packages fixed)
 
 ## [v0.17.0](https://github.com/malbeclabs/doublezero/compare/client/v0.16.0...client/v0.17.0) - 2026-04-10
 

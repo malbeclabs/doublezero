@@ -1,6 +1,8 @@
 package geoprobe
 
 import (
+	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -61,14 +63,57 @@ func TestOffsetRowFromLocationOffset(t *testing.T) {
 	require.WithinDuration(t, time.Now(), row.ReceivedAt, 2*time.Second)
 }
 
-func TestClickhouseWriterRecordBuffers(t *testing.T) {
-	w := &ClickhouseWriter{
-		buf: make([]OffsetRow, 0),
+func TestClickhouseConfigFromEnv(t *testing.T) {
+	tests := []struct {
+		name     string
+		addr     string
+		wantAddr string
+	}{
+		{
+			name:     "plain host:port",
+			addr:     "clickhouse.example.com:8443",
+			wantAddr: "clickhouse.example.com:8443",
+		},
+		{
+			name:     "strips https:// scheme prefix",
+			addr:     "https://clickhouse.example.com:8443",
+			wantAddr: "clickhouse.example.com:8443",
+		},
+		{
+			name:     "strips http:// scheme prefix",
+			addr:     "http://localhost:8123",
+			wantAddr: "localhost:8123",
+		},
 	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("CLICKHOUSE_ADDR", tt.addr)
+			t.Setenv("CLICKHOUSE_DB", "testdb")
+			cfg := ClickhouseConfigFromEnv()
+			require.NotNil(t, cfg)
+			require.Equal(t, tt.wantAddr, cfg.Addr)
+		})
+	}
+}
+
+func TestClickhouseWriterRecordBuffers(t *testing.T) {
+	w := NewClickhouseWriter(ClickhouseConfig{Addr: "unused"}, slog.Default())
 	w.Record(OffsetRow{SourceAddr: "a"})
 	w.Record(OffsetRow{SourceAddr: "b"})
 
 	w.mu.Lock()
 	require.Len(t, w.buf, 2)
+	w.mu.Unlock()
+}
+
+func TestClickhouseWriterRecordBufferCap(t *testing.T) {
+	w := NewClickhouseWriter(ClickhouseConfig{Addr: "unused"}, slog.Default())
+	for i := range maxBufferedRows + 100 {
+		w.Record(OffsetRow{SourceAddr: fmt.Sprintf("addr-%d", i)})
+	}
+
+	w.mu.Lock()
+	require.Len(t, w.buf, maxBufferedRows)
 	w.mu.Unlock()
 }

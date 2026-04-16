@@ -91,22 +91,8 @@ func main() {
 	var chWriter *geoprobe.ClickhouseWriter
 	if chCfg := geoprobe.ClickhouseConfigFromEnv(); chCfg != nil {
 		log.Info("clickhouse enabled", "addr", chCfg.Addr, "db", chCfg.Database)
-
-		if err := geoprobe.RunMigrations(*chCfg, log); err != nil {
-			fmt.Fprintf(os.Stderr, "clickhouse migration failed: %v\n", err)
-			os.Exit(1)
-		}
-
-		chConn, err := geoprobe.NewClickhouseConn(*chCfg)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "clickhouse connect failed: %v\n", err)
-			os.Exit(1)
-		}
-		defer chConn.Close()
-
-		chWriter = geoprobe.NewClickhouseWriter(chConn, chCfg.Database, log)
+		chWriter = geoprobe.NewClickhouseWriter(*chCfg, log)
 		go chWriter.Run(ctx)
-		log.Info("clickhouse writer started")
 	}
 
 	errCh := make(chan error, 2)

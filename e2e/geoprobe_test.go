@@ -236,7 +236,7 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 	// since we need to generate the sender keypair inside it.
 	log.Debug("==> Starting geoprobe target container")
 	targetContainerID := startGeoprobeTarget(t, log, dn, targetIPStr, &geoprobeTargetOpts{
-		clickhouseAddr: "clickhouse:9000",
+		clickhouseAddr: "clickhouse:8123",
 		clickhousePass: "test",
 	})
 

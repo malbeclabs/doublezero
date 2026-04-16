@@ -7,11 +7,18 @@ import (
 	"flag"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
 	"github.com/stretchr/testify/require"
 )
+
+// balanceSettleTimeout bounds how long we wait for a USDC balance change to
+// become visible after a settlement transaction is submitted. 30s covers
+// the lag between FeedSeatPay/FeedSeatWithdraw returning and the balance
+// RPC reflecting the debit/credit.
+const balanceSettleTimeout = 30 * time.Second
 
 var (
 	enableSettlementTests = flag.Bool("enable-multicast-settlement-tests", false, "enable multicast settlement tests")
@@ -146,11 +153,22 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("validate_balance_after_pay", func(t *testing.T) {
-		balanceAfterPay, err := client.GetUSDCBalance(ctx)
-		require.NoError(t, err, "failed to get USDC balance after pay")
-		debit := balanceBeforePay - balanceAfterPay
-		log.Info("USDC balance after pay", "balance", balanceAfterPay, "debit", debit, "expected_debit", parsedAmount)
-		require.Equal(t, parsedAmount, debit, "USDC balance should decrease by the paid amount")
+		// Poll until the balance reflects the debit. FeedSeatPay returns
+		// after the tx is submitted, and the RPC balance view can lag the
+		// confirmed state briefly, so a one-shot read races.
+		var lastBalance uint64
+		var lastDebit uint64
+		require.Eventually(t, func() bool {
+			bal, err := client.GetUSDCBalance(ctx)
+			if err != nil {
+				log.Info("USDC balance poll error", "error", err)
+				return false
+			}
+			lastBalance = bal
+			lastDebit = balanceBeforePay - bal
+			return lastDebit == parsedAmount
+		}, balanceSettleTimeout, 5*time.Second, "USDC balance should decrease by the paid amount")
+		log.Info("USDC balance after pay", "balance", lastBalance, "debit", lastDebit, "expected_debit", parsedAmount)
 	}) {
 		return
 	}
@@ -198,16 +216,23 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	t.Run("validate_balance_after_withdraw", func(t *testing.T) {
-		balanceAfterWithdraw, err := client.GetUSDCBalance(ctx)
-		require.NoError(t, err, "failed to get USDC balance after withdraw")
 		expectedBalance := balanceBeforePay - effectivePrice
+		var lastBalance uint64
+		require.Eventually(t, func() bool {
+			bal, err := client.GetUSDCBalance(ctx)
+			if err != nil {
+				log.Info("USDC balance poll error", "error", err)
+				return false
+			}
+			lastBalance = bal
+			return bal == expectedBalance
+		}, balanceSettleTimeout, 5*time.Second,
+			"USDC balance should equal before_pay minus the effective seat price")
 		log.Info("USDC balance after withdraw",
-			"balance", balanceAfterWithdraw,
+			"balance", lastBalance,
 			"expected", expectedBalance,
 			"before_pay", balanceBeforePay,
 			"effective_price", effectivePrice,
 		)
-		require.Equal(t, expectedBalance, balanceAfterWithdraw,
-			"USDC balance should equal before_pay minus the effective seat price")
 	})
 }

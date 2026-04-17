@@ -1,16 +1,14 @@
 use crate::{
     error::DoubleZeroError,
-    pda::{get_device_pda, get_globalstate_pda, get_resource_extension_pda, get_topology_pda},
+    pda::{get_globalstate_pda, get_resource_extension_pda, get_topology_pda},
     processors::{resource::allocate_id, validation::validate_program_account},
     resource::ResourceType,
     seeds::{SEED_PREFIX, SEED_TOPOLOGY},
-    serializer::{try_acc_create, try_acc_write},
+    serializer::try_acc_create,
     state::{
         accounttype::AccountType,
-        device::Device,
         globalstate::GlobalState,
-        interface::{Interface, LoopbackType},
-        topology::{FlexAlgoNodeSegment, TopologyConstraint, TopologyInfo},
+        topology::{TopologyConstraint, TopologyInfo},
     },
 };
 use borsh::BorshSerialize;
@@ -37,10 +35,6 @@ pub struct TopologyCreateArgs {
 /// [2]  globalstate         (readonly)
 /// [3]  payer               (writable, signer, must be in foundation_allowlist)
 /// [4]  system_program
-/// [5]  segment_routing_ids (writable, ResourceExtension) — only if Vpnv4 loopbacks passed
-/// [6+] Device accounts     (writable) — optional, for backfill
-///
-/// If no Device accounts are passed, account [5] can be omitted.
 pub fn process_topology_create(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -139,76 +133,6 @@ pub fn process_topology_create(
         program_id,
         &[SEED_PREFIX, SEED_TOPOLOGY, name.as_bytes(), &[bump_seed]],
     )?;
-
-    // Backfill Vpnv4 loopbacks (remaining accounts after system_program)
-    // Convention: if any Device accounts are passed, segment_routing_ids must be
-    // the last account; Device accounts precede it.
-    let remaining: Vec<&AccountInfo> = accounts_iter.collect();
-    if !remaining.is_empty() {
-        let (device_accounts, tail) = remaining.split_at(remaining.len() - 1);
-        let segment_routing_ids_account = tail[0];
-
-        // Validate the SegmentRoutingIds account
-        let (expected_sr_pda, _, _) =
-            get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
-        validate_program_account!(
-            segment_routing_ids_account,
-            program_id,
-            writable = true,
-            pda = &expected_sr_pda,
-            "SegmentRoutingIds"
-        );
-
-        for device_account in device_accounts {
-            // Owner + non-empty + writable check before we trust the bytes.
-            validate_program_account!(device_account, program_id, writable = true, "Device");
-            let mut device = Device::try_from(&device_account.data.borrow()[..])?;
-            // Now that we know the device index, confirm the PDA matches.
-            assert_eq!(
-                device_account.key,
-                &get_device_pda(program_id, device.index).0,
-                "Invalid Device PDA"
-            );
-            let mut modified = false;
-            for iface in device.interfaces.iter_mut() {
-                let iface_v2 = iface.into_current_version();
-                if iface_v2.loopback_type != LoopbackType::Vpnv4 {
-                    continue;
-                }
-                // Skip if already has a segment for this topology (idempotent)
-                if iface_v2
-                    .flex_algo_node_segments
-                    .iter()
-                    .any(|s| &s.topology == topology_account.key)
-                {
-                    continue;
-                }
-                let node_segment_idx = allocate_id(segment_routing_ids_account)?;
-                // Mutate the interface in place
-                match iface {
-                    Interface::V3(ref mut v3) => {
-                        v3.flex_algo_node_segments.push(FlexAlgoNodeSegment {
-                            topology: *topology_account.key,
-                            node_segment_idx,
-                        });
-                    }
-                    _ => {
-                        // Upgrade to current version with the segment added
-                        let mut upgraded = iface.into_current_version();
-                        upgraded.flex_algo_node_segments.push(FlexAlgoNodeSegment {
-                            topology: *topology_account.key,
-                            node_segment_idx,
-                        });
-                        *iface = Interface::V3(upgraded);
-                    }
-                }
-                modified = true;
-            }
-            if modified {
-                try_acc_write(&device, device_account, payer_account, accounts)?;
-            }
-        }
-    }
 
     msg!(
         "TopologyCreate: created '{}' bit={} algo={} constraint={:?}",

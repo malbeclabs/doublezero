@@ -696,6 +696,154 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		assert.Equal(t, int32(2), atomic.LoadInt32(&writeCalled), "should try write twice (before and after init)")
 	})
 
+	t.Run("initializes_only_timestamp_index_when_timestamp_index_not_found", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+
+		key := newTestPartitionKey()
+		sample := telemetry.Sample{
+			Timestamp: time.Now(),
+			RTT:       40 * time.Microsecond,
+			Loss:      false,
+		}
+
+		var initSamplesCalled, initTimestampIndexCalled, writeCalled int32
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				if atomic.AddInt32(&writeCalled, 1) == 1 {
+					return solana.Signature{}, nil, sdktelemetry.ErrTimestampIndexNotFound
+				}
+				return solana.Signature{}, nil, nil
+			},
+			InitializeDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				atomic.AddInt32(&initSamplesCalled, 1)
+				return solana.Signature{}, nil, nil
+			},
+			InitializeTimestampIndexFunc: func(ctx context.Context, samplesAccountPK solana.PublicKey) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				atomic.AddInt32(&initTimestampIndexCalled, 1)
+				return solana.Signature{}, nil, nil
+			},
+		}
+
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer.Add(key, sample)
+
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    2,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
+		})
+		require.NoError(t, err)
+
+		submitter.Tick(context.Background())
+
+		assert.Equal(t, int32(0), atomic.LoadInt32(&initSamplesCalled), "should not initialize samples account")
+		assert.Equal(t, int32(1), atomic.LoadInt32(&initTimestampIndexCalled), "should initialize timestamp index")
+		assert.Equal(t, int32(2), atomic.LoadInt32(&writeCalled), "should try write twice (before and after timestamp index init)")
+	})
+
+	t.Run("clears_timestamp_index_pk_when_init_fails", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+
+		key := newTestPartitionKey()
+		sample := newTestSample()
+
+		var writeCalled int32
+		var retryTimestampIndexPK *solana.PublicKey
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				n := atomic.AddInt32(&writeCalled, 1)
+				if n == 1 {
+					return solana.Signature{}, nil, sdktelemetry.ErrTimestampIndexNotFound
+				}
+				retryTimestampIndexPK = config.TimestampIndexPK
+				return solana.Signature{}, nil, nil
+			},
+			InitializeTimestampIndexFunc: func(ctx context.Context, samplesAccountPK solana.PublicKey) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				return solana.Signature{}, nil, errors.New("init failed")
+			},
+		}
+
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer.Add(key, sample)
+
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    2,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
+		})
+		require.NoError(t, err)
+
+		submitter.Tick(context.Background())
+
+		assert.Equal(t, int32(2), atomic.LoadInt32(&writeCalled), "should retry write after failed timestamp index init")
+		assert.Nil(t, retryTimestampIndexPK, "retry write should have nil TimestampIndexPK after failed init")
+	})
+
+	t.Run("clears_timestamp_index_pk_when_init_fails_on_new_account", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+
+		key := newTestPartitionKey()
+		sample := newTestSample()
+
+		var writeCalled int32
+		var retryTimestampIndexPK *solana.PublicKey
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				n := atomic.AddInt32(&writeCalled, 1)
+				if n == 1 {
+					return solana.Signature{}, nil, sdktelemetry.ErrAccountNotFound
+				}
+				retryTimestampIndexPK = config.TimestampIndexPK
+				return solana.Signature{}, nil, nil
+			},
+			InitializeDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				return solana.Signature{}, nil, nil
+			},
+			InitializeTimestampIndexFunc: func(ctx context.Context, samplesAccountPK solana.PublicKey) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				return solana.Signature{}, nil, errors.New("init failed")
+			},
+		}
+
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer.Add(key, sample)
+
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    2,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
+		})
+		require.NoError(t, err)
+
+		submitter.Tick(context.Background())
+
+		assert.Equal(t, int32(2), atomic.LoadInt32(&writeCalled), "should retry write after failed timestamp index init")
+		assert.Nil(t, retryTimestampIndexPK, "retry write should have nil TimestampIndexPK after failed init")
+	})
+
 	t.Run("failed_retries_reinsert_at_front_preserving_order", func(t *testing.T) {
 		t.Parallel()
 

@@ -37,7 +37,10 @@ use doublezero_serviceability::{
 use doublezero_telemetry::{
     error::TelemetryError,
     instructions::{TelemetryInstruction, INITIALIZE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX},
-    pda::{derive_device_latency_samples_pda, derive_internet_latency_samples_pda},
+    pda::{
+        derive_device_latency_samples_pda, derive_internet_latency_samples_pda,
+        derive_timestamp_index_pda,
+    },
     processors::telemetry::{
         initialize_device_latency_samples::InitializeDeviceLatencySamplesArgs,
         initialize_internet_latency_samples::InitializeInternetLatencySamplesArgs,
@@ -712,6 +715,76 @@ impl TelemetryProgramHelper {
         );
 
         banks_client.process_transaction(tx).await
+    }
+
+    pub async fn initialize_timestamp_index(
+        &mut self,
+        agent: &Keypair,
+        samples_account_pk: Pubkey,
+    ) -> Result<Pubkey, BanksClientError> {
+        let (pda, _) = derive_timestamp_index_pda(&self.program_id, &samples_account_pk);
+
+        self.execute_transaction(
+            TelemetryInstruction::InitializeTimestampIndex,
+            &[agent],
+            vec![
+                AccountMeta::new(pda, false),
+                AccountMeta::new_readonly(samples_account_pk, false),
+                AccountMeta::new(agent.pubkey(), true),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            ],
+        )
+        .await?;
+
+        Ok(pda)
+    }
+
+    pub async fn write_device_latency_samples_with_timestamp_index(
+        &mut self,
+        agent: &Keypair,
+        latency_samples_pda: Pubkey,
+        timestamp_index_pda: Pubkey,
+        samples: Vec<u32>,
+        start_timestamp_microseconds: u64,
+    ) -> Result<(), BanksClientError> {
+        self.execute_transaction(
+            TelemetryInstruction::WriteDeviceLatencySamples(WriteDeviceLatencySamplesArgs {
+                start_timestamp_microseconds,
+                samples,
+            }),
+            &[agent],
+            vec![
+                AccountMeta::new(latency_samples_pda, false),
+                AccountMeta::new(agent.pubkey(), true),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+                AccountMeta::new(timestamp_index_pda, false),
+            ],
+        )
+        .await
+    }
+
+    pub async fn write_internet_latency_samples_with_timestamp_index(
+        &mut self,
+        agent: &Keypair,
+        latency_samples_pda: Pubkey,
+        timestamp_index_pda: Pubkey,
+        samples: Vec<u32>,
+        start_timestamp_microseconds: u64,
+    ) -> Result<(), BanksClientError> {
+        self.execute_transaction(
+            TelemetryInstruction::WriteInternetLatencySamples(WriteInternetLatencySamplesArgs {
+                start_timestamp_microseconds,
+                samples,
+            }),
+            &[agent],
+            vec![
+                AccountMeta::new(latency_samples_pda, false),
+                AccountMeta::new(agent.pubkey(), true),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+                AccountMeta::new(timestamp_index_pda, false),
+            ],
+        )
+        .await
     }
 
     pub async fn execute_transaction(

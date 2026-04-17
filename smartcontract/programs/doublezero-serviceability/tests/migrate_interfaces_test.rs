@@ -15,8 +15,8 @@ use doublezero_serviceability::{
         device::*,
         globalstate::GlobalState,
         interface::{
-            InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, InterfaceV2, LoopbackType,
-            RoutingMode,
+            Interface, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, InterfaceV2,
+            InterfaceV3, LoopbackType, RoutingMode,
         },
     },
 };
@@ -202,10 +202,9 @@ async fn setup_with_device(
 // ---------------------------------------------------------------------------
 // test_migrate_device_interfaces_idempotent
 //
-// Newly created devices are already in the new V2 format (with
-// flex_algo_node_segments bytes).  The first call succeeds via the idempotency
-// path; the second call also succeeds, and the raw account bytes are identical
-// after both calls.
+// Newly created devices have no interfaces. The migration finds no V3 interfaces
+// so it runs the migration path, but since there are no interfaces to convert
+// the result is identical. The second call also succeeds.
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn test_migrate_device_interfaces_idempotent() {
@@ -421,9 +420,9 @@ async fn test_migrate_device_interfaces_activator_authority() {
         },
     );
 
-    // A freshly serialized device is already in V2 format (has flex_algo_node_segments
-    // bytes), so the idempotency check will trigger.  That is fine: the test only
-    // validates that the activator authority key is accepted.
+    // A freshly serialized device with no interfaces — the migration will find no V3
+    // interfaces and run the (no-op) migration path. The test only validates that the
+    // activator authority key is accepted.
     let device = Device {
         account_type: AccountType::Device,
         owner: payer.pubkey(),
@@ -547,21 +546,15 @@ async fn test_migrate_device_interfaces_non_signer() {
 // ---------------------------------------------------------------------------
 // test_migrate_device_interfaces_legacy_account
 //
-// This test exercises the actual migration code path (legacy → new V2 format).
+// This test exercises the actual migration code path (V2 → V3 format).
 //
 // Approach:
-//  1. Serialize a Device with V2 interfaces (new format, with flex_algo_node_segments).
-//  2. Strip the 4-byte empty-vec length prefix that Borsh appends for each
-//     flex_algo_node_segments field from the end of each interface's bytes.
-//     The V2 interface on-disk layout (excluding discriminant) is:
-//       status(1) + name(4+n) + interface_type(1) + cyoa(1) + dia(1) +
-//       loopback_type(1) + bandwidth(8) + cir(8) + mtu(2) + routing_mode(1) +
-//       vlan_id(2) + ip_net(5) + node_segment_idx(2) + user_tunnel_endpoint(1) +
-//       flex_algo_node_segments_len(4)   ← the 4 bytes to strip for legacy
-//  3. Inject the truncated bytes as the device account data.
-//  4. Call MigrateDeviceInterfaces.
-//  5. Verify the account data has grown by 4 bytes per interface (the
-//     flex_algo_node_segments vec length prefix has been written back).
+//  1. Serialize a Device with V2 interfaces (discriminant 1, no flex_algo_node_segments).
+//  2. Inject those bytes as the device account data (this is the legacy format).
+//  3. Call MigrateDeviceInterfaces.
+//  4. Verify the account data has grown by 4 bytes per interface (the
+//     flex_algo_node_segments vec length prefix) and the interface discriminant
+//     changed from 1 (V2) to 3 (V3).
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn test_migrate_device_interfaces_legacy_account() {
@@ -619,7 +612,8 @@ async fn test_migrate_device_interfaces_legacy_account() {
         },
     );
 
-    // Build a device with one V2 interface that has an empty flex_algo_node_segments vec.
+    // Build a device with one V2 interface (no flex_algo_node_segments — this is the
+    // legacy on-disk format with discriminant 1).
     let iface = InterfaceV2 {
         status: InterfaceStatus::Pending,
         name: "Ethernet1".to_string(),
@@ -635,15 +629,16 @@ async fn test_migrate_device_interfaces_legacy_account() {
         ip_net: "192.168.1.0/24".parse().unwrap(),
         node_segment_idx: 0,
         user_tunnel_endpoint: false,
-        flex_algo_node_segments: vec![],
     };
+    let location_pk = Pubkey::new_unique();
+    let exchange_pk = Pubkey::new_unique();
     let device = Device {
         account_type: AccountType::Device,
         owner: payer.pubkey(),
         index: 2,
         bump_seed: dev_bump,
-        location_pk: Pubkey::new_unique(),
-        exchange_pk: Pubkey::new_unique(),
+        location_pk,
+        exchange_pk,
         device_type: DeviceType::Hybrid,
         public_ip: [100, 0, 0, 1].into(),
         status: DeviceStatus::Pending,
@@ -652,7 +647,7 @@ async fn test_migrate_device_interfaces_legacy_account() {
         metrics_publisher_pk: Pubkey::default(),
         contributor_pk: contributor_pubkey,
         mgmt_vrf: "mgmt".to_string(),
-        interfaces: vec![iface.to_interface()],
+        interfaces: vec![iface.to_interface()], // Interface::V2, disc 1
         reference_count: 0,
         users_count: 0,
         max_users: 128,
@@ -667,41 +662,23 @@ async fn test_migrate_device_interfaces_legacy_account() {
         max_multicast_publishers: 0,
     };
 
-    // Build the legacy bytes by removing the 4-byte flex_algo_node_segments vec
-    // length prefix from within the interface block.  Borsh encodes Vec<T> as a
-    // u32 length prefix followed by the elements; an empty vec is just [0,0,0,0].
-    //
-    // We locate the flex_algo bytes by computing the sizes of all components that
-    // precede them:
-    //   • device header (everything up to and including the interfaces vec count)
-    //   • interface discriminant (1 byte)
-    //   • all V2 interface fields that appear before flex_algo_node_segments
-    //
-    // Device header bytes before the interfaces vec (4-byte count prefix):
-    //   account_type(1) + owner(32) + index(16) + bump_seed(1) +
-    //   location_pk(32) + exchange_pk(32) + device_type(1) + public_ip(4) +
-    //   status(1) + code len(4+7=11) + dz_prefixes (4+5=9) +
-    //   metrics_publisher_pk(32) + contributor_pk(32) + mgmt_vrf(4+4=8)
-    //   = 212 bytes header + 4 bytes vec count = 216 bytes to start of first interface.
-    //
-    // V2 interface fields before flex_algo_node_segments (after discriminant):
-    //   status(1) + name len+data(4+9=13) + interface_type(1) + cyoa(1) +
-    //   dia(1) + loopback_type(1) + bandwidth(8) + cir(8) + mtu(2) +
-    //   routing_mode(1) + vlan_id(2) + ip_net(5) + node_segment_idx(2) +
-    //   user_tunnel_endpoint(1) = 47 bytes.
-    //
-    // So flex_algo bytes start at: 216 + 1(discriminant) + 47 = 264.
-    let new_bytes = borsh::to_vec(&device).unwrap();
-    let flex_algo_offset = 264usize;
-    // Verify that the 4 bytes at that offset are the empty-vec prefix [0,0,0,0].
+    // The legacy bytes are just the V2 serialization (disc 1, no flex_algo).
+    let legacy_bytes = borsh::to_vec(&device).unwrap();
+
+    // Build the expected post-migration bytes: same device but with V3 interface.
+    let iface_v3: InterfaceV3 = iface.into();
+    let device_v3 = Device {
+        interfaces: vec![iface_v3.to_interface()], // Interface::V3, disc 3
+        ..device.clone()
+    };
+    let expected_bytes = borsh::to_vec(&device_v3).unwrap();
+
+    // V3 should be 4 bytes larger (flex_algo_node_segments empty vec prefix).
     assert_eq!(
-        &new_bytes[flex_algo_offset..flex_algo_offset + 4],
-        &[0u8, 0, 0, 0],
-        "Expected flex_algo_node_segments empty vec at byte offset {flex_algo_offset}"
+        expected_bytes.len(),
+        legacy_bytes.len() + 4,
+        "V3 format should be 4 bytes larger than V2 (empty flex_algo vec prefix)"
     );
-    // Build legacy bytes by omitting those 4 bytes.
-    let mut legacy_bytes = new_bytes[..flex_algo_offset].to_vec();
-    legacy_bytes.extend_from_slice(&new_bytes[flex_algo_offset + 4..]);
 
     program_test.add_account(
         device_pubkey,
@@ -716,7 +693,7 @@ async fn test_migrate_device_interfaces_legacy_account() {
     let (mut banks_client, funder, _) = program_test.start().await;
     transfer(&mut banks_client, &funder, &payer.pubkey(), 100_000_000).await;
 
-    // Before migration: raw bytes are the shorter legacy form.
+    // Before migration: raw bytes are the V2 form.
     let bytes_before = banks_client
         .get_account(device_pubkey)
         .await
@@ -727,7 +704,7 @@ async fn test_migrate_device_interfaces_legacy_account() {
     assert_eq!(
         bytes_before.len(),
         legacy_bytes.len(),
-        "Pre-migration byte length should match injected legacy data"
+        "Pre-migration byte length should match injected V2 data"
     );
 
     // Call MigrateDeviceInterfaces.
@@ -750,8 +727,8 @@ async fn test_migrate_device_interfaces_legacy_account() {
     );
 
     // After migration: the account must have grown by exactly 4 bytes (one interface ×
-    // 4-byte empty-vec prefix).  Solana may zero-pad accounts to alignment boundaries,
-    // so we allow bytes_after.len() >= new_bytes.len().
+    // 4-byte empty-vec prefix). Solana may zero-pad accounts to alignment boundaries,
+    // so we allow bytes_after.len() >= expected_bytes.len().
     let bytes_after = banks_client
         .get_account(device_pubkey)
         .await
@@ -761,21 +738,21 @@ async fn test_migrate_device_interfaces_legacy_account() {
         .clone();
 
     assert!(
-        bytes_after.len() >= new_bytes.len(),
-        "Post-migration account ({} bytes) must be at least as large as canonical new format ({} bytes)",
+        bytes_after.len() >= expected_bytes.len(),
+        "Post-migration account ({} bytes) must be at least as large as canonical V3 format ({} bytes)",
         bytes_after.len(),
-        new_bytes.len()
+        expected_bytes.len()
     );
 
-    // The first new_bytes.len() bytes must match the canonical new V2 serialization.
+    // The first expected_bytes.len() bytes must match the canonical V3 serialization.
     assert_eq!(
-        &bytes_after[..new_bytes.len()],
-        &new_bytes[..],
-        "Migrated account prefix must match the canonical new V2 serialization"
+        &bytes_after[..expected_bytes.len()],
+        &expected_bytes[..],
+        "Migrated account prefix must match the canonical V3 serialization"
     );
 
-    // The account must be deserializable as a Device in the new format and the
-    // interface must carry an empty flex_algo_node_segments vec.
+    // The account must be deserializable as a Device and the interface must be V3
+    // with an empty flex_algo_node_segments vec.
     let migrated_device =
         Device::try_from(&bytes_after[..]).expect("Failed to deserialize migrated device");
     assert_eq!(migrated_device.code, device.code);
@@ -783,6 +760,10 @@ async fn test_migrate_device_interfaces_legacy_account() {
         migrated_device.interfaces.len(),
         1,
         "Interface count must be preserved after migration"
+    );
+    assert!(
+        matches!(migrated_device.interfaces[0], Interface::V3(_)),
+        "Migrated interface must be V3"
     );
     let migrated_iface = migrated_device.interfaces[0].into_current_version();
     assert_eq!(

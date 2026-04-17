@@ -2,10 +2,7 @@ use crate::{
     error::DoubleZeroError,
     serializer::try_acc_write,
     state::{
-        accounttype::AccountType,
-        device::Device,
-        globalstate::GlobalState,
-        interface::{deserialize_legacy_v2_interface, Interface},
+        accounttype::AccountType, device::Device, globalstate::GlobalState, interface::Interface,
     },
 };
 use borsh::BorshSerialize;
@@ -31,15 +28,9 @@ impl fmt::Debug for MigrateDeviceInterfacesArgs {
 
 /// Deserializes a Device account using the legacy interface format (pre-RFC-18),
 /// where Interface discriminant 1 does NOT have trailing flex_algo_node_segments bytes.
-///
-/// `data` is advanced past all bytes consumed by this function. If bytes remain
-/// after the call, those are flex_algo_node_segments bytes from an already-migrated
-/// account (new V2 format). The caller can check `data.is_empty()` to detect this.
-///
-/// This is the only place that understands the old wire format; all other code
-/// assumes accounts have already been migrated.
-fn deserialize_device_legacy(data: &mut &[u8]) -> Result<Device, ProgramError> {
-    let mut reader = *data;
+/// Also handles the current V3 format (discriminant 3) for idempotency detection.
+fn deserialize_device_legacy(data: &[u8]) -> Result<Device, ProgramError> {
+    let mut reader = data;
 
     let account_type: AccountType =
         borsh::BorshDeserialize::deserialize(&mut reader).unwrap_or_default();
@@ -82,11 +73,18 @@ fn deserialize_device_legacy(data: &mut &[u8]) -> Result<Device, ProgramError> {
                 Interface::V1(v1)
             }
             1 | 2 => {
-                // Legacy V2 format — no flex_algo_node_segments bytes on disk.
-                let v2 = deserialize_legacy_v2_interface(&mut reader).unwrap_or_default();
+                // V2 format — no flex_algo_node_segments bytes on disk.
+                let v2: crate::state::interface::InterfaceV2 =
+                    borsh::BorshDeserialize::deserialize(&mut reader).unwrap_or_default();
                 Interface::V2(v2)
             }
-            _ => Interface::V2(crate::state::interface::InterfaceV2::default()),
+            3 => {
+                // V3 format — includes flex_algo_node_segments.
+                let v3: crate::state::interface::InterfaceV3 =
+                    borsh::BorshDeserialize::deserialize(&mut reader).unwrap_or_default();
+                Interface::V3(v3)
+            }
+            _ => Interface::V3(crate::state::interface::InterfaceV3::default()),
         };
         interfaces.push(iface);
     }
@@ -116,10 +114,6 @@ fn deserialize_device_legacy(data: &mut &[u8]) -> Result<Device, ProgramError> {
     if account_type != AccountType::Device {
         return Err(ProgramError::InvalidAccountData);
     }
-
-    // Advance the caller's slice past all consumed bytes so they can check
-    // whether any bytes remain (indicating an already-migrated account).
-    *data = reader;
 
     Ok(Device {
         account_type,
@@ -154,7 +148,7 @@ fn deserialize_device_legacy(data: &mut &[u8]) -> Result<Device, ProgramError> {
 
 /// Migrates a Device account's interfaces from the pre-RFC-18 on-chain format
 /// (Interface discriminant 1, no flex_algo_node_segments bytes) to the current
-/// format (Interface discriminant 1 with an empty flex_algo_node_segments vec).
+/// V3 format (Interface discriminant 3, with an empty flex_algo_node_segments vec).
 ///
 /// This instruction is idempotent: calling it on an already-migrated account is
 /// a no-op. This is safe for the activator startup sweep, which calls it for all
@@ -196,13 +190,14 @@ pub fn process_migrate_device_interfaces(
     // Read the device using the legacy deserializer. The borrow and the data_slice
     // derived from it are scoped to this block so the immutable borrow on
     // device_account.data is released before try_acc_write takes a mutable borrow.
-    let (device, already_migrated) = {
+    let (mut device, already_migrated) = {
         let data_borrow = device_account.data.borrow();
-        let mut data_slice: &[u8] = &data_borrow;
-        let device = deserialize_device_legacy(&mut data_slice)?;
-        // If bytes remain after the legacy deserialization, those are
-        // flex_algo_node_segments bytes — the account is already in new V2 format.
-        let already_migrated = !data_slice.is_empty();
+        let device = deserialize_device_legacy(&data_borrow)?;
+        // If any interface is already V3, the account has been migrated.
+        let already_migrated = device
+            .interfaces
+            .iter()
+            .any(|i| matches!(i, Interface::V3(_)));
         (device, already_migrated)
     };
 
@@ -215,13 +210,24 @@ pub fn process_migrate_device_interfaces(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    // Idempotency check: the account is already in new V2 format — skip migration
+    // Idempotency check: the account already has V3 interfaces — skip migration
     // so we don't zero any topology assignments in the flex_algo_node_segments vecs.
     if already_migrated {
         return Ok(());
     }
 
-    // Write back with the current format — each interface now includes the
+    // Convert all V1/V2 interfaces to V3 (adding empty flex_algo_node_segments vec).
+    let migrated: Vec<Interface> = device
+        .interfaces
+        .drain(..)
+        .map(|iface| match iface {
+            Interface::V3(_) => iface,
+            _ => Interface::V3(iface.into_current_version()),
+        })
+        .collect();
+    device.interfaces = migrated;
+
+    // Write back with the V3 format — each interface now includes the
     // (empty) flex_algo_node_segments vec in its serialized form.
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

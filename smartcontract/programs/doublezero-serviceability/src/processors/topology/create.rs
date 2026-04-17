@@ -162,8 +162,8 @@ pub fn process_topology_create(
                 let node_segment_idx = allocate_id(segment_routing_ids_account)?;
                 // Mutate the interface in place
                 match iface {
-                    Interface::V2(ref mut v2) => {
-                        v2.flex_algo_node_segments.push(FlexAlgoNodeSegment {
+                    Interface::V3(ref mut v3) => {
+                        v3.flex_algo_node_segments.push(FlexAlgoNodeSegment {
                             topology: *topology_account.key,
                             node_segment_idx,
                         });
@@ -175,7 +175,7 @@ pub fn process_topology_create(
                             topology: *topology_account.key,
                             node_segment_idx,
                         });
-                        *iface = Interface::V2(upgraded);
+                        *iface = Interface::V3(upgraded);
                     }
                 }
                 modified = true;

@@ -265,18 +265,18 @@ pub struct Link {
     pub link_health: LinkHealth,   // 1
     pub desired_status: LinkDesiredStatus, // 1
     pub link_topologies: Vec<Pubkey>, // 4 + 32 * len
-    pub link_flags: u8,            // 1 — bitmask; see LINK_FLAG_* constants
+    pub link_flags: u32,           // 4 — bitmask; see LINK_FLAG_* constants
 }
 
 /// Bit 0 of `link_flags`: link is administratively drained from unicast traffic.
 /// Maps to IS-IS admin-group UNICAST-DRAINED (group 0).
-pub const LINK_FLAG_UNICAST_DRAINED: u8 = 0x01;
+pub const LINK_FLAG_UNICAST_DRAINED: u32 = 0x01;
 
 impl fmt::Display for Link {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, tunnel_id: {}, tunnel_net: {}, status: {}, code: {}, contributor_pk: {}, link_health: {}, desired_status: {}, link_topologies: {:?}, link_flags: {:#04x}",
+            "account_type: {}, owner: {}, index: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, tunnel_id: {}, tunnel_net: {}, status: {}, code: {}, contributor_pk: {}, link_health: {}, desired_status: {}, link_topologies: {:?}, link_flags: {:#010x}",
             self.account_type, self.owner, self.index, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.tunnel_id, &self.tunnel_net, self.status, self.code, self.contributor_pk, self.link_health, self.desired_status, self.link_topologies, self.link_flags
         )
     }

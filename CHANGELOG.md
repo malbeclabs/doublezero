@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
-## [v0.17.0](https://github.com/malbeclabs/doublezero/compare/client/v0.17.0...client/v0.17.0) - 2026-04-17
+## [v0.18.0](https://github.com/malbeclabs/doublezero/compare/client/v0.17.0...client/v0.18.0) - 2026-04-17
 
 ### Breaking
 

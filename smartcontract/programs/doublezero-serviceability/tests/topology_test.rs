@@ -1035,9 +1035,11 @@ async fn setup_wan_link(
     )
     .await;
 
-    // Create link
+    // Create link (unicast-default topology must already exist at this point so
+    // CreateLink can auto-tag the link with it).
     let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
     execute_transaction(
         banks_client,
         recent_blockhash,
@@ -1060,13 +1062,13 @@ async fn setup_wan_link(
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         payer,
     )
     .await;
 
-    // Activate link (unicast-default topology must already exist at this point)
-    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
+    // Activate link
     execute_transaction(
         banks_client,
         recent_blockhash,
@@ -1081,7 +1083,6 @@ async fn setup_wan_link(
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         payer,
     )

@@ -499,6 +499,15 @@ async fn test_wan_link() {
 
     let (tunnel_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        config_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -521,6 +530,7 @@ async fn test_wan_link() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -561,15 +571,6 @@ async fn test_wan_link() {
     /*****************************************************************************************************************************************************/
     println!("🟢 8. Activate Link...");
 
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        config_pubkey,
-        &payer,
-    )
-    .await;
-
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -584,7 +585,6 @@ async fn test_wan_link() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1205,6 +1205,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
     // 6. Attempt to create a WAN link using the CYOA interface - should fail
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
 
     let res = try_execute_transaction(
         &mut banks_client,
@@ -1228,6 +1229,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1319,6 +1321,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1384,6 +1387,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1418,15 +1422,6 @@ async fn test_wan_link_rejects_cyoa_interface() {
     )
     .await;
 
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        config_pubkey,
-        &payer,
-    )
-    .await;
-
     // Attempt to activate the link - should fail because side A now has CYOA
     let res = try_execute_transaction(
         &mut banks_client,
@@ -1442,7 +1437,6 @@ async fn test_wan_link_rejects_cyoa_interface() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1771,6 +1765,15 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        config_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1793,16 +1796,8 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
-        &payer,
-    )
-    .await;
-
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        config_pubkey,
         &payer,
     )
     .await;
@@ -1821,7 +1816,6 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2230,6 +2224,14 @@ async fn setup_link_env() -> (
     // Create link (Pending status)
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (tunnel_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        config_pubkey,
+        &payer,
+    )
+    .await;
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -2252,6 +2254,7 @@ async fn setup_link_env() -> (
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2336,16 +2339,6 @@ async fn test_link_delete_from_soft_drained() {
         .await
         .expect("Failed to get blockhash");
 
-    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
-
     // Activate
     execute_transaction(
         &mut banks_client,
@@ -2361,7 +2354,6 @@ async fn test_link_delete_from_soft_drained() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2470,16 +2462,6 @@ async fn test_link_delete_from_hard_drained() {
         .await
         .expect("Failed to get blockhash");
 
-    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
-
     // Activate
     execute_transaction(
         &mut banks_client,
@@ -2495,7 +2477,6 @@ async fn test_link_delete_from_hard_drained() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2572,6 +2553,7 @@ async fn test_link_create_invalid_mtu() {
     // Create link with MTU 1500 (should fail, must be 9000)
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (tunnel_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
 
     let res = try_execute_transaction(
         &mut banks_client,
@@ -2595,6 +2577,7 @@ async fn test_link_create_invalid_mtu() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2621,15 +2604,7 @@ async fn test_link_activation_auto_tags_unicast_default() {
         tunnel_pubkey,
     ) = setup_link_env().await;
 
-    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
 
     let recent_blockhash = banks_client
         .get_latest_blockhash()
@@ -2651,7 +2626,6 @@ async fn test_link_activation_auto_tags_unicast_default() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2675,24 +2649,347 @@ async fn test_link_activation_auto_tags_unicast_default() {
 async fn test_link_activation_succeeds_without_unicast_default() {
     // Activation must succeed even when the unicast-default topology hasn't been created yet
     // (e.g. fresh deployment before topology creation). The link simply has no topology tags.
-    let (
-        mut banks_client,
+    // Under the new model (auto-tag at CreateLink), tagging depends on whether the topology
+    // existed at creation time — here we explicitly create the link BEFORE the topology exists
+    // so link_topologies should remain empty after activation.
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
         program_id,
-        payer,
-        globalstate_pubkey,
-        _contributor_pubkey,
-        device_a_pubkey,
-        device_z_pubkey,
-        tunnel_pubkey,
-    ) = setup_link_env().await;
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
 
-    let recent_blockhash = banks_client
-        .get_latest_blockhash()
-        .await
-        .expect("Failed to get blockhash");
+    let (config_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
-    // Derive the unicast-default PDA without creating it
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
+            local_asn: 65000,
+            remote_asn: 65001,
+            device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+            user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+            multicastgroup_block: "10.0.0.0/24".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
+            next_bgp_community: None,
+        }),
+        vec![
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Location
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            country: "us".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            loc_id: 0,
+        }),
+        vec![
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Exchange
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            reserved: 0,
+        }),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Contributor
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (contributor_pubkey, _) =
+        get_contributor_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "cont".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Device A + Ethernet0
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (device_a_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
+            code: "A".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [110, 0, 0, 1].into(),
+            dz_prefixes: "100.1.0.0/24".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
+        }),
+        vec![
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(
+            device::interface::create::DeviceInterfaceCreateArgs {
+                name: "Ethernet0".to_string(),
+                interface_dia: InterfaceDIA::None,
+                loopback_type: LoopbackType::None,
+                interface_cyoa: InterfaceCYOA::None,
+                bandwidth: 0,
+                ip_net: None,
+                cir: 0,
+                mtu: 9000,
+                routing_mode: RoutingMode::Static,
+                vlan_id: 0,
+                user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
+            },
+        ),
+        vec![
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(
+            device::interface::activate::DeviceInterfaceActivateArgs {
+                name: "Ethernet0".to_string(),
+                ip_net: "10.0.0.0/31".parse().unwrap(),
+                node_segment_idx: 0,
+            },
+        ),
+        vec![
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
+            name: "Ethernet0".to_string(),
+        }),
+        vec![
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Device Z + Ethernet1
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (device_z_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
+            code: "Z".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [11, 0, 0, 1].into(),
+            dz_prefixes: "11.1.0.0/23".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 0,
+        }),
+        vec![
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(
+            device::interface::create::DeviceInterfaceCreateArgs {
+                name: "Ethernet1".to_string(),
+                interface_dia: InterfaceDIA::None,
+                loopback_type: LoopbackType::None,
+                interface_cyoa: InterfaceCYOA::None,
+                bandwidth: 0,
+                ip_net: None,
+                cir: 0,
+                mtu: 9000,
+                routing_mode: RoutingMode::Static,
+                vlan_id: 0,
+                user_tunnel_endpoint: false,
+                use_onchain_allocation: false,
+            },
+        ),
+        vec![
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(
+            device::interface::activate::DeviceInterfaceActivateArgs {
+                name: "Ethernet1".to_string(),
+                ip_net: "10.0.0.1/31".parse().unwrap(),
+                node_segment_idx: 0,
+            },
+        ),
+        vec![
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
+            name: "Ethernet1".to_string(),
+        }),
+        vec![
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create link WITHOUT first creating the unicast-default topology — the PDA is passed but
+    // the account is not initialized, so CreateLink should silently skip tagging.
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (tunnel_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
     let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
+            code: "la".to_string(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10000000000,
+            mtu: 9000,
+            delay_ns: 1000000,
+            jitter_ns: 100000,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: Some("Ethernet1".to_string()),
+            desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
+        ],
+        &payer,
+    )
+    .await;
 
     execute_transaction(
         &mut banks_client,
@@ -2708,13 +3005,13 @@ async fn test_link_activation_succeeds_without_unicast_default() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
     .await;
 
-    // link_topologies should be empty since the topology account was not initialized
+    // link_topologies should be empty since the topology account was not initialized at
+    // CreateLink time
     let link = get_account_data(&mut banks_client, tunnel_pubkey)
         .await
         .expect("Link not found")
@@ -2741,16 +3038,6 @@ async fn test_link_topology_cap_at_8_rejected() {
         tunnel_pubkey,
     ) = setup_link_env().await;
 
-    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
-
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     execute_transaction(
@@ -2767,7 +3054,6 @@ async fn test_link_topology_cap_at_8_rejected() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2815,15 +3101,7 @@ async fn test_link_topology_invalid_account_rejected() {
         tunnel_pubkey,
     ) = setup_link_env().await;
 
-    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     execute_transaction(
@@ -2840,7 +3118,6 @@ async fn test_link_topology_invalid_account_rejected() {
             AccountMeta::new(_device_a_pubkey, false),
             AccountMeta::new(_device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2893,15 +3170,7 @@ async fn test_link_topology_valid_accepted() {
         tunnel_pubkey,
     ) = setup_link_env().await;
 
-    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
 
     let (admin_group_bits_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
@@ -2941,7 +3210,6 @@ async fn test_link_topology_valid_accepted() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2999,14 +3267,7 @@ async fn test_link_topology_reassigned_by_foundation() {
         get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Create unicast-default topology (required for activation)
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalstate_pubkey,
-        &payer,
-    )
-    .await;
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
 
     // Create a second topology: high-bandwidth
     let (high_bandwidth_pda, _) = get_topology_pda(&program_id, "high-bandwidth");
@@ -3042,7 +3303,6 @@ async fn test_link_topology_reassigned_by_foundation() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -3121,14 +3381,7 @@ async fn test_link_topology_cleared_by_foundation() {
         .await
         .expect("Failed to get blockhash");
 
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalstate_pubkey,
-        &payer,
-    )
-    .await;
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
 
     // Activate — auto-tags with unicast-default
     execute_transaction(
@@ -3145,7 +3398,6 @@ async fn test_link_topology_cleared_by_foundation() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -3223,14 +3475,7 @@ async fn test_link_topology_update_rejected_for_non_foundation() {
         .await
         .expect("Failed to get blockhash");
 
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalstate_pubkey,
-        &payer,
-    )
-    .await;
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
 
     execute_transaction(
         &mut banks_client,
@@ -3246,7 +3491,6 @@ async fn test_link_topology_update_rejected_for_non_foundation() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )

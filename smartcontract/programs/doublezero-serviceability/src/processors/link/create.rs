@@ -1,6 +1,6 @@
 use crate::{
     error::DoubleZeroError,
-    pda::get_link_pda,
+    pda::{get_link_pda, get_topology_pda},
     processors::validation::validate_program_account,
     seeds::{SEED_LINK, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
@@ -11,6 +11,7 @@ use crate::{
         globalstate::GlobalState,
         interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LINK_MTU},
         link::*,
+        topology::TopologyInfo,
     },
 };
 use borsh::BorshSerialize;
@@ -68,11 +69,11 @@ pub fn process_create_link(
     let side_z_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for onchain allocation (before payer)
+    // Optional: ResourceExtension accounts for onchain allocation (before unicast-default topology)
     // Account layout WITH ResourceExtension (use_onchain_allocation = true):
-    //   [link, contributor, side_a, side_z, globalstate, device_tunnel_block, link_ids, payer, system]
+    //   [link, contributor, side_a, side_z, globalstate, device_tunnel_block, link_ids, unicast_default, payer, system]
     // Account layout WITHOUT (legacy, use_onchain_allocation = false):
-    //   [link, contributor, side_a, side_z, globalstate, payer, system]
+    //   [link, contributor, side_a, side_z, globalstate, unicast_default, payer, system]
     let resource_extension_accounts = if value.use_onchain_allocation {
         let device_tunnel_block_ext = next_account_info(accounts_iter)?;
         let link_ids_ext = next_account_info(accounts_iter)?;
@@ -81,6 +82,7 @@ pub fn process_create_link(
         None
     };
 
+    let unicast_default_topology_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -232,6 +234,36 @@ pub fn process_create_link(
     };
 
     link.check_status_transition();
+
+    // Auto-tag with UNICAST-DEFAULT topology at creation.
+    // Always validate the PDA derivation to prevent callers passing a wrong account.
+    // Tagging is conditional: if the topology hasn't been created yet (e.g. fresh deployment),
+    // creation proceeds without the tag rather than failing.
+    let (expected_unicast_default_pda, _) = get_topology_pda(program_id, "unicast-default");
+    if unicast_default_topology_account.key != &expected_unicast_default_pda {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+    if unicast_default_topology_account.owner == program_id
+        && !unicast_default_topology_account.data_is_empty()
+    {
+        assert!(
+            unicast_default_topology_account.is_writable,
+            "unicast-default topology must be writable"
+        );
+        let mut unicast_default = TopologyInfo::try_from(unicast_default_topology_account)?;
+        unicast_default.reference_count = unicast_default
+            .reference_count
+            .checked_add(1)
+            .ok_or(DoubleZeroError::ArithmeticOverflow)?;
+        try_acc_write(
+            &unicast_default,
+            unicast_default_topology_account,
+            payer_account,
+            accounts,
+        )?;
+
+        link.link_topologies = vec![*unicast_default_topology_account.key];
+    }
 
     // Atomic create+allocate+activate if onchain allocation is enabled
     if let Some((device_tunnel_block_ext, link_ids_ext)) = resource_extension_accounts {

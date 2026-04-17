@@ -459,6 +459,15 @@ async fn test_dzx_link() {
 
     let (link_dzx_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        config_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -481,6 +490,7 @@ async fn test_dzx_link() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -617,15 +627,6 @@ async fn test_dzx_link() {
     /*****************************************************************************************************************************************************/
     println!("🟢 13. Activate Link...");
 
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        config_pubkey,
-        &payer,
-    )
-    .await;
-
     // Regression: activation must fail if side A/Z accounts do not match link.side_{a,z}_pk
     let res = try_execute_transaction(
         &mut banks_client,
@@ -642,7 +643,6 @@ async fn test_dzx_link() {
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -665,7 +665,6 @@ async fn test_dzx_link() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1029,6 +1028,7 @@ async fn test_dzx_link() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )

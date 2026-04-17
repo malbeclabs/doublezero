@@ -1200,6 +1200,7 @@ impl ServiceabilityProgramHelper {
                 AccountMeta::new(side_a_pk, false),
                 AccountMeta::new(side_z_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
+                AccountMeta::new(self.unicast_default_topology_pubkey, false),
             ],
         )
         .await?;
@@ -1227,7 +1228,6 @@ impl ServiceabilityProgramHelper {
                 AccountMeta::new(side_a_pk, false),
                 AccountMeta::new(side_z_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
-                AccountMeta::new_readonly(self.unicast_default_topology_pubkey, false),
             ],
         )
         .await?;

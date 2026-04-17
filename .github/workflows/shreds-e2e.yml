@@ -28,6 +28,7 @@ jobs:
       contents: read
     outputs:
       shreds-sha: ${{ steps.checkout-shreds.outputs.commit }}
+      matrix: ${{ steps.shard.outputs.matrix }}
     steps:
       - name: Checkout doublezero-shreds
         id: checkout-shreds
@@ -62,11 +63,63 @@ jobs:
           docker push ${{ env.SHRED_IMAGE_REPO }}/activator:${{ env.SHRED_IMAGE_TAG }}
           docker push ${{ env.SHRED_IMAGE_REPO }}/oracle:${{ env.SHRED_IMAGE_TAG }}
           docker push ${{ env.SHRED_IMAGE_REPO }}/client:${{ env.SHRED_IMAGE_TAG }}
+      - name: Discover tests and distribute across shards
+        id: shard
+        working-directory: e2e/
+        run: |
+          # Find all TestE2E_* functions in files with the e2e build tag.
+          tests=$(grep -rl '^//go:build e2e$' *_test.go \
+            | xargs grep -h '^func TestE2E_' \
+            | sed 's/func \(TestE2E_[a-zA-Z0-9_]*\).*/\1/' \
+            | sort)
+
+          count=$(echo "$tests" | wc -l)
+          echo "Discovered $count tests"
+          echo "$tests"
+
+          # Pinned heavy tests: each gets its own shard slot to keep the two
+          # biggest rocks (MultiUserInstantAllocation ~396s, DeviceScale ~345s)
+          # off the same runner. Update this list if a new test exceeds ~5min.
+          pinned_1="TestE2E_MultiUserInstantAllocation"
+          pinned_2="TestE2E_DeviceScale"
+
+          # Remaining tests round-robin across shards 3 and 4.
+          remaining=$(echo "$tests" | grep -vE "^(${pinned_1}|${pinned_2})$")
+
+          ROUND_ROBIN_SHARDS=2
+          declare -a shards
+          for ((i=0; i<ROUND_ROBIN_SHARDS; i++)); do shards[$i]=""; done
+          i=0
+          while IFS= read -r test; do
+            idx=$((i % ROUND_ROBIN_SHARDS))
+            if [ -n "${shards[$idx]}" ]; then
+              shards[$idx]="${shards[$idx]}|${test}"
+            else
+              shards[$idx]="$test"
+            fi
+            i=$((i + 1))
+          done <<< "$remaining"
+
+          # Build JSON matrix: shards 1-2 are pinned, shards 3-4 are round-robin.
+          matrix="[{\"shard\":1,\"run\":\"^(${pinned_1})$\"}"
+          matrix="${matrix},{\"shard\":2,\"run\":\"^(${pinned_2})$\"}"
+          for ((i=0; i<ROUND_ROBIN_SHARDS; i++)); do
+            matrix="${matrix},{\"shard\":$((i + 3)),\"run\":\"^(${shards[$i]})$\"}"
+          done
+          matrix="${matrix}]"
+
+          echo "Matrix: $matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   e2e:
+    name: e2e (shard ${{ matrix.shard }})
     needs: setup
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.setup.outputs.matrix) }}
     runs-on: doublezero-k8s-ci
-    timeout-minutes: 20
+    timeout-minutes: 15
     permissions:
       packages: read
       contents: read
@@ -117,4 +170,4 @@ jobs:
       - name: Run e2e tests
         env:
           SHRED_E2E_NO_BUILD: "1"
-        run: go test -tags=e2e -timeout=20m -v -count=1 .
+        run: go test -tags=e2e -timeout=12m -count=1 -run '${{ matrix.run }}' -v .

@@ -361,6 +361,39 @@ func (c *Client) WaitForStatusUp(ctx context.Context) error {
 	return nil
 }
 
+// WaitForUnicastStatusUp polls until a Unicast (IBRL) status entry exists and
+// its session is up. Prefer this over WaitForStatusUp in multi-tunnel contexts
+// where other tunnel types may already be present.
+func (c *Client) WaitForUnicastStatusUp(ctx context.Context) error {
+	return c.waitForUserTypeStatusUp(ctx, "IBRL", FindIBRLStatus)
+}
+
+// WaitForMulticastStatusUp polls until a Multicast status entry exists and
+// its session is up. Prefer this over WaitForStatusUp in multi-tunnel contexts
+// where other tunnel types may already be present.
+func (c *Client) WaitForMulticastStatusUp(ctx context.Context) error {
+	return c.waitForUserTypeStatusUp(ctx, "Multicast", FindMulticastStatus)
+}
+
+// waitForUserTypeStatusUp polls until find returns a non-nil status whose
+// session is up. userType is used only for log context.
+func (c *Client) waitForUserTypeStatusUp(ctx context.Context, userType string, find func([]*pb.Status) *pb.Status) error {
+	c.log.Debug("Waiting for status to be up", "host", c.Host, "userType", userType)
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
+		if err != nil {
+			return false, err
+		}
+		s := find(resp.Status)
+		return s != nil && IsStatusUp(s.SessionStatus), nil
+	}, waitForStatusUpTimeout, waitInterval)
+	if err != nil {
+		return fmt.Errorf("failed to wait for %s status to be up on host %s: %w", userType, c.Host, err)
+	}
+	c.log.Debug("Confirmed status is up", "host", c.Host, "userType", userType)
+	return nil
+}
+
 // WaitForAllStatusesUp polls until all tunnel statuses are up and at least
 // minExpected statuses exist. Sets doubleZeroIP from the IBRL status preferentially.
 func (c *Client) WaitForAllStatusesUp(ctx context.Context, minExpected int) error {

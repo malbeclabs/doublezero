@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.18.0](https://github.com/malbeclabs/doublezero/compare/client/v0.17.0...client/v0.18.0) - 2026-04-17
+
+### Breaking
+
+### Changes
+
 - Device Health Oracle
   - Add `interface_counters` activation criterion to device-health-oracle to verify devices have recent interface counter data in ClickHouse before activation
   - Add `controller_success` activation criterion to device-health-oracle to verify devices have consistent controller call coverage over a configurable burn-in period by querying ClickHouse

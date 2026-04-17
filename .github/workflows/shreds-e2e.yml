@@ -121,8 +121,8 @@ jobs:
           echo "Matrix: $matrix"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
-  e2e:
-    name: e2e (shard ${{ matrix.shard }})
+  shard-e2e:
+    name: shard-e2e (shard ${{ matrix.shard }})
     needs: setup
     strategy:
       fail-fast: false

@@ -1,6 +1,6 @@
 use crate::{error::Validate, state::accounttype::AccountType};
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::pubkey::Pubkey;
+use solana_program::{program_error::ProgramError, pubkey::Pubkey};
 
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy, PartialEq, Default)]
@@ -44,7 +44,7 @@ impl TryFrom<&[u8]> for TopologyInfo {
     type Error = solana_program::program_error::ProgramError;
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Self {
+        let out = Self {
             account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
@@ -53,7 +53,13 @@ impl TryFrom<&[u8]> for TopologyInfo {
             flex_algo_number: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             constraint: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             reference_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-        })
+        };
+
+        if out.account_type != AccountType::Topology {
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        Ok(out)
     }
 }
 

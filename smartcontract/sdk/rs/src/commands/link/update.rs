@@ -87,11 +87,18 @@ impl UpdateLinkCommand {
             accounts.push(AccountMeta::new(link_ids_ext, false));
         }
 
-        // Topology PDAs must be passed as remaining accounts so the onchain
-        // processor can verify each entry in link_topologies.
-        if let Some(ref link_topologies) = self.link_topologies {
-            for topology_pk in link_topologies {
-                accounts.push(AccountMeta::new_readonly(*topology_pk, false));
+        // When updating link_topologies, the processor diffs old vs new on-chain and
+        // adjusts each topology's reference_count. Pass the union of the Link's current
+        // link_topologies and the requested new set, all writable.
+        if let Some(ref new_topologies) = self.link_topologies {
+            let mut union: Vec<Pubkey> = link.link_topologies.clone();
+            for pk in new_topologies {
+                if !union.contains(pk) {
+                    union.push(*pk);
+                }
+            }
+            for topology_pk in union {
+                accounts.push(AccountMeta::new(topology_pk, false));
             }
         }
 

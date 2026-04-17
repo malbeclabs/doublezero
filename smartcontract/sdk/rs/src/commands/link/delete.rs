@@ -50,6 +50,12 @@ impl DeleteLinkCommand {
             accounts.push(AccountMeta::new(device_tunnel_block_ext, false));
             accounts.push(AccountMeta::new(link_ids_ext, false));
             accounts.push(AccountMeta::new(link.owner, false));
+
+            // Topology accounts for reference_count decrement — one writable account
+            // per entry in link.link_topologies.
+            for topology_pk in &link.link_topologies {
+                accounts.push(AccountMeta::new(*topology_pk, false));
+            }
         }
 
         client.execute_transaction(

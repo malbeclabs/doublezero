@@ -642,7 +642,7 @@ async fn test_dzx_link() {
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -665,7 +665,7 @@ async fn test_dzx_link() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -968,6 +968,7 @@ async fn test_dzx_link() {
             AccountMeta::new(tunnel_la.side_a_pk, false),
             AccountMeta::new(tunnel_la.side_z_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )

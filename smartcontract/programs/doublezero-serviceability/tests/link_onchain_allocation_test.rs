@@ -407,7 +407,7 @@ async fn test_activate_link_with_onchain_allocation() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -758,7 +758,7 @@ async fn test_activate_link_legacy_path() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1083,7 +1083,7 @@ async fn test_closeaccount_link_with_deallocation() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1166,6 +1166,7 @@ async fn test_closeaccount_link_with_deallocation() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )

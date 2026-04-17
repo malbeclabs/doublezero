@@ -128,6 +128,7 @@ pub fn process_topology_create(
         admin_group_bit,
         flex_algo_number,
         constraint: value.constraint,
+        reference_count: 0,
     };
 
     try_acc_create(

@@ -22,18 +22,20 @@ pub struct TopologyInfo {
     pub admin_group_bit: u8,  // 0–127
     pub flex_algo_number: u8, // always 128 + admin_group_bit
     pub constraint: TopologyConstraint,
+    pub reference_count: u32,
 }
 
 impl std::fmt::Display for TopologyInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "name={} bit={} algo={} color={} constraint={:?}",
+            "name={} bit={} algo={} color={} constraint={:?} reference_count={}",
             self.name,
             self.admin_group_bit,
             self.flex_algo_number,
             self.admin_group_bit as u16 + 1,
-            self.constraint
+            self.constraint,
+            self.reference_count
         )
     }
 }
@@ -50,6 +52,7 @@ impl TryFrom<&[u8]> for TopologyInfo {
             admin_group_bit: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             flex_algo_number: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             constraint: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            reference_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         })
     }
 }

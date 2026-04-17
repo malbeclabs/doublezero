@@ -3,7 +3,7 @@ use crate::{
     pda::{get_globalstate_pda, get_link_pda, get_topology_pda},
     processors::validation::validate_program_account,
     serializer::try_acc_write,
-    state::{globalstate::GlobalState, link::Link},
+    state::{globalstate::GlobalState, link::Link, topology::TopologyInfo},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -20,7 +20,8 @@ pub struct TopologyClearArgs {
 }
 
 /// Accounts layout:
-/// [0] topology PDA     (readonly, for key validation)
+/// [0] topology PDA     (writable when account still exists; readonly is accepted when
+///                      the topology has already been closed — clear is tolerant of that)
 /// [1] globalstate      (readonly)
 /// [2] payer            (writable, signer, must be in foundation_allowlist)
 /// [3] system_program
@@ -96,6 +97,21 @@ pub fn process_topology_clear(
             try_acc_write(&link, link_account, payer_account, accounts)?;
             cleared_count += 1;
         }
+    }
+
+    // Decrement ref_count on the topology by the number of links that actually had
+    // a reference removed. Skip when the topology is already closed — in that case
+    // clear is purely a stale-reference cleanup on the link side.
+    if !topology_account.data_is_empty() && cleared_count > 0 {
+        assert!(
+            topology_account.is_writable,
+            "Topology Account is not writable"
+        );
+        let mut topology = TopologyInfo::try_from(topology_account)?;
+        topology.reference_count = topology
+            .reference_count
+            .saturating_sub(cleared_count as u32);
+        try_acc_write(&topology, topology_account, payer_account, accounts)?;
     }
 
     msg!(

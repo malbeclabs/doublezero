@@ -584,7 +584,7 @@ async fn test_wan_link() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -847,6 +847,7 @@ async fn test_wan_link() {
             AccountMeta::new(tunnel_la.side_a_pk, false),
             AccountMeta::new(tunnel_la.side_z_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1441,7 +1442,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1820,7 +1821,7 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2360,7 +2361,7 @@ async fn test_link_delete_from_soft_drained() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2494,7 +2495,7 @@ async fn test_link_delete_from_hard_drained() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2650,7 +2651,7 @@ async fn test_link_activation_auto_tags_unicast_default() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2707,7 +2708,7 @@ async fn test_link_activation_succeeds_without_unicast_default() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2766,7 +2767,7 @@ async fn test_link_topology_cap_at_8_rejected() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2839,14 +2840,18 @@ async fn test_link_topology_invalid_account_rejected() {
             AccountMeta::new(_device_a_pubkey, false),
             AccountMeta::new(_device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
     .await;
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    // Pass a bogus pubkey that has no onchain data — data_is_empty() → InvalidArgument
+    // Pass a bogus pubkey that has no onchain data — validate_program_account! asserts
+    // non-empty data, which panics inside the program and surfaces as
+    // ProgramFailedToComplete. Must also include the existing topology (unicast-default
+    // from activation) in the union since removing it requires the account to be
+    // present + writable.
     let bogus_pubkey = Pubkey::new_unique();
     let result = try_execute_transaction(
         &mut banks_client,
@@ -2860,7 +2865,8 @@ async fn test_link_topology_invalid_account_rejected() {
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(bogus_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
+            AccountMeta::new(bogus_pubkey, false),
         ],
         &payer,
     )
@@ -2868,8 +2874,8 @@ async fn test_link_topology_invalid_account_rejected() {
 
     let error_string = format!("{:?}", result.unwrap_err());
     assert!(
-        error_string.contains("Custom(65)"),
-        "Expected InvalidArgument error (Custom(65)), got: {}",
+        error_string.contains("ProgramFailedToComplete"),
+        "Expected ProgramFailedToComplete (assertion panic), got: {}",
         error_string
     );
 }
@@ -2935,7 +2941,7 @@ async fn test_link_topology_valid_accepted() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2955,7 +2961,11 @@ async fn test_link_topology_valid_accepted() {
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(topo_a_pda, false),
+            // Pass the old∪new union, both writable so the processor can adjust
+            // each topology's reference_count: unicast-default (auto-tagged at
+            // activation) is being removed, topo-a is being added.
+            AccountMeta::new(unicast_default_pda, false),
+            AccountMeta::new(topo_a_pda, false),
         ],
         &payer,
     )
@@ -3032,7 +3042,7 @@ async fn test_link_topology_reassigned_by_foundation() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -3072,7 +3082,8 @@ async fn test_link_topology_reassigned_by_foundation() {
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(_contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(high_bandwidth_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
+            AccountMeta::new(high_bandwidth_pda, false),
         ],
         &payer,
     )
@@ -3134,7 +3145,7 @@ async fn test_link_topology_cleared_by_foundation() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -3174,6 +3185,7 @@ async fn test_link_topology_cleared_by_foundation() {
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -3234,7 +3246,7 @@ async fn test_link_topology_update_rejected_for_non_foundation() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -3279,7 +3291,7 @@ async fn test_link_topology_update_rejected_for_non_foundation() {
             AccountMeta::new(tunnel_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &non_foundation,
     )

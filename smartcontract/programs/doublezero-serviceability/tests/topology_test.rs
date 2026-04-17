@@ -136,10 +136,53 @@ fn test_topology_info_roundtrip() {
         admin_group_bit: 0,
         flex_algo_number: 128,
         constraint: TopologyConstraint::IncludeAny,
+        reference_count: 0,
     };
     let bytes = borsh::to_vec(&info).unwrap();
     let decoded = TopologyInfo::try_from(bytes.as_slice()).unwrap();
     assert_eq!(decoded, info);
+
+    let info = TopologyInfo {
+        reference_count: 7,
+        ..info
+    };
+    let bytes = borsh::to_vec(&info).unwrap();
+    let decoded = TopologyInfo::try_from(bytes.as_slice()).unwrap();
+    assert_eq!(decoded, info);
+}
+
+/// Verifies that an on-chain TopologyInfo written before `reference_count` was added
+/// still deserializes correctly (defaults to 0), thanks to the per-field
+/// `unwrap_or_default()` pattern in `TryFrom<&[u8]>`.
+#[test]
+fn test_topology_info_backward_compat_no_reference_count() {
+    use borsh::{BorshDeserialize, BorshSerialize};
+
+    #[derive(BorshSerialize, BorshDeserialize)]
+    struct LegacyTopologyInfo {
+        account_type: AccountType,
+        owner: Pubkey,
+        bump_seed: u8,
+        name: String,
+        admin_group_bit: u8,
+        flex_algo_number: u8,
+        constraint: TopologyConstraint,
+    }
+
+    let legacy = LegacyTopologyInfo {
+        account_type: AccountType::Topology,
+        owner: Pubkey::new_unique(),
+        bump_seed: 7,
+        name: "legacy".to_string(),
+        admin_group_bit: 3,
+        flex_algo_number: 131,
+        constraint: TopologyConstraint::IncludeAny,
+    };
+    let bytes = borsh::to_vec(&legacy).unwrap();
+    let decoded = TopologyInfo::try_from(bytes.as_slice()).unwrap();
+    assert_eq!(decoded.reference_count, 0);
+    assert_eq!(decoded.name, "legacy");
+    assert_eq!(decoded.admin_group_bit, 3);
 }
 
 #[test]
@@ -711,7 +754,7 @@ async fn clear_topology(
     let (topology_pda, _) = get_topology_pda(&program_id, name);
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     let base_accounts = vec![
-        AccountMeta::new_readonly(topology_pda, false),
+        AccountMeta::new(topology_pda, false),
         AccountMeta::new_readonly(globalstate_pubkey, false),
     ];
     let mut tx = create_transaction_with_extra_accounts(
@@ -1038,7 +1081,7 @@ async fn setup_wan_link(
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         payer,
     )
@@ -1053,6 +1096,8 @@ async fn setup_wan_link(
 }
 
 /// Assigns link_topologies on a link via LinkUpdate (foundation-only).
+/// Fetches the current Link to build the old∪new topology account union required by
+/// the processor (it diffs on-chain and adjusts each topology's reference_count).
 async fn assign_link_topology(
     banks_client: &mut BanksClient,
     program_id: Pubkey,
@@ -1062,10 +1107,18 @@ async fn assign_link_topology(
     topology_pubkeys: Vec<Pubkey>,
     payer: &Keypair,
 ) {
+    let link = get_link(banks_client, link_pubkey).await;
+    let mut union: Vec<Pubkey> = link.link_topologies.clone();
+    for pk in &topology_pubkeys {
+        if !union.contains(pk) {
+            union.push(*pk);
+        }
+    }
+
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    let topology_account_metas: Vec<AccountMeta> = topology_pubkeys
+    let topology_account_metas: Vec<AccountMeta> = union
         .iter()
-        .map(|pk| AccountMeta::new_readonly(*pk, false))
+        .map(|pk| AccountMeta::new(*pk, false))
         .collect();
     let mut accounts = vec![
         AccountMeta::new(link_pubkey, false),
@@ -1214,6 +1267,152 @@ async fn test_topology_delete_fails_when_link_references_it() {
     }
 
     println!("[PASS] test_topology_delete_fails_when_link_references_it");
+}
+
+/// Full ref_count lifecycle: activate increments unicast-default, LinkUpdate diff
+/// increments/decrements, TopologyClear decrements, TopologyDelete succeeds only at 0.
+#[tokio::test]
+async fn test_topology_reference_count_lifecycle() {
+    println!("[TEST] test_topology_reference_count_lifecycle");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    let unicast_default_pda = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+    let topo_a_pda = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "topo-a",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // Both start at ref_count = 0.
+    assert_eq!(
+        get_topology(&mut banks_client, unicast_default_pda)
+            .await
+            .reference_count,
+        0
+    );
+    assert_eq!(
+        get_topology(&mut banks_client, topo_a_pda)
+            .await
+            .reference_count,
+        0
+    );
+
+    // Activate a link — auto-tags with unicast-default, increments its ref_count to 1.
+    let (link_pubkey, contributor_pubkey, _, _) =
+        setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+    assert_eq!(
+        get_topology(&mut banks_client, unicast_default_pda)
+            .await
+            .reference_count,
+        1
+    );
+
+    // LinkUpdate: replace [unicast-default] with [topo-a]. unicast-default 1→0, topo-a 0→1.
+    assign_link_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        link_pubkey,
+        contributor_pubkey,
+        vec![topo_a_pda],
+        &payer,
+    )
+    .await;
+    assert_eq!(
+        get_topology(&mut banks_client, unicast_default_pda)
+            .await
+            .reference_count,
+        0
+    );
+    assert_eq!(
+        get_topology(&mut banks_client, topo_a_pda)
+            .await
+            .reference_count,
+        1
+    );
+
+    // TopologyDelete on topo-a must fail — ref_count is 1.
+    let result = delete_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        vec![],
+        &payer,
+    )
+    .await;
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(13),
+        ))) => {}
+        _ => panic!(
+            "Expected ReferenceCountNotZero (Custom(13)), got {:?}",
+            result
+        ),
+    }
+
+    // TopologyDelete on unicast-default succeeds — ref_count is 0.
+    delete_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "unicast-default",
+        vec![],
+        &payer,
+    )
+    .await
+    .expect("delete should succeed when reference_count == 0");
+
+    // TopologyClear on topo-a decrements its ref_count from 1 to 0.
+    clear_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        vec![AccountMeta::new(link_pubkey, false)],
+        &payer,
+    )
+    .await;
+    assert_eq!(
+        get_topology(&mut banks_client, topo_a_pda)
+            .await
+            .reference_count,
+        0
+    );
+
+    // Now topo-a can be deleted.
+    delete_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        vec![],
+        &payer,
+    )
+    .await
+    .expect("delete should succeed after clear");
+
+    println!("[PASS] test_topology_reference_count_lifecycle");
 }
 
 #[tokio::test]

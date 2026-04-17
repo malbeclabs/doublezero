@@ -12,6 +12,7 @@ use crate::{
         globalstate::GlobalState,
         interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus},
         link::*,
+        topology::TopologyInfo,
     },
 };
 use borsh::BorshSerialize;
@@ -149,46 +150,24 @@ pub fn process_activate_link(
 
     // Allocate resources from ResourceExtension or use provided values
     if let Some((device_tunnel_block_ext, link_ids_ext)) = resource_extension_accounts {
-        // Validate device_tunnel_block_ext (DeviceTunnelBlock - global)
-        assert_eq!(
-            device_tunnel_block_ext.owner, program_id,
-            "Invalid ResourceExtension Account Owner for DeviceTunnelBlock"
-        );
-        assert!(
-            device_tunnel_block_ext.is_writable,
-            "ResourceExtension Account for DeviceTunnelBlock is not writable"
-        );
-        assert!(
-            !device_tunnel_block_ext.data_is_empty(),
-            "ResourceExtension Account for DeviceTunnelBlock is empty"
-        );
-
         let (expected_device_tunnel_pda, _, _) =
             get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
-        assert_eq!(
-            device_tunnel_block_ext.key, &expected_device_tunnel_pda,
-            "Invalid ResourceExtension PDA for DeviceTunnelBlock"
-        );
-
-        // Validate link_ids_ext (LinkIds - global)
-        assert_eq!(
-            link_ids_ext.owner, program_id,
-            "Invalid ResourceExtension Account Owner for LinkIds"
-        );
-        assert!(
-            link_ids_ext.is_writable,
-            "ResourceExtension Account for LinkIds is not writable"
-        );
-        assert!(
-            !link_ids_ext.data_is_empty(),
-            "ResourceExtension Account for LinkIds is empty"
+        validate_program_account!(
+            device_tunnel_block_ext,
+            program_id,
+            writable = true,
+            pda = &expected_device_tunnel_pda,
+            "DeviceTunnelBlock"
         );
 
         let (expected_link_ids_pda, _, _) =
             get_resource_extension_pda(program_id, ResourceType::LinkIds);
-        assert_eq!(
-            link_ids_ext.key, &expected_link_ids_pda,
-            "Invalid ResourceExtension PDA for LinkIds"
+        validate_program_account!(
+            link_ids_ext,
+            program_id,
+            writable = true,
+            pda = &expected_link_ids_pda,
+            "LinkIds"
         );
 
         // Allocate tunnel_net from global DeviceTunnelBlock (skip if already allocated)
@@ -243,6 +222,22 @@ pub fn process_activate_link(
     if unicast_default_topology_account.owner == program_id
         && !unicast_default_topology_account.data_is_empty()
     {
+        assert!(
+            unicast_default_topology_account.is_writable,
+            "unicast-default topology must be writable"
+        );
+        let mut unicast_default = TopologyInfo::try_from(unicast_default_topology_account)?;
+        unicast_default.reference_count = unicast_default
+            .reference_count
+            .checked_add(1)
+            .ok_or(DoubleZeroError::ArithmeticOverflow)?;
+        try_acc_write(
+            &unicast_default,
+            unicast_default_topology_account,
+            payer_account,
+            accounts,
+        )?;
+
         link.link_topologies = vec![*unicast_default_topology_account.key];
     }
 

@@ -365,7 +365,7 @@ async fn setup_two_devices_with_link() -> (
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )

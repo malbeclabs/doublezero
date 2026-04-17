@@ -1,6 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    pda::get_resource_extension_pda,
+    pda::{get_globalstate_pda, get_resource_extension_pda},
     processors::{
         resource::{allocate_specific_id, allocate_specific_ip, deallocate_id, deallocate_ip},
         validation::validate_program_account,
@@ -20,6 +20,7 @@ use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::{types::NetworkV4, validate_account_code};
+use std::collections::BTreeMap;
 
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -115,23 +116,21 @@ pub fn process_update_link(
     //   [link, contributor, side_z?, globalstate, device_a?, device_z?, device_tunnel_block?, link_ids?, topology*, payer, system]
     // device_a/device_z: present when tunnel_net is being updated (needed for interface IP update)
     // device_tunnel_block/link_ids: present when use_onchain_allocation is true
-    // topology*: N topology PDAs when link_topologies is being updated, passed before payer/system
-    let mut expected_without_side_z: usize = 5; // link, contributor, globalstate, payer, system
-    if value.tunnel_net.is_some() {
-        expected_without_side_z += 2; // device_a, device_z
-    }
-    if value.use_onchain_allocation {
-        expected_without_side_z += 2; // device_tunnel_block, link_ids
-    }
-    if let Some(ref link_topologies) = value.link_topologies {
-        expected_without_side_z += link_topologies.len();
-    }
-    let side_z_account: Option<&AccountInfo> = if accounts.len() > expected_without_side_z {
-        Some(next_account_info(accounts_iter)?)
+    // topology*: N writable topology PDAs (union of old ∪ new link_topologies) when
+    // link_topologies is being updated; the processor diffs old vs new on-chain and
+    // adjusts each topology's reference_count.
+    //
+    // side_z presence cannot be derived by counting because the topology union size
+    // is unknown ahead of time, so distinguish by peeking the next account against
+    // the globalstate singleton PDA.
+    let globalstate_pda = get_globalstate_pda(program_id).0;
+    let maybe_side_z_or_gs = next_account_info(accounts_iter)?;
+    let (side_z_account, globalstate_account) = if maybe_side_z_or_gs.key == &globalstate_pda {
+        (None, maybe_side_z_or_gs)
     } else {
-        None
+        let gs = next_account_info(accounts_iter)?;
+        (Some(maybe_side_z_or_gs), gs)
     };
-    let globalstate_account = next_account_info(accounts_iter)?;
 
     let device_accounts = if value.tunnel_net.is_some() {
         let device_a_account = next_account_info(accounts_iter)?;
@@ -149,8 +148,7 @@ pub fn process_update_link(
         None
     };
 
-    // Validate cap before consuming accounts from the iterator: if > 8, return
-    // InvalidArgument immediately so we don't exhaust the iterator on fake pubkeys.
+    // Validate cap on the caller-supplied new vector before walking accounts.
     if let Some(ref link_topologies) = value.link_topologies {
         if link_topologies.len() > 8 {
             msg!("link_topologies exceeds maximum of 8 entries");
@@ -158,15 +156,14 @@ pub fn process_update_link(
         }
     }
 
-    // Topology PDAs come before payer/system, matching the SDK account ordering
-    // (execute_transaction appends payer+system at the end of the accounts list).
-    let topology_count = value.link_topologies.as_ref().map(|t| t.len()).unwrap_or(0);
-    let topology_accounts: Vec<&AccountInfo> = (0..topology_count)
-        .map(|_| next_account_info(accounts_iter))
-        .collect::<Result<_, _>>()?;
-
-    let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    // Remaining accounts are the topology union followed by payer and system_program.
+    let rest: Vec<&AccountInfo> = accounts_iter.collect();
+    if rest.len() < 2 {
+        return Err(solana_program::program_error::ProgramError::NotEnoughAccountKeys);
+    }
+    let (topology_accounts, tail) = rest.split_at(rest.len() - 2);
+    let payer_account = tail[0];
+    let system_program = tail[1];
 
     #[cfg(test)]
     msg!("process_update_link({:?})", value);
@@ -350,22 +347,8 @@ pub fn process_update_link(
 
     // Update device interface IPs when tunnel_net was changed
     if let Some((device_a_account, device_z_account)) = device_accounts {
-        assert_eq!(
-            device_a_account.owner, program_id,
-            "Invalid Device A Account Owner"
-        );
-        assert_eq!(
-            device_z_account.owner, program_id,
-            "Invalid Device Z Account Owner"
-        );
-        assert!(
-            device_a_account.is_writable,
-            "Device A Account is not writable"
-        );
-        assert!(
-            device_z_account.is_writable,
-            "Device Z Account is not writable"
-        );
+        validate_program_account!(device_a_account, program_id, writable = true, "DeviceA");
+        validate_program_account!(device_z_account, program_id, writable = true, "DeviceZ");
 
         if link.side_a_pk != *device_a_account.key || link.side_z_pk != *device_z_account.key {
             return Err(ProgramError::InvalidAccountData);
@@ -394,26 +377,61 @@ pub fn process_update_link(
         try_acc_write(&side_z_dev, device_z_account, payer_account, accounts)?;
     }
 
-    // link_topologies is foundation-only
-    if let Some(link_topologies) = &value.link_topologies {
+    // link_topologies is foundation-only. Caller passes the union of old and new
+    // link_topologies as writable accounts; the processor diffs on-chain and
+    // increments/decrements each topology's reference_count accordingly.
+    if let Some(new_topologies) = &value.link_topologies {
         if !globalstate.foundation_allowlist.contains(payer_account.key) {
             msg!("link_topologies update requires foundation allowlist");
             return Err(DoubleZeroError::NotAllowed.into());
         }
-        if link_topologies.len() != topology_accounts.len() {
-            msg!("link_topologies count does not match provided topology accounts");
-            return Err(DoubleZeroError::InvalidArgument.into());
-        }
-        for (pk, acc) in link_topologies.iter().zip(topology_accounts.iter()) {
-            if acc.key != pk || acc.owner != program_id || acc.data_is_empty() {
-                return Err(DoubleZeroError::InvalidArgument.into());
-            }
+
+        let old_topologies = link.link_topologies.clone();
+        let added: Vec<Pubkey> = new_topologies
+            .iter()
+            .filter(|pk| !old_topologies.contains(pk))
+            .copied()
+            .collect();
+        let removed: Vec<Pubkey> = old_topologies
+            .iter()
+            .filter(|pk| !new_topologies.contains(pk))
+            .copied()
+            .collect();
+
+        let mut acc_map: BTreeMap<Pubkey, &AccountInfo> = BTreeMap::new();
+        for acc in topology_accounts.iter() {
+            validate_program_account!(*acc, program_id, writable = true, "Topology");
             TopologyInfo::try_from(*acc)
                 .map_err(|_| DoubleZeroError::InvalidAccountType)?
                 .validate()
                 .map_err(ProgramError::from)?;
+            acc_map.insert(*acc.key, *acc);
         }
-        link.link_topologies = link_topologies.clone();
+
+        for pk in added.iter().chain(removed.iter()) {
+            if !acc_map.contains_key(pk) {
+                msg!("Missing topology account for pubkey {}", pk);
+                return Err(DoubleZeroError::InvalidArgument.into());
+            }
+        }
+
+        for pk in &removed {
+            let acc = acc_map[pk];
+            let mut topo = TopologyInfo::try_from(acc)?;
+            topo.reference_count = topo.reference_count.saturating_sub(1);
+            try_acc_write(&topo, acc, payer_account, accounts)?;
+        }
+        for pk in &added {
+            let acc = acc_map[pk];
+            let mut topo = TopologyInfo::try_from(acc)?;
+            topo.reference_count = topo
+                .reference_count
+                .checked_add(1)
+                .ok_or(DoubleZeroError::ArithmeticOverflow)?;
+            try_acc_write(&topo, acc, payer_account, accounts)?;
+        }
+
+        link.link_topologies = new_topologies.clone();
     }
 
     // unicast_drained (LINK_FLAG_UNICAST_DRAINED bit 0): contributor A or foundation

@@ -1,9 +1,9 @@
 use crate::{
     error::DoubleZeroError,
-    pda::{get_globalstate_pda, get_link_pda, get_topology_pda},
+    pda::{get_globalstate_pda, get_topology_pda},
     processors::validation::validate_program_account,
     serializer::try_acc_close,
-    state::{globalstate::GlobalState, link::Link},
+    state::{globalstate::GlobalState, topology::TopologyInfo},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -24,7 +24,6 @@ pub struct TopologyDeleteArgs {
 /// [1] globalstate      (readonly)
 /// [2] payer            (writable, signer, must be in foundation_allowlist)
 /// [3] system_program
-/// [4+] Link accounts   (readonly) — guard: fail if any references this topology
 pub fn process_topology_delete(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -68,23 +67,14 @@ pub fn process_topology_delete(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
-    // Check remaining Link accounts — fail if any reference this topology.
-    for link_account in accounts_iter {
-        validate_program_account!(link_account, program_id, writable = false, "Link");
-        let link = Link::try_from(link_account)?;
-        assert_eq!(
-            link_account.key,
-            &get_link_pda(program_id, link.index).0,
-            "Invalid Link PDA"
+    // Guard: topology must have no remaining Link references.
+    let topology = TopologyInfo::try_from(topology_account)?;
+    if topology.reference_count != 0 {
+        msg!(
+            "Cannot delete Topology. reference_count of {} > 0",
+            topology.reference_count
         );
-        if link.link_topologies.contains(topology_account.key) {
-            msg!(
-                "TopologyDelete: link {} still references topology {}",
-                link_account.key,
-                topology_account.key
-            );
-            return Err(DoubleZeroError::ReferenceCountNotZero.into());
-        }
+        return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }
 
     // Close the topology PDA (transfer lamports to payer, zero data)

@@ -715,7 +715,7 @@ async fn test_doublezero_program() {
             AccountMeta::new(device_la_pubkey, false),
             AccountMeta::new(device_ny_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new_readonly(unicast_default_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )

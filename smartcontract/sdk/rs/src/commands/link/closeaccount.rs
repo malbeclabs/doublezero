@@ -53,6 +53,12 @@ impl CloseAccountLinkCommand {
             accounts.push(AccountMeta::new(link_ids_ext, false));
         }
 
+        // Topology accounts for reference_count decrement — one writable account per
+        // entry in link.link_topologies. Passed in both legacy and onchain paths.
+        for topology_pk in &link.link_topologies {
+            accounts.push(AccountMeta::new(*topology_pk, false));
+        }
+
         client.execute_transaction(
             DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {
                 use_onchain_deallocation: self.use_onchain_deallocation,
@@ -228,6 +234,81 @@ mod tests {
             pubkey: link_pubkey,
             owner,
             use_onchain_deallocation: true,
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_commands_link_closeaccount_appends_topology_accounts() {
+        let mut client = create_test_client();
+
+        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let link_pubkey = Pubkey::new_unique();
+        let owner = client.get_payer();
+        let contributor_pk = Pubkey::new_unique();
+        let side_a_pk = Pubkey::new_unique();
+        let side_z_pk = Pubkey::new_unique();
+        let topo_a_pk = Pubkey::new_unique();
+        let topo_b_pk = Pubkey::new_unique();
+
+        let link = Link {
+            account_type: AccountType::Link,
+            owner,
+            index: 1,
+            bump_seed: 0,
+            code: "test".to_string(),
+            link_type: LinkLinkType::DZX,
+            link_health: LinkHealth::Unknown,
+            contributor_pk,
+            side_a_pk,
+            side_z_pk,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: "Ethernet1".to_string(),
+            tunnel_id: 500,
+            tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            bandwidth: 10_000_000_000,
+            mtu: 9000,
+            delay_ns: 1000000,
+            delay_override_ns: 0,
+            jitter_ns: 100000,
+            status: LinkStatus::Deleting,
+            desired_status: LinkDesiredStatus::Activated,
+            link_topologies: vec![topo_a_pk, topo_b_pk],
+            link_flags: 0,
+        };
+
+        client
+            .expect_get()
+            .with(predicate::eq(link_pubkey))
+            .returning(move |_| Ok(AccountData::Link(link.clone())));
+
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::CloseAccountLink(
+                    LinkCloseAccountArgs {
+                        use_onchain_deallocation: false,
+                    },
+                )),
+                predicate::eq(vec![
+                    AccountMeta::new(link_pubkey, false),
+                    AccountMeta::new(owner, false),
+                    AccountMeta::new(contributor_pk, false),
+                    AccountMeta::new(side_a_pk, false),
+                    AccountMeta::new(side_z_pk, false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(topo_a_pk, false),
+                    AccountMeta::new(topo_b_pk, false),
+                ]),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let res = CloseAccountLinkCommand {
+            pubkey: link_pubkey,
+            owner,
+            use_onchain_deallocation: false,
         }
         .execute(&client);
 

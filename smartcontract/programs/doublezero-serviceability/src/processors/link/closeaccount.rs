@@ -13,6 +13,7 @@ use crate::{
         globalstate::GlobalState,
         interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType},
         link::*,
+        topology::TopologyInfo,
     },
 };
 use borsh::BorshSerialize;
@@ -26,7 +27,7 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct LinkCloseAccountArgs {
@@ -60,11 +61,15 @@ pub fn process_closeaccount_link(
     let side_z_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for on-chain deallocation (before payer)
+    // Optional: ResourceExtension accounts for on-chain deallocation (before topology union/payer)
     // Account layout WITH ResourceExtension (use_onchain_deallocation = true):
-    //   [link, owner, contributor, side_a, side_z, globalstate, device_tunnel_block, link_ids, payer, system]
+    //   [link, owner, contributor, side_a, side_z, globalstate, device_tunnel_block, link_ids,
+    //    topology_0..topology_N (writable), payer, system]
     // Account layout WITHOUT (legacy, use_onchain_deallocation = false):
-    //   [link, owner, contributor, side_a, side_z, globalstate, payer, system]
+    //   [link, owner, contributor, side_a, side_z, globalstate,
+    //    topology_0..topology_N (writable), payer, system]
+    // Where N = link.link_topologies.len(); topology accounts are used to decrement
+    // each referenced topology's reference_count before the link is closed.
     let resource_extension_accounts = if value.use_onchain_deallocation {
         let device_tunnel_block_ext = next_account_info(accounts_iter)?; // DeviceTunnelBlock (global)
         let link_ids_ext = next_account_info(accounts_iter)?; // LinkIds (global)
@@ -73,8 +78,14 @@ pub fn process_closeaccount_link(
         None
     };
 
-    let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    // Remaining accounts: topology union + payer + system_program.
+    let rest: Vec<&AccountInfo> = accounts_iter.collect();
+    if rest.len() < 2 {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    let (topology_accounts, tail) = rest.split_at(rest.len() - 2);
+    let payer_account = tail[0];
+    let system_program = tail[1];
 
     #[cfg(test)]
     msg!("process_closeaccount_link({:?})", value);
@@ -202,6 +213,23 @@ pub fn process_closeaccount_link(
     try_acc_write(&contributor, contributor_account, payer_account, accounts)?;
     try_acc_write(&side_a_dev, side_a_account, payer_account, accounts)?;
     try_acc_write(&side_z_dev, side_z_account, payer_account, accounts)?;
+
+    // Decrement reference_count on every Topology this link was tagged into.
+    // Caller must provide exactly one writable account per entry in link.link_topologies.
+    if !link.link_topologies.is_empty() {
+        let mut acc_map: BTreeMap<Pubkey, &AccountInfo> = BTreeMap::new();
+        for acc in topology_accounts.iter() {
+            validate_program_account!(*acc, program_id, writable = true, "Topology");
+            acc_map.insert(*acc.key, *acc);
+        }
+        for pk in &link.link_topologies {
+            let acc = *acc_map.get(pk).ok_or(DoubleZeroError::InvalidArgument)?;
+            let mut topo = TopologyInfo::try_from(acc)?;
+            topo.reference_count = topo.reference_count.saturating_sub(1);
+            try_acc_write(&topo, acc, payer_account, accounts)?;
+        }
+    }
+
     try_acc_close(link_account, owner_account)?;
 
     #[cfg(test)]

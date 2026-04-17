@@ -78,10 +78,20 @@ jobs:
           echo "$tests"
 
           # Pinned heavy tests: each gets its own shard slot to keep the two
-          # biggest rocks (MultiUserInstantAllocation ~396s, DeviceScale ~345s)
-          # off the same runner. Update this list if a new test exceeds ~5min.
-          pinned_1="TestE2E_MultiUserInstantAllocation"
+          # biggest rocks off the same runner. Update this list if a new test
+          # exceeds ~5min, or if a pinned test is renamed/removed upstream
+          # (the validation below will fail fast in that case).
+          pinned_1="TestE2E_MultiUserInstantAllocationAndWithdrawal"
           pinned_2="TestE2E_DeviceScale"
+
+          # Fail fast if a pinned test no longer exists in the shreds repo —
+          # otherwise its shard would silently run zero tests.
+          for pin in "$pinned_1" "$pinned_2"; do
+            if ! echo "$tests" | grep -qxF "$pin"; then
+              echo "::error::Pinned test '$pin' not found in doublezero-shreds. Update the pin list in this workflow."
+              exit 1
+            fi
+          done
 
           # Remaining tests round-robin across shards 3 and 4.
           remaining=$(echo "$tests" | grep -vE "^(${pinned_1}|${pinned_2})$")

@@ -183,8 +183,8 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("validate_tunnel_up", func(t *testing.T) {
-		err := client.WaitForStatusUp(ctx)
-		require.NoError(t, err, "tunnel did not come up after seat payment")
+		err := client.WaitForMulticastStatusUp(ctx)
+		require.NoError(t, err, "multicast tunnel did not come up after seat payment")
 	}) {
 		return
 	}

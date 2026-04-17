@@ -1,7 +1,10 @@
 use crate::{
     error::DoubleZeroError,
-    pda::{get_resource_extension_pda, get_topology_pda},
-    processors::resource::{allocate_id, allocate_specific_id},
+    pda::{get_device_pda, get_globalstate_pda, get_resource_extension_pda, get_topology_pda},
+    processors::{
+        resource::{allocate_id, allocate_specific_id},
+        validation::validate_program_account,
+    },
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
@@ -34,7 +37,8 @@ pub struct TopologyBackfillArgs {
 /// [1]  segment_routing_ids (writable, ResourceExtension)
 /// [2]  globalstate         (readonly)
 /// [3]  payer               (writable, signer, must be in foundation_allowlist)
-/// [4+] Device accounts     (writable)
+/// [4]  system_program
+/// [5+] Device accounts     (writable)
 pub fn process_topology_backfill(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -46,6 +50,7 @@ pub fn process_topology_backfill(
     let segment_routing_ids_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_topology_backfill(name={})", value.name);
@@ -55,33 +60,51 @@ pub fn process_topology_backfill(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        msg!("TopologyBackfill: unauthorized — foundation key required");
-        return Err(DoubleZeroError::Unauthorized.into());
-    }
-
-    // Validate topology PDA
-    let (expected_pda, _) = get_topology_pda(program_id, &value.name);
-    if topology_account.key != &expected_pda {
+    // Validate the Topology PDA (readonly). Backfill returns a recoverable
+    // InvalidArgument when the topology does not yet exist, so we check the
+    // PDA manually here instead of using validate_program_account! (which
+    // would panic on the empty-account case).
+    let (expected_topology_pda, _) = get_topology_pda(program_id, &value.name);
+    if topology_account.key != &expected_topology_pda {
         msg!(
             "TopologyBackfill: invalid topology PDA for name '{}'",
             value.name
         );
         return Err(DoubleZeroError::InvalidArgument.into());
     }
-
     if topology_account.data_is_empty() {
         msg!("TopologyBackfill: topology '{}' does not exist", value.name);
         return Err(DoubleZeroError::InvalidArgument.into());
     }
+    assert_eq!(
+        topology_account.owner, program_id,
+        "Invalid Topology Account Owner"
+    );
 
-    // Validate SegmentRoutingIds account
+    // Validate SegmentRoutingIds resource PDA (writable — new IDs allocated here).
     let (expected_sr_pda, _, _) =
         get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
-    if segment_routing_ids_account.key != &expected_sr_pda {
-        msg!("TopologyBackfill: invalid SegmentRoutingIds PDA");
-        return Err(DoubleZeroError::InvalidArgument.into());
+    validate_program_account!(
+        segment_routing_ids_account,
+        program_id,
+        writable = true,
+        pda = &expected_sr_pda,
+        "SegmentRoutingIds"
+    );
+
+    // Validate GlobalState singleton PDA.
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        pda = &get_globalstate_pda(program_id).0,
+        "GlobalState"
+    );
+
+    let globalstate = GlobalState::try_from(globalstate_account)?;
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+        msg!("TopologyBackfill: unauthorized — foundation key required");
+        return Err(DoubleZeroError::Unauthorized.into());
     }
 
     let topology_key = topology_account.key;
@@ -96,13 +119,13 @@ pub fn process_topology_backfill(
     // manages SR IDs in-memory (use_onchain_allocation=false) and the on-chain
     // resource hasn't been updated to reflect those allocations.
     for device_account in &device_accounts {
-        if device_account.owner != program_id {
-            continue;
-        }
-        let device = match Device::try_from(&device_account.data.borrow()[..]) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
+        validate_program_account!(*device_account, program_id, writable = true, "Device");
+        let device = Device::try_from(&device_account.data.borrow()[..])?;
+        assert_eq!(
+            device_account.key,
+            &get_device_pda(program_id, device.index).0,
+            "Invalid Device PDA"
+        );
         for iface in device.interfaces.iter() {
             let current = iface.into_current_version();
             if current.node_segment_idx > 0 {
@@ -116,14 +139,9 @@ pub fn process_topology_backfill(
     }
 
     // Second pass: allocate new IDs for loopbacks missing this topology's segment.
+    // Device accounts were fully validated in the first pass above.
     for device_account in &device_accounts {
-        if device_account.owner != program_id {
-            continue;
-        }
-        let mut device = match Device::try_from(&device_account.data.borrow()[..]) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
+        let mut device = Device::try_from(&device_account.data.borrow()[..])?;
         let mut modified = false;
         for iface in device.interfaces.iter_mut() {
             let iface_v2 = iface.into_current_version();

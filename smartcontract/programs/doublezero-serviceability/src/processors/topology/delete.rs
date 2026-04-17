@@ -1,8 +1,9 @@
 use crate::{
     error::DoubleZeroError,
-    pda::get_topology_pda,
+    pda::{get_globalstate_pda, get_link_pda, get_topology_pda},
+    processors::validation::validate_program_account,
     serializer::try_acc_close,
-    state::{globalstate::GlobalState, link::Link, topology::TopologyInfo},
+    state::{globalstate::GlobalState, link::Link},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -22,7 +23,8 @@ pub struct TopologyDeleteArgs {
 /// [0] topology PDA     (writable, to be closed)
 /// [1] globalstate      (readonly)
 /// [2] payer            (writable, signer, must be in foundation_allowlist)
-/// [3+] Link accounts   (readonly) — guard: fail if any references this topology
+/// [3] system_program
+/// [4+] Link accounts   (readonly) — guard: fail if any references this topology
 pub fn process_topology_delete(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -33,12 +35,31 @@ pub fn process_topology_delete(
     let topology_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_topology_delete(name={})", value.name);
 
     // Payer must be a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
+
+    // Validate the Topology PDA (writable — about to be closed).
+    validate_program_account!(
+        topology_account,
+        program_id,
+        writable = true,
+        pda = &get_topology_pda(program_id, &value.name).0,
+        "Topology"
+    );
+
+    // Validate GlobalState singleton PDA.
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        pda = &get_globalstate_pda(program_id).0,
+        "GlobalState"
+    );
 
     // Authorization: foundation keys only
     let globalstate = GlobalState::try_from(globalstate_account)?;
@@ -47,31 +68,22 @@ pub fn process_topology_delete(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
-    // Validate topology PDA
-    let (expected_pda, _) = get_topology_pda(program_id, &value.name);
-    assert_eq!(
-        topology_account.key, &expected_pda,
-        "TopologyDelete: invalid topology PDA for name '{}'",
-        value.name
-    );
-
-    // Deserialize topology to validate it exists
-    let _topology = TopologyInfo::try_from(topology_account)?;
-
-    // Check remaining Link accounts — fail if any reference this topology
+    // Check remaining Link accounts — fail if any reference this topology.
     for link_account in accounts_iter {
-        if link_account.data_is_empty() {
-            continue;
-        }
-        if let Ok(link) = Link::try_from(link_account) {
-            if link.link_topologies.contains(topology_account.key) {
-                msg!(
-                    "TopologyDelete: link {} still references topology {}",
-                    link_account.key,
-                    topology_account.key
-                );
-                return Err(DoubleZeroError::ReferenceCountNotZero.into());
-            }
+        validate_program_account!(link_account, program_id, writable = false, "Link");
+        let link = Link::try_from(link_account)?;
+        assert_eq!(
+            link_account.key,
+            &get_link_pda(program_id, link.index).0,
+            "Invalid Link PDA"
+        );
+        if link.link_topologies.contains(topology_account.key) {
+            msg!(
+                "TopologyDelete: link {} still references topology {}",
+                link_account.key,
+                topology_account.key
+            );
+            return Err(DoubleZeroError::ReferenceCountNotZero.into());
         }
     }
 

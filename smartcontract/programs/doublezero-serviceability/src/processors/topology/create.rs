@@ -1,6 +1,6 @@
 use crate::{
     error::DoubleZeroError,
-    pda::{get_resource_extension_pda, get_topology_pda},
+    pda::{get_device_pda, get_globalstate_pda, get_resource_extension_pda, get_topology_pda},
     processors::{resource::allocate_id, validation::validate_program_account},
     resource::ResourceType,
     seeds::{SEED_PREFIX, SEED_TOPOLOGY},
@@ -55,6 +55,15 @@ pub fn process_topology_create(
 
     assert!(payer_account.is_signer, "Payer account must be a signer");
 
+    // Validate GlobalState singleton PDA
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        pda = &get_globalstate_pda(program_id).0,
+        "GlobalState"
+    );
+
     // Authorization: foundation keys only
     let globalstate = GlobalState::try_from(&globalstate_account.data.borrow()[..])?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
@@ -74,12 +83,18 @@ pub fn process_topology_create(
         return Err(DoubleZeroError::InvalidArgument.into());
     }
 
-    // Validate and verify topology PDA
+    // Validate and verify topology PDA. The account is still empty here
+    // (we're about to create it), so we cannot use validate_program_account!
+    // which asserts non-empty data. Check the PDA and writability directly.
     let (expected_pda, bump_seed) = get_topology_pda(program_id, &name);
     assert_eq!(
         topology_account.key, &expected_pda,
         "TopologyCreate: invalid topology PDA for name '{}'",
         name
+    );
+    assert!(
+        topology_account.is_writable,
+        "Topology Account is not writable"
     );
 
     if !topology_account.data_is_empty() {
@@ -134,17 +149,25 @@ pub fn process_topology_create(
 
         // Validate the SegmentRoutingIds account
         let (expected_sr_pda, _, _) =
-            crate::pda::get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
-        assert_eq!(
-            segment_routing_ids_account.key, &expected_sr_pda,
-            "TopologyCreate: invalid SegmentRoutingIds PDA"
+            get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
+        validate_program_account!(
+            segment_routing_ids_account,
+            program_id,
+            writable = true,
+            pda = &expected_sr_pda,
+            "SegmentRoutingIds"
         );
 
         for device_account in device_accounts {
-            if device_account.owner != program_id {
-                continue;
-            }
+            // Owner + non-empty + writable check before we trust the bytes.
+            validate_program_account!(device_account, program_id, writable = true, "Device");
             let mut device = Device::try_from(&device_account.data.borrow()[..])?;
+            // Now that we know the device index, confirm the PDA matches.
+            assert_eq!(
+                device_account.key,
+                &get_device_pda(program_id, device.index).0,
+                "Invalid Device PDA"
+            );
             let mut modified = false;
             for iface in device.interfaces.iter_mut() {
                 let iface_v2 = iface.into_current_version();

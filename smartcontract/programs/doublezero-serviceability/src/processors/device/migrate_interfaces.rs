@@ -1,5 +1,7 @@
 use crate::{
     error::DoubleZeroError,
+    pda::{get_device_pda, get_globalstate_pda},
+    processors::validation::validate_program_account,
     serializer::try_acc_write,
     state::{
         accounttype::AccountType, device::Device, globalstate::GlobalState, interface::Interface,
@@ -178,12 +180,15 @@ pub fn process_migrate_device_interfaces(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    if device_account.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    if globalstate_account.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+    // Owner + non-empty + writable checks before we trust the on-disk bytes.
+    validate_program_account!(device_account, program_id, writable = true, "Device");
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        pda = &get_globalstate_pda(program_id).0,
+        "GlobalState"
+    );
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
@@ -200,6 +205,13 @@ pub fn process_migrate_device_interfaces(
             .any(|i| matches!(i, Interface::V3(_)));
         (device, already_migrated)
     };
+
+    // Now that we have the device index, verify the PDA.
+    assert_eq!(
+        device_account.key,
+        &get_device_pda(program_id, device.index).0,
+        "Invalid Device PDA"
+    );
 
     // Authorization: payer must be the foundation, the device owner, or the activator
     // authority. The activator calls this during its startup sweep.

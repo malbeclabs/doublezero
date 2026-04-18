@@ -410,7 +410,7 @@ async fn test_update_cyoa_interface_with_invalid_sibling() {
         program_id,
         DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
             name: "ethernet1".to_string(),
-            mtu: Some(1500),
+            mtu: Some(1500), // CYOA interfaces require CYOA_DIA_INTERFACE_MTU = 1500
             ..Default::default()
         }),
         vec![

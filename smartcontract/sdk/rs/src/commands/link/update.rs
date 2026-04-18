@@ -27,6 +27,8 @@ pub struct UpdateLinkCommand {
     pub desired_status: Option<LinkDesiredStatus>,
     pub tunnel_id: Option<u16>,
     pub tunnel_net: Option<NetworkV4>,
+    pub link_topologies: Option<Vec<Pubkey>>,
+    pub unicast_drained: Option<bool>,
 }
 
 impl UpdateLinkCommand {
@@ -85,6 +87,21 @@ impl UpdateLinkCommand {
             accounts.push(AccountMeta::new(link_ids_ext, false));
         }
 
+        // When updating link_topologies, the processor diffs old vs new on-chain and
+        // adjusts each topology's reference_count. Pass the union of the Link's current
+        // link_topologies and the requested new set, all writable.
+        if let Some(ref new_topologies) = self.link_topologies {
+            let mut union: Vec<Pubkey> = link.link_topologies.clone();
+            for pk in new_topologies {
+                if !union.contains(pk) {
+                    union.push(*pk);
+                }
+            }
+            for topology_pk in union {
+                accounts.push(AccountMeta::new(topology_pk, false));
+            }
+        }
+
         client.execute_transaction(
             DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
                 code,
@@ -100,6 +117,8 @@ impl UpdateLinkCommand {
                 tunnel_id: self.tunnel_id,
                 tunnel_net: self.tunnel_net,
                 use_onchain_allocation,
+                link_topologies: self.link_topologies.clone(),
+                unicast_drained: self.unicast_drained,
             }),
             accounts,
         )

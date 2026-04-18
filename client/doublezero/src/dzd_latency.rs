@@ -259,7 +259,7 @@ mod tests {
             .into_iter()
             .enumerate()
             .map(|(i, ip)| {
-                Interface::V2(CurrentInterfaceVersion {
+                Interface::V3(CurrentInterfaceVersion {
                     status: InterfaceStatus::Activated,
                     name: format!("Loopback{}", i),
                     interface_type: InterfaceType::Loopback,
@@ -274,6 +274,7 @@ mod tests {
                     ip_net: NetworkV4::new(ip, 32).unwrap(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: true,
+                    flex_algo_node_segments: vec![],
                 })
             })
             .collect();

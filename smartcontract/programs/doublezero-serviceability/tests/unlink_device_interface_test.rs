@@ -314,6 +314,15 @@ async fn setup_two_devices_with_link() -> (
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        config_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -336,6 +345,7 @@ async fn setup_two_devices_with_link() -> (
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )

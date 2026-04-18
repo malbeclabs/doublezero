@@ -5,7 +5,7 @@ use doublezero_serviceability::{
     pda::{
         get_contributor_pda, get_device_pda, get_exchange_pda, get_globalconfig_pda,
         get_globalstate_pda, get_link_pda, get_location_pda, get_program_config_pda,
-        get_resource_extension_pda,
+        get_resource_extension_pda, get_topology_pda,
     },
     processors::{
         contributor::create::ContributorCreateArgs,
@@ -23,6 +23,7 @@ use doublezero_serviceability::{
             update::LinkUpdateArgs,
         },
         location::{create::LocationCreateArgs, suspend::LocationSuspendArgs},
+        topology::create::TopologyCreateArgs,
     },
     resource::ResourceType,
     state::{
@@ -32,6 +33,7 @@ use doublezero_serviceability::{
         interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
         link::{Link, LinkDesiredStatus, LinkHealth, LinkLinkType},
         location::Location,
+        topology::TopologyConstraint,
     },
 };
 use doublezero_telemetry::{
@@ -742,6 +744,7 @@ pub struct ServiceabilityProgramHelper {
 
     pub global_state_pubkey: Pubkey,
     pub global_config_pubkey: Pubkey,
+    pub unicast_default_topology_pubkey: Pubkey,
 }
 
 impl ServiceabilityProgramHelper {
@@ -749,7 +752,7 @@ impl ServiceabilityProgramHelper {
         context: Arc<Mutex<LedgerContext>>,
         program_id: Pubkey,
     ) -> Result<Self, BanksClientError> {
-        let (global_state_pubkey, global_config_pubkey) = {
+        let (global_state_pubkey, global_config_pubkey, unicast_default_topology_pubkey) = {
             let (mut banks_client, payer, recent_blockhash) = {
                 let context = context.lock().unwrap();
                 (
@@ -789,6 +792,8 @@ impl ServiceabilityProgramHelper {
             let (multicast_publisher_block_pda, _, _) =
                 get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
             let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+            let (admin_group_bits_pda, _, _) =
+                get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
             execute_serviceability_instruction(
                 &mut banks_client,
                 &payer,
@@ -813,11 +818,38 @@ impl ServiceabilityProgramHelper {
                     AccountMeta::new(segment_routing_ids_pda, false),
                     AccountMeta::new(multicast_publisher_block_pda, false),
                     AccountMeta::new(vrf_ids_pda, false),
+                    AccountMeta::new(admin_group_bits_pda, false),
                 ],
             )
             .await?;
 
-            (global_state_pubkey, global_config_pubkey)
+            // Create the unicast-default topology (required for ActivateLink).
+            // Must run after SetGlobalConfig, which initializes the AdminGroupBits resource.
+            let (unicast_default_topology_pubkey, _) =
+                get_topology_pda(&program_id, "unicast-default");
+            let recent_blockhash = banks_client.get_latest_blockhash().await?;
+            execute_serviceability_instruction(
+                &mut banks_client,
+                &payer,
+                recent_blockhash,
+                program_id,
+                DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+                    name: "unicast-default".to_string(),
+                    constraint: TopologyConstraint::IncludeAny,
+                }),
+                vec![
+                    AccountMeta::new(unicast_default_topology_pubkey, false),
+                    AccountMeta::new(admin_group_bits_pda, false),
+                    AccountMeta::new_readonly(global_state_pubkey, false),
+                ],
+            )
+            .await?;
+
+            (
+                global_state_pubkey,
+                global_config_pubkey,
+                unicast_default_topology_pubkey,
+            )
         };
 
         Ok(Self {
@@ -826,6 +858,7 @@ impl ServiceabilityProgramHelper {
 
             global_state_pubkey,
             global_config_pubkey,
+            unicast_default_topology_pubkey,
         })
     }
 
@@ -1167,6 +1200,7 @@ impl ServiceabilityProgramHelper {
                 AccountMeta::new(side_a_pk, false),
                 AccountMeta::new(side_z_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
+                AccountMeta::new(self.unicast_default_topology_pubkey, false),
             ],
         )
         .await?;

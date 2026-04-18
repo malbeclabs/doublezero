@@ -255,14 +255,14 @@ func TestReadString(t *testing.T) {
 //	cargo test test_interface_v2_serialization_bytes -- --nocapture
 //
 // Then copy the hex output here.
-func TestDeserializeInterfaceV2CrossLanguage(t *testing.T) {
+func TestDeserializeInterfaceV3CrossLanguage(t *testing.T) {
 	t.Parallel()
 
-	// These bytes are ACTUAL output from Rust test:
-	// Hex: [01, 03, 0b, 00, 00, 00, 4c, 6f, 6f, 70, 62, 61, 63, 6b, 31, 30, 36, 01, 00, 00, 02, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 28, 23, 00, 00, 00, cb, 00, 71, 28, 20, 00, 00, 01]
+	// These bytes are ACTUAL output from Rust test (RFC-18, V3 with flex_algo_node_segments):
+	// Hex: [03, 03, 0b, 00, 00, 00, 4c, 6f, 6f, 70, 62, 61, 63, 6b, 31, 30, 36, 01, 00, 00, 02, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 28, 23, 00, 00, 00, cb, 00, 71, 28, 20, 00, 00, 01, 00, 00, 00, 00]
 	//
 	// Field breakdown from Rust:
-	//   [0] enum discriminant (V2=1): 01
+	//   [0] enum discriminant (V3=3): 03
 	//   [1] status (Activated=3): 03
 	//   [2-5] name length: 11 (0x0000000b)
 	//   [6-16] name: "Loopback106"
@@ -278,10 +278,11 @@ func TestDeserializeInterfaceV2CrossLanguage(t *testing.T) {
 	//   [42-46] ip_net: [cb, 00, 71, 28, 20] = 203.0.113.40/32
 	//   [47-48] node_segment_idx: 0
 	//   [49] user_tunnel_endpoint: 01 (true)
+	//   [50-53] flex_algo_node_segments length: 0 (empty vec)
 
 	// Use EXACT bytes from Rust serialization
 	data := []byte{
-		0x01,                   // [0] enum discriminant V2=1
+		0x03,                   // [0] enum discriminant V3=3
 		0x03,                   // [1] status Activated=3
 		0x0b, 0x00, 0x00, 0x00, // [2-5] name length = 11
 		0x4c, 0x6f, 0x6f, 0x70, 0x62, 0x61, 0x63, 0x6b, 0x31, 0x30, 0x36, // [6-16] "Loopback106"
@@ -296,7 +297,8 @@ func TestDeserializeInterfaceV2CrossLanguage(t *testing.T) {
 		0x00, 0x00, // [40-41] vlan_id=0
 		0xcb, 0x00, 0x71, 0x28, 0x20, // [42-46] ip_net 203.0.113.40/32
 		0x00, 0x00, // [47-48] node_segment_idx=0
-		0x01, // [49] user_tunnel_endpoint=true
+		0x01,                   // [49] user_tunnel_endpoint=true
+		0x00, 0x00, 0x00, 0x00, // [50-53] flex_algo_node_segments length=0 (empty vec, RFC-18)
 	}
 
 	t.Logf("Test data (%d bytes): %s", len(data), hex.EncodeToString(data))
@@ -324,8 +326,8 @@ func TestDeserializeInterfaceV2CrossLanguage(t *testing.T) {
 	t.Logf("  Remaining bytes: %d", reader.Remaining())
 
 	// Assertions
-	if iface.Version != 1 {
-		t.Errorf("Version: got %d, expected 1 (V2 enum discriminant)", iface.Version)
+	if iface.Version != 3 {
+		t.Errorf("Version: got %d, expected 3 (V3 enum discriminant)", iface.Version)
 	}
 	if iface.Status != InterfaceStatusActivated {
 		t.Errorf("Status: got %d, expected %d (Activated)", iface.Status, InterfaceStatusActivated)

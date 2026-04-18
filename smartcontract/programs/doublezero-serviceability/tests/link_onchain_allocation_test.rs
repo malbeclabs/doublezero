@@ -289,6 +289,15 @@ async fn test_activate_link_with_onchain_allocation() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -311,6 +320,7 @@ async fn test_activate_link_with_onchain_allocation() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -382,6 +392,7 @@ async fn test_activate_link_with_onchain_allocation() {
 
     // Activate Link with onchain allocation
     println!("Activating Link with onchain allocation...");
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -666,6 +677,15 @@ async fn test_activate_link_legacy_path() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -688,6 +708,7 @@ async fn test_activate_link_legacy_path() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -985,6 +1006,16 @@ async fn test_closeaccount_link_with_deallocation() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    // Create unicast-default topology (required for link tagging in CreateLink)
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1007,6 +1038,7 @@ async fn test_closeaccount_link_with_deallocation() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1135,6 +1167,7 @@ async fn test_closeaccount_link_with_deallocation() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1393,7 +1426,7 @@ async fn setup_wan_link_infra(
 /// Test that CreateLink with use_onchain_allocation=true performs atomic create+allocate+activate
 #[tokio::test]
 async fn test_create_link_atomic_with_onchain_allocation() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1422,6 +1455,15 @@ async fn test_create_link_atomic_with_onchain_allocation() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1446,6 +1488,7 @@ async fn test_create_link_atomic_with_onchain_allocation() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1474,7 +1517,7 @@ async fn test_create_link_atomic_with_onchain_allocation() {
 /// Test backward compatibility: CreateLink with use_onchain_allocation=false creates Pending link
 #[tokio::test]
 async fn test_create_link_atomic_backward_compat() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1489,6 +1532,15 @@ async fn test_create_link_atomic_backward_compat() {
     // Create Link without onchain allocation (legacy path)
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
 
     execute_transaction(
         &mut banks_client,
@@ -1512,6 +1564,7 @@ async fn test_create_link_atomic_backward_compat() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1532,7 +1585,7 @@ async fn test_create_link_atomic_backward_compat() {
 /// Test that atomic CreateLink fails when OnChainAllocation feature flag is disabled
 #[tokio::test]
 async fn test_create_link_atomic_feature_flag_disabled() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1549,6 +1602,15 @@ async fn test_create_link_atomic_feature_flag_disabled() {
     // Try to create Link with atomic onchain allocation - should fail
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
 
     let result = execute_transaction_expect_failure(
         &mut banks_client,
@@ -1574,6 +1636,7 @@ async fn test_create_link_atomic_feature_flag_disabled() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1586,7 +1649,7 @@ async fn test_create_link_atomic_feature_flag_disabled() {
 /// Test atomic delete+deallocate+close for an activated link
 #[tokio::test]
 async fn test_delete_link_atomic_with_deallocation() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1615,6 +1678,15 @@ async fn test_delete_link_atomic_with_deallocation() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1639,6 +1711,7 @@ async fn test_delete_link_atomic_with_deallocation() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1695,6 +1768,7 @@ async fn test_delete_link_atomic_with_deallocation() {
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
             AccountMeta::new(owner, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1710,7 +1784,7 @@ async fn test_delete_link_atomic_with_deallocation() {
 /// Test backward compatibility: use_onchain_deallocation=false uses legacy path
 #[tokio::test]
 async fn test_delete_link_atomic_backward_compat() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1739,6 +1813,15 @@ async fn test_delete_link_atomic_backward_compat() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1763,6 +1846,7 @@ async fn test_delete_link_atomic_backward_compat() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1820,7 +1904,7 @@ async fn test_delete_link_atomic_backward_compat() {
 /// Test that atomic delete fails when OnChainAllocation feature flag is disabled
 #[tokio::test]
 async fn test_delete_link_atomic_feature_flag_disabled() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1849,6 +1933,15 @@ async fn test_delete_link_atomic_feature_flag_disabled() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1873,6 +1966,7 @@ async fn test_delete_link_atomic_feature_flag_disabled() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -1935,7 +2029,7 @@ async fn test_delete_link_atomic_feature_flag_disabled() {
 /// Test that atomic delete rejects Activated links (must be drained first)
 #[tokio::test]
 async fn test_delete_link_atomic_rejects_activated_status() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1964,6 +2058,15 @@ async fn test_delete_link_atomic_rejects_activated_status() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1988,6 +2091,7 @@ async fn test_delete_link_atomic_rejects_activated_status() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2047,7 +2151,7 @@ async fn test_delete_link_atomic_rejects_activated_status() {
 /// Test that UpdateLink can reallocate tunnel_id and tunnel_net with onchain allocation
 #[tokio::test]
 async fn test_update_link_tunnel_reallocation_with_onchain_allocation() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
@@ -2076,6 +2180,15 @@ async fn test_update_link_tunnel_reallocation_with_onchain_allocation() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -2100,6 +2213,7 @@ async fn test_update_link_tunnel_reallocation_with_onchain_allocation() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2272,7 +2386,7 @@ async fn test_update_link_tunnel_reallocation_with_onchain_allocation() {
 /// Test that UpdateLink tunnel reallocation fails without foundation allowlist
 #[tokio::test]
 async fn test_update_link_tunnel_reallocation_rejects_non_foundation() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
@@ -2301,6 +2415,15 @@ async fn test_update_link_tunnel_reallocation_rejects_non_foundation() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -2325,6 +2448,7 @@ async fn test_update_link_tunnel_reallocation_rejects_non_foundation() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2383,7 +2507,7 @@ async fn test_update_link_tunnel_reallocation_rejects_non_foundation() {
 /// Test that UpdateLink tunnel reallocation fails when feature flag is disabled
 #[tokio::test]
 async fn test_update_link_tunnel_reallocation_rejects_feature_flag_disabled() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
@@ -2400,6 +2524,15 @@ async fn test_update_link_tunnel_reallocation_rejects_feature_flag_disabled() {
     // Create Link without onchain allocation (legacy path — feature flag off)
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
 
     execute_transaction(
         &mut banks_client,
@@ -2423,6 +2556,7 @@ async fn test_update_link_tunnel_reallocation_rejects_feature_flag_disabled() {
             AccountMeta::new(_device_a_pubkey, false),
             AccountMeta::new(_device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -2731,6 +2865,15 @@ async fn test_accept_link_with_onchain_allocation() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -2753,6 +2896,7 @@ async fn test_accept_link_with_onchain_allocation() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )
@@ -3067,6 +3211,15 @@ async fn test_accept_link_onchain_allocation_rejects_feature_flag_disabled() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -3089,6 +3242,7 @@ async fn test_accept_link_onchain_allocation_rejects_feature_flag_disabled() {
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )

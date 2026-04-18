@@ -263,7 +263,7 @@ func TestCustomJSONMarshal(t *testing.T) {
 				MgmtVrf:                "mgmt-vrf",
 				Interfaces: []serviceability.Interface{
 					{
-						Version:            serviceability.CurrentInterfaceVersion - 1,
+						Version:            1, // V2 discriminant
 						Status:             serviceability.InterfaceStatusActivated,
 						Name:               "Switch1/1/1",
 						InterfaceType:      serviceability.InterfaceTypePhysical,

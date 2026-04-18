@@ -133,6 +133,8 @@ impl UpdateLinkCliCommand {
             desired_status: self.desired_status,
             tunnel_id: self.tunnel_id,
             tunnel_net: self.tunnel_net,
+            link_topologies: None,
+            unicast_drained: None,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -212,6 +214,8 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+            link_topologies: vec![],
+            link_flags: 0,
         };
 
         let link2 = Link {
@@ -236,6 +240,8 @@ mod tests {
             side_z_iface_name: "eth3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+            link_topologies: vec![],
+            link_flags: 0,
         };
 
         client
@@ -282,6 +288,8 @@ mod tests {
                 desired_status: None,
                 tunnel_id: None,
                 tunnel_net: None,
+                link_topologies: None,
+                unicast_drained: None,
             }))
             .returning(move |_| Ok(signature));
 

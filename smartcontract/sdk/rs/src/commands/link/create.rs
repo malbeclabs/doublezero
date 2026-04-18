@@ -2,7 +2,7 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::{get_link_pda, get_resource_extension_pda},
+    pda::{get_link_pda, get_resource_extension_pda, get_topology_pda},
     processors::link::create::LinkCreateArgs,
     resource::ResourceType,
     state::{
@@ -63,6 +63,11 @@ impl CreateLinkCommand {
             accounts.push(AccountMeta::new(link_ids_ext, false));
         }
 
+        // The unicast-default topology account is required; CreateLink auto-tags the link into it.
+        let (unicast_default_topology_pda, _) =
+            get_topology_pda(&client.get_program_id(), "unicast-default");
+        accounts.push(AccountMeta::new(unicast_default_topology_pda, false));
+
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateLink(LinkCreateArgs {
@@ -91,7 +96,7 @@ mod tests {
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_link_pda, get_resource_extension_pda},
+        pda::{get_globalstate_pda, get_link_pda, get_resource_extension_pda, get_topology_pda},
         processors::link::create::LinkCreateArgs,
         resource::ResourceType,
         state::{
@@ -109,6 +114,7 @@ mod tests {
         let program_id = client.get_program_id();
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
         let (pda_pubkey, _) = get_link_pda(&program_id, 1);
+        let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
         let contributor_pk = Pubkey::new_unique();
         let side_a_pk = Pubkey::new_unique();
         let side_z_pk = Pubkey::new_unique();
@@ -134,6 +140,7 @@ mod tests {
                     AccountMeta::new(side_a_pk, false),
                     AccountMeta::new(side_z_pk, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(unicast_default_pda, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
@@ -196,6 +203,7 @@ mod tests {
         let (device_tunnel_block_ext, _, _) =
             get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
         let (link_ids_ext, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+        let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
 
         client
             .expect_execute_transaction()
@@ -220,6 +228,7 @@ mod tests {
                     AccountMeta::new(globalstate_pubkey, false),
                     AccountMeta::new(device_tunnel_block_ext, false),
                     AccountMeta::new(link_ids_ext, false),
+                    AccountMeta::new(unicast_default_pda, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));

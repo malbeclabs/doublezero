@@ -74,6 +74,8 @@ async fn test_doublezero_program() {
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     execute_transaction(
         &mut banks_client,
@@ -98,6 +100,7 @@ async fn test_doublezero_program() {
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )
@@ -652,6 +655,15 @@ async fn test_doublezero_program() {
         use_onchain_allocation: false,
     };
 
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
     println!("Testing Link LA-NY initialization...");
     execute_transaction(
         &mut banks_client,
@@ -664,6 +676,7 @@ async fn test_doublezero_program() {
             AccountMeta::new(device_la_pubkey, false),
             AccountMeta::new(device_ny_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
         ],
         &payer,
     )

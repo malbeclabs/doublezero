@@ -49,7 +49,7 @@ type Interface struct {
 
 // toInterface validates onchain data for a serviceability interface and converts it to a controller interface.
 func toInterface(iface serviceability.Interface) (Interface, error) {
-	if iface == (serviceability.Interface{}) {
+	if iface.Name == "" {
 		return Interface{}, errors.New("serviceability interface cannot be nil")
 	}
 

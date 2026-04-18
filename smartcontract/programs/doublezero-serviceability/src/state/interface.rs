@@ -394,22 +394,116 @@ impl Default for InterfaceV2 {
     }
 }
 
-#[repr(u8)]
 #[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct InterfaceV3 {
+    pub status: InterfaceStatus,
+    pub name: String,
+    pub interface_type: InterfaceType,
+    pub interface_cyoa: InterfaceCYOA,
+    pub interface_dia: InterfaceDIA,
+    pub loopback_type: LoopbackType,
+    pub bandwidth: u64,
+    pub cir: u64,
+    pub mtu: u16,
+    pub routing_mode: RoutingMode,
+    pub vlan_id: u16,
+    pub ip_net: NetworkV4,
+    pub node_segment_idx: u16,
+    pub user_tunnel_endpoint: bool,
+    pub flex_algo_node_segments: Vec<crate::state::topology::FlexAlgoNodeSegment>,
+}
+
+impl InterfaceV3 {
+    pub fn size(&self) -> usize {
+        Self::size_given_name_len(self.name.len())
+    }
+
+    pub fn to_interface(&self) -> Interface {
+        Interface::V3(self.clone())
+    }
+
+    pub fn size_given_name_len(name_len: usize) -> usize {
+        1 + 4 + name_len + 1 + 1 + 1 + 1 + 8 + 8 + 2 + 1 + 2 + 5 + 2 + 1 + 4 // +4 for empty flex_algo_node_segments vec (Borsh length prefix)
+    }
+}
+
+impl From<InterfaceV2> for InterfaceV3 {
+    fn from(v2: InterfaceV2) -> Self {
+        Self {
+            status: v2.status,
+            name: v2.name,
+            interface_type: v2.interface_type,
+            interface_cyoa: v2.interface_cyoa,
+            interface_dia: v2.interface_dia,
+            loopback_type: v2.loopback_type,
+            bandwidth: v2.bandwidth,
+            cir: v2.cir,
+            mtu: v2.mtu,
+            routing_mode: v2.routing_mode,
+            vlan_id: v2.vlan_id,
+            ip_net: v2.ip_net,
+            node_segment_idx: v2.node_segment_idx,
+            user_tunnel_endpoint: v2.user_tunnel_endpoint,
+            flex_algo_node_segments: vec![],
+        }
+    }
+}
+
+impl TryFrom<&InterfaceV1> for InterfaceV3 {
+    type Error = ProgramError;
+
+    fn try_from(data: &InterfaceV1) -> Result<Self, Self::Error> {
+        let v2: InterfaceV2 = data.try_into()?;
+        Ok(v2.into())
+    }
+}
+
+impl Default for InterfaceV3 {
+    fn default() -> Self {
+        InterfaceV2::default().into()
+    }
+}
+
+#[repr(u8)]
+#[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[borsh(use_discriminant = true)]
 pub enum Interface {
-    V1(InterfaceV1),
-    V2(InterfaceV2),
+    V1(InterfaceV1) = 0,
+    /// Discriminant 1: V2 format. Does NOT include flex_algo_node_segments.
+    V2(InterfaceV2) = 1,
+    /// Discriminant 3: V3 format. Includes flex_algo_node_segments (RFC-18).
+    /// Discriminant 2 is intentionally skipped (reserved).
+    V3(InterfaceV3) = 3,
 }
 
-pub type CurrentInterfaceVersion = InterfaceV2;
+impl borsh::BorshDeserialize for Interface {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
+        let discriminant: u8 = borsh::BorshDeserialize::deserialize_reader(reader)?;
+        match discriminant {
+            0 => Ok(Interface::V1(borsh::BorshDeserialize::deserialize_reader(
+                reader,
+            )?)),
+            1 | 2 => Ok(Interface::V2(borsh::BorshDeserialize::deserialize_reader(
+                reader,
+            )?)),
+            3 => Ok(Interface::V3(borsh::BorshDeserialize::deserialize_reader(
+                reader,
+            )?)),
+            _ => Ok(Interface::V3(InterfaceV3::default())),
+        }
+    }
+}
+
+pub type CurrentInterfaceVersion = InterfaceV3;
 
 impl Interface {
     pub fn into_current_version(&self) -> CurrentInterfaceVersion {
         match self {
             Interface::V1(v1) => v1.try_into().unwrap_or_default(),
-            Interface::V2(v2) => v2.clone(),
+            Interface::V2(v2) => v2.clone().into(),
+            Interface::V3(v3) => v3.clone(),
         }
     }
 
@@ -417,6 +511,7 @@ impl Interface {
         let base_size = match self {
             Interface::V1(v1) => v1.size(),
             Interface::V2(v2) => v2.size(),
+            Interface::V3(v3) => v3.size(),
         };
         base_size + 1 // +1 for the enum discriminant
     }
@@ -478,11 +573,8 @@ impl Validate for Interface {
 impl TryFrom<&[u8]> for Interface {
     type Error = ProgramError;
 
-    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
-        match BorshDeserialize::deserialize(&mut data) {
-            Ok(0) => Ok(Interface::V1(InterfaceV1::try_from(data)?)),
-            _ => Ok(Interface::V1(InterfaceV1::default())), // Default case
-        }
+    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+        BorshDeserialize::deserialize(&mut &data[..]).map_err(|_| ProgramError::InvalidAccountData)
     }
 }
 
@@ -513,7 +605,7 @@ fn test_interface_version() {
     assert_eq!(iface_v2.node_segment_idx, 200);
     assert!(iface_v2.user_tunnel_endpoint);
 
-    let iface = InterfaceV2 {
+    let iface = InterfaceV3 {
         status: InterfaceStatus::Activated,
         name: "Loopback0".to_string(),
         interface_type: InterfaceType::Loopback,
@@ -528,21 +620,22 @@ fn test_interface_version() {
         ip_net: "10.0.0.0/24".parse().unwrap(),
         node_segment_idx: 200,
         user_tunnel_endpoint: true,
+        flex_algo_node_segments: vec![],
     }
     .to_interface();
 
     assert!(
-        matches!(iface, Interface::V2(_)),
-        "iface is not Interface::V2"
+        matches!(iface, Interface::V3(_)),
+        "iface is not Interface::V3"
     );
-    let iface_v2: CurrentInterfaceVersion = iface.into_current_version();
-    assert_eq!(iface_v2.name, "Loopback0");
-    assert_eq!(iface_v2.interface_type, InterfaceType::Loopback);
-    assert_eq!(iface_v2.loopback_type, LoopbackType::Ipv4);
-    assert_eq!(iface_v2.vlan_id, 100);
-    assert_eq!(iface_v2.ip_net, "10.0.0.0/24".parse().unwrap());
-    assert_eq!(iface_v2.node_segment_idx, 200);
-    assert!(iface_v2.user_tunnel_endpoint);
+    let iface_v3: CurrentInterfaceVersion = iface.into_current_version();
+    assert_eq!(iface_v3.name, "Loopback0");
+    assert_eq!(iface_v3.interface_type, InterfaceType::Loopback);
+    assert_eq!(iface_v3.loopback_type, LoopbackType::Ipv4);
+    assert_eq!(iface_v3.vlan_id, 100);
+    assert_eq!(iface_v3.ip_net, "10.0.0.0/24".parse().unwrap());
+    assert_eq!(iface_v3.node_segment_idx, 200);
+    assert!(iface_v3.user_tunnel_endpoint);
 }
 
 #[cfg(test)]
@@ -651,12 +744,12 @@ mod test_interface_validate {
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidInterfaceIp);
     }
 
-    /// Test that prints serialized bytes of InterfaceV2 for cross-language debugging.
-    /// Run with: cargo test test_interface_v2_serialization_bytes -- --nocapture
+    /// Test that prints serialized bytes of InterfaceV3 for cross-language debugging.
+    /// Run with: cargo test test_interface_v3_serialization_bytes -- --nocapture
     #[test]
-    fn test_interface_v2_serialization_bytes() {
+    fn test_interface_v3_serialization_bytes() {
         // Create an interface similar to what the e2e test creates after update
-        let iface = InterfaceV2 {
+        let iface = InterfaceV3 {
             status: InterfaceStatus::Activated,
             name: "Loopback106".to_string(),
             interface_type: InterfaceType::Loopback,
@@ -671,17 +764,18 @@ mod test_interface_validate {
             ip_net: "203.0.113.40/32".parse().unwrap(),
             node_segment_idx: 0,
             user_tunnel_endpoint: true,
+            flex_algo_node_segments: vec![],
         };
 
-        // Serialize as Interface::V2 (with enum discriminant)
-        let interface_enum = Interface::V2(iface.clone());
+        // Serialize as Interface::V3 (with enum discriminant)
+        let interface_enum = Interface::V3(iface.clone());
         let bytes = borsh::to_vec(&interface_enum).unwrap();
 
-        println!("\n=== InterfaceV2 Serialization Debug ===");
+        println!("\n=== InterfaceV3 Serialization Debug ===");
         println!("Total bytes: {}", bytes.len());
         println!("Hex: {:02x?}", bytes);
         println!("\nField breakdown:");
-        println!("  [0] enum discriminant (V2=1): {:02x}", bytes[0]);
+        println!("  [0] enum discriminant (V3=3): {:02x}", bytes[0]);
 
         let mut offset = 1;
         println!("  [{}] status (Activated=1): {:02x}", offset, bytes[offset]);
@@ -798,6 +892,6 @@ mod test_interface_validate {
 
         // Verify the serialization
         assert_eq!(mtu, 9000);
-        assert_eq!(bytes[0], 1); // V2 discriminant
+        assert_eq!(bytes[0], 3); // V3 discriminant
     }
 }

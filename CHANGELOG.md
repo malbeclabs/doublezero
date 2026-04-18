@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- CLI upgrade required: the `InterfaceV2` onchain account format now includes `flex_algo_node_segments` (RFC-18). CLI versions prior to this release cannot deserialize device accounts written by the new program. Operators must upgrade the CLI before or alongside the program upgrade.
+
 ### Changes
 
 ## [v0.18.0](https://github.com/malbeclabs/doublezero/compare/client/v0.17.0...client/v0.18.0) - 2026-04-17
@@ -74,6 +76,10 @@ All notable changes to this project will be documented in this file.
   - Extend `validate_program_account!` migration to remaining user and multicastgroup allowlist processors (`set_bgp_status`, `delete`, `closeaccount`, publisher/subscriber `add`/`remove`)
   - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
   - Allow pending users with subs to be deleted
+  - Add `TopologyInfo` onchain account for IS-IS flex-algo link classification: auto-assigned TE admin-group bit (1–62), derived flex-algo number (128 + bit), and constraint type (`include-any`/`include-all`); capped at 62 topologies via `AdminGroupBits` resource extension
+  - Add `link_topologies: Vec<Pubkey>` (capped at 8) and `link_flags: u32` (bit 0 = unicast-drained) to the `Link` account
+  - Add `include_topologies` to the `Tenant` account for topology-filtered routing opt-in
+  - Enforce UNICAST-DEFAULT topology existence as a precondition for link activation
 - Onchain programs
   - Add `tunnel_endpoint` field to the `UpdateUser` instruction (`UserUpdateArgs`), allowing the activator to overwrite a user's tunnel endpoint onchain; field is optional and backward compatible via incremental deserialization
 - Telemetry

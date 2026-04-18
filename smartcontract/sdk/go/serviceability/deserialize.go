@@ -80,19 +80,28 @@ func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
 	contributor.OpsManagerPK = reader.ReadPubkey()
 }
 
+// DeserializeInterface reads an on-chain Interface account from reader.
+//
+// Interface version history (discriminant byte):
+//
+//	0 — V1: original format (no CYOA/DIA/Bandwidth fields)
+//	1 — V2: adds CYOA, DIA, Bandwidth, Cir, Mtu, RoutingMode (no flex_algo_node_segments)
+//	2 — reserved, never written
+//	3 — V3: V2 fields + flex_algo_node_segments (RFC-18)
+//
+// MigrateDeviceInterfaces converts discriminant-1 accounts to discriminant-3.
 func DeserializeInterface(reader *ByteReader, iface *Interface) {
 	iface.Version = reader.ReadU8()
 
-	if iface.Version > (CurrentInterfaceVersion - 1) { // subtract 1 because the discriminant starts from 0
-		log.Println("DeserializeInterface: Unsupported interface version", iface.Version)
-		return
-	}
-
 	switch iface.Version {
-	case 0: // version 1
+	case 0: // V1
 		DeserializeInterfaceV1(reader, iface)
-	case 1: // version 2
+	case 1, 2: // V2: no flex_algo_node_segments
 		DeserializeInterfaceV2(reader, iface)
+	case 3: // V3: includes flex_algo_node_segments (RFC-18)
+		DeserializeInterfaceV3(reader, iface)
+	default:
+		log.Println("DeserializeInterface: Unsupported interface version", iface.Version)
 	}
 }
 
@@ -122,6 +131,17 @@ func DeserializeInterfaceV2(reader *ByteReader, iface *Interface) {
 	iface.IpNet = reader.ReadNetworkV4()
 	iface.NodeSegmentIdx = reader.ReadU16()
 	iface.UserTunnelEndpoint = (reader.ReadU8() != 0)
+}
+
+func DeserializeInterfaceV3(reader *ByteReader, iface *Interface) {
+	DeserializeInterfaceV2(reader, iface)
+	// flex_algo_node_segments (RFC-18): present in all V3 accounts.
+	length := reader.ReadU32()
+	iface.FlexAlgoNodeSegments = make([]FlexAlgoNodeSegment, length)
+	for i := uint32(0); i < length; i++ {
+		iface.FlexAlgoNodeSegments[i].Topology = reader.ReadPubkey()
+		iface.FlexAlgoNodeSegments[i].NodeSegmentIdx = reader.ReadU16()
+	}
 }
 
 func DeserializeDevice(reader *ByteReader, dev *Device) {

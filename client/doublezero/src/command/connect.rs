@@ -402,7 +402,10 @@ impl ProvisioningCliCommand {
 
         // Only filter devices if auto-selecting; keep all if user specified a device
         if self.device.is_none() {
-            devices.retain(|_, d| d.is_device_eligible_for_provisioning());
+            devices.retain(|_, d| {
+                d.is_device_eligible_for_provisioning()
+                    && d.check_user_type_capacity(user_type, false).is_none()
+            });
         }
 
         // Find user by both client_ip AND user_type to support multiple tunnel types per IP
@@ -532,7 +535,11 @@ impl ProvisioningCliCommand {
 
         // Only filter devices if auto-selecting; keep all if user specified a device
         if self.device.is_none() {
-            devices.retain(|_, d| d.is_device_eligible_for_provisioning());
+            let is_publisher = !pub_group_pks.is_empty();
+            devices.retain(|_, d| {
+                d.is_device_eligible_for_provisioning()
+                    && d.check_user_type_capacity(UserType::Multicast, is_publisher).is_none()
+            });
         }
 
         // Find all users for this IP - multiple user accounts per IP are allowed (one per UserType)

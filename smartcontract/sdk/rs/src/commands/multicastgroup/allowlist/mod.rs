@@ -3,10 +3,7 @@ pub mod subscriber;
 
 use std::net::Ipv4Addr;
 
-use doublezero_serviceability::{
-    pda::get_accesspass_pda,
-    state::accountdata::AccountData,
-};
+use doublezero_serviceability::{pda::get_accesspass_pda, state::accountdata::AccountData};
 use solana_sdk::pubkey::Pubkey;
 
 use crate::DoubleZeroClient;
@@ -28,8 +25,7 @@ pub(crate) fn resolve_accesspass_pda(
         return static_pda;
     }
 
-    let (dynamic_pda, _) =
-        get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, user_payer);
+    let (dynamic_pda, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, user_payer);
     if let Ok(AccountData::AccessPass(ap)) = client.get(dynamic_pda) {
         if ap.allow_multiple_ip() {
             return dynamic_pda;
@@ -57,7 +53,12 @@ mod tests {
 
     use super::resolve_accesspass_pda;
 
-    fn make_accesspass(client_ip: Ipv4Addr, user_payer: Pubkey, bump_seed: u8, flags: u8) -> AccessPass {
+    fn make_accesspass(
+        client_ip: Ipv4Addr,
+        user_payer: Pubkey,
+        bump_seed: u8,
+        flags: u8,
+    ) -> AccessPass {
         AccessPass {
             account_type: AccountType::AccessPass,
             owner: Pubkey::new_unique(),

@@ -868,14 +868,19 @@ async fn test_multicast_subscriber_allowlist_allow_multiple_ip() {
         &payer,
     )
     .await;
-    assert!(res.is_ok(), "allow_multiple_ip AccessPass should be addable to subscriber allowlist");
+    assert!(
+        res.is_ok(),
+        "allow_multiple_ip AccessPass should be addable to subscriber allowlist"
+    );
 
     let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
         .await
         .expect("Unable to get Account")
         .get_accesspass()
         .unwrap();
-    assert!(accesspass.mgroup_sub_allowlist.contains(&multicastgroup_pubkey));
+    assert!(accesspass
+        .mgroup_sub_allowlist
+        .contains(&multicastgroup_pubkey));
 
     // Remove with client_ip=0.0.0.0 and dynamic PDA — should succeed
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
@@ -1028,7 +1033,9 @@ async fn test_multicast_subscriber_allowlist_allow_multiple_ip_real_ip_in_args()
         .expect("Unable to get Account")
         .get_accesspass()
         .unwrap();
-    assert!(accesspass.mgroup_sub_allowlist.contains(&multicastgroup_pubkey));
+    assert!(accesspass
+        .mgroup_sub_allowlist
+        .contains(&multicastgroup_pubkey));
 
     // Remove with a real IP in args but the dynamic PDA as account — should succeed
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();

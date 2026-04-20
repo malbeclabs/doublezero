@@ -3,8 +3,7 @@ use crate::{
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::get_globalstate_pda,
+    instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
     processors::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
@@ -24,8 +23,7 @@ impl AddMulticastGroupPubAllowlistCommand {
         }
         .execute(client)?;
 
-        let accesspass_pk =
-            resolve_accesspass_pda(client, &self.client_ip, &self.user_payer);
+        let accesspass_pk = resolve_accesspass_pda(client, &self.client_ip, &self.user_payer);
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 

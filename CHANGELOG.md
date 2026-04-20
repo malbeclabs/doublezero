@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.
 
 - Client
   - Filter devices by type-specific capacity during auto-selection so clients are not provisioned onto devices that have reached their unicast, multicast publisher, or multicast subscriber limits
+- Smartcontract
+  - Fix multicast group allowlist add/remove for AccessPasses created with `allow_multiple_ip=true`; the processors were rejecting requests with a real client IP because the stored IP is always `0.0.0.0` for these passes ([#3551](https://github.com/malbeclabs/doublezero/issues/3551))
+  - SDK now auto-detects the correct AccessPass PDA (static or dynamic) for allowlist operations based on whether an `allow_multiple_ip` pass exists
 
 ## [v0.18.0](https://github.com/malbeclabs/doublezero/compare/client/v0.17.0...client/v0.18.0) - 2026-04-17
 

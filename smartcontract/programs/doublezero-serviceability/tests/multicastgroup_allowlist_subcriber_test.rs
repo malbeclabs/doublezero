@@ -1203,6 +1203,185 @@ async fn test_multicast_subscriber_allowlist_wrong_pda_rejected() {
     );
 }
 
+/// Feed authority can add/remove an allow_multiple_ip AccessPass from the subscriber allowlist
+/// using a value.user_payer that differs from the stored accesspass.user_payer.
+#[tokio::test]
+async fn test_multicast_subscriber_allowlist_allow_multiple_ip_feed_authority_different_user_payer()
+{
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let dynamic_ip: std::net::Ipv4Addr = [0, 0, 0, 0].into();
+    let real_ip: std::net::Ipv4Addr = [10, 0, 7, 1].into();
+    let original_user_payer = payer.pubkey();
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    // 1. Initialize global state
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // 2. Create a feed keypair and set it as feed authority
+    let feed = Keypair::new();
+    transfer(&mut banks_client, &payer, &feed.pubkey(), 10_000_000_000).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAuthority(SetAuthorityArgs {
+            feed_authority_pk: Some(feed.pubkey()),
+            ..Default::default()
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // 3. Create and activate a multicast group
+    let globalstate = get_account_data(&mut banks_client, globalstate_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_global_state()
+        .unwrap();
+
+    let (multicastgroup_pubkey, _) =
+        get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "amip-feed-diff".to_string(),
+            max_bandwidth: 1_000_000_000,
+            owner: payer.pubkey(),
+            use_onchain_allocation: false,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
+            multicast_ip: [224, 254, 0, 7].into(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // 4. Feed authority creates allow_multiple_ip AccessPass at dynamic PDA (0.0.0.0, original_user_payer)
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &dynamic_ip, &original_user_payer);
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: dynamic_ip,
+            last_access_epoch: 100,
+            allow_multiple_ip: true,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(original_user_payer, false),
+        ],
+        &feed,
+    )
+    .await;
+
+    // 5. Feed authority adds subscriber allowlist with a real IP and a DIFFERENT user_payer — should succeed
+    let different_user_payer = Pubkey::new_unique();
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
+            client_ip: real_ip,
+            user_payer: different_user_payer,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &feed,
+    )
+    .await;
+    assert!(
+        res.is_ok(),
+        "Feed authority should be able to add allow_multiple_ip subscriber allowlist with different user_payer"
+    );
+
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_accesspass()
+        .unwrap();
+    assert!(accesspass
+        .mgroup_sub_allowlist
+        .contains(&multicastgroup_pubkey));
+    assert_eq!(accesspass.user_payer, original_user_payer);
+
+    // 6. Feed authority removes subscriber allowlist with the same real IP and different user_payer — should succeed
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(
+            RemoveMulticastGroupSubAllowlistArgs {
+                client_ip: real_ip,
+                user_payer: different_user_payer,
+            },
+        ),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &feed,
+    )
+    .await;
+    assert!(
+        res.is_ok(),
+        "Feed authority should be able to remove allow_multiple_ip subscriber allowlist with different user_payer"
+    );
+
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(accesspass.mgroup_sub_allowlist.len(), 0);
+    assert_eq!(accesspass.user_payer, original_user_payer);
+}
+
 /// Feed authority can remove from subscriber allowlist.
 #[tokio::test]
 async fn test_multicast_subscriber_allowlist_feed_authority_remove() {

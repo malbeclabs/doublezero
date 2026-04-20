@@ -109,10 +109,13 @@ pub fn process_remove_multicast_sub_allowlist(
             "AccessPass client_ip does not match"
         );
     }
-    assert!(
-        accesspass.user_payer == value.user_payer,
-        "AccessPass user_payer does not match"
-    );
+    // Feed authority may operate on access passes with a different user_payer
+    if globalstate.feed_authority_pk != *payer_account.key {
+        assert!(
+            accesspass.user_payer == value.user_payer,
+            "AccessPass user_payer does not match"
+        );
+    }
 
     accesspass
         .mgroup_sub_allowlist

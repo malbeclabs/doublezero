@@ -34,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
         poll_interval_secs = args.poll_interval,
         pubkey = %keypair.pubkey(),
         groups = ?multicast_group_pubkeys,
-        client_filter = ?args.client_filter,
+        client_filters = ?args.client_filters,
         "DoubleZero Sentinel starting"
     );
 
@@ -44,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
         keypair,
         serviceability_id,
         multicast_group_pubkeys,
-        args.client_filter,
+        args.client_filters,
         args.validator_metadata_url,
         args.poll_interval,
     );

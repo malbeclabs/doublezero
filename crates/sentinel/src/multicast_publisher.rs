@@ -62,7 +62,7 @@ pub struct MulticastPublisherSentinel<D: MulticastDzLedgerClient, V: ValidatorLi
     validator_list_reader: V,
     metadata_api_url: Option<String>,
     multicast_group_pubkeys: Vec<Pubkey>,
-    client_filter: Option<String>,
+    client_filters: Vec<String>,
     poll_interval: Duration,
 }
 
@@ -71,7 +71,7 @@ impl<D: MulticastDzLedgerClient, V: ValidatorListReader> MulticastPublisherSenti
         dz_client: D,
         validator_list_reader: V,
         multicast_group_pubkeys: Vec<Pubkey>,
-        client_filter: Option<String>,
+        client_filters: Vec<String>,
         metadata_api_url: Option<String>,
         poll_interval_secs: u64,
     ) -> Self {
@@ -80,7 +80,7 @@ impl<D: MulticastDzLedgerClient, V: ValidatorListReader> MulticastPublisherSenti
             validator_list_reader,
             metadata_api_url,
             multicast_group_pubkeys,
-            client_filter,
+            client_filters,
             poll_interval: Duration::from_secs(poll_interval_secs),
         }
     }
@@ -125,10 +125,10 @@ impl<D: MulticastDzLedgerClient, V: ValidatorListReader> MulticastPublisherSenti
             return Ok(());
         }
 
-        // If client_filter is set, enrich validators with software_client from the
+        // If client_filters is set, enrich validators with software_client from the
         // metadata API so we can filter. This must succeed — returning unfiltered
         // data when filtering was requested is not acceptable.
-        if self.client_filter.is_some() {
+        if !self.client_filters.is_empty() {
             let needs_enrichment = validators.values().any(|v| v.software_client.is_empty());
             if needs_enrichment {
                 let metadata_url = self.metadata_api_url.as_deref().ok_or_else(|| {
@@ -183,12 +183,13 @@ impl<D: MulticastDzLedgerClient, V: ValidatorListReader> MulticastPublisherSenti
                     {
                         return false;
                     }
-                    if let Some(ref filter) = self.client_filter {
+                    if !self.client_filters.is_empty() {
                         if let Some(v) = validators.get(&u.client_ip) {
-                            return v
-                                .software_client
-                                .to_lowercase()
-                                .contains(&filter.to_lowercase());
+                            let name = v.software_client.to_lowercase();
+                            return self
+                                .client_filters
+                                .iter()
+                                .any(|f| name.contains(&f.to_lowercase()));
                         }
                     }
                     true
@@ -521,7 +522,7 @@ impl MulticastPublisherSentinel<RpcMulticastDzLedgerClient, SolanaRpcValidatorLi
         payer: Arc<Keypair>,
         serviceability_id: Pubkey,
         multicast_group_pubkeys: Vec<Pubkey>,
-        client_filter: Option<String>,
+        client_filters: Vec<String>,
         validator_metadata_url: Option<String>,
         poll_interval_secs: u64,
     ) -> Self {
@@ -529,7 +530,7 @@ impl MulticastPublisherSentinel<RpcMulticastDzLedgerClient, SolanaRpcValidatorLi
             RpcMulticastDzLedgerClient::new(dz_rpc_url, payer, serviceability_id),
             SolanaRpcValidatorListReader::new(solana_rpc_url),
             multicast_group_pubkeys,
-            client_filter,
+            client_filters,
             validator_metadata_url,
             poll_interval_secs,
         )
@@ -586,9 +587,9 @@ mod tests {
         dz: MockMulticastDzLedgerClient,
         api: MockValidatorListReader,
         groups: Vec<Pubkey>,
-        client_filter: Option<String>,
+        client_filters: Vec<String>,
     ) -> MulticastPublisherSentinel<MockMulticastDzLedgerClient, MockValidatorListReader> {
-        MulticastPublisherSentinel::with_clients(dz, api, groups, client_filter, None, 300)
+        MulticastPublisherSentinel::with_clients(dz, api, groups, client_filters, None, 300)
     }
 
     fn make_sentinel(
@@ -596,7 +597,7 @@ mod tests {
         api: MockValidatorListReader,
         groups: Vec<Pubkey>,
     ) -> MulticastPublisherSentinel<MockMulticastDzLedgerClient, MockValidatorListReader> {
-        make_sentinel_with_filter(dz, api, groups, None)
+        make_sentinel_with_filter(dz, api, groups, vec![])
     }
 
     #[tokio::test]
@@ -887,8 +888,74 @@ mod tests {
             .times(1)
             .returning(|_, _| Ok(()));
 
-        let sentinel = make_sentinel_with_filter(dz, api, vec![group], Some("JitoLabs".into()));
+        let sentinel = make_sentinel_with_filter(dz, api, vec![group], vec!["JitoLabs".into()]);
         sentinel.poll_cycle().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn multiple_client_filters_match_any() {
+        let group = Pubkey::new_unique();
+        let ip_jito = [10, 0, 0, 1];
+        let ip_agave = [10, 0, 0, 2];
+        let ip_frank = [10, 0, 0, 3];
+
+        let mut api = MockValidatorListReader::new();
+        let mut validators = HashMap::new();
+        validators.insert(
+            Ipv4Addr::from(ip_jito),
+            ValidatorStake {
+                activated_stake: 300,
+                software_client: "JitoLabs".into(),
+            },
+        );
+        validators.insert(
+            Ipv4Addr::from(ip_agave),
+            ValidatorStake {
+                activated_stake: 200,
+                software_client: "Agave".into(),
+            },
+        );
+        validators.insert(
+            Ipv4Addr::from(ip_frank),
+            ValidatorStake {
+                activated_stake: 100,
+                software_client: "Frankendancer".into(),
+            },
+        );
+        api.expect_fetch_validators()
+            .returning(move || Ok(validators.clone()));
+
+        let mut dz = MockMulticastDzLedgerClient::new();
+        dz.expect_fetch_all_dz_users().returning(move || {
+            Ok(vec![
+                make_ibrl_user(ip_jito, Pubkey::new_unique()),
+                make_ibrl_user(ip_agave, Pubkey::new_unique()),
+                make_ibrl_user(ip_frank, Pubkey::new_unique()),
+            ])
+        });
+
+        // Both JitoLabs and Frankendancer should be created; Agave skipped.
+        let created_ips = Arc::new(std::sync::Mutex::new(HashSet::new()));
+        let created_ips_clone = created_ips.clone();
+        dz.expect_create_multicast_publisher()
+            .times(2)
+            .returning(move |_, u| {
+                created_ips_clone.lock().unwrap().insert(u.client_ip);
+                Ok(())
+            });
+
+        let sentinel = make_sentinel_with_filter(
+            dz,
+            api,
+            vec![group],
+            vec!["jito".into(), "Frankendancer".into()],
+        );
+        sentinel.poll_cycle().await.unwrap();
+
+        let ips = created_ips.lock().unwrap();
+        assert!(ips.contains(&Ipv4Addr::from(ip_jito)));
+        assert!(ips.contains(&Ipv4Addr::from(ip_frank)));
+        assert!(!ips.contains(&Ipv4Addr::from(ip_agave)));
     }
 
     #[tokio::test]
@@ -917,7 +984,7 @@ mod tests {
             dz,
             api,
             vec![group],
-            Some("JitoLabs".into()),
+            vec!["JitoLabs".into()],
             None,
             300,
         );

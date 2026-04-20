@@ -40,9 +40,10 @@ pub struct AppArgs {
     pub multicast_group_pubkeys: String,
 
     /// Only create publishers for validators matching this client name (e.g. "JitoLabs").
+    /// Repeatable; a validator matches if its software client contains any of the given names.
     /// Requires --validator-metadata-url for software client enrichment.
-    #[arg(long)]
-    pub client_filter: Option<String>,
+    #[arg(long = "client-filter", value_name = "NAME")]
+    pub client_filters: Vec<String>,
 
     /// Solana RPC URL for validator listing (get_vote_accounts + get_cluster_nodes).
     #[arg(long)]
@@ -112,7 +113,7 @@ mod tests {
             log: "info".into(),
             metrics_addr: "127.0.0.1:2112".into(),
             multicast_group_pubkeys: pubkeys.into(),
-            client_filter: None,
+            client_filters: vec![],
             solana_rpc: "http://localhost:8899".into(),
             validator_metadata_url: None,
             poll_interval: 300,

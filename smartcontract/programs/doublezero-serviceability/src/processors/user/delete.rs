@@ -173,10 +173,13 @@ pub fn process_delete_user(
             );
             return Err(DoubleZeroError::Unauthorized.into());
         }
-        if accesspass.is_dynamic() && accesspass.client_ip == Ipv4Addr::UNSPECIFIED {
-            accesspass.client_ip = user.client_ip; // lock to the first used IP
-        }
-        if accesspass.client_ip != user.client_ip && !accesspass.allow_multiple_ip() {
+        // Skip IP validation when the pass is stored at the UNSPECIFIED PDA (0.0.0.0): it is
+        // a dynamic pass valid for any IP by construction. This includes legacy passes created
+        // before the IS_DYNAMIC flag existed, which have client_ip=0.0.0.0 but flags=0.
+        if accesspass.client_ip != Ipv4Addr::UNSPECIFIED
+            && accesspass.client_ip != user.client_ip
+            && !accesspass.allow_multiple_ip()
+        {
             msg!(
                 "Invalid client_ip accesspass.{{client_ip: {}}} = {{ client_ip: {} }}",
                 accesspass.client_ip,

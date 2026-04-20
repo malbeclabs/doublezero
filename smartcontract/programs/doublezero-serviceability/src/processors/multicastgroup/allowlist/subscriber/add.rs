@@ -131,6 +131,18 @@ pub fn process_add_multicastgroup_sub_allowlist(
 
         let mut accesspass = AccessPass::try_from(accesspass_account)?;
 
+        // Validate PDA using the stored user_payer (so feed authority with different value.user_payer still works).
+        // For allow_multiple_ip passes, also accept the dynamic (0.0.0.0) PDA.
+        let (expected_pda, _) =
+            get_accesspass_pda(program_id, &value.client_ip, &accesspass.user_payer);
+        let (dynamic_pda, _) =
+            get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &accesspass.user_payer);
+        assert!(
+            accesspass_account.key == &expected_pda
+                || (accesspass.allow_multiple_ip() && accesspass_account.key == &dynamic_pda),
+            "Invalid AccessPass PDA"
+        );
+
         // Feed authority can only modify access passes they own
         if globalstate.feed_authority_pk == *payer_account.key
             && accesspass.owner != *payer_account.key
@@ -138,10 +150,13 @@ pub fn process_add_multicastgroup_sub_allowlist(
             return Err(DoubleZeroError::NotAllowed.into());
         }
 
-        assert!(
-            accesspass.client_ip == value.client_ip,
-            "AccessPass client_ip does not match"
-        );
+        // For allow_multiple_ip passes, the stored client_ip is 0.0.0.0 regardless of the connecting IP
+        if !accesspass.allow_multiple_ip() {
+            assert!(
+                accesspass.client_ip == value.client_ip,
+                "AccessPass client_ip does not match"
+            );
+        }
         // Feed authority may operate on access passes with a different user_payer
         if globalstate.feed_authority_pk != *payer_account.key {
             assert!(

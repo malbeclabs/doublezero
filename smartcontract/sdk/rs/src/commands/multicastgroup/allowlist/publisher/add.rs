@@ -1,7 +1,9 @@
-use crate::{commands::multicastgroup::get::GetMulticastGroupCommand, DoubleZeroClient};
+use crate::{
+    commands::multicastgroup::{allowlist::resolve_accesspass_pda, get::GetMulticastGroupCommand},
+    DoubleZeroClient,
+};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::{get_accesspass_pda, get_globalstate_pda},
+    instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
     processors::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
@@ -21,8 +23,7 @@ impl AddMulticastGroupPubAllowlistCommand {
         }
         .execute(client)?;
 
-        let (accesspass_pk, _) =
-            get_accesspass_pda(&client.get_program_id(), &self.client_ip, &self.user_payer);
+        let accesspass_pk = resolve_accesspass_pda(client, &self.client_ip, &self.user_payer);
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
@@ -84,6 +85,10 @@ mod tests {
             .expect_get()
             .with(predicate::eq(pubkey))
             .returning(move |_| Ok(AccountData::MulticastGroup(cloned_mgroup.clone())));
+        // AccessPass PDA lookups in resolve_accesspass_pda — no account found, use static PDA
+        client
+            .expect_get()
+            .returning(|_| Err(eyre::eyre!("account not found")));
         let cloned_mgroup = mgroup.clone();
         client
             .expect_gets()

@@ -538,7 +538,8 @@ impl ProvisioningCliCommand {
             let is_publisher = !pub_group_pks.is_empty();
             devices.retain(|_, d| {
                 d.is_device_eligible_for_provisioning()
-                    && d.check_user_type_capacity(UserType::Multicast, is_publisher).is_none()
+                    && d.check_user_type_capacity(UserType::Multicast, is_publisher)
+                        .is_none()
             });
         }
 

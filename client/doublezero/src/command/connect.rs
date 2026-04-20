@@ -402,7 +402,10 @@ impl ProvisioningCliCommand {
 
         // Only filter devices if auto-selecting; keep all if user specified a device
         if self.device.is_none() {
-            devices.retain(|_, d| d.is_device_eligible_for_provisioning());
+            devices.retain(|_, d| {
+                d.is_device_eligible_for_provisioning()
+                    && d.check_user_type_capacity(user_type, false).is_none()
+            });
         }
 
         // Find user by both client_ip AND user_type to support multiple tunnel types per IP
@@ -532,7 +535,12 @@ impl ProvisioningCliCommand {
 
         // Only filter devices if auto-selecting; keep all if user specified a device
         if self.device.is_none() {
-            devices.retain(|_, d| d.is_device_eligible_for_provisioning());
+            let is_publisher = !pub_group_pks.is_empty();
+            devices.retain(|_, d| {
+                d.is_device_eligible_for_provisioning()
+                    && d.check_user_type_capacity(UserType::Multicast, is_publisher)
+                        .is_none()
+            });
         }
 
         // Find all users for this IP - multiple user accounts per IP are allowed (one per UserType)
@@ -2302,6 +2310,239 @@ mod tests {
             err_msg.contains("Device is not accepting more users"),
             "Expected error about device not accepting users, got: {}",
             err_msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_auto_select_skips_device_at_unicast_limit() {
+        let mut fixture = TestFixture::new();
+
+        // First device: at unicast user limit
+        let (device1_pk, mut device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        device1.max_unicast_users = 5;
+        device1.unicast_users_count = 5;
+        fixture.devices.lock().unwrap().insert(device1_pk, device1);
+
+        // Second device: has capacity (higher latency, but the only eligible device)
+        let (device2_pk, _device2) = fixture.add_device(DeviceType::Hybrid, 200, true);
+        let user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
+        fixture.expect_create_user(Pubkey::new_unique(), &user);
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
+                allocate_addr: false,
+            },
+            client_ip: Some("1.2.3.4".to_string()),
+            device: None, // auto-select
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        // The mock expects create_user to be called with device2_pk (via expect_create_user).
+        // If device1 is incorrectly selected, the mock predicate mismatch causes Err, caught here.
+        assert!(
+            result.is_ok(),
+            "Expected success selecting device2 (device1 is at unicast limit)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_auto_select_skips_device_at_multicast_publisher_limit() {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+
+        // First device: at multicast publisher limit
+        let (device1_pk, mut device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        device1.max_multicast_publishers = 48;
+        device1.multicast_publishers_count = 48;
+        fixture.devices.lock().unwrap().insert(device1_pk, device1);
+
+        // Second device: has capacity
+        let (device2_pk, _) = fixture.add_device(DeviceType::Hybrid, 200, true);
+        let user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &user,
+            mcast_group_pk,
+            true,  // publisher
+            false, // not subscriber
+        );
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: Some(MulticastMode::Publisher),
+                multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None, // auto-select
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        // The mock expects create_subscribe_user with device2_pk; if device1 is selected the mock fails.
+        assert!(
+            result.is_ok(),
+            "Expected success selecting device2 (device1 is at publisher limit)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_auto_select_skips_device_at_multicast_subscriber_limit() {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+
+        // First device: at multicast subscriber limit
+        let (device1_pk, mut device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        device1.max_multicast_subscribers = 10;
+        device1.multicast_subscribers_count = 10;
+        fixture.devices.lock().unwrap().insert(device1_pk, device1);
+
+        // Second device: has capacity
+        let (device2_pk, _) = fixture.add_device(DeviceType::Hybrid, 200, true);
+        let user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &user,
+            mcast_group_pk,
+            false, // not publisher
+            true,  // subscriber
+        );
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: Some(MulticastMode::Subscriber),
+                multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        // The mock expects create_subscribe_user with device2_pk; if device1 is selected the mock fails.
+        assert!(
+            result.is_ok(),
+            "Expected success selecting device2 (device1 is at subscriber limit)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_auto_select_fails_when_all_devices_at_multicast_publisher_limit() {
+        let mut fixture = TestFixture::new();
+
+        fixture.add_multicast_group("test-group", "239.0.0.1");
+
+        // Only device: at multicast publisher limit
+        let (device1_pk, mut device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        device1.max_multicast_publishers = 48;
+        device1.multicast_publishers_count = 48;
+        fixture.devices.lock().unwrap().insert(device1_pk, device1);
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: Some(MulticastMode::Publisher),
+                multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: Some("1.2.3.4".to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_err(),
+            "Expected error when no devices have capacity"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_auto_select_fails_when_all_devices_at_multicast_subscriber_limit() {
+        let mut fixture = TestFixture::new();
+
+        fixture.add_multicast_group("test-group", "239.0.0.1");
+
+        // Only device: at multicast subscriber limit but has free IBRL slots
+        let (device1_pk, mut device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        device1.max_multicast_subscribers = 10;
+        device1.multicast_subscribers_count = 10;
+        fixture.devices.lock().unwrap().insert(device1_pk, device1);
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: Some(MulticastMode::Subscriber),
+                multicast_groups: vec!["test-group".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: Some("1.2.3.4".to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_err(),
+            "Expected error when no devices have multicast subscriber capacity"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_auto_select_fails_when_all_devices_at_unicast_limit() {
+        let mut fixture = TestFixture::new();
+
+        // Only device: at unicast limit but has free multicast slots
+        let (device1_pk, mut device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        device1.max_unicast_users = 5;
+        device1.unicast_users_count = 5;
+        fixture.devices.lock().unwrap().insert(device1_pk, device1);
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
+                allocate_addr: false,
+            },
+            client_ip: Some("1.2.3.4".to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_err(),
+            "Expected error when no devices have unicast capacity"
         );
     }
 

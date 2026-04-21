@@ -1028,6 +1028,7 @@ pub struct InitializeRewardsIntegrationAccounts {
     pub payer_key: Pubkey,
     pub new_rewards_integration_key: Pubkey,
     pub integration_program_key: Pubkey,
+    pub journal_key: Pubkey,
 }
 
 impl InitializeRewardsIntegrationAccounts {
@@ -1038,6 +1039,7 @@ impl InitializeRewardsIntegrationAccounts {
             payer_key: *payer_key,
             new_rewards_integration_key: RewardsIntegration::find_address(integration_program_id).0,
             integration_program_key: *integration_program_id,
+            journal_key: Journal::find_address().0,
         }
     }
 }
@@ -1050,6 +1052,7 @@ impl From<InitializeRewardsIntegrationAccounts> for Vec<AccountMeta> {
             payer_key,
             new_rewards_integration_key,
             integration_program_key,
+            journal_key,
         } = accounts;
 
         vec![
@@ -1058,6 +1061,7 @@ impl From<InitializeRewardsIntegrationAccounts> for Vec<AccountMeta> {
             AccountMeta::new(payer_key, true),
             AccountMeta::new(new_rewards_integration_key, false),
             AccountMeta::new_readonly(integration_program_key, false),
+            AccountMeta::new(journal_key, false),
             AccountMeta::new_readonly(system_program::ID, false),
         ]
     }

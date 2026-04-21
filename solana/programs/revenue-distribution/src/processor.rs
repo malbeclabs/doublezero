@@ -881,10 +881,11 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
     // Account 7 must be the journal.
     let journal = ZeroCopyMutAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
-    // NOTE: The Journal's 2Z token account (not ATA) is not used in this
-    // instruction. Its purpose is for prepaid 2Z payments when they are
-    // implemented (as opposed to the ATA, which is used for direct 2Z payments
-    // not enforceable onchain).
+    // Snapshot Journal.integrations_count into the new distribution so
+    // `DistributeRewards` can later gate on "all of these integrations have
+    // been collected from". New integrations registered after this point do
+    // not retroactively block this distribution.
+    distribution.integrations_count_snapshot = journal.integrations_count;
 
     // Account 8 must be the journal's 2Z token account.
     let (_, _journal_2z_token_pda_info, _) = try_next_2z_token_pda_info(
@@ -1301,6 +1302,17 @@ fn try_distribute_rewards(
     // Make sure 2Z tokens have been swept.
     if !distribution.has_swept_2z_tokens() {
         msg!("Distribution has not swept 2Z tokens");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Make sure every integration registered at the time this distribution
+    // was initialized has had its contributor-share 2Z collected.
+    if !distribution.are_all_integrations_collected() {
+        msg!(
+            "Not all integrations have been collected ({} of {})",
+            distribution.integrations_collected_count,
+            distribution.integrations_count_snapshot
+        );
         return Err(ProgramError::InvalidAccountData);
     }
 
@@ -1784,7 +1796,8 @@ fn try_initialize_rewards_integration(
     // - 2: Payer (funder for new account).
     // - 3: New rewards integration.
     // - 4: Integration program (must be executable).
-    // - 5: System program.
+    // - 5: Journal (writable; its integrations_count gets upticked).
+    // - 6: System program.
     let mut accounts_iter = accounts.iter().enumerate();
 
     // Accounts 0 and 1 must be the program config and admin. This call ensures
@@ -1850,12 +1863,22 @@ fn try_initialize_rewards_integration(
         Default::default(),
     )?;
 
-    // Finally, initialize the rewards integration with the bump seed and the
+    // Initialize the rewards integration with the bump seed and the
     // integration program ID.
     let (mut rewards_integration, _) =
         zero_copy::try_initialize::<RewardsIntegration>(new_rewards_integration_info)?;
     rewards_integration.bump_seed = rewards_integration_bump;
     rewards_integration.program_id = integration_program_id;
+    drop(rewards_integration);
+
+    // Account 5 must be the journal. We uptick its integrations counter so
+    // that distributions created from here on will snapshot the new total.
+    let mut journal =
+        ZeroCopyMutAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+    journal.integrations_count = journal
+        .integrations_count
+        .checked_add(1)
+        .expect("Journal.integrations_count overflowed");
 
     Ok(())
 }

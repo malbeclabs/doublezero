@@ -1,5 +1,6 @@
 pub mod env;
 pub mod instruction;
+pub mod integration;
 #[cfg(feature = "entrypoint")]
 mod processor;
 pub mod state;

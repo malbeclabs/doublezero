@@ -19,6 +19,7 @@ use spl_associated_token_account_interface::address::get_associated_token_addres
 
 struct InitializeDistributionSetup {
     test_setup: common::ProgramTestWithOwner,
+    admin_signer: Keypair,
     debt_accountant_signer: Keypair,
     calculation_grace_period_minutes: u16,
     initialization_grace_period_minutes: u16,
@@ -90,6 +91,7 @@ async fn setup_for_initialize_distribution() -> InitializeDistributionSetup {
 
     InitializeDistributionSetup {
         test_setup,
+        admin_signer,
         debt_accountant_signer,
         calculation_grace_period_minutes,
         initialization_grace_period_minutes,
@@ -104,6 +106,7 @@ async fn setup_for_initialize_distribution() -> InitializeDistributionSetup {
 async fn test_initialize_distribution() {
     let InitializeDistributionSetup {
         mut test_setup,
+        admin_signer: _,
         debt_accountant_signer,
         calculation_grace_period_minutes,
         initialization_grace_period_minutes,
@@ -285,4 +288,58 @@ async fn test_initialize_distribution() {
     let expected_relay_params = &mut expected_program_config.relay_parameters;
     expected_relay_params.distribute_rewards_lamports = distribute_rewards_relay_lamports;
     assert_eq!(program_config, expected_program_config);
+}
+
+//
+// Initialize distribution — snapshots Journal.integrations_count into the
+// new distribution's state.
+//
+
+#[tokio::test]
+async fn test_initialize_distribution_snapshots_integrations_count() {
+    let InitializeDistributionSetup {
+        mut test_setup,
+        admin_signer,
+        debt_accountant_signer,
+        initialization_grace_period_minutes,
+        ..
+    } = setup_for_initialize_distribution().await;
+
+    // Distribution created before any integration is registered: snapshot 0.
+    test_setup
+        .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap();
+
+    let (_, distribution_zero, _, _, _) =
+        test_setup.fetch_distribution(DoubleZeroEpoch::new(0)).await;
+    assert_eq!(distribution_zero.integrations_count_snapshot, 0);
+    assert_eq!(distribution_zero.integrations_collected_count, 0);
+
+    // Register an integration. Journal counter becomes 1.
+    test_setup
+        .initialize_rewards_integration(&admin_signer, &mock_swap_sol_2z::ID)
+        .await
+        .unwrap();
+    let (_, journal, _) = test_setup.fetch_journal().await;
+    assert_eq!(journal.integrations_count, 1);
+
+    // Initialize a second distribution. Its snapshot should be 1.
+    test_setup
+        .warp_timestamp_by(u32::from(initialization_grace_period_minutes) * 60)
+        .await
+        .unwrap()
+        .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap();
+
+    let (_, distribution_one, _, _, _) =
+        test_setup.fetch_distribution(DoubleZeroEpoch::new(1)).await;
+    assert_eq!(distribution_one.integrations_count_snapshot, 1);
+    assert_eq!(distribution_one.integrations_collected_count, 0);
+
+    // The earlier distribution's snapshot is not retroactively affected.
+    let (_, distribution_zero_again, _, _, _) =
+        test_setup.fetch_distribution(DoubleZeroEpoch::new(0)).await;
+    assert_eq!(distribution_zero_again.integrations_count_snapshot, 0);
 }

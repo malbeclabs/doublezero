@@ -66,6 +66,9 @@ async fn test_initialize_rewards_integration() {
         integration_program_id,
     } = setup_for_initialize_rewards_integration().await;
 
+    let (_, journal_before, _) = test_setup.fetch_journal().await;
+    let count_before = journal_before.integrations_count;
+
     test_setup
         .initialize_rewards_integration(&admin_signer, &integration_program_id)
         .await
@@ -79,6 +82,10 @@ async fn test_initialize_rewards_integration() {
     expected.bump_seed = RewardsIntegration::find_address(&integration_program_id).1;
     expected.program_id = integration_program_id;
     assert_eq!(rewards_integration, expected);
+
+    // Journal integrations_count upticked by exactly one.
+    let (_, journal_after, _) = test_setup.fetch_journal().await;
+    assert_eq!(journal_after.integrations_count, count_before + 1);
 }
 
 //

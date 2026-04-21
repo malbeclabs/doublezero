@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- scaffold integration harvesting (#115)
 - register rewards integrations (#113)
 
 ## [v0.3.4]

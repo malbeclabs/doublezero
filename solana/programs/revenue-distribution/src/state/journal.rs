@@ -15,7 +15,9 @@ pub struct Journal {
 
     /// Cache this seed to validate token PDA address.
     pub token_2z_pda_bump_seed: u8,
-    _padding: [u8; 6],
+
+    pub integrations_count: u16,
+    _padding: [u8; 4],
 
     pub total_sol_balance: u64,
 

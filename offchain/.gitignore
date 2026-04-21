@@ -54,3 +54,5 @@ test-ledger/
 .DS_Store
 *.state
 .tool-versions
+crates/contributor-rewards/dry-run-output/
+crates/contributor-rewards/mainnet-beta.config.toml

@@ -109,33 +109,33 @@ tag = "revenue-distribution/v0.3.4"
 
 [workspace.dependencies.doublezero-program-common]
 git = "https://github.com/malbeclabs/doublezero"
-rev="94ff2dc394c02c748f76970c0260a7498dcb47fe"
+rev="f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
 
 [workspace.dependencies.doublezero-record]
 features = ["no-entrypoint"]
 git = "https://github.com/malbeclabs/doublezero"
-rev="94ff2dc394c02c748f76970c0260a7498dcb47fe"
+rev="f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
 
 [workspace.dependencies.doublezero_sdk]
 git = "https://github.com/malbeclabs/doublezero"
-rev="94ff2dc394c02c748f76970c0260a7498dcb47fe"
+rev="f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
 
 [workspace.dependencies.doublezero-serviceability]
 features = ["no-entrypoint", "serde"]
 git = "https://github.com/malbeclabs/doublezero"
-rev="94ff2dc394c02c748f76970c0260a7498dcb47fe"
+rev="f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
 
 [workspace.dependencies.doublezero-telemetry]
 features = ["no-entrypoint", "serde"]
 git = "https://github.com/malbeclabs/doublezero"
-rev="94ff2dc394c02c748f76970c0260a7498dcb47fe"
+rev="f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
 
 ### Other git dependencies
 
 [workspace.dependencies.network-shapley]
 features = ["serde", "borsh"]
 git = "https://github.com/doublezerofoundation/network-shapley-rs"
-tag = "v0.4.0"
+tag = "v0.5.0"
 
 ### Local dependencies
 

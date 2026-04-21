@@ -27,8 +27,8 @@ fn create_expected_results() -> HashMap<(String, String), ExpectedLink> {
         ("lon-dz001".to_string(), "sin-dz001".to_string()),
         ExpectedLink {
             latency_ms: 154.520,
-            bandwidth_gbps: 10.0,
-            uptime: 0.9265342099820373, // ~99.69% valid samples, penalty applied: 0.9265
+            bandwidth_mbps: 10000.0,
+            uptime: 0.9968580219, // raw true_uptime; penalty applied inside network-shapley-rs
         },
     );
 
@@ -38,7 +38,7 @@ fn create_expected_results() -> HashMap<(String, String), ExpectedLink> {
         ("ams-dz001".to_string(), "lon-dz001".to_string()),
         ExpectedLink {
             latency_ms: 5.804,
-            bandwidth_gbps: 10.0,
+            bandwidth_mbps: 10000.0,
             uptime: 1.0,
         },
     );
@@ -47,7 +47,7 @@ fn create_expected_results() -> HashMap<(String, String), ExpectedLink> {
         ("sin-dz001".to_string(), "tyo-dz001".to_string()),
         ExpectedLink {
             latency_ms: 67.249,
-            bandwidth_gbps: 10.0,
+            bandwidth_mbps: 10000.0,
             uptime: 1.0,
         },
     );
@@ -56,7 +56,7 @@ fn create_expected_results() -> HashMap<(String, String), ExpectedLink> {
         ("lax-dz001".to_string(), "nyc-dz001".to_string()),
         ExpectedLink {
             latency_ms: 68.448,
-            bandwidth_gbps: 10.0,
+            bandwidth_mbps: 10000.0,
             uptime: 1.0,
         },
     );
@@ -65,7 +65,7 @@ fn create_expected_results() -> HashMap<(String, String), ExpectedLink> {
         ("nyc-dz001".to_string(), "lon-dz001".to_string()),
         ExpectedLink {
             latency_ms: 67.337,
-            bandwidth_gbps: 10.0,
+            bandwidth_mbps: 10000.0,
             uptime: 1.0,
         },
     );
@@ -76,7 +76,7 @@ fn create_expected_results() -> HashMap<(String, String), ExpectedLink> {
         ("lon-dz001".to_string(), "fra-dz001".to_string()),
         ExpectedLink {
             latency_ms: 11.092,
-            bandwidth_gbps: 10.0,
+            bandwidth_mbps: 10000.0,
             uptime: 1.0,
         },
     );
@@ -85,7 +85,7 @@ fn create_expected_results() -> HashMap<(String, String), ExpectedLink> {
         ("tyo-dz001".to_string(), "lax-dz001".to_string()),
         ExpectedLink {
             latency_ms: 98.787,
-            bandwidth_gbps: 10.0,
+            bandwidth_mbps: 10000.0,
             uptime: 1.0,
         },
     );
@@ -157,7 +157,7 @@ fn test_settings() -> settings::Settings {
 #[derive(Debug, Clone)]
 struct ExpectedLink {
     latency_ms: f64,
-    bandwidth_gbps: f64,
+    bandwidth_mbps: f64,
     uptime: f64,
 }
 
@@ -204,7 +204,7 @@ mod tests {
         println!("\nPrivate Links Generated:");
         println!(
             "{:<20} | {:<20} | {:>12} | {:>12} | {:>8}",
-            "device1", "device2", "latency(ms)", "bandwidth(Gbps)", "uptime"
+            "device1", "device2", "latency(ms)", "bandwidth(Mbps)", "uptime"
         );
         println!("{:-<85}", "");
         for link in &private_links {
@@ -283,8 +283,8 @@ mod tests {
                 expected_link.latency_ms, actual_latency
             );
             println!(
-                "  Bandwidth: expected {:.1}Gbps, got {:.1}Gbps",
-                expected_link.bandwidth_gbps, actual_bandwidth
+                "  Bandwidth: expected {:.1}Mbps, got {:.1}Mbps",
+                expected_link.bandwidth_mbps, actual_bandwidth
             );
             println!(
                 "  Uptime: expected {:.10}, got {:.10}",
@@ -304,7 +304,7 @@ mod tests {
 
             // Bandwidth should be exact
             assert_eq!(
-                *actual_bandwidth, expected_link.bandwidth_gbps,
+                *actual_bandwidth, expected_link.bandwidth_mbps,
                 "Bandwidth mismatch for {device1} -> {device2}",
             );
 

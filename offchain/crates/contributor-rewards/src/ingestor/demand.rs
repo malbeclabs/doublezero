@@ -8,7 +8,8 @@ use tracing::info;
 
 use crate::{
     calculator::constants::{
-        DEMAND_MULTICAST_ENABLED, DEMAND_TRAFFIC, DEMAND_TYPE, SLOTS_IN_EPOCH,
+        DEMAND_MULTICAST_ENABLED, DEMAND_MULTICAST_SHRED, DEMAND_TRAFFIC, DEMAND_TYPE,
+        DEMAND_TYPE_SHRED,
     },
     ingestor::{
         epoch::{EpochFinder, LeaderSchedule},
@@ -28,6 +29,10 @@ pub struct CityStat {
     pub validator_count: usize,
     /// Sum of all validator stake proxies (leader schedule lengths) in this city
     pub total_stake_proxy: usize,
+    /// Sum of max_multicast_subscribers across devices in this city
+    pub subscriber_count: u16,
+    /// Metro price (whole USDC dollars) for this city
+    pub city_price: u16,
 }
 
 /// Result of demand building containing both demands and city statistics
@@ -173,6 +178,8 @@ pub fn build_city_stats(
                 let stats = city_stats.entry(city_code).or_insert(CityStat {
                     validator_count: 0,
                     total_stake_proxy: 0,
+                    subscriber_count: 0,
+                    city_price: 0,
                 });
                 stats.validator_count += 1;
                 stats.total_stake_proxy += stake_proxy;
@@ -193,60 +200,145 @@ pub fn build_city_stats(
     info!("Pairs without device: {}", pairs_without_device);
     info!("R expects: 422 user-validator pairs, 97548 slots");
 
+    // Populate subscriber counts by iterating over devices
+    for (_device_pk, device) in fetch_data.dz_serviceability.devices.iter() {
+        // Need valid contributor and exchange
+        let Some(_contributor) = fetch_data
+            .dz_serviceability
+            .contributors
+            .get(&device.contributor_pk)
+        else {
+            continue;
+        };
+        let Some(exchange) = fetch_data
+            .dz_serviceability
+            .exchanges
+            .get(&device.exchange_pk)
+        else {
+            continue;
+        };
+
+        let city_code = match settings.network {
+            Network::Testnet | Network::Devnet => exchange
+                .code
+                .strip_prefix('x')
+                .unwrap_or(&exchange.code)
+                .to_uppercase(),
+            Network::MainnetBeta | Network::Mainnet => exchange.code.to_uppercase(),
+        };
+
+        let stats = city_stats.entry(city_code).or_insert(CityStat {
+            validator_count: 0,
+            total_stake_proxy: 0,
+            subscriber_count: 0,
+            city_price: 0,
+        });
+        stats.subscriber_count = stats
+            .subscriber_count
+            .saturating_add(device.multicast_subscribers_count);
+    }
+
+    // Populate city prices from metro_prices
+    for (exchange_pk, price) in fetch_data.metro_prices.iter() {
+        if let Some(exchange) = fetch_data.dz_serviceability.exchanges.get(exchange_pk) {
+            let city_code = match settings.network {
+                Network::Testnet | Network::Devnet => exchange
+                    .code
+                    .strip_prefix('x')
+                    .unwrap_or(&exchange.code)
+                    .to_uppercase(),
+                Network::MainnetBeta | Network::Mainnet => exchange.code.to_uppercase(),
+            };
+            if let Some(stats) = city_stats.get_mut(&city_code) {
+                stats.city_price = *price;
+            }
+        }
+    }
+
     // Log per-city stats
     info!("Per-city statistics:");
     let mut sorted_cities: Vec<_> = city_stats.iter().collect();
     sorted_cities.sort_by(|a, b| b.1.total_stake_proxy.cmp(&a.1.total_stake_proxy));
     for (city, stats) in sorted_cities.iter().take(5) {
         info!(
-            "  {}: validators={}, slots={}",
-            city, stats.validator_count, stats.total_stake_proxy
+            "  {}: validators={}, slots={}, subscribers={}, price={}",
+            city,
+            stats.validator_count,
+            stats.total_stake_proxy,
+            stats.subscriber_count,
+            stats.city_price
         );
     }
 
     Ok(city_stats)
 }
 
-/// Generates demand entries for cities
+/// Generates demand entries for cities (IBRL + shred rows)
 pub fn generate(city_stats: &CityStats) -> Demands {
-    // Filter cities with validators once
+    // Source cities: cities with validators (used for both IBRL and shred)
     let cities_with_validators: Vec<(&String, &CityStat)> = city_stats
         .iter()
         .filter(|(_, stats)| stats.validator_count > 0)
         .collect();
 
-    // Generate demands for each source city
-    cities_with_validators
+    // Shred destination cities: cities with subscribers AND city_price > 0
+    let cities_with_subscribers: Vec<(&String, &CityStat)> = city_stats
+        .iter()
+        .filter(|(_, stats)| stats.subscriber_count > 0 && stats.city_price > 0)
+        .collect();
+
+    // Generate IBRL demands (validator-to-validator, priority = 0)
+    let ibrl_demands: Vec<Demand> = cities_with_validators
         .par_iter()
         .flat_map(|(start_city, _start_stats)| {
             let start_city_upper = start_city.to_uppercase();
-            // Create demands from this city to all others
             cities_with_validators
                 .iter()
                 .filter_map(|(end_city, end_stats)| {
-                    // Avoid self loops
                     if start_city == end_city {
                         return None;
                     }
 
                     let end_city_upper = end_city.to_uppercase();
 
-                    // Calculate priority using formula: (1/slots_in_epoch) * (total_stake_proxy/validator_count)
-                    let slots_per_validator =
-                        end_stats.total_stake_proxy as f64 / end_stats.validator_count as f64;
-                    let priority = (1.0 / SLOTS_IN_EPOCH) * slots_per_validator;
-
                     Some(Demand {
                         start: start_city_upper.clone(),
                         end: end_city_upper,
                         receivers: end_stats.validator_count as u32,
                         traffic: DEMAND_TRAFFIC,
-                        priority,
+                        priority: 0.0,
                         kind: DEMAND_TYPE,
                         multicast: DEMAND_MULTICAST_ENABLED,
                     })
                 })
                 .collect::<Vec<_>>()
         })
-        .collect()
+        .collect();
+
+    // Generate shred demands (validator-to-subscriber, priority = city_price)
+    // Note: includes intra-city (start == end) because multicast traffic
+    // goes over DZ even within a metro, unlike IBRL.
+    let shred_demands: Vec<Demand> = cities_with_validators
+        .par_iter()
+        .flat_map(|(start_city, _start_stats)| {
+            let start_city_upper = start_city.to_uppercase();
+            cities_with_subscribers
+                .iter()
+                .map(|(end_city, end_stats)| Demand {
+                    start: start_city_upper.clone(),
+                    end: end_city.to_uppercase(),
+                    receivers: end_stats.subscriber_count as u32,
+                    traffic: DEMAND_TRAFFIC,
+                    priority: end_stats.city_price as f64,
+                    kind: DEMAND_TYPE_SHRED,
+                    multicast: DEMAND_MULTICAST_SHRED,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    // Combine both into a single Vec<Demand>
+    let mut demands = ibrl_demands;
+    demands.extend(shred_demands);
+    demands
 }

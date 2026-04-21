@@ -57,6 +57,9 @@ serviceability_program_id = "DZServ1111111111111111111111111111111111111"
 # DZ Telemetry program ID
 telemetry_program_id = "DZTelem111111111111111111111111111111111111"
 
+# Shred subscription program ID is sourced from the doublezero-solana-sdk crate.
+# To override it (e.g. in dev), set the SHRED_SUBSCRIPTION_PROGRAM_ID env var.
+
 # ========== Record Prefixes ==========
 [prefixes]
 # Prefixes for organizing DZ records on-chain

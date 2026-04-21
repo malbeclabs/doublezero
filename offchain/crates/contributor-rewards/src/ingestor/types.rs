@@ -26,6 +26,14 @@ pub struct FetchData {
     pub dz_serviceability: DZServiceabilityData,
     pub dz_telemetry: DZDTelemetryData,
     pub dz_internet: DZInternetData,
+    /// Metro (city) prices from shred subscription program.
+    /// Key: exchange pubkey, Value: price in whole USDC dollars.
+    #[serde(
+        default,
+        serialize_with = "serializer::serialize_pubkey_btreemap",
+        deserialize_with = "serializer::deserialize_pubkey_btreemap"
+    )]
+    pub metro_prices: BTreeMap<Pubkey, u16>,
     pub start_us: u64,
     pub end_us: u64,
     pub fetched_at: DateTime<Utc>,
@@ -35,7 +43,7 @@ impl Display for FetchData {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "FetchData ({} to {}): locations={}, exchanges={}, devices={}, links={}, users={}, multicast_groups={}, telemetry_samples={}, internet_samples={}",
+            "FetchData ({} to {}): locations={}, exchanges={}, devices={}, links={}, users={}, multicast_groups={}, telemetry_samples={}, internet_samples={}, metro_prices={}",
             self.start_us,
             self.end_us,
             self.dz_serviceability.locations.len(),
@@ -46,6 +54,7 @@ impl Display for FetchData {
             self.dz_serviceability.multicast_groups.len(),
             self.dz_telemetry.device_latency_samples.len(),
             self.dz_internet.internet_latency_samples.len(),
+            self.metro_prices.len(),
         )
     }
 }

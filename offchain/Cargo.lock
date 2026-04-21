@@ -2350,8 +2350,8 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "doublezero-config"
-version = "0.8.7"
-source = "git+https://github.com/malbeclabs/doublezero?rev=94ff2dc394c02c748f76970c0260a7498dcb47fe#94ff2dc394c02c748f76970c0260a7498dcb47fe"
+version = "0.10.0"
+source = "git+https://github.com/malbeclabs/doublezero?rev=f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787#f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
 dependencies = [
  "eyre",
  "serde",
@@ -2370,6 +2370,7 @@ dependencies = [
  "base64 0.22.1",
  "bitvec",
  "borsh 1.5.7",
+ "bytemuck",
  "chrono",
  "clap",
  "config",
@@ -2409,6 +2410,22 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "doublezero-geolocation"
+version = "0.10.0"
+source = "git+https://github.com/malbeclabs/doublezero?rev=f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787#f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
+dependencies = [
+ "borsh 1.5.7",
+ "borsh-incremental",
+ "doublezero-config",
+ "doublezero-program-common",
+ "doublezero-serviceability",
+ "solana-bincode",
+ "solana-loader-v3-interface 3.0.0",
+ "solana-program",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -2488,14 +2505,15 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.8.7"
-source = "git+https://github.com/malbeclabs/doublezero?rev=94ff2dc394c02c748f76970c0260a7498dcb47fe#94ff2dc394c02c748f76970c0260a7498dcb47fe"
+version = "0.10.0"
+source = "git+https://github.com/malbeclabs/doublezero?rev=f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787#f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
  "ipnetwork",
  "serde",
  "solana-program",
+ "solana-system-interface",
 ]
 
 [[package]]
@@ -2511,7 +2529,7 @@ dependencies = [
  "solana-account-info",
  "solana-cpi",
  "solana-instruction",
- "solana-loader-v3-interface",
+ "solana-loader-v3-interface 5.0.0",
  "solana-msg",
  "solana-program-error",
  "solana-program-pack",
@@ -2523,11 +2541,12 @@ dependencies = [
 
 [[package]]
 name = "doublezero-record"
-version = "0.8.7"
-source = "git+https://github.com/malbeclabs/doublezero?rev=94ff2dc394c02c748f76970c0260a7498dcb47fe#94ff2dc394c02c748f76970c0260a7498dcb47fe"
+version = "0.10.0"
+source = "git+https://github.com/malbeclabs/doublezero?rev=f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787#f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
 dependencies = [
  "bytemuck",
  "solana-program",
+ "solana-system-interface",
  "thiserror 2.0.17",
 ]
 
@@ -2582,8 +2601,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.8.7"
-source = "git+https://github.com/malbeclabs/doublezero?rev=94ff2dc394c02c748f76970c0260a7498dcb47fe#94ff2dc394c02c748f76970c0260a7498dcb47fe"
+version = "0.10.0"
+source = "git+https://github.com/malbeclabs/doublezero?rev=f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787#f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
 dependencies = [
  "bitflags",
  "borsh 1.5.7",
@@ -2594,6 +2613,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "solana-program",
+ "solana-system-interface",
  "thiserror 2.0.17",
 ]
 
@@ -2732,7 +2752,7 @@ dependencies = [
  "doublezero-solana-client-tools",
  "serde_json",
  "solana-client",
- "solana-loader-v3-interface",
+ "solana-loader-v3-interface 5.0.0",
  "solana-program-pack",
  "solana-sdk",
  "spl-associated-token-account-interface",
@@ -2787,8 +2807,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-telemetry"
-version = "0.8.7"
-source = "git+https://github.com/malbeclabs/doublezero?rev=94ff2dc394c02c748f76970c0260a7498dcb47fe#94ff2dc394c02c748f76970c0260a7498dcb47fe"
+version = "0.10.0"
+source = "git+https://github.com/malbeclabs/doublezero?rev=f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787#f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
 dependencies = [
  "borsh 1.5.7",
  "borsh-incremental",
@@ -2802,18 +2822,20 @@ dependencies = [
 
 [[package]]
 name = "doublezero_sdk"
-version = "0.8.7"
-source = "git+https://github.com/malbeclabs/doublezero?rev=94ff2dc394c02c748f76970c0260a7498dcb47fe#94ff2dc394c02c748f76970c0260a7498dcb47fe"
+version = "0.10.0"
+source = "git+https://github.com/malbeclabs/doublezero?rev=f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787#f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
 dependencies = [
  "async-trait",
  "backon",
  "base64 0.22.1",
  "bincode 2.0.1",
+ "borsh 1.5.7",
  "bytemuck",
  "chrono",
  "directories-next",
  "dirs-next",
  "doublezero-config",
+ "doublezero-geolocation",
  "doublezero-program-common",
  "doublezero-record",
  "doublezero-serviceability",
@@ -2828,6 +2850,7 @@ dependencies = [
  "serial_test",
  "solana-account-decoder",
  "solana-client",
+ "solana-loader-v3-interface 3.0.0",
  "solana-program",
  "solana-pubsub-client",
  "solana-rpc-client-api",
@@ -4582,7 +4605,7 @@ dependencies = [
 [[package]]
 name = "network-shapley"
 version = "0.1.0"
-source = "git+https://github.com/doublezerofoundation/network-shapley-rs?tag=v0.4.0#579d07d9cdde98a055d8b7c51fb46ab2fd9cb935"
+source = "git+https://github.com/doublezerofoundation/network-shapley-rs?tag=v0.5.0#932b40eba7b13ca1310be351eb2d71b3e3107538"
 dependencies = [
  "borsh 1.5.7",
  "csv",
@@ -6593,7 +6616,7 @@ dependencies = [
  "solana-epoch-schedule",
  "solana-fee-calculator",
  "solana-instruction",
- "solana-loader-v3-interface",
+ "solana-loader-v3-interface 5.0.0",
  "solana-nonce",
  "solana-program-option",
  "solana-program-pack",
@@ -7236,6 +7259,20 @@ dependencies = [
 
 [[package]]
 name = "solana-loader-v3-interface"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa4be76cfa9afd84ca2f35ebc09f0da0f0092935ccdac0595d98447f259538c2"
+dependencies = [
+ "serde",
+ "serde_bytes",
+ "serde_derive",
+ "solana-instruction",
+ "solana-pubkey",
+ "solana-sdk-ids",
+]
+
+[[package]]
+name = "solana-loader-v3-interface"
 version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f7162a05b8b0773156b443bccd674ea78bb9aa406325b467ea78c06c99a63a2"
@@ -7541,7 +7578,7 @@ dependencies = [
  "solana-keccak-hasher",
  "solana-last-restart-slot",
  "solana-loader-v2-interface",
- "solana-loader-v3-interface",
+ "solana-loader-v3-interface 5.0.0",
  "solana-loader-v4-interface",
  "solana-message",
  "solana-msg",
@@ -8514,7 +8551,7 @@ dependencies = [
  "solana-hash",
  "solana-instruction",
  "solana-loader-v2-interface",
- "solana-loader-v3-interface",
+ "solana-loader-v3-interface 5.0.0",
  "solana-message",
  "solana-program-option",
  "solana-pubkey",

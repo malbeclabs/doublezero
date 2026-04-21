@@ -76,13 +76,15 @@ mod tests {
 
     #[test]
     fn test_fra_nyc_weighted_aggregation() {
-        // Setup: FRA with 60% stake, NYC with 40% stake
+        // Setup: FRA with 60% weight, NYC with 40% weight (by city_price)
         let mut city_stats = BTreeMap::new();
         city_stats.insert(
             "FRA".to_string(),
             CityStat {
                 validator_count: 2,
                 total_stake_proxy: 600,
+                subscriber_count: 0,
+                city_price: 60,
             },
         );
         city_stats.insert(
@@ -90,6 +92,8 @@ mod tests {
             CityStat {
                 validator_count: 1,
                 total_stake_proxy: 400,
+                subscriber_count: 0,
+                city_price: 40,
             },
         );
 
@@ -142,6 +146,8 @@ mod tests {
             CityStat {
                 validator_count: 3,
                 total_stake_proxy: 1000,
+                subscriber_count: 0,
+                city_price: 0,
             },
         );
 
@@ -173,6 +179,8 @@ mod tests {
             CityStat {
                 validator_count: 1,
                 total_stake_proxy: 500,
+                subscriber_count: 0,
+                city_price: 0,
             },
         );
         city_stats.insert(
@@ -180,6 +188,8 @@ mod tests {
             CityStat {
                 validator_count: 1,
                 total_stake_proxy: 500,
+                subscriber_count: 0,
+                city_price: 0,
             },
         );
 
@@ -202,13 +212,15 @@ mod tests {
     }
 
     #[test]
-    fn test_zero_stake_city() {
+    fn test_zero_price_city() {
         let mut city_stats = BTreeMap::new();
         city_stats.insert(
             "MAD".to_string(),
             CityStat {
                 validator_count: 0,
                 total_stake_proxy: 0,
+                subscriber_count: 0,
+                city_price: 0,
             },
         );
         city_stats.insert(
@@ -216,6 +228,8 @@ mod tests {
             CityStat {
                 validator_count: 2,
                 total_stake_proxy: 1000,
+                subscriber_count: 10,
+                city_price: 50,
             },
         );
 
@@ -226,7 +240,7 @@ mod tests {
         let city_weights = calculate_city_weights(&city_stats);
         let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
-        // MAD should be ignored due to zero stake
+        // MAD should be ignored due to zero city_price weight
         assert_eq!(result.len(), 1);
         let op_active = result.get("OpActive").unwrap();
         assert!((op_active.value - 50.0).abs() < 1e-9);
@@ -241,6 +255,8 @@ mod tests {
             CityStat {
                 validator_count: 1,
                 total_stake_proxy: 500,
+                subscriber_count: 0,
+                city_price: 0,
             },
         );
 
@@ -271,6 +287,8 @@ mod tests {
             CityStat {
                 validator_count: 1,
                 total_stake_proxy: 1000,
+                subscriber_count: 0,
+                city_price: 0,
             },
         );
 
@@ -305,6 +323,8 @@ mod tests {
             CityStat {
                 validator_count: 3,
                 total_stake_proxy: 333,
+                subscriber_count: 0,
+                city_price: 0,
             },
         );
         city_stats.insert(
@@ -312,6 +332,8 @@ mod tests {
             CityStat {
                 validator_count: 3,
                 total_stake_proxy: 333,
+                subscriber_count: 0,
+                city_price: 0,
             },
         );
         city_stats.insert(
@@ -319,6 +341,8 @@ mod tests {
             CityStat {
                 validator_count: 3,
                 total_stake_proxy: 334,
+                subscriber_count: 0,
+                city_price: 0,
             },
         );
 

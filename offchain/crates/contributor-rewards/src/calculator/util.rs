@@ -5,28 +5,29 @@ use tabled::{builder::Builder as TableBuilder, settings::Style};
 
 use crate::ingestor::demand::CityStats;
 
-/// Calculate normalized weights for each city based on stake
+/// Calculate normalized weights for each city based on leader schedule share
+///
+/// Weights by total_stake_proxy (sum of leader schedule lengths) so each source
+/// city's Shapley result is scaled by how often it leads. The economic signal
+/// (metro price) is already carried in the demand priority field.
 ///
 /// # Arguments
-/// * `city_stats` - Map of city to CityStat containing stake information
+/// * `city_stats` - Map of city to CityStat containing stake proxy information
 ///
 /// # Returns
 /// BTreeMap mapping city names to their normalized weights (0.0 to 1.0, sum = 1.0)
 pub fn calculate_city_weights(city_stats: &CityStats) -> BTreeMap<String, f64> {
-    // Calculate total stake across all cities
     let total_stake: f64 = city_stats
         .values()
         .map(|stat| stat.total_stake_proxy as f64)
         .sum();
 
-    // Calculate normalized weights for each city
     city_stats
         .iter()
         .map(|(city, stat)| {
             let weight = if total_stake > 0.0 {
                 stat.total_stake_proxy as f64 / total_stake
             } else {
-                // If no stake, use equal weights
                 1.0 / city_stats.len() as f64
             };
             (city.clone(), weight)
@@ -44,7 +45,7 @@ pub fn print_devices(devices: &[Device]) -> String {
     for dev in devices {
         let row = vec![
             dev.device.to_string(),
-            dev.edge.to_string(), // aka bandwidth (Gbps)
+            format!("{:.3}", dev.edge as f64 / 1000.0),
             dev.operator.to_string(),
         ];
         printable.push(row);
@@ -93,7 +94,7 @@ pub fn print_private_links(private_links: &[PrivateLink]) -> String {
             pl.device1.to_string(),
             pl.device2.to_string(),
             pl.latency.to_string(),
-            pl.bandwidth.to_string(),
+            format!("{:.3}", pl.bandwidth / 1000.0),
             pl.uptime.to_string(),
             format!("{:?}", pl.shared),
         ];

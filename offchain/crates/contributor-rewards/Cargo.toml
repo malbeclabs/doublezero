@@ -27,6 +27,7 @@ backon.workspace = true
 base64.workspace = true
 bitvec.workspace = true
 borsh.workspace = true
+bytemuck.workspace = true
 chrono.workspace = true
 clap.workspace = true
 config.workspace = true

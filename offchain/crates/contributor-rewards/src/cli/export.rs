@@ -380,6 +380,8 @@ fn write_csv_output(
             city: city.clone(),
             validator_count: stat.validator_count,
             total_stake_proxy: stat.total_stake_proxy,
+            subscriber_count: stat.subscriber_count,
+            city_price: stat.city_price,
         })
         .collect();
     let city_stats_path = dir.join(format!("city-stats-epoch-{epoch}.csv"));
@@ -464,6 +466,8 @@ struct CityStatRow {
     city: String,
     validator_count: usize,
     total_stake_proxy: usize,
+    subscriber_count: u16,
+    city_price: u16,
 }
 
 /// CSV row for city weights

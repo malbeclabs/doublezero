@@ -12,7 +12,7 @@ use tabled::{Table, Tabled, settings::Style};
 use tracing::{debug, info};
 
 use crate::{
-    calculator::constants::{BPS_TO_GBPS, DEFAULT_EDGE_BANDWIDTH_GBPS, SEC_TO_MS},
+    calculator::constants::{BPS_TO_MBPS, FALLBACK_EDGE_BANDWIDTH_MBPS, SEC_TO_MS},
     ingestor::{demand, fetcher::Fetcher, types::FetchData},
     processor::{
         internet::InternetTelemetryStatMap, telemetry::DZDTelemetryStatMap, util::quantile_r_type7,
@@ -106,8 +106,8 @@ pub fn build_devices(fetch_data: &FetchData, network: &Network) -> Result<(Devic
     // R implementation merges devices with contributors
     // which reorders devices by contributor_pk before assigning city-based sequential IDs
 
-    // (device_pk, contributor_pk, city_code, owner)
-    let mut device_data: Vec<(Pubkey, Pubkey, String, String)> = Vec::new();
+    // (device_pk, contributor_pk, city_code, owner, max_mcast_subs, actual_mcast_subs, interface_bandwidth_bps)
+    let mut device_data: Vec<(Pubkey, Pubkey, String, String, u16, u16, u64)> = Vec::new();
 
     for (device_pk, device) in fetch_data.dz_serviceability.devices.iter() {
         let Some(contributor) = fetch_data
@@ -136,11 +136,26 @@ pub fn build_devices(fetch_data: &FetchData, network: &Network) -> Result<(Devic
             Network::MainnetBeta | Network::Mainnet => exchange.code.clone(),
         };
 
+        // Sum bandwidth from physical interfaces
+        let interface_bandwidth_bps: u64 = device
+            .interfaces
+            .iter()
+            .map(|iface| iface.into_current_version())
+            .filter(|iface| {
+                iface.interface_type
+                    == doublezero_serviceability::state::interface::InterfaceType::Physical
+            })
+            .map(|iface| iface.bandwidth)
+            .sum();
+
         device_data.push((
             *device_pk,
             device.contributor_pk,
             city_code,
             contributor.owner.to_string(),
+            device.max_multicast_subscribers,
+            device.multicast_subscribers_count,
+            interface_bandwidth_bps,
         ));
     }
 
@@ -152,7 +167,16 @@ pub fn build_devices(fetch_data: &FetchData, network: &Network) -> Result<(Devic
     let mut device_ids: DeviceIdMap = DeviceIdMap::new();
     let mut city_counts: BTreeMap<String, u32> = BTreeMap::new();
 
-    for (device_pk, _contributor_pk, city_code, owner) in device_data {
+    for (
+        device_pk,
+        _contributor_pk,
+        city_code,
+        owner,
+        _max_mcast_subs,
+        _actual_mcast_subs,
+        interface_bw_bps,
+    ) in device_data
+    {
         let city_upper = city_code.to_uppercase();
         let counter = city_counts.entry(city_upper.clone()).or_insert(0);
         *counter += 1;
@@ -162,10 +186,27 @@ pub fn build_devices(fetch_data: &FetchData, network: &Network) -> Result<(Devic
 
         device_ids.insert(device_pk, shapley_id.clone());
 
+        // Compute edge capacity in Mbps: min(actual_bandwidth, permitted_capacity)
+        let actual_bandwidth_mbps = if interface_bw_bps == 0 {
+            FALLBACK_EDGE_BANDWIDTH_MBPS
+        } else {
+            interface_bw_bps as f64 / BPS_TO_MBPS as f64
+        };
+
+        // TODO: Revisit this when we have some fidelity on subscriber count number universally
+
+        // Use max(actual_subscribers, max_subscribers) as the subscriber count for
+        // edge capacity. Many devices on-chain have max_multicast_subscribers = 0
+        // but are actively serving subscribers (multicast_subscribers_count > 0).
+        // This fallback ensures those devices get appropriate edge capacity
+        // until the on-chain max values are corrected.
+        // let effective_subs = max_mcast_subs.max(actual_mcast_subs);
+        // let permitted_capacity_mbps = effective_subs as f64 * BANDWIDTH_PER_SUBSCRIBER_SEAT_MBPS;
+        // let edge_mbps = actual_bandwidth_mbps.min(permitted_capacity_mbps);
+
         devices.push(Device {
             device: shapley_id,
-            edge: DEFAULT_EDGE_BANDWIDTH_GBPS,
-            // Use owner pubkey as operator ID
+            edge: actual_bandwidth_mbps as u32,
             operator: owner,
         });
     }
@@ -327,8 +368,8 @@ pub fn build_private_links(fetch_data: &FetchData, device_ids: &DeviceIdMap) -> 
             continue;
         };
 
-        // Convert bandwidth from bits/sec to Gbps for network-shapley
-        let bandwidth_gbps = (link.bandwidth / BPS_TO_GBPS) as f64;
+        // Convert bandwidth from bits/sec to Mbps (consistent with edge units)
+        let bandwidth_mbps = (link.bandwidth / BPS_TO_MBPS) as f64;
 
         // R implementation combines ALL samples for a link_pk,
         // regardless of direction, then computes P95 from the combined samples.
@@ -378,30 +419,28 @@ pub fn build_private_links(fetch_data: &FetchData, device_ids: &DeviceIdMap) -> 
             0.0
         };
 
-        // Calculate penalized uptime
-        let uptime = penalized_uptime(true_uptime);
-
-        // Collect penalty information for links with reduced uptime
-        if uptime < 1.0 {
+        // Collect penalty information for links with reduced uptime.
+        // The quadratic penalty is applied inside network-shapley-rs (consolidation.rs),
+        // so we pass raw true_uptime here. Compute penalized value just for logging.
+        let penalized = penalized_uptime(true_uptime);
+        if penalized < 1.0 {
             penalties.push(LinkPenalty {
                 link: format!("{} → {}", from_device.code, to_device.code),
                 valid_samples_pct: true_uptime * 100.0,
                 true_uptime,
-                penalized_uptime: uptime,
-                bandwidth_reduction_pct: (1.0 - uptime) * 100.0,
+                penalized_uptime: penalized,
+                bandwidth_reduction_pct: (1.0 - penalized) * 100.0,
             });
         }
 
-        // network-shapley-rs expects the following units for PrivateLink:
-        // - latency: milliseconds (ms) - we convert from microseconds
-        // - bandwidth: gigabits per second (Gbps) - we convert from bits/sec
-        // - uptime: fraction between 0.0 and 1.0 (1.0 = 100% uptime)
+        // Pass raw uptime to network-shapley-rs — it applies the quadratic
+        // penalty curve internally (matching the Python reference implementation).
         private_links.push(PrivateLink::new(
             from_id.clone(),
             to_id.clone(),
             latency_ms,
-            bandwidth_gbps,
-            uptime,
+            bandwidth_mbps,
+            true_uptime,
             None,
         ));
     }

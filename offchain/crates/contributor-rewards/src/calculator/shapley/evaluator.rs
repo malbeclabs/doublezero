@@ -210,6 +210,8 @@ mod tests {
             CityStat {
                 validator_count: 1,
                 total_stake_proxy: 500,
+                subscriber_count: 0,
+                city_price: 0,
             },
         );
         city_stats.insert(
@@ -217,6 +219,8 @@ mod tests {
             CityStat {
                 validator_count: 1,
                 total_stake_proxy: 500,
+                subscriber_count: 0,
+                city_price: 0,
             },
         );
 

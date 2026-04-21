@@ -3,7 +3,6 @@ use std::{net::Ipv4Addr, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_record::instruction as record_instruction;
-use doublezero_sdk::get_tenant_pda;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{get_accesspass_pda, get_globalstate_pda},
@@ -42,7 +41,6 @@ use crate::{
 /// Timeout for `send_and_confirm_transaction` calls to prevent the polling
 /// loop from stalling on slow RPC confirmations.
 const SEND_AND_CONFIRM_TIMEOUT: Duration = Duration::from_secs(60);
-const SOLANA_TENANT_NAME: &str = "solana";
 
 #[automock]
 #[async_trait]
@@ -172,7 +170,6 @@ impl DzRpcClient {
     ) -> Result<Signature> {
         let (globalstate_pk, _) = get_globalstate_pda(&self.serviceability_id);
         let (pass_pk, _) = get_accesspass_pda(&self.serviceability_id, client_ip, service_key);
-        let (tenant_pk, _) = get_tenant_pda(&self.serviceability_id, SOLANA_TENANT_NAME);
 
         let args = DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
             accesspass_type: AccessPassType::SolanaValidator(*validator_id),
@@ -180,7 +177,6 @@ impl DzRpcClient {
             last_access_epoch: u64::MAX,
             // NOTE: Setting this to false by default
             allow_multiple_ip: false,
-            tenant: tenant_pk,
         });
         let accounts = vec![
             AccountMeta::new(pass_pk, false),

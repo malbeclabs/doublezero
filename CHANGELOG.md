@@ -15,6 +15,8 @@ All notable changes to this project will be documented in this file.
 - Smartcontract
   - Fix multicast group allowlist add/remove for AccessPasses created with `allow_multiple_ip=true`; the processors were rejecting requests with a real client IP because the stored IP is always `0.0.0.0` for these passes ([#3551](https://github.com/malbeclabs/doublezero/issues/3551))
   - SDK now auto-detects the correct AccessPass PDA (static or dynamic) for allowlist operations based on whether an `allow_multiple_ip` pass exists
+- Sentinel
+  - Make the multicast publisher worker's `--client-filter` flag repeatable so multiple validator client names can be matched in one run (OR semantics), matching the admin CLI behavior
 
 ## [v0.18.0](https://github.com/malbeclabs/doublezero/compare/client/v0.17.0...client/v0.18.0) - 2026-04-17
 

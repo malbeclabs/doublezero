@@ -87,10 +87,52 @@ func (t *Test) Devices() map[string]*Device {
 	return t.devices
 }
 
-// ValidDevices returns devices that pass filtering criteria.
-// If skipCapacityCheck is true (e.g., when using a QA identity that bypasses on-chain capacity checks),
-// devices are not filtered by available capacity.
-func (t *Test) ValidDevices(minCapacity int, skipCapacityCheck bool) []*Device {
+// DeviceUserType identifies which per-type user slot bucket to check against
+// a device's capacity. The onchain device tracks three independent counters —
+// unicast, multicast publisher, multicast subscriber — each with its own max.
+type DeviceUserType int
+
+const (
+	DeviceUserTypeUnicast DeviceUserType = iota
+	DeviceUserTypeMulticastPublisher
+	DeviceUserTypeMulticastSubscriber
+)
+
+func (d DeviceUserType) String() string {
+	switch d {
+	case DeviceUserTypeUnicast:
+		return "unicast"
+	case DeviceUserTypeMulticastPublisher:
+		return "multicast_publisher"
+	case DeviceUserTypeMulticastSubscriber:
+		return "multicast_subscriber"
+	default:
+		return fmt.Sprintf("unknown(%d)", int(d))
+	}
+}
+
+// capacityFor returns the (current, max) counters for the requested user type.
+func (d *Device) capacityFor(userType DeviceUserType) (current, max int) {
+	switch userType {
+	case DeviceUserTypeUnicast:
+		return d.UnicastUsersCount, d.MaxUnicastUsers
+	case DeviceUserTypeMulticastPublisher:
+		return d.MulticastPublishersCount, d.MaxMulticastPublishers
+	case DeviceUserTypeMulticastSubscriber:
+		return d.MulticastSubscribersCount, d.MaxMulticastSubscribers
+	default:
+		return 0, 0
+	}
+}
+
+// ValidDevices returns devices that pass filtering criteria for the given
+// user type. A device is considered valid when it has at least minCapacity
+// free slots in the type-specific bucket (e.g. unicast) AND in the aggregate
+// users bucket — both are enforced onchain independently.
+//
+// If skipCapacityCheck is true (e.g., when using a QA identity that bypasses
+// on-chain capacity checks), devices are not filtered by available capacity.
+func (t *Test) ValidDevices(userType DeviceUserType, minCapacity int, skipCapacityCheck bool) []*Device {
 	devices := make([]*Device, 0, len(t.devices))
 
 	for _, device := range t.Devices() {
@@ -102,10 +144,22 @@ func (t *Test) ValidDevices(minCapacity int, skipCapacityCheck bool) []*Device {
 
 		// Skip capacity check if using QA identity (bypasses on-chain max_users check)
 		if !skipCapacityCheck {
-			// Check if device has capacity for at least minCapacity users
-			availableSlots := device.MaxUsers - device.UsersCount
-			if availableSlots < minCapacity {
-				t.log.Debug("Skipping device with insufficient capacity", "device", device.Code, "users", device.UsersCount, "maxUsers", device.MaxUsers)
+			typeCount, typeMax := device.capacityFor(userType)
+			if typeMax-typeCount < minCapacity {
+				t.log.Debug("Skipping device with insufficient type-specific capacity",
+					"device", device.Code,
+					"userType", userType,
+					"count", typeCount,
+					"max", typeMax,
+				)
+				continue
+			}
+			if device.MaxUsers-device.UsersCount < minCapacity {
+				t.log.Debug("Skipping device with insufficient aggregate capacity",
+					"device", device.Code,
+					"users", device.UsersCount,
+					"maxUsers", device.MaxUsers,
+				)
 				continue
 			}
 		}
@@ -153,13 +207,19 @@ func getDevices(ctx context.Context, serviceabilityClient *serviceability.Client
 	for _, device := range data.Devices {
 		exchangeCode := exchanges[device.ExchangePubKey]
 		devices[device.Code] = &Device{
-			PubKey:       base58.Encode(device.PubKey[:]),
-			Code:         device.Code,
-			ExchangeCode: exchangeCode,
-			MaxUsers:     int(device.MaxUsers),
-			UsersCount:   int(device.UsersCount),
-			Status:       device.Status,
-			DeviceType:   device.DeviceType,
+			PubKey:                    base58.Encode(device.PubKey[:]),
+			Code:                      device.Code,
+			ExchangeCode:              exchangeCode,
+			MaxUsers:                  int(device.MaxUsers),
+			UsersCount:                int(device.UsersCount),
+			MaxUnicastUsers:           int(device.MaxUnicastUsers),
+			UnicastUsersCount:         int(device.UnicastUsersCount),
+			MaxMulticastPublishers:    int(device.MaxMulticastPublishers),
+			MulticastPublishersCount:  int(device.MulticastPublishersCount),
+			MaxMulticastSubscribers:   int(device.MaxMulticastSubscribers),
+			MulticastSubscribersCount: int(device.MulticastSubscribersCount),
+			Status:                    device.Status,
+			DeviceType:                device.DeviceType,
 		}
 	}
 	return devices, nil

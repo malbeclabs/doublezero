@@ -1826,14 +1826,15 @@ async fn test_topology_backfill_nonexistent_topology_rejected() {
 #[tokio::test]
 async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     // BackfillTopology allocates the flex-algo node_segment_idx from the on-chain
-    // SegmentRoutingIds resource. Keeping the resource in sync with off-chain base
-    // node_segment_idx values is the activator's responsibility (see the
-    // use_onchain_allocation path); backfill does not second-guess it.
+    // SegmentRoutingIds resource. Keeping that resource in sync with the base
+    // node_segment_idx stored on an interface only happens when the interface is
+    // activated with onchain allocation enabled; backfill does not second-guess
+    // the resource.
     //
-    // This scenario exercises the use_onchain_allocation=false setup: the loopback
-    // is activated with base node_segment_idx=1 without updating the on-chain SR
-    // resource, so backfill's allocate_id call also returns 1. That is the expected
-    // behavior — the activator must reconcile.
+    // This scenario activates the loopback with onchain allocation disabled: the
+    // base node_segment_idx is set to 1 directly on the interface, and the on-chain
+    // SR resource is left untouched. Backfill's allocate_id call therefore also
+    // returns 1 — the expected behavior when the SR resource was never updated.
     println!("[TEST] test_topology_backfill_allocates_sr_id_from_onchain_resource");
 
     let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
@@ -1989,9 +1990,9 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     .await;
 
     // Step 7: Activate the loopback with explicit node_segment_idx=1, WITHOUT providing
-    // the SegmentRoutingIds account. This simulates the activator's use_onchain_allocation=false
-    // path: the base SR ID is set to 1 but the on-chain resource is never updated, so the
-    // resource still believes ID 1 is free.
+    // the SegmentRoutingIds account. This is the use_onchain_allocation=false path:
+    // the base SR ID is stored directly on the interface and the on-chain resource
+    // is never updated, so the resource still believes ID 1 is free.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -2040,8 +2041,8 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     .await;
 
     // Step 9: Call BackfillTopology. allocate_id draws from the on-chain SR resource,
-    // which still believes ID 1 is free (the activator took the off-chain path in
-    // step 7), so the flex-algo segment also receives ID 1.
+    // which still believes ID 1 is free (step 7 used the off-chain allocation path),
+    // so the flex-algo segment also receives ID 1.
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     let base_accounts = vec![
         AccountMeta::new_readonly(topology_pda, false),
@@ -2083,7 +2084,8 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     assert_eq!(
         iface.flex_algo_node_segments[0].node_segment_idx, 1,
         "flex-algo node_segment_idx is allocated from the on-chain SR resource; \
-         ID 1 is still free there because the activator did not sync it"
+         ID 1 is still free there because the interface was activated with onchain \
+         allocation disabled"
     );
 
     println!("[PASS] test_topology_backfill_allocates_sr_id_from_onchain_resource");

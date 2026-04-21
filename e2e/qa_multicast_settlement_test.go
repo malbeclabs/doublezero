@@ -258,6 +258,7 @@ func TestQA_MulticastSettlement(t *testing.T) {
 			"balance", balanceAfterWithdraw,
 			"before_pay", balanceBeforePay,
 			"after_pay", balanceAfterPay,
+			"paid_amount", parsedAmount,
 			"effective_price", effectivePrice,
 			"refund", refund,
 			"retained", retained,
@@ -266,11 +267,13 @@ func TestQA_MulticastSettlement(t *testing.T) {
 
 		// Accounting invariant: regardless of prorating, the sum of what was
 		// refunded to the wallet and what the program retained must equal the
-		// effective price debited at pay time.
-		require.Equal(t, effectivePrice, refund+retained,
-			"refund + retained must equal the effective price paid")
+		// amount debited at pay time. This uses parsedAmount rather than
+		// effectivePrice because a seat with a zero price override is still
+		// charged parsedAmount at pay and fully refunded on withdraw.
+		require.Equal(t, parsedAmount, refund+retained,
+			"refund + retained must equal the amount paid")
 
-		if !proratingEnabled {
+		if !proratingEnabled || effectivePrice == 0 {
 			return
 		}
 
@@ -280,12 +283,12 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		// that distinguish a real partial refund from a regression:
 		//   - refund > 0 (prorating actually happened)
 		//   - retained > 0 (the seat was not free for the used portion)
-		//   - refund < effective_price (refund is a strict partial)
+		//   - retained < effective_price (kept less than a full epoch)
 		require.Greater(t, refund, uint64(0),
 			"prorating: refund should be strictly greater than zero")
 		require.Greater(t, retained, uint64(0),
 			"prorating: retained should be strictly greater than zero")
-		require.Less(t, refund, effectivePrice,
-			"prorating: refund should be strictly less than the effective price")
+		require.Less(t, retained, effectivePrice,
+			"prorating: retained should be strictly less than the effective price")
 	})
 }

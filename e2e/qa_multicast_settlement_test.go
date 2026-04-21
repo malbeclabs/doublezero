@@ -24,9 +24,6 @@ var (
 	enableSettlementTests = flag.Bool("enable-multicast-settlement-tests", false, "enable multicast settlement tests")
 	keypairFlag           = flag.String("keypair", "$HOME/.config/doublezero/id.json", "path to keypair file for settlement commands")
 	settlementClientFlag  = flag.String("multicast-settlement-client", "", "host of the client to use for settlement tests (overrides random selection)")
-	proratingEnabledFlag  = flag.Bool("seat-prorating-enabled", false,
-		"set when the shred-subscription program has prorated-service enabled "+
-			"(e.g. testnet); adjusts balance assertions to expect a partial refund on withdraw")
 )
 
 func TestQA_MulticastSettlement(t *testing.T) {
@@ -219,8 +216,14 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	t.Run("validate_balance_after_withdraw", func(t *testing.T) {
+		// Read onchain whether the shred-subscription program has prorated
+		// service enabled. This lets the test self-adapt across environments
+		// (testnet has it on, mainnet does not) without needing a CI flag.
+		proratingEnabled, err := client.IsSeatProratingEnabled(ctx)
+		require.NoError(t, err, "failed to read prorating flag from program config")
+
 		var balanceAfterWithdraw uint64
-		if *proratingEnabledFlag {
+		if proratingEnabled {
 			// Prorating refunds the unused portion of the epoch to the wallet.
 			// Poll until the refund is reflected (balance strictly greater
 			// than after-pay).
@@ -258,7 +261,7 @@ func TestQA_MulticastSettlement(t *testing.T) {
 			"effective_price", effectivePrice,
 			"refund", refund,
 			"retained", retained,
-			"prorating_enabled", *proratingEnabledFlag,
+			"prorating_enabled", proratingEnabled,
 		)
 
 		// Accounting invariant: regardless of prorating, the sum of what was
@@ -267,7 +270,7 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		require.Equal(t, effectivePrice, refund+retained,
 			"refund + retained must equal the effective price paid")
 
-		if !*proratingEnabledFlag {
+		if !proratingEnabled {
 			return
 		}
 

@@ -159,6 +159,24 @@ func (c *Client) GetEffectiveSeatPrice(ctx context.Context, devicePubkey string,
 	return price, nil
 }
 
+// IsSeatProratingEnabled returns true if the shred-subscription program config
+// has prorated-service enabled (testnet-style: seat withdrawal refunds the
+// unused portion of the epoch). Reads the program config account directly
+// rather than relying on an externally-supplied flag.
+func (c *Client) IsSeatProratingEnabled(ctx context.Context) (bool, error) {
+	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
+	}
+
+	shredsClient := shreds.New(shreds.NewRPCClient(c.SolanaRPCURL), programID)
+	cfg, err := shredsClient.FetchProgramConfig(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to fetch program config on host %s: %w", c.Host, err)
+	}
+	return cfg.IsProratedServiceEnabled(), nil
+}
+
 // GetWalletPubkey calls the GetWalletPubkey RPC to read the keypair file on the
 // remote host and return the base58-encoded public key.
 func (c *Client) GetWalletPubkey(ctx context.Context) (solana.PublicKey, error) {

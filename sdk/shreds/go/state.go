@@ -62,6 +62,30 @@ type ProgramConfig struct {
 	ValidatorClientRewardsConfig      ValidatorClientRewardsConfig
 }
 
+// Flag bits in ProgramConfig.Flags. Mirrors the onchain bit indices from the
+// shred-subscription program.
+const (
+	programConfigFlagIsPausedBit                 = 0
+	programConfigFlagIsMigratedBit               = 1
+	programConfigFlagIsProratedServiceEnabledBit = 2
+)
+
+// IsPaused returns true if the program is paused.
+func (p *ProgramConfig) IsPaused() bool {
+	return p.Flags&(1<<programConfigFlagIsPausedBit) != 0
+}
+
+// IsMigrated returns true if the program has been migrated.
+func (p *ProgramConfig) IsMigrated() bool {
+	return p.Flags&(1<<programConfigFlagIsMigratedBit) != 0
+}
+
+// IsProratedServiceEnabled returns true if prorated service is enabled (seat
+// withdrawal refunds the unused portion of the epoch).
+func (p *ProgramConfig) IsProratedServiceEnabled() bool {
+	return p.Flags&(1<<programConfigFlagIsProratedServiceEnabledBit) != 0
+}
+
 // ExecutionController tracks the epoch state machine and settlement progress.
 type ExecutionController struct {
 	Phase                     uint8 // ExecutionPhase

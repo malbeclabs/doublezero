@@ -24,6 +24,9 @@ var (
 	enableSettlementTests = flag.Bool("enable-multicast-settlement-tests", false, "enable multicast settlement tests")
 	keypairFlag           = flag.String("keypair", "$HOME/.config/doublezero/id.json", "path to keypair file for settlement commands")
 	settlementClientFlag  = flag.String("multicast-settlement-client", "", "host of the client to use for settlement tests (overrides random selection)")
+	proratingEnabledFlag  = flag.Bool("seat-prorating-enabled", false,
+		"set when the shred-subscription program has prorated-service enabled "+
+			"(e.g. testnet); adjusts balance assertions to expect a partial refund on withdraw")
 )
 
 func TestQA_MulticastSettlement(t *testing.T) {
@@ -56,6 +59,8 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	var parsedAmount uint64
 	var effectivePrice uint64
 	var balanceBeforePay uint64
+	var balanceAfterPay uint64
+	var slotPreWithdraw, slotPostWithdraw uint64
 	seatPaid := false
 
 	t.Cleanup(func() {
@@ -156,7 +161,6 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		// Poll until the balance reflects the debit. FeedSeatPay returns
 		// after the tx is submitted, and the RPC balance view can lag the
 		// confirmed state briefly, so a one-shot read races.
-		var lastBalance uint64
 		var lastDebit uint64
 		require.Eventually(t, func() bool {
 			bal, err := client.GetUSDCBalance(ctx)
@@ -164,11 +168,11 @@ func TestQA_MulticastSettlement(t *testing.T) {
 				log.Info("USDC balance poll error", "error", err)
 				return false
 			}
-			lastBalance = bal
+			balanceAfterPay = bal
 			lastDebit = balanceBeforePay - bal
 			return lastDebit == parsedAmount
 		}, balanceSettleTimeout, 5*time.Second, "USDC balance should decrease by the paid amount")
-		log.Info("USDC balance after pay", "balance", lastBalance, "debit", lastDebit, "expected_debit", parsedAmount)
+		log.Info("USDC balance after pay", "balance", balanceAfterPay, "debit", lastDebit, "expected_debit", parsedAmount)
 	}) {
 		return
 	}
@@ -201,8 +205,18 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("withdraw_seat", func(t *testing.T) {
+		if *proratingEnabledFlag {
+			s, err := client.GetSlot(ctx)
+			require.NoError(t, err, "failed to get slot before withdraw")
+			slotPreWithdraw = s
+		}
 		err := client.FeedSeatWithdraw(ctx, device.PubKey)
 		require.NoError(t, err, "failed to withdraw seat")
+		if *proratingEnabledFlag {
+			s, err := client.GetSlot(ctx)
+			require.NoError(t, err, "failed to get slot after withdraw")
+			slotPostWithdraw = s
+		}
 		seatPaid = false
 	}) {
 		return
@@ -216,23 +230,69 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	t.Run("validate_balance_after_withdraw", func(t *testing.T) {
-		expectedBalance := balanceBeforePay - effectivePrice
-		var lastBalance uint64
-		require.Eventually(t, func() bool {
-			bal, err := client.GetUSDCBalance(ctx)
-			if err != nil {
-				log.Info("USDC balance poll error", "error", err)
-				return false
-			}
-			lastBalance = bal
-			return bal == expectedBalance
-		}, balanceSettleTimeout, 5*time.Second,
-			"USDC balance should equal before_pay minus the effective seat price")
+		var balanceAfterWithdraw uint64
+		if *proratingEnabledFlag {
+			// Prorating refunds the unused portion of the epoch to the wallet.
+			// Poll until the refund is reflected (balance strictly greater
+			// than after-pay).
+			require.Eventually(t, func() bool {
+				bal, err := client.GetUSDCBalance(ctx)
+				if err != nil {
+					log.Info("USDC balance poll error", "error", err)
+					return false
+				}
+				balanceAfterWithdraw = bal
+				return bal > balanceAfterPay
+			}, balanceSettleTimeout, 5*time.Second,
+				"USDC balance should increase to reflect the prorated refund")
+		} else {
+			expectedBalance := balanceBeforePay - effectivePrice
+			require.Eventually(t, func() bool {
+				bal, err := client.GetUSDCBalance(ctx)
+				if err != nil {
+					log.Info("USDC balance poll error", "error", err)
+					return false
+				}
+				balanceAfterWithdraw = bal
+				return bal == expectedBalance
+			}, balanceSettleTimeout, 5*time.Second,
+				"USDC balance should equal before_pay minus the effective seat price")
+		}
+
+		refund := balanceAfterWithdraw - balanceAfterPay
+		retained := balanceBeforePay - balanceAfterWithdraw
+
 		log.Info("USDC balance after withdraw",
-			"balance", lastBalance,
-			"expected", expectedBalance,
+			"balance", balanceAfterWithdraw,
 			"before_pay", balanceBeforePay,
+			"after_pay", balanceAfterPay,
 			"effective_price", effectivePrice,
+			"refund", refund,
+			"retained", retained,
+			"prorating_enabled", *proratingEnabledFlag,
 		)
+
+		require.Equal(t, effectivePrice, refund+retained,
+			"refund + retained must equal the effective price paid")
+
+		if !*proratingEnabledFlag {
+			return
+		}
+
+		upper, lower, err := client.ComputeProratedRefundBounds(
+			ctx, effectivePrice, slotPreWithdraw, slotPostWithdraw,
+		)
+		require.NoError(t, err, "failed to compute prorated refund bounds")
+		log.Info("Prorated refund bounds",
+			"observed", refund,
+			"upper", upper,
+			"lower", lower,
+			"slot_pre", slotPreWithdraw,
+			"slot_post", slotPostWithdraw,
+		)
+		require.LessOrEqual(t, refund, upper,
+			"prorating: observed refund exceeds slot_pre upper bound")
+		require.GreaterOrEqual(t, refund, lower,
+			"prorating: observed refund below slot_post lower bound")
 	})
 }

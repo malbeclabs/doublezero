@@ -1,10 +1,7 @@
 use crate::{
     error::DoubleZeroError,
-    pda::{get_device_pda, get_globalstate_pda, get_resource_extension_pda, get_topology_pda},
-    processors::{
-        resource::{allocate_id, allocate_specific_id},
-        validation::validate_program_account,
-    },
+    pda::{get_globalstate_pda, get_resource_extension_pda, get_topology_pda},
+    processors::{resource::allocate_id, validation::validate_program_account},
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
@@ -111,35 +108,9 @@ pub fn process_topology_backfill(
     let mut backfilled_count: usize = 0;
     let mut skipped_count: usize = 0;
 
-    // Collect device accounts for two-pass processing.
     let device_accounts: Vec<&AccountInfo> = accounts_iter.collect();
 
-    // First pass: pre-mark all existing node_segment_idx values as used in the
-    // SegmentRoutingIds resource. This prevents collisions when the activator
-    // manages SR IDs in-memory (use_onchain_allocation=false) and the on-chain
-    // resource hasn't been updated to reflect those allocations.
-    for device_account in &device_accounts {
-        validate_program_account!(*device_account, program_id, writable = true, "Device");
-        let device = Device::try_from(&device_account.data.borrow()[..])?;
-        assert_eq!(
-            device_account.key,
-            &get_device_pda(program_id, device.index).0,
-            "Invalid Device PDA"
-        );
-        for iface in device.interfaces.iter() {
-            let current = iface.into_current_version();
-            if current.node_segment_idx > 0 {
-                // Ignore error: ID may already be marked (idempotent pre-mark).
-                let _ = allocate_specific_id(segment_routing_ids_account, current.node_segment_idx);
-            }
-            for fas in &current.flex_algo_node_segments {
-                let _ = allocate_specific_id(segment_routing_ids_account, fas.node_segment_idx);
-            }
-        }
-    }
-
-    // Second pass: allocate new IDs for loopbacks missing this topology's segment.
-    // Device accounts were fully validated in the first pass above.
+    // Allocate new IDs for loopbacks missing this topology's segment.
     for device_account in &device_accounts {
         let mut device = Device::try_from(&device_account.data.borrow()[..])?;
         let mut modified = false;

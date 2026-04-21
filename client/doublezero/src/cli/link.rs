@@ -1,8 +1,15 @@
 use clap::{Args, Subcommand};
-use doublezero_cli::link::{
-    accept::AcceptLinkCliCommand, delete::*, dzx_create::CreateDZXLinkCliCommand, get::*,
-    latency::LinkLatencyCliCommand, list::*, sethealth::SetLinkHealthCliCommand, update::*,
-    wan_create::*,
+use doublezero_cli::{
+    link::{
+        accept::AcceptLinkCliCommand, delete::*, dzx_create::CreateDZXLinkCliCommand, get::*,
+        latency::LinkLatencyCliCommand, list::*, sethealth::SetLinkHealthCliCommand, update::*,
+        wan_create::*,
+    },
+    topology::{
+        backfill::BackfillTopologyCliCommand, clear::ClearTopologyCliCommand,
+        create::CreateTopologyCliCommand, delete::DeleteTopologyCliCommand,
+        list::ListTopologyCliCommand,
+    },
 };
 
 #[derive(Args, Debug)]
@@ -53,4 +60,27 @@ pub enum LinkCommands {
     // Hidden because this is an internal/operational command not intended for general CLI users.
     #[clap(hide = true)]
     SetHealth(SetLinkHealthCliCommand),
+    /// Manage link topologies
+    #[clap()]
+    Topology(TopologyLinkCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct TopologyLinkCommand {
+    #[command(subcommand)]
+    pub command: TopologyCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum TopologyCommands {
+    /// Create a new topology
+    Create(CreateTopologyCliCommand),
+    /// Delete a topology
+    Delete(DeleteTopologyCliCommand),
+    /// Clear a topology from links
+    Clear(ClearTopologyCliCommand),
+    /// Backfill FlexAlgoNodeSegment entries on existing Vpnv4 loopbacks
+    Backfill(BackfillTopologyCliCommand),
+    /// List all topologies
+    List(ListTopologyCliCommand),
 }

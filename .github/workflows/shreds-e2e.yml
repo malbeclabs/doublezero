@@ -38,7 +38,7 @@ jobs:
           token: ${{ secrets.MALBEC_INFRA_RO }}
       - uses: actions/setup-go@v5
         with:
-          go-version-file: e2e/go.mod
+          go-version-file: go.mod
           cache: true
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -145,7 +145,7 @@ jobs:
           token: ${{ secrets.MALBEC_INFRA_RO }}
       - uses: actions/setup-go@v5
         with:
-          go-version-file: e2e/go.mod
+          go-version-file: go.mod
           cache: true
       - name: Login to GHCR
         uses: docker/login-action@v3

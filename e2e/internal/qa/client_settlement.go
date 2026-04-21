@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"math/big"
 	"strconv"
 
 	"github.com/gagliardetto/solana-go"
@@ -210,96 +209,4 @@ func (c *Client) GetUSDCBalance(ctx context.Context) (uint64, error) {
 
 	c.log.Debug("USDC balance retrieved", "host", c.Host, "owner", ownerPubkey, "ata", ata, "balance", balance)
 	return balance, nil
-}
-
-// minSlotsPerEpochWarmup mirrors solana_sdk::epoch_schedule::MINIMUM_SLOTS_PER_EPOCH.
-const minSlotsPerEpochWarmup uint64 = 32
-
-// GetSlot returns the current confirmed slot from the Solana RPC endpoint the
-// client uses (DZ ledger for testnet/devnet, Solana proper for mainnet).
-func (c *Client) GetSlot(ctx context.Context) (uint64, error) {
-	solanaClient := rpc.New(c.SolanaRPCURL)
-	slot, err := solanaClient.GetSlot(ctx, rpc.CommitmentConfirmed)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get slot on host %s: %w", c.Host, err)
-	}
-	return slot, nil
-}
-
-// ComputeProratedRefundBounds returns the upper/lower bounds of the expected
-// prorated refund (raw USDC) for a seat withdrawal whose Clock::get().slot lies
-// in [slotPre, slotPost]. Mirrors ClientSeat::prorated_usdc_amount in
-// doublezero-shreds. Upper corresponds to slotPre (larger remaining slots →
-// larger refund); lower corresponds to slotPost.
-func (c *Client) ComputeProratedRefundBounds(
-	ctx context.Context,
-	effectivePrice, slotPre, slotPost uint64,
-) (upper, lower uint64, err error) {
-	if slotPost < slotPre {
-		return 0, 0, fmt.Errorf("slotPost (%d) must be >= slotPre (%d)", slotPost, slotPre)
-	}
-
-	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
-	}
-
-	shredsClient := shreds.New(shreds.NewRPCClient(c.SolanaRPCURL), programID)
-	controller, err := shredsClient.FetchExecutionController(ctx)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to fetch execution controller on host %s: %w", c.Host, err)
-	}
-
-	solanaClient := rpc.New(c.SolanaRPCURL)
-	schedule, err := solanaClient.GetEpochSchedule(ctx)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to get epoch schedule on host %s: %w", c.Host, err)
-	}
-	if schedule.SlotsPerEpoch == 0 {
-		return 0, 0, fmt.Errorf("invalid epoch schedule: slots_per_epoch is zero")
-	}
-
-	endSlot := firstSlotInEpoch(schedule, controller.CurrentSubscriptionEpoch)
-	remainingUpper := saturatingSubU64(endSlot, slotPre)  // larger refund
-	remainingLower := saturatingSubU64(endSlot, slotPost) // smaller refund
-
-	upper = proratedAmount(effectivePrice, remainingUpper, schedule.SlotsPerEpoch)
-	lower = proratedAmount(effectivePrice, remainingLower, schedule.SlotsPerEpoch)
-	return upper, lower, nil
-}
-
-// firstSlotInEpoch mirrors solana_sdk::epoch_schedule::EpochSchedule::
-// get_first_slot_in_epoch. Public clusters run with warmup=false, but we honor
-// the schedule as returned so this works on any cluster.
-func firstSlotInEpoch(s *rpc.GetEpochScheduleResult, epoch uint64) uint64 {
-	if s.Warmup && epoch <= s.FirstNormalEpoch {
-		if epoch >= 63 {
-			return math.MaxUint64
-		}
-		return ((uint64(1) << epoch) - 1) * minSlotsPerEpochWarmup
-	}
-	return (epoch-s.FirstNormalEpoch)*s.SlotsPerEpoch + s.FirstNormalSlot
-}
-
-func saturatingSubU64(a, b uint64) uint64 {
-	if a < b {
-		return 0
-	}
-	return a - b
-}
-
-// proratedAmount computes (price * remaining) / slotsPerEpoch using math/big to
-// match the program's u128 intermediate arithmetic and truncating division.
-func proratedAmount(price, remaining, slotsPerEpoch uint64) uint64 {
-	if remaining == 0 || slotsPerEpoch == 0 {
-		return 0
-	}
-	var num, denom, out big.Int
-	num.Mul(new(big.Int).SetUint64(price), new(big.Int).SetUint64(remaining))
-	denom.SetUint64(slotsPerEpoch)
-	out.Quo(&num, &denom)
-	if !out.IsUint64() {
-		return math.MaxUint64
-	}
-	return out.Uint64()
 }

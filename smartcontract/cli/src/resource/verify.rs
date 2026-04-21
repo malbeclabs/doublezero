@@ -635,12 +635,9 @@ fn verify_tunnel_ids(
         let (pda, _, _) = get_resource_extension_pda(program_id, resource_type);
 
         let Some(extension) = resource_extensions.get(&pda) else {
-            // Only report if this device has users
-            if users_by_device.contains_key(device_pk) {
-                result
-                    .discrepancies
-                    .push(ResourceDiscrepancy::ExtensionNotFound { resource_type });
-            }
+            result
+                .discrepancies
+                .push(ResourceDiscrepancy::ExtensionNotFound { resource_type });
             continue;
         };
 
@@ -1675,5 +1672,48 @@ mod tests {
             result.discrepancies
         );
         assert_eq!(result.multicast_publisher_block_checked, 0);
+    }
+
+    #[test]
+    fn test_verify_tunnel_ids_reports_missing_extension_for_device_without_users() {
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_global_ext_minimal(&mut accounts, &program_id);
+        let multicast_publisher_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::MulticastPublisherBlock,
+            "148.51.120.0/24",
+            vec![0],
+        );
+        accounts.insert(
+            Box::new(multicast_publisher_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_publisher_block.1)),
+        );
+
+        // Device with no users and no TunnelIds resource extension.
+        let device_pk = Pubkey::new_unique();
+        let device = doublezero_serviceability::state::device::Device::default();
+        accounts.insert(Box::new(device_pk), Box::new(AccountData::Device(device)));
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+        assert!(
+            result.discrepancies.iter().any(|d| matches!(
+                d,
+                ResourceDiscrepancy::ExtensionNotFound {
+                    resource_type: ResourceType::TunnelIds(pk, 0),
+                } if *pk == device_pk
+            )),
+            "expected ExtensionNotFound for TunnelIds of device with no users, got {:?}",
+            result.discrepancies
+        );
     }
 }

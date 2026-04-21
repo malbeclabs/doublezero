@@ -39,14 +39,16 @@ impl CreateTopologyCliCommand {
 
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, topology_pda) = client.create_topology(CreateTopologyCommand {
+        let result = client.create_topology(CreateTopologyCommand {
             name: self.name.clone(),
             constraint: self.constraint,
         })?;
         writeln!(
             out,
-            "Created topology '{}' successfully. PDA: {}",
-            self.name, topology_pda
+            "Created topology '{}' successfully. PDA: {}. Backfilled {} transaction(s).",
+            self.name,
+            result.topology_pda,
+            result.backfill_signatures.len()
         )?;
 
         Ok(())
@@ -57,6 +59,7 @@ impl CreateTopologyCliCommand {
 mod tests {
     use super::*;
     use crate::doublezerocommand::MockCliCommand;
+    use doublezero_sdk::commands::topology::create::CreateTopologyResult;
     use doublezero_serviceability::state::topology::TopologyConstraint;
     use mockall::predicate::eq;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -73,7 +76,13 @@ mod tests {
                 name: "unicast-default".to_string(),
                 constraint: TopologyConstraint::IncludeAny,
             }))
-            .returning(move |_| Ok((Signature::new_unique(), topology_pda)));
+            .returning(move |_| {
+                Ok(CreateTopologyResult {
+                    signature: Signature::new_unique(),
+                    topology_pda,
+                    backfill_signatures: vec![],
+                })
+            });
 
         let cmd = CreateTopologyCliCommand {
             name: "unicast-default".to_string(),
@@ -85,6 +94,7 @@ mod tests {
         let output = String::from_utf8(out.into_inner()).unwrap();
         assert!(output.contains("Created topology 'unicast-default' successfully."));
         assert!(output.contains(&topology_pda.to_string()));
+        assert!(output.contains("Backfilled 0 transaction(s)."));
     }
 
     #[test]

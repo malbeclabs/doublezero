@@ -100,8 +100,10 @@ use doublezero_sdk::{
             update_payment_status::UpdatePaymentStatusCommand,
         },
         topology::{
-            backfill::BackfillTopologyCommand, clear::ClearTopologyCommand,
-            create::CreateTopologyCommand, delete::DeleteTopologyCommand,
+            backfill::BackfillTopologyCommand,
+            clear::ClearTopologyCommand,
+            create::{CreateTopologyCommand, CreateTopologyResult},
+            delete::DeleteTopologyCommand,
             list::ListTopologyCommand,
         },
         user::{
@@ -344,10 +346,10 @@ pub trait CliCommand {
     ) -> eyre::Result<(Pubkey, ResourceExtensionOwned)>;
     fn close_resource(&self, cmd: CloseResourceCommand) -> eyre::Result<Signature>;
 
-    fn create_topology(&self, cmd: CreateTopologyCommand) -> eyre::Result<(Signature, Pubkey)>;
+    fn create_topology(&self, cmd: CreateTopologyCommand) -> eyre::Result<CreateTopologyResult>;
     fn delete_topology(&self, cmd: DeleteTopologyCommand) -> eyre::Result<Signature>;
-    fn clear_topology(&self, cmd: ClearTopologyCommand) -> eyre::Result<Signature>;
-    fn backfill_topology(&self, cmd: BackfillTopologyCommand) -> eyre::Result<Signature>;
+    fn clear_topology(&self, cmd: ClearTopologyCommand) -> eyre::Result<Vec<Signature>>;
+    fn backfill_topology(&self, cmd: BackfillTopologyCommand) -> eyre::Result<Vec<Signature>>;
     fn list_topology(
         &self,
         cmd: ListTopologyCommand,
@@ -818,16 +820,16 @@ impl CliCommand for CliCommandImpl<'_> {
     fn close_resource(&self, cmd: CloseResourceCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn create_topology(&self, cmd: CreateTopologyCommand) -> eyre::Result<(Signature, Pubkey)> {
+    fn create_topology(&self, cmd: CreateTopologyCommand) -> eyre::Result<CreateTopologyResult> {
         cmd.execute(self.client)
     }
     fn delete_topology(&self, cmd: DeleteTopologyCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn clear_topology(&self, cmd: ClearTopologyCommand) -> eyre::Result<Signature> {
+    fn clear_topology(&self, cmd: ClearTopologyCommand) -> eyre::Result<Vec<Signature>> {
         cmd.execute(self.client)
     }
-    fn backfill_topology(&self, cmd: BackfillTopologyCommand) -> eyre::Result<Signature> {
+    fn backfill_topology(&self, cmd: BackfillTopologyCommand) -> eyre::Result<Vec<Signature>> {
         cmd.execute(self.client)
     }
     fn list_topology(

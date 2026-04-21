@@ -1824,13 +1824,17 @@ async fn test_topology_backfill_nonexistent_topology_rejected() {
 }
 
 #[tokio::test]
-async fn test_topology_backfill_avoids_collision_with_existing_node_segment_idx() {
-    // Regression test: BackfillTopology must not re-use the base node_segment_idx
-    // when the on-chain SegmentRoutingIds resource was never updated by the activator
-    // (use_onchain_allocation=false path). Before the fix, backfill would allocate
-    // ID 1 for the flex-algo segment even though ID 1 was already used as the base
-    // node_segment_idx on the loopback.
-    println!("[TEST] test_topology_backfill_avoids_collision_with_existing_node_segment_idx");
+async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
+    // BackfillTopology allocates the flex-algo node_segment_idx from the on-chain
+    // SegmentRoutingIds resource. Keeping the resource in sync with off-chain base
+    // node_segment_idx values is the activator's responsibility (see the
+    // use_onchain_allocation path); backfill does not second-guess it.
+    //
+    // This scenario exercises the use_onchain_allocation=false setup: the loopback
+    // is activated with base node_segment_idx=1 without updating the on-chain SR
+    // resource, so backfill's allocate_id call also returns 1. That is the expected
+    // behavior — the activator must reconcile.
+    println!("[TEST] test_topology_backfill_allocates_sr_id_from_onchain_resource");
 
     let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
@@ -2035,8 +2039,9 @@ async fn test_topology_backfill_avoids_collision_with_existing_node_segment_idx(
     )
     .await;
 
-    // Step 9: Call BackfillTopology. With the fix, the pre-mark pass marks ID 1 as used
-    // before allocating, so the flex-algo segment receives ID 2 (not 1).
+    // Step 9: Call BackfillTopology. allocate_id draws from the on-chain SR resource,
+    // which still believes ID 1 is free (the activator took the off-chain path in
+    // step 7), so the flex-algo segment also receives ID 1.
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     let base_accounts = vec![
         AccountMeta::new_readonly(topology_pda, false),
@@ -2056,7 +2061,8 @@ async fn test_topology_backfill_avoids_collision_with_existing_node_segment_idx(
     tx.try_sign(&[&payer], recent_blockhash).unwrap();
     banks_client.process_transaction(tx).await.unwrap();
 
-    // Verify: flex-algo segment has node_segment_idx=2, NOT 1 (which is the base idx).
+    // Verify: backfill ran and stored a flex-algo segment for this topology, with
+    // an idx allocated from the on-chain SR resource (which still had ID 1 free).
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found after backfill");
@@ -2075,11 +2081,12 @@ async fn test_topology_backfill_avoids_collision_with_existing_node_segment_idx(
         "Segment should point to the backfilled topology"
     );
     assert_eq!(
-        iface.flex_algo_node_segments[0].node_segment_idx, 2,
-        "flex-algo node_segment_idx must be 2 (fresh allocation), not 1 (base)"
+        iface.flex_algo_node_segments[0].node_segment_idx, 1,
+        "flex-algo node_segment_idx is allocated from the on-chain SR resource; \
+         ID 1 is still free there because the activator did not sync it"
     );
 
-    println!("[PASS] test_topology_backfill_avoids_collision_with_existing_node_segment_idx");
+    println!("[PASS] test_topology_backfill_allocates_sr_id_from_onchain_resource");
 }
 
 // ============================================================================

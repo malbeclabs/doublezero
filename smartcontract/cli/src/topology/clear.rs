@@ -7,10 +7,6 @@ use doublezero_sdk::commands::topology::clear::ClearTopologyCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
-// Solana transactions have a 32-account limit. With 3 fixed accounts (topology PDA,
-// globalstate, payer), we can fit at most 29 link accounts per transaction.
-const CLEAR_BATCH_SIZE: usize = 29;
-
 #[derive(Args, Debug)]
 pub struct ClearTopologyCliCommand {
     /// Name of the topology to clear from links
@@ -63,13 +59,10 @@ impl ClearTopologyCliCommand {
             return Ok(());
         }
 
-        // Batch into chunks that fit within Solana's account limit.
-        for chunk in link_pubkeys.chunks(CLEAR_BATCH_SIZE) {
-            client.clear_topology(ClearTopologyCommand {
-                name: self.name.clone(),
-                link_pubkeys: chunk.to_vec(),
-            })?;
-        }
+        client.clear_topology(ClearTopologyCommand {
+            name: self.name.clone(),
+            link_pubkeys,
+        })?;
 
         writeln!(
             out,
@@ -139,7 +132,7 @@ mod tests {
                 name: "unicast-default".to_string(),
                 link_pubkeys: vec![link1, link2],
             }))
-            .returning(|_| Ok(Signature::new_unique()));
+            .returning(|_| Ok(vec![Signature::new_unique()]));
 
         let cmd = ClearTopologyCliCommand {
             name: "unicast-default".to_string(),

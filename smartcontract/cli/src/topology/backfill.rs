@@ -27,15 +27,16 @@ impl BackfillTopologyCliCommand {
             ));
         }
 
-        let sig = client.backfill_topology(BackfillTopologyCommand {
+        let sigs = client.backfill_topology(BackfillTopologyCommand {
             name: self.name.clone(),
             device_pubkeys: self.device_pubkeys,
         })?;
 
         writeln!(
             out,
-            "Backfilled topology '{}'. Signature: {}",
-            self.name, sig
+            "Backfilled topology '{}' across {} transaction(s).",
+            self.name,
+            sigs.len()
         )?;
 
         Ok(())
@@ -62,7 +63,7 @@ mod tests {
                 name: "unicast-default".to_string(),
                 device_pubkeys: vec![device1],
             }))
-            .returning(|_| Ok(Signature::new_unique()));
+            .returning(|_| Ok(vec![Signature::new_unique()]));
 
         let cmd = BackfillTopologyCliCommand {
             name: "unicast-default".to_string(),
@@ -72,7 +73,7 @@ mod tests {
         let result = cmd.execute(&mock, &mut out);
         assert!(result.is_ok());
         let output = String::from_utf8(out.into_inner()).unwrap();
-        assert!(output.contains("Backfilled topology 'unicast-default'."));
+        assert!(output.contains("Backfilled topology 'unicast-default' across 1 transaction(s)."));
     }
 
     #[test]

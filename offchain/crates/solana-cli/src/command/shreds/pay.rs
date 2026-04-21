@@ -43,6 +43,7 @@ struct EpochWarningInput {
     accept_partial_epoch: bool,
     dry_run: bool,
     seat_active_this_epoch: bool,
+    prorated_service_enabled: bool,
     slot_index: u64,
     slots_in_epoch: u64,
 }
@@ -66,7 +67,11 @@ fn is_seat_already_active(seat_data: Option<&[u8]>) -> bool {
 /// Returns `Some(prompt_message)` if the user should be warned about paying late
 /// in the epoch, or `None` if no warning is needed.
 fn epoch_warning_prompt(input: &EpochWarningInput) -> Option<String> {
-    if input.accept_partial_epoch || input.dry_run || input.seat_active_this_epoch {
+    if input.accept_partial_epoch
+        || input.dry_run
+        || input.seat_active_this_epoch
+        || input.prorated_service_enabled
+    {
         return None;
     }
 
@@ -224,14 +229,18 @@ impl PayCommand {
         let (client_seat_key, seat_bump) = state::find_client_seat_address(&device, client_ip_bits);
         let (escrow_key, escrow_bump) =
             state::find_payment_escrow_address(&client_seat_key, &wallet_key);
+        let (program_config_key, _) = state::find_program_config_address();
 
         // Check which accounts already exist on-chain.
         let accounts = wallet
             .connection
-            .get_multiple_accounts(&[client_seat_key, escrow_key])
+            .get_multiple_accounts(&[client_seat_key, escrow_key, program_config_key])
             .await?;
         let seat_exists = accounts[0].is_some();
         let escrow_exists = accounts[1].is_some();
+        let prorated_service_enabled = accounts[2]
+            .as_ref()
+            .is_some_and(|a| state::is_prorated_service_enabled(&a.data));
 
         // Block if this client IP already has a seat on a DIFFERENT device.
         // The serviceability User PDA is keyed by (IP, user_type) with no
@@ -303,6 +312,7 @@ impl PayCommand {
                     accept_partial_epoch: self.accept_partial_epoch,
                     dry_run: wallet.dry_run,
                     seat_active_this_epoch,
+                    prorated_service_enabled,
                     slot_index: epoch_info.slot_index,
                     slots_in_epoch: epoch_info.slots_in_epoch,
                 };
@@ -337,27 +347,30 @@ impl PayCommand {
         let exchange_key = device_info.exchange_key;
 
         // Check the current price so the user gets a friendly error instead of
-        // an opaque on-chain revert.  If the seat has a per-seat price
+        // an opaque on-chain revert. If the seat has a per-seat price
         // override, use that instead of the metro base + device premium.
-        let seat_price_override = accounts[0]
-            .as_ref()
-            .and_then(|a| state::parse_client_seat_price_override(&a.data));
+        // Skipped when prorated service is enabled.
+        if !prorated_service_enabled {
+            let seat_price_override = accounts[0]
+                .as_ref()
+                .and_then(|a| state::parse_client_seat_price_override(&a.data));
 
-        let metro_history_key = state::find_metro_history_address(&exchange_key).0;
-        let metro_history_account = wallet.connection.get_account(&metro_history_key).await?;
-        if let Some(metro_info) = state::parse_metro_history(&metro_history_account.data) {
-            let min_price = seat_price_override.unwrap_or_else(|| {
-                (metro_info.current_usdc_price as i32 + device_info.current_premium as i32).max(0)
-                    as u64
-                    * 1_000_000
-            });
-            if amount_micro < min_price {
-                let min_usdc = min_price as f64 / 1_000_000.0;
-                bail!(
-                    "Amount ({:.6} USDC) is below the current price ({:.6} USDC)",
-                    self.amount,
-                    min_usdc,
-                );
+            let metro_history_key = state::find_metro_history_address(&exchange_key).0;
+            let metro_history_account = wallet.connection.get_account(&metro_history_key).await?;
+            if let Some(metro_info) = state::parse_metro_history(&metro_history_account.data) {
+                let min_price = seat_price_override.unwrap_or_else(|| {
+                    (metro_info.current_usdc_price as i32 + device_info.current_premium as i32)
+                        .max(0) as u64
+                        * 1_000_000
+                });
+                if amount_micro < min_price {
+                    let min_usdc = min_price as f64 / 1_000_000.0;
+                    bail!(
+                        "Amount ({:.6} USDC) is below the current price ({:.6} USDC)",
+                        self.amount,
+                        min_usdc,
+                    );
+                }
             }
         }
 
@@ -510,6 +523,7 @@ mod tests {
             accept_partial_epoch: false,
             dry_run: false,
             seat_active_this_epoch: false,
+            prorated_service_enabled: false,
             slot_index,
             slots_in_epoch,
         }
@@ -558,11 +572,21 @@ mod tests {
     }
 
     #[test]
+    fn no_warning_when_prorated_service_enabled() {
+        // Late in epoch + prorated on → warning is moot because the user
+        // only pays for the remaining slots.
+        let mut input = make_input(0.02);
+        input.prorated_service_enabled = true;
+        assert!(epoch_warning_prompt(&input).is_none());
+    }
+
+    #[test]
     fn no_warning_when_slots_in_epoch_zero() {
         let input = EpochWarningInput {
             accept_partial_epoch: false,
             dry_run: false,
             seat_active_this_epoch: false,
+            prorated_service_enabled: false,
             slot_index: 0,
             slots_in_epoch: 0,
         };
@@ -628,6 +652,7 @@ mod tests {
             accept_partial_epoch: false,
             dry_run: false,
             seat_active_this_epoch: false,
+            prorated_service_enabled: false,
             slot_index,
             slots_in_epoch,
         };
@@ -645,6 +670,7 @@ mod tests {
             accept_partial_epoch: false,
             dry_run: false,
             seat_active_this_epoch: false,
+            prorated_service_enabled: false,
             slot_index,
             slots_in_epoch,
         };
@@ -660,6 +686,7 @@ mod tests {
             accept_partial_epoch: false,
             dry_run: false,
             seat_active_this_epoch: false,
+            prorated_service_enabled: false,
             slot_index: slots_in_epoch,
             slots_in_epoch,
         };
@@ -674,6 +701,7 @@ mod tests {
             accept_partial_epoch: false,
             dry_run: false,
             seat_active_this_epoch: false,
+            prorated_service_enabled: false,
             slot_index: 432_001,
             slots_in_epoch: 432_000,
         };
@@ -689,6 +717,7 @@ mod tests {
             accept_partial_epoch: false,
             dry_run: false,
             seat_active_this_epoch: false,
+            prorated_service_enabled: false,
             slot_index: slots_in_epoch - 1, // 1 slot = 0.4 s remaining
             slots_in_epoch,
         };
@@ -795,6 +824,7 @@ mod tests {
             accept_partial_epoch: false,
             dry_run: false,
             seat_active_this_epoch: false,
+            prorated_service_enabled: false,
             slot_index: 7,
             slots_in_epoch,
         };
@@ -805,6 +835,7 @@ mod tests {
             accept_partial_epoch: false,
             dry_run: false,
             seat_active_this_epoch: false,
+            prorated_service_enabled: false,
             slot_index: 8,
             slots_in_epoch,
         };
@@ -819,6 +850,7 @@ mod tests {
             accept_partial_epoch: false,
             dry_run: false,
             seat_active_this_epoch: false,
+            prorated_service_enabled: false,
             slot_index: 0,
             slots_in_epoch: 1,
         };

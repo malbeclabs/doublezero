@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- add `is_prorated_service_enabled` helper and `ProgramConfig` flag/offset constants for raw-byte parsing
 - add `RequestInstantSeatWithdrawal` instruction builder and `withdraw_seat_request` PDA helper
 - add reservation module: PDA helpers, instruction builders, and account parsers for the seat reservation program
 - add more revenue-distribution fetch methods ([#243](https://github.com/doublezerofoundation/doublezero-offchain/pull/243))

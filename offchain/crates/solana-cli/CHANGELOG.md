@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `shreds pay`: integrate prorated instant seat allocation — when the onchain `is_prorated_service_enabled` flag is set, skip the client-side min-price check and suppress the late-epoch warning; legacy behavior preserved when the flag is unset
+
 ## [0.5.3](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.3)
 
 - uptick crate to v0.5.3 (#348)

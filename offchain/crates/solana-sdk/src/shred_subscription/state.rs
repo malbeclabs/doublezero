@@ -110,6 +110,40 @@ pub fn find_payment_escrow_address(
 }
 
 // ---------------------------------------------------------------------------
+// ProgramConfig raw-byte parsing.
+//
+// Layout (ZeroCopy with 8-byte discriminator prefix):
+//   [0..8)   discriminator
+//   [8..16)  flags: Flags (u64, LE) -- first field, stable since account
+//            was introduced. Bit 2 gates prorated instant service.
+//   ...      (remaining fields irrelevant for the CLI today)
+// ---------------------------------------------------------------------------
+
+pub const PROGRAM_CONFIG_DISCRIMINATOR: Discriminator<DISCRIMINATOR_LEN> =
+    Discriminator::new_sha2(b"dz::account::program_config");
+
+pub const PROGRAM_CONFIG_FLAGS_OFFSET: usize = DISCRIMINATOR_LEN;
+
+const PROGRAM_CONFIG_FLAG_IS_PRORATED_SERVICE_ENABLED_BIT: u64 = 1 << 2;
+
+/// Returns `true` if the `is_prorated_service_enabled` bit is set on the
+/// raw `ProgramConfig` account data. Returns `false` for accounts that are
+/// too short to contain the flags word (e.g. a pre-prorated program
+/// deployment), which is the same behavior as the flag being unset.
+pub fn is_prorated_service_enabled(data: &[u8]) -> bool {
+    if data.len() < PROGRAM_CONFIG_FLAGS_OFFSET + 8 {
+        return false;
+    }
+    let Ok(flags_bytes) =
+        <[u8; 8]>::try_from(&data[PROGRAM_CONFIG_FLAGS_OFFSET..PROGRAM_CONFIG_FLAGS_OFFSET + 8])
+    else {
+        return false;
+    };
+    let flags = u64::from_le_bytes(flags_bytes);
+    flags & PROGRAM_CONFIG_FLAG_IS_PRORATED_SERVICE_ENABLED_BIT != 0
+}
+
+// ---------------------------------------------------------------------------
 // ClientSeat raw-byte parsing (for the `list` command).
 //
 // Layout (ZeroCopy with 8-byte discriminator prefix):
@@ -436,4 +470,49 @@ pub fn parse_metro_history(data: &[u8]) -> Option<MetroHistoryInfo> {
         current_epoch,
         current_usdc_price,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn program_config_data_with_flags(flags: u64) -> Vec<u8> {
+        let mut data = vec![0u8; PROGRAM_CONFIG_FLAGS_OFFSET + 8];
+        data[PROGRAM_CONFIG_FLAGS_OFFSET..PROGRAM_CONFIG_FLAGS_OFFSET + 8]
+            .copy_from_slice(&flags.to_le_bytes());
+        data
+    }
+
+    #[test]
+    fn prorated_enabled_bit_set() {
+        let data =
+            program_config_data_with_flags(PROGRAM_CONFIG_FLAG_IS_PRORATED_SERVICE_ENABLED_BIT);
+        assert!(is_prorated_service_enabled(&data));
+    }
+
+    #[test]
+    fn prorated_enabled_bit_unset() {
+        let data = program_config_data_with_flags(0);
+        assert!(!is_prorated_service_enabled(&data));
+    }
+
+    #[test]
+    fn prorated_enabled_other_bits_ignored() {
+        // is_paused (bit 0) + is_migrated (bit 1) set, but not bit 2.
+        let data = program_config_data_with_flags(0b011);
+        assert!(!is_prorated_service_enabled(&data));
+    }
+
+    #[test]
+    fn prorated_enabled_short_buffer_returns_false() {
+        // Pre-prorated program deployment: account data too short for the
+        // flags word. Treat as flag unset rather than panicking.
+        let data = vec![0u8; PROGRAM_CONFIG_FLAGS_OFFSET + 4];
+        assert!(!is_prorated_service_enabled(&data));
+    }
+
+    #[test]
+    fn prorated_enabled_empty_buffer_returns_false() {
+        assert!(!is_prorated_service_enabled(&[]));
+    }
 }

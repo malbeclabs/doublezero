@@ -56,6 +56,7 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	var parsedAmount uint64
 	var effectivePrice uint64
 	var balanceBeforePay uint64
+	var balanceAfterPay uint64
 	seatPaid := false
 
 	t.Cleanup(func() {
@@ -156,7 +157,6 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		// Poll until the balance reflects the debit. FeedSeatPay returns
 		// after the tx is submitted, and the RPC balance view can lag the
 		// confirmed state briefly, so a one-shot read races.
-		var lastBalance uint64
 		var lastDebit uint64
 		require.Eventually(t, func() bool {
 			bal, err := client.GetUSDCBalance(ctx)
@@ -164,11 +164,11 @@ func TestQA_MulticastSettlement(t *testing.T) {
 				log.Info("USDC balance poll error", "error", err)
 				return false
 			}
-			lastBalance = bal
+			balanceAfterPay = bal
 			lastDebit = balanceBeforePay - bal
 			return lastDebit == parsedAmount
 		}, balanceSettleTimeout, 5*time.Second, "USDC balance should decrease by the paid amount")
-		log.Info("USDC balance after pay", "balance", lastBalance, "debit", lastDebit, "expected_debit", parsedAmount)
+		log.Info("USDC balance after pay", "balance", balanceAfterPay, "debit", lastDebit, "expected_debit", parsedAmount)
 	}) {
 		return
 	}
@@ -216,23 +216,76 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	t.Run("validate_balance_after_withdraw", func(t *testing.T) {
-		expectedBalance := balanceBeforePay - effectivePrice
-		var lastBalance uint64
-		require.Eventually(t, func() bool {
-			bal, err := client.GetUSDCBalance(ctx)
-			if err != nil {
-				log.Info("USDC balance poll error", "error", err)
-				return false
-			}
-			lastBalance = bal
-			return bal == expectedBalance
-		}, balanceSettleTimeout, 5*time.Second,
-			"USDC balance should equal before_pay minus the effective seat price")
+		// Read onchain whether the shred-subscription program has prorated
+		// service enabled. This lets the test self-adapt across environments
+		// (testnet has it on, mainnet does not) without needing a CI flag.
+		proratingEnabled, err := client.IsSeatProratingEnabled(ctx)
+		require.NoError(t, err, "failed to read prorating flag from program config")
+
+		var balanceAfterWithdraw uint64
+		if proratingEnabled {
+			// Prorating refunds the unused portion of the epoch to the wallet.
+			// Poll until the refund is reflected (balance strictly greater
+			// than after-pay).
+			require.Eventually(t, func() bool {
+				bal, err := client.GetUSDCBalance(ctx)
+				if err != nil {
+					log.Info("USDC balance poll error", "error", err)
+					return false
+				}
+				balanceAfterWithdraw = bal
+				return bal > balanceAfterPay
+			}, balanceSettleTimeout, 5*time.Second,
+				"USDC balance should increase to reflect the prorated refund")
+		} else {
+			expectedBalance := balanceBeforePay - effectivePrice
+			require.Eventually(t, func() bool {
+				bal, err := client.GetUSDCBalance(ctx)
+				if err != nil {
+					log.Info("USDC balance poll error", "error", err)
+					return false
+				}
+				balanceAfterWithdraw = bal
+				return bal == expectedBalance
+			}, balanceSettleTimeout, 5*time.Second,
+				"USDC balance should equal before_pay minus the effective seat price")
+		}
+
+		refund := balanceAfterWithdraw - balanceAfterPay
+		retained := balanceBeforePay - balanceAfterWithdraw
+
 		log.Info("USDC balance after withdraw",
-			"balance", lastBalance,
-			"expected", expectedBalance,
+			"balance", balanceAfterWithdraw,
 			"before_pay", balanceBeforePay,
+			"after_pay", balanceAfterPay,
 			"effective_price", effectivePrice,
+			"refund", refund,
+			"retained", retained,
+			"prorating_enabled", proratingEnabled,
 		)
+
+		// Accounting invariant: regardless of prorating, the sum of what was
+		// refunded to the wallet and what the program retained must equal the
+		// effective price debited at pay time.
+		require.Equal(t, effectivePrice, refund+retained,
+			"refund + retained must equal the effective price paid")
+
+		if !proratingEnabled {
+			return
+		}
+
+		// With prorating enabled we avoid replicating the onchain formula
+		// against client-side RPC state (epoch schedule + current epoch reads
+		// are fragile on DZ ledger). Instead assert the qualitative invariants
+		// that distinguish a real partial refund from a regression:
+		//   - refund > 0 (prorating actually happened)
+		//   - retained > 0 (the seat was not free for the used portion)
+		//   - refund < effective_price (refund is a strict partial)
+		require.Greater(t, refund, uint64(0),
+			"prorating: refund should be strictly greater than zero")
+		require.Greater(t, retained, uint64(0),
+			"prorating: retained should be strictly greater than zero")
+		require.Less(t, refund, effectivePrice,
+			"prorating: refund should be strictly less than the effective price")
 	})
 }

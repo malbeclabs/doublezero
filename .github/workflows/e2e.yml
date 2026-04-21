@@ -181,7 +181,7 @@ jobs:
           pull_with_retry ${{ env.DZ_IMAGE_REPO }}/geoprobe:${{ env.DZ_IMAGE_TAG }}
           pull_with_retry ${{ env.DZ_IMAGE_REPO }}/sentinel:${{ env.DZ_IMAGE_TAG }}
           pull_with_retry ${{ env.DZ_IMAGE_REPO }}/validator-metadata-service-mock:${{ env.DZ_IMAGE_TAG }}
-          pull_with_retry quay.io/prometheus/prometheus:v2.54.1
+          pull_with_retry ghcr.io/malbeclabs/dz-e2e/prometheus:v2.54.1
           pull_with_retry public.ecr.aws/influxdb/influxdb:1.8
       - name: test
         env:

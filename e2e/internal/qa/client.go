@@ -81,13 +81,19 @@ func FindMulticastStatus(statuses []*pb.Status) *pb.Status {
 }
 
 type Device struct {
-	PubKey       string
-	Code         string
-	ExchangeCode string
-	MaxUsers     int
-	UsersCount   int
-	Status       serviceability.DeviceStatus
-	DeviceType   serviceability.DeviceDeviceType
+	PubKey                    string
+	Code                      string
+	ExchangeCode              string
+	MaxUsers                  int
+	UsersCount                int
+	MaxUnicastUsers           int
+	UnicastUsersCount         int
+	MaxMulticastPublishers    int
+	MulticastPublishersCount  int
+	MaxMulticastSubscribers   int
+	MulticastSubscribersCount int
+	Status                    serviceability.DeviceStatus
+	DeviceType                serviceability.DeviceDeviceType
 }
 
 type Client struct {

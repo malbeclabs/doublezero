@@ -53,9 +53,9 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 2, "At least 2 clients are required for connectivity testing")
 
-	// Filter devices to only include those with sufficient capacity and skip test devices
+	// Filter devices to only include those with sufficient unicast capacity and skip test devices
 	// When using a QA identity (--skip-capacity-check), all devices are included regardless of capacity
-	devices := test.ValidDevices(2, *skipCapacityCheckFlag)
+	devices := test.ValidDevices(qa.DeviceUserTypeUnicast, 2, *skipCapacityCheckFlag)
 	if len(devices) == 0 {
 		t.Skip("No valid devices found with sufficient capacity")
 	}

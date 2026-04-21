@@ -14,8 +14,8 @@ use doublezero_serviceability::{
         interface::{InterfaceType, LoopbackType},
         link::Link,
         multicastgroup::MulticastGroup,
-        resource_extension::ResourceExtensionOwned,
-        user::User,
+        resource_extension::{Allocator, ResourceExtensionOwned},
+        user::{User, UserType},
     },
 };
 use solana_sdk::pubkey::Pubkey;
@@ -63,6 +63,7 @@ pub struct VerifyResourceResult {
     pub segment_routing_ids_checked: usize,
     pub link_ids_checked: usize,
     pub multicast_group_block_checked: usize,
+    pub multicast_publisher_block_checked: usize,
 }
 
 impl VerifyResourceResult {
@@ -114,6 +115,11 @@ impl VerifyResourceCliCommand {
             out,
             "  MulticastGroupBlock: {}",
             result.multicast_group_block_checked
+        )?;
+        writeln!(
+            out,
+            "  MulticastPublisherBlock: {}",
+            result.multicast_publisher_block_checked
         )?;
         writeln!(out)?;
 
@@ -551,6 +557,9 @@ fn verify_resources<C: CliCommand>(client: &C) -> eyre::Result<VerifyResourceRes
         &mut result,
     );
 
+    // Verify MulticastPublisherBlock
+    verify_multicast_publisher_block(&program_id, &users, &resource_extensions, &mut result);
+
     Ok(result)
 }
 
@@ -928,6 +937,61 @@ fn verify_multicast_group_block(
     check_discrepancies(resource_type, &allocated, &in_use, result);
 }
 
+fn verify_multicast_publisher_block(
+    program_id: &Pubkey,
+    users: &HashMap<Pubkey, User>,
+    resource_extensions: &HashMap<Pubkey, ResourceExtensionOwned>,
+    result: &mut VerifyResourceResult,
+) {
+    let resource_type = ResourceType::MulticastPublisherBlock;
+    let (pda, _, _) = get_resource_extension_pda(program_id, resource_type);
+
+    let Some(extension) = resource_extensions.get(&pda) else {
+        result
+            .discrepancies
+            .push(ResourceDiscrepancy::ExtensionNotFound { resource_type });
+        return;
+    };
+
+    // Pull the base network so we can ignore legacy dz_ips that pre-date this
+    // extension and fall outside the block's range.
+    let base_net = match &extension.allocator {
+        Allocator::Ip(ip_alloc) => ip_alloc.base_net,
+        Allocator::Id(_) => return,
+    };
+
+    let allocated: HashSet<IdOrIp> = extension.iter_allocated().into_iter().collect();
+
+    let mut in_use: HashMap<IdOrIp, (Pubkey, String)> = HashMap::new();
+    for (user_pk, user) in users {
+        if user.user_type != UserType::Multicast || user.publishers.is_empty() {
+            continue;
+        }
+
+        let dz_ip = user.dz_ip;
+        if dz_ip.is_unspecified() || dz_ip == user.client_ip {
+            continue;
+        }
+
+        if !base_net.contains(dz_ip) {
+            continue;
+        }
+
+        let ip_net = NetworkV4::new(dz_ip, 32).unwrap();
+        insert_usage(
+            &mut in_use,
+            resource_type,
+            IdOrIp::Ip(ip_net),
+            *user_pk,
+            "User".to_string(),
+            result,
+        );
+        result.multicast_publisher_block_checked += 1;
+    }
+
+    check_discrepancies(resource_type, &allocated, &in_use, result);
+}
+
 /// Insert a resource usage into the in_use map, detecting duplicates
 fn insert_usage(
     in_use: &mut HashMap<IdOrIp, (Pubkey, String)>,
@@ -1076,6 +1140,12 @@ mod tests {
             "239.0.0.0/24",
             vec![0],
         );
+        let multicast_publisher_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::MulticastPublisherBlock,
+            "148.51.120.0/24",
+            vec![0],
+        );
         let segment_routing = create_resource_extension_id(
             &program_id,
             ResourceType::SegmentRoutingIds,
@@ -1097,6 +1167,10 @@ mod tests {
         accounts.insert(
             Box::new(multicast_block.0),
             Box::new(AccountData::ResourceExtension(multicast_block.1)),
+        );
+        accounts.insert(
+            Box::new(multicast_publisher_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_publisher_block.1)),
         );
         accounts.insert(
             Box::new(segment_routing.0),
@@ -1152,6 +1226,12 @@ mod tests {
             "239.0.0.0/24",
             vec![0],
         );
+        let multicast_publisher_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::MulticastPublisherBlock,
+            "148.51.120.0/24",
+            vec![0],
+        );
         let segment_routing = create_resource_extension_id(
             &program_id,
             ResourceType::SegmentRoutingIds,
@@ -1170,6 +1250,10 @@ mod tests {
         accounts.insert(
             Box::new(multicast_block.0),
             Box::new(AccountData::ResourceExtension(multicast_block.1)),
+        );
+        accounts.insert(
+            Box::new(multicast_publisher_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_publisher_block.1)),
         );
         accounts.insert(
             Box::new(segment_routing.0),
@@ -1225,8 +1309,9 @@ mod tests {
             .filter(|d| matches!(d, ResourceDiscrepancy::ExtensionNotFound { .. }))
             .collect();
 
-        // Should find missing: UserTunnelBlock, DeviceTunnelBlock, MulticastGroupBlock, SegmentRoutingIds, LinkIds
-        assert!(extensions_not_found.len() >= 5);
+        // Should find missing: UserTunnelBlock, DeviceTunnelBlock, MulticastGroupBlock,
+        // MulticastPublisherBlock, SegmentRoutingIds, LinkIds
+        assert!(extensions_not_found.len() >= 6);
     }
 
     #[test]
@@ -1252,6 +1337,12 @@ mod tests {
             "239.0.0.0/24",
             vec![0],
         );
+        let multicast_publisher_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::MulticastPublisherBlock,
+            "148.51.120.0/24",
+            vec![0],
+        );
         let segment_routing = create_resource_extension_id(
             &program_id,
             ResourceType::SegmentRoutingIds,
@@ -1273,6 +1364,10 @@ mod tests {
         accounts.insert(
             Box::new(multicast_block.0),
             Box::new(AccountData::ResourceExtension(multicast_block.1)),
+        );
+        accounts.insert(
+            Box::new(multicast_publisher_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_publisher_block.1)),
         );
         accounts.insert(
             Box::new(segment_routing.0),
@@ -1327,6 +1422,12 @@ mod tests {
             "239.0.0.0/24",
             vec![0],
         );
+        let multicast_publisher_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::MulticastPublisherBlock,
+            "148.51.120.0/24",
+            vec![0],
+        );
         let segment_routing = create_resource_extension_id(
             &program_id,
             ResourceType::SegmentRoutingIds,
@@ -1346,6 +1447,10 @@ mod tests {
         accounts.insert(
             Box::new(multicast_block.0),
             Box::new(AccountData::ResourceExtension(multicast_block.1)),
+        );
+        accounts.insert(
+            Box::new(multicast_publisher_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_publisher_block.1)),
         );
         accounts.insert(
             Box::new(segment_routing.0),
@@ -1374,5 +1479,201 @@ mod tests {
         assert!(output_str.contains("Allocated but not used"));
         assert!(output_str.contains("LinkIds = 0"));
         assert!(output_str.contains("LinkIds = 1"));
+    }
+
+    fn make_publisher_user(
+        device_pk: Pubkey,
+        client_ip: [u8; 4],
+        dz_ip: [u8; 4],
+        publishers: Vec<Pubkey>,
+    ) -> User {
+        use doublezero_serviceability::state::user::{UserCYOA, UserStatus, UserType};
+        User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 255,
+            user_type: UserType::Multicast,
+            tenant_pk: Pubkey::default(),
+            device_pk,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: client_ip.into(),
+            dz_ip: dz_ip.into(),
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            status: UserStatus::Activated,
+            publishers,
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+        }
+    }
+
+    fn insert_global_ext_minimal(
+        accounts: &mut HashMap<Box<Pubkey>, Box<AccountData>>,
+        program_id: &Pubkey,
+    ) {
+        // Insert every global extension except MulticastPublisherBlock so tests
+        // of that verifier don't get noise from other ExtensionNotFound entries.
+        let user_tunnel_block = create_resource_extension_ip(
+            program_id,
+            ResourceType::UserTunnelBlock,
+            "10.0.0.0/24",
+            vec![0],
+        );
+        let device_tunnel_block = create_resource_extension_ip(
+            program_id,
+            ResourceType::DeviceTunnelBlock,
+            "172.16.0.0/24",
+            vec![0],
+        );
+        let multicast_block = create_resource_extension_ip(
+            program_id,
+            ResourceType::MulticastGroupBlock,
+            "239.0.0.0/24",
+            vec![0],
+        );
+        let segment_routing = create_resource_extension_id(
+            program_id,
+            ResourceType::SegmentRoutingIds,
+            (0, 100),
+            vec![0; 13],
+        );
+        let link_ids =
+            create_resource_extension_id(program_id, ResourceType::LinkIds, (0, 100), vec![0; 13]);
+
+        accounts.insert(
+            Box::new(user_tunnel_block.0),
+            Box::new(AccountData::ResourceExtension(user_tunnel_block.1)),
+        );
+        accounts.insert(
+            Box::new(device_tunnel_block.0),
+            Box::new(AccountData::ResourceExtension(device_tunnel_block.1)),
+        );
+        accounts.insert(
+            Box::new(multicast_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_block.1)),
+        );
+        accounts.insert(
+            Box::new(segment_routing.0),
+            Box::new(AccountData::ResourceExtension(segment_routing.1)),
+        );
+        accounts.insert(
+            Box::new(link_ids.0),
+            Box::new(AccountData::ResourceExtension(link_ids.1)),
+        );
+    }
+
+    #[test]
+    fn test_verify_multicast_publisher_block_happy_path() {
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        // MulticastPublisherBlock with 148.51.120.5 allocated (bit 5 of byte 0).
+        let multicast_publisher_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::MulticastPublisherBlock,
+            "148.51.120.0/24",
+            vec![0x20],
+        );
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_global_ext_minimal(&mut accounts, &program_id);
+        accounts.insert(
+            Box::new(multicast_publisher_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_publisher_block.1)),
+        );
+
+        // A publisher user holding the allocated dz_ip.
+        let publisher = make_publisher_user(
+            Pubkey::new_unique(),
+            [1, 2, 3, 4],
+            [148, 51, 120, 5],
+            vec![Pubkey::new_unique()],
+        );
+        let user_pk = Pubkey::new_unique();
+        accounts.insert(Box::new(user_pk), Box::new(AccountData::User(publisher)));
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+        assert!(
+            result.is_ok(),
+            "expected no discrepancies, got {:?}",
+            result.discrepancies
+        );
+        assert_eq!(result.multicast_publisher_block_checked, 1);
+    }
+
+    #[test]
+    fn test_verify_multicast_publisher_ignores_out_of_range_dz_ip() {
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        // Empty MulticastPublisherBlock.
+        let multicast_publisher_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::MulticastPublisherBlock,
+            "148.51.120.0/24",
+            vec![0],
+        );
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_global_ext_minimal(&mut accounts, &program_id);
+        accounts.insert(
+            Box::new(multicast_publisher_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_publisher_block.1)),
+        );
+
+        // Legacy publisher with a dz_ip outside the block's range — must be ignored.
+        let legacy_publisher = make_publisher_user(
+            Pubkey::new_unique(),
+            [1, 2, 3, 4],
+            [10, 0, 0, 5],
+            vec![Pubkey::new_unique()],
+        );
+        let legacy_pk = Pubkey::new_unique();
+        accounts.insert(
+            Box::new(legacy_pk),
+            Box::new(AccountData::User(legacy_publisher)),
+        );
+
+        // Non-publisher Multicast user with a dz_ip in range — also must be ignored
+        // (their dz_ip doesn't come from this block).
+        let non_publisher = make_publisher_user(
+            Pubkey::new_unique(),
+            [1, 2, 3, 5],
+            [148, 51, 120, 9],
+            vec![],
+        );
+        let non_publisher_pk = Pubkey::new_unique();
+        accounts.insert(
+            Box::new(non_publisher_pk),
+            Box::new(AccountData::User(non_publisher)),
+        );
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+        assert!(
+            result.is_ok(),
+            "expected no discrepancies, got {:?}",
+            result.discrepancies
+        );
+        assert_eq!(result.multicast_publisher_block_checked, 0);
     }
 }

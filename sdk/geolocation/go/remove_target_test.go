@@ -107,3 +107,20 @@ func TestBuildRemoveTargetInstruction_ZeroProbePK(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "probe public key is required")
 }
+
+func TestBuildRemoveTargetInstruction_InboundZeroTargetPK(t *testing.T) {
+	t.Parallel()
+
+	programID := solana.NewWallet().PublicKey()
+	signerPK := solana.NewWallet().PublicKey()
+
+	_, err := geolocation.BuildRemoveTargetInstruction(programID, signerPK, geolocation.RemoveTargetInstructionConfig{
+		Code:                      "test-user",
+		ProbePK:                   solana.NewWallet().PublicKey(),
+		TargetType:                geolocation.GeoLocationTargetTypeInbound,
+		TargetPK:                  solana.PublicKey{},
+		ServiceabilityGlobalState: solana.NewWallet().PublicKey(),
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "target public key is required for inbound target type")
+}

@@ -22,6 +22,7 @@ type executor struct {
 	signer                *solana.PrivateKey
 	programID             solana.PublicKey
 	waitForVisibleTimeout time.Duration
+	finalizationTimeout   time.Duration
 }
 
 type ExecutorOption func(*executor)
@@ -32,6 +33,15 @@ func WithWaitForVisibleTimeout(timeout time.Duration) ExecutorOption {
 	}
 }
 
+// WithFinalizationTimeout bounds how long ExecuteTransaction will poll for the
+// transaction to reach Finalized commitment once it is visible on the cluster.
+// Callers can also cancel the context to cut the wait short.
+func WithFinalizationTimeout(timeout time.Duration) ExecutorOption {
+	return func(e *executor) {
+		e.finalizationTimeout = timeout
+	}
+}
+
 func NewExecutor(log *slog.Logger, rpc ExecutorRPCClient, signer *solana.PrivateKey, programID solana.PublicKey, opts ...ExecutorOption) *executor {
 	e := &executor{
 		log:                   log,
@@ -39,6 +49,7 @@ func NewExecutor(log *slog.Logger, rpc ExecutorRPCClient, signer *solana.Private
 		signer:                signer,
 		programID:             programID,
 		waitForVisibleTimeout: 3 * time.Second,
+		finalizationTimeout:   120 * time.Second,
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -137,8 +148,9 @@ func (e *executor) waitForSignatureVisible(ctx context.Context, sig solana.Signa
 }
 
 func (e *executor) waitForTransactionFinalized(ctx context.Context, sig solana.Signature) (*solanarpc.GetTransactionResult, error) {
-	e.log.Debug("waiting for transaction to be finalized", "sig", sig)
+	e.log.Debug("waiting for transaction to be finalized", "sig", sig, "timeout", e.finalizationTimeout)
 	start := time.Now()
+	deadline := start.Add(e.finalizationTimeout)
 	for {
 		statusResp, err := e.rpc.GetSignatureStatuses(ctx, true, sig)
 		if err != nil {
@@ -151,6 +163,9 @@ func (e *executor) waitForTransactionFinalized(ctx context.Context, sig solana.S
 		if status != nil && status.ConfirmationStatus == solanarpc.ConfirmationStatusFinalized {
 			e.log.Debug("transaction finalized", "sig", sig, "duration", time.Since(start))
 			break
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("transaction not finalized within %s", e.finalizationTimeout)
 		}
 		select {
 		case <-ctx.Done():

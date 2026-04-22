@@ -32,6 +32,12 @@ func (c *RemoveTargetInstructionConfig) Validate() error {
 	if c.TargetType > GeoLocationTargetTypeOutboundIcmp {
 		return fmt.Errorf("unknown target type: %d", c.TargetType)
 	}
+	// Inbound targets are matched onchain by target_pk alone, so a zero target_pk
+	// would always fail with TargetNotFound. Match the add-target precondition
+	// and reject it up front.
+	if c.TargetType == GeoLocationTargetTypeInbound && c.TargetPK.IsZero() {
+		return fmt.Errorf("target public key is required for inbound target type")
+	}
 	return nil
 }
 

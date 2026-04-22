@@ -29,7 +29,7 @@ func (c *AddTargetInstructionConfig) Validate() error {
 
 	switch c.TargetType {
 	case GeoLocationTargetTypeOutbound, GeoLocationTargetTypeOutboundIcmp:
-		if err := validateNotPrivateIP(c.IPAddress); err != nil {
+		if err := validatePublicIP(c.IPAddress); err != nil {
 			return err
 		}
 	case GeoLocationTargetTypeInbound:
@@ -40,31 +40,6 @@ func (c *AddTargetInstructionConfig) Validate() error {
 		return fmt.Errorf("unknown target type: %d", c.TargetType)
 	}
 
-	return nil
-}
-
-// validateNotPrivateIP checks that an IPv4 address is not in a private/reserved range.
-func validateNotPrivateIP(ip [4]uint8) error {
-	// 10.0.0.0/8
-	if ip[0] == 10 {
-		return fmt.Errorf("IP address %d.%d.%d.%d is in private range 10.0.0.0/8", ip[0], ip[1], ip[2], ip[3])
-	}
-	// 172.16.0.0/12
-	if ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31 {
-		return fmt.Errorf("IP address %d.%d.%d.%d is in private range 172.16.0.0/12", ip[0], ip[1], ip[2], ip[3])
-	}
-	// 192.168.0.0/16
-	if ip[0] == 192 && ip[1] == 168 {
-		return fmt.Errorf("IP address %d.%d.%d.%d is in private range 192.168.0.0/16", ip[0], ip[1], ip[2], ip[3])
-	}
-	// 127.0.0.0/8
-	if ip[0] == 127 {
-		return fmt.Errorf("IP address %d.%d.%d.%d is in loopback range 127.0.0.0/8", ip[0], ip[1], ip[2], ip[3])
-	}
-	// 0.0.0.0
-	if ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0 {
-		return fmt.Errorf("IP address 0.0.0.0 is not allowed")
-	}
 	return nil
 }
 

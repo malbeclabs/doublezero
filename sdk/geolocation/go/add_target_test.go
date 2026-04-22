@@ -117,7 +117,72 @@ func TestBuildAddTargetInstruction_OutboundIcmp(t *testing.T) {
 	require.Equal(t, uint8(2), data[1], "target type should be OutboundIcmp (2)")
 }
 
-func TestBuildAddTargetInstruction_PrivateIP(t *testing.T) {
+func TestBuildAddTargetInstruction_NonPublicIP(t *testing.T) {
+	t.Parallel()
+
+	programID := solana.NewWallet().PublicKey()
+	signerPK := solana.NewWallet().PublicKey()
+	probePK := solana.NewWallet().PublicKey()
+
+	// Cases mirror doublezero-geolocation/src/validation.rs tests. Each IP must be
+	// rejected for both Outbound and OutboundIcmp target types.
+	tests := []struct {
+		name string
+		ip   [4]uint8
+	}{
+		{"unspecified", [4]uint8{0, 0, 0, 0}},
+		{"this-network-0.x", [4]uint8{0, 1, 2, 3}},
+		{"loopback", [4]uint8{127, 0, 0, 1}},
+		{"private-10/8", [4]uint8{10, 0, 0, 1}},
+		{"private-172.16/12-low", [4]uint8{172, 16, 0, 1}},
+		{"private-172.16/12-high", [4]uint8{172, 31, 255, 254}},
+		{"private-192.168/16", [4]uint8{192, 168, 1, 1}},
+		{"cgnat-low", [4]uint8{100, 64, 0, 1}},
+		{"cgnat-high", [4]uint8{100, 127, 255, 254}},
+		{"link-local", [4]uint8{169, 254, 1, 1}},
+		{"protocol-assignments", [4]uint8{192, 0, 0, 1}},
+		{"test-net-1", [4]uint8{192, 0, 2, 1}},
+		{"benchmarking-low", [4]uint8{198, 18, 0, 1}},
+		{"benchmarking-high", [4]uint8{198, 19, 255, 254}},
+		{"test-net-2", [4]uint8{198, 51, 100, 1}},
+		{"test-net-3", [4]uint8{203, 0, 113, 1}},
+		{"multicast-low", [4]uint8{224, 0, 0, 1}},
+		{"multicast-high", [4]uint8{239, 255, 255, 255}},
+		{"reserved", [4]uint8{240, 0, 0, 1}},
+		{"broadcast", [4]uint8{255, 255, 255, 255}},
+	}
+
+	targetTypes := []struct {
+		name string
+		t    geolocation.GeoLocationTargetType
+	}{
+		{"outbound", geolocation.GeoLocationTargetTypeOutbound},
+		{"outbound-icmp", geolocation.GeoLocationTargetTypeOutboundIcmp},
+	}
+
+	for _, tt := range tests {
+		for _, ttype := range targetTypes {
+			t.Run(tt.name+"/"+ttype.name, func(t *testing.T) {
+				t.Parallel()
+
+				_, err := geolocation.BuildAddTargetInstruction(programID, signerPK, geolocation.AddTargetInstructionConfig{
+					Code:               "test-user",
+					ProbePK:            probePK,
+					TargetType:         ttype.t,
+					IPAddress:          tt.ip,
+					LocationOffsetPort: 443,
+					TargetPK:           solana.NewWallet().PublicKey(),
+				})
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "not publicly routable")
+			})
+		}
+	}
+}
+
+// TestBuildAddTargetInstruction_PublicIPEdgeCases covers addresses adjacent to
+// rejected ranges to confirm they still pass validation.
+func TestBuildAddTargetInstruction_PublicIPEdgeCases(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
@@ -128,11 +193,12 @@ func TestBuildAddTargetInstruction_PrivateIP(t *testing.T) {
 		name string
 		ip   [4]uint8
 	}{
-		{"10.x.x.x", [4]uint8{10, 0, 0, 1}},
-		{"172.16.x.x", [4]uint8{172, 16, 0, 1}},
-		{"192.168.x.x", [4]uint8{192, 168, 1, 1}},
-		{"127.0.0.1", [4]uint8{127, 0, 0, 1}},
-		{"0.0.0.0", [4]uint8{0, 0, 0, 0}},
+		{"public-8.8.8.8", [4]uint8{8, 8, 8, 8}},
+		{"public-1.1.1.1", [4]uint8{1, 1, 1, 1}},
+		{"just-below-cgnat", [4]uint8{100, 63, 255, 255}},
+		{"just-above-cgnat", [4]uint8{100, 128, 0, 0}},
+		{"just-below-benchmarking", [4]uint8{198, 17, 255, 255}},
+		{"just-above-benchmarking", [4]uint8{198, 20, 0, 0}},
 	}
 
 	for _, tt := range tests {
@@ -147,7 +213,7 @@ func TestBuildAddTargetInstruction_PrivateIP(t *testing.T) {
 				LocationOffsetPort: 443,
 				TargetPK:           solana.NewWallet().PublicKey(),
 			})
-			require.Error(t, err)
+			require.NoError(t, err)
 		})
 	}
 }

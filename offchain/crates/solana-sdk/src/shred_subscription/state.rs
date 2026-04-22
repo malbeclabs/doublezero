@@ -13,6 +13,7 @@ pub const PAYMENT_ESCROW_SEED_PREFIX: &[u8] = b"payment_escrow";
 pub const VALIDATOR_CLIENT_REWARDS_SEED_PREFIX: &[u8] = b"validator_client_rewards";
 pub const INSTANT_ALLOCATION_REQUEST_SEED_PREFIX: &[u8] = b"instant_seat_allocation_request";
 pub const WITHDRAW_SEAT_REQUEST_SEED_PREFIX: &[u8] = b"withdraw_seat_request";
+pub const SHRED_DISTRIBUTION_SEED_PREFIX: &[u8] = b"shred_distribution";
 
 pub fn find_program_config_address() -> (Pubkey, u8) {
     Pubkey::find_program_address(
@@ -109,6 +110,16 @@ pub fn find_payment_escrow_address(
     )
 }
 
+pub fn find_shred_distribution_address(subscription_epoch: u64) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            SHRED_DISTRIBUTION_SEED_PREFIX,
+            &subscription_epoch.to_le_bytes(),
+        ],
+        &crate::shred_subscription::ID,
+    )
+}
+
 // ---------------------------------------------------------------------------
 // ProgramConfig raw-byte parsing.
 //
@@ -160,6 +171,8 @@ pub fn is_prorated_service_enabled(data: &[u8]) -> bool {
 //   [112..144) funding_authority_key: Pubkey
 //   [144..148) escrow_count: u32
 //   [148..150) override_usdc_price_dollars: u16
+//   [152..160) subscription_start_slot: u64
+//   [160..162) last_usdc_price_dollars: u16
 // ---------------------------------------------------------------------------
 
 pub const CLIENT_SEAT_DISCRIMINATOR: Discriminator<DISCRIMINATOR_LEN> =
@@ -173,6 +186,7 @@ pub const CLIENT_SEAT_ACTIVE_EPOCH_OFFSET: usize = DISCRIMINATOR_LEN + 56;
 pub const CLIENT_SEAT_FLAGS_OFFSET: usize = DISCRIMINATOR_LEN + 40;
 pub const CLIENT_SEAT_FUNDING_INDEX_OFFSET: usize = DISCRIMINATOR_LEN + 64;
 pub const CLIENT_SEAT_OVERRIDE_USDC_PRICE_OFFSET: usize = DISCRIMINATOR_LEN + 140;
+pub const CLIENT_SEAT_LAST_USDC_PRICE_OFFSET: usize = DISCRIMINATOR_LEN + 152;
 
 /// Parse a `ClientSeat` from raw account data. Returns
 /// `(device_key, client_ip, tenure_epochs, funded_epoch, active_epoch)`.
@@ -212,6 +226,22 @@ pub fn parse_client_seat(data: &[u8]) -> Option<(Pubkey, Ipv4Addr, u16, u64, u64
         funded_epoch,
         active_epoch,
     ))
+}
+
+/// Returns the seat's `last_usdc_price_dollars` (whole USDC dollars charged
+/// at the most recent allocation). Returns `None` when the account data is
+/// too short (e.g. a program predating prorated-service fields). A returned
+/// value of `Some(0)` means the field exists but is zero — a "pre-upgrade"
+/// seat that has not yet been repopulated by a settlement cycle.
+pub fn parse_client_seat_last_usdc_price_dollars(data: &[u8]) -> Option<u16> {
+    if data.len() < CLIENT_SEAT_LAST_USDC_PRICE_OFFSET + 2 {
+        return None;
+    }
+    let bytes = <[u8; 2]>::try_from(
+        &data[CLIENT_SEAT_LAST_USDC_PRICE_OFFSET..CLIENT_SEAT_LAST_USDC_PRICE_OFFSET + 2],
+    )
+    .ok()?;
+    Some(u16::from_le_bytes(bytes))
 }
 
 const CLIENT_SEAT_FLAG_HAS_PRICE_OVERRIDE_BIT: u64 = 1 << 0;
@@ -514,5 +544,30 @@ mod tests {
     #[test]
     fn prorated_enabled_empty_buffer_returns_false() {
         assert!(!is_prorated_service_enabled(&[]));
+    }
+
+    fn client_seat_data_with_last_price(price_dollars: u16) -> Vec<u8> {
+        let mut data = vec![0u8; CLIENT_SEAT_LAST_USDC_PRICE_OFFSET + 2];
+        data[CLIENT_SEAT_LAST_USDC_PRICE_OFFSET..CLIENT_SEAT_LAST_USDC_PRICE_OFFSET + 2]
+            .copy_from_slice(&price_dollars.to_le_bytes());
+        data
+    }
+
+    #[test]
+    fn last_usdc_price_zero() {
+        let data = client_seat_data_with_last_price(0);
+        assert_eq!(parse_client_seat_last_usdc_price_dollars(&data), Some(0));
+    }
+
+    #[test]
+    fn last_usdc_price_nonzero() {
+        let data = client_seat_data_with_last_price(42);
+        assert_eq!(parse_client_seat_last_usdc_price_dollars(&data), Some(42));
+    }
+
+    #[test]
+    fn last_usdc_price_short_buffer_returns_none() {
+        let data = vec![0u8; CLIENT_SEAT_LAST_USDC_PRICE_OFFSET];
+        assert_eq!(parse_client_seat_last_usdc_price_dollars(&data), None);
     }
 }

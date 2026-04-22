@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- add `RequestProratedInstantSeatWithdrawal` instruction variant and accounts builder
+- add `find_shred_distribution_address` PDA helper and `parse_client_seat_last_usdc_price_dollars` parser for prorated withdrawal integration
 - add `is_prorated_service_enabled` helper and `ProgramConfig` flag/offset constants for raw-byte parsing
 - add `RequestInstantSeatWithdrawal` instruction builder and `withdraw_seat_request` PDA helper
 - add reservation module: PDA helpers, instruction builders, and account parsers for the seat reservation program

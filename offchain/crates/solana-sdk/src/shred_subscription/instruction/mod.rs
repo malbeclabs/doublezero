@@ -19,6 +19,10 @@ pub enum ShredSubscriptionInstructionData {
     RequestInstantSeatAllocation,
     /// Request instant seat withdrawal.
     RequestInstantSeatWithdrawal,
+    /// Request instant seat withdrawal with a prorated USDC refund based on
+    /// the remaining slots in the epoch. Superset of
+    /// `RequestInstantSeatWithdrawal` (more accounts).
+    RequestProratedInstantSeatWithdrawal,
     /// Set the rewards proportion for a validator client.
     SetValidatorClientRewardsProportion(u16),
     /// Validates the provided CLI version against the onchain minimum.
@@ -38,6 +42,8 @@ impl ShredSubscriptionInstructionData {
         Discriminator::new_sha2(b"dz::ix::request_instant_seat_allocation");
     pub const REQUEST_INSTANT_SEAT_WITHDRAWAL: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::request_instant_seat_withdrawal");
+    pub const REQUEST_PRORATED_INSTANT_SEAT_WITHDRAWAL: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::request_prorated_instant_seat_withdrawal");
     pub const SET_VALIDATOR_CLIENT_REWARDS_PROPORTION: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::set_validator_client_rewards_proportion");
     pub const CHECK_CLI_VERSION: Discriminator<DISCRIMINATOR_LEN> =
@@ -62,6 +68,9 @@ impl BorshSerialize for ShredSubscriptionInstructionData {
             }
             Self::RequestInstantSeatWithdrawal => {
                 Self::REQUEST_INSTANT_SEAT_WITHDRAWAL.serialize(writer)
+            }
+            Self::RequestProratedInstantSeatWithdrawal => {
+                Self::REQUEST_PRORATED_INSTANT_SEAT_WITHDRAWAL.serialize(writer)
             }
             Self::SetValidatorClientRewardsProportion(proportion) => {
                 Self::SET_VALIDATOR_CLIENT_REWARDS_PROPORTION.serialize(writer)?;
@@ -96,6 +105,9 @@ impl BorshDeserialize for ShredSubscriptionInstructionData {
             }
             Self::REQUEST_INSTANT_SEAT_ALLOCATION => Ok(Self::RequestInstantSeatAllocation),
             Self::REQUEST_INSTANT_SEAT_WITHDRAWAL => Ok(Self::RequestInstantSeatWithdrawal),
+            Self::REQUEST_PRORATED_INSTANT_SEAT_WITHDRAWAL => {
+                Ok(Self::RequestProratedInstantSeatWithdrawal)
+            }
             Self::SET_VALIDATOR_CLIENT_REWARDS_PROPORTION => {
                 let proportion = u16::deserialize_reader(reader)?;
                 Ok(Self::SetValidatorClientRewardsProportion(proportion))

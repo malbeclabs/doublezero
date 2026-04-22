@@ -9,7 +9,10 @@ use doublezero_solana_sdk::{
         ID,
         instruction::{
             ShredSubscriptionInstructionData,
-            account::{ClosePaymentEscrowAccounts, RequestInstantSeatWithdrawalAccounts},
+            account::{
+                ClosePaymentEscrowAccounts, RequestInstantSeatWithdrawalAccounts,
+                RequestProratedInstantSeatWithdrawalAccounts,
+            },
         },
         state,
     },
@@ -76,14 +79,19 @@ impl WithdrawCommand {
         let client_ip_bits = u32::from(self.client_ip);
         let (client_seat_key, _) = state::find_client_seat_address(&device, client_ip_bits);
         let (escrow_key, _) = state::find_payment_escrow_address(&client_seat_key, &wallet_key);
+        let (program_config_key, _) = state::find_program_config_address();
 
-        // Fetch client seat and payment escrow.
+        // Fetch client seat, payment escrow, and program config in a single RPC.
         let mut accounts = wallet
             .connection
-            .get_multiple_accounts(&[client_seat_key, escrow_key])
+            .get_multiple_accounts(&[client_seat_key, escrow_key, program_config_key])
             .await?;
 
-        // Pop in reverse order: escrow (index 1) first, then seat (index 0).
+        // Pop in reverse order: program_config (2), escrow (1), seat (0).
+        let prorated_service_enabled = accounts
+            .pop()
+            .flatten()
+            .is_some_and(|a| state::is_prorated_service_enabled(&a.data));
         let escrow_exists = accounts.pop().flatten().is_some();
 
         let seat_data = accounts
@@ -92,6 +100,12 @@ impl WithdrawCommand {
             .with_context(|| format!("Client seat {client_seat_key} does not exist"))?;
         let (_, _, _, _, active_epoch) = state::parse_client_seat(&seat_data.data)
             .with_context(|| format!("Failed to parse client seat {client_seat_key}"))?;
+        // Pre-upgrade seats carry `last_usdc_price_dollars == 0` and the
+        // prorated instruction reverts for them. Fall back to the legacy
+        // instruction until the next settlement cycle repopulates the field.
+        let seat_has_recorded_price =
+            state::parse_client_seat_last_usdc_price_dollars(&seat_data.data)
+                .is_some_and(|price| price > 0);
         let current_epoch = wallet.connection.get_epoch_info().await?.epoch;
         let has_active_service = active_epoch >= current_epoch;
 
@@ -109,11 +123,26 @@ impl WithdrawCommand {
         let mut compute_unit_limit = 5_000 + 30_000;
 
         if request_instant_withdrawal {
-            instructions.push(try_build_instruction(
-                &ID,
-                RequestInstantSeatWithdrawalAccounts::new(&device, client_ip_bits, &wallet_key),
-                &ShredSubscriptionInstructionData::RequestInstantSeatWithdrawal,
-            )?);
+            if prorated_service_enabled && seat_has_recorded_price {
+                instructions.push(try_build_instruction(
+                    &ID,
+                    RequestProratedInstantSeatWithdrawalAccounts::new(
+                        &device,
+                        client_ip_bits,
+                        &wallet_key,
+                        active_epoch,
+                        &usdc_mint_key,
+                        &wallet_key,
+                    ),
+                    &ShredSubscriptionInstructionData::RequestProratedInstantSeatWithdrawal,
+                )?);
+            } else {
+                instructions.push(try_build_instruction(
+                    &ID,
+                    RequestInstantSeatWithdrawalAccounts::new(&device, client_ip_bits, &wallet_key),
+                    &ShredSubscriptionInstructionData::RequestInstantSeatWithdrawal,
+                )?);
+            }
             compute_unit_limit += 50_000;
         }
 

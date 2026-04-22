@@ -212,6 +212,7 @@ impl PaymentsCommand {
                             | ShredSubscriptionInstructionData::InitializeClientSeat { .. }
                             | ShredSubscriptionInstructionData::RequestInstantSeatAllocation
                             | ShredSubscriptionInstructionData::RequestInstantSeatWithdrawal
+                            | ShredSubscriptionInstructionData::RequestProratedInstantSeatWithdrawal
                             | ShredSubscriptionInstructionData::SetValidatorClientRewardsProportion(
                                 _,
                             )

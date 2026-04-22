@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - `shreds pay`: integrate prorated instant seat allocation — when the onchain `is_prorated_service_enabled` flag is set, skip the client-side min-price check and suppress the late-epoch warning; legacy behavior preserved when the flag is unset
+- `shreds withdraw`: use `RequestProratedInstantSeatWithdrawal` to receive a prorated USDC refund when the onchain flag is set and the seat has a recorded `last_usdc_price_dollars`; falls back to the legacy instruction when the flag is unset or the seat pre-dates the prorated rollout
 
 ## [0.5.3](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.3)
 

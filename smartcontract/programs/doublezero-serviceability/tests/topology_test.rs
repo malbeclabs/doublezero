@@ -345,7 +345,7 @@ async fn test_topology_create_name_too_long_rejected() {
     // 33-char name exceeds MAX_TOPOLOGY_NAME_LEN=32
     // We use a dummy pubkey for the topology PDA since the name validation fires
     // before the PDA check, and find_program_address panics on seeds > 32 bytes.
-    let long_name = "a".repeat(33);
+    let long_name = "A".repeat(33);
     let topology_pda = Pubkey::new_unique();
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
@@ -366,19 +366,60 @@ async fn test_topology_create_name_too_long_rejected() {
     )
     .await;
 
-    // DoubleZeroError::InvalidArgument = Custom(65)
+    // DoubleZeroError::NameTooLong = Custom(39)
     match result {
         Err(BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            InstructionError::Custom(65),
+            InstructionError::Custom(39),
         ))) => {}
-        _ => panic!(
-            "Expected InvalidArgument error (Custom(65)), got {:?}",
-            result
-        ),
+        _ => panic!("Expected NameTooLong error (Custom(39)), got {:?}", result),
     }
 
     println!("[PASS] test_topology_create_name_too_long_rejected");
+}
+
+#[tokio::test]
+async fn test_topology_create_invalid_name_rejected() {
+    println!("[TEST] test_topology_create_invalid_name_rejected");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    // A name uppercase-normalization cannot salvage (underscore is not allowed).
+    let bad_name = "HAS_UNDERSCORE";
+    let (topology_pda, _) = get_topology_pda(&program_id, bad_name);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+            name: bad_name.to_string(),
+            constraint: TopologyConstraint::IncludeAny,
+        }),
+        vec![
+            AccountMeta::new(topology_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // DoubleZeroError::InvalidName = Custom(87)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(87),
+        ))) => {}
+        _ => panic!("Expected InvalidName error (Custom(87)), got {:?}", result),
+    }
+
+    println!("[PASS] test_topology_create_invalid_name_rejected");
 }
 
 #[tokio::test]

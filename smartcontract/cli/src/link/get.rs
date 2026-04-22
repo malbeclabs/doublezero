@@ -1,4 +1,6 @@
-use crate::{doublezerocommand::CliCommand, validators::validate_code};
+use crate::{
+    doublezerocommand::CliCommand, topology::resolve_topology_names, validators::validate_code,
+};
 use clap::Args;
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::link::get::GetLinkCommand;
@@ -47,6 +49,8 @@ struct LinkDisplay {
     pub status: String,
     pub health: String,
     pub owner: String,
+    pub link_topologies: String,
+    pub unicast_drained: bool,
 }
 
 impl GetLinkCliCommand {
@@ -54,6 +58,10 @@ impl GetLinkCliCommand {
         let (pubkey, link) = client.get_link(GetLinkCommand {
             pubkey_or_code: self.code,
         })?;
+
+        let topology_map = client
+            .list_topology(doublezero_sdk::commands::topology::list::ListTopologyCommand)
+            .unwrap_or_default();
 
         let display = LinkDisplay {
             account: pubkey.to_string(),
@@ -92,6 +100,10 @@ impl GetLinkCliCommand {
             status: link.status.to_string(),
             health: link.link_health.to_string(),
             owner: link.owner.to_string(),
+            link_topologies: resolve_topology_names(&link.link_topologies, &topology_map),
+            unicast_drained: link.link_flags
+                & doublezero_serviceability::state::link::LINK_FLAG_UNICAST_DRAINED
+                != 0,
         };
 
         if self.json {
@@ -126,6 +138,7 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
+    use std::collections::HashMap;
 
     #[test]
     fn test_cli_link_get() {
@@ -146,7 +159,7 @@ mod tests {
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
             bandwidth: 1000000000,
-            mtu: 9000,
+            mtu: 1500,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
             delay_override_ns: 0,
@@ -158,7 +171,7 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
-            link_topologies: vec![],
+            link_topologies: Vec::new(),
             link_flags: 0,
         };
 
@@ -242,6 +255,9 @@ mod tests {
                 pubkey_or_code: device2_pk.to_string(),
             }))
             .returning(move |_| Ok((device2_pk, device2.clone())));
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
 
         // Expected failure
         let mut output = Vec::new();
@@ -295,7 +311,7 @@ mod tests {
         assert_eq!(json["status"].as_str().unwrap(), "activated");
         assert_eq!(json["tunnel_type"].as_str().unwrap(), "WAN");
         assert_eq!(json["bandwidth"].as_u64().unwrap(), 1_000_000_000);
-        assert_eq!(json["mtu"].as_u64().unwrap(), 9000);
+        assert_eq!(json["mtu"].as_u64().unwrap(), 1500);
         assert_eq!(json["contributor"].as_str().unwrap(), "test-contributor");
         assert_eq!(json["side_a"].as_str().unwrap(), "side-a-device");
         assert_eq!(json["side_z"].as_str().unwrap(), "side-z-device");

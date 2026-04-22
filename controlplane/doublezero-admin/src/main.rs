@@ -256,6 +256,9 @@ async fn main() -> eyre::Result<()> {
             }
         },
 
+        Command::Migrate(args) => match args.command {
+            cli::migrate::MigrateCommands::FlexAlgo(cmd) => cmd.execute(&client, &mut handle),
+        },
         Command::Export(args) => args.execute(&client, &mut handle),
         Command::Keygen(args) => args.execute(&client, &mut handle),
         Command::Log(args) => args.execute(&dzclient, &mut handle),

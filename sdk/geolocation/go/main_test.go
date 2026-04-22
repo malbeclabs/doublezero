@@ -56,10 +56,15 @@ func (m *mockRPCClient) GetProgramAccountsWithOpts(ctx context.Context, publicKe
 type mockExecutorRPCClient struct {
 	geolocation.ExecutorRPCClient
 
+	GetAccountInfoFunc          func(context.Context, solana.PublicKey) (*solanarpc.GetAccountInfoResult, error)
 	GetLatestBlockhashFunc      func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error)
 	SendTransactionWithOptsFunc func(context.Context, *solana.Transaction, solanarpc.TransactionOpts) (solana.Signature, error)
 	GetSignatureStatusesFunc    func(context.Context, bool, ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error)
 	GetTransactionFunc          func(context.Context, solana.Signature, *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error)
+}
+
+func (m *mockExecutorRPCClient) GetAccountInfo(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+	return m.GetAccountInfoFunc(ctx, account)
 }
 
 func (m *mockExecutorRPCClient) GetLatestBlockhash(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error) {

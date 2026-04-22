@@ -13,8 +13,11 @@ type RPCClient interface {
 	GetProgramAccountsWithOpts(ctx context.Context, publicKey solana.PublicKey, opts *solanarpc.GetProgramAccountsOpts) (out solanarpc.GetProgramAccountsResult, err error)
 }
 
-// ExecutorRPCClient is an interface for write-path RPC operations used by the executor.
+// ExecutorRPCClient is an interface for RPC operations used by the executor. It includes
+// GetAccountInfo so higher-level helpers can fetch onchain state needed to build
+// instructions (e.g., the set of probe accounts referenced by a user's targets).
 type ExecutorRPCClient interface {
+	GetAccountInfo(ctx context.Context, account solana.PublicKey) (out *solanarpc.GetAccountInfoResult, err error)
 	GetLatestBlockhash(ctx context.Context, commitment solanarpc.CommitmentType) (out *solanarpc.GetLatestBlockhashResult, err error)
 	SendTransactionWithOpts(ctx context.Context, transaction *solana.Transaction, opts solanarpc.TransactionOpts) (sig solana.Signature, err error)
 	GetSignatureStatuses(ctx context.Context, searchTransactionHistory bool, transactionSignatures ...solana.Signature) (out *solanarpc.GetSignatureStatusesResult, err error)

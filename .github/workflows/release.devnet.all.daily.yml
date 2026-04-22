@@ -2,6 +2,12 @@ name: release.devnet.all.daily
 
 on:
   workflow_dispatch:
+    inputs:
+      infra_branch:
+        description: 'Branch of malbeclabs/infra to use for ansible playbooks'
+        required: false
+        type: string
+        default: ''
   schedule:
     - cron: '0 14 * * 1-5'  # Every weekday at 10AM ET/9AM CT
 
@@ -43,6 +49,7 @@ jobs:
     with:
       component: ${{ matrix.component }}
       playbook: ${{ matrix.playbook }}
+      infra_branch: ${{ inputs.infra_branch }}
     secrets: inherit
     permissions:
       contents: write

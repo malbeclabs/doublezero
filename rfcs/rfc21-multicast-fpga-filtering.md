@@ -198,7 +198,7 @@ When a multicast-EF user subscribes to a group published on the same DZD:
 
 ### Client-side changes (doublezerod)
 
-Client-side work is deferred to an update to this RFC. For the moment, this RFC establishes the wire contract only:
+Detailed doublezerod work is deferred to an update to this RFC. At the wire level:
 
 | Traffic | Encapsulation |
 |---|---|
@@ -210,6 +210,51 @@ Client-side work is deferred to an update to this RFC. For the moment, this RFC 
 The inner-GRE source and destination addresses are fleet-wide constants: they never leave the DZD on the wire, and Arista's GRE tunnel matching is strict on both endpoints. Publishing clients hardcode them.
 
 Subscribers on the receive path run unchanged — the client has no awareness that its DZD applies FPGA filtering. The double-GRE wrap only applies when the client is publishing.
+
+#### Kernel-native double-GRE via nested tunnels (no app-level changes)
+
+The double-GRE wrap can be produced entirely by the host kernel via a second GRE tunnel sitting on top of the normal client tunnel. This lets a user application send multicast with no DoubleZero-specific socket options — no `IP_MULTICAST_IF`, no bind to a specific source IP, no packet crafting. The app just does what any standard UDP multicast sender does on Linux.
+
+Setup on the publishing host (what doublezerod would install at connect time, given the user's DZ IP):
+
+```
+# 1. Inner GRE tunnel (the "FPGA transit" endpoint)
+ip tunnel add dz-inner mode gre local 192.168.2.8 remote 192.168.2.9 ttl 32
+ip addr add 192.168.2.8/32 dev dz-inner
+ip link set dz-inner up
+
+# 2. Move the user's DZ IP onto dz-inner (was on dz-sub)
+ip addr del <DZ-IP>/32 dev dz-sub
+ip addr add <DZ-IP>/32 dev dz-inner
+
+# 3. Routes
+ip route replace 192.168.2.9/32 dev dz-sub            # outer-of-inner goes out dz-sub
+ip route replace 239.0.0.0/8 dev dz-inner src <DZ-IP> # multicast goes out dz-inner with DZ-IP as source
+```
+
+The `src <DZ-IP>` hint on the multicast route is the key — it tells the kernel which source IP to use for packets taking that route, without the application needing to bind to it. A client app then just does:
+
+```python
+sock = socket.socket(AF_INET, SOCK_DGRAM)
+sock.setsockopt(IPPROTO_IP, IP_MULTICAST_TTL, N)   # standard multicast hygiene, not DZ-specific
+sock.sendto(payload, ('239.x.x.x', port))
+```
+
+Kernel chains: route lookup for `239.x.x.x` → `dz-inner` + `src <DZ-IP>` → inner GRE wrap → route lookup for `192.168.2.9` → `dz-sub` → outer GRE wrap → physical wire. Number of GRE headers is dictated entirely by how many tunnel interfaces the packet traverses on its way out.
+
+The client's view is indistinguishable from sending multicast on any ordinary Linux host. All DoubleZero-specific knowledge lives in the network stack configuration (tunnels + routes) that doublezerod sets up once at connection time.
+
+Unicast from the client (BGP, ordinary traffic) bypasses `dz-inner` because neither the destination route nor the source IP points at it — BGP uses the link-local `/31` on `dz-sub`, ordinary unicast uses the default route or other interface-specific routes. Only traffic in `239.0.0.0/8` gets double-wrapped.
+
+Validated 2026-04-22 on bm8 as a mock user. Equivalent `ip(6)tables`/PBR approaches exist if more fine-grained selection is needed, but the simple routing model above is sufficient for the multicast-EF flow.
+
+#### Kernel-bypass TX paths (AF_XDP)
+
+Kernel-bypass TX paths — Agave's `agave-xdp` crate being the concrete example — build GRE frames in userspace from netlink-observed tunnel state. The routing configuration above works with them unmodified; no DoubleZero-specific client code is required.
+
+`agave-xdp` today handles single-GRE TX transparently (scrapes `IFLA_GRE_*` off GRE netdevs, writes `[Eth][IP][GRE][inner]` at TX time) but explicitly rejects GRE-over-GRE with a warning. A demo patch (<100 LOC across three files, no DoubleZero-specific branches) lifts that rejection: `interface_gre_route_info` recurses once, resolving the `dz-inner` → `dz-sub` → physical chain to a `{ inner_tunnel, outer_tunnel, physical_mac }` triple at route-lookup time, and packet construction writes both IP+GRE layers in one pass. This is parity with what the Linux kernel already does via `ip_local_out` re-entry — Agave was missing the capability, not gaining a DZ-specific feature.
+
+The same pattern applies to any non-Agave kernel-bypass path; the client-side contract in this RFC does not require per-fast-path DoubleZero awareness.
 
 ### Relationship to the FPGA Routing Architecture RFC
 

@@ -139,8 +139,8 @@ impl FlexAlgoMigrateCliCommand {
                     device_pubkeys: devices_needing_backfill,
                 });
                 match result {
-                    Ok(sig) => {
-                        writeln!(out, "    backfilled: {sig}")?;
+                    Ok(sigs) => {
+                        writeln!(out, "    backfilled in {} transaction(s)", sigs.len())?;
                     }
                     Err(e) => {
                         writeln!(

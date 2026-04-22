@@ -1,13 +1,12 @@
-use crate::doublezerocommand::CliCommand;
+use crate::{doublezerocommand::CliCommand, topology::resolve_topology_names};
 use clap::Args;
 use doublezero_program_common::serializer;
-use doublezero_sdk::{
-    commands::{tenant::list::ListTenantCommand, topology::list::ListTopologyCommand},
-    TopologyInfo,
+use doublezero_sdk::commands::{
+    tenant::list::ListTenantCommand, topology::list::ListTopologyCommand,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, io::Write};
+use std::io::Write;
 use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
@@ -31,26 +30,6 @@ pub struct TenantDisplay {
     pub include_topologies: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
-}
-
-fn resolve_topology_names(
-    pubkeys: &[Pubkey],
-    topology_map: &HashMap<Pubkey, TopologyInfo>,
-) -> String {
-    if pubkeys.is_empty() {
-        "default".to_string()
-    } else {
-        pubkeys
-            .iter()
-            .map(|pk| {
-                topology_map
-                    .get(pk)
-                    .map(|t| t.name.clone())
-                    .unwrap_or_else(|| pk.to_string())
-            })
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
 }
 
 impl ListTenantCliCommand {

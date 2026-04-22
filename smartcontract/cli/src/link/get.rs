@@ -1,10 +1,12 @@
-use crate::{doublezerocommand::CliCommand, validators::validate_code};
+use crate::{
+    doublezerocommand::CliCommand, topology::resolve_topology_names, validators::validate_code,
+};
 use clap::Args;
 use doublezero_program_common::serializer;
-use doublezero_sdk::{commands::link::get::GetLinkCommand, TopologyInfo};
+use doublezero_sdk::commands::link::get::GetLinkCommand;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, io::Write};
+use std::io::Write;
 use tabled::Tabled;
 
 #[derive(Args, Debug)]
@@ -49,26 +51,6 @@ struct LinkDisplay {
     pub owner: String,
     pub link_topologies: String,
     pub unicast_drained: bool,
-}
-
-fn resolve_topology_names(
-    pubkeys: &[Pubkey],
-    topology_map: &HashMap<Pubkey, TopologyInfo>,
-) -> String {
-    if pubkeys.is_empty() {
-        "default".to_string()
-    } else {
-        pubkeys
-            .iter()
-            .map(|pk| {
-                topology_map
-                    .get(pk)
-                    .map(|t| t.name.clone())
-                    .unwrap_or_else(|| pk.to_string())
-            })
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
 }
 
 impl GetLinkCliCommand {

@@ -8,7 +8,7 @@ use crate::{
     state::{
         accounttype::AccountType,
         globalstate::GlobalState,
-        topology::{TopologyConstraint, TopologyInfo},
+        topology::{validate_topology_name, TopologyConstraint, TopologyInfo},
     },
 };
 use borsh::BorshSerialize;
@@ -20,8 +20,6 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-
-pub const MAX_TOPOLOGY_NAME_LEN: usize = 32;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, Debug, Clone, PartialEq)]
 pub struct TopologyCreateArgs {
@@ -65,17 +63,12 @@ pub fn process_topology_create(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
-    // Normalize name to uppercase
+    // Normalize name to canonical uppercase form and validate format.
     let name = value.name.to_ascii_uppercase();
-
-    // Validate name length
-    if name.len() > MAX_TOPOLOGY_NAME_LEN {
-        msg!(
-            "TopologyCreate: name exceeds {} bytes",
-            MAX_TOPOLOGY_NAME_LEN
-        );
-        return Err(DoubleZeroError::InvalidArgument.into());
-    }
+    validate_topology_name(&name).map_err(|e| {
+        msg!("TopologyCreate: invalid name '{}': {}", name, e);
+        ProgramError::from(e)
+    })?;
 
     // Validate and verify topology PDA. The account is still empty here
     // (we're about to create it), so we cannot use validate_program_account!

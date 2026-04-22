@@ -124,16 +124,16 @@ impl UpdateLinkCliCommand {
 
         let link_topologies = match self.link_topology {
             None => None,
-            Some(ref names_str) if names_str == "default" => Some(vec![]),
+            Some(ref names_str) if names_str.eq_ignore_ascii_case("default") => Some(vec![]),
             Some(ref names_str) => {
                 let topology_map = client.list_topology(ListTopologyCommand)?;
                 let pubkeys: eyre::Result<Vec<_>> = names_str
                     .split(',')
                     .map(|name| {
-                        let name = name.trim().to_lowercase();
+                        let name = name.trim().to_uppercase();
                         topology_map
                             .iter()
-                            .find(|(_, t)| t.name.to_lowercase() == name)
+                            .find(|(_, t)| t.name == name)
                             .map(|(pk, _)| *pk)
                             .ok_or_else(|| eyre!("Topology '{}' not found", name))
                     })

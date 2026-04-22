@@ -1,4 +1,4 @@
-use crate::doublezerocommand::CliCommand;
+use crate::{doublezerocommand::CliCommand, topology::resolve_topology_names};
 use clap::Args;
 use doublezero_program_common::{serializer, types::NetworkV4};
 use doublezero_sdk::{
@@ -8,12 +8,12 @@ use doublezero_sdk::{
         link::list::ListLinkCommand,
         topology::list::ListTopologyCommand,
     },
-    Link, LinkLinkType, LinkStatus, TopologyInfo,
+    Link, LinkLinkType, LinkStatus,
 };
 use doublezero_serviceability::state::link::{LinkDesiredStatus, LinkHealth};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, io::Write, str::FromStr};
+use std::{io::Write, str::FromStr};
 use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
@@ -98,26 +98,6 @@ pub struct LinkDisplay {
     pub owner: Pubkey,
     pub link_topologies: String,
     pub unicast_drained: bool,
-}
-
-fn resolve_topology_names(
-    pubkeys: &[Pubkey],
-    topology_map: &HashMap<Pubkey, TopologyInfo>,
-) -> String {
-    if pubkeys.is_empty() {
-        "default".to_string()
-    } else {
-        pubkeys
-            .iter()
-            .map(|pk| {
-                topology_map
-                    .get(pk)
-                    .map(|t| t.name.clone())
-                    .unwrap_or_else(|| pk.to_string())
-            })
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
 }
 
 impl ListLinkCliCommand {
@@ -210,12 +190,13 @@ impl ListLinkCliCommand {
 
         // Filter by topology if specified
         if let Some(topology_filter) = &self.topology {
-            if topology_filter == "default" {
+            let topology_filter = topology_filter.to_uppercase();
+            if topology_filter == "DEFAULT" {
                 links.retain(|(_, link)| link.link_topologies.is_empty());
             } else {
                 let topology_pk = topology_map
                     .iter()
-                    .find(|(_, t)| t.name == *topology_filter)
+                    .find(|(_, t)| t.name == topology_filter)
                     .map(|(pk, _)| *pk)
                     .ok_or_else(|| eyre::eyre!("Topology '{}' not found", topology_filter))?;
                 links.retain(|(_, link)| link.link_topologies.contains(&topology_pk));

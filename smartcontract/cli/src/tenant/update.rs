@@ -61,14 +61,14 @@ impl UpdateTenantCliCommand {
         });
 
         let include_topologies = if let Some(ref topo_arg) = self.include_topologies {
-            if topo_arg == "default" {
+            if topo_arg.eq_ignore_ascii_case("default") {
                 Some(vec![])
             } else {
                 let program_id = client.get_program_id();
                 let pubkeys: eyre::Result<Vec<_>> = topo_arg
                     .split(',')
                     .map(|name| {
-                        let name = name.trim().to_lowercase();
+                        let name = name.trim().to_uppercase();
                         let pda = get_topology_pda(&program_id, &name).0;
                         client
                             .get_account(pda)

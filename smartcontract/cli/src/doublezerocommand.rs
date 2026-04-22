@@ -89,8 +89,10 @@ use doublezero_sdk::{
         },
         programconfig::get::GetProgramConfigCommand,
         resource::{
-            allocate::AllocateResourceCommand, closeaccount::CloseResourceCommand,
-            create::CreateResourceCommand, deallocate::DeallocateResourceCommand,
+            allocate::AllocateResourceCommand,
+            closeaccount::{CloseResourceByPubkeyCommand, CloseResourceCommand},
+            create::CreateResourceCommand,
+            deallocate::DeallocateResourceCommand,
             get::GetResourceCommand,
         },
         tenant::{
@@ -345,6 +347,10 @@ pub trait CliCommand {
         cmd: GetResourceCommand,
     ) -> eyre::Result<(Pubkey, ResourceExtensionOwned)>;
     fn close_resource(&self, cmd: CloseResourceCommand) -> eyre::Result<Signature>;
+    fn close_resource_by_pubkey(
+        &self,
+        cmd: CloseResourceByPubkeyCommand,
+    ) -> eyre::Result<Signature>;
 
     fn create_topology(&self, cmd: CreateTopologyCommand) -> eyre::Result<CreateTopologyResult>;
     fn delete_topology(&self, cmd: DeleteTopologyCommand) -> eyre::Result<Signature>;
@@ -818,6 +824,12 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn close_resource(&self, cmd: CloseResourceCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn close_resource_by_pubkey(
+        &self,
+        cmd: CloseResourceByPubkeyCommand,
+    ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn create_topology(&self, cmd: CreateTopologyCommand) -> eyre::Result<CreateTopologyResult> {

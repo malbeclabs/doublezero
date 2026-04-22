@@ -2,8 +2,8 @@ use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::commands::resource::{
-    allocate::AllocateResourceCommand, create::CreateResourceCommand,
-    deallocate::DeallocateResourceCommand,
+    allocate::AllocateResourceCommand, closeaccount::CloseResourceByPubkeyCommand,
+    create::CreateResourceCommand, deallocate::DeallocateResourceCommand,
 };
 use doublezero_serviceability::{
     pda::get_resource_extension_pda,
@@ -49,6 +49,16 @@ pub enum ResourceDiscrepancy {
         first_account_type: String,
         second_account_pubkey: Pubkey,
         second_account_type: String,
+    },
+    /// ResourceExtension account exists onchain but does not correspond to any
+    /// currently-expected PDA (global singleton or per-device extension for a
+    /// live device/prefix). Typically caused by device deletion or a shrunk
+    /// dz_prefixes list.
+    OrphanedExtension {
+        pubkey: Pubkey,
+        associated_with: Pubkey,
+        owner: Pubkey,
+        allocator_kind: &'static str,
     },
 }
 
@@ -134,6 +144,7 @@ impl VerifyResourceCliCommand {
             let mut used_not_allocated: Vec<&ResourceDiscrepancy> = Vec::new();
             let mut extensions_not_found: Vec<&ResourceDiscrepancy> = Vec::new();
             let mut duplicate_usages: Vec<&ResourceDiscrepancy> = Vec::new();
+            let mut orphaned_extensions: Vec<&ResourceDiscrepancy> = Vec::new();
 
             for d in &result.discrepancies {
                 match d {
@@ -148,6 +159,9 @@ impl VerifyResourceCliCommand {
                     }
                     ResourceDiscrepancy::DuplicateUsage { .. } => {
                         duplicate_usages.push(d);
+                    }
+                    ResourceDiscrepancy::OrphanedExtension { .. } => {
+                        orphaned_extensions.push(d);
                     }
                 }
             }
@@ -213,6 +227,39 @@ impl VerifyResourceCliCommand {
                             resource_type, value, account_type, account_pubkey
                         )?;
                     }
+                }
+                writeln!(out)?;
+            }
+
+            if !orphaned_extensions.is_empty() {
+                writeln!(
+                    out,
+                    "Orphaned resource extensions (not tied to any live device/prefix or global type):"
+                )?;
+                writeln!(
+                    out,
+                    "----------------------------------------------------------------------------------"
+                )?;
+                for d in &orphaned_extensions {
+                    if let ResourceDiscrepancy::OrphanedExtension {
+                        pubkey,
+                        associated_with,
+                        owner: _,
+                        allocator_kind,
+                    } = d
+                    {
+                        writeln!(
+                            out,
+                            "  {} (allocator={}, associated_with={})",
+                            pubkey, allocator_kind, associated_with
+                        )?;
+                    }
+                }
+                if !self.fix {
+                    writeln!(
+                        out,
+                        "  Hint: use --fix to close orphaned resource extensions."
+                    )?;
                 }
                 writeln!(out)?;
             }
@@ -290,6 +337,7 @@ impl VerifyResourceCliCommand {
                 let mut fix_allocated_not_used: Vec<&ResourceDiscrepancy> = Vec::new();
                 let mut fix_used_not_allocated: Vec<&ResourceDiscrepancy> = Vec::new();
                 let mut fix_duplicate_usages: Vec<&ResourceDiscrepancy> = Vec::new();
+                let mut fix_orphaned_extensions: Vec<&ResourceDiscrepancy> = Vec::new();
 
                 for d in &fix_discrepancies {
                     match d {
@@ -301,6 +349,9 @@ impl VerifyResourceCliCommand {
                         }
                         ResourceDiscrepancy::DuplicateUsage { .. } => {
                             fix_duplicate_usages.push(d);
+                        }
+                        ResourceDiscrepancy::OrphanedExtension { .. } => {
+                            fix_orphaned_extensions.push(d);
                         }
                         _ => {}
                     }
@@ -376,7 +427,9 @@ impl VerifyResourceCliCommand {
                     })
                     .collect();
 
-                if !fixable_allocated_not_used.is_empty() || !fixable_used_not_allocated.is_empty()
+                if !fixable_allocated_not_used.is_empty()
+                    || !fixable_used_not_allocated.is_empty()
+                    || !fix_orphaned_extensions.is_empty()
                 {
                     writeln!(out, "Proposed fixes:")?;
                     writeln!(out, "--------------")?;
@@ -399,6 +452,12 @@ impl VerifyResourceCliCommand {
                         } = d
                         {
                             writeln!(out, "  ALLOCATE {} = {}", resource_type, value)?;
+                        }
+                    }
+
+                    for d in &fix_orphaned_extensions {
+                        if let ResourceDiscrepancy::OrphanedExtension { pubkey, .. } = d {
+                            writeln!(out, "  CLOSE ResourceExtension {}", pubkey)?;
                         }
                     }
 
@@ -453,6 +512,28 @@ impl VerifyResourceCliCommand {
                                     requested: Some(value.clone()),
                                 };
                                 match client.allocate_resource(cmd) {
+                                    Ok(sig) => {
+                                        writeln!(out, "    OK (signature: {})", sig)?;
+                                    }
+                                    Err(e) => {
+                                        writeln!(out, "    FAILED: {}", e)?;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Close orphaned extensions
+                        for d in &fix_orphaned_extensions {
+                            if let ResourceDiscrepancy::OrphanedExtension {
+                                pubkey, owner, ..
+                            } = d
+                            {
+                                writeln!(out, "  Closing ResourceExtension {} ...", pubkey)?;
+                                let cmd = CloseResourceByPubkeyCommand {
+                                    pubkey: *pubkey,
+                                    owner: *owner,
+                                };
+                                match client.close_resource_by_pubkey(cmd) {
                                     Ok(sig) => {
                                         writeln!(out, "    OK (signature: {})", sig)?;
                                     }
@@ -560,7 +641,72 @@ fn verify_resources<C: CliCommand>(client: &C) -> eyre::Result<VerifyResourceRes
     // Verify MulticastPublisherBlock
     verify_multicast_publisher_block(&program_id, &users, &resource_extensions, &mut result);
 
+    // Detect orphaned extensions whose PDA doesn't match any currently-expected
+    // resource type for live state.
+    detect_orphaned_extensions(&program_id, &devices, &resource_extensions, &mut result);
+
     Ok(result)
+}
+
+/// Build the set of PDAs the program is expected to own right now (every global
+/// singleton plus per-device extensions for each live device and dz_prefix
+/// index), then flag any loaded ResourceExtension whose key is not in that set.
+fn detect_orphaned_extensions(
+    program_id: &Pubkey,
+    devices: &HashMap<Pubkey, Device>,
+    resource_extensions: &HashMap<Pubkey, ResourceExtensionOwned>,
+    result: &mut VerifyResourceResult,
+) {
+    let mut expected: HashSet<Pubkey> = HashSet::new();
+
+    // Global singletons. VrfIds and AdminGroupBits aren't verified against
+    // usage above but must still be treated as legitimate, not orphans.
+    for resource_type in [
+        ResourceType::DeviceTunnelBlock,
+        ResourceType::UserTunnelBlock,
+        ResourceType::MulticastGroupBlock,
+        ResourceType::MulticastPublisherBlock,
+        ResourceType::LinkIds,
+        ResourceType::SegmentRoutingIds,
+        ResourceType::VrfIds,
+        ResourceType::AdminGroupBits,
+    ] {
+        let (pda, _, _) = get_resource_extension_pda(program_id, resource_type);
+        expected.insert(pda);
+    }
+
+    // Per-device: TunnelIds(device, 0) + DzPrefixBlock(device, i) for each prefix.
+    for (device_pk, device) in devices {
+        let (tunnel_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::TunnelIds(*device_pk, 0));
+        expected.insert(tunnel_pda);
+
+        for index in 0..device.dz_prefixes.len() {
+            let (prefix_pda, _, _) = get_resource_extension_pda(
+                program_id,
+                ResourceType::DzPrefixBlock(*device_pk, index),
+            );
+            expected.insert(prefix_pda);
+        }
+    }
+
+    for (pda, ext) in resource_extensions {
+        if expected.contains(pda) {
+            continue;
+        }
+        let allocator_kind = match ext.allocator {
+            Allocator::Ip(_) => "Ip",
+            Allocator::Id(_) => "Id",
+        };
+        result
+            .discrepancies
+            .push(ResourceDiscrepancy::OrphanedExtension {
+                pubkey: *pda,
+                associated_with: ext.associated_with,
+                owner: ext.owner,
+                allocator_kind,
+            });
+    }
 }
 
 fn verify_user_tunnel_block(
@@ -1715,5 +1861,255 @@ mod tests {
             "expected ExtensionNotFound for TunnelIds of device with no users, got {:?}",
             result.discrepancies
         );
+    }
+
+    fn insert_all_globals(
+        accounts: &mut HashMap<Box<Pubkey>, Box<AccountData>>,
+        program_id: &Pubkey,
+    ) {
+        for ext in [
+            create_resource_extension_ip(
+                program_id,
+                ResourceType::UserTunnelBlock,
+                "10.0.0.0/24",
+                vec![0],
+            ),
+            create_resource_extension_ip(
+                program_id,
+                ResourceType::DeviceTunnelBlock,
+                "172.16.0.0/24",
+                vec![0],
+            ),
+            create_resource_extension_ip(
+                program_id,
+                ResourceType::MulticastGroupBlock,
+                "239.0.0.0/24",
+                vec![0],
+            ),
+            create_resource_extension_ip(
+                program_id,
+                ResourceType::MulticastPublisherBlock,
+                "148.51.120.0/24",
+                vec![0],
+            ),
+            create_resource_extension_id(
+                program_id,
+                ResourceType::SegmentRoutingIds,
+                (0, 100),
+                vec![0; 13],
+            ),
+            create_resource_extension_id(program_id, ResourceType::LinkIds, (0, 100), vec![0; 13]),
+        ] {
+            accounts.insert(
+                Box::new(ext.0),
+                Box::new(AccountData::ResourceExtension(ext.1)),
+            );
+        }
+    }
+
+    #[test]
+    fn test_orphaned_extension_from_deleted_device() {
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+
+        // Simulate a TunnelIds extension for a device that no longer exists.
+        let dead_device_pk = Pubkey::new_unique();
+        let orphan_tunnel_ids = create_resource_extension_id(
+            &program_id,
+            ResourceType::TunnelIds(dead_device_pk, 0),
+            (0, 100),
+            vec![0; 13],
+        );
+        let orphan_pda = orphan_tunnel_ids.0;
+        accounts.insert(
+            Box::new(orphan_tunnel_ids.0),
+            Box::new(AccountData::ResourceExtension(orphan_tunnel_ids.1)),
+        );
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+
+        let orphans: Vec<_> = result
+            .discrepancies
+            .iter()
+            .filter_map(|d| match d {
+                ResourceDiscrepancy::OrphanedExtension {
+                    pubkey,
+                    associated_with,
+                    ..
+                } => Some((*pubkey, *associated_with)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(orphans[0].0, orphan_pda);
+        assert_eq!(orphans[0].1, dead_device_pk);
+    }
+
+    #[test]
+    fn test_orphaned_extension_from_stale_dz_prefix() {
+        use doublezero_serviceability::state::device::Device;
+
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+
+        // Create a live device with a single dz_prefix (index 0).
+        let device_pk = Pubkey::new_unique();
+        let prefix_net: NetworkV4 = "10.1.0.0/24".parse().unwrap();
+        let device = Device {
+            dz_prefixes: vec![prefix_net].into(),
+            ..Device::default()
+        };
+        accounts.insert(Box::new(device_pk), Box::new(AccountData::Device(device)));
+
+        // Legitimate DzPrefixBlock for index 0. First IP reserved for the device.
+        let live_prefix_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::DzPrefixBlock(device_pk, 0),
+            "10.1.0.0/24",
+            vec![0x01], // first IP allocated (reserved for device)
+        );
+        accounts.insert(
+            Box::new(live_prefix_block.0),
+            Box::new(AccountData::ResourceExtension(live_prefix_block.1)),
+        );
+        // Legitimate TunnelIds for the device.
+        let live_tunnel_ids = create_resource_extension_id(
+            &program_id,
+            ResourceType::TunnelIds(device_pk, 0),
+            (0, 100),
+            vec![0; 13],
+        );
+        accounts.insert(
+            Box::new(live_tunnel_ids.0),
+            Box::new(AccountData::ResourceExtension(live_tunnel_ids.1)),
+        );
+
+        // Stale DzPrefixBlock at index 5 — the device no longer has that prefix.
+        let stale_prefix_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::DzPrefixBlock(device_pk, 5),
+            "10.9.0.0/24",
+            vec![0],
+        );
+        let stale_pda = stale_prefix_block.0;
+        accounts.insert(
+            Box::new(stale_prefix_block.0),
+            Box::new(AccountData::ResourceExtension(stale_prefix_block.1)),
+        );
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+
+        let orphan_pdas: Vec<Pubkey> = result
+            .discrepancies
+            .iter()
+            .filter_map(|d| match d {
+                ResourceDiscrepancy::OrphanedExtension { pubkey, .. } => Some(*pubkey),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(orphan_pdas, vec![stale_pda]);
+    }
+
+    #[test]
+    fn test_vrf_ids_and_admin_group_bits_not_flagged_as_orphans() {
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+
+        // VrfIds and AdminGroupBits aren't verified against usage but must be
+        // recognized as legitimate global singletons.
+        let vrf_ids =
+            create_resource_extension_id(&program_id, ResourceType::VrfIds, (0, 100), vec![0; 13]);
+        accounts.insert(
+            Box::new(vrf_ids.0),
+            Box::new(AccountData::ResourceExtension(vrf_ids.1)),
+        );
+        let admin_group_bits = create_resource_extension_id(
+            &program_id,
+            ResourceType::AdminGroupBits,
+            (0, 64),
+            vec![0; 8],
+        );
+        accounts.insert(
+            Box::new(admin_group_bits.0),
+            Box::new(AccountData::ResourceExtension(admin_group_bits.1)),
+        );
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+        assert!(
+            !result
+                .discrepancies
+                .iter()
+                .any(|d| matches!(d, ResourceDiscrepancy::OrphanedExtension { .. })),
+            "VrfIds/AdminGroupBits should not be flagged as orphans: {:?}",
+            result.discrepancies
+        );
+    }
+
+    #[test]
+    fn test_output_includes_orphan_section() {
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+
+        let dead_device_pk = Pubkey::new_unique();
+        let orphan = create_resource_extension_id(
+            &program_id,
+            ResourceType::TunnelIds(dead_device_pk, 0),
+            (0, 100),
+            vec![0; 13],
+        );
+        let orphan_pda = orphan.0;
+        accounts.insert(
+            Box::new(orphan.0),
+            Box::new(AccountData::ResourceExtension(orphan.1)),
+        );
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let cmd = VerifyResourceCliCommand { fix: false };
+        let mut output = Cursor::new(Vec::new());
+        cmd.execute(&mock_client, &mut output).unwrap();
+        let output_str = String::from_utf8(output.into_inner()).unwrap();
+        assert!(output_str.contains("Orphaned resource extensions"));
+        assert!(output_str.contains(&orphan_pda.to_string()));
+        assert!(output_str.contains(&dead_device_pk.to_string()));
+        assert!(output_str.contains("Hint: use --fix to close orphaned resource extensions."));
     }
 }

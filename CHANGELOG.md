@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Extend `doublezero resource verify` to check `MulticastPublisherBlock` against multicast publisher users' `dz_ip` allocations; legacy `dz_ip`s that fall outside the block's range are ignored so pre-existing users allocated before this extension existed do not produce false discrepancies
   - Fix `doublezero resource verify` to report missing `TunnelIds` resource extensions for all devices, including those without any users; previously the discrepancy was suppressed when a device had no users, hiding unallocated extensions
+  - Extend `doublezero resource verify` to detect orphaned `ResourceExtension` accounts whose PDA does not correspond to any currently-expected resource type (global singleton or per-device extension for a live device/prefix); `--fix` closes them via the existing y/N confirmation flow
 - Client
   - Filter devices by type-specific capacity during auto-selection so clients are not provisioned onto devices that have reached their unicast, multicast publisher, or multicast subscriber limits
 - Collector

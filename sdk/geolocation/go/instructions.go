@@ -1,9 +1,12 @@
 package geolocation
 
 // Instruction discriminator indices for the GeolocationInstruction Borsh enum.
-// Only target management operations are included; other user-facing and Foundation
-// commands are added by follow-on changes.
+// Only user-facing operations are included; Foundation commands are excluded.
 const (
-	AddTargetInstructionIndex    = 10
-	RemoveTargetInstructionIndex = 11
+	CreateGeolocationUserInstructionIndex = 7
+	UpdateGeolocationUserInstructionIndex = 8
+	DeleteGeolocationUserInstructionIndex = 9
+	AddTargetInstructionIndex             = 10
+	RemoveTargetInstructionIndex          = 11
+	SetResultDestinationInstructionIndex  = 13
 )

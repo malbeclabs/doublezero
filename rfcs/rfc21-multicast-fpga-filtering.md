@@ -4,9 +4,11 @@
 
 **Status: `Draft`**
 
-Extends DoubleZero's FPGA filtering architecture to IP multicast. Introduces a new multicast user mode — **multicast-EF** — that places the user's GRE tunnel in a new filtration VRF. The user's received multicast transits the DZD's FPGA on the way to delivery, giving us a point for deduplication, signature verification, or other inline filtering. A multicast-EF user can publish and subscribe to multicast groups exactly as today (per RFC-15). Regular multicast users continue to work unchanged and interoperate with multicast-EF users.
+Extends DoubleZero's FPGA filtering architecture to IP multicast so that a subscriber's received feed can be deduplicated, signature-verified, or otherwise filtered inline before it reaches the user. This RFC introduces a new user mode — **multicast-EF** — that places the user's GRE tunnel in a new filtration VRF. All multicast delivered to a multicast-EF subscriber transits the DZD's FPGA on the way to the user; that is the primary value of this RFC.
 
-This RFC borrows the general FPGA routing architecture, VRF-lite split, and inter-VRF eBGP pattern defined in the FPGA Routing Architecture RFC (referred to as "the unicast EF RFC" below); readers should skim that first for context. The multicast-specific additions here are a dedicated filtration VRF for multicast tunnels, a pair of GRE tunnels across the FPGA cable that carries the inter-VRF eBGP session, a PIM layout in the filtration VRF that routes all source-discovery through default VRF, and an agent-managed static IGMP group that bridges subscriber forwarding across the VRF boundary.
+Because a multicast-EF user may also be a publisher (per RFC-15), the RFC also specifies the plumbing needed to keep publishing working when the user's tunnel lives in the filtration VRF: a second GRE wrap applied on the client so the publisher's multicast crosses the FPGA cable as unicast, a pair of transit tunnels on the DZD that decapsulates it back into default VRF, and an inter-VRF eBGP session that carries the publisher `/32` so cross-DZD PIM RPF works. These are supporting mechanisms; the filter applied to publisher-direction traffic is architecturally neutral.
+
+Regular (non-EF) multicast users continue to work unchanged and interoperate with multicast-EF users. This RFC borrows the general FPGA routing architecture, VRF-lite split, and inter-VRF eBGP pattern defined in the FPGA Routing Architecture RFC (referred to as "the unicast EF RFC" below); readers should skim that first for context.
 
 ## Motivation
 

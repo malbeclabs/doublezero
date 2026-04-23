@@ -944,6 +944,103 @@ func TestInternetLatency_RIPEAtlas_RunRipeAtlasMeasurementCreation(t *testing.T)
 	t.Fatalf("Unexpected error: %v", err)
 }
 
+// TestInternetLatency_RIPEAtlas_FetchFallbackProbes_TriggeredWhenAllUnresponsive verifies that
+// when all known probes for a location are in the unresponsive list, a non-anchor fallback
+// query is issued and those probes replace the unresponsive ones.
+func TestInternetLatency_RIPEAtlas_FetchFallbackProbes_TriggeredWhenAllUnresponsive(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	const anchorProbeID = 7549
+	const fallbackProbeID = 99999
+
+	var nonAnchorCalls int
+	mockClient := &MockClient{
+		GetProbesInRadiusFunc: func(_ context.Context, _, _ float64, _ int, anchorsOnly bool) ([]Probe, error) {
+			if anchorsOnly {
+				return []Probe{}, nil // should not be called in this path
+			}
+			nonAnchorCalls++
+			return []Probe{
+				{ID: fallbackProbeID, Address: "1.2.3.4", Latitude: 40.76, Longitude: -111.89},
+			}, nil
+		},
+	}
+
+	stateFile := filepath.Join(t.TempDir(), "state.json")
+	measurementState := NewMeasurementState(stateFile)
+	measurementState.AddUnresponsiveProbe(anchorProbeID)
+
+	locationMatches := []LocationProbeMatch{
+		{
+			LocationMatch: collector.LocationMatch{
+				LocationCode: "slc",
+				Latitude:     40.7608,
+				Longitude:    -111.8910,
+			},
+			NearbyProbes: []Probe{
+				{ID: anchorProbeID, Address: "8.8.8.8", Latitude: 40.76, Longitude: -111.89},
+			},
+			ProbeCount: 1,
+		},
+	}
+
+	c := &Collector{client: mockClient, log: log}
+	result := c.fetchFallbackProbesForUnresponsiveLocations(t.Context(), locationMatches, measurementState)
+
+	require.Len(t, result, 1)
+	require.Equal(t, 1, nonAnchorCalls, "should have fetched non-anchor fallback probes")
+	require.Len(t, result[0].NearbyProbes, 1)
+	require.Equal(t, fallbackProbeID, result[0].NearbyProbes[0].ID, "should use the fallback probe")
+}
+
+// TestInternetLatency_RIPEAtlas_FetchFallbackProbes_NoFallbackWhenResponsive verifies that
+// when at least one probe for a location is still responsive, no non-anchor fallback query
+// is issued and the original probes are left unchanged.
+func TestInternetLatency_RIPEAtlas_FetchFallbackProbes_NoFallbackWhenResponsive(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	const anchorProbeID = 7549
+
+	var nonAnchorCalls int
+	mockClient := &MockClient{
+		GetProbesInRadiusFunc: func(_ context.Context, _, _ float64, _ int, anchorsOnly bool) ([]Probe, error) {
+			if !anchorsOnly {
+				nonAnchorCalls++
+			}
+			return []Probe{}, nil
+		},
+	}
+
+	stateFile := filepath.Join(t.TempDir(), "state.json")
+	measurementState := NewMeasurementState(stateFile) // anchor probe is NOT unresponsive
+
+	locationMatches := []LocationProbeMatch{
+		{
+			LocationMatch: collector.LocationMatch{
+				LocationCode: "slc",
+				Latitude:     40.7608,
+				Longitude:    -111.8910,
+			},
+			NearbyProbes: []Probe{
+				{ID: anchorProbeID, Address: "8.8.8.8", Latitude: 40.76, Longitude: -111.89},
+			},
+			ProbeCount: 1,
+		},
+	}
+
+	c := &Collector{client: mockClient, log: log}
+	result := c.fetchFallbackProbesForUnresponsiveLocations(t.Context(), locationMatches, measurementState)
+
+	require.Len(t, result, 1)
+	require.Equal(t, 0, nonAnchorCalls, "should NOT have fetched non-anchor probes when anchor is responsive")
+	require.Len(t, result[0].NearbyProbes, 1)
+	require.Equal(t, anchorProbeID, result[0].NearbyProbes[0].ID, "original anchor probe should be preserved")
+}
+
 func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T) {
 	t.Parallel()
 

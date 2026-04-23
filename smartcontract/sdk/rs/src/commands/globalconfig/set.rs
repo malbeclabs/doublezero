@@ -9,6 +9,8 @@ use doublezero_serviceability::{
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
+pub const SET_GLOBAL_CONFIG_COMPUTE_UNIT_LIMIT: u32 = 1_400_000;
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetGlobalConfigCommand {
     pub local_asn: Option<u32>,
@@ -49,7 +51,7 @@ impl SetGlobalConfigCommand {
         let (admin_group_bits_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::AdminGroupBits);
 
-        client.execute_transaction(
+        client.execute_transaction_with_compute_unit_limit(
             DoubleZeroInstruction::SetGlobalConfig(set_config_args),
             vec![
                 AccountMeta::new(pda_pubkey, false),
@@ -63,6 +65,7 @@ impl SetGlobalConfigCommand {
                 AccountMeta::new(vrf_ids_pda, false),
                 AccountMeta::new(admin_group_bits_pda, false),
             ],
+            SET_GLOBAL_CONFIG_COMPUTE_UNIT_LIMIT,
         )
     }
 
@@ -118,5 +121,45 @@ impl SetGlobalConfigCommand {
                     .unwrap_or(existing_config.multicast_publisher_block),
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SetGlobalConfigCommand, SET_GLOBAL_CONFIG_COMPUTE_UNIT_LIMIT};
+    use crate::{tests::utils::create_test_client, DoubleZeroClient};
+    use doublezero_serviceability::pda::get_globalconfig_pda;
+    use mockall::predicate;
+    use solana_sdk::signature::Signature;
+
+    #[test]
+    fn test_commands_setglobalconfig_uses_compute_unit_limit() {
+        let mut client = create_test_client();
+
+        // GetGlobalConfigCommand fetches the globalconfig PDA; return an error so
+        // merge_config_updates takes the "all fields Some" branch rather than merging.
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
+        client
+            .expect_get()
+            .with(predicate::eq(globalconfig_pubkey))
+            .returning(|_| Err(eyre::eyre!("not initialized")));
+
+        client
+            .expect_execute_transaction_with_compute_unit_limit()
+            .withf(|_, _, limit| *limit == SET_GLOBAL_CONFIG_COMPUTE_UNIT_LIMIT)
+            .times(1)
+            .returning(|_, _, _| Ok(Signature::new_unique()));
+
+        let res = SetGlobalConfigCommand {
+            local_asn: Some(65000),
+            remote_asn: Some(65001),
+            device_tunnel_block: Some("10.0.0.0/16".parse().unwrap()),
+            user_tunnel_block: Some("10.1.0.0/16".parse().unwrap()),
+            multicastgroup_block: Some("239.0.0.0/16".parse().unwrap()),
+            next_bgp_community: Some(100),
+            multicast_publisher_block: Some("239.1.0.0/16".parse().unwrap()),
+        }
+        .execute(&client);
+        assert!(res.is_ok(), "execute failed: {:?}", res.err());
     }
 }

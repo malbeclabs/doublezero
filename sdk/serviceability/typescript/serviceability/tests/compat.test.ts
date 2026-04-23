@@ -13,8 +13,9 @@
 import { describe, expect, test, setDefaultTimeout } from "bun:test";
 
 // Compat tests hit public RPC endpoints which may be slow or rate-limited.
-setDefaultTimeout(30_000);
-import { Connection, PublicKey } from "@solana/web3.js";
+// The getProgramData test fetches all mainnet accounts and can take 60-90s during busy periods.
+setDefaultTimeout(120_000);
+import { PublicKey } from "@solana/web3.js";
 import { PROGRAM_IDS, LEDGER_RPC_URLS } from "../config.js";
 import { newConnection } from "../rpc.js";
 import {

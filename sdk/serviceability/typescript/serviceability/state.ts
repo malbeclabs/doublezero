@@ -470,6 +470,11 @@ export function deserializeExchange(data: Uint8Array): Exchange {
 // Interface (versioned, embedded in Device)
 // ---------------------------------------------------------------------------
 
+export interface FlexAlgoNodeSegment {
+  topology: PublicKey;
+  nodeSegmentIdx: number;
+}
+
 export interface DeviceInterface {
   version: number;
   status: number;
@@ -486,6 +491,7 @@ export interface DeviceInterface {
   ipNet: Uint8Array;
   nodeSegmentIdx: number;
   userTunnelEndpoint: boolean;
+  flexAlgoNodeSegments?: FlexAlgoNodeSegment[];
 }
 
 const CURRENT_INTERFACE_VERSION = 2;
@@ -507,6 +513,7 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     ipNet: new Uint8Array(5),
     nodeSegmentIdx: 0,
     userTunnelEndpoint: false,
+    flexAlgoNodeSegments: [],
   };
 
   iface.version = r.readU8();
@@ -540,6 +547,19 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
+    const segCount = r.readU32();
+    const flexAlgoNodeSegments: FlexAlgoNodeSegment[] = [];
+    for (let i = 0; i < segCount; i++) {
+      // Break early if there isn't enough data for a full segment. On pre-RFC-18
+      // mainnet accounts, segCount reads garbage bytes from the next field, so
+      // without this guard the loop runs hundreds of thousands of times.
+      if (r.remaining < 34) break; // 32 (pubkey) + 2 (u16)
+      flexAlgoNodeSegments.push({
+        topology: readPubkey(r),
+        nodeSegmentIdx: r.readU16(),
+      });
+    }
+    iface.flexAlgoNodeSegments = flexAlgoNodeSegments;
   }
 
   return iface;

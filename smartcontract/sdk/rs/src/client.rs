@@ -21,6 +21,7 @@ use solana_rpc_client_api::client_error::{Error as ClientError, ErrorKind as Cli
 use solana_sdk::{
     account::Account,
     commitment_config::CommitmentConfig,
+    compute_budget::ComputeBudgetInstruction,
     instruction::{AccountMeta, Instruction, InstructionError},
     program_error::ProgramError,
     pubkey::Pubkey,
@@ -137,6 +138,7 @@ impl DZClient {
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
         quiet: bool,
+        compute_unit_limit: Option<u32>,
     ) -> eyre::Result<Signature> {
         let payer = self
             .payer
@@ -144,21 +146,28 @@ impl DZClient {
             .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
         let data = instruction.pack();
 
-        let mut transaction = Transaction::new_with_payer(
-            &[Instruction::new_with_bytes(
-                self.program_id,
-                &data,
-                [
-                    accounts,
-                    vec![
-                        AccountMeta::new(payer.pubkey(), true),
-                        AccountMeta::new(program::id(), false),
-                    ],
-                ]
-                .concat(),
-            )],
-            Some(&payer.pubkey()),
+        let main_ix = Instruction::new_with_bytes(
+            self.program_id,
+            &data,
+            [
+                accounts,
+                vec![
+                    AccountMeta::new(payer.pubkey(), true),
+                    AccountMeta::new(program::id(), false),
+                ],
+            ]
+            .concat(),
         );
+
+        let instructions: Vec<Instruction> = match compute_unit_limit {
+            Some(limit) => vec![
+                ComputeBudgetInstruction::set_compute_unit_limit(limit),
+                main_ix,
+            ],
+            None => vec![main_ix],
+        };
+
+        let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
 
         let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
         transaction.sign(&[&payer], blockhash);
@@ -472,7 +481,7 @@ impl DoubleZeroClient for DZClient {
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature> {
-        self.execute_transaction_inner(instruction, accounts, false)
+        self.execute_transaction_inner(instruction, accounts, false, None)
     }
 
     fn execute_transaction_quiet(
@@ -480,7 +489,16 @@ impl DoubleZeroClient for DZClient {
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature> {
-        self.execute_transaction_inner(instruction, accounts, true)
+        self.execute_transaction_inner(instruction, accounts, true, None)
+    }
+
+    fn execute_transaction_with_compute_unit_limit(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+        compute_unit_limit: u32,
+    ) -> eyre::Result<Signature> {
+        self.execute_transaction_inner(instruction, accounts, false, Some(compute_unit_limit))
     }
 
     fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>> {

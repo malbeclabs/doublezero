@@ -23,7 +23,7 @@ const (
 // CallDelay is defined in client.go to avoid duplication
 
 type clientInterface interface {
-	GetProbesInRadius(ctx context.Context, latitude, longitude float64, radiusKm int) ([]Probe, error)
+	GetProbesInRadius(ctx context.Context, latitude, longitude float64, radiusKm int, anchorsOnly bool) ([]Probe, error)
 	GetProbesForLocations(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error)
 	CreateMeasurement(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error)
 	GetAllMeasurements(ctx context.Context, env string) ([]Measurement, error)

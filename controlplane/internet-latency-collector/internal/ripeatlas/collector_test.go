@@ -21,7 +21,7 @@ import (
 
 // MockClient implements a mock of RipeAtlasClient for testing
 type MockClient struct {
-	GetProbesInRadiusFunc                func(ctx context.Context, latitude, longitude float64, radiusKm int) ([]Probe, error)
+	GetProbesInRadiusFunc                func(ctx context.Context, latitude, longitude float64, radiusKm int, anchorsOnly bool) ([]Probe, error)
 	GetProbesForLocationsFunc            func(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error)
 	CreateMeasurementFunc                func(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error)
 	GetAllMeasurementsFunc               func(ctx context.Context, env string) ([]Measurement, error)
@@ -31,9 +31,9 @@ type MockClient struct {
 	GetCreditBalanceFunc                 func(ctx context.Context) (float64, error)
 }
 
-func (m *MockClient) GetProbesInRadius(ctx context.Context, latitude, longitude float64, radiusKm int) ([]Probe, error) {
+func (m *MockClient) GetProbesInRadius(ctx context.Context, latitude, longitude float64, radiusKm int, anchorsOnly bool) ([]Probe, error) {
 	if m.GetProbesInRadiusFunc != nil {
-		return m.GetProbesInRadiusFunc(ctx, latitude, longitude, radiusKm)
+		return m.GetProbesInRadiusFunc(ctx, latitude, longitude, radiusKm, anchorsOnly)
 	}
 	return []Probe{}, nil
 }

@@ -17,13 +17,30 @@ type getConfigEvent struct {
 	DevicePubkey string
 }
 
+type versionEvent struct {
+	DevicePubkey      string
+	UpdatedAt         time.Time
+	AgentVersion      string
+	AgentCommit       string
+	AgentDate         string
+	ControllerVersion string
+	ControllerCommit  string
+	ControllerDate    string
+}
+
 type ClickhouseWriter struct {
 	conn              clickhouse.Conn
 	log               *slog.Logger
 	db                string
 	mu                sync.Mutex
 	events            []getConfigEvent
+	versions          []versionEvent
 	consecutiveErrors int
+
+	// Controller build info, stamped on every version event.
+	controllerVersion string
+	controllerCommit  string
+	controllerDate    string
 }
 
 // consecutiveErrorThreshold is the number of consecutive flush failures
@@ -53,7 +70,7 @@ func buildClickhouseOptions(addr, db, user, pass string, disableTLS bool) *click
 	return opts
 }
 
-func NewClickhouseWriter(log *slog.Logger, addr, db, user, pass string, disableTLS bool) (*ClickhouseWriter, error) {
+func NewClickhouseWriter(log *slog.Logger, addr, db, user, pass string, disableTLS bool, controllerVersion, controllerCommit, controllerDate string) (*ClickhouseWriter, error) {
 	chOpts := buildClickhouseOptions(addr, db, user, pass, disableTLS)
 	conn, err := clickhouse.Open(chOpts)
 	if err != nil {
@@ -63,13 +80,16 @@ func NewClickhouseWriter(log *slog.Logger, addr, db, user, pass string, disableT
 		return nil, fmt.Errorf("error pinging clickhouse: %w", err)
 	}
 	return &ClickhouseWriter{
-		conn: conn,
-		log:  log,
-		db:   db,
+		conn:              conn,
+		log:               log,
+		db:                db,
+		controllerVersion: controllerVersion,
+		controllerCommit:  controllerCommit,
+		controllerDate:    controllerDate,
 	}, nil
 }
 
-func (cw *ClickhouseWriter) CreateTable(ctx context.Context) error {
+func (cw *ClickhouseWriter) CreateTables(ctx context.Context) error {
 	err := cw.conn.Exec(ctx, fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS "%s".controller_grpc_getconfig_success (
 			timestamp DateTime64(3),
@@ -79,14 +99,41 @@ func (cw *ClickhouseWriter) CreateTable(ctx context.Context) error {
 		ORDER BY (timestamp, device_pubkey)
 	`, cw.db))
 	if err != nil {
-		return fmt.Errorf("error creating table: %w", err)
+		return fmt.Errorf("error creating getconfig table: %w", err)
 	}
+
+	err = cw.conn.Exec(ctx, fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS "%s".controller_agent_versions (
+			device_pubkey LowCardinality(String),
+			updated_at DateTime64(3),
+			agent_version LowCardinality(String) DEFAULT '',
+			agent_commit LowCardinality(String) DEFAULT '',
+			agent_date LowCardinality(String) DEFAULT '',
+			controller_version LowCardinality(String) DEFAULT '',
+			controller_commit LowCardinality(String) DEFAULT '',
+			controller_date LowCardinality(String) DEFAULT ''
+		) ENGINE = ReplacingMergeTree(updated_at)
+		ORDER BY device_pubkey
+	`, cw.db))
+	if err != nil {
+		return fmt.Errorf("error creating agent_versions table: %w", err)
+	}
+
 	return nil
 }
 
 func (cw *ClickhouseWriter) Record(event getConfigEvent) {
 	cw.mu.Lock()
 	cw.events = append(cw.events, event)
+	cw.mu.Unlock()
+}
+
+func (cw *ClickhouseWriter) RecordVersion(event versionEvent) {
+	event.ControllerVersion = cw.controllerVersion
+	event.ControllerCommit = cw.controllerCommit
+	event.ControllerDate = cw.controllerDate
+	cw.mu.Lock()
+	cw.versions = append(cw.versions, event)
 	cw.mu.Unlock()
 }
 
@@ -106,14 +153,21 @@ func (cw *ClickhouseWriter) Run(ctx context.Context) {
 
 func (cw *ClickhouseWriter) flush(ctx context.Context) {
 	cw.mu.Lock()
-	if len(cw.events) == 0 {
-		cw.mu.Unlock()
-		return
-	}
 	events := cw.events
 	cw.events = nil
+	versions := cw.versions
+	cw.versions = nil
 	cw.mu.Unlock()
 
+	if len(events) > 0 {
+		cw.flushEvents(ctx, events)
+	}
+	if len(versions) > 0 {
+		cw.flushVersions(ctx, versions)
+	}
+}
+
+func (cw *ClickhouseWriter) flushEvents(ctx context.Context, events []getConfigEvent) {
 	batch, err := cw.conn.PrepareBatch(ctx, fmt.Sprintf(
 		`INSERT INTO "%s".controller_grpc_getconfig_success (timestamp, device_pubkey)`, cw.db,
 	))
@@ -137,6 +191,31 @@ func (cw *ClickhouseWriter) flush(ctx context.Context) {
 	}
 	cw.consecutiveErrors = 0
 	cw.log.Debug("flushed getconfig events to clickhouse", "count", len(events))
+}
+
+func (cw *ClickhouseWriter) flushVersions(ctx context.Context, versions []versionEvent) {
+	batch, err := cw.conn.PrepareBatch(ctx, fmt.Sprintf(
+		`INSERT INTO "%s".controller_agent_versions (device_pubkey, updated_at, agent_version, agent_commit, agent_date, controller_version, controller_commit, controller_date)`, cw.db,
+	))
+	if err != nil {
+		cw.recordFlushError("error preparing clickhouse versions batch", err)
+		return
+	}
+	for _, v := range versions {
+		if err := batch.Append(v.DevicePubkey, v.UpdatedAt, v.AgentVersion, v.AgentCommit, v.AgentDate, v.ControllerVersion, v.ControllerCommit, v.ControllerDate); err != nil {
+			cw.logFlushError("error appending to clickhouse versions batch", err)
+		}
+	}
+	if err := batch.Send(); err != nil {
+		_ = batch.Close()
+		cw.recordFlushError("error sending clickhouse versions batch", err)
+		return
+	}
+	if err := batch.Close(); err != nil {
+		cw.recordFlushError("error closing clickhouse versions batch", err)
+		return
+	}
+	cw.log.Debug("flushed version events to clickhouse", "count", len(versions))
 }
 
 // recordFlushError increments the consecutive error counter and logs at the

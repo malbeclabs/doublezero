@@ -45,6 +45,12 @@ type Interface struct {
 	LinkStatus           serviceability.LinkStatus
 	IsCYOA               bool
 	IsDIA                bool
+	// RFC-18: set when the interface is an activated link with topology assignments
+	LinkTopologies []string // topology names (resolved from link.link_topologies pubkeys)
+	UnicastDrained bool
+	PubKey         string // base58-encoded link pubkey (set when IsLink is true)
+	// RFC-18: flex-algo node-segment data for VPNv4 loopback interfaces
+	FlexAlgoNodeSegments []FlexAlgoNodeSegmentModel
 }
 
 // toInterface validates onchain data for a serviceability interface and converts it to a controller interface.
@@ -242,6 +248,9 @@ type Tunnel struct {
 	MulticastBoundaryList []net.IP
 	MulticastSubscribers  []net.IP
 	MulticastPublishers   []net.IP
+	// RFC-18: tenant identification and topology color stamping
+	TenantPubKey         string
+	TenantTopologyColors string // e.g. "color 1" or "color 1 color 3", empty if flex-algo disabled
 }
 
 // bgpMartianNets contains the standard BGP martian prefixes — addresses that
@@ -292,6 +301,18 @@ func (StringsHelper) ToUpper(s string) string {
 	return strings.ToUpper(s)
 }
 
+func (StringsHelper) Join(sep string, parts []string) string {
+	return strings.Join(parts, sep)
+}
+
+func (StringsHelper) ToUpperEach(parts []string) []string {
+	result := make([]string, len(parts))
+	for i, s := range parts {
+		result[i] = strings.ToUpper(s)
+	}
+	return result
+}
+
 type templateData struct {
 	Device                   *Device
 	Vpnv4BgpPeers            []BgpPeer
@@ -303,4 +324,26 @@ type templateData struct {
 	LocalASN                 uint32
 	UnicastVrfs              []uint16
 	Strings                  StringsHelper
+	AllTopologies            []TopologyModel
+	Config                   *FeaturesConfig // nil when no features config is loaded
+}
+
+// FlexAlgoEnabled returns true if a features config is loaded and flex_algo.enabled is set.
+func (d templateData) FlexAlgoEnabled() bool {
+	return d.Config != nil && d.Config.Features.FlexAlgo.Enabled
+}
+
+// TopologyModel holds pre-computed topology data for template rendering.
+type TopologyModel struct {
+	Name           string
+	AdminGroupBit  uint8
+	FlexAlgoNumber uint8
+	Color          int    // AdminGroupBit + 1
+	ConstraintStr  string // "include-any" or "exclude"
+}
+
+// FlexAlgoNodeSegmentModel holds pre-computed flex-algo node-segment data for template rendering.
+type FlexAlgoNodeSegmentModel struct {
+	NodeSegmentIdx uint16
+	TopologyName   string
 }

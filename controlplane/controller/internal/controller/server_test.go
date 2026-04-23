@@ -925,6 +925,7 @@ func TestStateCache(t *testing.T) {
 					},
 				},
 				Tenants:     map[string]serviceability.Tenant{},
+				Topologies:  map[string]serviceability.TopologyInfo{},
 				UnicastVrfs: []uint16{1},
 				Vpnv4BgpPeers: []BgpPeer{
 					{
@@ -960,6 +961,7 @@ func TestStateCache(t *testing.T) {
 								Allocated:     true,
 								VrfId:         1,
 								MetroRouting:  true,
+								TenantPubKey:  "11111111111111111111111111111111",
 							},
 							{
 								Id:            501,
@@ -971,6 +973,7 @@ func TestStateCache(t *testing.T) {
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
 								IsMulticast:   true,
+								TenantPubKey:  "11111111111111111111111111111111",
 								MulticastBoundaryList: []net.IP{
 									{239, 0, 0, 1},
 								},
@@ -989,6 +992,7 @@ func TestStateCache(t *testing.T) {
 								IsLink:        true,
 								Metric:        400000,
 								LinkStatus:    serviceability.LinkStatusActivated,
+								PubKey:        "11111111111111111111111111111111",
 							},
 							{
 								InterfaceType: InterfaceTypePhysical,
@@ -998,6 +1002,7 @@ func TestStateCache(t *testing.T) {
 								IsLink:        true,
 								Metric:        1,
 								LinkStatus:    serviceability.LinkStatusActivated,
+								PubKey:        "11111111111111111111111111111111",
 							},
 							{
 								InterfaceType: InterfaceTypePhysical,
@@ -1007,6 +1012,7 @@ func TestStateCache(t *testing.T) {
 								IsLink:        true,
 								Metric:        50,
 								LinkStatus:    serviceability.LinkStatusActivated,
+								PubKey:        "11111111111111111111111111111111",
 							},
 							{
 								InterfaceType: InterfaceTypeLoopback,
@@ -1077,6 +1083,7 @@ func TestStateCache(t *testing.T) {
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{},
 				Tenants:         map[string]serviceability.Tenant{},
+				Topologies:      map[string]serviceability.TopologyInfo{},
 				UnicastVrfs:     []uint16{1},
 				Vpnv4BgpPeers:   nil, // No BGP peers since device has pathologies
 				Devices: map[string]*Device{
@@ -1106,6 +1113,7 @@ func TestStateCache(t *testing.T) {
 								Allocated:     true,
 								VrfId:         1,
 								MetroRouting:  true,
+								TenantPubKey:  "11111111111111111111111111111111",
 							},
 						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
 						TunnelSlots: config.MaxUserTunnelSlots,
@@ -1173,6 +1181,7 @@ func TestStateCache(t *testing.T) {
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{},
 				Tenants:         map[string]serviceability.Tenant{},
+				Topologies:      map[string]serviceability.TopologyInfo{},
 				UnicastVrfs:     []uint16{1},
 				Devices: map[string]*Device{
 					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
@@ -1218,6 +1227,7 @@ func TestStateCache(t *testing.T) {
 								Allocated:     true,
 								VrfId:         1,
 								MetroRouting:  true,
+								TenantPubKey:  "11111111111111111111111111111111",
 							},
 						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
 						TunnelSlots: config.MaxUserTunnelSlots,
@@ -1299,6 +1309,7 @@ func TestStateCache(t *testing.T) {
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{},
 				Tenants:         map[string]serviceability.Tenant{},
+				Topologies:      map[string]serviceability.TopologyInfo{},
 				UnicastVrfs:     []uint16{1},
 				Vpnv4BgpPeers: []BgpPeer{
 					{
@@ -1354,6 +1365,7 @@ func TestStateCache(t *testing.T) {
 								Allocated:     true,
 								VrfId:         1,
 								MetroRouting:  true,
+								TenantPubKey:  "11111111111111111111111111111111",
 							},
 							{
 								Id:            501,
@@ -1366,6 +1378,7 @@ func TestStateCache(t *testing.T) {
 								Allocated:     true,
 								VrfId:         1,
 								MetroRouting:  true,
+								TenantPubKey:  "11111111111111111111111111111111",
 							},
 						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+2, config.MaxUserTunnelSlots-2)...),
 						TunnelSlots: config.MaxUserTunnelSlots,
@@ -1479,6 +1492,7 @@ func TestStateCache(t *testing.T) {
 						VrfId:  2,
 					},
 				},
+				Topologies:  map[string]serviceability.TopologyInfo{},
 				UnicastVrfs: []uint16{1, 2},
 				Vpnv4BgpPeers: []BgpPeer{
 					{
@@ -1513,6 +1527,7 @@ func TestStateCache(t *testing.T) {
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
 								VrfId:         1,
+								TenantPubKey:  "g35TxFqwMx95vCk63fTxGTHb6ei4W24qg5t2x6xD3cT",
 							},
 							{
 								Id:            501,
@@ -1524,6 +1539,7 @@ func TestStateCache(t *testing.T) {
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
 								VrfId:         2,
+								TenantPubKey:  "2M59vuWgsiuHAqQVB6KvuXuaBCJR8138gMAm4uCuR6Du",
 							},
 							{
 								Id:            502,
@@ -1536,6 +1552,7 @@ func TestStateCache(t *testing.T) {
 								Allocated:     true,
 								VrfId:         1,
 								MetroRouting:  true,
+								TenantPubKey:  "7fTN12qMUn1gSUuTMxNCdjndcxwJu45kosXuqJiXMeT9",
 							},
 						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+3, config.MaxUserTunnelSlots-3)...),
 						TunnelSlots: config.MaxUserTunnelSlots,

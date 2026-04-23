@@ -5,6 +5,7 @@ use doublezero_program_tools::{
     types::{Flags, StorageGap},
     {Discriminator, PrecomputedDiscriminator},
 };
+use ruint::Uint;
 use solana_pubkey::Pubkey;
 use svm_hash::sha2::Hash;
 
@@ -102,9 +103,12 @@ pub struct Distribution {
     pub integrations_collected_count: u16,
     _padding_1: [u8; 4],
 
+    /// Indexed by `RewardsIntegration.registration_index`.
+    pub collected_integrations_bitmap: Uint<512, 8>,
+
     pub collected_2z_from_integrations: u64,
 
-    _storage_gap: StorageGap<6>,
+    _storage_gap: StorageGap<4>,
 }
 
 impl PrecomputedDiscriminator for Distribution {
@@ -195,6 +199,25 @@ impl Distribution {
     #[inline]
     pub fn are_all_integrations_collected(&self) -> bool {
         self.integrations_collected_count >= self.integrations_count_snapshot
+    }
+
+    #[inline]
+    pub fn checked_is_integration_collected(&self, index: u16) -> Option<bool> {
+        let idx = index as usize;
+        if idx >= Uint::<512, 8>::BITS {
+            return None;
+        }
+        Some(self.collected_integrations_bitmap.bit(idx))
+    }
+
+    #[inline]
+    pub fn checked_set_integration_collected(&mut self, index: u16) -> Option<()> {
+        let idx = index as usize;
+        if idx >= Uint::<512, 8>::BITS {
+            return None;
+        }
+        self.collected_integrations_bitmap.set_bit(idx, true);
+        Some(())
     }
 
     #[inline]
@@ -393,6 +416,47 @@ mod tests {
         // All collected → gate open.
         distribution.integrations_collected_count = 2;
         assert!(distribution.are_all_integrations_collected());
+    }
+
+    #[test]
+    fn test_integration_bitmap_helpers() {
+        let mut distribution = Distribution::default();
+
+        for idx in [0u16, 1, 127, 255, 383, 511] {
+            assert_eq!(
+                distribution.checked_is_integration_collected(idx),
+                Some(false)
+            );
+        }
+
+        for idx in [0u16, 7, 63, 64, 127, 255, 256, 383, 511] {
+            assert_eq!(
+                distribution.checked_set_integration_collected(idx),
+                Some(())
+            );
+            assert_eq!(
+                distribution.checked_is_integration_collected(idx),
+                Some(true)
+            );
+        }
+
+        for idx in [6u16, 62, 65, 126, 257, 382, 510] {
+            assert_eq!(
+                distribution.checked_is_integration_collected(idx),
+                Some(false)
+            );
+        }
+
+        assert_eq!(distribution.checked_is_integration_collected(512), None);
+        assert_eq!(
+            distribution.checked_is_integration_collected(u16::MAX),
+            None
+        );
+        assert_eq!(distribution.checked_set_integration_collected(512), None);
+        assert_eq!(
+            distribution.checked_set_integration_collected(u16::MAX),
+            None
+        );
     }
 
     #[test]

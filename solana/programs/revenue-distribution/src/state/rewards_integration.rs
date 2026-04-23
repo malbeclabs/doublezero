@@ -10,7 +10,12 @@ use solana_pubkey::Pubkey;
 pub struct RewardsIntegration {
     pub program_id: Pubkey,
     pub bump_seed: u8,
-    _padding: [u8; 7],
+    _padding_0: [u8; 1],
+
+    /// Captured from `Journal.integrations_count` at the time this
+    /// integration was registered.
+    pub registration_index: u16,
+    _padding_1: [u8; 4],
 
     // Reserved for future flags.
     _flags: Flags,

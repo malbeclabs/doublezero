@@ -1869,12 +1869,12 @@ fn try_initialize_rewards_integration(
         zero_copy::try_initialize::<RewardsIntegration>(new_rewards_integration_info)?;
     rewards_integration.bump_seed = rewards_integration_bump;
     rewards_integration.program_id = integration_program_id;
-    drop(rewards_integration);
 
     // Account 5 must be the journal. We uptick its integrations counter so
     // that distributions created from here on will snapshot the new total.
     let mut journal =
         ZeroCopyMutAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+    rewards_integration.registration_index = journal.integrations_count;
     journal.integrations_count = journal
         .integrations_count
         .checked_add(1)

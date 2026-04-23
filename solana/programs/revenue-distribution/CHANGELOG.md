@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- track collected integrations via inline bitmap on distribution (#117)
 - scaffold integration harvesting (#115)
 - register rewards integrations (#113)
 

@@ -81,6 +81,8 @@ async fn test_initialize_rewards_integration() {
     let mut expected = RewardsIntegration::default();
     expected.bump_seed = RewardsIntegration::find_address(&integration_program_id).1;
     expected.program_id = integration_program_id;
+    // Registration index is the pre-uptick journal count.
+    expected.registration_index = count_before;
     assert_eq!(rewards_integration, expected);
 
     // Journal integrations_count upticked by exactly one.

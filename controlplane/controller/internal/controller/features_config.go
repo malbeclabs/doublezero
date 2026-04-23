@@ -7,7 +7,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// FeaturesConfig is loaded from a YAML file at controller startup.
+// FeaturesConfig is optionally loaded from /etc/doublezero-controller/features.yaml at
+// controller startup. If the file is absent the controller runs with all features disabled.
 // It gates flex-algo topology config, link tagging, and BGP color community stamping.
 type FeaturesConfig struct {
 	Features struct {

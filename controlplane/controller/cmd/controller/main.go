@@ -129,26 +129,24 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.StringVar(&c.tlsKeyFile, "tls-key", "", "path to tls key file")
 	c.fs.BoolVar(&c.enablePprof, "enable-pprof", false, "enable pprof server")
 	c.fs.StringVar(&c.tlsListenPort, "tls-listen-port", "", "listening port for controller grpc server")
-	c.fs.StringVar(&c.featuresConfigPath, "features-config", "", "path to features YAML config file (optional)")
 	return c
 }
 
 type ControllerCommand struct {
-	fs                 *flag.FlagSet
-	description        string
-	listenAddr         string
-	listenPort         string
-	env                string
-	programID          string
-	rpcEndpoint        string
-	deviceLocalASN     uint64
-	noHardware         bool
-	showVersion        bool
-	tlsCertFile        string
-	tlsKeyFile         string
-	tlsListenPort      string
-	enablePprof        bool
-	featuresConfigPath string
+	fs             *flag.FlagSet
+	description    string
+	listenAddr     string
+	listenPort     string
+	env            string
+	programID      string
+	rpcEndpoint    string
+	deviceLocalASN uint64
+	noHardware     bool
+	showVersion    bool
+	tlsCertFile    string
+	tlsKeyFile     string
+	tlsListenPort  string
+	enablePprof    bool
 }
 
 func (c *ControllerCommand) Fs() *flag.FlagSet {
@@ -229,20 +227,19 @@ func (c *ControllerCommand) Run() error {
 
 	options = append(options, controller.WithDeviceLocalASN(deviceLocalASN))
 
-	if c.featuresConfigPath != "" {
-		f, err := os.Open(c.featuresConfigPath)
-		if err != nil {
-			log.Error("failed to open features config", "path", c.featuresConfigPath, "error", err)
-			os.Exit(1)
-		}
+	const defaultFeaturesConfigPath = "/etc/doublezero-controller/features.yaml"
+	if f, err := os.Open(defaultFeaturesConfigPath); err == nil {
 		cfg, err := controller.LoadFeaturesConfig(f)
 		f.Close()
 		if err != nil {
-			log.Error("failed to parse features config", "path", c.featuresConfigPath, "error", err)
+			log.Error("failed to parse features config", "path", defaultFeaturesConfigPath, "error", err)
 			os.Exit(1)
 		}
 		options = append(options, controller.WithFeaturesConfig(cfg))
-		log.Info("loaded features config", "path", c.featuresConfigPath, "flex_algo_enabled", cfg.Features.FlexAlgo.Enabled)
+		log.Info("loaded features config", "path", defaultFeaturesConfigPath, "flex_algo_enabled", cfg.Features.FlexAlgo.Enabled)
+	} else if !os.IsNotExist(err) {
+		log.Error("failed to open features config", "path", defaultFeaturesConfigPath, "error", err)
+		os.Exit(1)
 	}
 
 	if chAddr := os.Getenv("CLICKHOUSE_ADDR"); chAddr != "" {

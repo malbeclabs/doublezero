@@ -3,6 +3,7 @@ package latency
 import (
 	"context"
 	"log/slog"
+	"math"
 	"net"
 	"sync/atomic"
 	"time"
@@ -27,6 +28,17 @@ func SingleSocketPing(ctx context.Context, targets []ProbeTarget) []LatencyResul
 		return nil
 	}
 
+	// ICMP Echo ID is a 16-bit field; we use it to identify the target index
+	// when matching replies, so we can't support more targets than that.
+	if len(targets) > math.MaxUint16 {
+		slog.Error("latency: too many targets for single-socket ICMP probe", "count", len(targets), "max", math.MaxUint16)
+		results := make([]LatencyResult, len(targets))
+		for i, t := range targets {
+			results[i] = LatencyResult{Device: t.Device, InterfaceName: t.InterfaceName, IP: t.IP, Reachable: false}
+		}
+		return results
+	}
+
 	conn, err := icmp.ListenPacket("ip4:icmp", "")
 	if err != nil {
 		slog.Error("latency: failed to open ICMP socket", "error", err)
@@ -41,13 +53,6 @@ func SingleSocketPing(ctx context.Context, targets []ProbeTarget) []LatencyResul
 	states := make([]probeState, len(targets))
 	for i, t := range targets {
 		states[i].target = t
-	}
-
-	// Build a lookup from destination IP to list of target indices (multiple
-	// targets can share an IP in theory, but typically they don't).
-	ipToIndices := make(map[string][]int, len(targets))
-	for i, t := range targets {
-		ipToIndices[t.IP.String()] = append(ipToIndices[t.IP.String()], i)
 	}
 
 	payload := make([]byte, pingPayload)
@@ -89,19 +94,31 @@ func SingleSocketPing(ctx context.Context, targets []ProbeTarget) []LatencyResul
 				continue
 			}
 
-			peerIP := peer.String()
-			indices, ok := ipToIndices[peerIP]
-			if !ok {
+			// The echo ID carries the target index from the send side; verify
+			// the peer IP matches to guard against kernel ID mangling or
+			// stray replies from another process's pings.
+			idx := echo.ID
+			if idx < 0 || idx >= len(states) {
+				continue
+			}
+			peerAddr, ok := peer.(*net.IPAddr)
+			if !ok || !states[idx].target.IP.Equal(peerAddr.IP) {
 				continue
 			}
 
-			for _, idx := range indices {
-				if !states[idx].rtts[seq].got {
-					states[idx].rtts[seq].got = true
-					states[idx].rtts[seq].rtt = receiveTime.Sub(states[idx].rtts[seq].sent)
-					totalReceived.Add(1)
-				}
+			if states[idx].rtts[seq].got {
+				continue
 			}
+			sentNanos := states[idx].rtts[seq].sent.Load()
+			if sentNanos == 0 {
+				// Reply observed before the send time was recorded. Shouldn't
+				// happen since the sender records sent before calling WriteTo,
+				// but guard so we never compute a garbage RTT.
+				continue
+			}
+			states[idx].rtts[seq].got = true
+			states[idx].rtts[seq].rtt = receiveTime.Sub(time.Unix(0, sentNanos))
+			totalReceived.Add(1)
 		}
 	}()
 
@@ -122,7 +139,9 @@ func SingleSocketPing(ctx context.Context, targets []ProbeTarget) []LatencyResul
 				slog.Error("latency: failed to marshal ICMP message", "target", t.IP, "error", err)
 				continue
 			}
-			states[i].rtts[seq].sent = time.Now()
+			// Record send time atomically so the reader goroutine observes it
+			// with proper memory synchronization.
+			states[i].rtts[seq].sent.Store(time.Now().UnixNano())
 			_, err = conn.WriteTo(b, &net.IPAddr{IP: t.IP})
 			if err != nil {
 				slog.Error("latency: failed to send ICMP echo", "target", t.IP, "error", err)
@@ -147,7 +166,7 @@ func SingleSocketPing(ctx context.Context, targets []ProbeTarget) []LatencyResul
 }
 
 type rttEntry struct {
-	sent time.Time
+	sent atomic.Int64 // UnixNano of send time; 0 means not yet sent
 	rtt  time.Duration
 	got  bool
 }
@@ -159,12 +178,14 @@ type probeState struct {
 
 func buildResults(states []probeState) []LatencyResult {
 	results := make([]LatencyResult, len(states))
-	for i, s := range states {
+	for i := range states {
+		s := &states[i]
 		var received int
 		var total, minRtt, maxRtt time.Duration
 		minRtt = time.Hour // sentinel
 
-		for _, r := range s.rtts {
+		for j := range s.rtts {
+			r := &s.rtts[j]
 			if r.got {
 				received++
 				total += r.rtt

@@ -558,6 +558,50 @@ func (dn *TestDevnet) AddMulticastSubscriberGroupSkipAccessPass(t *testing.T, cl
 	dn.log.Debug("--> Multicast subscriber groups added incrementally")
 }
 
+// SubscribeMulticastGroup adds subscriber role(s) to an already-connected multicast user.
+func (dn *TestDevnet) SubscribeMulticastGroup(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
+	dn.log.Debug("==> Subscribing to multicast groups", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+
+	groupArgs := strings.Join(multicastGroupCodes, " ")
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero multicast subscribe " + groupArgs})
+	require.NoError(t, err, "failed to subscribe to multicast groups")
+
+	dn.log.Debug("--> Subscribed to multicast groups")
+}
+
+// UnsubscribeMulticastGroup removes subscriber role(s) from an already-connected multicast user.
+func (dn *TestDevnet) UnsubscribeMulticastGroup(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
+	dn.log.Debug("==> Unsubscribing from multicast groups", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+
+	groupArgs := strings.Join(multicastGroupCodes, " ")
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero multicast unsubscribe " + groupArgs})
+	require.NoError(t, err, "failed to unsubscribe from multicast groups")
+
+	dn.log.Debug("--> Unsubscribed from multicast groups")
+}
+
+// PublishMulticastGroup adds publisher role(s) to an already-connected multicast user.
+func (dn *TestDevnet) PublishMulticastGroup(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
+	dn.log.Debug("==> Publishing to multicast groups", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+
+	groupArgs := strings.Join(multicastGroupCodes, " ")
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero multicast publish " + groupArgs})
+	require.NoError(t, err, "failed to publish to multicast groups")
+
+	dn.log.Debug("--> Published to multicast groups")
+}
+
+// UnpublishMulticastGroup removes publisher role(s) from an already-connected multicast user.
+func (dn *TestDevnet) UnpublishMulticastGroup(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
+	dn.log.Debug("==> Unpublishing from multicast groups", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+
+	groupArgs := strings.Join(multicastGroupCodes, " ")
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero multicast unpublish " + groupArgs})
+	require.NoError(t, err, "failed to unpublish from multicast groups")
+
+	dn.log.Debug("--> Unpublished from multicast groups")
+}
+
 func (dn *TestDevnet) DisconnectMulticastSubscriber(t *testing.T, client *devnet.Client) {
 	dn.log.Debug("==> Disconnecting multicast subscriber", "clientIP", client.CYOANetworkIP)
 

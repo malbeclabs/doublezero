@@ -1,4 +1,4 @@
-# RFC-21: Multicast FPGA Filtering
+# RFC-25: Multicast FPGA Filtering
 
 ## Summary
 

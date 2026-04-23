@@ -310,6 +310,10 @@ async fn main() -> eyre::Result<()> {
                     args.execute(&client, &mut handle)
                 }
             },
+            cli::multicast::MulticastCommands::Subscribe(args) => args.execute(&client).await,
+            cli::multicast::MulticastCommands::Unsubscribe(args) => args.execute(&client).await,
+            cli::multicast::MulticastCommands::Publish(args) => args.execute(&client).await,
+            cli::multicast::MulticastCommands::Unpublish(args) => args.execute(&client).await,
         },
 
         Command::Resource(command) => match command.command {

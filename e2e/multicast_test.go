@@ -225,6 +225,87 @@ func TestE2E_Multicast(t *testing.T) {
 		return
 	}
 
+	if !t.Run("modify_roles", func(t *testing.T) {
+		// doublezero user list renders multicast memberships in a column named `groups`
+		// with each entry prefixed "P:<code>" (publisher) or "S:<code>" (subscriber).
+		// See smartcontract/cli/src/user/list.rs::format_multicast_group_names.
+
+		subscriberRow := func() map[string]string {
+			out, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "list"})
+			if err != nil {
+				return nil
+			}
+			for _, row := range fixtures.ParseCLITable(out) {
+				if row["user_type"] == "Multicast" && row["client_ip"] == subscriberClient.CYOANetworkIP {
+					return row
+				}
+			}
+			return nil
+		}
+		publisherRow := func() map[string]string {
+			out, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "list"})
+			if err != nil {
+				return nil
+			}
+			for _, row := range fixtures.ParseCLITable(out) {
+				if row["user_type"] == "Multicast" && row["client_ip"] == publisherClient.CYOANetworkIP {
+					return row
+				}
+			}
+			return nil
+		}
+
+		// Unsubscribe the subscriber from mg01 (keeps it subscribed to mg02).
+		tdn.UnsubscribeMulticastGroup(t, subscriberClient, "mg01")
+
+		require.Eventually(t, func() bool {
+			row := subscriberRow()
+			if row == nil {
+				return false
+			}
+			groups := row["groups"]
+			return !strings.Contains(groups, "S:mg01") && strings.Contains(groups, "S:mg02")
+		}, 60*time.Second, 2*time.Second, "subscriber should be unsubscribed from mg01 but still subscribed to mg02")
+
+		// Unpublish the publisher from mg01 (keeps it publishing to mg02).
+		tdn.UnpublishMulticastGroup(t, publisherClient, "mg01")
+
+		require.Eventually(t, func() bool {
+			row := publisherRow()
+			if row == nil {
+				return false
+			}
+			groups := row["groups"]
+			return !strings.Contains(groups, "P:mg01") && strings.Contains(groups, "P:mg02")
+		}, 60*time.Second, 2*time.Second, "publisher should be unpublished from mg01 but still publishing to mg02")
+
+		// Tunnels should still be up — key assertion: no disconnect required.
+		err := publisherClient.WaitForTunnelUp(t.Context(), 30*time.Second)
+		require.NoError(t, err, "publisher tunnel should remain up after unpublish")
+		err = subscriberClient.WaitForTunnelUp(t.Context(), 30*time.Second)
+		require.NoError(t, err, "subscriber tunnel should remain up after unsubscribe")
+
+		// Restore pre-test state so the disconnect sub-test exercises the same two-group
+		// teardown it did before.
+		tdn.SubscribeMulticastGroup(t, subscriberClient, "mg01")
+		tdn.PublishMulticastGroup(t, publisherClient, "mg01")
+
+		require.Eventually(t, func() bool {
+			pub := publisherRow()
+			sub := subscriberRow()
+			if pub == nil || sub == nil {
+				return false
+			}
+			return strings.Contains(pub["groups"], "P:mg01") &&
+				strings.Contains(pub["groups"], "P:mg02") &&
+				strings.Contains(sub["groups"], "S:mg01") &&
+				strings.Contains(sub["groups"], "S:mg02")
+		}, 60*time.Second, 2*time.Second, "roles should be restored for both clients")
+	}) {
+		t.Fail()
+		return
+	}
+
 	if !t.Run("disconnect", func(t *testing.T) {
 		tdn.DisconnectMulticastPublisher(t, publisherClient)
 		tdn.DisconnectMulticastSubscriber(t, subscriberClient)

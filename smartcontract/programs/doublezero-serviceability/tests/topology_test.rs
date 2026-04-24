@@ -17,6 +17,7 @@ use doublezero_serviceability::{
             },
         },
         exchange::create::ExchangeCreateArgs,
+        globalstate::setfeatureflags::SetFeatureFlagsArgs,
         link::{activate::LinkActivateArgs, create::LinkCreateArgs, update::LinkUpdateArgs},
         location::create::LocationCreateArgs,
         topology::{
@@ -28,6 +29,7 @@ use doublezero_serviceability::{
     state::{
         accounttype::AccountType,
         device::{DeviceDesiredStatus, DeviceType},
+        feature_flags::FeatureFlag,
         interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
         link::{Link, LinkDesiredStatus, LinkLinkType},
         topology::{TopologyConstraint, TopologyInfo},
@@ -1867,15 +1869,10 @@ async fn test_topology_backfill_nonexistent_topology_rejected() {
 #[tokio::test]
 async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     // BackfillTopology allocates the flex-algo node_segment_idx from the on-chain
-    // SegmentRoutingIds resource. The flex-algo SID must not collide with any
-    // existing base node_segment_idx — backfill skips any SR ID that is already
-    // in use as a base SID, keeping the skipped IDs marked in the resource to
-    // prevent future reuse.
-    //
-    // This scenario activates the loopback with onchain allocation disabled: the
-    // base node_segment_idx is set to 1 directly on the interface without touching
-    // the SR resource. The backfill must therefore skip SR ID 1 (it conflicts with
-    // the base SID) and allocate SR ID 2 for the flex-algo segment.
+    // SegmentRoutingIds resource. The base node_segment_idx on the loopback was
+    // itself allocated from the same resource (via onchain activation), so the
+    // bitmap already reflects that ID as in use — backfill simply draws the next
+    // available ID and no collision is possible.
     println!("[TEST] test_topology_backfill_allocates_sr_id_from_onchain_resource");
 
     let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
@@ -1884,8 +1881,24 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
 
     let (admin_group_bits_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
     let (segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    // Enable OnChainAllocation so the Vpnv4 loopback can be created+activated
+    // atomically, drawing its node_segment_idx from the SegmentRoutingIds resource.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
 
     // Step 1: Create Location
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
@@ -2002,7 +2015,10 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     )
     .await;
 
-    // Step 6: Create a Vpnv4 loopback interface (without onchain allocation)
+    // Step 6: Create a Vpnv4 loopback with onchain allocation. The interface is
+    // created and activated atomically — the IP is drawn from DeviceTunnelBlock
+    // and the base node_segment_idx is drawn from SegmentRoutingIds (first free
+    // ID = 1), marking that ID as in use in the resource bitmap.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -2019,36 +2035,14 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Step 7: Activate the loopback with explicit node_segment_idx=1, WITHOUT providing
-    // the SegmentRoutingIds account. This is the use_onchain_allocation=false path:
-    // the base SR ID is stored directly on the interface and the on-chain resource
-    // is never updated, so the resource still believes ID 1 is free.
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
-            name: "Loopback255".to_string(),
-            ip_net: "172.16.0.1/32".parse().unwrap(),
-            node_segment_idx: 1,
-        }),
-        // Only device + globalstate — no link_ips or segment_routing_ids accounts.
-        // This causes the processor to take the else branch and store node_segment_idx
-        // directly without updating the on-chain resource (accounts.len() == 4).
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
         ],
         &payer,
     )
@@ -2061,7 +2055,7 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     let iface = device.interfaces[0].into_current_version();
     assert_eq!(
         iface.node_segment_idx, 1,
-        "Base node_segment_idx should be 1"
+        "Base node_segment_idx should be 1 (first ID from SegmentRoutingIds)"
     );
     assert_eq!(
         iface.flex_algo_node_segments.len(),
@@ -2069,7 +2063,7 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
         "No flex-algo segments before backfill"
     );
 
-    // Step 8: Create topology
+    // Step 7: Create topology
     let topology_pda = create_topology(
         &mut banks_client,
         program_id,
@@ -2081,10 +2075,9 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     )
     .await;
 
-    // Step 9: Call BackfillTopology. allocate_id draws from the on-chain SR resource,
-    // which still believes ID 1 is free (step 7 used the off-chain allocation path).
-    // Backfill detects that ID 1 conflicts with the base node_segment_idx and skips
-    // it, then allocates ID 2 for the flex-algo segment.
+    // Step 8: Call BackfillTopology. The SR resource has ID 1 marked in use from
+    // the onchain activation above, so allocate_id returns the next free ID (2)
+    // for the flex-algo segment.
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     let backfill_accounts = vec![
         AccountMeta::new_readonly(topology_pda, false),
@@ -2103,8 +2096,7 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     tx.try_sign(&[&payer], recent_blockhash).unwrap();
     banks_client.process_transaction(tx).await.unwrap();
 
-    // Verify: backfill ran and stored a flex-algo segment for this topology, with
-    // an idx allocated from the on-chain SR resource (which still had ID 1 free).
+    // Verify: backfill stored a flex-algo segment with the next SR ID (2).
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found after backfill");
@@ -2124,8 +2116,8 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     );
     assert_eq!(
         iface.flex_algo_node_segments[0].node_segment_idx, 2,
-        "flex-algo SID must not equal the base SID (1); backfill skips SR ID 1 \
-         because it conflicts with the base node_segment_idx and allocates 2 instead"
+        "flex-algo SID should be the next free ID (2) — base SID 1 is already \
+         marked in use in the SR resource from onchain activation"
     );
 
     println!("[PASS] test_topology_backfill_allocates_sr_id_from_onchain_resource");

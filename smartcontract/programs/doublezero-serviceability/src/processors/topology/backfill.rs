@@ -120,24 +120,6 @@ pub fn process_topology_backfill(
     let mut backfilled_count: usize = 0;
     let mut skipped_count: usize = 0;
 
-    // Collect all existing base node_segment_idx values across every device so
-    // that the flex-algo SID we allocate doesn't collide with any base SID.
-    // This matters when base SIDs were assigned without going through the
-    // SegmentRoutingIds resource (e.g. off-chain activation paths); the resource
-    // bitmap wouldn't know about them and would otherwise re-issue the same index.
-    let base_sids_in_use: std::collections::HashSet<u16> = device_accounts
-        .iter()
-        .flat_map(|da| match Device::try_from(&da.data.borrow()[..]) {
-            Ok(d) => d
-                .interfaces
-                .into_iter()
-                .map(|i| i.into_current_version().node_segment_idx)
-                .filter(|&idx| idx > 0)
-                .collect::<Vec<u16>>(),
-            Err(_) => vec![],
-        })
-        .collect();
-
     // Allocate new IDs for loopbacks missing this topology's segment.
     for device_account in device_accounts {
         msg!("BackfillTopology: processing device {}", device_account.key);
@@ -161,9 +143,6 @@ pub fn process_topology_backfill(
             // conflicts with an existing base node_segment_idx — those IDs
             // remain marked used in the resource to avoid future collisions.
             let mut node_segment_idx = allocate_id(segment_routing_ids_account)?;
-            while base_sids_in_use.contains(&node_segment_idx) {
-                node_segment_idx = allocate_id(segment_routing_ids_account)?;
-            }
             match iface {
                 Interface::V3(ref mut v3) => {
                     v3.flex_algo_node_segments.push(FlexAlgoNodeSegment {

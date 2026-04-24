@@ -190,12 +190,12 @@ type Device struct {
 	IsisNet               string
 	DevicePathologies     []string
 	BgpCommunity          uint16
-	ExchangeCode          string
+	MetroCode             string
 	Status                serviceability.DeviceStatus
 	// Additional fields for metric labels
 	Code            string
 	ContributorCode string
-	LocationCode    string
+	FacilityCode    string
 }
 
 func NewDevice(ip net.IP, publicKey string) *Device {

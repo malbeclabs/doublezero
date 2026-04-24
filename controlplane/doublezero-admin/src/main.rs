@@ -7,12 +7,12 @@ use crate::cli::{
     command::Command,
     config::ConfigCommands,
     device::{DeviceCommands, InterfaceCommands},
-    exchange::ExchangeCommands,
+    facility::FacilityCommands,
     globalconfig::{
         AirdropCommands, AuthorityCommands, FoundationAllowlistCommands, GlobalConfigCommands,
     },
     link::LinkCommands,
-    location::LocationCommands,
+    metro::MetroCommands,
     permission::PermissionCommands,
     tenant::TenantCommands,
     user::UserCommands,
@@ -103,20 +103,20 @@ async fn main() -> eyre::Result<()> {
         },
         Command::Account(args) => args.execute(&dzclient, &mut handle),
         Command::Accounts(args) => args.execute(&dzclient, &mut handle),
-        Command::Location(command) => match command.command {
-            LocationCommands::Create(args) => args.execute(&client, &mut handle),
-            LocationCommands::Update(args) => args.execute(&client, &mut handle),
-            LocationCommands::List(args) => args.execute(&client, &mut handle),
-            LocationCommands::Get(args) => args.execute(&client, &mut handle),
-            LocationCommands::Delete(args) => args.execute(&client, &mut handle),
+        Command::Facility(command) => match command.command {
+            FacilityCommands::Create(args) => args.execute(&client, &mut handle),
+            FacilityCommands::Update(args) => args.execute(&client, &mut handle),
+            FacilityCommands::List(args) => args.execute(&client, &mut handle),
+            FacilityCommands::Get(args) => args.execute(&client, &mut handle),
+            FacilityCommands::Delete(args) => args.execute(&client, &mut handle),
         },
-        Command::Exchange(command) => match command.command {
-            ExchangeCommands::Create(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::SetDevice(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::Update(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::List(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::Get(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::Delete(args) => args.execute(&client, &mut handle),
+        Command::Metro(command) => match command.command {
+            MetroCommands::Create(args) => args.execute(&client, &mut handle),
+            MetroCommands::SetDevice(args) => args.execute(&client, &mut handle),
+            MetroCommands::Update(args) => args.execute(&client, &mut handle),
+            MetroCommands::List(args) => args.execute(&client, &mut handle),
+            MetroCommands::Get(args) => args.execute(&client, &mut handle),
+            MetroCommands::Delete(args) => args.execute(&client, &mut handle),
         },
         Command::Contributor(command) => match command.command {
             cli::contributor::ContributorCommands::Create(args) => {

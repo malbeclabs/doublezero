@@ -239,22 +239,22 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 	if len(links) == 0 {
 		c.log.Debug("0 links found on-chain")
 	}
-	exchanges := data.Exchanges
+	metros := data.Metros
 	contributors := data.Contributors
-	locations := data.Locations
+	facilities := data.Facilities
 
-	// Create lookup maps for contributors, exchanges, and locations
+	// Create lookup maps for contributors, metros, and facilities
 	contributorMap := make(map[[32]byte]serviceability.Contributor)
 	for _, contributor := range contributors {
 		contributorMap[contributor.PubKey] = contributor
 	}
-	exchangeMap := make(map[[32]byte]serviceability.Exchange)
-	for _, exchange := range exchanges {
-		exchangeMap[exchange.PubKey] = exchange
+	metroMap := make(map[[32]byte]serviceability.Metro)
+	for _, metro := range metros {
+		metroMap[metro.PubKey] = metro
 	}
-	locationMap := make(map[[32]byte]serviceability.Location)
-	for _, location := range locations {
-		locationMap[location.PubKey] = location
+	facilityMap := make(map[[32]byte]serviceability.Facility)
+	for _, facility := range facilities {
+		facilityMap[facility.PubKey] = facility
 	}
 	cache := stateCache{
 		GlobalConfig:    data.GlobalConfig,
@@ -288,23 +288,23 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			d.ContributorCode = "unknown"
 		}
 
-		if exchange, ok := exchangeMap[device.ExchangePubKey]; ok {
-			d.ExchangeCode = exchange.Code
-			d.BgpCommunity = exchange.BgpCommunity
+		if metro, ok := metroMap[device.MetroPubKey]; ok {
+			d.MetroCode = metro.Code
+			d.BgpCommunity = metro.BgpCommunity
 
-			if exchange.BgpCommunity < bgpCommunityMinValid || exchange.BgpCommunity > bgpCommunityMaxValid {
-				c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", fmt.Sprintf("exchange BGP community %d is out of valid range (%d-%d)", exchange.BgpCommunity, bgpCommunityMinValid, bgpCommunityMaxValid), "exchange_code", exchange.Code)
-				d.DevicePathologies = append(d.DevicePathologies, fmt.Sprintf("exchange BGP community %d is out of valid range (%d-%d)", exchange.BgpCommunity, bgpCommunityMinValid, bgpCommunityMaxValid))
+			if metro.BgpCommunity < bgpCommunityMinValid || metro.BgpCommunity > bgpCommunityMaxValid {
+				c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", fmt.Sprintf("metro BGP community %d is out of valid range (%d-%d)", metro.BgpCommunity, bgpCommunityMinValid, bgpCommunityMaxValid), "metro_code", metro.Code)
+				d.DevicePathologies = append(d.DevicePathologies, fmt.Sprintf("metro BGP community %d is out of valid range (%d-%d)", metro.BgpCommunity, bgpCommunityMinValid, bgpCommunityMaxValid))
 			}
 		} else {
-			d.ExchangeCode = "unknown"
+			d.MetroCode = "unknown"
 			d.BgpCommunity = 0
 		}
 
-		if location, ok := locationMap[device.LocationPubKey]; ok {
-			d.LocationCode = location.Code
+		if facility, ok := facilityMap[device.FacilityPubKey]; ok {
+			d.FacilityCode = facility.Code
 		} else {
-			d.LocationCode = "unknown"
+			d.FacilityCode = "unknown"
 		}
 
 		candidateVpnv4BgpPeer, candidateIpv4BgpPeer := c.processDeviceInterfacesAndPeers(device, d, devicePubKey)
@@ -335,8 +335,8 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		}
 
 		if d.BgpCommunity == 0 {
-			c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "device exchange bgp_community=0")
-			d.DevicePathologies = append(d.DevicePathologies, "device exchange bgp_community=0")
+			c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "device metro bgp_community=0")
+			d.DevicePathologies = append(d.DevicePathologies, "device metro bgp_community=0")
 		}
 
 		if len(d.DevicePathologies) > 0 {
@@ -723,8 +723,8 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		req.GetPubkey(),
 		device.Code,
 		device.ContributorCode,
-		device.ExchangeCode,
-		device.LocationCode,
+		device.MetroCode,
+		device.FacilityCode,
 		device.Status.String(),
 		agentVersion,
 		agentCommit,

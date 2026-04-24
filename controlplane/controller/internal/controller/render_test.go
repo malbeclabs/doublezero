@@ -34,7 +34,7 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIntfName: "Loopback255",
 					Interfaces:            []Interface{},
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
-					ExchangeCode:          "tst",
+					MetroCode:             "tst",
 					BgpCommunity:          10050,
 					Tunnels: []*Tunnel{
 						{
@@ -91,7 +91,7 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
 					Vpn4vLoopbackIntfName: "Loopback255",
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
-					ExchangeCode:          "tst",
+					MetroCode:             "tst",
 					BgpCommunity:          10050,
 					Tunnels: []*Tunnel{
 						{
@@ -150,7 +150,7 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
 					Vpn4vLoopbackIntfName: "Loopback255",
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
-					ExchangeCode:          "tst",
+					MetroCode:             "tst",
 					BgpCommunity:          10050,
 					Tunnels: []*Tunnel{
 						{
@@ -234,7 +234,7 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
 					Vpn4vLoopbackIntfName: "Loopback255",
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
-					ExchangeCode:          "tst",
+					MetroCode:             "tst",
 					BgpCommunity:          10050,
 					Tunnels: []*Tunnel{
 						{
@@ -332,7 +332,7 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
 					Vpn4vLoopbackIntfName: "Loopback255",
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
-					ExchangeCode:          "tst",
+					MetroCode:             "tst",
 					BgpCommunity:          10050,
 					Tunnels: []*Tunnel{
 						{
@@ -429,7 +429,7 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIntfName: "Loopback255",
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
 					Ipv4LoopbackIP:        net.IP{13, 13, 13, 13},
-					ExchangeCode:          "tst",
+					MetroCode:             "tst",
 					BgpCommunity:          10050,
 					Interfaces: []Interface{
 						{
@@ -558,7 +558,7 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 					Ipv4LoopbackIP:  net.IP{13, 13, 13, 13},
-					ExchangeCode:    "tst",
+					MetroCode:       "tst",
 					BgpCommunity:    10050,
 					Interfaces: []Interface{
 						{
@@ -615,7 +615,7 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 					Ipv4LoopbackIP:  net.IP{13, 13, 13, 13},
-					ExchangeCode:    "tst",
+					MetroCode:       "tst",
 					BgpCommunity:    10050,
 					Status:          serviceability.DeviceStatusDrained,
 					Interfaces: []Interface{
@@ -674,7 +674,7 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIntfName: "Loopback255",
 					Interfaces:            []Interface{},
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
-					ExchangeCode:          "tst",
+					MetroCode:             "tst",
 					BgpCommunity:          10050,
 					Tunnels: []*Tunnel{
 						{
@@ -720,7 +720,7 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIntfName: "Loopback255",
 					Interfaces:            []Interface{},
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
-					ExchangeCode:          "tst",
+					MetroCode:             "tst",
 					BgpCommunity:          10050,
 					Tunnels: []*Tunnel{
 						{
@@ -766,7 +766,7 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIntfName: "Loopback255",
 					Interfaces:            []Interface{},
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
-					ExchangeCode:          "tst",
+					MetroCode:             "tst",
 					BgpCommunity:          10050,
 					Tunnels: []*Tunnel{
 						{

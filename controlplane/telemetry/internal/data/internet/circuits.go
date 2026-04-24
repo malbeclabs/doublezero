@@ -9,7 +9,7 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
-type Exchange struct {
+type Metro struct {
 	PK        solana.PublicKey `json:"pk"`
 	Code      string           `json:"code"`
 	Name      string           `json:"name"`
@@ -18,9 +18,9 @@ type Exchange struct {
 }
 
 type Circuit struct {
-	Code           string   `json:"code"`
-	OriginExchange Exchange `json:"origin_exchange"`
-	TargetExchange Exchange `json:"target_exchange"`
+	Code        string `json:"code"`
+	OriginMetro Metro  `json:"origin_metro"`
+	TargetMetro Metro  `json:"target_metro"`
 }
 
 func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
@@ -34,21 +34,21 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 		return nil, fmt.Errorf("failed to load serviceability data: %w", err)
 	}
 
-	n := len(data.Exchanges)
+	n := len(data.Metros)
 	circuits := make([]Circuit, 0, n*(n-1)/2)
 	circuitsByCode := make(map[string]struct{})
 
-	for _, originExchange := range data.Exchanges {
-		for _, targetExchange := range data.Exchanges {
-			if originExchange.Code == targetExchange.Code {
+	for _, originMetro := range data.Metros {
+		for _, targetMetro := range data.Metros {
+			if originMetro.Code == targetMetro.Code {
 				continue
 			}
 
-			var origin, target serviceability.Exchange
-			if originExchange.Code < targetExchange.Code {
-				origin, target = originExchange, targetExchange
+			var origin, target serviceability.Metro
+			if originMetro.Code < targetMetro.Code {
+				origin, target = originMetro, targetMetro
 			} else {
-				origin, target = targetExchange, originExchange
+				origin, target = targetMetro, originMetro
 			}
 
 			key := circuitKey(origin.Code, target.Code)
@@ -59,14 +59,14 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 			circuitsByCode[key] = struct{}{}
 			circuits = append(circuits, Circuit{
 				Code: key,
-				OriginExchange: Exchange{
+				OriginMetro: Metro{
 					PK:        origin.PubKey,
 					Code:      origin.Code,
 					Name:      origin.Name,
 					Latitude:  origin.Lat,
 					Longitude: origin.Lng,
 				},
-				TargetExchange: Exchange{
+				TargetMetro: Metro{
 					PK:        target.PubKey,
 					Code:      target.Code,
 					Name:      target.Name,

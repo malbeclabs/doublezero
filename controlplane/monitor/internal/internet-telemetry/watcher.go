@@ -84,7 +84,7 @@ type CircuitTelemetryStats struct {
 }
 
 func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
-	circuits, err := telemetrycircuits.GetInternetExchangeCircuits(ctx, w.log, w.cfg.Serviceability)
+	circuits, err := telemetrycircuits.GetInternetMetroCircuits(ctx, w.log, w.cfg.Serviceability)
 	if err != nil {
 		w.cfg.Metrics.Errors.WithLabelValues(MetricErrorTypeGetCircuits).Inc()
 		return fmt.Errorf("failed to get circuits: %w", err)
@@ -146,14 +146,14 @@ func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 		for _, circuit := range circuits {
 			wg.Add(1)
 			sem <- struct{}{}
-			go func(circuit telemetrycircuits.InternetExchangeCircuit, dataProvider string) {
+			go func(circuit telemetrycircuits.InternetMetroCircuit, dataProvider string) {
 				defer wg.Done()
 				defer func() { <-sem }()
 
-				originCode := circuit.OriginExchange.Code
-				targetCode := circuit.TargetExchange.Code
-				originPK := solana.PublicKeyFromBytes(circuit.OriginExchange.PubKey[:])
-				targetPK := solana.PublicKeyFromBytes(circuit.TargetExchange.PubKey[:])
+				originCode := circuit.OriginMetro.Code
+				targetCode := circuit.TargetMetro.Code
+				originPK := solana.PublicKeyFromBytes(circuit.OriginMetro.PubKey[:])
+				targetPK := solana.PublicKeyFromBytes(circuit.TargetMetro.PubKey[:])
 
 				account, err := w.cfg.Telemetry.GetInternetLatencySamples(ctx, dataProvider, originPK, targetPK, w.cfg.InternetLatencyCollectorPK, epoch)
 				if err != nil {
@@ -228,8 +228,8 @@ func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 				w.log.Debug("circuit telemetry",
 					"code", circuit.Code,
 					"data_provider", dataProvider,
-					"origin_exchange", originCode,
-					"target_exchange", targetCode,
+					"origin_metro", originCode,
+					"target_metro", targetCode,
 					"agent_pk", w.cfg.InternetLatencyCollectorPK.String(),
 					"epoch", epoch,
 					"samples", len(account.Samples),

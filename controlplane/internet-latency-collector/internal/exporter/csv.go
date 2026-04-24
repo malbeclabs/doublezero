@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	csvRecordHeader = []string{"source_exchange_code", "target_exchange_code", "timestamp", "latency"}
+	csvRecordHeader = []string{"source_metro_code", "target_metro_code", "timestamp", "latency"}
 )
 
 type CSVExporter struct {
@@ -93,8 +93,8 @@ func (e *CSVExporter) WriteHeader(header []string) error {
 func (e *CSVExporter) WriteRecords(ctx context.Context, records []Record) error {
 	for _, record := range records {
 		row := []string{
-			record.SourceExchangeCode,
-			record.TargetExchangeCode,
+			record.SourceMetroCode,
+			record.TargetMetroCode,
 			record.Timestamp.Format(time.RFC3339),
 			record.RTT.String(),
 		}

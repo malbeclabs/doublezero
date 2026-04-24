@@ -39,7 +39,7 @@ func TestInternetLatency_CSVExporter_New(t *testing.T) {
 	content, err := os.ReadFile(exporter.GetFilename())
 	require.NoError(t, err)
 
-	expectedHeader := "source_exchange_code,target_exchange_code,timestamp,latency\n"
+	expectedHeader := "source_metro_code,target_metro_code,timestamp,latency\n"
 	require.Equal(t, expectedHeader, string(content))
 }
 
@@ -109,16 +109,16 @@ func TestInternetLatency_CSVExporter_WriteRecords(t *testing.T) {
 	// Test writing a valid record
 	records := []exporter.Record{
 		{
-			SourceExchangeCode: "source1",
-			TargetExchangeCode: "target1",
-			Timestamp:          time.Unix(100, 0),
-			RTT:                time.Duration(100),
+			SourceMetroCode: "source1",
+			TargetMetroCode: "target1",
+			Timestamp:       time.Unix(100, 0),
+			RTT:             time.Duration(100),
 		},
 		{
-			SourceExchangeCode: "source2",
-			TargetExchangeCode: "target2",
-			Timestamp:          time.Unix(200, 0),
-			RTT:                time.Duration(200),
+			SourceMetroCode: "source2",
+			TargetMetroCode: "target2",
+			Timestamp:       time.Unix(200, 0),
+			RTT:             time.Duration(200),
 		},
 	}
 
@@ -133,7 +133,7 @@ func TestInternetLatency_CSVExporter_WriteRecords(t *testing.T) {
 	content, err := os.ReadFile(e.GetFilename())
 	require.NoError(t, err)
 
-	expectedContent := "source_exchange_code,target_exchange_code,timestamp,latency\nsource1,target1," + time.Unix(100, 0).Format(time.RFC3339) + ",100ns\nsource2,target2," + time.Unix(200, 0).Format(time.RFC3339) + ",200ns\n"
+	expectedContent := "source_metro_code,target_metro_code,timestamp,latency\nsource1,target1," + time.Unix(100, 0).Format(time.RFC3339) + ",100ns\nsource2,target2," + time.Unix(200, 0).Format(time.RFC3339) + ",200ns\n"
 	require.Equal(t, expectedContent, string(content))
 }
 

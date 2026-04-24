@@ -299,13 +299,13 @@ func (p *Publisher) getLatLng(ctx context.Context) (lat, lng float64, err error)
 		return 0, 0, fmt.Errorf("device %s not found in program data", p.cfg.LocalDevicePK)
 	}
 
-	locationPK := solana.PublicKeyFromBytes(device.LocationPubKey[:])
+	locationPK := solana.PublicKeyFromBytes(device.FacilityPubKey[:])
 
-	var location *serviceability.Location
-	for i := range programData.Locations {
-		locPK := solana.PublicKeyFromBytes(programData.Locations[i].PubKey[:])
+	var location *serviceability.Facility
+	for i := range programData.Facilities {
+		locPK := solana.PublicKeyFromBytes(programData.Facilities[i].PubKey[:])
 		if locPK.Equals(locationPK) {
-			location = &programData.Locations[i]
+			location = &programData.Facilities[i]
 			break
 		}
 	}
@@ -335,7 +335,7 @@ func (p *Publisher) getLatLng(ctx context.Context) (lat, lng float64, err error)
 	p.log.Debug("refreshed lat/lng cache",
 		"lat", lat,
 		"lng", lng,
-		"location_code", location.Code)
+		"facility_code", location.Code)
 
 	return lat, lng, nil
 }

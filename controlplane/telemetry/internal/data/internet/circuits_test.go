@@ -20,15 +20,15 @@ func TestTelemetry_Data_Internet_Provider_GetCircuits(t *testing.T) {
 	t.Run("basic forward and reverse circuits", func(t *testing.T) {
 		t.Parallel()
 
-		exA := serviceability.Exchange{Code: "A", PubKey: solana.NewWallet().PublicKey()}
-		exB := serviceability.Exchange{Code: "B", PubKey: solana.NewWallet().PublicKey()}
-		exC := serviceability.Exchange{Code: "C", PubKey: solana.NewWallet().PublicKey()}
-		exD := serviceability.Exchange{Code: "D", PubKey: solana.NewWallet().PublicKey()}
+		exA := serviceability.Metro{Code: "A", PubKey: solana.NewWallet().PublicKey()}
+		exB := serviceability.Metro{Code: "B", PubKey: solana.NewWallet().PublicKey()}
+		exC := serviceability.Metro{Code: "C", PubKey: solana.NewWallet().PublicKey()}
+		exD := serviceability.Metro{Code: "D", PubKey: solana.NewWallet().PublicKey()}
 
 		client := &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				return &serviceability.ProgramData{
-					Exchanges: []serviceability.Exchange{exA, exB, exC, exD},
+					Metros: []serviceability.Metro{exA, exB, exC, exD},
 				}, nil
 			},
 		}
@@ -103,8 +103,8 @@ func TestTelemetry_Data_Internet_Provider_GetCircuits(t *testing.T) {
 		walletA := solana.NewWallet()
 		walletB := solana.NewWallet()
 
-		exA := serviceability.Exchange{Code: "A", PubKey: toPubKeyBytes(walletA.PublicKey())}
-		exB := serviceability.Exchange{Code: "B", PubKey: toPubKeyBytes(walletB.PublicKey())}
+		exA := serviceability.Metro{Code: "A", PubKey: toPubKeyBytes(walletA.PublicKey())}
+		exB := serviceability.Metro{Code: "B", PubKey: toPubKeyBytes(walletB.PublicKey())}
 
 		client := &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
@@ -113,7 +113,7 @@ func TestTelemetry_Data_Internet_Provider_GetCircuits(t *testing.T) {
 				}
 				called++
 				return &serviceability.ProgramData{
-					Exchanges: []serviceability.Exchange{
+					Metros: []serviceability.Metro{
 						exA,
 						exB,
 					},
@@ -152,7 +152,7 @@ func TestTelemetry_Data_Internet_Provider_GetCircuits(t *testing.T) {
 			ServiceabilityClient: &mockServiceabilityClient{
 				GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 					return &serviceability.ProgramData{
-						Exchanges: []serviceability.Exchange{
+						Metros: []serviceability.Metro{
 							{PubKey: toPubKeyBytes(solana.NewWallet().PublicKey())},
 						},
 					}, nil
@@ -191,13 +191,13 @@ func TestTelemetry_Data_Internet_Provider_GetCircuits(t *testing.T) {
 	t.Run("circuit code unique with duplicate link code", func(t *testing.T) {
 		t.Parallel()
 
-		exA := serviceability.Exchange{Code: "A", PubKey: toPubKeyBytes(solana.NewWallet().PublicKey())}
-		exB := serviceability.Exchange{Code: "B", PubKey: toPubKeyBytes(solana.NewWallet().PublicKey())}
+		exA := serviceability.Metro{Code: "A", PubKey: toPubKeyBytes(solana.NewWallet().PublicKey())}
+		exB := serviceability.Metro{Code: "B", PubKey: toPubKeyBytes(solana.NewWallet().PublicKey())}
 
 		client := &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				return &serviceability.ProgramData{
-					Exchanges: []serviceability.Exchange{exA, exB},
+					Metros: []serviceability.Metro{exA, exB},
 				}, nil
 			},
 		}

@@ -67,13 +67,13 @@ type Collector struct {
 
 type MeasurementSpec struct {
 	TargetLocation     string
-	TargetLocationCode string
+	TargetFacilityCode string
 	TargetProbe        Probe
 	SourceSpecs        []SourceSpec
 }
 
 type SourceSpec struct {
-	LocationCode string
+	FacilityCode string
 	Probe        Probe
 }
 
@@ -327,7 +327,7 @@ func (c *Collector) ListAtlasProbes(ctx context.Context, locations []collector.L
 
 	fmt.Println("\n=== RIPE Atlas Probe Discovery Results ===")
 	for _, match := range locationMatches {
-		fmt.Printf("\nLocation: %s\n", match.LocationCode)
+		fmt.Printf("\nLocation: %s\n", match.FacilityCode)
 		fmt.Printf("Coordinates: %.6f, %.6f\n", match.Latitude, match.Longitude)
 
 		if match.ProbeCount == 0 {
@@ -404,41 +404,41 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 
 	c.log.Info("Found active DoubleZero measurements to export", slog.Int("count", len(activeMeasurements)))
 
-	// Calculate expected samples based on unique exchange pairs (upper triangular matrix)
-	// Build a set of all exchanges that have probes
-	exchangesWithProbes := make(map[string]bool)
+	// Calculate expected samples based on unique metro pairs (upper triangular matrix)
+	// Build a set of all metros that have probes
+	metrosWithProbes := make(map[string]bool)
 	for _, measurement := range activeMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
-			// Target exchange has a probe
-			exchangesWithProbes[meta.TargetLocation] = true
-			// Source exchanges have probes
+			// Target metro has a probe
+			metrosWithProbes[meta.TargetLocation] = true
+			// Source metros have probes
 			for _, source := range meta.Sources {
-				exchangesWithProbes[source.LocationCode] = true
+				metrosWithProbes[source.FacilityCode] = true
 			}
 		}
 	}
 
 	// Convert to sorted slice for consistent ordering
-	var exchanges []string
-	for exchange := range exchangesWithProbes {
-		exchanges = append(exchanges, exchange)
+	var metros []string
+	for metro := range metrosWithProbes {
+		metros = append(metros, metro)
 	}
-	sort.Strings(exchanges)
+	sort.Strings(metros)
 
 	// Count unique pairs (upper triangular matrix) and track per circuit
 	expectedSamples := 0
 	circuitExpectedSamples := make(map[string]int)
-	for i := 0; i < len(exchanges); i++ {
-		for j := i + 1; j < len(exchanges); j++ {
-			// Both exchanges have probes, so this pair should have a measurement
+	for i := 0; i < len(metros); i++ {
+		for j := i + 1; j < len(metros); j++ {
+			// Both metros have probes, so this pair should have a measurement
 			expectedSamples++
-			// Verify exchanges are sorted as expected
-			if exchanges[i] > exchanges[j] {
-				c.log.Warn("Exchanges not in expected sorted order",
-					slog.String("exchange_i", exchanges[i]),
-					slog.String("exchange_j", exchanges[j]))
+			// Verify metros are sorted as expected
+			if metros[i] > metros[j] {
+				c.log.Warn("Metros not in expected sorted order",
+					slog.String("metro_i", metros[i]),
+					slog.String("metro_j", metros[j]))
 			}
-			circuit := fmt.Sprintf("%s → %s", exchanges[i], exchanges[j])
+			circuit := fmt.Sprintf("%s → %s", metros[i], metros[j])
 			circuitExpectedSamples[circuit] = 1
 		}
 	}
@@ -451,7 +451,7 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 	if expectedSamples > 0 {
 		c.log.Info("RIPE Atlas - Added expected samples metrics",
 			slog.Int("total_expected_samples", expectedSamples),
-			slog.Int("exchanges_with_probes", len(exchanges)),
+			slog.Int("metros_with_probes", len(metros)),
 			slog.Int("circuits", len(circuitExpectedSamples)))
 	}
 
@@ -472,10 +472,10 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 			for _, record := range records {
 				// Create circuit label with alphabetically sorted exchanges
 				var circuit string
-				if record.SourceExchangeCode < record.TargetExchangeCode {
-					circuit = fmt.Sprintf("%s → %s", record.SourceExchangeCode, record.TargetExchangeCode)
+				if record.SourceMetroCode < record.TargetMetroCode {
+					circuit = fmt.Sprintf("%s → %s", record.SourceMetroCode, record.TargetMetroCode)
 				} else {
-					circuit = fmt.Sprintf("%s → %s", record.TargetExchangeCode, record.SourceExchangeCode)
+					circuit = fmt.Sprintf("%s → %s", record.TargetMetroCode, record.SourceMetroCode)
 				}
 				circuitActualSamples[circuit]++
 			}
@@ -544,7 +544,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	targetLocation := meta.TargetLocation
 	probeToLocationLocal := make(map[int]string)
 	for _, source := range meta.Sources {
-		probeToLocationLocal[source.ProbeID] = source.LocationCode
+		probeToLocationLocal[source.ProbeID] = source.FacilityCode
 	}
 
 	// Get measurement results with optional start timestamp
@@ -596,10 +596,10 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 				// Source and target are swapped here to match alphabetical ordering expected by downstream systems.
 				// We alphabetically sort the measurements by exchange code, but from the perspective of the measurement
 				// we are pinging from a remote probe to our target exchange.
-				SourceExchangeCode: targetLocation,
-				TargetExchangeCode: sourceLocation,
-				Timestamp:          timestamp,
-				RTT:                latency,
+				SourceMetroCode: targetLocation,
+				TargetMetroCode: sourceLocation,
+				Timestamp:       timestamp,
+				RTT:             latency,
 			})
 
 			processedResults++
@@ -679,14 +679,14 @@ func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun 
 			nearestProbes := getNearestProbesSorted(match.NearbyProbes,
 				match.Latitude, match.Longitude, probesPerLocation)
 			if len(nearestProbes) > 0 {
-				c.probeToLocation[nearestProbes[0].ID] = match.LocationCode
+				c.probeToLocation[nearestProbes[0].ID] = match.FacilityCode
 
 				// Calculate and record distance to nearest probe
 				nearestProbe := nearestProbes[0]
 				distance := collector.HaversineDistance(
 					match.Latitude, match.Longitude,
 					nearestProbe.Geometry.Coordinates[1], nearestProbe.Geometry.Coordinates[0])
-				metrics.DistanceFromExchangeToProbe.WithLabelValues("ripeatlas", match.LocationCode).Set(distance)
+				metrics.DistanceFromMetroToProbe.WithLabelValues("ripeatlas", match.FacilityCode).Set(distance)
 			}
 		}
 	}
@@ -829,7 +829,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					c.log.Warn("Marking source probe as unresponsive - no results after 1 hour",
 						slog.Int("measurement_id", measurement.ID),
 						slog.Int("probe_id", source.ProbeID),
-						slog.String("source_location", source.LocationCode),
+						slog.String("source_location", source.FacilityCode),
 						slog.String("target_location", meta.TargetLocation),
 						slog.String("reason", reason),
 						slog.Time("last_response_at", time.Unix(source.LastResponseAt, 0)))
@@ -861,13 +861,13 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 
 	// Build map of wanted measurements by target
 	for _, wanted := range wantedMeasurements {
-		wantedTargets[wanted.TargetLocationCode] = true
-		wantedByTarget[wanted.TargetLocationCode] = wanted
+		wantedTargets[wanted.TargetFacilityCode] = true
+		wantedByTarget[wanted.TargetFacilityCode] = wanted
 	}
 
 	// Check each wanted measurement
 	for _, wanted := range wantedMeasurements {
-		existing, exists := existingByTarget[wanted.TargetLocationCode]
+		existing, exists := existingByTarget[wanted.TargetFacilityCode]
 		if !exists {
 			// No existing measurement for this target, create it
 			toCreate = append(toCreate, wanted)
@@ -885,7 +885,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			if targetProbeChanged {
 				c.log.Info("Measurement has outdated target probe, marking for recreation",
 					slog.Int("measurement_id", existing.ID),
-					slog.String("target", wanted.TargetLocationCode),
+					slog.String("target", wanted.TargetFacilityCode),
 					slog.Int("existing_probe_id", meta.TargetProbeID),
 					slog.Int("wanted_probe_id", wanted.TargetProbe.ID))
 				toCreate = append(toCreate, wanted)
@@ -895,12 +895,12 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			// Compare source probes (both location and probe ID)
 			existingSources := make(map[string]int)
 			for _, source := range meta.Sources {
-				existingSources[source.LocationCode] = source.ProbeID
+				existingSources[source.FacilityCode] = source.ProbeID
 			}
 
 			wantedSources := make(map[string]int)
 			for _, source := range wanted.SourceSpecs {
-				wantedSources[source.LocationCode] = source.Probe.ID
+				wantedSources[source.FacilityCode] = source.Probe.ID
 			}
 
 			// Check if source sets match (location codes and probe IDs)
@@ -918,7 +918,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				// Sources don't match, need to recreate measurement
 				c.log.Info("Measurement has outdated source probes, marking for recreation",
 					slog.Int("measurement_id", existing.ID),
-					slog.String("target", wanted.TargetLocationCode),
+					slog.String("target", wanted.TargetFacilityCode),
 					slog.Int("existing_sources", len(existingSources)),
 					slog.Int("wanted_sources", len(wantedSources)))
 				toCreate = append(toCreate, wanted)
@@ -932,24 +932,24 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 
 	// First, identify measurements that need recreation due to outdated target or source probes
 	for _, wanted := range wantedMeasurements {
-		if existing, exists := existingByTarget[wanted.TargetLocationCode]; exists {
+		if existing, exists := existingByTarget[wanted.TargetFacilityCode]; exists {
 			meta, hasMeta := measurementState.GetMetadata(existing.ID)
 			if hasMeta {
 				// Check if target probe has changed
 				if meta.TargetProbeID != wanted.TargetProbe.ID {
-					measurementsToRecreate[wanted.TargetLocationCode] = true
+					measurementsToRecreate[wanted.TargetFacilityCode] = true
 					continue
 				}
 
 				// Check if sources match (both location and probe ID)
 				existingSources := make(map[string]int)
 				for _, source := range meta.Sources {
-					existingSources[source.LocationCode] = source.ProbeID
+					existingSources[source.FacilityCode] = source.ProbeID
 				}
 
 				wantedSources := make(map[string]int)
 				for _, source := range wanted.SourceSpecs {
-					wantedSources[source.LocationCode] = source.Probe.ID
+					wantedSources[source.FacilityCode] = source.Probe.ID
 				}
 
 				sourcesMatch := len(existingSources) == len(wantedSources)
@@ -963,7 +963,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				}
 
 				if !sourcesMatch {
-					measurementsToRecreate[wanted.TargetLocationCode] = true
+					measurementsToRecreate[wanted.TargetFacilityCode] = true
 				}
 			}
 		}
@@ -1091,10 +1091,10 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			var description string
 			if c.env != "" {
 				description = fmt.Sprintf("DoubleZero [%s] to %s probe %d",
-					c.env, spec.TargetLocationCode, spec.TargetProbe.ID)
+					c.env, spec.TargetFacilityCode, spec.TargetProbe.ID)
 			} else {
 				description = fmt.Sprintf("DoubleZero to %s probe %d",
-					spec.TargetLocationCode, spec.TargetProbe.ID)
+					spec.TargetFacilityCode, spec.TargetProbe.ID)
 			}
 
 			// Build tags including environment if set
@@ -1145,13 +1145,13 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				sources := make([]SourceProbeMeta, len(spec.SourceSpecs))
 				for i, source := range spec.SourceSpecs {
 					sources[i] = SourceProbeMeta{
-						LocationCode: source.LocationCode,
+						FacilityCode: source.FacilityCode,
 						ProbeID:      source.Probe.ID,
 					}
 				}
 
 				meta := MeasurementMeta{
-					TargetLocation: spec.TargetLocationCode,
+					TargetLocation: spec.TargetFacilityCode,
 					TargetProbeID:  spec.TargetProbe.ID,
 					Sources:        sources,
 					CreatedAt:      time.Now().Unix(),
@@ -1287,7 +1287,7 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 	sortedLocations := make([]LocationProbeMatch, len(locationMatches))
 	copy(sortedLocations, locationMatches)
 	sort.Slice(sortedLocations, func(i, j int) bool {
-		return sortedLocations[i].LocationCode < sortedLocations[j].LocationCode
+		return sortedLocations[i].FacilityCode < sortedLocations[j].FacilityCode
 	})
 
 	// Create one measurement per target location
@@ -1300,7 +1300,7 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 		responsiveProbes := filterResponsiveProbes(targetLocation.NearbyProbes, measurementState)
 		if len(responsiveProbes) == 0 {
 			c.log.Warn("No responsive probes found for location",
-				slog.String("location", targetLocation.LocationCode))
+				slog.String("location", targetLocation.FacilityCode))
 			continue
 		}
 
@@ -1340,7 +1340,7 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 				sourceLocation.Latitude, sourceLocation.Longitude, probesPerLocation)
 			if len(sourceProbes) > 0 {
 				sourceSpecs = append(sourceSpecs, SourceSpec{
-					LocationCode: sourceLocation.LocationCode,
+					FacilityCode: sourceLocation.FacilityCode,
 					Probe:        sourceProbes[0],
 				})
 			}
@@ -1348,8 +1348,8 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 
 		if len(sourceSpecs) > 0 {
 			wantedMeasurements = append(wantedMeasurements, MeasurementSpec{
-				TargetLocation:     targetLocation.LocationCode,
-				TargetLocationCode: targetLocation.LocationCode,
+				TargetLocation:     targetLocation.FacilityCode,
+				TargetFacilityCode: targetLocation.FacilityCode,
 				TargetProbe:        targetProbe,
 				SourceSpecs:        sourceSpecs,
 			})

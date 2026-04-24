@@ -16,7 +16,7 @@ import (
 const MaxDistanceKM = 60.0
 
 type LocationMatch struct {
-	LocationCode string
+	FacilityCode string
 	Latitude     float64
 	Longitude    float64
 }
@@ -108,32 +108,32 @@ func GetLocations(ctx context.Context, logger *slog.Logger, serviceabilityClient
 	data, err := serviceabilityClient.GetProgramData(ctx)
 	if err != nil {
 		logger.Error("Error loading program data", slog.String("error", err.Error()))
-		metrics.DoublezeroExchangeFetchTotal.WithLabelValues("error").Inc()
+		metrics.DoublezeroMetroFetchTotal.WithLabelValues("error").Inc()
 		return []LocationMatch{}
 	}
 
-	if len(data.Exchanges) == 0 {
-		logger.Warn("No exchanges found on-chain")
-		metrics.DoublezeroExchangeFetchTotal.WithLabelValues("empty").Inc()
+	if len(data.Metros) == 0 {
+		logger.Warn("No metros found on-chain")
+		metrics.DoublezeroMetroFetchTotal.WithLabelValues("empty").Inc()
 		return []LocationMatch{}
 	}
 
 	var locationMatches []LocationMatch
-	for _, exc := range data.Exchanges {
-		if exc.Status == serviceability.ExchangeStatusActivated {
+	for _, metro := range data.Metros {
+		if metro.Status == serviceability.MetroStatusActivated {
 			locationMatches = append(locationMatches, LocationMatch{
-				LocationCode: exc.Code,
-				Latitude:     exc.Lat,
-				Longitude:    exc.Lng,
+				FacilityCode: metro.Code,
+				Latitude:     metro.Lat,
+				Longitude:    metro.Lng,
 			})
 		}
 	}
 
-	logger.Info("Loaded exchanges from blockchain",
-		slog.Int("total_exchanges", len(data.Exchanges)),
-		slog.Int("activated_exchanges", len(locationMatches)))
+	logger.Info("Loaded metros from blockchain",
+		slog.Int("total_metros", len(data.Metros)),
+		slog.Int("activated_metros", len(locationMatches)))
 
-	metrics.DoublezeroExchanges.Set(float64(len(locationMatches)))
+	metrics.DoublezeroMetros.Set(float64(len(locationMatches)))
 
 	return locationMatches
 }

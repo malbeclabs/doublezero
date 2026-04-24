@@ -87,19 +87,19 @@ func (c *Collector) PrintSources(ctx context.Context, locations []collector.Loca
 
 	fmt.Println("\n=== Wheresitup Source Discovery Results ===")
 	for _, match := range locationMatches {
-		fmt.Printf("\nLocation: %s\n", match.LocationCode)
+		fmt.Printf("\nLocation: %s\n", match.FacilityCode)
 		fmt.Printf("Coordinates: %.6f, %.6f\n", match.Latitude, match.Longitude)
 		fmt.Printf("Nearest Sources (%d):\n", match.SourceCount)
 
 		if match.SourceCount == 0 {
 			c.log.Warn("No sources found for location",
-				slog.String("location", match.LocationCode))
+				slog.String("location", match.FacilityCode))
 			fmt.Println("  No sources found")
 			continue
 		}
 
 		c.log.Debug("Found sources for location",
-			slog.String("location", match.LocationCode),
+			slog.String("location", match.FacilityCode),
 			slog.Int("source_count", match.SourceCount))
 
 		for i, source := range match.NearestSources {
@@ -168,7 +168,7 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 					distance := collector.HaversineDistance(
 						location.Latitude, location.Longitude,
 						sourceLat, sourceLon)
-					metrics.DistanceFromExchangeToProbe.WithLabelValues("wheresitup", location.LocationCode).Set(distance)
+					metrics.DistanceFromMetroToProbe.WithLabelValues("wheresitup", location.FacilityCode).Set(distance)
 				}
 			}
 		}
@@ -231,10 +231,10 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 						continue
 					}
 					// Only count if source location name comes before target location name alphabetically
-					if sourceLocation.LocationCode >= targetLocation.LocationCode {
+					if sourceLocation.FacilityCode >= targetLocation.FacilityCode {
 						continue
 					}
-					circuit := fmt.Sprintf("%s → %s", sourceLocation.LocationCode, targetLocation.LocationCode)
+					circuit := fmt.Sprintf("%s → %s", sourceLocation.FacilityCode, targetLocation.FacilityCode)
 					circuits = append(circuits, circuit)
 					metrics.LatencySamplesPerCollectionIntervalExpected.WithLabelValues("wheresitup", circuit).Add(1)
 				}
@@ -282,7 +282,7 @@ func (c *Collector) CreateJobsBetweenLocations(ctx context.Context, locations []
 
 			// Only create job if source location name comes before target location name alphabetically
 			// This ensures we test each pair only once since ping measures round-trip time
-			if sourceLocation.LocationCode >= targetLocation.LocationCode {
+			if sourceLocation.FacilityCode >= targetLocation.FacilityCode {
 				continue // Skip this direction - will be covered by the reverse direction
 			}
 
@@ -295,7 +295,7 @@ func (c *Collector) CreateJobsBetweenLocations(ctx context.Context, locations []
 
 			if sourceName == "" {
 				c.log.Warn("Empty source name for location, skipping",
-					slog.String("location", sourceLocation.LocationCode))
+					slog.String("location", sourceLocation.FacilityCode))
 				continue
 			}
 
@@ -305,16 +305,16 @@ func (c *Collector) CreateJobsBetweenLocations(ctx context.Context, locations []
 				"sources": []string{sourceName},
 				"options": map[string]any{
 					"expire_after": ExpireAfter,
-					"label":        fmt.Sprintf("DoubleZero: %s to %s", sourceLocation.LocationCode, targetLocation.LocationCode),
+					"label":        fmt.Sprintf("DoubleZero: %s to %s", sourceLocation.FacilityCode, targetLocation.FacilityCode),
 					"timeout":      int(RequestTimeout.Seconds()),
 				},
 			}
 
 			if dryRun {
 				c.log.Debug("Would create job (dry run)",
-					slog.String("source_location", sourceLocation.LocationCode),
+					slog.String("source_location", sourceLocation.FacilityCode),
 					slog.String("source_name", sourceName),
-					slog.String("target_location", targetLocation.LocationCode),
+					slog.String("target_location", targetLocation.FacilityCode),
 					slog.String("target_dns", targetDNS))
 
 				requestJSON, _ := json.MarshalIndent(jobRequest, "", "  ")
@@ -322,16 +322,16 @@ func (c *Collector) CreateJobsBetweenLocations(ctx context.Context, locations []
 					slog.String("json", string(requestJSON)))
 			} else {
 				c.log.Debug("Creating job",
-					slog.String("source_location", sourceLocation.LocationCode),
+					slog.String("source_location", sourceLocation.FacilityCode),
 					slog.String("source_name", sourceName),
-					slog.String("target_location", targetLocation.LocationCode),
+					slog.String("target_location", targetLocation.FacilityCode),
 					slog.String("target_dns", targetDNS))
 
 				jobResponse, err := c.client.CreateJobWithRequest(ctx, jobRequest, debug)
 				if err != nil {
 					c.log.Warn("Error creating job",
-						slog.String("source_location", sourceLocation.LocationCode),
-						slog.String("target_location", targetLocation.LocationCode),
+						slog.String("source_location", sourceLocation.FacilityCode),
+						slog.String("target_location", targetLocation.FacilityCode),
 						slog.String("error", err.Error()))
 					continue
 				}
@@ -341,24 +341,24 @@ func (c *Collector) CreateJobsBetweenLocations(ctx context.Context, locations []
 					slog.String("status", jobResponse.Status),
 					slog.String("created", jobResponse.Created),
 					slog.String("expires", jobResponse.Expires),
-					slog.String("source_location", sourceLocation.LocationCode),
-					slog.String("target_location", targetLocation.LocationCode))
+					slog.String("source_location", sourceLocation.FacilityCode),
+					slog.String("target_location", targetLocation.FacilityCode))
 
 				if jobResponse.ID == "" {
 					c.log.Warn("API returned job response with empty ID",
 						slog.String("status", jobResponse.Status),
 						slog.String("created", jobResponse.Created),
 						slog.String("expires", jobResponse.Expires),
-						slog.String("source_location", sourceLocation.LocationCode),
-						slog.String("target_location", targetLocation.LocationCode))
+						slog.String("source_location", sourceLocation.FacilityCode),
+						slog.String("target_location", targetLocation.FacilityCode))
 				}
 
 				jobs = append(jobs, *jobResponse)
 				if debug {
 					c.log.Info("Created job",
 						slog.String("job_id", jobResponse.ID),
-						slog.String("source_location", sourceLocation.LocationCode),
-						slog.String("target_location", targetLocation.LocationCode))
+						slog.String("source_location", sourceLocation.FacilityCode),
+						slog.String("target_location", targetLocation.FacilityCode))
 				}
 
 				// Add delay to avoid rate limiting
@@ -426,7 +426,7 @@ func (c *Collector) formatTimestampFromUnix(unixTime int64) string {
 }
 
 type LocationInfo struct {
-	LocationCode string
+	FacilityCode string
 }
 
 // buildLocationMapping creates a mapping from Wheresitup source names to DoubleZero locations
@@ -446,7 +446,7 @@ func (c *Collector) buildLocationMapping(ctx context.Context, locations []collec
 		// Just map the source names to location codes
 		for _, source := range locationMatch.NearestSources {
 			mapping[source.Name] = LocationInfo{
-				LocationCode: locationMatch.LocationCode,
+				FacilityCode: locationMatch.FacilityCode,
 			}
 		}
 	}
@@ -563,11 +563,11 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 		}
 
 		records = append(records, exporter.Record{
-			DataProvider:       exporter.DataProviderNameWheresitup,
-			SourceExchangeCode: sourceLocation,
-			TargetExchangeCode: targetLocation,
-			Timestamp:          time.Unix(results.Request.StartTime, 0).UTC(),
-			RTT:                latency,
+			DataProvider:    exporter.DataProviderNameWheresitup,
+			SourceMetroCode: sourceLocation,
+			TargetMetroCode: targetLocation,
+			Timestamp:       time.Unix(results.Request.StartTime, 0).UTC(),
+			RTT:             latency,
 		})
 
 		completedJobIDs = append(completedJobIDs, jobID)
@@ -588,10 +588,10 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 		for _, record := range records {
 			// Create circuit label with alphabetically sorted exchanges
 			var circuit string
-			if record.SourceExchangeCode < record.TargetExchangeCode {
-				circuit = fmt.Sprintf("%s → %s", record.SourceExchangeCode, record.TargetExchangeCode)
+			if record.SourceMetroCode < record.TargetMetroCode {
+				circuit = fmt.Sprintf("%s → %s", record.SourceMetroCode, record.TargetMetroCode)
 			} else {
-				circuit = fmt.Sprintf("%s → %s", record.TargetExchangeCode, record.SourceExchangeCode)
+				circuit = fmt.Sprintf("%s → %s", record.TargetMetroCode, record.SourceMetroCode)
 			}
 			circuitActualSamples[circuit]++
 		}
@@ -699,13 +699,13 @@ func (c *Collector) parseLocationInfoFromJobResults(results *JobResultResponse, 
 
 	// Map Wheresitup names to DoubleZero location info
 	if sourceInfo, exists := locationMap[wheresitupSourceName]; exists {
-		sourceLocation = sourceInfo.LocationCode
+		sourceLocation = sourceInfo.FacilityCode
 	} else {
 		sourceLocation = "Unknown"
 	}
 
 	if targetInfo, exists := locationMap[wheresitupTargetName]; exists {
-		targetLocation = targetInfo.LocationCode
+		targetLocation = targetInfo.FacilityCode
 	} else {
 		targetLocation = "Unknown"
 	}

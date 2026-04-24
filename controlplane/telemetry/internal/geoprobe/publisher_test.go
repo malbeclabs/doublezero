@@ -25,11 +25,11 @@ func createTestProgramData(devicePK, locationPK solana.PublicKey, lat, lng float
 		Devices: []serviceability.Device{
 			{
 				PubKey:         devicePKBytes,
-				LocationPubKey: locationPKBytes,
+				FacilityPubKey: locationPKBytes,
 				Code:           "test-device",
 			},
 		},
-		Locations: []serviceability.Location{
+		Facilities: []serviceability.Facility{
 			{
 				PubKey: locationPKBytes,
 				Lat:    lat,

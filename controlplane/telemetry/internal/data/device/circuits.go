@@ -11,7 +11,7 @@ import (
 type Device struct {
 	PK       solana.PublicKey `json:"pk"`
 	Code     string           `json:"code"`
-	Location Location         `json:"location"`
+	Facility Facility         `json:"facility"`
 }
 
 type Link struct {
@@ -25,7 +25,7 @@ type Link struct {
 	CommittedJitter float64 `json:"committed_jitter"`
 }
 
-type Location struct {
+type Facility struct {
 	PK        solana.PublicKey `json:"pk"`
 	Name      string           `json:"name"`
 	Country   string           `json:"country"`
@@ -58,15 +58,15 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 			OriginDevice: Device{
 				PK:   circuit.OriginDevice.PubKey,
 				Code: circuit.OriginDevice.Code,
-				Location: Location{
-					PK: circuit.OriginDevice.LocationPubKey,
+				Facility: Facility{
+					PK: circuit.OriginDevice.FacilityPubKey,
 				},
 			},
 			TargetDevice: Device{
 				PK:   circuit.TargetDevice.PubKey,
 				Code: circuit.TargetDevice.Code,
-				Location: Location{
-					PK: circuit.TargetDevice.LocationPubKey,
+				Facility: Facility{
+					PK: circuit.TargetDevice.FacilityPubKey,
 				},
 			},
 			Link: Link{

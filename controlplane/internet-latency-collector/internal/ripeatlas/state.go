@@ -38,7 +38,7 @@ type MeasurementMeta struct {
 }
 
 type SourceProbeMeta struct {
-	LocationCode   string `json:"location_code"`
+	FacilityCode   string `json:"facility_code"`
 	ProbeID        int    `json:"probe_id"`
 	LastResponseAt int64  `json:"last_response_at,omitempty"`
 }

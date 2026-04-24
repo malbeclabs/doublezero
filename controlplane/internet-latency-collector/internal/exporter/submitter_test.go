@@ -31,10 +31,10 @@ func TestInternetLatency_Submitter(t *testing.T) {
 		telemetryProgram := &mockTelemetryProgramClient{
 			WriteInternetLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 				receivedKey = exporter.PartitionKey{
-					DataProvider:     "test",
-					SourceExchangePK: config.OriginExchangePK,
-					TargetExchangePK: config.TargetExchangePK,
-					Epoch:            config.Epoch,
+					DataProvider:  "test",
+					SourceMetroPK: config.OriginMetroPK,
+					TargetMetroPK: config.TargetMetroPK,
+					Epoch:         config.Epoch,
 				}
 				samples := make([]exporter.Sample, len(config.Samples))
 				for i, sample := range config.Samples {
@@ -332,10 +332,10 @@ func TestInternetLatency_Submitter(t *testing.T) {
 
 		pastEpoch := uint64(1)
 		key := exporter.PartitionKey{
-			DataProvider:     "dp",
-			SourceExchangePK: solana.NewWallet().PublicKey(),
-			TargetExchangePK: solana.NewWallet().PublicKey(),
-			Epoch:            pastEpoch,
+			DataProvider:  "dp",
+			SourceMetroPK: solana.NewWallet().PublicKey(),
+			TargetMetroPK: solana.NewWallet().PublicKey(),
+			Epoch:         pastEpoch,
 		}
 
 		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
@@ -376,10 +376,10 @@ func TestInternetLatency_Submitter(t *testing.T) {
 
 		currentEpoch := uint64(1)
 		key := exporter.PartitionKey{
-			DataProvider:     "dp",
-			SourceExchangePK: solana.NewWallet().PublicKey(),
-			TargetExchangePK: solana.NewWallet().PublicKey(),
-			Epoch:            currentEpoch,
+			DataProvider:  "dp",
+			SourceMetroPK: solana.NewWallet().PublicKey(),
+			TargetMetroPK: solana.NewWallet().PublicKey(),
+			Epoch:         currentEpoch,
 		}
 
 		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
@@ -708,9 +708,9 @@ func newTestSample() exporter.Sample {
 
 func newTestPartitionKey() exporter.PartitionKey {
 	return exporter.PartitionKey{
-		DataProvider:     "test",
-		SourceExchangePK: solana.PublicKey{1},
-		TargetExchangePK: solana.PublicKey{2},
-		Epoch:            42,
+		DataProvider:  "test",
+		SourceMetroPK: solana.PublicKey{1},
+		TargetMetroPK: solana.PublicKey{2},
+		Epoch:         42,
 	}
 }

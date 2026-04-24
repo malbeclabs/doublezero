@@ -374,7 +374,7 @@ func loadLocations(ctx context.Context, logger *slog.Logger, serviceabilityClien
 		var locations []collector.LocationMatch
 		for _, loc := range jsonLocations {
 			locations = append(locations, collector.LocationMatch{
-				LocationCode: loc.Code,
+				FacilityCode: loc.Code,
 				Latitude:     loc.Latitude,
 				Longitude:    loc.Longitude,
 			})

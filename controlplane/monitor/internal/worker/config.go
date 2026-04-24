@@ -24,7 +24,7 @@ type ServiceabilityClient interface {
 
 type TelemetryProgramClient interface {
 	GetDeviceLatencySamples(ctx context.Context, originDevicePubKey, targetDevicePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error)
-	GetInternetLatencySamples(ctx context.Context, dataProviderName string, originExchangePubKey, targetExchangePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
+	GetInternetLatencySamples(ctx context.Context, dataProviderName string, originMetroPubKey, targetMetroPubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
 }
 
 type InfluxWriter interface {

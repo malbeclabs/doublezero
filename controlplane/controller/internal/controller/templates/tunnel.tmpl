@@ -292,14 +292,14 @@ router isis 1
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
-ip community-list COMM-{{ .Strings.ToUpper .Device.ExchangeCode }}_USERS permit 21682:{{ .Device.BgpCommunity }}
+ip community-list COMM-{{ .Strings.ToUpper .Device.MetroCode }}_USERS permit 21682:{{ .Device.BgpCommunity }}
 !
 {{- range .Device.Tunnels }}
 no route-map RM-USER-{{ .Id }}-OUT
 {{- if eq true .Allocated }}
 {{- if or .IsMulticast .MetroRouting }}
 route-map RM-USER-{{ .Id }}-OUT deny 10
-   match community COMM-{{ $.Strings.ToUpper $.Device.ExchangeCode }}_USERS
+   match community COMM-{{ $.Strings.ToUpper $.Device.MetroCode }}_USERS
 {{- end }}
 route-map RM-USER-{{ .Id }}-OUT permit 20
    match community {{ if eq true .IsMulticast }}COMM-ALL_MCAST_USERS{{ else }}COMM-ALL_USERS{{ end }}

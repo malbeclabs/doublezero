@@ -13,22 +13,22 @@ const (
 )
 
 type Record struct {
-	DataProvider       DataProviderName
-	SourceExchangeCode string
-	TargetExchangeCode string
-	Timestamp          time.Time
-	RTT                time.Duration
+	DataProvider    DataProviderName
+	SourceMetroCode string
+	TargetMetroCode string
+	Timestamp       time.Time
+	RTT             time.Duration
 }
 
 func (r *Record) Validate() error {
 	if r.DataProvider == "" {
 		return fmt.Errorf("record given to ledger exporter has no data provider")
 	}
-	if r.SourceExchangeCode == "" {
-		return fmt.Errorf("record given to ledger exporter has no source exchange code")
+	if r.SourceMetroCode == "" {
+		return fmt.Errorf("record given to ledger exporter has no source metro code")
 	}
-	if r.TargetExchangeCode == "" {
-		return fmt.Errorf("record given to ledger exporter has no target exchange code")
+	if r.TargetMetroCode == "" {
+		return fmt.Errorf("record given to ledger exporter has no target metro code")
 	}
 	return nil
 }

@@ -314,8 +314,8 @@ func TestInternetLatency_RIPEAtlas_State_UpdateSourceProbeResponse(t *testing.T)
 		TargetLocation: "xams",
 		TargetProbeID:  6626,
 		Sources: []SourceProbeMeta{
-			{LocationCode: "xsin", ProbeID: 6726},
-			{LocationCode: "xtyo", ProbeID: 7080},
+			{FacilityCode: "xsin", ProbeID: 6726},
+			{FacilityCode: "xtyo", ProbeID: 7080},
 		},
 		CreatedAt: 1640995200,
 	})
@@ -416,8 +416,8 @@ func TestInternetLatency_RIPEAtlas_State_TimestampTracker_Structure(t *testing.T
 				TargetLocation: "lax",
 				TargetProbeID:  999,
 				Sources: []SourceProbeMeta{
-					{LocationCode: "nyc", ProbeID: 100},
-					{LocationCode: "chi", ProbeID: 101},
+					{FacilityCode: "nyc", ProbeID: 100},
+					{FacilityCode: "chi", ProbeID: 101},
 				},
 				CreatedAt:    1640995200,
 				LastExportAt: 1640995300,

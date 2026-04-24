@@ -515,11 +515,11 @@ func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*service
 }
 
 type mockTelemetryProgramClient struct {
-	GetInternetLatencySamplesFunc func(ctx context.Context, dataProviderName string, originExchangePK, targetExchangePK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
+	GetInternetLatencySamplesFunc func(ctx context.Context, dataProviderName string, originMetroPK, targetMetroPK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
 }
 
-func (m *mockTelemetryProgramClient) GetInternetLatencySamples(ctx context.Context, dataProviderName string, originExchangePK, targetExchangePK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
-	return m.GetInternetLatencySamplesFunc(ctx, dataProviderName, originExchangePK, targetExchangePK, agentPK, epoch)
+func (m *mockTelemetryProgramClient) GetInternetLatencySamples(ctx context.Context, dataProviderName string, originMetroPK, targetMetroPK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
+	return m.GetInternetLatencySamplesFunc(ctx, dataProviderName, originMetroPK, targetMetroPK, agentPK, epoch)
 }
 
 func newTestLogger(t *testing.T) *slog.Logger {
@@ -532,11 +532,11 @@ func circuitKey(originCode, targetCode string) string {
 	return fmt.Sprintf("%s → %s", originCode, targetCode)
 }
 
-func makeProgramData(exchangeCode1, exchangeCode2 string, exchangePK1, exchangePK2 solana.PublicKey) *serviceability.ProgramData {
+func makeProgramData(metroCode1, metroCode2 string, metroPK1, metroPK2 solana.PublicKey) *serviceability.ProgramData {
 	return &serviceability.ProgramData{
-		Exchanges: []serviceability.Exchange{
-			{Code: exchangeCode1, PubKey: pkAsBytes(exchangePK1)},
-			{Code: exchangeCode2, PubKey: pkAsBytes(exchangePK2)},
+		Metros: []serviceability.Metro{
+			{Code: metroCode1, PubKey: pkAsBytes(metroPK1)},
+			{Code: metroCode2, PubKey: pkAsBytes(metroPK2)},
 		},
 	}
 }

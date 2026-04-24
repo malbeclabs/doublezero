@@ -399,12 +399,12 @@ func TestGetNearestSourcesForLocations(t *testing.T) {
 			name: "Successful source discovery for locations",
 			locations: []collector.LocationMatch{
 				{
-					LocationCode: "NYC",
+					FacilityCode: "NYC",
 					Latitude:     40.7128,
 					Longitude:    -74.0060,
 				},
 				{
-					LocationCode: "LAX",
+					FacilityCode: "LAX",
 					Latitude:     34.0522,
 					Longitude:    -118.2437,
 				},
@@ -434,7 +434,7 @@ func TestGetNearestSourcesForLocations(t *testing.T) {
 			name: "Location with no coordinates",
 			locations: []collector.LocationMatch{
 				{
-					LocationCode: "Unknown",
+					FacilityCode: "Unknown",
 					Latitude:     0,
 					Longitude:    0,
 				},

@@ -189,7 +189,7 @@ func TestInternetLatency_Location_CalculateDistanceToLocation(t *testing.T) {
 
 	// Create a test location
 	location := LocationMatch{
-		LocationCode: "New York",
+		FacilityCode: "New York",
 		Latitude:     40.7128,
 		Longitude:    -74.0060,
 	}
@@ -231,7 +231,7 @@ func TestInternetLatency_Location_CalculateDistanceToLocation(t *testing.T) {
 			sourceLat: 40.7128,
 			sourceLng: -74.0060,
 			location: LocationMatch{
-				LocationCode: "Invalid",
+				FacilityCode: "Invalid",
 				Latitude:     0.0,
 				Longitude:    0.0,
 			},
@@ -740,16 +740,16 @@ func TestInternetLatency_Location_GetLocations(t *testing.T) {
 
 	// Since GetLocations calls the blockchain directly,
 	// we can only test that it doesn't panic and returns a slice
-	t.Run("Returns exchanges array without panic", func(t *testing.T) {
+	t.Run("Returns metros array without panic", func(t *testing.T) {
 		ctx := t.Context()
 		serviceabilityClient := &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				return &serviceability.ProgramData{
-					Exchanges: []serviceability.Exchange{{
+					Metros: []serviceability.Metro{{
 						Code:   "nyc",
 						Lat:    40.7128,
 						Lng:    -74.0060,
-						Status: serviceability.ExchangeStatusActivated,
+						Status: serviceability.MetroStatusActivated,
 					}},
 				}, nil
 			},
@@ -758,8 +758,8 @@ func TestInternetLatency_Location_GetLocations(t *testing.T) {
 
 		// Should return a slice (may be empty depending on blockchain state)
 		require.NotNil(t, locations, "GetLocations() should return non-nil slice")
-		require.Len(t, locations, 1, "GetLocations() should return one exchange")
-		require.Equal(t, "nyc", locations[0].LocationCode)
+		require.Len(t, locations, 1, "GetLocations() should return one metro")
+		require.Equal(t, "nyc", locations[0].FacilityCode)
 	})
 }
 

@@ -143,7 +143,7 @@ func TestInternetLatency_Wheresitup_ListSources_Success(t *testing.T) {
 				return []LocationSourceMatch{
 					{
 						LocationMatch: collector.LocationMatch{
-							LocationCode: "US-NYC",
+							FacilityCode: "US-NYC",
 							Latitude:     40.7128,
 							Longitude:    -74.0060,
 						},
@@ -167,7 +167,7 @@ func TestInternetLatency_Wheresitup_ListSources_Success(t *testing.T) {
 
 	locations := []collector.LocationMatch{
 		{
-			LocationCode: "US-NYC",
+			FacilityCode: "US-NYC",
 			Latitude:     40.7128,
 			Longitude:    -74.0060,
 		},
@@ -206,7 +206,7 @@ func TestInternetLatency_Wheresitup_ListSources_APIError(t *testing.T) {
 	}
 
 	locations := []collector.LocationMatch{
-		{LocationCode: "US-NYC"},
+		{FacilityCode: "US-NYC"},
 	}
 
 	err := c.PrintSources(t.Context(), locations)
@@ -230,7 +230,7 @@ func TestInternetLatency_Wheresitup_RunJobCreation_Success(t *testing.T) {
 				return []LocationSourceMatch{
 					{
 						LocationMatch: collector.LocationMatch{
-							LocationCode: "US-NYC",
+							FacilityCode: "US-NYC",
 							Latitude:     40.7128,
 							Longitude:    -74.0060,
 						},
@@ -241,7 +241,7 @@ func TestInternetLatency_Wheresitup_RunJobCreation_Success(t *testing.T) {
 					},
 					{
 						LocationMatch: collector.LocationMatch{
-							LocationCode: "US-LAX",
+							FacilityCode: "US-LAX",
 							Latitude:     34.0522,
 							Longitude:    -118.2437,
 						},
@@ -264,8 +264,8 @@ func TestInternetLatency_Wheresitup_RunJobCreation_Success(t *testing.T) {
 	}
 
 	locations := []collector.LocationMatch{
-		{LocationCode: "US-NYC", Latitude: 40.7128, Longitude: -74.0060},
-		{LocationCode: "US-LAX", Latitude: 34.0522, Longitude: -118.2437},
+		{FacilityCode: "US-NYC", Latitude: 40.7128, Longitude: -74.0060},
+		{FacilityCode: "US-LAX", Latitude: 34.0522, Longitude: -118.2437},
 	}
 
 	err := c.RunJobCreation(t.Context(), locations, false, jobIDsFile)
@@ -295,8 +295,8 @@ func TestInternetLatency_Wheresitup_RunJobCreation_LowCredit(t *testing.T) {
 			},
 			GetNearestSourcesForLocationsFunc: func(ctx context.Context, locations []collector.LocationMatch) ([]LocationSourceMatch, error) {
 				return []LocationSourceMatch{
-					{LocationMatch: collector.LocationMatch{LocationCode: "US-NYC"}, SourceCount: 1},
-					{LocationMatch: collector.LocationMatch{LocationCode: "US-LAX"}, SourceCount: 1},
+					{LocationMatch: collector.LocationMatch{FacilityCode: "US-NYC"}, SourceCount: 1},
+					{LocationMatch: collector.LocationMatch{FacilityCode: "US-LAX"}, SourceCount: 1},
 				}, nil
 			},
 		},
@@ -304,8 +304,8 @@ func TestInternetLatency_Wheresitup_RunJobCreation_LowCredit(t *testing.T) {
 	}
 
 	locations := []collector.LocationMatch{
-		{LocationCode: "US-NYC"},
-		{LocationCode: "US-LAX"},
+		{FacilityCode: "US-NYC"},
+		{FacilityCode: "US-LAX"},
 	}
 
 	// Should still succeed but log warning
@@ -325,7 +325,7 @@ func TestInternetLatency_Wheresitup_RunJobCreation_InsufficientSources(t *testin
 			},
 			GetNearestSourcesForLocationsFunc: func(ctx context.Context, locations []collector.LocationMatch) ([]LocationSourceMatch, error) {
 				return []LocationSourceMatch{
-					{LocationMatch: collector.LocationMatch{LocationCode: "US-NYC"}, SourceCount: 1},
+					{LocationMatch: collector.LocationMatch{FacilityCode: "US-NYC"}, SourceCount: 1},
 					// Only one location with sources
 				}, nil
 			},
@@ -334,7 +334,7 @@ func TestInternetLatency_Wheresitup_RunJobCreation_InsufficientSources(t *testin
 	}
 
 	locations := []collector.LocationMatch{
-		{LocationCode: "US-NYC"},
+		{FacilityCode: "US-NYC"},
 	}
 
 	err := c.RunJobCreation(t.Context(), locations, false, "")
@@ -363,15 +363,15 @@ func TestInternetLatency_Wheresitup_CreateJobsBetweenLocations_Success(t *testin
 
 	locations := []LocationSourceMatch{
 		{
-			LocationMatch:  collector.LocationMatch{LocationCode: "US-LAX"},
+			LocationMatch:  collector.LocationMatch{FacilityCode: "US-LAX"},
 			NearestSources: []Source{{Name: "los_angeles"}},
 		},
 		{
-			LocationMatch:  collector.LocationMatch{LocationCode: "US-NYC"},
+			LocationMatch:  collector.LocationMatch{FacilityCode: "US-NYC"},
 			NearestSources: []Source{{Name: "new_york"}},
 		},
 		{
-			LocationMatch:  collector.LocationMatch{LocationCode: "US-SFO"},
+			LocationMatch:  collector.LocationMatch{FacilityCode: "US-SFO"},
 			NearestSources: []Source{{Name: "san_francisco"}},
 		},
 	}
@@ -400,11 +400,11 @@ func TestInternetLatency_Wheresitup_CreateJobsBetweenLocations_DryRun(t *testing
 
 	locations := []LocationSourceMatch{
 		{
-			LocationMatch:  collector.LocationMatch{LocationCode: "US-NYC"},
+			LocationMatch:  collector.LocationMatch{FacilityCode: "US-NYC"},
 			NearestSources: []Source{{Name: "new_york"}},
 		},
 		{
-			LocationMatch:  collector.LocationMatch{LocationCode: "US-LAX"},
+			LocationMatch:  collector.LocationMatch{FacilityCode: "US-LAX"},
 			NearestSources: []Source{{Name: "los_angeles"}},
 		},
 	}
@@ -426,8 +426,8 @@ func TestInternetLatency_Wheresitup_ExportJobResults_Success(t *testing.T) {
 
 	// Create test locations
 	testLocations := []collector.LocationMatch{
-		{LocationCode: "US-NYC", Latitude: 40.7128, Longitude: -74.0060},
-		{LocationCode: "US-LAX", Latitude: 34.0522, Longitude: -118.2437},
+		{FacilityCode: "US-NYC", Latitude: 40.7128, Longitude: -74.0060},
+		{FacilityCode: "US-LAX", Latitude: 34.0522, Longitude: -118.2437},
 	}
 
 	e, err := exporter.NewCSVExporter(log, "wheresitup_measurements", outputDir)
@@ -440,7 +440,7 @@ func TestInternetLatency_Wheresitup_ExportJobResults_Success(t *testing.T) {
 				return []LocationSourceMatch{
 					{
 						LocationMatch: collector.LocationMatch{
-							LocationCode: "US-NYC",
+							FacilityCode: "US-NYC",
 						},
 						NearestSources: []Source{
 							{Name: "new_york"},
@@ -448,7 +448,7 @@ func TestInternetLatency_Wheresitup_ExportJobResults_Success(t *testing.T) {
 					},
 					{
 						LocationMatch: collector.LocationMatch{
-							LocationCode: "US-LAX",
+							FacilityCode: "US-LAX",
 						},
 						NearestSources: []Source{
 							{Name: "los_angeles"},
@@ -683,7 +683,7 @@ func TestInternetLatency_Wheresitup_BuildLocationMapping(t *testing.T) {
 				return []LocationSourceMatch{
 					{
 						LocationMatch: collector.LocationMatch{
-							LocationCode: "US-NYC",
+							FacilityCode: "US-NYC",
 						},
 						NearestSources: []Source{
 							{Name: "new_york"},
@@ -698,7 +698,7 @@ func TestInternetLatency_Wheresitup_BuildLocationMapping(t *testing.T) {
 	}
 
 	locations := []collector.LocationMatch{
-		{LocationCode: "US-NYC"},
+		{FacilityCode: "US-NYC"},
 	}
 
 	mapping, err := c.buildLocationMapping(t.Context(), locations)
@@ -707,7 +707,7 @@ func TestInternetLatency_Wheresitup_BuildLocationMapping(t *testing.T) {
 	// Check mapping
 	info, exists := mapping["new_york"]
 	require.True(t, exists, "Expected new_york in mapping")
-	require.Equal(t, "US-NYC", info.LocationCode, "Expected LocationCode US-NYC, got %s", info.LocationCode)
+	require.Equal(t, "US-NYC", info.FacilityCode, "Expected LocationCode US-NYC, got %s", info.FacilityCode)
 
 	_, exists = mapping["newark"]
 	require.True(t, exists, "Expected newark in mapping")
@@ -908,7 +908,7 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 				GetNearestSourcesForLocationsFunc: func(ctx context.Context, locations []collector.LocationMatch) ([]LocationSourceMatch, error) {
 					return []LocationSourceMatch{
 						{
-							LocationMatch:  collector.LocationMatch{LocationCode: "NYC"},
+							LocationMatch:  collector.LocationMatch{FacilityCode: "NYC"},
 							NearestSources: []Source{{ID: "src1", Name: "new_york"}},
 						},
 					}, nil
@@ -938,7 +938,7 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 			},
 			log:              log,
 			exporter:         mockExporter,
-			getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{{LocationCode: "NYC"}}),
+			getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{{FacilityCode: "NYC"}}),
 		}
 
 		// Save 15 job IDs (2 will succeed, 13 will fail = 86.7% failure rate)
@@ -989,12 +989,12 @@ func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
 			// Return at least 2 locations for successful job creation
 			return []LocationSourceMatch{
 				{
-					LocationMatch:  collector.LocationMatch{LocationCode: "NYC"},
+					LocationMatch:  collector.LocationMatch{FacilityCode: "NYC"},
 					NearestSources: []Source{{ID: "src1", Name: "new_york"}},
 					SourceCount:    1,
 				},
 				{
-					LocationMatch:  collector.LocationMatch{LocationCode: "LON"},
+					LocationMatch:  collector.LocationMatch{FacilityCode: "LON"},
 					NearestSources: []Source{{ID: "src2", Name: "london"}},
 					SourceCount:    1,
 				},
@@ -1063,8 +1063,8 @@ func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
 	// Mock the location fetcher to avoid blockchain calls
 	c.getLocationsFunc = func(ctx context.Context) []collector.LocationMatch {
 		return []collector.LocationMatch{
-			{LocationCode: "NYC", Latitude: 40.7128, Longitude: -74.0060},
-			{LocationCode: "LON", Latitude: 51.5074, Longitude: -0.1278},
+			{FacilityCode: "NYC", Latitude: 40.7128, Longitude: -74.0060},
+			{FacilityCode: "LON", Latitude: 51.5074, Longitude: -0.1278},
 		}
 	}
 
@@ -1112,7 +1112,7 @@ func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
 	csvStr := string(csvContent)
 
 	// Check CSV header
-	require.Contains(t, csvStr, "source_exchange_code,target_exchange_code,timestamp,latency",
+	require.Contains(t, csvStr, "source_metro_code,target_metro_code,timestamp,latency",
 		"CSV should contain the expected header")
 
 	// Check that data row exists with the expected values

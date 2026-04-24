@@ -125,7 +125,7 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 			{Code: "cont1"},
 			{Code: "cont2"},
 		}
-		exchanges := []serviceability.Exchange{
+		metros := []serviceability.Metro{
 			{Code: "exch1"},
 			{Code: "exch2"},
 		}
@@ -136,7 +136,7 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 		programData := &serviceability.ProgramData{
 			Devices:       devices,
 			Contributors:  contributors,
-			Exchanges:     exchanges,
+			Metros:        metros,
 			Links:         links,
 			ProgramConfig: &serviceability.ProgramConfig{},
 		}
@@ -153,7 +153,7 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, w.Tick(context.Background()))
-		require.Equal(t, int32(len(devices)+len(contributors)+len(exchanges)+len(links)), mockWriter.writeCount.Load(), "WriteRecord should be called for each device, contributor, exchange, and link")
+		require.Equal(t, int32(len(devices)+len(contributors)+len(metros)+len(links)), mockWriter.writeCount.Load(), "WriteRecord should be called for each device, contributor, metro, and link")
 		require.Equal(t, int32(4), mockWriter.flushCount.Load(), "Flush should be called once per tick")
 	})
 

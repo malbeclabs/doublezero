@@ -41,58 +41,58 @@ func checkUnlinkedInterfaces(device serviceability.Device, iface serviceability.
 	}
 }
 
-// checkExchangeBGPCommunityRange checks if exchange BGP community values are within the valid range (10000-10999).
-func checkExchangeBGPCommunityRange(log *slog.Logger, exchange serviceability.Exchange) {
-	if exchange.BgpCommunity < bgpCommunityMinValid || exchange.BgpCommunity > bgpCommunityMaxValid {
-		pubkey := base58.Encode(exchange.PubKey[:])
-		bgpCommunity := strconv.FormatUint(uint64(exchange.BgpCommunity), 10)
+// checkMetroBGPCommunityRange checks if metro BGP community values are within the valid range (10000-10999).
+func checkMetroBGPCommunityRange(log *slog.Logger, metro serviceability.Metro) {
+	if metro.BgpCommunity < bgpCommunityMinValid || metro.BgpCommunity > bgpCommunityMaxValid {
+		pubkey := base58.Encode(metro.PubKey[:])
+		bgpCommunity := strconv.FormatUint(uint64(metro.BgpCommunity), 10)
 
-		MetricExchangeBGPCommunityOutOfRange.WithLabelValues(
+		MetricMetroBGPCommunityOutOfRange.WithLabelValues(
 			pubkey,
-			exchange.Code,
+			metro.Code,
 			bgpCommunity,
 		).Inc()
 
-		log.Warn("exchange BGP community out of range",
-			"exchange_pubkey", pubkey,
-			"exchange_code", exchange.Code,
-			"bgp_community", exchange.BgpCommunity,
+		log.Warn("metro BGP community out of range",
+			"metro_pubkey", pubkey,
+			"metro_code", metro.Code,
+			"bgp_community", metro.BgpCommunity,
 			"valid_range", "10000-10999",
 		)
 	}
 }
 
-// checkExchangeBGPCommunityDuplicates checks for duplicate BGP community values across exchanges.
-func checkExchangeBGPCommunityDuplicates(log *slog.Logger, exchanges []serviceability.Exchange) {
-	bgpCommunityMap := make(map[uint16][]serviceability.Exchange)
+// checkMetroBGPCommunityDuplicates checks for duplicate BGP community values across metros.
+func checkMetroBGPCommunityDuplicates(log *slog.Logger, metros []serviceability.Metro) {
+	bgpCommunityMap := make(map[uint16][]serviceability.Metro)
 
-	for _, exchange := range exchanges {
-		bgpCommunityMap[exchange.BgpCommunity] = append(bgpCommunityMap[exchange.BgpCommunity], exchange)
+	for _, metro := range metros {
+		bgpCommunityMap[metro.BgpCommunity] = append(bgpCommunityMap[metro.BgpCommunity], metro)
 	}
 
-	for bgpCommunity, exchangeList := range bgpCommunityMap {
-		if len(exchangeList) > 1 {
+	for bgpCommunity, metroList := range bgpCommunityMap {
+		if len(metroList) > 1 {
 			bgpCommunityStr := strconv.FormatUint(uint64(bgpCommunity), 10)
 
-			for _, exchange := range exchangeList {
-				pubkey := base58.Encode(exchange.PubKey[:])
+			for _, metro := range metroList {
+				pubkey := base58.Encode(metro.PubKey[:])
 
-				MetricExchangeBGPCommunityDuplicates.WithLabelValues(
+				MetricMetroBGPCommunityDuplicates.WithLabelValues(
 					pubkey,
-					exchange.Code,
+					metro.Code,
 					bgpCommunityStr,
 				).Inc()
 			}
 
-			exchangeCodes := make([]string, len(exchangeList))
-			for i, ex := range exchangeList {
-				exchangeCodes[i] = ex.Code
+			metroCodes := make([]string, len(metroList))
+			for i, m := range metroList {
+				metroCodes[i] = m.Code
 			}
 
 			log.Warn("duplicate BGP community detected",
 				"bgp_community", bgpCommunity,
-				"exchange_count", len(exchangeList),
-				"exchange_codes", exchangeCodes,
+				"metro_count", len(metroList),
+				"metro_codes", metroCodes,
 			)
 		}
 	}

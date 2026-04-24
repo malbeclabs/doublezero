@@ -362,8 +362,8 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 		TargetLocation: "lax",
 		TargetProbeID:  200,
 		Sources: []SourceProbeMeta{
-			{LocationCode: "nyc", ProbeID: 100},
-			{LocationCode: "chi", ProbeID: 101},
+			{FacilityCode: "nyc", ProbeID: 100},
+			{FacilityCode: "chi", ProbeID: 101},
 		},
 		CreatedAt: time.Now().Unix(),
 	})
@@ -390,8 +390,8 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 	header := records[0]
 	tsIdx := slices.Index(header, "timestamp")
 	rttIdx := slices.Index(header, "latency")
-	srcIdx := slices.Index(header, "source_exchange_code")
-	tgtIdx := slices.Index(header, "target_exchange_code")
+	srcIdx := slices.Index(header, "source_metro_code")
+	tgtIdx := slices.Index(header, "target_metro_code")
 	require.NotEqual(t, -1, tsIdx)
 	require.NotEqual(t, -1, rttIdx)
 	require.NotEqual(t, -1, srcIdx)
@@ -485,7 +485,7 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_PreservesAllSamples(
 		TargetLocation: "lax",
 		TargetProbeID:  200,
 		Sources: []SourceProbeMeta{
-			{LocationCode: "nyc", ProbeID: 100},
+			{FacilityCode: "nyc", ProbeID: 100},
 		},
 		CreatedAt: time.Now().Unix(),
 	})
@@ -631,8 +631,8 @@ func TestInternetLatency_RIPEAtlas_ListAtlasProbes(t *testing.T) {
 	c := &Collector{client: mockClient, log: log}
 
 	locations := []collector.LocationMatch{
-		{LocationCode: "nyc", Latitude: 40.7128, Longitude: -74.0060},
-		{LocationCode: "lax", Latitude: 34.0522, Longitude: -118.2437},
+		{FacilityCode: "nyc", Latitude: 40.7128, Longitude: -74.0060},
+		{FacilityCode: "lax", Latitude: 34.0522, Longitude: -118.2437},
 	}
 
 	// Capture output (ListAtlasProbes is an interactive function that uses fmt.Print)
@@ -685,7 +685,7 @@ func TestInternetLatency_RIPEAtlas_GenerateWantedMeasurements_Deterministic(t *t
 	locations := []LocationProbeMatch{
 		{
 			LocationMatch: collector.LocationMatch{
-				LocationCode: "nyc",
+				FacilityCode: "nyc",
 				Latitude:     40.7128,
 				Longitude:    -74.0060,
 			},
@@ -696,7 +696,7 @@ func TestInternetLatency_RIPEAtlas_GenerateWantedMeasurements_Deterministic(t *t
 		},
 		{
 			LocationMatch: collector.LocationMatch{
-				LocationCode: "lon",
+				FacilityCode: "lon",
 				Latitude:     51.5074,
 				Longitude:    -0.1278,
 			},
@@ -707,7 +707,7 @@ func TestInternetLatency_RIPEAtlas_GenerateWantedMeasurements_Deterministic(t *t
 		},
 		{
 			LocationMatch: collector.LocationMatch{
-				LocationCode: "ams",
+				FacilityCode: "ams",
 				Latitude:     52.3676,
 				Longitude:    4.9041,
 			},
@@ -742,15 +742,15 @@ func TestInternetLatency_RIPEAtlas_GenerateWantedMeasurements_Deterministic(t *t
 	// Verify measurements have the expected structure
 	targetLocations := make(map[string]bool)
 	for _, m := range measurements1 {
-		targetLocations[m.TargetLocationCode] = true
+		targetLocations[m.TargetFacilityCode] = true
 
 		// Each measurement should have multiple source specs
-		require.Greater(t, len(m.SourceSpecs), 0, "Measurement to %s should have sources", m.TargetLocationCode)
+		require.Greater(t, len(m.SourceSpecs), 0, "Measurement to %s should have sources", m.TargetFacilityCode)
 
 		// Verify all sources come after the target alphabetically
 		for _, source := range m.SourceSpecs {
-			require.Greater(t, source.LocationCode, m.TargetLocationCode,
-				"Source %s should come after target %s alphabetically", source.LocationCode, m.TargetLocationCode)
+			require.Greater(t, source.FacilityCode, m.TargetFacilityCode,
+				"Source %s should come after target %s alphabetically", source.FacilityCode, m.TargetFacilityCode)
 		}
 	}
 
@@ -761,19 +761,19 @@ func TestInternetLatency_RIPEAtlas_GenerateWantedMeasurements_Deterministic(t *t
 
 	// Verify the specific structure of measurements
 	for _, m := range measurements1 {
-		if m.TargetLocationCode == "ams" {
+		if m.TargetFacilityCode == "ams" {
 			// ams gets measurements from LON and NYC
 			require.Len(t, m.SourceSpecs, 2, "ams should have 2 sources")
 			sourceCodes := make(map[string]bool)
 			for _, s := range m.SourceSpecs {
-				sourceCodes[s.LocationCode] = true
+				sourceCodes[s.FacilityCode] = true
 			}
 			require.True(t, sourceCodes["lon"], "ams should have lon as source")
 			require.True(t, sourceCodes["nyc"], "ams should have nyc as source")
-		} else if m.TargetLocationCode == "lon" {
+		} else if m.TargetFacilityCode == "lon" {
 			// lon gets measurement only from nyc (ams already measured to lon)
 			require.Len(t, m.SourceSpecs, 1, "lon should have 1 source")
-			require.Equal(t, "nyc", m.SourceSpecs[0].LocationCode, "lon should have nyc as source")
+			require.Equal(t, "nyc", m.SourceSpecs[0].FacilityCode, "lon should have nyc as source")
 		}
 	}
 }
@@ -797,7 +797,7 @@ func TestInternetLatency_RIPEAtlas_ExpectedDailyCreditsMetric(t *testing.T) {
 			// Return 3 locations with probes
 			return []LocationProbeMatch{
 				{
-					LocationMatch: collector.LocationMatch{LocationCode: "ams", Latitude: 52.3, Longitude: 4.9},
+					LocationMatch: collector.LocationMatch{FacilityCode: "ams", Latitude: 52.3, Longitude: 4.9},
 					NearbyProbes: []Probe{{
 						ID:      100,
 						Address: "1.1.1.1",
@@ -810,7 +810,7 @@ func TestInternetLatency_RIPEAtlas_ExpectedDailyCreditsMetric(t *testing.T) {
 					}},
 				},
 				{
-					LocationMatch: collector.LocationMatch{LocationCode: "lon", Latitude: 51.5, Longitude: -0.1},
+					LocationMatch: collector.LocationMatch{FacilityCode: "lon", Latitude: 51.5, Longitude: -0.1},
 					NearbyProbes: []Probe{{
 						ID:      200,
 						Address: "2.2.2.2",
@@ -823,7 +823,7 @@ func TestInternetLatency_RIPEAtlas_ExpectedDailyCreditsMetric(t *testing.T) {
 					}},
 				},
 				{
-					LocationMatch: collector.LocationMatch{LocationCode: "nyc", Latitude: 40.7, Longitude: -74.0},
+					LocationMatch: collector.LocationMatch{FacilityCode: "nyc", Latitude: 40.7, Longitude: -74.0},
 					NearbyProbes: []Probe{{
 						ID:      300,
 						Address: "3.3.3.3",
@@ -845,9 +845,9 @@ func TestInternetLatency_RIPEAtlas_ExpectedDailyCreditsMetric(t *testing.T) {
 		env:    "test",
 		getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
 			return []collector.LocationMatch{
-				{LocationCode: "ams", Latitude: 52.3, Longitude: 4.9},
-				{LocationCode: "lon", Latitude: 51.5, Longitude: -0.1},
-				{LocationCode: "nyc", Latitude: 40.7, Longitude: -74.0},
+				{FacilityCode: "ams", Latitude: 52.3, Longitude: 4.9},
+				{FacilityCode: "lon", Latitude: 51.5, Longitude: -0.1},
+				{FacilityCode: "nyc", Latitude: 40.7, Longitude: -74.0},
 			}
 		},
 	}
@@ -1072,7 +1072,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T)
 	locationMatches := []LocationProbeMatch{
 		{
 			LocationMatch: collector.LocationMatch{
-				LocationCode: "nyc",
+				FacilityCode: "nyc",
 				Latitude:     40.7128,
 				Longitude:    -74.0060,
 			},
@@ -1083,7 +1083,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T)
 		},
 		{
 			LocationMatch: collector.LocationMatch{
-				LocationCode: "lon",
+				FacilityCode: "lon",
 				Latitude:     51.5074,
 				Longitude:    -0.1278,
 			},
@@ -1260,8 +1260,8 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveSourceProbe
 		TargetLocation: "xams",
 		TargetProbeID:  6626,
 		Sources: []SourceProbeMeta{
-			{LocationCode: "xsin", ProbeID: 6726, LastResponseAt: twoHoursAgo},       // Stale
-			{LocationCode: "xtyo", ProbeID: 7080, LastResponseAt: time.Now().Unix()}, // Fresh
+			{FacilityCode: "xsin", ProbeID: 6726, LastResponseAt: twoHoursAgo},       // Stale
+			{FacilityCode: "xtyo", ProbeID: 7080, LastResponseAt: time.Now().Unix()}, // Fresh
 		},
 		CreatedAt:    twoHoursAgo - 3600, // Created 3 hours ago
 		LastExportAt: time.Now().Unix(),
@@ -1270,12 +1270,12 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveSourceProbe
 	// Locations with probes: xams has one probe, xsin has two (6726 stale, another available), xtyo has one
 	locationMatches := []LocationProbeMatch{
 		{
-			LocationMatch: collector.LocationMatch{LocationCode: "xams", Latitude: 52.3, Longitude: 4.7},
+			LocationMatch: collector.LocationMatch{FacilityCode: "xams", Latitude: 52.3, Longitude: 4.7},
 			NearbyProbes:  []Probe{{ID: 6626, Address: "84.38.236.1", Latitude: 52.3, Longitude: 4.7}},
 			ProbeCount:    1,
 		},
 		{
-			LocationMatch: collector.LocationMatch{LocationCode: "xsin", Latitude: 1.3, Longitude: 103.8},
+			LocationMatch: collector.LocationMatch{FacilityCode: "xsin", Latitude: 1.3, Longitude: 103.8},
 			NearbyProbes: []Probe{
 				{ID: 6726, Address: "139.99.78.22", Latitude: 1.3, Longitude: 103.8},  // Will be marked unresponsive
 				{ID: 1033, Address: "138.75.38.177", Latitude: 1.3, Longitude: 103.9}, // Replacement
@@ -1283,7 +1283,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveSourceProbe
 			ProbeCount: 2,
 		},
 		{
-			LocationMatch: collector.LocationMatch{LocationCode: "xtyo", Latitude: 35.6, Longitude: 139.6},
+			LocationMatch: collector.LocationMatch{FacilityCode: "xtyo", Latitude: 35.6, Longitude: 139.6},
 			NearbyProbes:  []Probe{{ID: 7080, Address: "63.222.190.5", Latitude: 35.6, Longitude: 139.6}},
 			ProbeCount:    1,
 		},
@@ -1384,8 +1384,8 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveTargetDoesN
 		TargetLocation: "xams",
 		TargetProbeID:  6626,
 		Sources: []SourceProbeMeta{
-			{LocationCode: "xsin", ProbeID: 6726, LastResponseAt: time.Now().Unix()}, // Fresh
-			{LocationCode: "xtyo", ProbeID: 7080, LastResponseAt: time.Now().Unix()}, // Fresh
+			{FacilityCode: "xsin", ProbeID: 6726, LastResponseAt: time.Now().Unix()}, // Fresh
+			{FacilityCode: "xtyo", ProbeID: 7080, LastResponseAt: time.Now().Unix()}, // Fresh
 		},
 		CreatedAt:    twoHoursAgo - 3600,
 		LastExportAt: time.Now().Unix(), // Healthy measurement
@@ -1394,8 +1394,8 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveTargetDoesN
 		TargetLocation: "xsin",
 		TargetProbeID:  6726,
 		Sources: []SourceProbeMeta{
-			{LocationCode: "xams", ProbeID: 6626, LastResponseAt: twoHoursAgo}, // Stale because target is dead
-			{LocationCode: "xtyo", ProbeID: 7080, LastResponseAt: twoHoursAgo}, // Stale because target is dead
+			{FacilityCode: "xams", ProbeID: 6626, LastResponseAt: twoHoursAgo}, // Stale because target is dead
+			{FacilityCode: "xtyo", ProbeID: 7080, LastResponseAt: twoHoursAgo}, // Stale because target is dead
 		},
 		CreatedAt:    twoHoursAgo - 3600,
 		LastExportAt: twoHoursAgo, // Stale — target not responding
@@ -1403,12 +1403,12 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveTargetDoesN
 
 	locationMatches := []LocationProbeMatch{
 		{
-			LocationMatch: collector.LocationMatch{LocationCode: "xams", Latitude: 52.3, Longitude: 4.7},
+			LocationMatch: collector.LocationMatch{FacilityCode: "xams", Latitude: 52.3, Longitude: 4.7},
 			NearbyProbes:  []Probe{{ID: 6626, Address: "84.38.236.1", Latitude: 52.3, Longitude: 4.7}},
 			ProbeCount:    1,
 		},
 		{
-			LocationMatch: collector.LocationMatch{LocationCode: "xsin", Latitude: 1.3, Longitude: 103.8},
+			LocationMatch: collector.LocationMatch{FacilityCode: "xsin", Latitude: 1.3, Longitude: 103.8},
 			NearbyProbes: []Probe{
 				{ID: 6726, Address: "139.99.78.22", Latitude: 1.3, Longitude: 103.8},  // Will be marked unresponsive (target)
 				{ID: 1033, Address: "138.75.38.177", Latitude: 1.3, Longitude: 103.9}, // Replacement
@@ -1416,7 +1416,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveTargetDoesN
 			ProbeCount: 2,
 		},
 		{
-			LocationMatch: collector.LocationMatch{LocationCode: "xtyo", Latitude: 35.6, Longitude: 139.6},
+			LocationMatch: collector.LocationMatch{FacilityCode: "xtyo", Latitude: 35.6, Longitude: 139.6},
 			NearbyProbes:  []Probe{{ID: 7080, Address: "63.222.190.5", Latitude: 35.6, Longitude: 139.6}},
 			ProbeCount:    1,
 		},

@@ -291,7 +291,7 @@ func (c *Client) GetNearestSourcesForLocations(ctx context.Context, locations []
 		nearestSources, err := c.GetNearestSources(ctx, location.Latitude, location.Longitude, 5)
 		if err != nil {
 			c.log.Warn("Error fetching nearest sources for location",
-				slog.String("location", location.LocationCode),
+				slog.String("location", location.FacilityCode),
 				slog.String("error", err.Error()))
 			// Continue with empty sources rather than failing completely
 			nearestSources = []Source{}

@@ -1,8 +1,8 @@
 use super::{multicast::MulticastCliCommand, sentinel::SentinelCliCommand};
 use crate::cli::{
     accesspass::AccessPassCliCommand, config::ConfigCliCommand, contributor::ContributorCliCommand,
-    device::DeviceCliCommand, exchange::ExchangeCliCommand, globalconfig::GlobalConfigCliCommand,
-    link::LinkCliCommand, location::LocationCliCommand, migrate::MigrateCliCommand,
+    device::DeviceCliCommand, facility::FacilityCliCommand, globalconfig::GlobalConfigCliCommand,
+    link::LinkCliCommand, metro::MetroCliCommand, migrate::MigrateCliCommand,
     permission::PermissionCliCommand, tenant::TenantCliCommand, user::UserCliCommand,
 };
 use clap::{Args, Subcommand};
@@ -35,12 +35,12 @@ pub enum Command {
     /// List Accounts
     #[command()]
     Accounts(GetAccountsCliCommand),
-    /// Manage locations
+    /// Manage facilities
     #[command()]
-    Location(LocationCliCommand),
-    /// Manage exchanges
+    Facility(FacilityCliCommand),
+    /// Manage metros
     #[command()]
-    Exchange(ExchangeCliCommand),
+    Metro(MetroCliCommand),
     /// Manage contributors
     #[command()]
     Contributor(ContributorCliCommand),

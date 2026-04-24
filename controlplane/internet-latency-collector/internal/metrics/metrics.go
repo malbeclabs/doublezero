@@ -18,14 +18,14 @@ var (
 	}, []string{"version", "commit", "date"})
 
 	// Blockchain exchange fetch metrics
-	DoublezeroExchangeFetchTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "doublezero_internet_latency_collector_exchange_fetch_total",
-		Help: "Total number of attempts to fetch doublezero exchanges from blockchain",
+	DoublezeroMetroFetchTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_metro_fetch_total",
+		Help: "Total number of attempts to fetch doublezero metros from blockchain",
 	}, []string{"status"})
 
-	DoublezeroExchanges = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "doublezero_internet_latency_collector_exchanges",
-		Help: "Number of doublezero exchanges fetched from blockchain",
+	DoublezeroMetros = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_metros",
+		Help: "Number of doublezero metros fetched from blockchain",
 	})
 
 	// Common metrics for both collectors
@@ -44,40 +44,40 @@ var (
 		Help: "Total number of errors from the exporter",
 	}, []string{"error_type", "circuit"})
 
-	ExporterExchangeNotFoundTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "doublezero_internet_latency_collector_exporter_exchange_not_found_total",
-		Help: "Total number of exchange not found warnings from the exporter",
-	}, []string{"exchange"})
+	ExporterMetroNotFoundTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_exporter_metro_not_found_total",
+		Help: "Total number of metro not found warnings from the exporter",
+	}, []string{"metro"})
 
 	ExporterPartitionedBufferSize = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "doublezero_internet_latency_collector_exporter_partitioned_buffer_size",
 		Help: "Number of partitioned buffers from the exporter",
-	}, []string{"data_provider", "source_exchange_pk", "target_exchange_pk"})
+	}, []string{"data_provider", "source_metro_pk", "target_metro_pk"})
 
 	ExporterSubmitterAccountFull = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_exporter_submitter_account_full",
 		Help: "Number of times the exporter has encountered a submitter account full error",
-	}, []string{"data_provider", "source_exchange_pk", "target_exchange_pk", "epoch"})
+	}, []string{"data_provider", "source_metro_pk", "target_metro_pk", "epoch"})
 
 	LatencySamplesPerCollectionIntervalExpected = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_latency_samples_per_collection_interval_expected",
-		Help: "Expected number of exchange pair latency samples per collection interval",
+		Help: "Expected number of metro pair latency samples per collection interval",
 	}, []string{"data_provider", "circuit"})
 
 	LatencySamplesPerCollectionIntervalActual = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_latency_samples_per_collection_interval_actual",
-		Help: "Actual number of exchange pair latency samples exported per collection interval",
+		Help: "Actual number of metro pair latency samples exported per collection interval",
 	}, []string{"data_provider", "circuit"})
 
 	LatencySamplesPerCollectionIntervalMissing = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_latency_samples_per_collection_interval_missing",
-		Help: "Number of exchange pair latency samples that were expected but not received per collection interval",
+		Help: "Number of metro pair latency samples that were expected but not received per collection interval",
 	}, []string{"env", "circuit", "data_provider"})
 
-	DistanceFromExchangeToProbe = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "doublezero_internet_latency_collector_distance_from_exchange_to_probe_km",
-		Help: "Haversine distance in kilometers from exchange to its nearest probe",
-	}, []string{"provider", "exchange_code"})
+	DistanceFromMetroToProbe = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_distance_from_metro_to_probe_km",
+		Help: "Haversine distance in kilometers from metro to its nearest probe",
+	}, []string{"provider", "metro_code"})
 
 	// RIPE Atlas specific metrics
 	RipeatlasMeasurementManagementRunsTotal = promauto.NewCounter(prometheus.CounterOpts{
@@ -102,7 +102,7 @@ var (
 
 	RipeatlasProbesPerMeasurement = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "doublezero_internet_latency_collector_ripeatlas_probes_per_location",
-		Help: "Number of source probes per location (exchanges minus 1)",
+		Help: "Number of source probes per location (metros minus 1)",
 	})
 
 	RipeatlasExpectedDailyCredits = promauto.NewGauge(prometheus.GaugeOpts{

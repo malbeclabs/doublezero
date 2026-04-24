@@ -96,7 +96,7 @@ func TestGetConfig(t *testing.T) {
 				Devices: map[string]*Device{
 					"abc123": {
 						Interfaces:   []Interface{},
-						ExchangeCode: "tst",
+						MetroCode:    "tst",
 						BgpCommunity: 10050,
 						Tunnels: []*Tunnel{
 							{
@@ -155,7 +155,7 @@ func TestGetConfig(t *testing.T) {
 				Devices: map[string]*Device{
 					"abc123": {
 						Interfaces:   []Interface{},
-						ExchangeCode: "tst",
+						MetroCode:    "tst",
 						BgpCommunity: 10050,
 						Tunnels: []*Tunnel{
 							{
@@ -240,7 +240,7 @@ func TestGetConfig(t *testing.T) {
 				UnicastVrfs: []uint16{1},
 				Devices: map[string]*Device{
 					"abc123": {
-						ExchangeCode: "tst",
+						MetroCode:    "tst",
 						BgpCommunity: 10050,
 						Tunnels: []*Tunnel{
 							{
@@ -339,7 +339,7 @@ func TestGetConfig(t *testing.T) {
 				UnicastVrfs: []uint16{1},
 				Devices: map[string]*Device{
 					"abc123": {
-						ExchangeCode: "tst",
+						MetroCode:    "tst",
 						BgpCommunity: 10050,
 						Tunnels: []*Tunnel{
 							{
@@ -458,7 +458,7 @@ func TestGetConfig(t *testing.T) {
 						DevicePathologies:     []string{},
 						Tunnels:               []*Tunnel{},
 						TunnelSlots:           0,
-						ExchangeCode:          "tst",
+						MetroCode:             "tst",
 						BgpCommunity:          10050,
 						Interfaces: []Interface{
 							{
@@ -523,7 +523,7 @@ func TestGetConfig(t *testing.T) {
 						Tunnels:               []*Tunnel{},
 						TunnelSlots:           0,
 						MgmtVrf:               "test-mgmt-vrf",
-						ExchangeCode:          "tst",
+						MetroCode:             "tst",
 						BgpCommunity:          10050,
 					},
 				},
@@ -625,7 +625,7 @@ func TestGetConfigWithPathologies(t *testing.T) {
 							"no or invalid VPNv4 loopback interface found for device",
 							"ISIS NET could not be generated",
 						},
-						ExchangeCode: "tst",
+						MetroCode:    "tst",
 						BgpCommunity: 10050,
 					},
 				},
@@ -711,7 +711,7 @@ func TestStateCache(t *testing.T) {
 		Devices         []serviceability.Device
 		Links           []serviceability.Link
 		MulticastGroups []serviceability.MulticastGroup
-		Exchanges       []serviceability.Exchange
+		Metros          []serviceability.Metro
 		Tenants         []serviceability.Tenant
 		StateCache      stateCache
 	}{
@@ -726,7 +726,7 @@ func TestStateCache(t *testing.T) {
 					MulticastIp: [4]uint8{239, 0, 0, 1},
 				},
 			},
-			Exchanges: []serviceability.Exchange{
+			Metros: []serviceability.Metro{
 				{
 					PubKey:       [32]uint8{2},
 					Code:         "tst",
@@ -832,8 +832,8 @@ func TestStateCache(t *testing.T) {
 				{
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
-					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{2},
+					FacilityPubKey: [32]uint8{},
+					MetroPubKey:    [32]uint8{2},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
 					Interfaces: []serviceability.Interface{
@@ -946,7 +946,7 @@ func TestStateCache(t *testing.T) {
 						IsisNet:           "49.0000.0e0e.0e0e.0000.00",
 						Ipv4LoopbackIP:    net.IP{12, 12, 12, 12},
 						DevicePathologies: []string{},
-						ExchangeCode:      "tst",
+						MetroCode:         "tst",
 						BgpCommunity:      10050,
 						Tunnels: append([]*Tunnel{
 							{
@@ -1026,7 +1026,7 @@ func TestStateCache(t *testing.T) {
 						Status:                serviceability.DeviceStatusActivated,
 						Code:                  "abc01",
 						ContributorCode:       "unknown",
-						LocationCode:          "unknown",
+						FacilityCode:          "unknown",
 					},
 				},
 			},
@@ -1036,7 +1036,7 @@ func TestStateCache(t *testing.T) {
 			Config: serviceability.GlobalConfig{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
-			Exchanges: []serviceability.Exchange{
+			Metros: []serviceability.Metro{
 				{
 					PubKey:       [32]uint8{2},
 					Code:         "tst",
@@ -1061,8 +1061,8 @@ func TestStateCache(t *testing.T) {
 				{
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
-					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{2},
+					FacilityPubKey: [32]uint8{},
+					MetroPubKey:    [32]uint8{2},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{3, 3, 3, 3},
 					Interfaces:     []serviceability.Interface{}, // No VPNv4 loopback interface
@@ -1088,12 +1088,12 @@ func TestStateCache(t *testing.T) {
 							"no or invalid IPv4 loopback interface found for device",
 							"ISIS NET could not be generated",
 						},
-						ExchangeCode:    "tst",
+						MetroCode:       "tst",
 						BgpCommunity:    10050,
 						Status:          serviceability.DeviceStatusActivated,
 						Code:            "abc02",
 						ContributorCode: "unknown",
-						LocationCode:    "unknown",
+						FacilityCode:    "unknown",
 						Tunnels: append([]*Tunnel{
 							{
 								Id:            500,
@@ -1114,11 +1114,11 @@ func TestStateCache(t *testing.T) {
 			},
 		},
 		{
-			Name: "device_with_out_of_range_exchange_bgp_community_pathology",
+			Name: "device_with_out_of_range_metro_bgp_community_pathology",
 			Config: serviceability.GlobalConfig{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
-			Exchanges: []serviceability.Exchange{
+			Metros: []serviceability.Metro{
 				{
 					PubKey:       [32]uint8{2},
 					Code:         "tst",
@@ -1143,8 +1143,8 @@ func TestStateCache(t *testing.T) {
 				{
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
-					LocationPubKey: [32]uint8{3},
-					ExchangePubKey: [32]uint8{2},
+					FacilityPubKey: [32]uint8{3},
+					MetroPubKey:    [32]uint8{2},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{3, 3, 3, 3},
 					Interfaces: []serviceability.Interface{
@@ -1179,14 +1179,14 @@ func TestStateCache(t *testing.T) {
 						PubKey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
 						PublicIP: net.IP{3, 3, 3, 3},
 						DevicePathologies: []string{
-							"exchange BGP community 5000 is out of valid range (10000-10999)",
+							"metro BGP community 5000 is out of valid range (10000-10999)",
 						},
-						ExchangeCode:          "tst",
+						MetroCode:             "tst",
 						BgpCommunity:          5000,
 						Status:                serviceability.DeviceStatusActivated,
 						Code:                  "abc03",
 						ContributorCode:       "unknown",
-						LocationCode:          "unknown",
+						FacilityCode:          "unknown",
 						Vpn4vLoopbackIP:       net.IP{10, 10, 10, 1},
 						Vpn4vLoopbackIntfName: "Loopback255",
 						Ipv4LoopbackIP:        net.IP{10, 10, 10, 2},
@@ -1230,7 +1230,7 @@ func TestStateCache(t *testing.T) {
 			Config: serviceability.GlobalConfig{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
-			Exchanges: []serviceability.Exchange{
+			Metros: []serviceability.Metro{
 				{
 					PubKey:       [32]uint8{2},
 					Code:         "tst",
@@ -1269,8 +1269,8 @@ func TestStateCache(t *testing.T) {
 				{
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
-					LocationPubKey: [32]uint8{3},
-					ExchangePubKey: [32]uint8{2},
+					FacilityPubKey: [32]uint8{3},
+					MetroPubKey:    [32]uint8{2},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{3, 3, 3, 3},
 					Interfaces: []serviceability.Interface{
@@ -1322,12 +1322,12 @@ func TestStateCache(t *testing.T) {
 						Ipv4LoopbackIntfName:  "Loopback256",
 						IsisNet:               "49.0000.0a0a.0a01.0000.00",
 						DevicePathologies:     []string{},
-						ExchangeCode:          "tst",
+						MetroCode:             "tst",
 						BgpCommunity:          10050,
 						Status:                serviceability.DeviceStatusActivated,
 						Code:                  "abc01",
 						ContributorCode:       "unknown",
-						LocationCode:          "unknown",
+						FacilityCode:          "unknown",
 						Interfaces: []Interface{
 							{
 								Name:          "Loopback255",
@@ -1378,7 +1378,7 @@ func TestStateCache(t *testing.T) {
 			Config: serviceability.GlobalConfig{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
-			Exchanges: []serviceability.Exchange{
+			Metros: []serviceability.Metro{
 				{
 					PubKey:       [32]uint8{2},
 					Code:         "tst",
@@ -1440,8 +1440,8 @@ func TestStateCache(t *testing.T) {
 				{
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
-					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{2},
+					FacilityPubKey: [32]uint8{},
+					MetroPubKey:    [32]uint8{2},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
 					Status:         serviceability.DeviceStatusActivated,
@@ -1500,7 +1500,7 @@ func TestStateCache(t *testing.T) {
 						IsisNet:           "49.0000.0e0e.0e0e.0000.00",
 						Ipv4LoopbackIP:    net.IP{12, 12, 12, 12},
 						DevicePathologies: []string{},
-						ExchangeCode:      "tst",
+						MetroCode:         "tst",
 						BgpCommunity:      10050,
 						Tunnels: append([]*Tunnel{
 							{
@@ -1559,7 +1559,7 @@ func TestStateCache(t *testing.T) {
 						Status:                serviceability.DeviceStatusActivated,
 						Code:                  "abc01",
 						ContributorCode:       "unknown",
-						LocationCode:          "unknown",
+						FacilityCode:          "unknown",
 					},
 				},
 			},
@@ -1581,7 +1581,7 @@ func TestStateCache(t *testing.T) {
 						Devices:         test.Devices,
 						Links:           test.Links,
 						MulticastGroups: test.MulticastGroups,
-						Exchanges:       test.Exchanges,
+						Metros:          test.Metros,
 						Tenants:         test.Tenants,
 					}, nil
 				},
@@ -1624,7 +1624,7 @@ func TestStateCache_DuplicateTunnelId(t *testing.T) {
 				GlobalConfig: &serviceability.GlobalConfig{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
-				Exchanges: []serviceability.Exchange{
+				Metros: []serviceability.Metro{
 					{
 						PubKey:       [32]uint8{2},
 						Code:         "tst",
@@ -1657,9 +1657,9 @@ func TestStateCache_DuplicateTunnelId(t *testing.T) {
 				},
 				Devices: []serviceability.Device{
 					{
-						PubKey:         [32]byte{1},
-						ExchangePubKey: [32]uint8{2},
-						PublicIp:       [4]uint8{2, 2, 2, 2},
+						PubKey:      [32]byte{1},
+						MetroPubKey: [32]uint8{2},
+						PublicIp:    [4]uint8{2, 2, 2, 2},
 						Interfaces: []serviceability.Interface{
 							{
 								Name:          "Loopback255",
@@ -1778,7 +1778,7 @@ func TestEndToEnd(t *testing.T) {
 		Devices         []serviceability.Device
 		Links           []serviceability.Link
 		MulticastGroups []serviceability.MulticastGroup
-		Exchanges       []serviceability.Exchange
+		Metros          []serviceability.Metro
 		Tenants         []serviceability.Tenant
 		AgentRequest    *pb.ConfigRequest
 		DevicePubKey    string
@@ -1795,7 +1795,7 @@ func TestEndToEnd(t *testing.T) {
 					MulticastIp: [4]uint8{239, 0, 0, 1},
 				},
 			},
-			Exchanges: []serviceability.Exchange{
+			Metros: []serviceability.Metro{
 				{
 					PubKey:       [32]uint8{2},
 					Code:         "tst",
@@ -1833,8 +1833,8 @@ func TestEndToEnd(t *testing.T) {
 				{
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
-					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{2},
+					FacilityPubKey: [32]uint8{},
+					MetroPubKey:    [32]uint8{2},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
 					Status:         serviceability.DeviceStatusActivated,
@@ -1933,7 +1933,7 @@ func TestEndToEnd(t *testing.T) {
 					MulticastIp: [4]uint8{239, 0, 0, 1},
 				},
 			},
-			Exchanges: []serviceability.Exchange{
+			Metros: []serviceability.Metro{
 				{
 					PubKey:       [32]uint8{2},
 					Code:         "tst",
@@ -1971,8 +1971,8 @@ func TestEndToEnd(t *testing.T) {
 				{
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
-					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{2},
+					FacilityPubKey: [32]uint8{},
+					MetroPubKey:    [32]uint8{2},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
 					Interfaces: []serviceability.Interface{
@@ -1997,8 +1997,8 @@ func TestEndToEnd(t *testing.T) {
 				{
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
-					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{},
+					FacilityPubKey: [32]uint8{},
+					MetroPubKey:    [32]uint8{},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{22, 22, 22, 22},
 					Interfaces: []serviceability.Interface{
@@ -2017,8 +2017,8 @@ func TestEndToEnd(t *testing.T) {
 				{
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
-					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{},
+					FacilityPubKey: [32]uint8{},
+					MetroPubKey:    [32]uint8{},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{23, 23, 23, 23},
 					Interfaces: []serviceability.Interface{
@@ -2054,7 +2054,7 @@ func TestEndToEnd(t *testing.T) {
 				DeviceTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
 				UserTunnelBlock:     [5]uint8{169, 254, 0, 0, 16},
 			},
-			Exchanges: []serviceability.Exchange{
+			Metros: []serviceability.Metro{
 				{
 					PubKey:       [32]uint8{2},
 					Code:         "tst",
@@ -2066,8 +2066,8 @@ func TestEndToEnd(t *testing.T) {
 				{
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
-					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{2},
+					FacilityPubKey: [32]uint8{},
+					MetroPubKey:    [32]uint8{2},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
 					Interfaces: []serviceability.Interface{
@@ -2111,7 +2111,7 @@ func TestEndToEnd(t *testing.T) {
 					MulticastIp: [4]uint8{239, 0, 0, 1},
 				},
 			},
-			Exchanges: []serviceability.Exchange{
+			Metros: []serviceability.Metro{
 				{
 					PubKey:       [32]uint8{2},
 					Code:         "tst",
@@ -2162,8 +2162,8 @@ func TestEndToEnd(t *testing.T) {
 				{
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
-					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{2},
+					FacilityPubKey: [32]uint8{},
+					MetroPubKey:    [32]uint8{2},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
 					Interfaces: []serviceability.Interface{
@@ -2204,7 +2204,7 @@ func TestEndToEnd(t *testing.T) {
 						Devices:         test.Devices,
 						Links:           test.Links,
 						MulticastGroups: test.MulticastGroups,
-						Exchanges:       test.Exchanges,
+						Metros:          test.Metros,
 						Tenants:         test.Tenants,
 					}, nil
 				},
@@ -2499,7 +2499,7 @@ func Test_GetConfig_DuplicateTunnelPairs_Integration(t *testing.T) {
 				PubKey:                "abc123",
 				Code:                  "dz1",
 				Interfaces:            []Interface{},
-				ExchangeCode:          "tst",
+				MetroCode:             "tst",
 				BgpCommunity:          10050,
 				PublicIP:              net.IP{7, 7, 7, 7},
 				Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},

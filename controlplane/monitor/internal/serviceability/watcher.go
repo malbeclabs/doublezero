@@ -119,7 +119,7 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 	if w.cfg.InfluxWriter != nil {
 		w.exportDevicesToInflux(data.Devices)
 		w.exportContributorsToInflux(data.Contributors)
-		w.exportExchangesToInflux(data.Exchanges)
+		w.exportMetrosToInflux(data.Metros)
 		w.exportLinksToInflux(data.Links)
 	}
 
@@ -230,21 +230,21 @@ func (w *ServiceabilityWatcher) exportContributorsToInflux(contributors []servic
 	w.cfg.InfluxWriter.Flush()
 }
 
-func (w *ServiceabilityWatcher) exportExchangesToInflux(exchanges []serviceability.Exchange) {
+func (w *ServiceabilityWatcher) exportMetrosToInflux(metros []serviceability.Metro) {
 	if w.cfg.InfluxWriter == nil {
 		return
 	}
 	additionalTags := map[string]string{
 		"env": w.cfg.Env,
 	}
-	// write each exchange as a separate line protocol entry
-	for _, exchange := range exchanges {
-		line, err := serviceability.ToLineProtocol("exchanges", exchange, time.Now(), additionalTags)
+	// write each metro as a separate line protocol entry
+	for _, metro := range metros {
+		line, err := serviceability.ToLineProtocol("metros", metro, time.Now(), additionalTags)
 		if err != nil {
-			w.log.Error("failed to create influx line protocol for exchange", "exchange_code", exchange.Code, "error", err)
+			w.log.Error("failed to create influx line protocol for metro", "metro_code", metro.Code, "error", err)
 			continue
 		}
-		w.log.Debug("writing exchange record to influx", "line", line)
+		w.log.Debug("writing metro record to influx", "line", line)
 		w.cfg.InfluxWriter.WriteRecord(line)
 	}
 	w.cfg.InfluxWriter.Flush()
@@ -306,11 +306,11 @@ func (w *ServiceabilityWatcher) runAudits(data *serviceability.ProgramData) {
 		}
 	}
 
-	for _, exchange := range data.Exchanges {
-		checkExchangeBGPCommunityRange(w.log, exchange)
+	for _, metro := range data.Metros {
+		checkMetroBGPCommunityRange(w.log, metro)
 	}
 
-	checkExchangeBGPCommunityDuplicates(w.log, data.Exchanges)
+	checkMetroBGPCommunityDuplicates(w.log, data.Metros)
 }
 
 func programVersionString(version serviceability.ProgramVersion) string {

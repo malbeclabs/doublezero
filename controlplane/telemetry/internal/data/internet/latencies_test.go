@@ -394,14 +394,14 @@ func TestInternetProvider_GetCircuitLatencies(t *testing.T) {
 
 func defaultInternetCircuit() data.Circuit {
 	// Internet circuit uses Exchanges rather than Devices.
-	exA := serviceability.Exchange{Code: "YOW"} // Ottawa
-	exB := serviceability.Exchange{Code: "YYC"} // Calgary
+	exA := serviceability.Metro{Code: "YOW"} // Ottawa
+	exB := serviceability.Metro{Code: "YYC"} // Calgary
 	pkA := solana.NewWallet().PublicKey()
 	pkB := solana.NewWallet().PublicKey()
 	return data.Circuit{
-		Code:           circuitKey(exA.Code, exB.Code),
-		OriginExchange: data.Exchange{PK: pkA, Code: exA.Code},
-		TargetExchange: data.Exchange{PK: pkB, Code: exB.Code},
+		Code:        circuitKey(exA.Code, exB.Code),
+		OriginMetro: data.Metro{PK: pkA, Code: exA.Code},
+		TargetMetro: data.Metro{PK: pkB, Code: exB.Code},
 	}
 }
 
@@ -430,11 +430,11 @@ func newInternetTestProviderWithEpochFinder(
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		ServiceabilityClient: &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				// Provide exchanges so GetCircuits(...) can resolve the circuit by code.
+				// Provide metros so GetCircuits(...) can resolve the circuit by code.
 				return &serviceability.ProgramData{
-					Exchanges: []serviceability.Exchange{
-						{Code: circuit.OriginExchange.Code, PubKey: circuit.OriginExchange.PK},
-						{Code: circuit.TargetExchange.Code, PubKey: circuit.TargetExchange.PK},
+					Metros: []serviceability.Metro{
+						{Code: circuit.OriginMetro.Code, PubKey: circuit.OriginMetro.PK},
+						{Code: circuit.TargetMetro.Code, PubKey: circuit.TargetMetro.PK},
 					},
 				}, nil
 			},

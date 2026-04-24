@@ -9,44 +9,44 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
-type InternetExchangeCircuit struct {
-	Code           string
-	OriginExchange serviceability.Exchange
-	TargetExchange serviceability.Exchange
+type InternetMetroCircuit struct {
+	Code        string
+	OriginMetro serviceability.Metro
+	TargetMetro serviceability.Metro
 }
 
-func GetInternetExchangeCircuits(ctx context.Context, log *slog.Logger, serviceabilityClient ServiceabilityClient) ([]InternetExchangeCircuit, error) {
+func GetInternetMetroCircuits(ctx context.Context, log *slog.Logger, serviceabilityClient ServiceabilityClient) ([]InternetMetroCircuit, error) {
 	data, err := serviceabilityClient.GetProgramData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load serviceability data: %w", err)
 	}
 
-	circuits := make([]InternetExchangeCircuit, 0, 2*len(data.Links))
+	circuits := make([]InternetMetroCircuit, 0, 2*len(data.Links))
 	circuitsByCode := make(map[string]struct{})
 
-	for _, originExchange := range data.Exchanges {
-		for _, targetExchange := range data.Exchanges {
-			if originExchange.Code == targetExchange.Code {
+	for _, originMetro := range data.Metros {
+		for _, targetMetro := range data.Metros {
+			if originMetro.Code == targetMetro.Code {
 				continue
 			}
 
-			var origin, target serviceability.Exchange
-			if originExchange.Code < targetExchange.Code {
-				origin, target = originExchange, targetExchange
+			var origin, target serviceability.Metro
+			if originMetro.Code < targetMetro.Code {
+				origin, target = originMetro, targetMetro
 			} else {
-				origin, target = targetExchange, originExchange
+				origin, target = targetMetro, originMetro
 			}
 
-			key := internetExchangeCircuitKey(origin.Code, target.Code)
+			key := internetMetroCircuitKey(origin.Code, target.Code)
 			if _, ok := circuitsByCode[key]; ok {
 				continue
 			}
 
 			circuitsByCode[key] = struct{}{}
-			circuits = append(circuits, InternetExchangeCircuit{
-				Code:           key,
-				OriginExchange: origin,
-				TargetExchange: target,
+			circuits = append(circuits, InternetMetroCircuit{
+				Code:        key,
+				OriginMetro: origin,
+				TargetMetro: target,
 			})
 		}
 	}
@@ -58,6 +58,6 @@ func GetInternetExchangeCircuits(ctx context.Context, log *slog.Logger, servicea
 	return circuits, nil
 }
 
-func internetExchangeCircuitKey(origin, target string) string {
+func internetMetroCircuitKey(origin, target string) string {
 	return fmt.Sprintf("%s → %s", origin, target)
 }

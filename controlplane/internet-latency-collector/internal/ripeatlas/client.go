@@ -246,7 +246,7 @@ func (c *Client) GetProbesForLocations(ctx context.Context, locations []Location
 			continue
 		}
 
-		nearbyProbes, err := c.fetchProbesWithErrorHandling(ctx, location.Latitude, location.Longitude, location.LocationCode)
+		nearbyProbes, err := c.fetchProbesWithErrorHandling(ctx, location.Latitude, location.Longitude, location.FacilityCode)
 		if err != nil {
 			return nil, err
 		}

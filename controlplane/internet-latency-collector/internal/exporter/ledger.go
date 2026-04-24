@@ -137,24 +137,24 @@ func (e *BufferedLedgerExporter) WriteRecords(ctx context.Context, records []Rec
 		}
 	}
 
-	// Lookup exchange pubkeys from given codes using serviceability program client.
-	exchanges, err := e.getExchanges(ctx)
+	// Lookup metro pubkeys from given codes using serviceability program client.
+	metros, err := e.getMetros(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get exchanges: %w", err)
+		return fmt.Errorf("failed to get metros: %w", err)
 	}
 
 	// Add records to partitioned buffer.
 	for _, record := range records {
-		source, ok := exchanges[record.SourceExchangeCode]
+		source, ok := metros[record.SourceMetroCode]
 		if !ok {
-			e.log.Warn("Source exchange not found, skipping record", "code", record.SourceExchangeCode)
-			metrics.ExporterExchangeNotFoundTotal.WithLabelValues(record.SourceExchangeCode).Inc()
+			e.log.Warn("Source metro not found, skipping record", "code", record.SourceMetroCode)
+			metrics.ExporterMetroNotFoundTotal.WithLabelValues(record.SourceMetroCode).Inc()
 			continue
 		}
-		target, ok := exchanges[record.TargetExchangeCode]
+		target, ok := metros[record.TargetMetroCode]
 		if !ok {
-			e.log.Warn("Target exchange not found, skipping record", "code", record.TargetExchangeCode)
-			metrics.ExporterExchangeNotFoundTotal.WithLabelValues(record.TargetExchangeCode).Inc()
+			e.log.Warn("Target metro not found, skipping record", "code", record.TargetMetroCode)
+			metrics.ExporterMetroNotFoundTotal.WithLabelValues(record.TargetMetroCode).Inc()
 			continue
 		}
 
@@ -164,12 +164,12 @@ func (e *BufferedLedgerExporter) WriteRecords(ctx context.Context, records []Rec
 		}
 
 		partitionKey := PartitionKey{
-			DataProvider:       record.DataProvider,
-			SourceExchangePK:   source.PubKey,
-			TargetExchangePK:   target.PubKey,
-			SourceExchangeCode: record.SourceExchangeCode,
-			TargetExchangeCode: record.TargetExchangeCode,
-			Epoch:              epoch,
+			DataProvider:    record.DataProvider,
+			SourceMetroPK:   source.PubKey,
+			TargetMetroPK:   target.PubKey,
+			SourceMetroCode: record.SourceMetroCode,
+			TargetMetroCode: record.TargetMetroCode,
+			Epoch:           epoch,
 		}
 		sample := Sample{
 			Timestamp: record.Timestamp,
@@ -182,13 +182,13 @@ func (e *BufferedLedgerExporter) WriteRecords(ctx context.Context, records []Rec
 		// This allows the caller to track progress without risk of losing more than this many
 		// samples on ungraceful shutdown.
 		size := e.buffer.Add(partitionKey, sample)
-		metrics.ExporterPartitionedBufferSize.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceExchangePK.String(), partitionKey.TargetExchangePK.String()).Set(float64(size))
+		metrics.ExporterPartitionedBufferSize.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceMetroPK.String(), partitionKey.TargetMetroPK.String()).Set(float64(size))
 	}
 
 	return nil
 }
 
-func (e *BufferedLedgerExporter) getExchanges(ctx context.Context) (map[string]serviceability.Exchange, error) {
+func (e *BufferedLedgerExporter) getMetros(ctx context.Context) (map[string]serviceability.Metro, error) {
 	serviceabilityData, err := e.cfg.Serviceability.GetProgramData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get program data: %w", err)
@@ -196,9 +196,9 @@ func (e *BufferedLedgerExporter) getExchanges(ctx context.Context) (map[string]s
 	if serviceabilityData == nil {
 		return nil, errors.New("serviceability program data is nil")
 	}
-	exchanges := make(map[string]serviceability.Exchange)
-	for _, exchange := range serviceabilityData.Exchanges {
-		exchanges[exchange.Code] = exchange
+	metros := make(map[string]serviceability.Metro)
+	for _, metro := range serviceabilityData.Metros {
+		metros[metro.Code] = metro
 	}
-	return exchanges, nil
+	return metros, nil
 }

@@ -810,14 +810,14 @@ func TestInternetLatency_RIPEAtlas_GetProbesForLocations(t *testing.T) {
 	locations := []LocationProbeMatch{
 		{
 			LocationMatch: collector.LocationMatch{
-				LocationCode: "Location1",
+				FacilityCode: "Location1",
 				Latitude:     40.7128,
 				Longitude:    -74.0060,
 			},
 		},
 		{
 			LocationMatch: collector.LocationMatch{
-				LocationCode: "Location2",
+				FacilityCode: "Location2",
 				Latitude:     51.5074,
 				Longitude:    -0.1278,
 			},

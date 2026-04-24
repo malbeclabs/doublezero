@@ -18,8 +18,8 @@ func TestBufferedLedgerExporter_WriteRecords(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 
-	locA := serviceability.Exchange{Code: "LOC_A", PubKey: solana.NewWallet().PublicKey()}
-	locB := serviceability.Exchange{Code: "LOC_B", PubKey: solana.NewWallet().PublicKey()}
+	locA := serviceability.Metro{Code: "LOC_A", PubKey: solana.NewWallet().PublicKey()}
+	locB := serviceability.Metro{Code: "LOC_B", PubKey: solana.NewWallet().PublicKey()}
 
 	testCases := []struct {
 		name               string
@@ -32,7 +32,7 @@ func TestBufferedLedgerExporter_WriteRecords(t *testing.T) {
 			name:    "no records",
 			records: nil,
 			mockGetProgramData: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{Exchanges: []serviceability.Exchange{locA, locB}}, nil
+				return &serviceability.ProgramData{Metros: []serviceability.Metro{locA, locB}}, nil
 			},
 			expectErrContains: "",
 			expectEmptyBuffer: true,
@@ -40,42 +40,42 @@ func TestBufferedLedgerExporter_WriteRecords(t *testing.T) {
 		{
 			name: "record with missing DataProvider",
 			records: []exporter.Record{{
-				Timestamp:          now,
-				RTT:                10,
-				DataProvider:       "",
-				SourceExchangeCode: "LOC_A",
-				TargetExchangeCode: "LOC_B",
+				Timestamp:       now,
+				RTT:             10,
+				DataProvider:    "",
+				SourceMetroCode: "LOC_A",
+				TargetMetroCode: "LOC_B",
 			}},
 			mockGetProgramData: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{Exchanges: []serviceability.Exchange{locA, locB}}, nil
+				return &serviceability.ProgramData{Metros: []serviceability.Metro{locA, locB}}, nil
 			},
 			expectErrContains: "no data provider",
 		},
 		{
-			name: "record with missing SourceExchangeCode",
+			name: "record with missing SourceMetroCode",
 			records: []exporter.Record{{
-				Timestamp:          now,
-				RTT:                10,
-				DataProvider:       "DP",
-				SourceExchangeCode: "",
-				TargetExchangeCode: "LOC_B",
+				Timestamp:       now,
+				RTT:             10,
+				DataProvider:    "DP",
+				SourceMetroCode: "",
+				TargetMetroCode: "LOC_B",
 			}},
 			mockGetProgramData: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{Exchanges: []serviceability.Exchange{locA, locB}}, nil
+				return &serviceability.ProgramData{Metros: []serviceability.Metro{locA, locB}}, nil
 			},
-			expectErrContains: "no source exchange code",
+			expectErrContains: "no source metro code",
 		},
 		{
-			name: "record with unknown exchange code",
+			name: "record with unknown metro code",
 			records: []exporter.Record{{
-				Timestamp:          now,
-				RTT:                10,
-				DataProvider:       "DP",
-				SourceExchangeCode: "UNKNOWN",
-				TargetExchangeCode: "LOC_B",
+				Timestamp:       now,
+				RTT:             10,
+				DataProvider:    "DP",
+				SourceMetroCode: "UNKNOWN",
+				TargetMetroCode: "LOC_B",
 			}},
 			mockGetProgramData: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{Exchanges: []serviceability.Exchange{locA, locB}}, nil
+				return &serviceability.ProgramData{Metros: []serviceability.Metro{locA, locB}}, nil
 			},
 			expectErrContains: "",
 			expectEmptyBuffer: true,
@@ -83,14 +83,14 @@ func TestBufferedLedgerExporter_WriteRecords(t *testing.T) {
 		{
 			name: "valid record gets buffered",
 			records: []exporter.Record{{
-				Timestamp:          now,
-				RTT:                42,
-				DataProvider:       "DP",
-				SourceExchangeCode: "LOC_A",
-				TargetExchangeCode: "LOC_B",
+				Timestamp:       now,
+				RTT:             42,
+				DataProvider:    "DP",
+				SourceMetroCode: "LOC_A",
+				TargetMetroCode: "LOC_B",
 			}},
 			mockGetProgramData: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{Exchanges: []serviceability.Exchange{locA, locB}}, nil
+				return &serviceability.ProgramData{Metros: []serviceability.Metro{locA, locB}}, nil
 			},
 			expectErrContains: "",
 			expectEmptyBuffer: false,
@@ -98,16 +98,16 @@ func TestBufferedLedgerExporter_WriteRecords(t *testing.T) {
 		{
 			name: "serviceability error",
 			records: []exporter.Record{{
-				Timestamp:          now,
-				RTT:                42,
-				DataProvider:       "DP",
-				SourceExchangeCode: "LOC_A",
-				TargetExchangeCode: "LOC_B",
+				Timestamp:       now,
+				RTT:             42,
+				DataProvider:    "DP",
+				SourceMetroCode: "LOC_A",
+				TargetMetroCode: "LOC_B",
 			}},
 			mockGetProgramData: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				return nil, errors.New("boom")
 			},
-			expectErrContains: "failed to get exchanges",
+			expectErrContains: "failed to get metros",
 		},
 	}
 

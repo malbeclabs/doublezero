@@ -8,12 +8,12 @@ import (
 )
 
 type PartitionKey struct {
-	DataProvider       DataProviderName
-	SourceExchangePK   solana.PublicKey
-	TargetExchangePK   solana.PublicKey
-	Epoch              uint64
-	SourceExchangeCode string
-	TargetExchangeCode string
+	DataProvider    DataProviderName
+	SourceMetroPK   solana.PublicKey
+	TargetMetroPK   solana.PublicKey
+	Epoch           uint64
+	SourceMetroCode string
+	TargetMetroCode string
 }
 
 type Sample struct {
@@ -22,9 +22,9 @@ type Sample struct {
 }
 
 func (k PartitionKey) String() string {
-	return fmt.Sprintf("%s-%s-%s-%d", k.DataProvider, k.SourceExchangePK.String(), k.TargetExchangePK.String(), k.Epoch)
+	return fmt.Sprintf("%s-%s-%s-%d", k.DataProvider, k.SourceMetroPK.String(), k.TargetMetroPK.String(), k.Epoch)
 }
 
 func (k PartitionKey) CircuitCode() string {
-	return fmt.Sprintf("%s → %s", k.SourceExchangeCode, k.TargetExchangeCode)
+	return fmt.Sprintf("%s → %s", k.SourceMetroCode, k.TargetMetroCode)
 }

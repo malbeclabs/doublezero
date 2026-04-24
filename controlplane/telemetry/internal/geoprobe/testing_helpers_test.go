@@ -47,7 +47,7 @@ func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*service
 	var locationPKBytes [32]byte
 	copy(locationPKBytes[:], locationPK.Bytes())
 
-	location := serviceability.Location{
+	location := serviceability.Facility{
 		PubKey: locationPKBytes,
 		Lat:    37.7749,
 		Lng:    -122.4194,
@@ -62,13 +62,13 @@ func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*service
 
 	device := serviceability.Device{
 		PubKey:         devicePKBytes,
-		LocationPubKey: locationPKBytesForDevice,
+		FacilityPubKey: locationPKBytesForDevice,
 		Code:           "test-device",
 	}
 
 	return &serviceability.ProgramData{
-		Locations: []serviceability.Location{location},
-		Devices:   []serviceability.Device{device},
+		Facilities: []serviceability.Facility{location},
+		Devices:    []serviceability.Device{device},
 	}, nil
 }
 

@@ -140,8 +140,8 @@ mod tests {
             bump_seed: 255,
             index: 1,
             reference_count: 0,
-            location_pk: Pubkey::default(),
-            exchange_pk: Pubkey::default(),
+            facility_pk: Pubkey::default(),
+            metro_pk: Pubkey::default(),
             code: "dev01".to_string(),
 
             interfaces: vec![CurrentInterfaceVersion {
@@ -199,8 +199,8 @@ mod tests {
                 ..Default::default()
             }
             .to_interface()],
-            location_pk: Pubkey::default(),
-            exchange_pk: Pubkey::default(),
+            facility_pk: Pubkey::default(),
+            metro_pk: Pubkey::default(),
             device_type: doublezero_sdk::DeviceType::Hybrid,
             public_ip: "127.0.0.1".parse().unwrap(),
             status: DeviceStatus::Activated,

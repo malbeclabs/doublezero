@@ -52,7 +52,7 @@ mod tests {
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_location_pda, get_resource_extension_pda},
+        pda::{get_facility_pda, get_globalstate_pda, get_resource_extension_pda},
         processors::multicastgroup::closeaccount::MulticastGroupDeactivateArgs,
         resource::ResourceType,
     };
@@ -64,7 +64,7 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _) = get_facility_pda(&client.get_program_id(), 1);
         let payer = client.get_payer();
 
         client
@@ -98,7 +98,7 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _) = get_facility_pda(&client.get_program_id(), 1);
         let payer = client.get_payer();
 
         // Compute ResourceExtension PDA

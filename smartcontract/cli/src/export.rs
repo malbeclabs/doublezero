@@ -2,8 +2,8 @@ use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_program_common::types::parse_utils::bandwidth_to_string;
 use doublezero_sdk::commands::{
-    contributor, device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
-    link::list::ListLinkCommand, location::list::ListLocationCommand, user::list::ListUserCommand,
+    contributor, device::list::ListDeviceCommand, facility::list::ListFacilityCommand,
+    link::list::ListLinkCommand, metro::list::ListMetroCommand, user::list::ListUserCommand,
 };
 use serde::{Deserialize, Serialize};
 use std::{fs, io::Write};
@@ -26,15 +26,15 @@ struct DeviceData {
     pubkey: String,
     contributor: String,
     public_ip: String,
-    location: LocationData,
-    exchange: ExchangeData,
+    facility: FacilityData,
+    metro: MetroData,
     tunnels: Vec<LinkData>,
     users: Vec<UserData>,
     owner: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct LocationData {
+struct FacilityData {
     code: String,
     name: String,
     pubkey: String,
@@ -45,7 +45,7 @@ struct LocationData {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct ExchangeData {
+struct MetroData {
     code: String,
     name: String,
     pubkey: String,
@@ -95,8 +95,8 @@ struct UserData {
 
 impl ExportCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let locations = client.list_location(ListLocationCommand)?;
-        let exchanges = client.list_exchange(ListExchangeCommand)?;
+        let locations = client.list_facility(ListFacilityCommand)?;
+        let exchanges = client.list_metro(ListMetroCommand)?;
 
         let contributors = client.list_contributor(contributor::list::ListContributorCommand {})?;
         let devices = client.list_device(ListDeviceCommand)?;
@@ -106,12 +106,12 @@ impl ExportCliCommand {
         for (pubkey, data) in devices.clone() {
             let name = format!("{}/{}.yml", self.path, data.code);
 
-            let location = locations
-                .get(&data.location_pk)
-                .ok_or(eyre::eyre!("Unable to retrieve Location"))?;
-            let exchange = exchanges
-                .get(&data.exchange_pk)
-                .ok_or(eyre::eyre!("Unable to retrieve Exchange"))?;
+            let facility = locations
+                .get(&data.facility_pk)
+                .ok_or(eyre::eyre!("Unable to retrieve Facility"))?;
+            let metro = exchanges
+                .get(&data.metro_pk)
+                .ok_or(eyre::eyre!("Unable to retrieve Metro"))?;
 
             let contributor = contributors
                 .get(&data.contributor_pk)
@@ -124,22 +124,22 @@ impl ExportCliCommand {
                     name: data.code,
                     pubkey: pubkey.to_string(),
                     contributor: contributor.code.clone(),
-                    location: LocationData {
-                        code: location.code.clone(),
-                        name: location.name.clone(),
-                        country: location.country.clone(),
-                        pubkey: data.location_pk.to_string(),
-                        lat: location.lat,
-                        lng: location.lng,
-                        owner: location.owner.to_string(),
+                    facility: FacilityData {
+                        code: facility.code.clone(),
+                        name: facility.name.clone(),
+                        country: facility.country.clone(),
+                        pubkey: data.facility_pk.to_string(),
+                        lat: facility.lat,
+                        lng: facility.lng,
+                        owner: facility.owner.to_string(),
                     },
-                    exchange: ExchangeData {
-                        code: exchange.code.clone(),
-                        name: exchange.name.clone(),
-                        pubkey: data.exchange_pk.to_string(),
-                        lat: exchange.lat,
-                        lng: exchange.lng,
-                        owner: exchange.owner.to_string(),
+                    metro: MetroData {
+                        code: metro.code.clone(),
+                        name: metro.name.clone(),
+                        pubkey: data.metro_pk.to_string(),
+                        lat: metro.lat,
+                        lng: metro.lng,
+                        owner: metro.owner.to_string(),
                     },
                     public_ip: data.public_ip.to_string(),
                     tunnels: tunnels

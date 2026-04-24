@@ -34,18 +34,18 @@ mod tests {
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_location_pda},
+        pda::{get_facility_pda, get_globalstate_pda},
         processors::multicastgroup::reactivate::MulticastGroupReactivateArgs,
     };
     use mockall::predicate;
     use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
     #[test]
-    fn test_commands_location_reactivate_command() {
+    fn test_commands_multicastgroup_reactivate_command() {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _) = get_facility_pda(&client.get_program_id(), 1);
 
         client
             .expect_execute_transaction()

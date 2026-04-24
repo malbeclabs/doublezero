@@ -4,7 +4,7 @@ use doublezero_program_common::{serializer, types::NetworkV4};
 use doublezero_sdk::{
     commands::{
         accesspass::list::ListAccessPassCommand, device::list::ListDeviceCommand,
-        location::list::ListLocationCommand, multicastgroup::list::ListMulticastGroupCommand,
+        facility::list::ListFacilityCommand, multicastgroup::list::ListMulticastGroupCommand,
         tenant::list::ListTenantCommand, user::list::ListUserCommand,
     },
     read_doublezero_config, BGPStatus, MulticastGroup, User, UserCYOA, UserStatus, UserType,
@@ -29,9 +29,9 @@ pub struct ListUserCliCommand {
     /// Filter by device code
     #[arg(long, value_delimiter = ',', value_name = "DEVICE_CODE,...")]
     pub device: Option<Vec<String>>,
-    /// Filter by location code
+    /// Filter by facility code
     #[arg(long, value_delimiter = ',', value_name = "LOCATION_CODE_OR_NAME,...")]
-    pub location: Option<Vec<String>>,
+    pub facility: Option<Vec<String>>,
     /// Filter by client IP address
     #[arg(long, value_delimiter = ',', value_name = "CLIENT_IP,...")]
     pub client_ip: Option<Vec<Ipv4Addr>>,
@@ -99,9 +99,9 @@ pub struct UserDisplay {
     #[tabled(rename = "device")]
     pub device_name: String,
     #[tabled(skip)]
-    pub location_code: String,
-    #[tabled(rename = "location")]
-    pub location_name: String,
+    pub facility_code: String,
+    #[tabled(rename = "facility")]
+    pub facility_name: String,
     pub cyoa_type: UserCYOA,
     pub client_ip: Ipv4Addr,
     pub dz_ip: Ipv4Addr,
@@ -117,7 +117,7 @@ pub struct UserDisplay {
 impl ListUserCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let devices = client.list_device(ListDeviceCommand)?;
-        let locations = client.list_location(ListLocationCommand)?;
+        let facilities = client.list_facility(ListFacilityCommand)?;
         let mgroups = client.list_multicastgroup(ListMulticastGroupCommand)?;
         let accesspasses = client.list_accesspass(ListAccessPassCommand {})?;
         let tenants = client.list_tenant(ListTenantCommand {})?;
@@ -206,12 +206,12 @@ impl ListUserCliCommand {
             });
         }
 
-        if let Some(ref location_code_or_name_vec) = self.location {
+        if let Some(ref facility_code_or_name_vec) = self.facility {
             users.retain(|(_, user, _)| {
                 if let Some(device) = devices.get(&user.device_pk) {
-                    if let Some(location) = locations.get(&device.location_pk) {
-                        location_code_or_name_vec.contains(&location.code)
-                            || location_code_or_name_vec.contains(&location.name)
+                    if let Some(facility) = facilities.get(&device.facility_pk) {
+                        facility_code_or_name_vec.contains(&facility.code)
+                            || facility_code_or_name_vec.contains(&facility.name)
                     } else {
                         false
                     }
@@ -305,8 +305,8 @@ impl ListUserCliCommand {
             .into_iter()
             .map(|(pubkey, user, accesspass)| {
                 let device = devices.get(&user.device_pk);
-                let location = match device {
-                    Some(device) => locations.get(&device.location_pk),
+                let facility = match device {
+                    Some(device) => facilities.get(&device.facility_pk),
                     None => None,
                 };
 
@@ -315,16 +315,16 @@ impl ListUserCliCommand {
                     None => user.device_pk.to_string(),
                 };
                 let location_code = match device {
-                    Some(device) => match location {
-                        Some(location) => location.code.clone(),
-                        None => device.location_pk.to_string(),
+                    Some(device) => match facility {
+                        Some(facility) => facility.code.clone(),
+                        None => device.facility_pk.to_string(),
                     },
                     None => "".to_string(),
                 };
                 let location_name = match device {
-                    Some(device) => match location {
-                        Some(location) => location.name.clone(),
-                        None => device.location_pk.to_string(),
+                    Some(device) => match facility {
+                        Some(facility) => facility.name.clone(),
+                        None => device.facility_pk.to_string(),
                     },
                     None => "".to_string(),
                 };
@@ -346,8 +346,8 @@ impl ListUserCliCommand {
                     publishers: user.publishers,
                     subscribers: user.subscribers,
                     device_name,
-                    location_code,
-                    location_name,
+                    facility_code: location_code,
+                    facility_name: location_name,
                     cyoa_type: user.cyoa_type,
                     client_ip: user.client_ip,
                     dz_ip: user.dz_ip,
@@ -423,8 +423,8 @@ mod tests {
         },
     };
     use doublezero_sdk::{
-        AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
-        LocationStatus, MulticastGroup, MulticastGroupStatus, Tenant, User, UserCYOA, UserStatus,
+        AccountType, Device, DeviceStatus, DeviceType, Facility, FacilityStatus, Metro,
+        MetroStatus, MulticastGroup, MulticastGroupStatus, Tenant, User, UserCYOA, UserStatus,
         UserType,
     };
     use doublezero_serviceability::{
@@ -443,9 +443,9 @@ mod tests {
         let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let user2_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
 
-        let location1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1");
-        let location1 = Location {
-            account_type: AccountType::Location,
+        let facility1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1");
+        let facility1 = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -455,12 +455,12 @@ mod tests {
             lat: 15.0,
             lng: 15.0,
             loc_id: 6,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1"),
         };
-        let location2_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo2");
-        let location2 = Location {
-            account_type: AccountType::Location,
+        let facility2_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo2");
+        let facility2 = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -470,12 +470,12 @@ mod tests {
             lat: 15.0,
             lng: 15.0,
             loc_id: 6,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo2"),
         };
-        let exchange1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3");
-        let exchange1 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3");
+        let metro1 = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -487,12 +487,12 @@ mod tests {
             lng: 15.0,
             bgp_community: 6,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3"),
         };
-        let exchange2_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo4");
-        let exchange2 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro2_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo4");
+        let metro2 = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -504,7 +504,7 @@ mod tests {
             lng: 15.0,
             bgp_community: 6,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo4"),
         };
 
@@ -517,8 +517,8 @@ mod tests {
             reference_count: 0,
             code: "device1_code".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -548,8 +548,8 @@ mod tests {
             reference_count: 0,
             code: "device2_code".to_string(),
             contributor_pk,
-            location_pk: location2_pubkey,
-            exchange_pk: exchange2_pubkey,
+            facility_pk: facility2_pubkey,
+            metro_pk: metro2_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -586,18 +586,18 @@ mod tests {
             subscriber_count: 0,
         };
 
-        client.expect_list_location().returning(move |_| {
-            let mut locations = HashMap::new();
-            locations.insert(location1_pubkey, location1.clone());
-            locations.insert(location2_pubkey, location2.clone());
-            Ok(locations)
+        client.expect_list_facility().returning(move |_| {
+            let mut facilities = HashMap::new();
+            facilities.insert(facility1_pubkey, facility1.clone());
+            facilities.insert(facility2_pubkey, facility2.clone());
+            Ok(facilities)
         });
 
-        client.expect_list_exchange().returning(move |_| {
-            let mut exchanges = HashMap::new();
-            exchanges.insert(exchange1_pubkey, exchange1.clone());
-            exchanges.insert(exchange2_pubkey, exchange2.clone());
-            Ok(exchanges)
+        client.expect_list_metro().returning(move |_| {
+            let mut metros = HashMap::new();
+            metros.insert(metro1_pubkey, metro1.clone());
+            metros.insert(metro2_pubkey, metro2.clone());
+            Ok(metros)
         });
 
         client.expect_list_device().returning(move |_| {
@@ -725,7 +725,7 @@ mod tests {
             solana_validator: false,
             solana_identity: None,
             device: None,
-            location: None,
+            facility: None,
             owner: None,
             user_payer: None,
             client_ip: None,
@@ -743,7 +743,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | tenant                                    | user_type | groups   | device       | location       | cyoa_type  | client_ip | dz_ip   | accesspass                  | tunnel_id | tunnel_net | status    | bgp_status | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | Multicast | S:m_code | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | Prepaid: (expires epoch 10) | 500       | 1.2.3.5/32 | activated | unknown    | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | tenant                                    | user_type | groups   | device       | facility       | cyoa_type  | client_ip | dz_ip   | accesspass                  | tunnel_id | tunnel_net | status    | bgp_status | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | Multicast | S:m_code | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | Prepaid: (expires epoch 10) | 500       | 1.2.3.5/32 | activated | unknown    | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -751,7 +751,7 @@ mod tests {
             solana_validator: false,
             solana_identity: None,
             device: None,
-            location: None,
+            facility: None,
             owner: None,
             user_payer: None,
             client_ip: None,
@@ -770,7 +770,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"tenant\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"S:m_code\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"Prepaid: (expires epoch 10)\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"bgp_status\":\"Unknown\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"tenant\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"S:m_code\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"facility_code\":\"location1_code\",\"facility_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"Prepaid: (expires epoch 10)\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"bgp_status\":\"Unknown\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
     }
 
     #[test]
@@ -841,7 +841,7 @@ mod tests {
             .expect_list_device()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
             .expect_list_multicastgroup()
@@ -859,7 +859,7 @@ mod tests {
             solana_validator: false,
             solana_identity: None,
             device: None,
-            location: None,
+            facility: None,
             owner: None,
             user_payer: None,
             client_ip: None,
@@ -950,7 +950,7 @@ mod tests {
             .expect_list_device()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
             .expect_list_multicastgroup()
@@ -968,7 +968,7 @@ mod tests {
             solana_validator: false,
             solana_identity: None,
             device: None,
-            location: None,
+            facility: None,
             owner: None,
             user_payer: None,
             client_ip: None,
@@ -1059,7 +1059,7 @@ mod tests {
             .expect_list_device()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
             .expect_list_multicastgroup()
@@ -1077,7 +1077,7 @@ mod tests {
             solana_validator: false,
             solana_identity: None,
             device: None,
-            location: None,
+            facility: None,
             owner: None,
             user_payer: None,
             client_ip: None,
@@ -1168,7 +1168,7 @@ mod tests {
             .expect_list_device()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
             .expect_list_multicastgroup()
@@ -1186,7 +1186,7 @@ mod tests {
             solana_validator: false,
             solana_identity: None,
             device: None,
-            location: None,
+            facility: None,
             owner: None,
             user_payer: None,
             client_ip: None,
@@ -1277,7 +1277,7 @@ mod tests {
             .expect_list_device()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
             .expect_list_multicastgroup()
@@ -1295,7 +1295,7 @@ mod tests {
             solana_validator: false,
             solana_identity: None,
             device: None,
-            location: None,
+            facility: None,
             owner: None,
             user_payer: None,
             client_ip: None,
@@ -1401,7 +1401,7 @@ mod tests {
             .expect_list_device()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client.expect_list_multicastgroup().returning(move |_| {
             let mut mgroups = std::collections::HashMap::new();
@@ -1421,7 +1421,7 @@ mod tests {
             solana_validator: false,
             solana_identity: None,
             device: None,
-            location: None,
+            facility: None,
             owner: None,
             user_payer: None,
             client_ip: None,
@@ -1548,7 +1548,7 @@ mod tests {
             .expect_list_device()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
             .expect_list_multicastgroup()
@@ -1570,7 +1570,7 @@ mod tests {
             solana_validator: false,
             solana_identity: None,
             device: None,
-            location: None,
+            facility: None,
             owner: None,
             user_payer: None,
             client_ip: None,
@@ -1599,7 +1599,7 @@ mod tests {
             solana_validator: false,
             solana_identity: None,
             device: None,
-            location: None,
+            facility: None,
             owner: None,
             user_payer: None,
             client_ip: None,
@@ -1725,7 +1725,7 @@ mod tests {
             .expect_list_device()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(std::collections::HashMap::new()));
         client
             .expect_list_multicastgroup()
@@ -1747,7 +1747,7 @@ mod tests {
             solana_validator: false,
             solana_identity: None,
             device: None,
-            location: None,
+            facility: None,
             owner: None,
             user_payer: None,
             client_ip: None,

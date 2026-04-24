@@ -71,8 +71,8 @@ mod tests {
         ]);
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let facility_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let metro_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let device1 = Device {
             account_type: AccountType::Device,
             index: 1,
@@ -80,8 +80,8 @@ mod tests {
             reference_count: 0,
             code: "test".to_string(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "10.1.2.3/32".parse().unwrap(),
@@ -110,8 +110,8 @@ mod tests {
             reference_count: 0,
             code: "test2".to_string(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             device_type: DeviceType::Hybrid,
             public_ip: [2, 3, 4, 5].into(),
             dz_prefixes: "2.3.4.5/32".parse().unwrap(),
@@ -140,8 +140,8 @@ mod tests {
             reference_count: 0,
             code: "test3".to_string(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             device_type: DeviceType::Hybrid,
             public_ip: [3, 4, 5, 6].into(),
             dz_prefixes: "3.4.5.6/32".parse().unwrap(),

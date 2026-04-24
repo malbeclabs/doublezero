@@ -11,7 +11,7 @@ use crate::geolocation::client::GeolocationClient;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateGeoProbeCommand {
-    pub exchange_pk: Pubkey,
+    pub metro_pk: Pubkey,
     pub serviceability_globalstate_pk: Pubkey,
     pub code: String,
     pub public_ip: Ipv4Addr,
@@ -39,7 +39,7 @@ impl CreateGeoProbeCommand {
                 }),
                 vec![
                     AccountMeta::new(probe_pda, false),
-                    AccountMeta::new_readonly(self.exchange_pk, false),
+                    AccountMeta::new_readonly(self.metro_pk, false),
                     AccountMeta::new_readonly(config_pda, false),
                     AccountMeta::new_readonly(self.serviceability_globalstate_pk, false),
                 ],
@@ -61,7 +61,7 @@ mod tests {
         let program_id = Pubkey::new_unique();
         client.expect_get_program_id().returning(move || program_id);
 
-        let exchange = Pubkey::new_unique();
+        let metro_pk = Pubkey::new_unique();
         let svc_gs = Pubkey::new_unique();
         let metrics_pk = Pubkey::new_unique();
         let code = "probe-ams";
@@ -80,7 +80,7 @@ mod tests {
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(probe_pda, false),
-                    AccountMeta::new_readonly(exchange, false),
+                    AccountMeta::new_readonly(metro_pk, false),
                     AccountMeta::new_readonly(config_pda, false),
                     AccountMeta::new_readonly(svc_gs, false),
                 ]),
@@ -88,7 +88,7 @@ mod tests {
             .returning(|_, _| Ok(Signature::new_unique()));
 
         let command = CreateGeoProbeCommand {
-            exchange_pk: exchange,
+            metro_pk,
             serviceability_globalstate_pk: svc_gs,
             code: code.to_string(),
             public_ip: Ipv4Addr::new(10, 0, 0, 1),

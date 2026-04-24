@@ -54,7 +54,7 @@ impl ListGeoProbeCliCommand {
                     code: probe.code,
                     public_ip: probe.public_ip,
                     port: probe.location_offset_port,
-                    exchange: probe.exchange_pk,
+                    exchange: probe.metro_pk,
                     parent_devices: probe.parent_devices,
                     parent_count,
                     reference_count: probe.reference_count,
@@ -93,12 +93,12 @@ mod tests {
         let mut client = MockGeoCliCommand::new();
 
         let probe1_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
-        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let metro_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
 
         let probe1 = GeoProbe {
             account_type: AccountType::GeoProbe,
             owner: Pubkey::new_unique(),
-            exchange_pk,
+            metro_pk,
             public_ip: Ipv4Addr::new(10, 0, 0, 1),
             location_offset_port: 8923,
             code: "ams-probe-01".to_string(),
@@ -132,13 +132,13 @@ mod tests {
         let mut client = MockGeoCliCommand::new();
 
         let probe1_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
-        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let metro_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let parent_pk = Pubkey::from_str_const("AQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
 
         let probe1 = GeoProbe {
             account_type: AccountType::GeoProbe,
             owner: Pubkey::new_unique(),
-            exchange_pk,
+            metro_pk,
             public_ip: Ipv4Addr::new(10, 0, 0, 1),
             location_offset_port: 8923,
             code: "ams-probe-01".to_string(),

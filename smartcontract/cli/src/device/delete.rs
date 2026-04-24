@@ -44,10 +44,10 @@ mod tests {
     use doublezero_sdk::{
         commands::{
             device::{delete::DeleteDeviceCommand, get::GetDeviceCommand},
-            exchange::get::GetExchangeCommand,
+            metro::get::GetMetroCommand,
         },
-        get_device_pda, AccountType, Device, DeviceStatus, Exchange, ExchangeStatus,
-        GetLocationCommand, Location, LocationStatus,
+        get_device_pda, AccountType, Device, DeviceStatus, Facility, FacilityStatus,
+        GetFacilityCommand, Metro, MetroStatus,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -65,37 +65,37 @@ mod tests {
         ]);
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let location = Location {
-            account_type: AccountType::Location,
+        let facility_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let facility = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 255,
             reference_count: 0,
             code: "test".to_string(),
-            name: "Test Location".to_string(),
+            name: "Test Facility".to_string(),
             country: "Test Country".to_string(),
             lat: 0.0,
             lng: 0.0,
             loc_id: 0,
-            status: LocationStatus::Activated,
-            owner: location_pk,
+            status: FacilityStatus::Activated,
+            owner: facility_pk,
         };
-        let exchange_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
-        let exchange = Exchange {
-            account_type: AccountType::Exchange,
+        let metro_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let metro = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 255,
             reference_count: 0,
             code: "test".to_string(),
-            name: "Test Exchange".to_string(),
+            name: "Test Metro".to_string(),
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
             lat: 0.0,
             lng: 0.0,
             bgp_community: 0,
             unused: 0,
-            status: ExchangeStatus::Activated,
-            owner: exchange_pk,
+            status: MetroStatus::Activated,
+            owner: metro_pk,
         };
 
         let device = Device {
@@ -105,8 +105,8 @@ mod tests {
             reference_count: 0,
             code: "test".to_string(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             device_type: doublezero_sdk::DeviceType::Hybrid,
             public_ip: [10, 0, 0, 1].into(),
             dz_prefixes: NetworkV4List::default(),
@@ -134,17 +134,17 @@ mod tests {
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
         client
-            .expect_get_location()
-            .with(predicate::eq(GetLocationCommand {
-                pubkey_or_code: location_pk.to_string(),
+            .expect_get_facility()
+            .with(predicate::eq(GetFacilityCommand {
+                pubkey_or_code: facility_pk.to_string(),
             }))
-            .returning(move |_| Ok((location_pk, location.clone())));
+            .returning(move |_| Ok((facility_pk, facility.clone())));
         client
-            .expect_get_exchange()
-            .with(predicate::eq(GetExchangeCommand {
-                pubkey_or_code: exchange_pk.to_string(),
+            .expect_get_metro()
+            .with(predicate::eq(GetMetroCommand {
+                pubkey_or_code: metro_pk.to_string(),
             }))
-            .returning(move |_| Ok((exchange_pk, exchange.clone())));
+            .returning(move |_| Ok((metro_pk, metro.clone())));
         client
             .expect_get_device()
             .with(predicate::eq(GetDeviceCommand {

@@ -112,19 +112,19 @@ pub(super) fn resolve_probe<C: GeoCliCommand>(
     }
 
     if let Some(exchange_id) = exchange {
-        let exchange_pk = client.resolve_exchange_pk(exchange_id)?;
+        let metro_pk = client.resolve_metro_pk(exchange_id)?;
 
         let probes = client.list_geo_probes(ListGeoProbeCommand)?;
         let matching: Vec<_> = probes
             .into_iter()
-            .filter(|(_, p)| p.exchange_pk == exchange_pk)
+            .filter(|(_, p)| p.metro_pk == metro_pk)
             .collect();
 
         match matching.len() {
-            0 => Err(eyre::eyre!("no probe found for exchange {exchange_pk}")),
+            0 => Err(eyre::eyre!("no probe found for exchange {metro_pk}")),
             1 => Ok(matching.into_iter().next().unwrap().0),
             n => Err(eyre::eyre!(
-                "found {n} probes for exchange {exchange_pk}; use --probe to specify which one"
+                "found {n} probes for exchange {metro_pk}; use --probe to specify which one"
             )),
         }
     } else {
@@ -172,11 +172,11 @@ mod tests {
         });
     }
 
-    fn make_probe(exchange_pk: Pubkey) -> GeoProbe {
+    fn make_probe(metro_pk: Pubkey) -> GeoProbe {
         GeoProbe {
             account_type: AccountType::GeoProbe,
             owner: Pubkey::new_unique(),
-            exchange_pk,
+            metro_pk,
             public_ip: Ipv4Addr::new(10, 0, 0, 1),
             location_offset_port: 8923,
             code: "ams-probe-01".to_string(),
@@ -192,8 +192,8 @@ mod tests {
         let mut client = MockGeoCliCommand::new();
 
         let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
-        let exchange_pk = Pubkey::new_unique();
-        let probe = make_probe(exchange_pk);
+        let metro_pk = Pubkey::new_unique();
+        let probe = make_probe(metro_pk);
         let signature = Signature::new_unique();
 
         mock_get_geolocation_user(&mut client);
@@ -238,8 +238,8 @@ mod tests {
         let mut client = MockGeoCliCommand::new();
 
         let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
-        let exchange_pk = Pubkey::new_unique();
-        let probe = make_probe(exchange_pk);
+        let metro_pk = Pubkey::new_unique();
+        let probe = make_probe(metro_pk);
         let target_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let signature = Signature::new_unique();
 
@@ -281,20 +281,20 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_add_target_outbound_via_exchange_pubkey() {
+    fn test_cli_add_target_outbound_via_metro_pubkey() {
         let mut client = MockGeoCliCommand::new();
 
         let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
-        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
-        let probe = make_probe(exchange_pk);
+        let metro_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let probe = make_probe(metro_pk);
         let signature = Signature::new_unique();
 
         mock_get_geolocation_user(&mut client);
 
         client
-            .expect_resolve_exchange_pk()
-            .with(predicate::eq(exchange_pk.to_string()))
-            .returning(move |_| Ok(exchange_pk));
+            .expect_resolve_metro_pk()
+            .with(predicate::eq(metro_pk.to_string()))
+            .returning(move |_| Ok(metro_pk));
 
         let mut probes = HashMap::new();
         probes.insert(probe_pk, probe);
@@ -323,7 +323,7 @@ mod tests {
             target_port: 8923,
             target_signing_pubkey: None,
             probe: None,
-            exchange: Some(exchange_pk.to_string()),
+            exchange: Some(metro_pk.to_string()),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -336,16 +336,16 @@ mod tests {
         let mut client = MockGeoCliCommand::new();
 
         let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
-        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
-        let probe = make_probe(exchange_pk);
+        let metro_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let probe = make_probe(metro_pk);
         let signature = Signature::new_unique();
 
         mock_get_geolocation_user(&mut client);
 
         client
-            .expect_resolve_exchange_pk()
+            .expect_resolve_metro_pk()
             .with(predicate::eq("xams".to_string()))
-            .returning(move |_| Ok(exchange_pk));
+            .returning(move |_| Ok(metro_pk));
 
         let mut probes = HashMap::new();
         probes.insert(probe_pk, probe);
@@ -387,8 +387,8 @@ mod tests {
         let mut client = MockGeoCliCommand::new();
 
         let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
-        let exchange_pk = Pubkey::new_unique();
-        let probe = make_probe(exchange_pk);
+        let metro_pk = Pubkey::new_unique();
+        let probe = make_probe(metro_pk);
         let signature = Signature::new_unique();
 
         mock_get_geolocation_user(&mut client);
@@ -452,8 +452,8 @@ mod tests {
         let mut client = MockGeoCliCommand::new();
 
         let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
-        let exchange_pk = Pubkey::new_unique();
-        let probe = make_probe(exchange_pk);
+        let metro_pk = Pubkey::new_unique();
+        let probe = make_probe(metro_pk);
 
         client
             .expect_get_geo_probe()
@@ -502,18 +502,18 @@ mod tests {
 
         let probe_pk1 = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
         let probe_pk2 = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let metro_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
 
         mock_get_geolocation_user(&mut client);
 
         client
-            .expect_resolve_exchange_pk()
-            .with(predicate::eq(exchange_pk.to_string()))
-            .returning(move |_| Ok(exchange_pk));
+            .expect_resolve_metro_pk()
+            .with(predicate::eq(metro_pk.to_string()))
+            .returning(move |_| Ok(metro_pk));
 
         let mut probes = HashMap::new();
-        probes.insert(probe_pk1, make_probe(exchange_pk));
-        probes.insert(probe_pk2, make_probe(exchange_pk));
+        probes.insert(probe_pk1, make_probe(metro_pk));
+        probes.insert(probe_pk2, make_probe(metro_pk));
 
         client
             .expect_list_geo_probes()
@@ -527,7 +527,7 @@ mod tests {
             target_port: 8923,
             target_signing_pubkey: None,
             probe: None,
-            exchange: Some(exchange_pk.to_string()),
+            exchange: Some(metro_pk.to_string()),
         }
         .execute(&client, &mut output);
         assert!(res.is_err());

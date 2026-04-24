@@ -119,11 +119,11 @@ mod tests {
         });
     }
 
-    fn make_probe(exchange_pk: Pubkey) -> GeoProbe {
+    fn make_probe(metro_pk: Pubkey) -> GeoProbe {
         GeoProbe {
             account_type: AccountType::GeoProbe,
             owner: Pubkey::new_unique(),
-            exchange_pk,
+            metro_pk,
             public_ip: Ipv4Addr::new(10, 0, 0, 1),
             location_offset_port: 8923,
             code: "ams-probe-01".to_string(),
@@ -140,8 +140,8 @@ mod tests {
 
         let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
         let svc_gs_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let exchange_pk = Pubkey::new_unique();
-        let probe = make_probe(exchange_pk);
+        let metro_pk = Pubkey::new_unique();
+        let probe = make_probe(metro_pk);
         let signature = Signature::new_unique();
 
         mock_get_geolocation_user(&mut client);
@@ -190,8 +190,8 @@ mod tests {
 
         let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
         let svc_gs_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let exchange_pk = Pubkey::new_unique();
-        let probe = make_probe(exchange_pk);
+        let metro_pk = Pubkey::new_unique();
+        let probe = make_probe(metro_pk);
         let signature = Signature::new_unique();
 
         mock_get_geolocation_user(&mut client);
@@ -240,8 +240,8 @@ mod tests {
 
         let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
         let svc_gs_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let exchange_pk = Pubkey::new_unique();
-        let probe = make_probe(exchange_pk);
+        let metro_pk = Pubkey::new_unique();
+        let probe = make_probe(metro_pk);
         let target_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let signature = Signature::new_unique();
 

@@ -41,7 +41,7 @@ mod tests {
             account_type: AccountType::GeoProbe,
             owner: Pubkey::new_unique(),
 
-            exchange_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             public_ip: std::net::Ipv4Addr::new(1, 2, 3, 4),
             location_offset_port: 8923,
             code: code.to_string(),

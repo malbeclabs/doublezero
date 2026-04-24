@@ -5,8 +5,8 @@ use doublezero_sdk::{
     commands::{
         contributor::{get::GetContributorCommand, list::ListContributorCommand},
         device::list::ListDeviceCommand,
-        exchange::list::ListExchangeCommand,
-        location::list::ListLocationCommand,
+        facility::list::ListFacilityCommand,
+        metro::list::ListMetroCommand,
     },
     DeviceStatus, DeviceType,
 };
@@ -21,12 +21,12 @@ pub struct ListDeviceCliCommand {
     /// Filter by contributor (pubkey or code)
     #[arg(long, short = 'c')]
     pub contributor: Option<String>,
-    /// Filter by exchange (pubkey or code)
+    /// Filter by metro (pubkey or code)
     #[arg(long)]
-    pub exchange: Option<String>,
-    /// Filter by location (pubkey or code)
+    pub metro: Option<String>,
+    /// Filter by facility (pubkey or code)
     #[arg(long)]
-    pub location: Option<String>,
+    pub facility: Option<String>,
     /// Filter by device type (hybrid, transit, edge)
     #[arg(long)]
     pub device_type: Option<String>,
@@ -59,20 +59,20 @@ pub struct DeviceDisplay {
     pub bump_seed: u8,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(skip)]
-    pub location_pk: Pubkey,
+    pub facility_pk: Pubkey,
     #[tabled(rename = "contributor")]
     pub contributor_code: String,
-    #[tabled(rename = "location")]
-    pub location_code: String,
+    #[tabled(rename = "facility")]
+    pub facility_code: String,
     #[tabled(skip)]
-    pub location_name: String,
+    pub facility_name: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(skip)]
-    pub exchange_pk: Pubkey,
-    #[tabled(rename = "exchange")]
-    pub exchange_code: String,
+    pub metro_pk: Pubkey,
+    #[tabled(rename = "metro")]
+    pub metro_code: String,
     #[tabled(skip)]
-    pub exchange_name: String,
+    pub metro_name: String,
     pub device_type: DeviceType,
     pub public_ip: Ipv4Addr,
     #[tabled(display = "doublezero_program_common::types::NetworkV4List::to_string")]
@@ -109,8 +109,8 @@ pub struct DeviceDisplay {
 impl ListDeviceCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let contributors = client.list_contributor(ListContributorCommand {})?;
-        let locations = client.list_location(ListLocationCommand {})?;
-        let exchanges = client.list_exchange(ListExchangeCommand {})?;
+        let facilities = client.list_facility(ListFacilityCommand {})?;
+        let metros = client.list_metro(ListMetroCommand {})?;
         let mut devices = client.list_device(ListDeviceCommand)?;
 
         // Filter by contributor if specified
@@ -129,26 +129,26 @@ impl ListDeviceCliCommand {
             devices.retain(|_, device| device.contributor_pk == contributor_pk);
         }
 
-        // Filter by exchange if specified
-        if let Some(exchange_filter) = &self.exchange {
-            let exchange_pk = exchanges
+        // Filter by metro if specified
+        if let Some(metro_filter) = &self.metro {
+            let metro_pk = metros
                 .iter()
-                .find(|(pk, ex)| pk.to_string() == *exchange_filter || ex.code == *exchange_filter)
+                .find(|(pk, ex)| pk.to_string() == *metro_filter || ex.code == *metro_filter)
                 .map(|(pk, _)| *pk)
-                .ok_or_else(|| eyre::eyre!("Exchange '{}' not found", exchange_filter))?;
-            devices.retain(|_, device| device.exchange_pk == exchange_pk);
+                .ok_or_else(|| eyre::eyre!("Metro '{}' not found", metro_filter))?;
+            devices.retain(|_, device| device.metro_pk == metro_pk);
         }
 
-        // Filter by location if specified
-        if let Some(location_filter) = &self.location {
-            let location_pk = locations
+        // Filter by facility if specified
+        if let Some(facility_filter) = &self.facility {
+            let facility_pk = facilities
                 .iter()
                 .find(|(pk, loc)| {
-                    pk.to_string() == *location_filter || loc.code == *location_filter
+                    pk.to_string() == *facility_filter || loc.code == *facility_filter
                 })
                 .map(|(pk, _)| *pk)
-                .ok_or_else(|| eyre::eyre!("Location '{}' not found", location_filter))?;
-            devices.retain(|_, device| device.location_pk == location_pk);
+                .ok_or_else(|| eyre::eyre!("Facility '{}' not found", facility_filter))?;
+            devices.retain(|_, device| device.facility_pk == facility_pk);
         }
 
         // Filter by device type if specified
@@ -193,32 +193,29 @@ impl ListDeviceCliCommand {
                     Some(contributor) => contributor.code.clone(),
                     None => device.contributor_pk.to_string(),
                 };
-                let (location_code, location_name) = match locations.get(&device.location_pk) {
-                    Some(location) => (location.code.clone(), location.name.clone()),
+                let (facility_code, facility_name) = match facilities.get(&device.facility_pk) {
+                    Some(facility) => (facility.code.clone(), facility.name.clone()),
                     None => (
-                        device.location_pk.to_string(),
-                        device.location_pk.to_string(),
+                        device.facility_pk.to_string(),
+                        device.facility_pk.to_string(),
                     ),
                 };
-                let (exchange_code, exchange_name) = match exchanges.get(&device.exchange_pk) {
-                    Some(exchange) => (exchange.code.clone(), exchange.name.clone()),
-                    None => (
-                        device.exchange_pk.to_string(),
-                        device.exchange_pk.to_string(),
-                    ),
+                let (metro_code, metro_name) = match metros.get(&device.metro_pk) {
+                    Some(metro) => (metro.code.clone(), metro.name.clone()),
+                    None => (device.metro_pk.to_string(), device.metro_pk.to_string()),
                 };
 
                 DeviceDisplay {
                     account: pubkey,
                     code: device.code.clone(),
                     bump_seed: device.bump_seed,
-                    location_pk: device.location_pk,
+                    facility_pk: device.facility_pk,
                     contributor_code,
-                    location_code,
-                    location_name,
-                    exchange_pk: device.exchange_pk,
-                    exchange_code,
-                    exchange_name,
+                    facility_code,
+                    facility_name,
+                    metro_pk: device.metro_pk,
+                    metro_code,
+                    metro_name,
                     device_type: device.device_type,
                     public_ip: device.public_ip,
                     status: device.status,
@@ -242,8 +239,8 @@ impl ListDeviceCliCommand {
             .collect();
 
         device_displays.sort_by(|a, b| {
-            a.exchange_name
-                .cmp(&b.exchange_name)
+            a.metro_name
+                .cmp(&b.metro_name)
                 .then_with(|| a.code.cmp(&b.code))
         });
 
@@ -269,8 +266,8 @@ mod tests {
 
     use crate::{device::list::ListDeviceCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::{
-        AccountType, Contributor, ContributorStatus, Device, DeviceStatus, DeviceType, Exchange,
-        ExchangeStatus, Location, LocationStatus,
+        AccountType, Contributor, ContributorStatus, Device, DeviceStatus, DeviceType, Facility,
+        FacilityStatus, Metro, MetroStatus,
     };
     use solana_sdk::pubkey::Pubkey;
 
@@ -278,9 +275,9 @@ mod tests {
     fn test_cli_device_list() {
         let mut client = create_test_client();
 
-        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
-        let location1 = Location {
-            account_type: AccountType::Location,
+        let facility1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let facility1 = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -290,19 +287,19 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             loc_id: 3,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
         };
 
-        client.expect_list_location().returning(move |_| {
-            let mut locations = HashMap::new();
-            locations.insert(location1_pubkey, location1.clone());
-            Ok(locations)
+        client.expect_list_facility().returning(move |_| {
+            let mut facilities = HashMap::new();
+            facilities.insert(facility1_pubkey, facility1.clone());
+            Ok(facilities)
         });
 
-        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
-        let exchange1 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let metro1 = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -314,14 +311,14 @@ mod tests {
             lng: 2.0,
             bgp_community: 3,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };
 
-        client.expect_list_exchange().returning(move |_| {
-            let mut exchanges = HashMap::new();
-            exchanges.insert(exchange1_pubkey, exchange1.clone());
-            Ok(exchanges)
+        client.expect_list_metro().returning(move |_| {
+            let mut metros = HashMap::new();
+            metros.insert(metro1_pubkey, metro1.clone());
+            Ok(metros)
         });
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -350,8 +347,8 @@ mod tests {
             reference_count: 0,
             code: "device1_code".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -383,8 +380,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: None,
             status: None,
             health: None,
@@ -396,13 +393,13 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code         | contributor       | location       | exchange       | device_type | public_ip | dz_prefixes | users | max_users | status    | health          | mgmt_vrf | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | contributor1_code | location1_code | exchange1_code | hybrid      | 1.2.3.4   | 1.2.3.4/32  | 0     | 255       | activated | ready-for-users | default  | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | code         | contributor       | facility       | metro          | device_type | public_ip | dz_prefixes | users | max_users | status    | health          | mgmt_vrf | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | contributor1_code | location1_code | exchange1_code | hybrid      | 1.2.3.4   | 1.2.3.4/32  | 0     | 255       | activated | ready-for-users | default  | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: None,
             status: None,
             health: None,
@@ -414,16 +411,16 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Hybrid\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"users\":0,\"max_users\":255,\"unicast_users_count\":0,\"max_unicast_users\":0,\"multicast_subscribers_count\":0,\"max_multicast_subscribers\":0,\"multicast_publishers_count\":0,\"max_multicast_publishers\":0,\"status\":\"Activated\",\"health\":\"ReadyForUsers\",\"desired_status\":\"Activated\",\"mgmt_vrf\":\"default\",\"metrics_publisher_pk\":\"11111111111111111111111111111111\",\"reference_count\":0,\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"facility_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"facility_code\":\"location1_code\",\"facility_name\":\"location1_name\",\"metro_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"metro_code\":\"exchange1_code\",\"metro_name\":\"exchange1_name\",\"device_type\":\"Hybrid\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"users\":0,\"max_users\":255,\"unicast_users_count\":0,\"max_unicast_users\":0,\"multicast_subscribers_count\":0,\"max_multicast_subscribers\":0,\"multicast_publishers_count\":0,\"max_multicast_publishers\":0,\"status\":\"Activated\",\"health\":\"ReadyForUsers\",\"desired_status\":\"Activated\",\"mgmt_vrf\":\"default\",\"metrics_publisher_pk\":\"11111111111111111111111111111111\",\"reference_count\":0,\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 
     #[test]
     fn test_cli_device_list_filter_by_device_type() {
         let mut client = create_test_client();
 
-        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
-        let location1 = Location {
-            account_type: AccountType::Location,
+        let facility1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let facility1 = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -433,19 +430,19 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             loc_id: 3,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
         };
 
-        client.expect_list_location().returning(move |_| {
-            let mut locations = HashMap::new();
-            locations.insert(location1_pubkey, location1.clone());
-            Ok(locations)
+        client.expect_list_facility().returning(move |_| {
+            let mut facilities = HashMap::new();
+            facilities.insert(facility1_pubkey, facility1.clone());
+            Ok(facilities)
         });
 
-        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
-        let exchange1 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let metro1 = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -457,14 +454,14 @@ mod tests {
             lng: 2.0,
             bgp_community: 3,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };
 
-        client.expect_list_exchange().returning(move |_| {
-            let mut exchanges = HashMap::new();
-            exchanges.insert(exchange1_pubkey, exchange1.clone());
-            Ok(exchanges)
+        client.expect_list_metro().returning(move |_| {
+            let mut metros = HashMap::new();
+            metros.insert(metro1_pubkey, metro1.clone());
+            Ok(metros)
         });
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -493,8 +490,8 @@ mod tests {
             reference_count: 0,
             code: "device1_hybrid".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -525,8 +522,8 @@ mod tests {
             reference_count: 0,
             code: "device2_transit".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Transit,
             public_ip: [5, 6, 7, 8].into(),
             dz_prefixes: "5.6.7.8/32".parse().unwrap(),
@@ -560,8 +557,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: Some("hybrid".to_string()),
             status: None,
             health: None,
@@ -581,9 +578,9 @@ mod tests {
     fn test_cli_device_list_filter_by_code() {
         let mut client = create_test_client();
 
-        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
-        let location1 = Location {
-            account_type: AccountType::Location,
+        let facility1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let facility1 = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -593,19 +590,19 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             loc_id: 3,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
         };
 
-        client.expect_list_location().returning(move |_| {
-            let mut locations = HashMap::new();
-            locations.insert(location1_pubkey, location1.clone());
-            Ok(locations)
+        client.expect_list_facility().returning(move |_| {
+            let mut facilities = HashMap::new();
+            facilities.insert(facility1_pubkey, facility1.clone());
+            Ok(facilities)
         });
 
-        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
-        let exchange1 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let metro1 = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -617,14 +614,14 @@ mod tests {
             lng: 2.0,
             bgp_community: 3,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };
 
-        client.expect_list_exchange().returning(move |_| {
-            let mut exchanges = HashMap::new();
-            exchanges.insert(exchange1_pubkey, exchange1.clone());
-            Ok(exchanges)
+        client.expect_list_metro().returning(move |_| {
+            let mut metros = HashMap::new();
+            metros.insert(metro1_pubkey, metro1.clone());
+            Ok(metros)
         });
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -653,8 +650,8 @@ mod tests {
             reference_count: 0,
             code: "ams-device-001".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -685,8 +682,8 @@ mod tests {
             reference_count: 0,
             code: "nyc-device-002".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Transit,
             public_ip: [5, 6, 7, 8].into(),
             dz_prefixes: "5.6.7.8/32".parse().unwrap(),
@@ -720,8 +717,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: None,
             status: None,
             health: None,
@@ -741,9 +738,9 @@ mod tests {
     fn test_cli_device_list_filter_by_status() {
         let mut client = create_test_client();
 
-        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
-        let location1 = Location {
-            account_type: AccountType::Location,
+        let facility1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let facility1 = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -753,19 +750,19 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             loc_id: 3,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
         };
 
-        client.expect_list_location().returning(move |_| {
-            let mut locations = HashMap::new();
-            locations.insert(location1_pubkey, location1.clone());
-            Ok(locations)
+        client.expect_list_facility().returning(move |_| {
+            let mut facilities = HashMap::new();
+            facilities.insert(facility1_pubkey, facility1.clone());
+            Ok(facilities)
         });
 
-        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
-        let exchange1 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let metro1 = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -777,14 +774,14 @@ mod tests {
             lng: 2.0,
             bgp_community: 3,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };
 
-        client.expect_list_exchange().returning(move |_| {
-            let mut exchanges = HashMap::new();
-            exchanges.insert(exchange1_pubkey, exchange1.clone());
-            Ok(exchanges)
+        client.expect_list_metro().returning(move |_| {
+            let mut metros = HashMap::new();
+            metros.insert(metro1_pubkey, metro1.clone());
+            Ok(metros)
         });
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -813,8 +810,8 @@ mod tests {
             reference_count: 0,
             code: "device1_activated".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -845,8 +842,8 @@ mod tests {
             reference_count: 0,
             code: "device2_pending".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [5, 6, 7, 8].into(),
             dz_prefixes: "5.6.7.8/32".parse().unwrap(),
@@ -879,8 +876,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: None,
             status: Some("activated".to_string()),
             health: None,
@@ -900,9 +897,9 @@ mod tests {
     fn test_cli_device_list_filter_combined() {
         let mut client = create_test_client();
 
-        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
-        let location1 = Location {
-            account_type: AccountType::Location,
+        let facility1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let facility1 = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -912,13 +909,13 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             loc_id: 3,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
         };
 
-        let location2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPS");
-        let location2 = Location {
-            account_type: AccountType::Location,
+        let facility2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPS");
+        let facility2 = Facility {
+            account_type: AccountType::Facility,
             index: 2,
             bump_seed: 3,
             reference_count: 0,
@@ -928,20 +925,20 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             loc_id: 4,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPS"),
         };
 
-        client.expect_list_location().returning(move |_| {
-            let mut locations = HashMap::new();
-            locations.insert(location1_pubkey, location1.clone());
-            locations.insert(location2_pubkey, location2.clone());
-            Ok(locations)
+        client.expect_list_facility().returning(move |_| {
+            let mut facilities = HashMap::new();
+            facilities.insert(facility1_pubkey, facility1.clone());
+            facilities.insert(facility2_pubkey, facility2.clone());
+            Ok(facilities)
         });
 
-        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
-        let exchange1 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let metro1 = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -953,14 +950,14 @@ mod tests {
             lng: 2.0,
             bgp_community: 3,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };
 
-        client.expect_list_exchange().returning(move |_| {
-            let mut exchanges = HashMap::new();
-            exchanges.insert(exchange1_pubkey, exchange1.clone());
-            Ok(exchanges)
+        client.expect_list_metro().returning(move |_| {
+            let mut metros = HashMap::new();
+            metros.insert(metro1_pubkey, metro1.clone());
+            Ok(metros)
         });
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -989,8 +986,8 @@ mod tests {
             reference_count: 0,
             code: "ams-device-001".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -1021,8 +1018,8 @@ mod tests {
             reference_count: 0,
             code: "nyc-device-002".to_string(),
             contributor_pk,
-            location_pk: location2_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility2_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Transit,
             public_ip: [5, 6, 7, 8].into(),
             dz_prefixes: "5.6.7.8/32".parse().unwrap(),
@@ -1056,8 +1053,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: Some("ams".to_string()),
+            metro: None,
+            facility: Some("ams".to_string()),
             device_type: Some("hybrid".to_string()),
             status: Some("activated".to_string()),
             health: None,
@@ -1077,9 +1074,9 @@ mod tests {
     fn test_cli_device_list_filter_by_contributor() {
         let mut client = create_test_client();
 
-        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
-        let location1 = Location {
-            account_type: AccountType::Location,
+        let facility1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let facility1 = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -1089,19 +1086,19 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             loc_id: 3,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
         };
 
-        client.expect_list_location().returning(move |_| {
-            let mut locations = HashMap::new();
-            locations.insert(location1_pubkey, location1.clone());
-            Ok(locations)
+        client.expect_list_facility().returning(move |_| {
+            let mut facilities = HashMap::new();
+            facilities.insert(facility1_pubkey, facility1.clone());
+            Ok(facilities)
         });
 
-        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
-        let exchange1 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let metro1 = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -1113,14 +1110,14 @@ mod tests {
             lng: 2.0,
             bgp_community: 3,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };
 
-        client.expect_list_exchange().returning(move |_| {
-            let mut exchanges = HashMap::new();
-            exchanges.insert(exchange1_pubkey, exchange1.clone());
-            Ok(exchanges)
+        client.expect_list_metro().returning(move |_| {
+            let mut metros = HashMap::new();
+            metros.insert(metro1_pubkey, metro1.clone());
+            Ok(metros)
         });
 
         let contributor1_pk =
@@ -1172,8 +1169,8 @@ mod tests {
             reference_count: 0,
             code: "device1".to_string(),
             contributor_pk: contributor1_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -1204,8 +1201,8 @@ mod tests {
             reference_count: 0,
             code: "device2".to_string(),
             contributor_pk: contributor2_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [5, 6, 7, 8].into(),
             dz_prefixes: "5.6.7.8/32".parse().unwrap(),
@@ -1239,8 +1236,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: Some("acme".to_string()),
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: None,
             status: None,
             health: None,
@@ -1260,9 +1257,9 @@ mod tests {
     fn test_cli_device_list_filter_by_exchange() {
         let mut client = create_test_client();
 
-        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
-        let location1 = Location {
-            account_type: AccountType::Location,
+        let facility1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let facility1 = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -1272,19 +1269,19 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             loc_id: 3,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
         };
 
-        client.expect_list_location().returning(move |_| {
-            let mut locations = HashMap::new();
-            locations.insert(location1_pubkey, location1.clone());
-            Ok(locations)
+        client.expect_list_facility().returning(move |_| {
+            let mut facilities = HashMap::new();
+            facilities.insert(facility1_pubkey, facility1.clone());
+            Ok(facilities)
         });
 
-        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
-        let exchange1 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let metro1 = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -1296,13 +1293,13 @@ mod tests {
             lng: 2.0,
             bgp_community: 3,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };
 
-        let exchange2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPU");
-        let exchange2 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPU");
+        let metro2 = Metro {
+            account_type: AccountType::Metro,
             index: 2,
             bump_seed: 3,
             reference_count: 0,
@@ -1314,15 +1311,15 @@ mod tests {
             lng: 2.0,
             bgp_community: 4,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPU"),
         };
 
-        client.expect_list_exchange().returning(move |_| {
-            let mut exchanges = HashMap::new();
-            exchanges.insert(exchange1_pubkey, exchange1.clone());
-            exchanges.insert(exchange2_pubkey, exchange2.clone());
-            Ok(exchanges)
+        client.expect_list_metro().returning(move |_| {
+            let mut metros = HashMap::new();
+            metros.insert(metro1_pubkey, metro1.clone());
+            metros.insert(metro2_pubkey, metro2.clone());
+            Ok(metros)
         });
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -1351,8 +1348,8 @@ mod tests {
             reference_count: 0,
             code: "device1".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -1383,8 +1380,8 @@ mod tests {
             reference_count: 0,
             code: "device2".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange2_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro2_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [5, 6, 7, 8].into(),
             dz_prefixes: "5.6.7.8/32".parse().unwrap(),
@@ -1418,8 +1415,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: Some("xams".to_string()),
-            location: None,
+            metro: Some("xams".to_string()),
+            facility: None,
             device_type: None,
             status: None,
             health: None,
@@ -1439,9 +1436,9 @@ mod tests {
     fn test_cli_device_list_filter_by_location() {
         let mut client = create_test_client();
 
-        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
-        let location1 = Location {
-            account_type: AccountType::Location,
+        let facility1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let facility1 = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -1451,13 +1448,13 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             loc_id: 3,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
         };
 
-        let location2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPT");
-        let location2 = Location {
-            account_type: AccountType::Location,
+        let facility2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPT");
+        let facility2 = Facility {
+            account_type: AccountType::Facility,
             index: 2,
             bump_seed: 3,
             reference_count: 0,
@@ -1467,20 +1464,20 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             loc_id: 4,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPT"),
         };
 
-        client.expect_list_location().returning(move |_| {
-            let mut locations = HashMap::new();
-            locations.insert(location1_pubkey, location1.clone());
-            locations.insert(location2_pubkey, location2.clone());
-            Ok(locations)
+        client.expect_list_facility().returning(move |_| {
+            let mut facilities = HashMap::new();
+            facilities.insert(facility1_pubkey, facility1.clone());
+            facilities.insert(facility2_pubkey, facility2.clone());
+            Ok(facilities)
         });
 
-        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
-        let exchange1 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let metro1 = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -1492,14 +1489,14 @@ mod tests {
             lng: 2.0,
             bgp_community: 3,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };
 
-        client.expect_list_exchange().returning(move |_| {
-            let mut exchanges = HashMap::new();
-            exchanges.insert(exchange1_pubkey, exchange1.clone());
-            Ok(exchanges)
+        client.expect_list_metro().returning(move |_| {
+            let mut metros = HashMap::new();
+            metros.insert(metro1_pubkey, metro1.clone());
+            Ok(metros)
         });
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -1528,8 +1525,8 @@ mod tests {
             reference_count: 0,
             code: "device1".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -1560,8 +1557,8 @@ mod tests {
             reference_count: 0,
             code: "device2".to_string(),
             contributor_pk,
-            location_pk: location2_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility2_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [5, 6, 7, 8].into(),
             dz_prefixes: "5.6.7.8/32".parse().unwrap(),
@@ -1595,8 +1592,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: Some("ams".to_string()),
+            metro: None,
+            facility: Some("ams".to_string()),
             device_type: None,
             status: None,
             health: None,
@@ -1616,9 +1613,9 @@ mod tests {
     fn test_cli_device_list_filter_by_health() {
         let mut client = create_test_client();
 
-        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
-        let location1 = Location {
-            account_type: AccountType::Location,
+        let facility1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let facility1 = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -1628,19 +1625,19 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             loc_id: 3,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
         };
 
-        client.expect_list_location().returning(move |_| {
-            let mut locations = HashMap::new();
-            locations.insert(location1_pubkey, location1.clone());
-            Ok(locations)
+        client.expect_list_facility().returning(move |_| {
+            let mut facilities = HashMap::new();
+            facilities.insert(facility1_pubkey, facility1.clone());
+            Ok(facilities)
         });
 
-        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
-        let exchange1 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let metro1 = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -1652,14 +1649,14 @@ mod tests {
             lng: 2.0,
             bgp_community: 3,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };
 
-        client.expect_list_exchange().returning(move |_| {
-            let mut exchanges = HashMap::new();
-            exchanges.insert(exchange1_pubkey, exchange1.clone());
-            Ok(exchanges)
+        client.expect_list_metro().returning(move |_| {
+            let mut metros = HashMap::new();
+            metros.insert(metro1_pubkey, metro1.clone());
+            Ok(metros)
         });
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -1688,8 +1685,8 @@ mod tests {
             reference_count: 0,
             code: "device1".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -1720,8 +1717,8 @@ mod tests {
             reference_count: 0,
             code: "device2".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [5, 6, 7, 8].into(),
             dz_prefixes: "5.6.7.8/32".parse().unwrap(),
@@ -1755,8 +1752,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: None,
             status: None,
             health: Some("ready-for-users".to_string()),
@@ -1776,9 +1773,9 @@ mod tests {
     fn test_cli_device_list_filter_by_desired_status() {
         let mut client = create_test_client();
 
-        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
-        let location1 = Location {
-            account_type: AccountType::Location,
+        let facility1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let facility1 = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -1788,19 +1785,19 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             loc_id: 3,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
         };
 
-        client.expect_list_location().returning(move |_| {
-            let mut locations = HashMap::new();
-            locations.insert(location1_pubkey, location1.clone());
-            Ok(locations)
+        client.expect_list_facility().returning(move |_| {
+            let mut facilities = HashMap::new();
+            facilities.insert(facility1_pubkey, facility1.clone());
+            Ok(facilities)
         });
 
-        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
-        let exchange1 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let metro1 = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -1812,14 +1809,14 @@ mod tests {
             lng: 2.0,
             bgp_community: 3,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };
 
-        client.expect_list_exchange().returning(move |_| {
-            let mut exchanges = HashMap::new();
-            exchanges.insert(exchange1_pubkey, exchange1.clone());
-            Ok(exchanges)
+        client.expect_list_metro().returning(move |_| {
+            let mut metros = HashMap::new();
+            metros.insert(metro1_pubkey, metro1.clone());
+            Ok(metros)
         });
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -1848,8 +1845,8 @@ mod tests {
             reference_count: 0,
             code: "device1".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -1880,8 +1877,8 @@ mod tests {
             reference_count: 0,
             code: "device2".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [5, 6, 7, 8].into(),
             dz_prefixes: "5.6.7.8/32".parse().unwrap(),
@@ -1914,8 +1911,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: None,
             status: None,
             health: None,
@@ -1935,9 +1932,9 @@ mod tests {
     fn test_cli_device_list_json_pretty() {
         let mut client = create_test_client();
 
-        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
-        let location1 = Location {
-            account_type: AccountType::Location,
+        let facility1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let facility1 = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -1947,19 +1944,19 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             loc_id: 3,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
         };
 
-        client.expect_list_location().returning(move |_| {
-            let mut locations = HashMap::new();
-            locations.insert(location1_pubkey, location1.clone());
-            Ok(locations)
+        client.expect_list_facility().returning(move |_| {
+            let mut facilities = HashMap::new();
+            facilities.insert(facility1_pubkey, facility1.clone());
+            Ok(facilities)
         });
 
-        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
-        let exchange1 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let metro1 = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -1971,14 +1968,14 @@ mod tests {
             lng: 2.0,
             bgp_community: 3,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };
 
-        client.expect_list_exchange().returning(move |_| {
-            let mut exchanges = HashMap::new();
-            exchanges.insert(exchange1_pubkey, exchange1.clone());
-            Ok(exchanges)
+        client.expect_list_metro().returning(move |_| {
+            let mut metros = HashMap::new();
+            metros.insert(metro1_pubkey, metro1.clone());
+            Ok(metros)
         });
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -2007,8 +2004,8 @@ mod tests {
             reference_count: 0,
             code: "device1".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -2041,8 +2038,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: None,
             status: None,
             health: None,
@@ -2064,11 +2061,9 @@ mod tests {
         let mut client = create_test_client();
 
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(HashMap::new()));
-        client
-            .expect_list_exchange()
-            .returning(|_| Ok(HashMap::new()));
+        client.expect_list_metro().returning(|_| Ok(HashMap::new()));
         client
             .expect_list_contributor()
             .returning(|_| Ok(HashMap::new()));
@@ -2080,8 +2075,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: None,
             status: None,
             health: None,
@@ -2101,11 +2096,9 @@ mod tests {
         let mut client = create_test_client();
 
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(HashMap::new()));
-        client
-            .expect_list_exchange()
-            .returning(|_| Ok(HashMap::new()));
+        client.expect_list_metro().returning(|_| Ok(HashMap::new()));
         client
             .expect_list_contributor()
             .returning(|_| Ok(HashMap::new()));
@@ -2120,8 +2113,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: Some("nonexistent".to_string()),
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: None,
             status: None,
             health: None,
@@ -2143,11 +2136,9 @@ mod tests {
         let mut client = create_test_client();
 
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(HashMap::new()));
-        client
-            .expect_list_exchange()
-            .returning(|_| Ok(HashMap::new()));
+        client.expect_list_metro().returning(|_| Ok(HashMap::new()));
         client
             .expect_list_contributor()
             .returning(|_| Ok(HashMap::new()));
@@ -2159,8 +2150,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: Some("nonexistent".to_string()),
-            location: None,
+            metro: Some("nonexistent".to_string()),
+            facility: None,
             device_type: None,
             status: None,
             health: None,
@@ -2173,7 +2164,7 @@ mod tests {
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
-            "Exchange 'nonexistent' not found"
+            "Metro 'nonexistent' not found"
         );
     }
 
@@ -2182,11 +2173,9 @@ mod tests {
         let mut client = create_test_client();
 
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(HashMap::new()));
-        client
-            .expect_list_exchange()
-            .returning(|_| Ok(HashMap::new()));
+        client.expect_list_metro().returning(|_| Ok(HashMap::new()));
         client
             .expect_list_contributor()
             .returning(|_| Ok(HashMap::new()));
@@ -2198,8 +2187,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: Some("nonexistent".to_string()),
+            metro: None,
+            facility: Some("nonexistent".to_string()),
             device_type: None,
             status: None,
             health: None,
@@ -2212,7 +2201,7 @@ mod tests {
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
-            "Location 'nonexistent' not found"
+            "Facility 'nonexistent' not found"
         );
     }
 
@@ -2221,11 +2210,9 @@ mod tests {
         let mut client = create_test_client();
 
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(HashMap::new()));
-        client
-            .expect_list_exchange()
-            .returning(|_| Ok(HashMap::new()));
+        client.expect_list_metro().returning(|_| Ok(HashMap::new()));
         client
             .expect_list_contributor()
             .returning(|_| Ok(HashMap::new()));
@@ -2237,8 +2224,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: Some("invalid".to_string()),
             status: None,
             health: None,
@@ -2257,11 +2244,9 @@ mod tests {
         let mut client = create_test_client();
 
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(HashMap::new()));
-        client
-            .expect_list_exchange()
-            .returning(|_| Ok(HashMap::new()));
+        client.expect_list_metro().returning(|_| Ok(HashMap::new()));
         client
             .expect_list_contributor()
             .returning(|_| Ok(HashMap::new()));
@@ -2273,8 +2258,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: None,
             status: Some("invalid".to_string()),
             health: None,
@@ -2293,11 +2278,9 @@ mod tests {
         let mut client = create_test_client();
 
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(HashMap::new()));
-        client
-            .expect_list_exchange()
-            .returning(|_| Ok(HashMap::new()));
+        client.expect_list_metro().returning(|_| Ok(HashMap::new()));
         client
             .expect_list_contributor()
             .returning(|_| Ok(HashMap::new()));
@@ -2309,8 +2292,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: None,
             status: None,
             health: Some("invalid".to_string()),
@@ -2329,11 +2312,9 @@ mod tests {
         let mut client = create_test_client();
 
         client
-            .expect_list_location()
+            .expect_list_facility()
             .returning(|_| Ok(HashMap::new()));
-        client
-            .expect_list_exchange()
-            .returning(|_| Ok(HashMap::new()));
+        client.expect_list_metro().returning(|_| Ok(HashMap::new()));
         client
             .expect_list_contributor()
             .returning(|_| Ok(HashMap::new()));
@@ -2345,8 +2326,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: None,
             status: None,
             health: None,
@@ -2367,9 +2348,9 @@ mod tests {
     fn test_cli_device_list_sorting() {
         let mut client = create_test_client();
 
-        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
-        let location1 = Location {
-            account_type: AccountType::Location,
+        let facility1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let facility1 = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -2379,19 +2360,19 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             loc_id: 3,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
         };
 
-        client.expect_list_location().returning(move |_| {
-            let mut locations = HashMap::new();
-            locations.insert(location1_pubkey, location1.clone());
-            Ok(locations)
+        client.expect_list_facility().returning(move |_| {
+            let mut facilities = HashMap::new();
+            facilities.insert(facility1_pubkey, facility1.clone());
+            Ok(facilities)
         });
 
-        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
-        let exchange1 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let metro1 = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 2,
             reference_count: 0,
@@ -2403,13 +2384,13 @@ mod tests {
             lng: 2.0,
             bgp_community: 3,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };
 
-        let exchange2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPU");
-        let exchange2 = Exchange {
-            account_type: AccountType::Exchange,
+        let metro2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPU");
+        let metro2 = Metro {
+            account_type: AccountType::Metro,
             index: 2,
             bump_seed: 3,
             reference_count: 0,
@@ -2421,15 +2402,15 @@ mod tests {
             lng: 2.0,
             bgp_community: 4,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPU"),
         };
 
-        client.expect_list_exchange().returning(move |_| {
-            let mut exchanges = HashMap::new();
-            exchanges.insert(exchange1_pubkey, exchange1.clone());
-            exchanges.insert(exchange2_pubkey, exchange2.clone());
-            Ok(exchanges)
+        client.expect_list_metro().returning(move |_| {
+            let mut metros = HashMap::new();
+            metros.insert(metro1_pubkey, metro1.clone());
+            metros.insert(metro2_pubkey, metro2.clone());
+            Ok(metros)
         });
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -2458,8 +2439,8 @@ mod tests {
             reference_count: 0,
             code: "zdevice".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange2_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro2_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -2490,8 +2471,8 @@ mod tests {
             reference_count: 0,
             code: "adevice".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [5, 6, 7, 8].into(),
             dz_prefixes: "5.6.7.8/32".parse().unwrap(),
@@ -2522,8 +2503,8 @@ mod tests {
             reference_count: 0,
             code: "bdevice".to_string(),
             contributor_pk,
-            location_pk: location1_pubkey,
-            exchange_pk: exchange1_pubkey,
+            facility_pk: facility1_pubkey,
+            metro_pk: metro1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [9, 10, 11, 12].into(),
             dz_prefixes: "9.10.11.12/32".parse().unwrap(),
@@ -2558,8 +2539,8 @@ mod tests {
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
             contributor: None,
-            exchange: None,
-            location: None,
+            metro: None,
+            facility: None,
             device_type: None,
             status: None,
             health: None,

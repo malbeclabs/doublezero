@@ -37,10 +37,9 @@ use doublezero_sdk::{
             sethealth::SetDeviceHealthCommand,
             update::UpdateDeviceCommand,
         },
-        exchange::{
-            create::CreateExchangeCommand, delete::DeleteExchangeCommand, get::GetExchangeCommand,
-            list::ListExchangeCommand, setdevice::SetDeviceExchangeCommand,
-            update::UpdateExchangeCommand,
+        facility::{
+            create::CreateFacilityCommand, delete::DeleteFacilityCommand, get::GetFacilityCommand,
+            list::ListFacilityCommand, update::UpdateFacilityCommand,
         },
         globalconfig::set::SetGlobalConfigCommand,
         globalstate::{
@@ -55,9 +54,9 @@ use doublezero_sdk::{
             list::ListLinkCommand, reject::RejectLinkCommand, sethealth::SetLinkHealthCommand,
             update::UpdateLinkCommand,
         },
-        location::{
-            create::CreateLocationCommand, delete::DeleteLocationCommand, get::GetLocationCommand,
-            list::ListLocationCommand, update::UpdateLocationCommand,
+        metro::{
+            create::CreateMetroCommand, delete::DeleteMetroCommand, get::GetMetroCommand,
+            list::ListMetroCommand, setdevice::SetDeviceMetroCommand, update::UpdateMetroCommand,
         },
         migrate::MigrateCommand,
         multicastgroup::{
@@ -113,9 +112,9 @@ use doublezero_sdk::{
         },
     },
     telemetry::LinkLatencyStats,
-    DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GetGlobalStateCommand,
-    GlobalConfig, GlobalState, Link, Location, MulticastGroup, ResourceExtensionOwned,
-    TopologyInfo, User,
+    DZClient, Device, DoubleZeroClient, Facility, GetGlobalConfigCommand, GetGlobalStateCommand,
+    GlobalConfig, GlobalState, Link, Metro, MulticastGroup, ResourceExtensionOwned, TopologyInfo,
+    User,
 };
 use doublezero_serviceability::state::{
     accesspass::AccessPass, accountdata::AccountData, contributor::Contributor,
@@ -164,18 +163,18 @@ pub trait CliCommand {
     fn set_minversion(&self, cmd: SetVersionCommand) -> eyre::Result<Signature>;
     fn set_feature_flags(&self, cmd: SetFeatureFlagsCommand) -> eyre::Result<Signature>;
 
-    fn create_location(&self, cmd: CreateLocationCommand) -> eyre::Result<(Signature, Pubkey)>;
-    fn get_location(&self, cmd: GetLocationCommand) -> eyre::Result<(Pubkey, Location)>;
-    fn list_location(&self, cmd: ListLocationCommand) -> eyre::Result<HashMap<Pubkey, Location>>;
-    fn update_location(&self, cmd: UpdateLocationCommand) -> eyre::Result<Signature>;
-    fn delete_location(&self, cmd: DeleteLocationCommand) -> eyre::Result<Signature>;
+    fn create_facility(&self, cmd: CreateFacilityCommand) -> eyre::Result<(Signature, Pubkey)>;
+    fn get_facility(&self, cmd: GetFacilityCommand) -> eyre::Result<(Pubkey, Facility)>;
+    fn list_facility(&self, cmd: ListFacilityCommand) -> eyre::Result<HashMap<Pubkey, Facility>>;
+    fn update_facility(&self, cmd: UpdateFacilityCommand) -> eyre::Result<Signature>;
+    fn delete_facility(&self, cmd: DeleteFacilityCommand) -> eyre::Result<Signature>;
 
-    fn create_exchange(&self, cmd: CreateExchangeCommand) -> eyre::Result<(Signature, Pubkey)>;
-    fn get_exchange(&self, cmd: GetExchangeCommand) -> eyre::Result<(Pubkey, Exchange)>;
-    fn list_exchange(&self, cmd: ListExchangeCommand) -> eyre::Result<HashMap<Pubkey, Exchange>>;
-    fn update_exchange(&self, cmd: UpdateExchangeCommand) -> eyre::Result<Signature>;
-    fn delete_exchange(&self, cmd: DeleteExchangeCommand) -> eyre::Result<Signature>;
-    fn setdevice_exchange(&self, cmd: SetDeviceExchangeCommand) -> eyre::Result<Signature>;
+    fn create_metro(&self, cmd: CreateMetroCommand) -> eyre::Result<(Signature, Pubkey)>;
+    fn get_metro(&self, cmd: GetMetroCommand) -> eyre::Result<(Pubkey, Metro)>;
+    fn list_metro(&self, cmd: ListMetroCommand) -> eyre::Result<HashMap<Pubkey, Metro>>;
+    fn update_metro(&self, cmd: UpdateMetroCommand) -> eyre::Result<Signature>;
+    fn delete_metro(&self, cmd: DeleteMetroCommand) -> eyre::Result<Signature>;
+    fn setdevice_metro(&self, cmd: SetDeviceMetroCommand) -> eyre::Result<Signature>;
 
     fn create_contributor(
         &self,
@@ -455,37 +454,37 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
 
-    fn create_location(&self, cmd: CreateLocationCommand) -> eyre::Result<(Signature, Pubkey)> {
+    fn create_facility(&self, cmd: CreateFacilityCommand) -> eyre::Result<(Signature, Pubkey)> {
         cmd.execute(self.client)
     }
-    fn get_location(&self, cmd: GetLocationCommand) -> eyre::Result<(Pubkey, Location)> {
+    fn get_facility(&self, cmd: GetFacilityCommand) -> eyre::Result<(Pubkey, Facility)> {
         cmd.execute(self.client)
     }
-    fn list_location(&self, cmd: ListLocationCommand) -> eyre::Result<HashMap<Pubkey, Location>> {
+    fn list_facility(&self, cmd: ListFacilityCommand) -> eyre::Result<HashMap<Pubkey, Facility>> {
         cmd.execute(self.client)
     }
-    fn update_location(&self, cmd: UpdateLocationCommand) -> eyre::Result<Signature> {
+    fn update_facility(&self, cmd: UpdateFacilityCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn delete_location(&self, cmd: DeleteLocationCommand) -> eyre::Result<Signature> {
+    fn delete_facility(&self, cmd: DeleteFacilityCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn create_exchange(&self, cmd: CreateExchangeCommand) -> eyre::Result<(Signature, Pubkey)> {
+    fn create_metro(&self, cmd: CreateMetroCommand) -> eyre::Result<(Signature, Pubkey)> {
         cmd.execute(self.client)
     }
-    fn get_exchange(&self, cmd: GetExchangeCommand) -> eyre::Result<(Pubkey, Exchange)> {
+    fn get_metro(&self, cmd: GetMetroCommand) -> eyre::Result<(Pubkey, Metro)> {
         cmd.execute(self.client)
     }
-    fn list_exchange(&self, cmd: ListExchangeCommand) -> eyre::Result<HashMap<Pubkey, Exchange>> {
+    fn list_metro(&self, cmd: ListMetroCommand) -> eyre::Result<HashMap<Pubkey, Metro>> {
         cmd.execute(self.client)
     }
-    fn update_exchange(&self, cmd: UpdateExchangeCommand) -> eyre::Result<Signature> {
+    fn update_metro(&self, cmd: UpdateMetroCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn delete_exchange(&self, cmd: DeleteExchangeCommand) -> eyre::Result<Signature> {
+    fn delete_metro(&self, cmd: DeleteMetroCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn setdevice_exchange(&self, cmd: SetDeviceExchangeCommand) -> eyre::Result<Signature> {
+    fn setdevice_metro(&self, cmd: SetDeviceMetroCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn create_contributor(

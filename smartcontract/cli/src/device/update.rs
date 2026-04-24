@@ -36,9 +36,9 @@ pub struct UpdateDeviceCliCommand {
     /// Contributor Pubkey (optional)
     #[arg(long, value_parser = validate_pubkey)]
     pub contributor: Option<String>,
-    /// Location Pubkey (optional)
+    /// Facility Pubkey (optional)
     #[arg(long, value_parser = validate_pubkey)]
-    pub location: Option<String>,
+    pub facility: Option<String>,
     /// Management VRF name (optional)
     #[arg(long)]
     pub mgmt_vrf: Option<String>,
@@ -181,8 +181,8 @@ impl UpdateDeviceCliCommand {
             dz_prefixes: self.dz_prefixes,
             metrics_publisher,
             contributor_pk: contributor,
-            location_pk: match &self.location {
-                Some(location) => Some(Pubkey::from_str(location)?),
+            facility_pk: match &self.facility {
+                Some(facility) => Some(Pubkey::from_str(facility)?),
                 None => None,
             },
             mgmt_vrf: self.mgmt_vrf,
@@ -242,8 +242,8 @@ mod tests {
         ]);
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let facility_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let metro_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let device1 = Device {
             account_type: AccountType::Device,
             index: 1,
@@ -251,8 +251,8 @@ mod tests {
             reference_count: 0,
             code: "test".to_string(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "10.1.2.3/32".parse().unwrap(),
@@ -281,8 +281,8 @@ mod tests {
             reference_count: 0,
             code: "test2".to_string(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             device_type: DeviceType::Hybrid,
             public_ip: [2, 3, 4, 5].into(),
             dz_prefixes: "2.3.4.5/32".parse().unwrap(),
@@ -311,8 +311,8 @@ mod tests {
             reference_count: 0,
             code: "test3".to_string(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             device_type: DeviceType::Hybrid,
             public_ip: [3, 4, 5, 6].into(),
             dz_prefixes: "3.4.5.6/32".parse().unwrap(),
@@ -369,7 +369,7 @@ mod tests {
                 contributor_pk: Some(Pubkey::from_str_const(
                     "HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx",
                 )),
-                location_pk: Some(Pubkey::from_str_const(
+                facility_pk: Some(Pubkey::from_str_const(
                     "HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx",
                 )),
                 mgmt_vrf: Some("default".to_string()),
@@ -400,7 +400,7 @@ mod tests {
             dz_prefixes: Some("10.1.2.3/32".parse().unwrap()),
             metrics_publisher: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
             contributor: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
-            location: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
+            facility: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
             mgmt_vrf: Some("default".to_string()),
             max_users: Some(1025),
             users_count: Some(0),
@@ -432,8 +432,8 @@ mod tests {
         let other_pubkey = Pubkey::new_unique();
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let facility_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let metro_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let device1 = Device {
             account_type: AccountType::Device,
             index: 1,
@@ -441,8 +441,8 @@ mod tests {
             reference_count: 0,
             code: "test".to_string(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -471,8 +471,8 @@ mod tests {
             reference_count: 0,
             code: "existing_code".to_string(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             device_type: DeviceType::Hybrid,
             public_ip: [2, 3, 4, 5].into(),
             dz_prefixes: "2.3.4.5/32".parse().unwrap(),
@@ -521,7 +521,7 @@ mod tests {
             public_ip: None,
             dz_prefixes: None,
             metrics_publisher: None,
-            location: None,
+            facility: None,
             contributor: None,
             mgmt_vrf: None,
             max_users: Some(255),
@@ -554,8 +554,8 @@ mod tests {
         let other_pubkey = Pubkey::new_unique();
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let facility_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let metro_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let device1 = Device {
             account_type: AccountType::Device,
             index: 1,
@@ -563,8 +563,8 @@ mod tests {
             reference_count: 0,
             code: "test".to_string(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -593,8 +593,8 @@ mod tests {
             reference_count: 0,
             code: "test2".to_string(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             device_type: DeviceType::Hybrid,
             public_ip: [10, 20, 30, 40].into(),
             dz_prefixes: "10.20.30.40/32".parse().unwrap(),
@@ -642,7 +642,7 @@ mod tests {
             dz_prefixes: None,
             metrics_publisher: None,
             device_type: None,
-            location: None,
+            facility: None,
             contributor: None,
             mgmt_vrf: None,
             max_users: None,

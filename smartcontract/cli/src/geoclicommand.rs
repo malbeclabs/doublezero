@@ -1,6 +1,6 @@
 use doublezero_geolocation::state::{geo_probe::GeoProbe, geolocation_user::GeolocationUser};
 use doublezero_sdk::{
-    commands::{device::get::GetDeviceCommand, exchange::get::GetExchangeCommand},
+    commands::{device::get::GetDeviceCommand, metro::get::GetMetroCommand},
     geolocation::{
         geo_probe::{
             add_parent_device::AddParentDeviceCommand, create::CreateGeoProbeCommand,
@@ -57,7 +57,7 @@ pub trait GeoCliCommand {
     fn set_result_destination(&self, cmd: SetResultDestinationCommand) -> eyre::Result<Signature>;
     fn update_payment_status(&self, cmd: UpdatePaymentStatusCommand) -> eyre::Result<Signature>;
 
-    fn resolve_exchange_pk(&self, pubkey_or_code: String) -> eyre::Result<Pubkey>;
+    fn resolve_metro_pk(&self, pubkey_or_code: String) -> eyre::Result<Pubkey>;
     fn resolve_device_pk(&self, pubkey_or_code: String) -> eyre::Result<Pubkey>;
 }
 
@@ -165,8 +165,8 @@ impl GeoCliCommand for GeoCliCommandImpl<'_> {
         cmd.execute(self.client)
     }
 
-    fn resolve_exchange_pk(&self, pubkey_or_code: String) -> eyre::Result<Pubkey> {
-        let (pk, _) = GetExchangeCommand { pubkey_or_code }.execute(self.svc_client)?;
+    fn resolve_metro_pk(&self, pubkey_or_code: String) -> eyre::Result<Pubkey> {
+        let (pk, _) = GetMetroCommand { pubkey_or_code }.execute(self.svc_client)?;
         Ok(pk)
     }
 

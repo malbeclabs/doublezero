@@ -67,8 +67,8 @@ impl DeleteDeviceCommand {
                 AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(device.contributor_pk, false),
                 AccountMeta::new(globalstate_pubkey, false),
-                AccountMeta::new(device.location_pk, false),
-                AccountMeta::new(device.exchange_pk, false),
+                AccountMeta::new(device.facility_pk, false),
+                AccountMeta::new(device.metro_pk, false),
             ];
             accounts.extend(resource_accounts);
             accounts.extend(owner_accounts);
@@ -104,8 +104,8 @@ mod tests {
     fn make_test_device(
         owner: Pubkey,
         contributor_pk: Pubkey,
-        location_pk: Pubkey,
-        exchange_pk: Pubkey,
+        facility_pk: Pubkey,
+        metro_pk: Pubkey,
     ) -> Device {
         Device {
             account_type: AccountType::Device,
@@ -119,8 +119,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             max_users: 128,
             users_count: 0,
             reference_count: 0,
@@ -145,12 +145,12 @@ mod tests {
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
         let device_pubkey = Pubkey::new_unique();
         let contributor_pk = Pubkey::new_unique();
-        let location_pk = Pubkey::new_unique();
-        let exchange_pk = Pubkey::new_unique();
+        let facility_pk = Pubkey::new_unique();
+        let metro_pk = Pubkey::new_unique();
 
         // Device with no resources (pending, never activated)
         let mut device =
-            make_test_device(client.get_payer(), contributor_pk, location_pk, exchange_pk);
+            make_test_device(client.get_payer(), contributor_pk, facility_pk, metro_pk);
         device.status = DeviceStatus::Pending;
 
         let device_clone = device.clone();
@@ -224,9 +224,9 @@ mod tests {
 
         let device_pubkey = Pubkey::new_unique();
         let contributor_pk = Pubkey::new_unique();
-        let location_pk = Pubkey::new_unique();
-        let exchange_pk = Pubkey::new_unique();
-        let device = make_test_device(payer, contributor_pk, location_pk, exchange_pk);
+        let facility_pk = Pubkey::new_unique();
+        let metro_pk = Pubkey::new_unique();
+        let device = make_test_device(payer, contributor_pk, facility_pk, metro_pk);
 
         let device_clone = device.clone();
         client
@@ -280,8 +280,8 @@ mod tests {
                     AccountMeta::new(device_pubkey, false),
                     AccountMeta::new(contributor_pk, false),
                     AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(location_pk, false),
-                    AccountMeta::new(exchange_pk, false),
+                    AccountMeta::new(facility_pk, false),
+                    AccountMeta::new(metro_pk, false),
                     AccountMeta::new(tunnel_ids_pda, false),
                     AccountMeta::new(dz_prefix_pda, false),
                     AccountMeta::new(res_owner, false),

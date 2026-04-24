@@ -69,7 +69,7 @@ impl GetGeoProbeCliCommand {
             account: pubkey,
             code: probe.code,
             owner: probe.owner,
-            exchange: probe.exchange_pk,
+            exchange: probe.metro_pk,
             public_ip: probe.public_ip,
             port: probe.location_offset_port,
             parent_devices: probe.parent_devices,
@@ -111,21 +111,21 @@ mod tests {
         let client = MockGeoCliCommand::new();
         let probe_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
         let owner_pk = Pubkey::from_str_const("DDddB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt");
-        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let metro_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let metrics_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        (client, probe_pk, owner_pk, exchange_pk, metrics_pk)
+        (client, probe_pk, owner_pk, metro_pk, metrics_pk)
     }
 
     fn make_probe(
         owner_pk: Pubkey,
-        exchange_pk: Pubkey,
+        metro_pk: Pubkey,
         metrics_pk: Pubkey,
         parent_devices: Vec<Pubkey>,
     ) -> GeoProbe {
         GeoProbe {
             account_type: AccountType::GeoProbe,
             owner: owner_pk,
-            exchange_pk,
+            metro_pk,
             public_ip: Ipv4Addr::new(10, 0, 0, 1),
             location_offset_port: 8923,
             code: "ams-probe-01".to_string(),
@@ -138,8 +138,8 @@ mod tests {
 
     #[test]
     fn test_cli_geo_probe_get() {
-        let (mut client, probe_pk, owner_pk, exchange_pk, metrics_pk) = setup_client();
-        let probe = make_probe(owner_pk, exchange_pk, metrics_pk, vec![]);
+        let (mut client, probe_pk, owner_pk, metro_pk, metrics_pk) = setup_client();
+        let probe = make_probe(owner_pk, metro_pk, metrics_pk, vec![]);
 
         client
             .expect_get_geo_probe()
@@ -178,7 +178,7 @@ mod tests {
         assert!(has_row("account", &probe_pk.to_string()));
         assert!(has_row("code", "ams-probe-01"));
         assert!(has_row("owner", &owner_pk.to_string()));
-        assert!(has_row("exchange", &exchange_pk.to_string()));
+        assert!(has_row("exchange", &metro_pk.to_string()));
         assert!(has_row("public_ip", "10.0.0.1"));
         assert!(has_row("port", "8923"));
         assert!(has_row("signing_pubkey", &metrics_pk.to_string()));
@@ -187,9 +187,9 @@ mod tests {
 
     #[test]
     fn test_cli_geo_probe_get_json() {
-        let (mut client, probe_pk, owner_pk, exchange_pk, metrics_pk) = setup_client();
+        let (mut client, probe_pk, owner_pk, metro_pk, metrics_pk) = setup_client();
         let parent_pk = Pubkey::from_str_const("AQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
-        let probe = make_probe(owner_pk, exchange_pk, metrics_pk, vec![parent_pk]);
+        let probe = make_probe(owner_pk, metro_pk, metrics_pk, vec![parent_pk]);
 
         client
             .expect_get_geo_probe()
@@ -211,7 +211,7 @@ mod tests {
         assert_eq!(json["account"].as_str().unwrap(), probe_pk.to_string());
         assert_eq!(json["code"].as_str().unwrap(), "ams-probe-01");
         assert_eq!(json["owner"].as_str().unwrap(), owner_pk.to_string());
-        assert_eq!(json["exchange"].as_str().unwrap(), exchange_pk.to_string());
+        assert_eq!(json["exchange"].as_str().unwrap(), metro_pk.to_string());
         assert_eq!(json["public_ip"].as_str().unwrap(), "10.0.0.1");
         assert_eq!(json["port"].as_u64().unwrap(), 8923);
         let parents = json["parent_devices"].as_array().unwrap();
@@ -226,9 +226,9 @@ mod tests {
 
     #[test]
     fn test_cli_geo_probe_get_json_compact() {
-        let (mut client, probe_pk, owner_pk, exchange_pk, metrics_pk) = setup_client();
+        let (mut client, probe_pk, owner_pk, metro_pk, metrics_pk) = setup_client();
         let parent_pk = Pubkey::from_str_const("AQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
-        let probe = make_probe(owner_pk, exchange_pk, metrics_pk, vec![parent_pk]);
+        let probe = make_probe(owner_pk, metro_pk, metrics_pk, vec![parent_pk]);
 
         client
             .expect_get_geo_probe()

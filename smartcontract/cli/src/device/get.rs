@@ -4,9 +4,9 @@ use doublezero_program_common::{serializer, types::parse_utils::bandwidth_to_str
 use doublezero_sdk::{
     commands::{
         contributor::get::GetContributorCommand, device::get::GetDeviceCommand,
-        exchange::get::GetExchangeCommand,
+        metro::get::GetMetroCommand,
     },
-    GetLocationCommand, Interface,
+    GetFacilityCommand, Interface,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
@@ -82,12 +82,12 @@ struct DeviceDisplay {
     pub contributor: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(skip)]
-    pub location_pk: Pubkey,
-    pub location: String,
+    pub facility_pk: Pubkey,
+    pub facility: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(skip)]
-    pub exchange_pk: Pubkey,
-    pub exchange: String,
+    pub metro_pk: Pubkey,
+    pub metro: String,
     pub device_type: String,
     pub public_ip: String,
     pub dz_prefixes: String,
@@ -127,16 +127,16 @@ impl GetDeviceCliCommand {
                     pubkey_or_code: device.contributor_pk.to_string(),
                 })
                 .map_or_else(|_| String::new(), |(_, c)| c.code),
-            location_pk: device.location_pk,
-            location: client
-                .get_location(GetLocationCommand {
-                    pubkey_or_code: device.location_pk.to_string(),
+            facility_pk: device.facility_pk,
+            facility: client
+                .get_facility(GetFacilityCommand {
+                    pubkey_or_code: device.facility_pk.to_string(),
                 })
                 .map_or_else(|_| String::new(), |(_, l)| l.code),
-            exchange_pk: device.exchange_pk,
-            exchange: client
-                .get_exchange(GetExchangeCommand {
-                    pubkey_or_code: device.exchange_pk.to_string(),
+            metro_pk: device.metro_pk,
+            metro: client
+                .get_metro(GetMetroCommand {
+                    pubkey_or_code: device.metro_pk.to_string(),
                 })
                 .map_or_else(|_| String::new(), |(_, e)| e.code),
             device_type: device.device_type.to_string(),
@@ -194,10 +194,10 @@ mod tests {
     use doublezero_sdk::{
         commands::{
             contributor::get::GetContributorCommand, device::get::GetDeviceCommand,
-            exchange::get::GetExchangeCommand,
+            metro::get::GetMetroCommand,
         },
-        AccountType, Contributor, ContributorStatus, Device, DeviceStatus, DeviceType, Exchange,
-        ExchangeStatus, GetLocationCommand, Location, LocationStatus,
+        AccountType, Contributor, ContributorStatus, Device, DeviceStatus, DeviceType, Facility,
+        FacilityStatus, GetFacilityCommand, Metro, MetroStatus,
     };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
@@ -208,8 +208,8 @@ mod tests {
         let mut client = create_test_client();
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let facility_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let metro_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let device1_pubkey =
             Pubkey::from_str("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB").unwrap();
         let device1 = Device {
@@ -219,8 +219,8 @@ mod tests {
             reference_count: 0,
             code: "test".to_string(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
@@ -255,22 +255,22 @@ mod tests {
             owner: contributor_pk,
             ops_manager_pk: Pubkey::default(),
         };
-        let location = Location {
-            account_type: AccountType::Location,
+        let facility = Facility {
+            account_type: AccountType::Facility,
             owner: Pubkey::default(),
             index: 1,
             bump_seed: 255,
             lat: 0.0,
             lng: 0.0,
             loc_id: 1,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             code: "test-location".to_string(),
-            name: "Test Location".to_string(),
+            name: "Test Facility".to_string(),
             country: "US".to_string(),
             reference_count: 0,
         };
-        let exchange = Exchange {
-            account_type: AccountType::Exchange,
+        let metro = Metro {
+            account_type: AccountType::Metro,
             owner: Pubkey::default(),
             index: 1,
             bump_seed: 255,
@@ -278,9 +278,9 @@ mod tests {
             lng: 0.0,
             bgp_community: 100,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
             code: "test-exchange".to_string(),
-            name: "Test Exchange".to_string(),
+            name: "Test Metro".to_string(),
             reference_count: 0,
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
@@ -302,17 +302,17 @@ mod tests {
             }))
             .returning(move |_| Ok((contributor_pk, contributor.clone())));
         client
-            .expect_get_location()
-            .with(predicate::eq(GetLocationCommand {
-                pubkey_or_code: location_pk.to_string(),
+            .expect_get_facility()
+            .with(predicate::eq(GetFacilityCommand {
+                pubkey_or_code: facility_pk.to_string(),
             }))
-            .returning(move |_| Ok((location_pk, location.clone())));
+            .returning(move |_| Ok((facility_pk, facility.clone())));
         client
-            .expect_get_exchange()
-            .with(predicate::eq(GetExchangeCommand {
-                pubkey_or_code: exchange_pk.to_string(),
+            .expect_get_metro()
+            .with(predicate::eq(GetMetroCommand {
+                pubkey_or_code: metro_pk.to_string(),
             }))
-            .returning(move |_| Ok((exchange_pk, exchange.clone())));
+            .returning(move |_| Ok((metro_pk, metro.clone())));
 
         // Expected failure
         let mut output = Vec::new();
@@ -367,8 +367,8 @@ mod tests {
         assert_eq!(json["code"].as_str().unwrap(), "test");
         assert_eq!(json["status"].as_str().unwrap(), "activated");
         assert_eq!(json["contributor"].as_str().unwrap(), "test-contributor");
-        assert_eq!(json["location"].as_str().unwrap(), "test-location");
-        assert_eq!(json["exchange"].as_str().unwrap(), "test-exchange");
+        assert_eq!(json["facility"].as_str().unwrap(), "test-location");
+        assert_eq!(json["metro"].as_str().unwrap(), "test-exchange");
         assert_eq!(json["interfaces"].as_array().unwrap().len(), 0);
     }
 }

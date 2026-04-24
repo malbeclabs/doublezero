@@ -3,7 +3,7 @@ use clap::Args;
 use doublezero_program_common::{serializer, types::parse_utils::bandwidth_to_string};
 use doublezero_sdk::commands::{
     accesspass::list::ListAccessPassCommand, device::list::ListDeviceCommand,
-    location::list::ListLocationCommand, multicastgroup::get::GetMulticastGroupCommand,
+    facility::list::ListFacilityCommand, multicastgroup::get::GetMulticastGroupCommand,
     tenant::list::ListTenantCommand, user::list::ListUserCommand,
 };
 use serde::Serialize;
@@ -52,7 +52,7 @@ struct MulticastUserDisplay {
     pub account: String,
     pub multicast_mode: String,
     pub device: String,
-    pub location: String,
+    pub facility: String,
     pub cyoa_type: String,
     pub client_ip: String,
     pub tunnel_id: u16,
@@ -78,7 +78,7 @@ impl GetMulticastGroupCliCommand {
 
         let users = client.list_user(ListUserCommand)?;
         let devices = client.list_device(ListDeviceCommand)?;
-        let locations = client.list_location(ListLocationCommand)?;
+        let facilities = client.list_facility(ListFacilityCommand)?;
 
         let list_accesspass = client.list_accesspass(ListAccessPassCommand {})?;
 
@@ -112,8 +112,8 @@ impl GetMulticastGroupCliCommand {
             })
             .map(|(pubkey, user)| {
                 let device = devices.get(&user.device_pk);
-                let location = match device {
-                    Some(device) => locations.get(&device.location_pk),
+                let facility = match device {
+                    Some(device) => facilities.get(&device.facility_pk),
                     None => None,
                 };
 
@@ -121,10 +121,10 @@ impl GetMulticastGroupCliCommand {
                     Some(device) => device.code.clone(),
                     None => user.device_pk.to_string(),
                 };
-                let location_name = match device {
-                    Some(device) => match location {
-                        Some(location) => location.name.clone(),
-                        None => device.location_pk.to_string(),
+                let facility_name = match device {
+                    Some(device) => match facility {
+                        Some(facility) => facility.name.clone(),
+                        None => device.facility_pk.to_string(),
                     },
                     None => "".to_string(),
                 };
@@ -144,7 +144,7 @@ impl GetMulticastGroupCliCommand {
                     account: pubkey.to_string(),
                     multicast_mode: mode_text.to_string(),
                     device: device_name,
-                    location: location_name,
+                    facility: facility_name,
                     cyoa_type: user.cyoa_type.to_string(),
                     client_ip: user.client_ip.to_string(),
                     tunnel_id: user.tunnel_id,
@@ -219,12 +219,13 @@ mod tests {
     use doublezero_sdk::{
         commands::{
             device::{get::GetDeviceCommand, list::ListDeviceCommand},
-            location::list::ListLocationCommand,
+            facility::list::ListFacilityCommand,
             multicastgroup::get::GetMulticastGroupCommand,
             tenant::list::ListTenantCommand,
         },
-        get_multicastgroup_pda, AccountType, Device, DeviceStatus, GetLocationCommand, Location,
-        LocationStatus, MulticastGroup, MulticastGroupStatus, User, UserCYOA, UserStatus, UserType,
+        get_multicastgroup_pda, AccountType, Device, DeviceStatus, Facility, FacilityStatus,
+        GetFacilityCommand, MulticastGroup, MulticastGroupStatus, User, UserCYOA, UserStatus,
+        UserType,
     };
     use doublezero_serviceability::state::accesspass::{
         AccessPass, AccessPassStatus, AccessPassType,
@@ -236,9 +237,9 @@ mod tests {
     fn test_cli_multicastgroup_get() {
         let mut client = create_test_client();
 
-        let location_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1");
-        let location = Location {
-            account_type: AccountType::Location,
+        let facility_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1");
+        let facility = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 255,
             reference_count: 0,
@@ -248,24 +249,24 @@ mod tests {
             lat: 1.0,
             lng: 1.0,
             loc_id: 0,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
             country: "US".to_string(),
         };
 
-        let cloned_location = location.clone();
+        let cloned_facility = facility.clone();
         client
-            .expect_get_location()
-            .with(predicate::eq(GetLocationCommand {
-                pubkey_or_code: location_pubkey.to_string(),
+            .expect_get_facility()
+            .with(predicate::eq(GetFacilityCommand {
+                pubkey_or_code: facility_pubkey.to_string(),
             }))
-            .returning(move |_| Ok((location_pubkey, cloned_location.clone())));
-        let cloned_location = location.clone();
+            .returning(move |_| Ok((facility_pubkey, cloned_facility.clone())));
+        let cloned_facility = facility.clone();
         client
-            .expect_list_location()
-            .with(predicate::eq(ListLocationCommand))
+            .expect_list_facility()
+            .with(predicate::eq(ListFacilityCommand))
             .returning(move |_| {
                 let mut locations = std::collections::HashMap::new();
-                locations.insert(location_pubkey, cloned_location.clone());
+                locations.insert(facility_pubkey, cloned_facility.clone());
                 Ok(locations)
             });
 
@@ -279,10 +280,10 @@ mod tests {
             code: "test_device".to_string(),
             device_type: doublezero_sdk::DeviceType::Hybrid,
             contributor_pk,
-            location_pk: Pubkey::default(),
+            facility_pk: Pubkey::default(),
             status: DeviceStatus::Activated,
             owner: device_pubkey,
-            exchange_pk: location_pubkey,
+            metro_pk: facility_pubkey,
             public_ip: [10, 0, 0, 1].into(),
             dz_prefixes: "10.0.0.0/32".parse().unwrap(),
             metrics_publisher_pk: Pubkey::new_unique(),

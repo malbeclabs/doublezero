@@ -11,8 +11,8 @@ use doublezero_sdk::{
     commands::{
         contributor::get::GetContributorCommand,
         device::{create::CreateDeviceCommand, list::ListDeviceCommand},
-        exchange::get::GetExchangeCommand,
-        location::get::GetLocationCommand,
+        facility::get::GetFacilityCommand,
+        metro::get::GetMetroCommand,
     },
     *,
 };
@@ -31,12 +31,12 @@ pub struct CreateDeviceCliCommand {
     /// Device type (hybrid, transit, edge)
     #[arg(long, default_value = "hybrid")]
     pub device_type: String,
-    /// Location (pubkey or code) associated with the device
+    /// Facility (pubkey or code) associated with the device
     #[arg(long, value_parser = validate_pubkey_or_code)]
-    pub location: String,
-    /// Exchange (pubkey or code) associated with the device
+    pub facility: String,
+    /// Metro (pubkey or code) associated with the device
     #[arg(long, value_parser = validate_pubkey_or_code)]
-    pub exchange: String,
+    pub metro: String,
     /// Device public IPv4 address (e.g. 10.0.0.1)
     #[arg(long)]
     pub public_ip: Ipv4Addr,
@@ -105,26 +105,26 @@ impl CreateDeviceCliCommand {
             }
         };
 
-        let location_pk = match parse_pubkey(&self.location) {
+        let facility_pk = match parse_pubkey(&self.facility) {
             Some(pk) => pk,
             None => {
                 let (pubkey, _) = client
-                    .get_location(GetLocationCommand {
-                        pubkey_or_code: self.location.clone(),
+                    .get_facility(GetFacilityCommand {
+                        pubkey_or_code: self.facility.clone(),
                     })
-                    .map_err(|_| eyre::eyre!("Location not found"))?;
+                    .map_err(|_| eyre::eyre!("Facility not found"))?;
                 pubkey
             }
         };
 
-        let exchange_pk = match parse_pubkey(&self.exchange) {
+        let metro_pk = match parse_pubkey(&self.metro) {
             Some(pk) => pk,
             None => {
                 let (pubkey, _) = client
-                    .get_exchange(GetExchangeCommand {
-                        pubkey_or_code: self.exchange.clone(),
+                    .get_metro(GetMetroCommand {
+                        pubkey_or_code: self.metro.clone(),
                     })
-                    .map_err(|_| eyre::eyre!("Exchange not found"))?;
+                    .map_err(|_| eyre::eyre!("Metro not found"))?;
                 pubkey
             }
         };
@@ -150,8 +150,8 @@ impl CreateDeviceCliCommand {
         let (signature, pubkey) = client.create_device(CreateDeviceCommand {
             code: self.code.clone(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             device_type,
             public_ip: self.public_ip,
             dz_prefixes: self.dz_prefixes,
@@ -184,10 +184,10 @@ mod tests {
         commands::{
             contributor::get::GetContributorCommand,
             device::{create::CreateDeviceCommand, list::ListDeviceCommand},
-            exchange::get::GetExchangeCommand,
+            metro::get::GetMetroCommand,
         },
-        get_device_pda, AccountType, Contributor, ContributorStatus, DeviceType, Exchange,
-        ExchangeStatus, GetLocationCommand, Location, LocationStatus,
+        get_device_pda, AccountType, Contributor, ContributorStatus, DeviceType, Facility,
+        FacilityStatus, GetFacilityCommand, Metro, MetroStatus,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -204,37 +204,37 @@ mod tests {
             100, 221, 20, 137, 4, 5,
         ]);
 
-        let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let location = Location {
-            account_type: AccountType::Location,
+        let facility_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let facility = Facility {
+            account_type: AccountType::Facility,
             index: 1,
             bump_seed: 255,
             reference_count: 0,
             code: "test".to_string(),
-            name: "Test Location".to_string(),
+            name: "Test Facility".to_string(),
             country: "Test Country".to_string(),
             lat: 0.0,
             lng: 0.0,
             loc_id: 0,
-            status: LocationStatus::Activated,
-            owner: location_pk,
+            status: FacilityStatus::Activated,
+            owner: facility_pk,
         };
-        let exchange_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
-        let exchange = Exchange {
-            account_type: AccountType::Exchange,
+        let metro_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let metro = Metro {
+            account_type: AccountType::Metro,
             index: 1,
             bump_seed: 255,
             reference_count: 0,
             code: "test".to_string(),
-            name: "Test Exchange".to_string(),
+            name: "Test Metro".to_string(),
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
             lat: 0.0,
             lng: 0.0,
             bgp_community: 0,
             unused: 0,
-            status: ExchangeStatus::Activated,
-            owner: exchange_pk,
+            status: MetroStatus::Activated,
+            owner: metro_pk,
         };
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -261,17 +261,17 @@ mod tests {
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
         client
-            .expect_get_location()
-            .with(predicate::eq(GetLocationCommand {
-                pubkey_or_code: location_pk.to_string(),
+            .expect_get_facility()
+            .with(predicate::eq(GetFacilityCommand {
+                pubkey_or_code: facility_pk.to_string(),
             }))
-            .returning(move |_| Ok((location_pk, location.clone())));
+            .returning(move |_| Ok((facility_pk, facility.clone())));
         client
-            .expect_get_exchange()
-            .with(predicate::eq(GetExchangeCommand {
-                pubkey_or_code: exchange_pk.to_string(),
+            .expect_get_metro()
+            .with(predicate::eq(GetMetroCommand {
+                pubkey_or_code: metro_pk.to_string(),
             }))
-            .returning(move |_| Ok((exchange_pk, exchange.clone())));
+            .returning(move |_| Ok((metro_pk, metro.clone())));
         client
             .expect_list_device()
             .with(predicate::eq(ListDeviceCommand))
@@ -281,8 +281,8 @@ mod tests {
             .with(predicate::eq(CreateDeviceCommand {
                 code: "test".to_string(),
                 contributor_pk,
-                location_pk,
-                exchange_pk,
+                facility_pk,
+                metro_pk,
                 device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 1].into(),
                 dz_prefixes: "10.1.0.0/16".parse().unwrap(),
@@ -296,8 +296,8 @@ mod tests {
         let res = CreateDeviceCliCommand {
             code: "test".to_string(),
             contributor: contributor_pk.to_string(),
-            location: location_pk.to_string(),
-            exchange: exchange_pk.to_string(),
+            facility: facility_pk.to_string(),
+            metro: metro_pk.to_string(),
             device_type: "hybrid".to_string(),
             public_ip: [100, 0, 0, 1].into(),
             dz_prefixes: "10.1.0.0/16".parse().unwrap(),
@@ -320,8 +320,8 @@ mod tests {
 
         let mut client = create_test_client();
 
-        let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let exchange_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let facility_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let metro_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
 
         // Create an existing device with dz_prefix that will conflict
@@ -334,8 +334,8 @@ mod tests {
             reference_count: 0,
             code: "existing-device".to_string(),
             contributor_pk,
-            location_pk,
-            exchange_pk,
+            facility_pk,
+            metro_pk,
             device_type: DeviceType::Hybrid,
             public_ip: [100, 0, 0, 1].into(),
             // This dz_prefix includes 10.1.5.10
@@ -376,8 +376,8 @@ mod tests {
         let res = CreateDeviceCliCommand {
             code: "new-device".to_string(),
             contributor: contributor_pk.to_string(),
-            location: location_pk.to_string(),
-            exchange: exchange_pk.to_string(),
+            facility: facility_pk.to_string(),
+            metro: metro_pk.to_string(),
             device_type: "hybrid".to_string(),
             public_ip: [10, 1, 5, 10].into(), // This is within 10.1.0.0/16
             dz_prefixes: "192.168.0.0/16".parse().unwrap(),
@@ -397,8 +397,8 @@ mod tests {
     fn test_cli_device_create_fails_when_public_ip_conflicts_with_own_dz_prefix() {
         let mut client = create_test_client();
 
-        let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
-        let exchange_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let facility_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let metro_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
 
         client
@@ -415,8 +415,8 @@ mod tests {
         let res = CreateDeviceCliCommand {
             code: "test-device".to_string(),
             contributor: contributor_pk.to_string(),
-            location: location_pk.to_string(),
-            exchange: exchange_pk.to_string(),
+            facility: facility_pk.to_string(),
+            metro: metro_pk.to_string(),
             device_type: "hybrid".to_string(),
             public_ip: [10, 1, 5, 10].into(), // This is within 10.1.0.0/16
             dz_prefixes: "10.1.0.0/16".parse().unwrap(), // Own prefix contains public_ip

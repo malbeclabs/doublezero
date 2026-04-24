@@ -12,9 +12,9 @@ pub struct CreateGeoProbeCliCommand {
     /// Unique probe code (e.g., "ams-probe-01")
     #[arg(long, value_name = "PROBE_CODE", value_parser = validate_code)]
     pub code: String,
-    /// Exchange pubkey or code
-    #[arg(long, value_name = "PROBE_EXCHANGE", value_parser = validate_pubkey_or_code)]
-    pub exchange: String,
+    /// Metro pubkey or code
+    #[arg(long, value_name = "PROBE_METRO", value_parser = validate_pubkey_or_code)]
+    pub metro: String,
     /// Public IPv4 address where probe listens
     #[arg(long)]
     pub public_ip: Ipv4Addr,
@@ -28,13 +28,13 @@ pub struct CreateGeoProbeCliCommand {
 
 impl CreateGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let exchange_pk = client.resolve_exchange_pk(self.exchange)?;
+        let metro_pk = client.resolve_metro_pk(self.metro)?;
         let metrics_publisher_pk: Pubkey = self.signing_pubkey.parse().expect("validated by clap");
 
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
         let (sig, pda) = client.create_geo_probe(CreateGeoProbeCommand {
-            exchange_pk,
+            metro_pk,
             serviceability_globalstate_pk,
             code: self.code,
             public_ip: self.public_ip,
@@ -59,7 +59,7 @@ mod tests {
     fn test_cli_geo_probe_create() {
         let mut client = MockGeoCliCommand::new();
 
-        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let metro_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let metrics_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let svc_gs_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let probe_pda = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
@@ -71,9 +71,9 @@ mod tests {
         ]);
 
         client
-            .expect_resolve_exchange_pk()
-            .with(predicate::eq(exchange_pk.to_string()))
-            .returning(move |_| Ok(exchange_pk));
+            .expect_resolve_metro_pk()
+            .with(predicate::eq(metro_pk.to_string()))
+            .returning(move |_| Ok(metro_pk));
 
         client
             .expect_get_serviceability_globalstate_pk()
@@ -82,7 +82,7 @@ mod tests {
         client
             .expect_create_geo_probe()
             .with(predicate::eq(CreateGeoProbeCommand {
-                exchange_pk,
+                metro_pk,
                 serviceability_globalstate_pk: svc_gs_pk,
                 code: "ams-probe-01".to_string(),
                 public_ip: Ipv4Addr::new(10, 0, 0, 1),
@@ -94,7 +94,7 @@ mod tests {
         let mut output = Vec::new();
         let res = CreateGeoProbeCliCommand {
             code: "ams-probe-01".to_string(),
-            exchange: exchange_pk.to_string(),
+            metro: metro_pk.to_string(),
             public_ip: Ipv4Addr::new(10, 0, 0, 1),
             port: 8923,
             signing_pubkey: metrics_pk.to_string(),

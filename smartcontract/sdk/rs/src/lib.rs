@@ -6,8 +6,8 @@ pub use crate::config::{
 pub use doublezero_serviceability::{
     addresses::*,
     pda::{
-        get_contributor_pda, get_device_pda, get_exchange_pda, get_globalconfig_pda, get_link_pda,
-        get_location_pda, get_multicastgroup_pda, get_permission_pda, get_resource_extension_pda,
+        get_contributor_pda, get_device_pda, get_facility_pda, get_globalconfig_pda, get_link_pda,
+        get_metro_pda, get_multicastgroup_pda, get_permission_pda, get_resource_extension_pda,
         get_tenant_pda, get_topology_pda, get_user_old_pda,
     },
     programversion::ProgramVersion,
@@ -17,14 +17,14 @@ pub use doublezero_serviceability::{
         accounttype::AccountType,
         contributor::{Contributor, ContributorStatus},
         device::{Device, DeviceStatus, DeviceType},
-        exchange::{Exchange, ExchangeStatus, BGP_COMMUNITY_MAX, BGP_COMMUNITY_MIN},
+        facility::{Facility, FacilityStatus},
         globalconfig::GlobalConfig,
         globalstate::GlobalState,
         interface::{
             CurrentInterfaceVersion, Interface, InterfaceStatus, InterfaceType, LoopbackType,
         },
         link::{Link, LinkLinkType, LinkStatus},
-        location::{Location, LocationStatus},
+        metro::{Metro, MetroStatus, BGP_COMMUNITY_MAX, BGP_COMMUNITY_MIN},
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         permission::{Permission, PermissionStatus},
         programconfig::ProgramConfig,
@@ -62,7 +62,7 @@ pub use crate::{
 };
 
 pub use crate::commands::{
+    facility::{create::CreateFacilityCommand, get::GetFacilityCommand},
     globalconfig::get::GetGlobalConfigCommand,
     globalstate::get::GetGlobalStateCommand,
-    location::{create::CreateLocationCommand, get::GetLocationCommand},
 };

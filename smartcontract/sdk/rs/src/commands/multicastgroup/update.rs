@@ -72,7 +72,7 @@ mod tests {
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_location_pda, get_resource_extension_pda},
+        pda::{get_facility_pda, get_globalstate_pda, get_resource_extension_pda},
         processors::multicastgroup::update::MulticastGroupUpdateArgs,
         resource::ResourceType,
         state::{
@@ -88,7 +88,7 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _) = get_facility_pda(&client.get_program_id(), 1);
 
         client
             .expect_execute_transaction()
@@ -164,7 +164,7 @@ mod tests {
             .with(predicate::eq(globalstate_pubkey))
             .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
 
-        let (pda_pubkey, _) = get_location_pda(&program_id, 1);
+        let (pda_pubkey, _) = get_facility_pda(&program_id, 1);
         let (multicast_group_block_ext, _, _) =
             get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
 

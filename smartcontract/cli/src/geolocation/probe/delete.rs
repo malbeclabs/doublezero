@@ -77,7 +77,7 @@ mod tests {
                     GeoProbe {
                         account_type: AccountType::GeoProbe,
                         owner: Pubkey::new_unique(),
-                        exchange_pk: Pubkey::new_unique(),
+                        metro_pk: Pubkey::new_unique(),
                         public_ip: Ipv4Addr::new(10, 0, 0, 1),
                         location_offset_port: 8923,
                         code: "ams-probe-01".to_string(),

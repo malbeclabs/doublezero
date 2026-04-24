@@ -18,8 +18,8 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 pub struct CreateDeviceCommand {
     pub code: String,
     pub contributor_pk: Pubkey,
-    pub location_pk: Pubkey,
-    pub exchange_pk: Pubkey,
+    pub facility_pk: Pubkey,
+    pub metro_pk: Pubkey,
     pub device_type: DeviceType,
     pub public_ip: Ipv4Addr,
     pub dz_prefixes: NetworkV4List,
@@ -47,8 +47,8 @@ impl CreateDeviceCommand {
         let mut accounts = vec![
             AccountMeta::new(pda_pubkey, false),
             AccountMeta::new(self.contributor_pk, false),
-            AccountMeta::new(self.location_pk, false),
-            AccountMeta::new(self.exchange_pk, false),
+            AccountMeta::new(self.facility_pk, false),
+            AccountMeta::new(self.metro_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
         ];
 
@@ -111,10 +111,10 @@ mod tests {
             accountdata::AccountData,
             accounttype::AccountType,
             device::DeviceType,
-            exchange::{Exchange, ExchangeStatus},
+            facility::{Facility, FacilityStatus},
             feature_flags::FeatureFlag,
             globalstate::GlobalState,
-            location::{Location, LocationStatus},
+            metro::{Metro, MetroStatus},
         },
     };
     use mockall::predicate;
@@ -126,35 +126,35 @@ mod tests {
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
-        let location_pubkey = Pubkey::new_unique();
-        let location = Location {
-            account_type: AccountType::Location,
+        let facility_pubkey = Pubkey::new_unique();
+        let facility = Facility {
+            account_type: AccountType::Facility,
             owner: client.get_payer(),
             index: 1,
             bump_seed: 255,
             reference_count: 0,
-            name: "Test Location".to_string(),
+            name: "Test Facility".to_string(),
             country: "UA".to_string(),
             code: "TEST".to_string(),
             lat: 50.4501,
             lng: 30.5234,
             loc_id: 1,
-            status: LocationStatus::Activated,
+            status: FacilityStatus::Activated,
         };
 
         client
             .expect_get()
-            .with(predicate::eq(location_pubkey))
-            .returning(move |_| Ok(AccountData::Location(location.clone())));
+            .with(predicate::eq(facility_pubkey))
+            .returning(move |_| Ok(AccountData::Facility(facility.clone())));
 
-        let exchange_pubkey = Pubkey::new_unique();
-        let exchange = Exchange {
-            account_type: AccountType::Exchange,
+        let metro_pubkey = Pubkey::new_unique();
+        let metro = Metro {
+            account_type: AccountType::Metro,
             owner: client.get_payer(),
             index: 2,
             bump_seed: 255,
             reference_count: 0,
-            name: "Test Location".to_string(),
+            name: "Test Facility".to_string(),
             code: "TEST".to_string(),
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
@@ -162,12 +162,12 @@ mod tests {
             lng: 30.5234,
             bgp_community: 1,
             unused: 0,
-            status: ExchangeStatus::Activated,
+            status: MetroStatus::Activated,
         };
         client
             .expect_get()
-            .with(predicate::eq(exchange_pubkey))
-            .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
+            .with(predicate::eq(metro_pubkey))
+            .returning(move |_| Ok(AccountData::Metro(metro.clone())));
 
         let contributor_pubkey = Pubkey::default();
         let (device_pubkey, _) = get_device_pda(&client.get_program_id(), 1);
@@ -190,8 +190,8 @@ mod tests {
                 predicate::eq(vec![
                     AccountMeta::new(device_pubkey, false),
                     AccountMeta::new(contributor_pubkey, false),
-                    AccountMeta::new(location_pubkey, false),
-                    AccountMeta::new(exchange_pubkey, false),
+                    AccountMeta::new(facility_pubkey, false),
+                    AccountMeta::new(metro_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
                 ]),
             )
@@ -202,8 +202,8 @@ mod tests {
         let command = CreateDeviceCommand {
             code: "Test_Device".to_string(),
             contributor_pk: contributor_pubkey,
-            location_pk: location_pubkey,
-            exchange_pk: exchange_pubkey,
+            facility_pk: facility_pubkey,
+            metro_pk: metro_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [10, 0, 0, 1].into(),
             dz_prefixes: "10.0.0.0/8".parse().unwrap(),
@@ -256,8 +256,8 @@ mod tests {
             .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
 
         let contributor_pubkey = Pubkey::new_unique();
-        let location_pubkey = Pubkey::new_unique();
-        let exchange_pubkey = Pubkey::new_unique();
+        let facility_pubkey = Pubkey::new_unique();
+        let metro_pubkey = Pubkey::new_unique();
         let (device_pubkey, _) = get_device_pda(&program_id, 1);
         let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
         let (tunnel_ids_pda, _, _) =
@@ -283,8 +283,8 @@ mod tests {
                 predicate::eq(vec![
                     AccountMeta::new(device_pubkey, false),
                     AccountMeta::new(contributor_pubkey, false),
-                    AccountMeta::new(location_pubkey, false),
-                    AccountMeta::new(exchange_pubkey, false),
+                    AccountMeta::new(facility_pubkey, false),
+                    AccountMeta::new(metro_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
                     AccountMeta::new(globalconfig_pubkey, false),
                     AccountMeta::new(tunnel_ids_pda, false),
@@ -296,8 +296,8 @@ mod tests {
         let res = CreateDeviceCommand {
             code: "Test_Device".to_string(),
             contributor_pk: contributor_pubkey,
-            location_pk: location_pubkey,
-            exchange_pk: exchange_pubkey,
+            facility_pk: facility_pubkey,
+            metro_pk: metro_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [10, 0, 0, 1].into(),
             dz_prefixes: "10.0.0.0/8".parse().unwrap(),

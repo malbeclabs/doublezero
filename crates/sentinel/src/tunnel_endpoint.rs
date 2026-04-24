@@ -214,11 +214,7 @@ mod tests {
         // we have no way to resolve the implicit endpoint — drop the entry
         // rather than poison the exclude list with UNSPECIFIED.
         let ip_a = [10, 0, 0, 1];
-        let users = vec![make_user(
-            ip_a,
-            Pubkey::new_unique(),
-            Ipv4Addr::UNSPECIFIED,
-        )];
+        let users = vec![make_user(ip_a, Pubkey::new_unique(), Ipv4Addr::UNSPECIFIED)];
         let in_use = in_use_tunnel_endpoints(&users, Ipv4Addr::from(ip_a), &HashMap::new());
         assert!(in_use.is_empty());
     }

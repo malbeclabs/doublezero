@@ -1233,9 +1233,7 @@ mod tests {
         });
 
         dz.expect_create_multicast_publisher()
-            .withf(move |g, u, ep| {
-                *g == group && u.client_ip == Ipv4Addr::from(ip) && *ep == ute
-            })
+            .withf(move |g, u, ep| *g == group && u.client_ip == Ipv4Addr::from(ip) && *ep == ute)
             .times(1)
             .returning(|_, _, _| Ok(()));
 

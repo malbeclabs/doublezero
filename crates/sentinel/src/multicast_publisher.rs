@@ -6,7 +6,13 @@ use std::{
 };
 
 use async_trait::async_trait;
-use solana_client::nonblocking::rpc_client::RpcClient;
+use doublezero_sdk::{AccountData, AccountType, DeviceStatus, UserStatus};
+use solana_account_decoder::UiAccountEncoding;
+use solana_client::{
+    nonblocking::rpc_client::RpcClient,
+    rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
+    rpc_filter::{Memcmp, RpcFilterType},
+};
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     hash::Hash,
@@ -349,13 +355,6 @@ impl RpcMulticastDzLedgerClient {
 #[async_trait]
 impl MulticastDzLedgerClient for RpcMulticastDzLedgerClient {
     async fn fetch_all_dz_users(&self) -> Result<Vec<DzUser>> {
-        use doublezero_sdk::{AccountData, AccountType, UserStatus};
-        use solana_account_decoder::UiAccountEncoding;
-        use solana_client::{
-            rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
-            rpc_filter::{Memcmp, RpcFilterType},
-        };
-
         let user_type_byte = AccountType::User as u8;
         let accounts = self
             .rpc_client
@@ -417,13 +416,6 @@ impl MulticastDzLedgerClient for RpcMulticastDzLedgerClient {
     }
 
     async fn fetch_all_device_endpoints(&self) -> Result<HashMap<Pubkey, DeviceEndpoints>> {
-        use doublezero_sdk::{AccountData, AccountType, DeviceStatus};
-        use solana_account_decoder::UiAccountEncoding;
-        use solana_client::{
-            rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
-            rpc_filter::{Memcmp, RpcFilterType},
-        };
-
         let device_type_byte = AccountType::Device as u8;
         let accounts = self
             .rpc_client

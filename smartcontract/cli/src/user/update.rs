@@ -26,6 +26,9 @@ pub struct UpdateUserCliCommand {
     /// New Validator Pubkey
     #[arg(long, value_parser = validate_pubkey)]
     pub validator_pubkey: Option<String>,
+    /// New Tunnel Endpoint IP address
+    #[arg(long)]
+    pub tunnel_endpoint: Option<Ipv4Addr>,
 }
 
 impl UpdateUserCliCommand {
@@ -46,7 +49,7 @@ impl UpdateUserCliCommand {
                 .map(|s| Pubkey::from_str(&s))
                 .transpose()?,
             tenant_pk: None,
-            tunnel_endpoint: None,
+            tunnel_endpoint: self.tunnel_endpoint,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -132,7 +135,7 @@ mod tests {
                 tunnel_net: Some("10.2.2.3/24".parse().unwrap()),
                 validator_pubkey: None,
                 tenant_pk: None,
-                tunnel_endpoint: None,
+                tunnel_endpoint: Some([1, 2, 3, 4].into()),
             }))
             .returning(move |_| Ok(signature));
 
@@ -144,6 +147,7 @@ mod tests {
             tunnel_id: Some(1),
             tunnel_net: Some("10.2.2.3/24".parse().unwrap()),
             validator_pubkey: None,
+            tunnel_endpoint: Some([1, 2, 3, 4].into()),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

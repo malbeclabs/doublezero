@@ -178,7 +178,7 @@ func TestE2E_ContributorAuth(t *testing.T) {
 		// Create a device under test-co03
 		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 			set -euo pipefail
-			doublezero device create --code test-dev99 --contributor test-co03 --location lax --exchange xlax --public-ip "45.33.100.3" --dz-prefixes "45.33.100.24/29" --mgmt-vrf mgmt --desired-status activated 2>&1
+			doublezero device create --code test-dev99 --contributor test-co03 --facility lax --metro xlax --public-ip "45.33.100.3" --dz-prefixes "45.33.100.24/29" --mgmt-vrf mgmt --desired-status activated 2>&1
 		`})
 		require.NoError(t, err, "failed to create device under test-co03")
 
@@ -230,7 +230,7 @@ func TestE2E_ContributorAuth(t *testing.T) {
 		// Step 5: Create a device under test-co04 (via foundation)
 		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 			set -euo pipefail
-			doublezero device create --code test-dev-co04 --contributor test-co04 --location ewr --exchange xewr --public-ip "45.33.100.4" --dz-prefixes "45.33.100.32/29" --mgmt-vrf mgmt --desired-status activated 2>&1
+			doublezero device create --code test-dev-co04 --contributor test-co04 --facility ewr --metro xewr --public-ip "45.33.100.4" --dz-prefixes "45.33.100.32/29" --mgmt-vrf mgmt --desired-status activated 2>&1
 			doublezero device update --pubkey test-dev-co04 --max-users 128 2>&1
 		`})
 		require.NoError(t, err, "failed to create device under test-co04")

@@ -200,16 +200,16 @@ func getDevices(ctx context.Context, serviceabilityClient *serviceability.Client
 	if err != nil {
 		return nil, fmt.Errorf("failed to get program data: %v", err)
 	}
-	exchanges := make(map[[32]uint8]string)
-	for _, e := range data.Exchanges {
-		exchanges[e.PubKey] = e.Code
+	metros := make(map[[32]uint8]string)
+	for _, e := range data.Metros {
+		metros[e.PubKey] = e.Code
 	}
 	for _, device := range data.Devices {
-		exchangeCode := exchanges[device.ExchangePubKey]
+		metroCode := metros[device.MetroPubKey]
 		devices[device.Code] = &Device{
 			PubKey:                    base58.Encode(device.PubKey[:]),
 			Code:                      device.Code,
-			ExchangeCode:              exchangeCode,
+			MetroCode:                 metroCode,
 			MaxUsers:                  int(device.MaxUsers),
 			UsersCount:                int(device.UsersCount),
 			MaxUnicastUsers:           int(device.MaxUnicastUsers),

@@ -60,8 +60,8 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	log.Debug("==> Creating devices for link test")
 	output, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
-		doublezero device create --code test-dz01 --contributor co01 --location lax --exchange xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.100.8/29" --mgmt-vrf mgmt --desired-status activated 2>&1
-		doublezero device create --code test-dz02 --contributor co01 --location ewr --exchange xewr --public-ip "45.33.100.2" --dz-prefixes "45.33.100.16/29" --mgmt-vrf mgmt --desired-status activated 2>&1
+		doublezero device create --code test-dz01 --contributor co01 --facility lax --metro xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.100.8/29" --mgmt-vrf mgmt --desired-status activated 2>&1
+		doublezero device create --code test-dz02 --contributor co01 --facility ewr --metro xewr --public-ip "45.33.100.2" --dz-prefixes "45.33.100.16/29" --mgmt-vrf mgmt --desired-status activated 2>&1
 		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
 		doublezero device update --pubkey test-dz02 --max-users 128 2>&1
 	`})

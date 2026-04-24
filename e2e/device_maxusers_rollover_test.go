@@ -47,8 +47,8 @@ func TestE2E_DeviceMaxusersRollover(t *testing.T) {
 	deviceCode1 := "nearby-dzd1"
 	device1, err1 := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:     deviceCode1,
-		Location: "lax",
-		Exchange: "xlax",
+		Facility: "lax",
+		Metro:    "xlax",
 		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
@@ -65,8 +65,8 @@ func TestE2E_DeviceMaxusersRollover(t *testing.T) {
 	deviceCode2 := "faraway-dzd1"
 	device2, err2 := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:     deviceCode2,
-		Location: "lax",
-		Exchange: "xlax",
+		Facility: "lax",
+		Metro:    "xlax",
 		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 		CYOANetworkIPHostID:          16,
 		CYOANetworkAllocatablePrefix: 29,

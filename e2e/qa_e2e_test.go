@@ -70,8 +70,8 @@ func TestE2E_QAAgent_UnicastConnectivity(t *testing.T) {
 		defer wg.Done()
 		device1, err := dn.AddDevice(ctx, devnet.DeviceSpec{
 			Code:                         deviceCode1,
-			Location:                     "lax",
-			Exchange:                     "xlax",
+			Facility:                     "lax",
+			Metro:                        "xlax",
 			CYOANetworkIPHostID:          8,
 			CYOANetworkAllocatablePrefix: 29,
 			AdditionalNetworks:           []string{linkNetwork.Name},
@@ -93,8 +93,8 @@ func TestE2E_QAAgent_UnicastConnectivity(t *testing.T) {
 		defer wg.Done()
 		device2, err := dn.AddDevice(ctx, devnet.DeviceSpec{
 			Code:                         deviceCode2,
-			Location:                     "ewr",
-			Exchange:                     "xewr",
+			Facility:                     "ewr",
+			Metro:                        "xewr",
 			CYOANetworkIPHostID:          16,
 			CYOANetworkAllocatablePrefix: 29,
 			AdditionalNetworks:           []string{linkNetwork.Name},
@@ -178,14 +178,14 @@ func TestE2E_QAAgent_UnicastConnectivity(t *testing.T) {
 	// Build devices map from devnet device data for the QA client.
 	devices := map[string]*qa.Device{
 		deviceCode1: {
-			PubKey:       devicePK1,
-			Code:         deviceCode1,
-			ExchangeCode: "xlax",
+			PubKey:    devicePK1,
+			Code:      deviceCode1,
+			MetroCode: "xlax",
 		},
 		deviceCode2: {
-			PubKey:       devicePK2,
-			Code:         deviceCode2,
-			ExchangeCode: "xewr",
+			PubKey:    devicePK2,
+			Code:      deviceCode2,
+			MetroCode: "xewr",
 		},
 	}
 
@@ -240,14 +240,14 @@ func TestE2E_QAAgent_UnicastConnectivity(t *testing.T) {
 			if err != nil {
 				return nil, false
 			}
-			if otherDevice.ExchangeCode == device.ExchangeCode {
+			if otherDevice.MetroCode == device.MetroCode {
 				return nil, false
 			}
 			return other.PublicIP(), true
 		}))
 		require.NoError(t, err)
 	}
-	log.Debug("--> Cross-exchange routes installed")
+	log.Debug("--> Cross-metro routes installed")
 
 	// Test ping connectivity between clients.
 	log.Debug("==> Testing unicast connectivity")
@@ -322,8 +322,8 @@ func TestE2E_QAAgent_MultiTunnelConnectivity(t *testing.T) {
 		var addErr error
 		device1, addErr = dn.AddDevice(ctx, devnet.DeviceSpec{
 			Code:                         deviceCode1,
-			Location:                     "lax",
-			Exchange:                     "xlax",
+			Facility:                     "lax",
+			Metro:                        "xlax",
 			CYOANetworkIPHostID:          8,
 			CYOANetworkAllocatablePrefix: 29,
 			AdditionalNetworks:           []string{linkNetwork.Name},
@@ -346,8 +346,8 @@ func TestE2E_QAAgent_MultiTunnelConnectivity(t *testing.T) {
 		var addErr error
 		device2, addErr = dn.AddDevice(ctx, devnet.DeviceSpec{
 			Code:                         deviceCode2,
-			Location:                     "ewr",
-			Exchange:                     "xewr",
+			Facility:                     "ewr",
+			Metro:                        "xewr",
 			CYOANetworkIPHostID:          16,
 			CYOANetworkAllocatablePrefix: 29,
 			AdditionalNetworks:           []string{linkNetwork.Name},
@@ -441,14 +441,14 @@ func TestE2E_QAAgent_MultiTunnelConnectivity(t *testing.T) {
 	// Build devices map from devnet device data for the QA client.
 	devices := map[string]*qa.Device{
 		deviceCode1: {
-			PubKey:       devicePK1,
-			Code:         deviceCode1,
-			ExchangeCode: "xlax",
+			PubKey:    devicePK1,
+			Code:      deviceCode1,
+			MetroCode: "xlax",
 		},
 		deviceCode2: {
-			PubKey:       devicePK2,
-			Code:         deviceCode2,
-			ExchangeCode: "xewr",
+			PubKey:    devicePK2,
+			Code:      deviceCode2,
+			MetroCode: "xewr",
 		},
 	}
 
@@ -588,14 +588,14 @@ func TestE2E_QAAgent_MultiTunnelConnectivity(t *testing.T) {
 			if err != nil {
 				return nil, false
 			}
-			if otherDevice.ExchangeCode == device.ExchangeCode {
+			if otherDevice.MetroCode == device.MetroCode {
 				return nil, false
 			}
 			return other.PublicIP(), true
 		}))
 		require.NoError(t, err)
 	}
-	log.Debug("--> Cross-exchange routes installed")
+	log.Debug("--> Cross-metro routes installed")
 
 	log.Debug("==> Testing unicast connectivity")
 	_, err = qaClient1.TestUnicastConnectivity(t, ctx, qaClient2, nil, nil)

@@ -100,8 +100,8 @@ func TestE2E_DeviceStress(t *testing.T) {
 	device2Spec := devnet.DeviceSpec{
 		ContainerImage:      os.Getenv("DZ_DEVICE_IMAGE"),
 		Code:                "dz2-" + random.ShortID(),
-		Location:            "lax",
-		Exchange:            "xlax",
+		Facility:            "lax",
+		Metro:               "xlax",
 		CYOANetworkIPHostID: 3,
 		LoopbackInterfaces: map[string]string{
 			"Loopback255": "vpnv4",
@@ -185,7 +185,7 @@ func TestE2E_DeviceStress(t *testing.T) {
 
 		// Alternate clients between devices to enable cross-exchange communication
 		selectedDevice := devices[i%2]
-		log.Debug(fmt.Sprintf("Client %d will connect to device %s (exchange: %s)", i+1, selectedDevice.Spec.Code, selectedDevice.Spec.Exchange))
+		log.Debug(fmt.Sprintf("Client %d will connect to device %s (metro: %s)", i+1, selectedDevice.Spec.Code, selectedDevice.Spec.Metro))
 		connectClientWithRetry(t, i, client, selectedDevice, log)
 
 		cm.connectedAt = time.Now()
@@ -288,8 +288,8 @@ func setupDevice(t *testing.T, dn *devnet.Devnet, log *slog.Logger) *devnet.Devi
 	deviceSpec := devnet.DeviceSpec{
 		ContainerImage:      os.Getenv("DZ_DEVICE_IMAGE"),
 		Code:                "dz-" + random.ShortID(),
-		Location:            "ewr",
-		Exchange:            "xewr",
+		Facility:            "ewr",
+		Metro:               "xewr",
 		CYOANetworkIPHostID: 2,
 		LoopbackInterfaces: map[string]string{
 			"Loopback255": "vpnv4",

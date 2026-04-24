@@ -63,7 +63,7 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 	output, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
 		echo "==> Creating device"
-		doublezero device create --code test-dz01 --contributor co01 --location lax --exchange xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.100.8/29" --mgmt-vrf mgmt --desired-status activated 2>&1
+		doublezero device create --code test-dz01 --contributor co01 --facility lax --metro xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.100.8/29" --mgmt-vrf mgmt --desired-status activated 2>&1
 		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
 		doublezero device interface create test-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
 		doublezero device interface create test-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
@@ -434,9 +434,9 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 	log.Debug("==> Creating devices for multi-link test")
 	output, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
-		doublezero device create --code test-dz01 --contributor co01 --location lax --exchange xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.100.8/29" --mgmt-vrf mgmt --desired-status activated 2>&1
-		doublezero device create --code test-dz02 --contributor co01 --location ewr --exchange xewr --public-ip "45.33.100.2" --dz-prefixes "45.33.100.16/29" --mgmt-vrf mgmt --desired-status activated 2>&1
-		doublezero device create --code test-dz03 --contributor co01 --location lhr --exchange xlhr --public-ip "45.33.100.3" --dz-prefixes "45.33.100.24/29" --mgmt-vrf mgmt --desired-status activated 2>&1
+		doublezero device create --code test-dz01 --contributor co01 --facility lax --metro xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.100.8/29" --mgmt-vrf mgmt --desired-status activated 2>&1
+		doublezero device create --code test-dz02 --contributor co01 --facility ewr --metro xewr --public-ip "45.33.100.2" --dz-prefixes "45.33.100.16/29" --mgmt-vrf mgmt --desired-status activated 2>&1
+		doublezero device create --code test-dz03 --contributor co01 --facility lhr --metro xlhr --public-ip "45.33.100.3" --dz-prefixes "45.33.100.24/29" --mgmt-vrf mgmt --desired-status activated 2>&1
 		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
 		doublezero device update --pubkey test-dz02 --max-users 128 2>&1
 		doublezero device update --pubkey test-dz03 --max-users 128 2>&1
@@ -636,8 +636,8 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 	log.Debug("==> Adding device to devnet for multicast test")
 	device, err := dn.AddDevice(ctx, devnet.DeviceSpec{
 		Code:     "test-dz01",
-		Location: "lax",
-		Exchange: "xlax",
+		Facility: "lax",
+		Metro:    "xlax",
 		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
@@ -986,7 +986,7 @@ func TestE2E_LoopbackInterface_AllocationLifecycle(t *testing.T) {
 	log.Debug("==> Creating device without loopback interfaces")
 	output, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
-		doublezero device create --code test-dz01 --contributor co01 --location lax --exchange xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.100.8/29" --mgmt-vrf mgmt --desired-status activated 2>&1
+		doublezero device create --code test-dz01 --contributor co01 --facility lax --metro xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.100.8/29" --mgmt-vrf mgmt --desired-status activated 2>&1
 		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
 	`})
 	log.Debug("Device creation output", "output", string(output))

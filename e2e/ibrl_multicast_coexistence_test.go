@@ -390,8 +390,8 @@ func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, 
 	log.Debug("==> Adding device ny5-dz01")
 	device, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:                         "ny5-dz01",
-		Location:                     "ewr",
-		Exchange:                     "xewr",
+		Facility:                     "ewr",
+		Metro:                        "xewr",
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
 	})
@@ -402,8 +402,8 @@ func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, 
 	log.Debug("==> Adding device pit-dz01")
 	mcastDevice, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:                         "pit-dz01",
-		Location:                     "pit",
-		Exchange:                     "xpit",
+		Facility:                     "pit",
+		Metro:                        "xpit",
 		CYOANetworkIPHostID:          16,
 		CYOANetworkAllocatablePrefix: 29,
 	})
@@ -691,8 +691,8 @@ func setupCoexistenceTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *
 	log.Debug("==> Adding device ny5-dz01")
 	device, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:     "ny5-dz01",
-		Location: "ewr",
-		Exchange: "xewr",
+		Facility: "ewr",
+		Metro:    "xewr",
 		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
@@ -704,7 +704,7 @@ func setupCoexistenceTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *
 	log.Debug("==> Creating additional devices onchain")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -euo pipefail
-		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
+		doublezero device create --code pit-dzd01 --contributor co01 --facility pit --metro xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
 		doublezero device interface create ny5-dz01 "Ethernet2" --bandwidth 10G -w
 		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
 		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w

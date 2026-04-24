@@ -83,7 +83,7 @@ func FindMulticastStatus(statuses []*pb.Status) *pb.Status {
 type Device struct {
 	PubKey                    string
 	Code                      string
-	ExchangeCode              string
+	MetroCode                 string
 	MaxUsers                  int
 	UsersCount                int
 	MaxUnicastUsers           int

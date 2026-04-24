@@ -16,8 +16,8 @@ func NewAddDeviceCmd() *AddDeviceCmd {
 
 func (c *AddDeviceCmd) Command() *cobra.Command {
 	var code string
-	var location string
-	var exchange string
+	var facility string
+	var metro string
 	var cyoaNetworkHostID uint32
 	var cyoaNetworkAllocatablePrefix uint32
 	var additionalNetworksShortNames []string
@@ -43,8 +43,8 @@ func (c *AddDeviceCmd) Command() *cobra.Command {
 
 			_, err = dn.AddDevice(ctx, devnet.DeviceSpec{
 				Code:                         code,
-				Location:                     location,
-				Exchange:                     exchange,
+				Facility:                     facility,
+				Metro:                        metro,
 				CYOANetworkIPHostID:          cyoaNetworkHostID,
 				CYOANetworkAllocatablePrefix: cyoaNetworkAllocatablePrefix,
 				Telemetry: devnet.DeviceTelemetrySpec{
@@ -70,14 +70,14 @@ func (c *AddDeviceCmd) Command() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&code, "code", "", "Device code")
-	cmd.Flags().StringVar(&location, "location", "", "Device location")
-	cmd.Flags().StringVar(&exchange, "exchange", "", "Device exchange")
+	cmd.Flags().StringVar(&facility, "facility", "", "Device facility")
+	cmd.Flags().StringVar(&metro, "metro", "", "Device metro")
 	cmd.Flags().Uint32Var(&cyoaNetworkHostID, "cyoa-network-host-id", 0, "CYOA network host ID; if the subnet CIDR prefix is 24 (default), this represents the last octet of the IP address")
 	cmd.Flags().Uint32Var(&cyoaNetworkAllocatablePrefix, "cyoa-network-allocatable-prefix", 0, "CYOA network allocatable prefix; the prefix length of the block of IPs that are available for allocation to clients for this device in the CYOA subnet (default 29)")
 	cmd.Flags().StringSliceVar(&additionalNetworksShortNames, "additional-networks", []string{}, "Additional docker networks for this device")
 	_ = cmd.MarkFlagRequired("code")
-	_ = cmd.MarkFlagRequired("location")
-	_ = cmd.MarkFlagRequired("exchange")
+	_ = cmd.MarkFlagRequired("facility")
+	_ = cmd.MarkFlagRequired("metro")
 	_ = cmd.MarkFlagRequired("cyoa-network-host-id")
 
 	return cmd

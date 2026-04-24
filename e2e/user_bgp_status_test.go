@@ -59,8 +59,8 @@ func TestE2E_UserBGPStatus(t *testing.T) {
 
 	device, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:               "dz1",
-		Location:           "ewr",
-		Exchange:           "xewr",
+		Facility:           "ewr",
+		Metro:              "xewr",
 		MetricsPublisherPK: telemetryKeypairPK.String(),
 		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 		CYOANetworkIPHostID:          8,

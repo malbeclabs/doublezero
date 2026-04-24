@@ -64,8 +64,8 @@ func TestE2E_MultiTenantVRF(t *testing.T) {
 
 		device1, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 			Code:                         deviceCode1,
-			Location:                     "lax",
-			Exchange:                     "xlax",
+			Facility:                     "lax",
+			Metro:                        "xlax",
 			CYOANetworkIPHostID:          8,
 			CYOANetworkAllocatablePrefix: 29,
 			AdditionalNetworks:           []string{linkNetwork.Name},
@@ -83,8 +83,8 @@ func TestE2E_MultiTenantVRF(t *testing.T) {
 
 		device2, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 			Code:                         deviceCode2,
-			Location:                     "ewr",
-			Exchange:                     "xewr",
+			Facility:                     "ewr",
+			Metro:                        "xewr",
 			CYOANetworkIPHostID:          16,
 			CYOANetworkAllocatablePrefix: 29,
 			AdditionalNetworks:           []string{linkNetwork.Name},
@@ -451,8 +451,8 @@ func TestE2E_TenantDeletionLifecycle(t *testing.T) {
 	deviceCode := "la2-dz01"
 	device, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:                         deviceCode,
-		Location:                     "lax",
-		Exchange:                     "xlax",
+		Facility:                     "lax",
+		Metro:                        "xlax",
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
 		LoopbackInterfaces:           map[string]string{"Loopback255": "vpnv4", "Loopback256": "ipv4"},

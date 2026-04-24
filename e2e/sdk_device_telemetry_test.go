@@ -57,10 +57,10 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
 
-		doublezero device create --code la2-dz01 --contributor co01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "207.45.216.136/30,200.12.12.12/29" --metrics-publisher ` + la2DeviceAgentPrivateKey.PublicKey().String() + ` --mgmt-vrf mgmt
-		doublezero device create --code ny5-dz01 --contributor co01 --location ewr --exchange xewr --public-ip "207.45.21.134" --dz-prefixes "200.12.12.12/29" --metrics-publisher ` + ny5DeviceAgentPrivateKey.PublicKey().String() + ` --mgmt-vrf mgmt
-		doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.80/29" --mgmt-vrf mgmt
-		doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.96/29" --mgmt-vrf mgmt
+		doublezero device create --code la2-dz01 --contributor co01 --facility lax --metro xlax --public-ip "207.45.216.134" --dz-prefixes "207.45.216.136/30,200.12.12.12/29" --metrics-publisher ` + la2DeviceAgentPrivateKey.PublicKey().String() + ` --mgmt-vrf mgmt
+		doublezero device create --code ny5-dz01 --contributor co01 --facility ewr --metro xewr --public-ip "207.45.21.134" --dz-prefixes "200.12.12.12/29" --metrics-publisher ` + ny5DeviceAgentPrivateKey.PublicKey().String() + ` --mgmt-vrf mgmt
+		doublezero device create --code ld4-dz01 --contributor co01 --facility lhr --metro xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.80/29" --mgmt-vrf mgmt
+		doublezero device create --code frk-dz01 --contributor co01 --facility fra --metro xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.96/29" --mgmt-vrf mgmt
 
 		doublezero device update --pubkey ld4-dz01 --max-users 128 --desired-status activated
 		doublezero device update --pubkey ny5-dz01 --max-users 128 --desired-status activated

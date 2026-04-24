@@ -70,7 +70,7 @@ func validateUnicastConnectivity(t *testing.T, ctx context.Context, log *slog.Lo
 			if err != nil {
 				return nil, false
 			}
-			if other.Host == c.Host || otherDevice.ExchangeCode == device.ExchangeCode {
+			if other.Host == c.Host || otherDevice.MetroCode == device.MetroCode {
 				return nil, false
 			}
 			return other.PublicIP(), true

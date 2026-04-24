@@ -937,8 +937,8 @@ func runReadWorkflows(
 		{name: "user_list", cmd: cli + " user list"},
 		{name: "multicast_group_list", cmd: cli + " multicast group list"},
 		{name: "global_config_get", cmd: cli + " global-config get"},
-		{name: "location_list", cmd: cli + " location list"},
-		{name: "exchange_list", cmd: cli + " exchange list"},
+		{name: "facility_list", cmd: cli + " location list"},
+		{name: "metro_list", cmd: cli + " exchange list"},
 		{name: "contributor_list", cmd: cli + " contributor list"},
 		{name: "accesspass_list", cmd: cli + " access-pass list"},
 	}
@@ -983,8 +983,8 @@ func runWriteWorkflows(
 ) {
 	suffix := strings.ReplaceAll(version, ".", "")
 	contributorCode := "ct" + suffix
-	locationCode := "lc" + suffix
-	exchangeCode := "ex" + suffix
+	facilityCode := "lc" + suffix
+	metroCode := "ex" + suffix
 	deviceCode := "dv" + suffix
 	deviceCode2 := "d2" + suffix
 	ifaceName := "Ethernet1"
@@ -1131,23 +1131,23 @@ func runWriteWorkflows(
 		// Foundation creates use counter-based PDA derivation — must be sequential.
 		{name: "create_foundation", parallel: false, steps: []writeStep{
 			{name: "contributor_create", cmd: cli + " contributor create --code " + contributorCode + " --owner me"},
-			{name: "location_create", cmd: cli + " location create --code " + locationCode + " --name TestLoc --country US --lat 40.7 --lng -74.0"},
-			{name: "exchange_create", cmd: cli + " exchange create --code " + exchangeCode + " --name TestExchange --lat 40.7 --lng -74.0"},
+			{name: "facility_create", cmd: cli + " location create --code " + facilityCode + " --name TestLoc --country US --lat 40.7 --lng -74.0"},
+			{name: "metro_create", cmd: cli + " exchange create --code " + metroCode + " --name TestExchange --lat 40.7 --lng -74.0"},
 		}},
 
 		// Device creates use counter-based PDA derivation — must be sequential.
 		{name: "create_devices", parallel: false, steps: []writeStep{
 			{name: "device_create", cmd: cli + " device create --code " + deviceCode +
 				" --contributor " + contributorCode +
-				" --location " + locationCode +
-				" --exchange " + exchangeCode +
+				" --facility " + facilityCode +
+				" --metro " + metroCode +
 				fmt.Sprintf(" --public-ip 45.133.1.%d", 10+vi) +
 				fmt.Sprintf(" --dz-prefixes 45.133.%d.0/30", 10+vi) +
 				" --mgmt-vrf default"},
 			{name: "device_create_2", cmd: cli + " device create --code " + deviceCode2 +
 				" --contributor " + contributorCode +
-				" --location " + locationCode +
-				" --exchange " + exchangeCode +
+				" --facility " + facilityCode +
+				" --metro " + metroCode +
 				fmt.Sprintf(" --public-ip 45.133.1.%d", 110+vi) +
 				fmt.Sprintf(" --dz-prefixes 45.133.%d.128/30", 10+vi) +
 				" --mgmt-vrf default"},
@@ -1163,7 +1163,7 @@ func runWriteWorkflows(
 				" --health ready-for-users", noCascade: true},
 			{name: "device_set_health_2", cmd: cli + " device set-health --pubkey " + deviceCode2 +
 				" --health ready-for-users", noCascade: true},
-			{name: "exchange_set_device", cmd: cli + " exchange set-device --pubkey " + exchangeCode +
+			{name: "metro_set_device", cmd: cli + " exchange set-device --pubkey " + metroCode +
 				" --device1 " + deviceCode + " --device2 " + deviceCode2, noCascade: true},
 		}},
 
@@ -1266,20 +1266,20 @@ func runWriteWorkflows(
 
 		// All update and get commands are independent reads/writes on existing entities.
 		{name: "updates_and_verify", parallel: true, steps: []writeStep{
-			{name: "location_update", cmd: cli + " location update --pubkey " + locationCode + " --name TestLocUpdated"},
-			{name: "exchange_update", cmd: cli + " exchange update --pubkey " + exchangeCode + " --name TestExchangeUpdated"},
+			{name: "facility_update", cmd: cli + " location update --pubkey " + facilityCode + " --name TestLocUpdated"},
+			{name: "metro_update", cmd: cli + " exchange update --pubkey " + metroCode + " --name TestExchangeUpdated"},
 			{name: "contributor_update", cmd: cli + " contributor update --pubkey " + lookupPubkeyByCode("contributor list", contributorCode) + " --owner " + managerPubkey},
 			{name: "device_update", cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode) + " --code " + deviceCode +
 				fmt.Sprintf(" --public-ip 45.133.2.%d", 10+vi)},
-			{name: "cloned_location_update", cmd: cli + " location update --pubkey " + lookupFirstPubkey("location list") + " --name ClonedLocUpdated"},
-			{name: "cloned_exchange_update", cmd: cli + " exchange update --pubkey " + lookupFirstPubkey("exchange list") + " --name ClonedExUpdated"},
+			{name: "cloned_facility_update", cmd: cli + " location update --pubkey " + lookupFirstPubkey("facility list") + " --name ClonedLocUpdated"},
+			{name: "cloned_metro_update", cmd: cli + " exchange update --pubkey " + lookupFirstPubkey("metro list") + " --name ClonedExUpdated"},
 			{name: "device_list_verify", cmd: cli + " device list"},
 			{name: "link_list_verify", cmd: cli + " link list"},
 			{name: "contributor_get", cmd: cli + " contributor get --code " + contributorCode, noCascade: true},
 			{name: "device_get", cmd: cli + " device get --code " + deviceCode, noCascade: true},
-			{name: "exchange_get", cmd: cli + " exchange get --code " + exchangeCode, noCascade: true},
+			{name: "metro_get", cmd: cli + " exchange get --code " + metroCode, noCascade: true},
 			{name: "link_get", cmd: cli + " link get --code " + linkCode, noCascade: true},
-			{name: "location_get", cmd: cli + " location get --code " + locationCode, noCascade: true},
+			{name: "facility_get", cmd: cli + " location get --code " + facilityCode, noCascade: true},
 			{name: "multicast_group_get", cmd: cli + " multicast group get --code " + multicastCode, noCascade: true},
 			{name: "user_get", cmd: cli + " user get --pubkey " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP), noCascade: true},
@@ -1346,11 +1346,11 @@ func runWriteWorkflows(
 			{name: "device_interface_delete_4", cmd: cli + " device interface delete " + deviceCode2 + " " + ifaceName2},
 		}},
 
-		// Wait for interfaces to be removed + clear exchange device refs.
+		// Wait for interfaces to be removed + clear metro device refs.
 		{name: "wait_interfaces_removed", parallel: true, steps: []writeStep{
 			{name: "iface_wait_removed", cmd: `for i in $(seq 1 30); do count=$(doublezero device interface list ` + deviceCode + ` 2>/dev/null | tail -n +2 | wc -l); [ "$count" -eq 0 ] && exit 0; sleep 1; done; echo "interfaces not removed after 30s"; exit 1`},
 			{name: "iface_wait_removed_2", cmd: `for i in $(seq 1 30); do count=$(doublezero device interface list ` + deviceCode2 + ` 2>/dev/null | tail -n +2 | wc -l); [ "$count" -eq 0 ] && exit 0; sleep 1; done; echo "interfaces not removed after 30s"; exit 1`},
-			{name: "exchange_clear_devices", cmd: cli + " exchange set-device --pubkey " + exchangeCode, noCascade: true},
+			{name: "metro_clear_devices", cmd: cli + " exchange set-device --pubkey " + metroCode, noCascade: true},
 		}},
 
 		// Drain both devices before deletion (delete not allowed from Activated).
@@ -1379,9 +1379,9 @@ func runWriteWorkflows(
 
 		// Delete infrastructure entities — all independent.
 		{name: "delete_infrastructure", parallel: true, steps: []writeStep{
-			{name: "exchange_delete", cmd: cli + " exchange delete --pubkey " + exchangeCode},
+			{name: "metro_delete", cmd: cli + " exchange delete --pubkey " + metroCode},
 			{name: "contributor_delete", cmd: cli + " contributor delete --pubkey " + lookupPubkeyByCode("contributor list", contributorCode)},
-			{name: "location_delete", cmd: cli + " location delete --pubkey " + locationCode},
+			{name: "facility_delete", cmd: cli + " location delete --pubkey " + facilityCode},
 		}},
 	}
 

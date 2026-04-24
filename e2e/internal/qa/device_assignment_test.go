@@ -11,9 +11,9 @@ func TestAssignDevicesToClients(t *testing.T) {
 
 	t.Run("assigns to client with fewest devices when multiple have low latency", func(t *testing.T) {
 		devices := []*Device{
-			{Code: "dev1", ExchangeCode: "ex1"},
-			{Code: "dev2", ExchangeCode: "ex2"},
-			{Code: "dev3", ExchangeCode: "ex3"},
+			{Code: "dev1", MetroCode: "ex1"},
+			{Code: "dev2", MetroCode: "ex2"},
+			{Code: "dev3", MetroCode: "ex3"},
 		}
 		clients := []*Client{
 			{Host: "client1"},
@@ -46,7 +46,7 @@ func TestAssignDevicesToClients(t *testing.T) {
 
 	t.Run("assigns to client with lowest latency when none below threshold", func(t *testing.T) {
 		devices := []*Device{
-			{Code: "dev1", ExchangeCode: "ex1"},
+			{Code: "dev1", MetroCode: "ex1"},
 		}
 		clients := []*Client{
 			{Host: "client1"},
@@ -70,7 +70,7 @@ func TestAssignDevicesToClients(t *testing.T) {
 
 	t.Run("assigns to single low-latency client even when another has higher latency", func(t *testing.T) {
 		devices := []*Device{
-			{Code: "dev1", ExchangeCode: "ex1"},
+			{Code: "dev1", MetroCode: "ex1"},
 		}
 		clients := []*Client{
 			{Host: "client1"},
@@ -94,9 +94,9 @@ func TestAssignDevicesToClients(t *testing.T) {
 
 	t.Run("pads device lists to equal length", func(t *testing.T) {
 		devices := []*Device{
-			{Code: "dev1", ExchangeCode: "ex1"},
-			{Code: "dev2", ExchangeCode: "ex2"},
-			{Code: "dev3", ExchangeCode: "ex3"},
+			{Code: "dev1", MetroCode: "ex1"},
+			{Code: "dev2", MetroCode: "ex2"},
+			{Code: "dev3", MetroCode: "ex3"},
 		}
 		clients := []*Client{
 			{Host: "client1"},
@@ -123,9 +123,9 @@ func TestAssignDevicesToClients(t *testing.T) {
 
 	t.Run("allocate-addr clients isolated from all other clients", func(t *testing.T) {
 		devices := []*Device{
-			{Code: "dev1", ExchangeCode: "ex1"},
-			{Code: "dev2", ExchangeCode: "ex1"}, // same exchange as dev1
-			{Code: "dev3", ExchangeCode: "ex2"},
+			{Code: "dev1", MetroCode: "ex1"},
+			{Code: "dev2", MetroCode: "ex1"}, // same metro as dev1
+			{Code: "dev3", MetroCode: "ex2"},
 		}
 		clients := []*Client{
 			{Host: "client1"}, // allocate-addr
@@ -139,28 +139,28 @@ func TestAssignDevicesToClients(t *testing.T) {
 
 		result := AssignDevicesToClients(devices, clients, latencies, allocateAddrHosts, noShuffle)
 
-		// Verify no exchange overlap between client1 and client2
-		client1Exchanges := make(map[string]bool)
-		client2Exchanges := make(map[string]bool)
+		// Verify no metro overlap between client1 and client2
+		client1Metros := make(map[string]bool)
+		client2Metros := make(map[string]bool)
 		for _, batch := range result {
 			if a := batch["client1"]; a != nil {
-				client1Exchanges[a.Device.ExchangeCode] = true
+				client1Metros[a.Device.MetroCode] = true
 			}
 			if a := batch["client2"]; a != nil {
-				client2Exchanges[a.Device.ExchangeCode] = true
+				client2Metros[a.Device.MetroCode] = true
 			}
 		}
-		for ex := range client1Exchanges {
-			if client2Exchanges[ex] {
-				t.Errorf("exchange %s shared between allocate-addr client1 and client2", ex)
+		for ex := range client1Metros {
+			if client2Metros[ex] {
+				t.Errorf("metro %s shared between allocate-addr client1 and client2", ex)
 			}
 		}
 	})
 
-	t.Run("two allocate-addr clients get separate exchanges", func(t *testing.T) {
+	t.Run("two allocate-addr clients get separate metros", func(t *testing.T) {
 		devices := []*Device{
-			{Code: "dev1", ExchangeCode: "ex1"},
-			{Code: "dev2", ExchangeCode: "ex2"},
+			{Code: "dev1", MetroCode: "ex1"},
+			{Code: "dev2", MetroCode: "ex2"},
 		}
 		clients := []*Client{
 			{Host: "client1"},
@@ -174,28 +174,28 @@ func TestAssignDevicesToClients(t *testing.T) {
 
 		result := AssignDevicesToClients(devices, clients, latencies, allocateAddrHosts, noShuffle)
 
-		// Each client should have a different exchange
-		client1Exchanges := make(map[string]bool)
-		client2Exchanges := make(map[string]bool)
+		// Each client should have a different metro
+		client1Metros := make(map[string]bool)
+		client2Metros := make(map[string]bool)
 		for _, batch := range result {
 			if a := batch["client1"]; a != nil {
-				client1Exchanges[a.Device.ExchangeCode] = true
+				client1Metros[a.Device.MetroCode] = true
 			}
 			if a := batch["client2"]; a != nil {
-				client2Exchanges[a.Device.ExchangeCode] = true
+				client2Metros[a.Device.MetroCode] = true
 			}
 		}
-		for ex := range client1Exchanges {
-			if client2Exchanges[ex] {
-				t.Errorf("exchange %s shared between two allocate-addr clients", ex)
+		for ex := range client1Metros {
+			if client2Metros[ex] {
+				t.Errorf("metro %s shared between two allocate-addr clients", ex)
 			}
 		}
 	})
 }
 
 func TestDetermineClientsToConnect(t *testing.T) {
-	dev1 := &Device{Code: "dev1", ExchangeCode: "ex1"}
-	dev2 := &Device{Code: "dev2", ExchangeCode: "ex2"}
+	dev1 := &Device{Code: "dev1", MetroCode: "ex1"}
+	dev2 := &Device{Code: "dev2", MetroCode: "ex2"}
 	client1 := &Client{Host: "client1"}
 	client2 := &Client{Host: "client2"}
 	clients := []*Client{client1, client2}
@@ -355,8 +355,8 @@ func TestDetermineClientsToConnect(t *testing.T) {
 }
 
 func TestFilterStatusUpClients(t *testing.T) {
-	dev1 := &Device{Code: "dev1", ExchangeCode: "ex1"}
-	dev2 := &Device{Code: "dev2", ExchangeCode: "ex2"}
+	dev1 := &Device{Code: "dev1", MetroCode: "ex1"}
+	dev2 := &Device{Code: "dev2", MetroCode: "ex2"}
 	client1 := &Client{Host: "client1"}
 	client2 := &Client{Host: "client2"}
 	client3 := &Client{Host: "client3"}
@@ -443,9 +443,9 @@ func TestFilterStatusUpClients(t *testing.T) {
 }
 
 func TestComputeRouteTargets(t *testing.T) {
-	dev1 := &Device{Code: "dev1", ExchangeCode: "ex1"}
-	dev2 := &Device{Code: "dev2", ExchangeCode: "ex2"}
-	dev3 := &Device{Code: "dev3", ExchangeCode: "ex1"} // same exchange as dev1
+	dev1 := &Device{Code: "dev1", MetroCode: "ex1"}
+	dev2 := &Device{Code: "dev2", MetroCode: "ex2"}
+	dev3 := &Device{Code: "dev3", MetroCode: "ex1"} // same metro as dev1
 	client1 := &Client{Host: "client1"}
 	client2 := &Client{Host: "client2"}
 	client3 := &Client{Host: "client3"}
@@ -462,7 +462,7 @@ func TestComputeRouteTargets(t *testing.T) {
 		return nil
 	}
 
-	t.Run("returns IPs of clients in different exchanges", func(t *testing.T) {
+	t.Run("returns IPs of clients in different metros", func(t *testing.T) {
 		batch := map[string]*BatchResult{
 			"client1": {Device: dev1}, // ex1
 			"client2": {Device: dev2}, // ex2
@@ -495,7 +495,7 @@ func TestComputeRouteTargets(t *testing.T) {
 		}
 	})
 
-	t.Run("excludes clients in same exchange", func(t *testing.T) {
+	t.Run("excludes clients in same metro", func(t *testing.T) {
 		batch := map[string]*BatchResult{
 			"client1": {Device: dev1}, // ex1
 			"client2": {Device: dev2}, // ex2

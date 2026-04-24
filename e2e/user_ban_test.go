@@ -65,8 +65,8 @@ func TestE2E_UserBan(t *testing.T) {
 		// Add la2-dz01 device in xlax exchange.
 		device1, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 			Code:     deviceCode1,
-			Location: "lax",
-			Exchange: "xlax",
+			Facility: "lax",
+			Metro:    "xlax",
 			// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 			CYOANetworkIPHostID:          8,
 			CYOANetworkAllocatablePrefix: 29,
@@ -91,8 +91,8 @@ func TestE2E_UserBan(t *testing.T) {
 		// Add ny5-dz01 device in xewr exchange.
 		device2, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 			Code:     deviceCode2,
-			Location: "ewr",
-			Exchange: "xewr",
+			Facility: "ewr",
+			Metro:    "xewr",
 			// .16/29 has network address .16, allocatable up to .22, and broadcast .23
 			CYOANetworkIPHostID:          16,
 			CYOANetworkAllocatablePrefix: 29,

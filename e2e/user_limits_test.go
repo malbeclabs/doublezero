@@ -80,7 +80,7 @@ func TestE2E_UserLimits(t *testing.T) {
 	dzPrefix := dzPrefixBytes.String() + "/29"
 
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c",
-		"doublezero device create --contributor co01 --code " + deviceCode + " --location lax --exchange xlax --public-ip " + publicIP.String() + " --dz-prefixes " + dzPrefix + " --mgmt-vrf mgmt"})
+		"doublezero device create --contributor co01 --code " + deviceCode + " --facility lax --metro xlax --public-ip " + publicIP.String() + " --dz-prefixes " + dzPrefix + " --mgmt-vrf mgmt"})
 	require.NoError(t, err)
 
 	// Get device pubkey

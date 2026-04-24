@@ -103,7 +103,7 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 	_, err = linkNetwork.CreateIfNotExists(t.Context())
 	require.NoError(t, err)
 
-	// Add 2 devices in parallel at the same exchange (xams).
+	// Add 2 devices in parallel at the same metro (xams).
 	var (
 		dz1TelemetryKeypairPK solana.PublicKey
 		dz2TelemetryKeypairPK solana.PublicKey
@@ -121,8 +121,8 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 
 		_, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 			Code:                         "ams-dz01",
-			Location:                     "ams",
-			Exchange:                     "xams",
+			Facility:                     "ams",
+			Metro:                        "xams",
 			MetricsPublisherPK:           dz1TelemetryKeypairPK.String(),
 			CYOANetworkIPHostID:          8,
 			CYOANetworkAllocatablePrefix: 29,
@@ -153,8 +153,8 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 
 		_, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 			Code:                         "ams-dz02",
-			Location:                     "ams",
-			Exchange:                     "xams",
+			Facility:                     "ams",
+			Metro:                        "xams",
 			MetricsPublisherPK:           dz2TelemetryKeypairPK.String(),
 			CYOANetworkIPHostID:          16,
 			CYOANetworkAllocatablePrefix: 29,
@@ -189,9 +189,9 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 	geoprobeIPStr := geoprobeIP.To4().String()
 	log.Debug("==> Geoprobe CYOA IP", "ip", geoprobeIPStr)
 
-	// Get the exchange PK for xams from onchain.
-	exchangePK := getExchangePK(t, dn, "xams")
-	log.Debug("==> Exchange PK", "exchange", "xams", "pk", exchangePK)
+	// Get the metro PK for xams from onchain.
+	metroPK := getMetroPK(t, dn, "xams")
+	log.Debug("==> Metro PK", "metro", "xams", "pk", metroPK)
 
 	// Get dz1's device PK from onchain.
 	dz1DevicePK := dz1.ID
@@ -200,7 +200,7 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 
 	// Create geoprobe onchain.
 	log.Debug("==> Creating geoprobe onchain")
-	geoprobeAccountPK := createGeoprobeOnchain(t, dn, "geoprobe1", exchangePK, geoprobeIPStr, dz1TelemetryKeypairPK.String())
+	geoprobeAccountPK := createGeoprobeOnchain(t, dn, "geoprobe1", metroPK, geoprobeIPStr, dz1TelemetryKeypairPK.String())
 	log.Debug("==> Geoprobe created", "accountPK", geoprobeAccountPK)
 
 	// Add dz1 as parent of the geoprobe.
@@ -291,30 +291,30 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 	log.Debug("==> Inbound probing verified")
 }
 
-// getExchangePK retrieves the onchain PK for an exchange by its code.
-func getExchangePK(t *testing.T, dn *devnet.Devnet, exchangeCode string) string {
+// getMetroPK retrieves the onchain PK for a metro by its code.
+func getMetroPK(t *testing.T, dn *devnet.Devnet, metroCode string) string {
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
-		"doublezero", "exchange", "get", "--code", exchangeCode, "--json",
+		"doublezero", "metro", "get", "--code", metroCode, "--json",
 	})
-	require.NoError(t, err, "exchange get failed: %s", string(output))
+	require.NoError(t, err, "metro get failed: %s", string(output))
 
 	var result struct {
 		Account string `json:"account"`
 	}
 	require.NoError(t, json.Unmarshal(output, &result))
-	require.NotEmpty(t, result.Account, "exchange account PK should not be empty")
+	require.NotEmpty(t, result.Account, "metro account PK should not be empty")
 	return result.Account
 }
 
 // createGeoprobeOnchain creates a geoprobe account via the geolocation CLI on the manager.
 // Returns the geoprobe account PK (base58).
-func createGeoprobeOnchain(t *testing.T, dn *devnet.Devnet, code, exchangePK, publicIP, signingKeypair string) string {
+func createGeoprobeOnchain(t *testing.T, dn *devnet.Devnet, code, metroPK, publicIP, signingKeypair string) string {
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
 		"doublezero-geolocation", "probe", "create",
 		"--code", code,
-		"--exchange", exchangePK,
+		"--metro", metroPK,
 		"--public-ip", publicIP,
 		"--port", "8923",
 		"--signing-pubkey", signingKeypair,
@@ -749,8 +749,8 @@ func TestE2E_GeoprobeIcmpTargets(t *testing.T) {
 
 		_, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 			Code:                         "ams-dz01",
-			Location:                     "ams",
-			Exchange:                     "xams",
+			Facility:                     "ams",
+			Metro:                        "xams",
 			MetricsPublisherPK:           dz1TelemetryKeypairPK.String(),
 			CYOANetworkIPHostID:          8,
 			CYOANetworkAllocatablePrefix: 29,
@@ -781,8 +781,8 @@ func TestE2E_GeoprobeIcmpTargets(t *testing.T) {
 
 		_, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 			Code:                         "ams-dz02",
-			Location:                     "ams",
-			Exchange:                     "xams",
+			Facility:                     "ams",
+			Metro:                        "xams",
 			MetricsPublisherPK:           dz2TelemetryKeypairPK.String(),
 			CYOANetworkIPHostID:          16,
 			CYOANetworkAllocatablePrefix: 29,
@@ -813,13 +813,13 @@ func TestE2E_GeoprobeIcmpTargets(t *testing.T) {
 	require.NoError(t, err)
 	geoprobeIPStr := geoprobeIP.To4().String()
 
-	exchangePK := getExchangePK(t, dn, "xams")
+	metroPK := getMetroPK(t, dn, "xams")
 
 	dz1DevicePK := dz1.ID
 	require.NotEmpty(t, dz1DevicePK)
 
 	log.Debug("==> Creating geoprobe onchain")
-	geoprobeAccountPK := createGeoprobeOnchain(t, dn, "geoprobe1", exchangePK, geoprobeIPStr, dz1TelemetryKeypairPK.String())
+	geoprobeAccountPK := createGeoprobeOnchain(t, dn, "geoprobe1", metroPK, geoprobeIPStr, dz1TelemetryKeypairPK.String())
 
 	log.Debug("==> Adding dz1 as geoprobe parent")
 	addGeoprobeParent(t, dn, "geoprobe1", dz1DevicePK)
@@ -1131,8 +1131,8 @@ func TestE2E_GeoprobeResultDestination(t *testing.T) {
 
 		_, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 			Code:                         "ams-dz01",
-			Location:                     "ams",
-			Exchange:                     "xams",
+			Facility:                     "ams",
+			Metro:                        "xams",
 			MetricsPublisherPK:           dz1TelemetryKeypairPK.String(),
 			CYOANetworkIPHostID:          8,
 			CYOANetworkAllocatablePrefix: 29,
@@ -1163,8 +1163,8 @@ func TestE2E_GeoprobeResultDestination(t *testing.T) {
 
 		_, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 			Code:                         "ams-dz02",
-			Location:                     "ams",
-			Exchange:                     "xams",
+			Facility:                     "ams",
+			Metro:                        "xams",
 			MetricsPublisherPK:           dz2TelemetryKeypairPK.String(),
 			CYOANetworkIPHostID:          16,
 			CYOANetworkAllocatablePrefix: 29,
@@ -1197,13 +1197,13 @@ func TestE2E_GeoprobeResultDestination(t *testing.T) {
 	require.NoError(t, err)
 	geoprobeIPStr := geoprobeIP.To4().String()
 
-	exchangePK := getExchangePK(t, dn, "xams")
+	metroPK := getMetroPK(t, dn, "xams")
 
 	dz1DevicePK := dz1.ID
 	require.NotEmpty(t, dz1DevicePK)
 
 	log.Debug("==> Creating geoprobe onchain")
-	geoprobeAccountPK := createGeoprobeOnchain(t, dn, "geoprobe1", exchangePK, geoprobeIPStr, dz1TelemetryKeypairPK.String())
+	geoprobeAccountPK := createGeoprobeOnchain(t, dn, "geoprobe1", metroPK, geoprobeIPStr, dz1TelemetryKeypairPK.String())
 
 	log.Debug("==> Adding dz1 as geoprobe parent")
 	addGeoprobeParent(t, dn, "geoprobe1", dz1DevicePK)

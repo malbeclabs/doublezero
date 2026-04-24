@@ -48,8 +48,8 @@ const (
 type DeviceSpec struct {
 	ContainerImage     string
 	Code               string
-	Location           string
-	Exchange           string
+	Facility           string
+	Metro              string
 	MetricsPublisherPK string
 
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
@@ -147,12 +147,12 @@ func (s *DeviceSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
 		return fmt.Errorf("code is required")
 	}
 
-	if s.Location == "" {
-		return fmt.Errorf("location is required")
+	if s.Facility == "" {
+		return fmt.Errorf("facility is required")
 	}
 
-	if s.Exchange == "" {
-		return fmt.Errorf("exchange is required")
+	if s.Metro == "" {
+		return fmt.Errorf("metro is required")
 	}
 
 	// Validate that hostID does not select the network (0) or broadcast (max) address.
@@ -361,7 +361,7 @@ func (d *Device) Start(ctx context.Context) error {
 		dzPrefixes = append(dzPrefixes, uteDzPrefix)
 	}
 
-	devicePK, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, spec.MetricsPublisherPK, cyoaNetworkIP, dzPrefixes, "mgmt")
+	devicePK, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Facility, spec.Metro, spec.MetricsPublisherPK, cyoaNetworkIP, dzPrefixes, "mgmt")
 	if err != nil {
 		return fmt.Errorf("failed to create device %s onchain: %w", spec.Code, err)
 	}
@@ -787,7 +787,7 @@ monitor telemetry influx
 exit
 exit
 write memory
-`, d.dn.InfluxDB.InternalURL, d.dn.InfluxDB.Database(), devicePK, spec.Exchange)
+`, d.dn.InfluxDB.InternalURL, d.dn.InfluxDB.Database(), devicePK, spec.Metro)
 
 		_, err = docker.Exec(ctx, d.dn.dockerClient, containerID, []string{"Cli", "-c", influxConfig})
 		if err != nil {

@@ -175,15 +175,15 @@ func FilterStatusUpClients(clients []*Client, batch map[string]*BatchResult, sta
 }
 
 // ComputeRouteTargets returns the IPs that a client should have routes to.
-// Excludes clients in the same exchange (no intra-exchange routing) and self.
+// Excludes clients in the same metro (no intra-metro routing) and self.
 func ComputeRouteTargets(client *Client, connectedClients []*Client, batch map[string]*BatchResult, getIP func(*Client) net.IP) []net.IP {
-	clientExchange := batch[client.Host].Device.ExchangeCode
+	clientMetro := batch[client.Host].Device.MetroCode
 	var targets []net.IP
 	for _, other := range connectedClients {
 		if other.Host == client.Host {
 			continue
 		}
-		if batch[other.Host].Device.ExchangeCode == clientExchange {
+		if batch[other.Host].Device.MetroCode == clientMetro {
 			continue
 		}
 		if ip := getIP(other); ip != nil {
@@ -196,13 +196,13 @@ func ComputeRouteTargets(client *Client, connectedClients []*Client, batch map[s
 // AssignDevicesToClients considers latency between each client and device to assign devices to clients:
 // If multiple clients have < LatencyThresholdMs latency, the device goes to the client with fewest devices.
 // Otherwise, the device goes to the client with the lowest latency.
-// Allocate-addr clients have no intra-exchange routing, so they must not share exchanges with any other client.
+// Allocate-addr clients have no intra-metro routing, so they must not share metros with any other client.
 // After assignment, shuffles each client's list, then pads all lists to match the longest so every client has an entry for every batch.
 func AssignDevicesToClients(devices []*Device, clients []*Client, clientLatencies ClientLatencies, allocateAddrHosts map[string]struct{}, shuffle func([]*Device)) BatchData {
 	clientDevices := make(map[string][]*Device)
-	// Track exchange usage to enforce allocate-addr isolation
-	allocateAddrExchanges := make(map[string]string)    // exchange -> allocate-addr client hostname
-	nonAllocateAddrExchanges := make(map[string]string) // exchange -> non-allocate-addr client hostname
+	// Track metro usage to enforce allocate-addr isolation
+	allocateAddrMetros := make(map[string]string)    // metro -> allocate-addr client hostname
+	nonAllocateAddrMetros := make(map[string]string) // metro -> non-allocate-addr client hostname
 
 	for _, device := range devices {
 		var lowLatencyClients []string
@@ -212,18 +212,18 @@ func AssignDevicesToClients(devices []*Device, clients []*Client, clientLatencie
 		for _, client := range clients {
 			_, isAllocateAddr := allocateAddrHosts[client.Host]
 
-			// Enforce device.exchange isolation for allocate-addr clients
+			// Enforce device.metro isolation for allocate-addr clients
 			if isAllocateAddr {
-				// Don't connect an allocate-addr client to an exchange already used by another client
-				if existingClient, exists := allocateAddrExchanges[device.ExchangeCode]; exists && existingClient != client.Host {
+				// Don't connect an allocate-addr client to a metro already used by another client
+				if existingClient, exists := allocateAddrMetros[device.MetroCode]; exists && existingClient != client.Host {
 					continue
 				}
-				if _, exists := nonAllocateAddrExchanges[device.ExchangeCode]; exists {
+				if _, exists := nonAllocateAddrMetros[device.MetroCode]; exists {
 					continue
 				}
 			} else {
-				// Don't connect a non-allocate-addr client to an exchange already used by another client
-				if _, exists := allocateAddrExchanges[device.ExchangeCode]; exists {
+				// Don't connect a non-allocate-addr client to a metro already used by another client
+				if _, exists := allocateAddrMetros[device.MetroCode]; exists {
 					continue
 				}
 			}
@@ -260,11 +260,11 @@ func AssignDevicesToClients(devices []*Device, clients []*Client, clientLatencie
 
 		if assignedClientHostname != "" {
 			clientDevices[assignedClientHostname] = append(clientDevices[assignedClientHostname], device)
-			// Track exchange usage
+			// Track metro usage
 			if _, isAllocateAddr := allocateAddrHosts[assignedClientHostname]; isAllocateAddr {
-				allocateAddrExchanges[device.ExchangeCode] = assignedClientHostname
+				allocateAddrMetros[device.MetroCode] = assignedClientHostname
 			} else {
-				nonAllocateAddrExchanges[device.ExchangeCode] = assignedClientHostname
+				nonAllocateAddrMetros[device.MetroCode] = assignedClientHostname
 			}
 		}
 	}

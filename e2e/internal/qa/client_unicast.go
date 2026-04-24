@@ -111,11 +111,11 @@ func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targ
 	}
 
 	var iface string
-	if clientDevice.ExchangeCode != otherClientDevice.ExchangeCode {
+	if clientDevice.MetroCode != otherClientDevice.MetroCode {
 		iface = unicastInterfaceName
-		c.log.Debug("Pinging", "source", sourceIP, "target", targetIP, "iface", iface, "sourceExchange", clientDevice.ExchangeCode, "targetExchange", otherClientDevice.ExchangeCode)
+		c.log.Debug("Pinging", "source", sourceIP, "target", targetIP, "iface", iface, "sourceMetro", clientDevice.MetroCode, "targetMetro", otherClientDevice.MetroCode)
 	} else {
-		c.log.Debug("Pinging (intra-exchange routing)", "source", sourceIP, "target", targetIP, "exchange", clientDevice.ExchangeCode)
+		c.log.Debug("Pinging (intra-metro routing)", "source", sourceIP, "target", targetIP, "metro", clientDevice.MetroCode)
 	}
 
 	var lastResp *pb.PingResult

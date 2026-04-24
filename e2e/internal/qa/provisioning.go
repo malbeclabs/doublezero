@@ -34,8 +34,8 @@ type DeviceInfo struct {
 	Pubkey          string
 	Code            string
 	ContributorCode string
-	LocationCode    string
-	ExchangeCode    string
+	FacilityCode    string
+	MetroCode       string
 	PublicIP        string
 	DzPrefixes      []string
 	MgmtVrf         string
@@ -56,8 +56,8 @@ type InterfaceInfo struct {
 type DeviceSpec struct {
 	Code            string
 	ContributorCode string
-	LocationCode    string
-	ExchangeCode    string
+	FacilityCode    string
+	MetroCode       string
 	PublicIP        string
 	DzPrefixes      []string
 	MgmtVrf         string
@@ -125,13 +125,13 @@ func (p *ProvisioningTest) GetDeviceByCode(ctx context.Context, code string) (*D
 	for _, c := range data.Contributors {
 		contributors[c.PubKey] = c.Code
 	}
-	locations := make(map[[32]uint8]string)
-	for _, l := range data.Locations {
-		locations[l.PubKey] = l.Code
+	facilities := make(map[[32]uint8]string)
+	for _, l := range data.Facilities {
+		facilities[l.PubKey] = l.Code
 	}
-	exchanges := make(map[[32]uint8]string)
-	for _, e := range data.Exchanges {
-		exchanges[e.PubKey] = e.Code
+	metros := make(map[[32]uint8]string)
+	for _, e := range data.Metros {
+		metros[e.PubKey] = e.Code
 	}
 
 	for _, device := range data.Devices {
@@ -156,8 +156,8 @@ func (p *ProvisioningTest) GetDeviceByCode(ctx context.Context, code string) (*D
 				Pubkey:          base58.Encode(device.PubKey[:]),
 				Code:            device.Code,
 				ContributorCode: contributors[device.ContributorPubKey],
-				LocationCode:    locations[device.LocationPubKey],
-				ExchangeCode:    exchanges[device.ExchangePubKey],
+				FacilityCode:    facilities[device.FacilityPubKey],
+				MetroCode:       metros[device.MetroPubKey],
 				PublicIP:        net.IP(device.PublicIp[:]).String(),
 				DzPrefixes:      prefixes,
 				MgmtVrf:         device.MgmtVrf,
@@ -179,8 +179,8 @@ func (p *ProvisioningTest) GetDeviceSpec(ctx context.Context, device *DeviceInfo
 	return &DeviceSpec{
 		Code:            device.Code,
 		ContributorCode: device.ContributorCode,
-		LocationCode:    device.LocationCode,
-		ExchangeCode:    device.ExchangeCode,
+		FacilityCode:    device.FacilityCode,
+		MetroCode:       device.MetroCode,
 		PublicIP:        device.PublicIP,
 		DzPrefixes:      device.DzPrefixes,
 		MgmtVrf:         device.MgmtVrf,
@@ -314,8 +314,8 @@ func (p *ProvisioningTest) CreateDevice(ctx context.Context, cfg *DeviceSpec) (s
 		"device", "create",
 		"--code", cfg.Code,
 		"--contributor", cfg.ContributorCode,
-		"--location", cfg.LocationCode,
-		"--exchange", cfg.ExchangeCode,
+		"--facility", cfg.FacilityCode,
+		"--metro", cfg.MetroCode,
 		"--public-ip", cfg.PublicIP,
 		"--dz-prefixes", strings.Join(cfg.DzPrefixes, ","),
 		"--mgmt-vrf", mgmtVrf,

@@ -60,7 +60,7 @@ func (dn *Devnet) InitSmartContractIfNotInitialized(ctx context.Context) (bool, 
 // InitSmartContract initializes the smart contract using the manager container.
 //
 // Perform the global state initialization via `doublezero init`, and then populate global config,
-// location, and exchange information onchain.
+// facility, and metro information onchain.
 func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 	dn.log.Debug("==> Initializing smart contract")
 
@@ -84,23 +84,23 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 
 		doublezero global-config authority set --activator-authority me --sentinel-authority me
 
-		doublezero location create --code lax --name "Los Angeles" --country US --lat 34.049641274076464 --lng -118.25939642499903
-		doublezero location create --code ewr --name "New York" --country US --lat 40.780297071772125 --lng -74.07203003496925
-		doublezero location create --code lhr --name "London" --country UK --lat 51.513999803939384 --lng -0.12014764843092213
-		doublezero location create --code fra --name "Frankfurt" --country DE --lat 50.1215356432098 --lng 8.642047117175098
-		doublezero location create --code sin --name "Singapore" --country SG --lat 1.2807150707390342 --lng 103.85507136144396
-		doublezero location create --code tyo --name "Tokyo" --country JP --lat 35.66875144228767 --lng 139.76565267564501
-		doublezero location create --code pit --name "Pittsburgh" --country US --lat 40.45119259881935 --lng -80.00498215509094
-		doublezero location create --code ams --name "Amsterdam" --country US --lat 52.30085793004002 --lng 4.942241140085309
+		doublezero facility create --code lax --name "Los Angeles" --country US --lat 34.049641274076464 --lng -118.25939642499903
+		doublezero facility create --code ewr --name "New York" --country US --lat 40.780297071772125 --lng -74.07203003496925
+		doublezero facility create --code lhr --name "London" --country UK --lat 51.513999803939384 --lng -0.12014764843092213
+		doublezero facility create --code fra --name "Frankfurt" --country DE --lat 50.1215356432098 --lng 8.642047117175098
+		doublezero facility create --code sin --name "Singapore" --country SG --lat 1.2807150707390342 --lng 103.85507136144396
+		doublezero facility create --code tyo --name "Tokyo" --country JP --lat 35.66875144228767 --lng 139.76565267564501
+		doublezero facility create --code pit --name "Pittsburgh" --country US --lat 40.45119259881935 --lng -80.00498215509094
+		doublezero facility create --code ams --name "Amsterdam" --country US --lat 52.30085793004002 --lng 4.942241140085309
 
-		doublezero exchange create --code xlax --name "Los Angeles" --lat 34.049641274076464 --lng -118.25939642499903
-		doublezero exchange create --code xewr --name "New York" --lat 40.780297071772125 --lng -74.07203003496925
-		doublezero exchange create --code xlhr --name "London" --lat 51.513999803939384 --lng -0.12014764843092213
-		doublezero exchange create --code xfra --name "Frankfurt" --lat 50.1215356432098 --lng 8.642047117175098
-		doublezero exchange create --code xsin --name "Singapore" --lat 1.2807150707390342 --lng 103.85507136144396
-		doublezero exchange create --code xtyo --name "Tokyo" --lat 35.66875144228767 --lng 139.76565267564501
-		doublezero exchange create --code xpit --name "Pittsburgh" --lat 40.45119259881935 --lng -80.00498215509094
-		doublezero exchange create --code xams --name "Amsterdam" --lat 52.30085793004002 --lng 4.942241140085309
+		doublezero metro create --code xlax --name "Los Angeles" --lat 34.049641274076464 --lng -118.25939642499903
+		doublezero metro create --code xewr --name "New York" --lat 40.780297071772125 --lng -74.07203003496925
+		doublezero metro create --code xlhr --name "London" --lat 51.513999803939384 --lng -0.12014764843092213
+		doublezero metro create --code xfra --name "Frankfurt" --lat 50.1215356432098 --lng 8.642047117175098
+		doublezero metro create --code xsin --name "Singapore" --lat 1.2807150707390342 --lng 103.85507136144396
+		doublezero metro create --code xtyo --name "Tokyo" --lat 35.66875144228767 --lng 139.76565267564501
+		doublezero metro create --code xpit --name "Pittsburgh" --lat 40.45119259881935 --lng -80.00498215509094
+		doublezero metro create --code xams --name "Amsterdam" --lat 52.30085793004002 --lng 4.942241140085309
 
 		doublezero contributor create --code co01 --owner me
 	`})

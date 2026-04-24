@@ -65,7 +65,7 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 	log.Debug("==> Creating device with single /30 dz_prefix for exhaustion testing")
 	output, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
-		doublezero device create --code test-dz01 --contributor co01 --location lax --exchange xlax --public-ip "45.33.104.1" --dz-prefixes "45.33.105.0/30" --mgmt-vrf mgmt --desired-status activated 2>&1
+		doublezero device create --code test-dz01 --contributor co01 --facility lax --metro xlax --public-ip "45.33.104.1" --dz-prefixes "45.33.105.0/30" --mgmt-vrf mgmt --desired-status activated 2>&1
 		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
 		doublezero device interface create test-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
 		doublezero device interface create test-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w

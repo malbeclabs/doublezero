@@ -80,8 +80,8 @@ func setupMultiTunnelDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devn
 	log.Info("==> Adding device ny5-dz01")
 	device1, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:                         "ny5-dz01",
-		Location:                     "ewr",
-		Exchange:                     "xewr",
+		Facility:                     "ewr",
+		Metro:                        "xewr",
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
 	})
@@ -92,8 +92,8 @@ func setupMultiTunnelDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devn
 	log.Info("==> Adding device pit-dz01")
 	device2, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:                         "pit-dz01",
-		Location:                     "pit",
-		Exchange:                     "xpit",
+		Facility:                     "pit",
+		Metro:                        "xpit",
 		CYOANetworkIPHostID:          16,
 		CYOANetworkAllocatablePrefix: 29,
 	})
@@ -365,8 +365,8 @@ func setupSimultaneousTunnelDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device
 	log.Info("==> Adding device ewr-dz01 with UTE loopback")
 	device, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:                         "ewr-dz01",
-		Location:                     "ewr",
-		Exchange:                     "xewr",
+		Facility:                     "ewr",
+		Metro:                        "xewr",
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
 		UserTunnelEndpoints: []devnet.UserTunnelEndpointSpec{

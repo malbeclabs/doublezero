@@ -138,6 +138,7 @@ mod tests {
             tenant_pk: Pubkey::default(),
             user_type: UserType::IBRL,
             publishers: vec![],
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }
     }
 
@@ -149,6 +150,7 @@ mod tests {
             tenant_pk: Pubkey::default(),
             user_type: UserType::Multicast,
             publishers: groups,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }
     }
 

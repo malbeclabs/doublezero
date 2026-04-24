@@ -9,6 +9,7 @@ use doublezero_sentinel::{
     multicast_find::{apply_filters, FindFilters},
     nearest_device::{device_proximity_score, find_nearest_device_for_multicast},
     output::{print_table, OutputOptions},
+    tunnel_endpoint::select_tunnel_endpoint,
     validator_metadata_reader::{
         HttpValidatorMetadataReader, ValidatorMetadataReader, DEFAULT_VALIDATOR_METADATA_URL,
     },
@@ -729,7 +730,23 @@ impl CreateValidatorMulticastPublishersCommand {
                 tenant_pk: Pubkey::default(),
                 user_type: doublezero_sdk::UserType::IBRL,
                 publishers: vec![],
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             };
+
+            let tunnel_endpoint = device_infos
+                .get(&target_device_pk)
+                .map(|d| {
+                    let exclude: Vec<Ipv4Addr> = all_users
+                        .iter()
+                        .filter(|u| {
+                            u.client_ip == candidate.client_ip
+                                && u.tunnel_endpoint != Ipv4Addr::UNSPECIFIED
+                        })
+                        .map(|u| u.tunnel_endpoint)
+                        .collect();
+                    select_tunnel_endpoint(d.public_ip, &d.user_tunnel_endpoints, &exclude)
+                })
+                .unwrap_or(Ipv4Addr::UNSPECIFIED);
 
             let ixs = match build_create_multicast_publisher_instructions(
                 &program_id,
@@ -737,6 +754,7 @@ impl CreateValidatorMulticastPublishersCommand {
                 &candidate.owner,
                 &multicast_group_pk,
                 &dz_user,
+                tunnel_endpoint,
             ) {
                 Ok(ixs) => ixs,
                 Err(e) => {

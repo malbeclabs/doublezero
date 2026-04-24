@@ -115,6 +115,8 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            public_ip: std::net::Ipv4Addr::UNSPECIFIED,
+            user_tunnel_endpoints: vec![],
         }
     }
 

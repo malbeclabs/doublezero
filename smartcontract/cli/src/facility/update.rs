@@ -1,0 +1,145 @@
+use crate::{
+    doublezerocommand::CliCommand,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    validators::{validate_code, validate_pubkey_or_code},
+};
+use clap::Args;
+use doublezero_sdk::commands::facility::{get::GetFacilityCommand, update::UpdateFacilityCommand};
+use std::io::Write;
+
+#[derive(Args, Debug)]
+pub struct UpdateFacilityCliCommand {
+    /// Facility Pubkey to update
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub pubkey: String,
+    /// Updated code for the facility
+    #[arg(long, value_parser = validate_code)]
+    pub code: Option<String>,
+    /// Updated name for the facility
+    #[arg(long)]
+    pub name: Option<String>,
+    /// Updated country for the facility
+    #[arg(long)]
+    pub country: Option<String>,
+    /// Updated latitude for the facility
+    #[arg(long, allow_hyphen_values(true))]
+    pub lat: Option<f64>,
+    /// Updated longitude for the facility
+    #[arg(long, allow_hyphen_values(true))]
+    pub lng: Option<f64>,
+    /// Updated facility ID
+    #[arg(long)]
+    pub loc_id: Option<u32>,
+}
+
+impl UpdateFacilityCliCommand {
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+        // Check requirements
+        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+
+        let (pubkey, _) = client.get_facility(GetFacilityCommand {
+            pubkey_or_code: self.pubkey,
+        })?;
+
+        let signature = client.update_facility(UpdateFacilityCommand {
+            pubkey,
+            code: self.code,
+            name: self.name,
+            country: self.country,
+            lat: self.lat,
+            lng: self.lng,
+            loc_id: self.loc_id,
+        })?;
+
+        writeln!(out, "Signature: {signature}",)?;
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        doublezerocommand::CliCommand,
+        facility::update::UpdateFacilityCliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{
+        commands::facility::update::UpdateFacilityCommand, get_facility_pda, AccountType, Facility,
+        FacilityStatus, GetFacilityCommand,
+    };
+    use mockall::predicate;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
+
+    #[test]
+    fn test_cli_location_update() {
+        let mut client = create_test_client();
+
+        let (pda_pubkey, _bump_seed) = get_facility_pda(&client.get_program_id(), 1);
+        let signature = Signature::from([
+            120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
+            82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
+            139, 130, 217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139,
+            100, 221, 20, 137, 4, 5,
+        ]);
+
+        let facility = Facility {
+            account_type: AccountType::Facility,
+            index: 1,
+            bump_seed: 255,
+            reference_count: 0,
+            code: "test".to_string(),
+            name: "Test Facility".to_string(),
+            country: "Test Country".to_string(),
+            lat: 12.34,
+            lng: 56.78,
+            loc_id: 1,
+            status: FacilityStatus::Activated,
+            owner: Pubkey::new_unique(),
+        };
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_facility()
+            .with(predicate::eq(GetFacilityCommand {
+                pubkey_or_code: pda_pubkey.to_string(),
+            }))
+            .returning(move |_| Ok((pda_pubkey, facility.clone())));
+
+        client
+            .expect_update_facility()
+            .with(predicate::eq(UpdateFacilityCommand {
+                pubkey: pda_pubkey,
+                code: Some("test".to_string()),
+                name: Some("Test Facility".to_string()),
+                country: Some("Test Country".to_string()),
+                lat: Some(12.34),
+                lng: Some(56.78),
+                loc_id: Some(1),
+            }))
+            .times(1)
+            .returning(move |_| Ok(signature));
+
+        // Expected success
+        let mut output = Vec::new();
+        let res = UpdateFacilityCliCommand {
+            pubkey: pda_pubkey.to_string(),
+            code: Some("test".to_string()),
+            name: Some("Test Facility".to_string()),
+            country: Some("Test Country".to_string()),
+            lat: Some(12.34),
+            lng: Some(56.78),
+            loc_id: Some(1),
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(
+            output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
+        );
+    }
+}

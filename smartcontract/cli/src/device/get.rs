@@ -91,6 +91,8 @@ struct DeviceDisplay {
     pub device_type: String,
     pub public_ip: String,
     pub dz_prefixes: String,
+    #[tabled(display = "crate::util::display_string_vec")]
+    pub cyoa_ips: Vec<String>,
     pub metrics_publisher: String,
     pub mgmt_vrf: String,
     #[tabled(skip)]
@@ -142,6 +144,13 @@ impl GetDeviceCliCommand {
             device_type: device.device_type.to_string(),
             public_ip: device.public_ip.to_string(),
             dz_prefixes: device.dz_prefixes.to_string(),
+            cyoa_ips: device
+                .interfaces
+                .iter()
+                .map(|iface| iface.into_current_version())
+                .filter(|iface| iface.user_tunnel_endpoint)
+                .map(|iface| iface.ip_net.to_string())
+                .collect(),
             metrics_publisher: device.metrics_publisher_pk.to_string(),
             mgmt_vrf: device.mgmt_vrf,
             interfaces: device
@@ -370,5 +379,6 @@ mod tests {
         assert_eq!(json["location"].as_str().unwrap(), "test-location");
         assert_eq!(json["exchange"].as_str().unwrap(), "test-exchange");
         assert_eq!(json["interfaces"].as_array().unwrap().len(), 0);
+        assert_eq!(json["cyoa_ips"].as_array().unwrap().len(), 0);
     }
 }

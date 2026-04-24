@@ -21,3 +21,7 @@ pub fn display_count(pks: &[Pubkey]) -> String {
 pub fn display_as_bandwidth(bandwidth: &u64) -> String {
     bandwidth_to_string(bandwidth)
 }
+
+pub fn display_string_vec(v: &[String]) -> String {
+    v.join(", ")
+}

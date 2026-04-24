@@ -621,9 +621,12 @@ impl CreateValidatorMulticastPublishersCommand {
 
         // Display plan (snapshot — target devices are re-evaluated at execution time).
         eprintln!(
-            "\nWill create {} multicast publisher user(s) on group {}:\n",
+            "\nWill create {} multicast publisher user(s) on group {}:",
             candidates.len(),
             self.multicast_group,
+        );
+        eprintln!(
+            "  user_type=Multicast  cyoa_type=GREOverDIA  publisher=true  subscriber=false\n"
         );
         #[derive(Tabled, Serialize)]
         struct PlanRow {
@@ -635,6 +638,8 @@ impl CreateValidatorMulticastPublishersCommand {
             device: String,
             #[tabled(rename = "NEAREST DEVICE")]
             nearest_device: String,
+            #[tabled(rename = "TUNNEL ENDPOINT")]
+            tunnel_endpoint: String,
             #[tabled(rename = "CLIENT")]
             client: String,
             #[tabled(rename = "STAKE (SOL)")]
@@ -644,11 +649,12 @@ impl CreateValidatorMulticastPublishersCommand {
         let plan_rows: Vec<PlanRow> = candidates
             .iter()
             .map(|c| {
-                let nearest = match find_nearest_device_for_multicast(
+                let target_device = find_nearest_device_for_multicast(
                     &c.device_pk,
                     &device_infos,
                     latency_map.as_ref(),
-                ) {
+                );
+                let nearest = match target_device {
                     None => "none".to_string(),
                     Some(d) if d.pk == c.device_pk => d.code.clone(),
                     Some(d) => {
@@ -659,11 +665,29 @@ impl CreateValidatorMulticastPublishersCommand {
                         fmt_nearest_label(&d.code, score, self.nearest_via_geo)
                     }
                 };
+                let tunnel_endpoint = target_device
+                    .map(|d| {
+                        let exclude: Vec<Ipv4Addr> = all_users
+                            .iter()
+                            .filter(|u| {
+                                u.client_ip == c.client_ip
+                                    && u.tunnel_endpoint != Ipv4Addr::UNSPECIFIED
+                            })
+                            .map(|u| u.tunnel_endpoint)
+                            .collect();
+                        select_tunnel_endpoint(d.public_ip, &d.user_tunnel_endpoints, &exclude)
+                    })
+                    .unwrap_or(Ipv4Addr::UNSPECIFIED);
                 PlanRow {
                     owner: c.owner.to_string(),
                     client_ip: c.client_ip.to_string(),
                     device: c.device_label.clone(),
                     nearest_device: nearest,
+                    tunnel_endpoint: if tunnel_endpoint == Ipv4Addr::UNSPECIFIED {
+                        "(activator-assigned)".to_string()
+                    } else {
+                        tunnel_endpoint.to_string()
+                    },
                     client: c.software_client.clone(),
                     stake_sol: format!("{:.2}", c.stake_sol),
                 }

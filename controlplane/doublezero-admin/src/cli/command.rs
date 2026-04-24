@@ -2,8 +2,8 @@ use super::{multicast::MulticastCliCommand, sentinel::SentinelCliCommand};
 use crate::cli::{
     accesspass::AccessPassCliCommand, config::ConfigCliCommand, contributor::ContributorCliCommand,
     device::DeviceCliCommand, exchange::ExchangeCliCommand, globalconfig::GlobalConfigCliCommand,
-    link::LinkCliCommand, location::LocationCliCommand, permission::PermissionCliCommand,
-    tenant::TenantCliCommand, user::UserCliCommand,
+    link::LinkCliCommand, location::LocationCliCommand, migrate::MigrateCliCommand,
+    permission::PermissionCliCommand, tenant::TenantCliCommand, user::UserCliCommand,
 };
 use clap::{Args, Subcommand};
 use clap_complete::Shell;
@@ -69,6 +69,9 @@ pub enum Command {
     /// Sentinel admin commands
     #[command()]
     Sentinel(SentinelCliCommand),
+    /// Backfill link topologies and report Vpnv4 loopback gaps (RFC-18 migration)
+    #[command()]
+    Migrate(MigrateCliCommand),
     /// Export all data to files
     #[command()]
     Export(ExportCliCommand),

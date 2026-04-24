@@ -22,15 +22,17 @@ impl ClearTopologyCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
+        let name = self.name.to_uppercase();
+
         let link_pubkeys: Vec<Pubkey> = if self.links.is_empty() {
             // Auto-discover: find all links tagged with this topology.
             let topology_map = client
                 .list_topology(doublezero_sdk::commands::topology::list::ListTopologyCommand)?;
             let topology_pk = topology_map
                 .iter()
-                .find(|(_, t)| t.name == self.name)
+                .find(|(_, t)| t.name == name)
                 .map(|(pk, _)| *pk)
-                .ok_or_else(|| eyre::eyre!("Topology '{}' not found", self.name))?;
+                .ok_or_else(|| eyre::eyre!("Topology '{}' not found", name))?;
 
             let links = client.list_link(doublezero_sdk::commands::link::list::ListLinkCommand)?;
             links
@@ -54,21 +56,17 @@ impl ClearTopologyCliCommand {
             writeln!(
                 out,
                 "No links tagged with topology '{}'. Nothing to clear.",
-                self.name
+                name
             )?;
             return Ok(());
         }
 
         client.clear_topology(ClearTopologyCommand {
-            name: self.name.clone(),
+            name: name.clone(),
             link_pubkeys,
         })?;
 
-        writeln!(
-            out,
-            "Cleared topology '{}' from {} link(s).",
-            self.name, total
-        )?;
+        writeln!(out, "Cleared topology '{}' from {} link(s).", name, total)?;
 
         Ok(())
     }
@@ -95,7 +93,7 @@ mod tests {
                 account_type: doublezero_sdk::AccountType::Topology,
                 owner: Pubkey::default(),
                 bump_seed: 0,
-                name: "unicast-default".to_string(),
+                name: "UNICAST-DEFAULT".to_string(),
                 admin_group_bit: 1,
                 flex_algo_number: 129,
                 constraint:
@@ -117,7 +115,7 @@ mod tests {
         let result = cmd.execute(&mock, &mut out);
         assert!(result.is_ok());
         let output = String::from_utf8(out.into_inner()).unwrap();
-        assert!(output.contains("No links tagged with topology 'unicast-default'."));
+        assert!(output.contains("No links tagged with topology 'UNICAST-DEFAULT'."));
     }
 
     #[test]
@@ -129,7 +127,7 @@ mod tests {
         mock.expect_check_requirements().returning(|_| Ok(()));
         mock.expect_clear_topology()
             .with(eq(ClearTopologyCommand {
-                name: "unicast-default".to_string(),
+                name: "UNICAST-DEFAULT".to_string(),
                 link_pubkeys: vec![link1, link2],
             }))
             .returning(|_| Ok(vec![Signature::new_unique()]));
@@ -142,7 +140,7 @@ mod tests {
         let result = cmd.execute(&mock, &mut out);
         assert!(result.is_ok());
         let output = String::from_utf8(out.into_inner()).unwrap();
-        assert!(output.contains("Cleared topology 'unicast-default' from 2 link(s)."));
+        assert!(output.contains("Cleared topology 'UNICAST-DEFAULT' from 2 link(s)."));
     }
 
     #[test]
@@ -178,6 +176,6 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("Topology 'nonexistent' not found"));
+            .contains("Topology 'NONEXISTENT' not found"));
     }
 }

@@ -51,6 +51,15 @@ pub trait DoubleZeroClient {
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature>;
 
+    /// Like `execute_transaction`, but prepends a ComputeBudgetInstruction that sets a
+    /// custom per-transaction compute unit limit.
+    fn execute_transaction_with_compute_unit_limit(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+        compute_unit_limit: u32,
+    ) -> eyre::Result<Signature>;
+
     fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>>;
 }
 

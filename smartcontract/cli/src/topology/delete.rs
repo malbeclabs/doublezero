@@ -20,9 +20,11 @@ impl DeleteTopologyCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
+        let name = self.name.to_uppercase();
+
         // Guard: check if any links still reference this topology
         let program_id = client.get_program_id();
-        let topology_pda = get_topology_pda(&program_id, &self.name).0;
+        let topology_pda = get_topology_pda(&program_id, &name).0;
         let links = client.list_link(ListLinkCommand)?;
         let referencing_count = links
             .values()
@@ -31,16 +33,14 @@ impl DeleteTopologyCliCommand {
         if referencing_count > 0 {
             return Err(eyre::eyre!(
                 "Cannot delete topology '{}': {} link(s) still reference it. Run 'doublezero link topology clear --name {}' first.",
-                self.name,
+                name,
                 referencing_count,
-                self.name,
+                name,
             ));
         }
 
-        client.delete_topology(DeleteTopologyCommand {
-            name: self.name.clone(),
-        })?;
-        writeln!(out, "Deleted topology '{}' successfully.", self.name)?;
+        client.delete_topology(DeleteTopologyCommand { name: name.clone() })?;
+        writeln!(out, "Deleted topology '{}' successfully.", name)?;
 
         Ok(())
     }
@@ -72,7 +72,7 @@ mod tests {
         mock.expect_list_link().returning(|_| Ok(HashMap::new()));
         mock.expect_delete_topology()
             .with(eq(DeleteTopologyCommand {
-                name: "unicast-default".to_string(),
+                name: "UNICAST-DEFAULT".to_string(),
             }))
             .returning(|_| Ok(Signature::new_unique()));
 
@@ -83,7 +83,7 @@ mod tests {
         let result = cmd.execute(&mock, &mut out);
         assert!(result.is_ok());
         let output = String::from_utf8(out.into_inner()).unwrap();
-        assert!(output.contains("Deleted topology 'unicast-default' successfully."));
+        assert!(output.contains("Deleted topology 'UNICAST-DEFAULT' successfully."));
     }
 
     #[test]
@@ -93,7 +93,7 @@ mod tests {
         client.expect_check_requirements().returning(|_| Ok(()));
 
         let program_id = Pubkey::from_str_const("GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah");
-        let topology_pda = get_topology_pda(&program_id, "unicast-default").0;
+        let topology_pda = get_topology_pda(&program_id, "UNICAST-DEFAULT").0;
 
         let link = Link {
             account_type: AccountType::Link,
@@ -134,8 +134,8 @@ mod tests {
         let result = cmd.execute(&client, &mut out);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("Cannot delete topology 'unicast-default'"));
+        assert!(err.contains("Cannot delete topology 'UNICAST-DEFAULT'"));
         assert!(err.contains("1 link(s) still reference it"));
-        assert!(err.contains("doublezero link topology clear --name unicast-default"));
+        assert!(err.contains("doublezero link topology clear --name UNICAST-DEFAULT"));
     }
 }

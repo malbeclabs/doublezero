@@ -233,7 +233,7 @@ async fn execute_transaction_tester(
 #[allow(dead_code)]
 pub async fn try_execute_transaction(
     banks_client: &mut BanksClient,
-    recent_blockhash: solana_program::hash::Hash,
+    _recent_blockhash: solana_program::hash::Hash,
     program_id: Pubkey,
     instruction: DoubleZeroInstruction,
     accounts: Vec<AccountMeta>,
@@ -241,6 +241,11 @@ pub async fn try_execute_transaction(
 ) -> Result<(), BanksClientError> {
     print!("➡️  Transaction {instruction:?} ");
 
+    // Wait for a new blockhash so retries of an identical message don't hit Solana's
+    // signature status cache (same signature + same blockhash → cached Ok). This also
+    // avoids the stale-blockhash panic in banks-server when a single hash is reused
+    // across a long sequence of transactions.
+    let recent_blockhash = wait_for_new_blockhash(banks_client).await;
     let mut transaction = create_transaction(program_id, &instruction, &accounts, payer);
     transaction.try_sign(&[&payer], recent_blockhash).unwrap();
     banks_client.process_transaction(transaction).await?;
@@ -347,7 +352,7 @@ pub async fn execute_transaction_with_extra_accounts(
 #[allow(dead_code)]
 pub async fn try_execute_transaction_with_extra_accounts(
     banks_client: &mut BanksClient,
-    recent_blockhash: solana_program::hash::Hash,
+    _recent_blockhash: solana_program::hash::Hash,
     program_id: Pubkey,
     instruction: DoubleZeroInstruction,
     accounts: Vec<AccountMeta>,
@@ -356,6 +361,8 @@ pub async fn try_execute_transaction_with_extra_accounts(
 ) -> Result<(), BanksClientError> {
     print!("➡️  Transaction {instruction:?} ");
 
+    // See comment in `try_execute_transaction` for why we wait for a new blockhash.
+    let recent_blockhash = wait_for_new_blockhash(banks_client).await;
     let mut transaction = create_transaction_with_extra_accounts(
         program_id,
         &instruction,

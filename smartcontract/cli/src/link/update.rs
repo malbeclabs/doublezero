@@ -13,6 +13,7 @@ use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::commands::{
     contributor::get::GetContributorCommand,
     link::{get::GetLinkCommand, update::UpdateLinkCommand},
+    topology::list::ListTopologyCommand,
 };
 use doublezero_serviceability::state::link::LinkDesiredStatus;
 use eyre::eyre;
@@ -59,6 +60,12 @@ pub struct UpdateLinkCliCommand {
     /// Reassign tunnel network (foundation-only, e.g. 172.16.1.100/31)
     #[arg(long)]
     pub tunnel_net: Option<NetworkV4>,
+    /// Comma-separated topology names to tag this link with (foundation-only). Use "default" to clear.
+    #[arg(long)]
+    pub link_topology: Option<String>,
+    /// Mark this link as unicast-drained (contributor or foundation)
+    #[arg(long)]
+    pub unicast_drained: Option<bool>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -115,6 +122,26 @@ impl UpdateLinkCliCommand {
             }
         }
 
+        let link_topologies = match self.link_topology {
+            None => None,
+            Some(ref names_str) if names_str.eq_ignore_ascii_case("default") => Some(vec![]),
+            Some(ref names_str) => {
+                let topology_map = client.list_topology(ListTopologyCommand)?;
+                let pubkeys: eyre::Result<Vec<_>> = names_str
+                    .split(',')
+                    .map(|name| {
+                        let name = name.trim().to_uppercase();
+                        topology_map
+                            .iter()
+                            .find(|(_, t)| t.name == name)
+                            .map(|(pk, _)| *pk)
+                            .ok_or_else(|| eyre!("Topology '{}' not found", name))
+                    })
+                    .collect();
+                Some(pubkeys?)
+            }
+        };
+
         let signature = client.update_link(UpdateLinkCommand {
             pubkey,
             code: self.code.clone(),
@@ -133,8 +160,8 @@ impl UpdateLinkCliCommand {
             desired_status: self.desired_status,
             tunnel_id: self.tunnel_id,
             tunnel_net: self.tunnel_net,
-            link_topologies: None,
-            unicast_drained: None,
+            link_topologies,
+            unicast_drained: self.unicast_drained,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -309,6 +336,8 @@ mod tests {
             desired_status: None,
             tunnel_id: None,
             tunnel_net: None,
+            link_topology: None,
+            unicast_drained: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -334,6 +363,8 @@ mod tests {
             desired_status: None,
             tunnel_id: None,
             tunnel_net: None,
+            link_topology: None,
+            unicast_drained: None,
             wait: false,
         }
         .execute(&client, &mut output);

@@ -1212,7 +1212,7 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 
 	device := testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})
-	device.ExchangePubKey = exchangePK
+	device.MetroPubKey = exchangePK
 	device.Code = "dz1"
 	device.Status = serviceability.DeviceStatusActivated
 
@@ -1332,7 +1332,7 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 					Devices:         []serviceability.Device{device},
 					Users:           tt.users,
 					MulticastGroups: []serviceability.MulticastGroup{mcastGroup},
-					Exchanges: []serviceability.Exchange{
+					Metros: []serviceability.Metro{
 						{PubKey: exchangePK, Name: "Amsterdam"},
 					},
 					Tenants: []serviceability.Tenant{
@@ -1413,7 +1413,7 @@ func TestConnectionInfoMetric(t *testing.T) {
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 
 	device := testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})
-	device.ExchangePubKey = exchangePK
+	device.MetroPubKey = exchangePK
 	device.Code = "dz1"
 	device.Status = serviceability.DeviceStatusActivated
 
@@ -1424,7 +1424,7 @@ func TestConnectionInfoMetric(t *testing.T) {
 			GlobalConfig: testGlobalConfig(),
 			Devices:      []serviceability.Device{device},
 			Users:        []serviceability.User{user},
-			Exchanges: []serviceability.Exchange{
+			Metros: []serviceability.Metro{
 				{PubKey: exchangePK, Name: "Amsterdam"},
 			},
 		},

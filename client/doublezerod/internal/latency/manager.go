@@ -135,11 +135,11 @@ func UdpPing(ctx context.Context, target ProbeTarget) LatencyResult {
 }
 
 type ContractData struct {
-	Locations []serviceability.Location
-	Devices   []serviceability.Device
-	Exchanges []serviceability.Exchange
-	Links     []serviceability.Link
-	Users     []serviceability.User
+	Facilities []serviceability.Facility
+	Devices    []serviceability.Device
+	Metros     []serviceability.Metro
+	Links      []serviceability.Link
+	Users      []serviceability.User
 }
 
 type SmartContractorFunc func(context.Context) (*ContractData, error)

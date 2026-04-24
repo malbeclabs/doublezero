@@ -253,7 +253,7 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 	// Build lookup maps from program data.
 	var (
 		devicesByPK     map[[32]byte]serviceability.Device
-		exchangesByPK   map[[32]byte]serviceability.Exchange
+		exchangesByPK   map[[32]byte]serviceability.Metro
 		tenantsByPK     map[[32]byte]serviceability.Tenant
 		mcastGroupsByPK map[[32]byte]serviceability.MulticastGroup
 		users           []serviceability.User
@@ -263,8 +263,8 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 		for _, d := range data.Devices {
 			devicesByPK[d.PubKey] = d
 		}
-		exchangesByPK = make(map[[32]byte]serviceability.Exchange, len(data.Exchanges))
-		for _, e := range data.Exchanges {
+		exchangesByPK = make(map[[32]byte]serviceability.Metro, len(data.Metros))
+		for _, e := range data.Metros {
 			exchangesByPK[e.PubKey] = e
 		}
 		tenantsByPK = make(map[[32]byte]serviceability.Tenant, len(data.Tenants))
@@ -351,7 +351,7 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 
 		if matchedDevice != nil {
 			es.CurrentDevice = matchedDevice.Code
-			exchPK := [32]byte(matchedDevice.ExchangePubKey)
+			exchPK := [32]byte(matchedDevice.MetroPubKey)
 			if exch, ok := exchangesByPK[exchPK]; ok {
 				es.Metro = exch.Name
 			}

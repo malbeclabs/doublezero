@@ -2,8 +2,8 @@ use super::multicast::MulticastCliCommand;
 use crate::{
     cli::{
         accesspass::AccessPassCliCommand, config::ConfigCliCommand,
-        contributor::ContributorCliCommand, device::DeviceCliCommand, exchange::ExchangeCliCommand,
-        globalconfig::GlobalConfigCliCommand, link::LinkCliCommand, location::LocationCliCommand,
+        contributor::ContributorCliCommand, device::DeviceCliCommand, facility::FacilityCliCommand,
+        globalconfig::GlobalConfigCliCommand, link::LinkCliCommand, metro::MetroCliCommand,
         permission::PermissionCliCommand, resource::ResourceCliCommand, tenant::TenantCliCommand,
         user::UserCliCommand,
     },
@@ -66,12 +66,12 @@ pub enum Command {
     /// List Accounts
     #[command(hide = true)]
     Accounts(GetAccountsCliCommand),
-    /// Manage locations
+    /// Manage facilities
     #[command()]
-    Location(LocationCliCommand),
-    /// Manage exchanges
+    Facility(FacilityCliCommand),
+    /// Manage metros
     #[command()]
-    Exchange(ExchangeCliCommand),
+    Metro(MetroCliCommand),
     /// Manage contributors
     #[command()]
     Contributor(ContributorCliCommand),

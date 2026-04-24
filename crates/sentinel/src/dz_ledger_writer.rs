@@ -1,3 +1,5 @@
+use std::net::Ipv4Addr;
+
 use anyhow::{Context, Result};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
@@ -36,6 +38,7 @@ pub fn build_create_multicast_publisher_instructions(
     owner: &Pubkey,
     multicast_group_pk: &Pubkey,
     user: &DzUser,
+    tunnel_endpoint: Ipv4Addr,
 ) -> Result<CreateMulticastPublisherInstructions> {
     let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, owner);
     let (globalstate_pda, _) = get_globalstate_pda(program_id);
@@ -84,7 +87,7 @@ pub fn build_create_multicast_publisher_instructions(
             client_ip: user.client_ip,
             publisher: true,
             subscriber: false,
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            tunnel_endpoint,
             dz_prefix_count: 0,
             owner: *owner,
         }),
@@ -139,6 +142,7 @@ mod tests {
             tenant_pk: Pubkey::default(),
             user_type: UserType::IBRL,
             publishers: vec![],
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let owner = Pubkey::new_unique();
@@ -149,6 +153,7 @@ mod tests {
             &owner,
             &multicast_group,
             &user,
+            Ipv4Addr::UNSPECIFIED,
         )
         .unwrap();
 
@@ -182,6 +187,7 @@ mod tests {
             tenant_pk: Pubkey::default(),
             user_type: UserType::IBRL,
             publishers: vec![],
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let owner = Pubkey::new_unique();
@@ -192,6 +198,7 @@ mod tests {
             &owner,
             &multicast_group,
             &user,
+            Ipv4Addr::UNSPECIFIED,
         )
         .unwrap();
 

@@ -28,6 +28,7 @@ pub struct DzUser {
     pub tenant_pk: Pubkey,
     pub user_type: UserType,
     pub publishers: Vec<Pubkey>,
+    pub tunnel_endpoint: Ipv4Addr,
 }
 
 /// Maps device pubkey → device code.
@@ -47,6 +48,9 @@ pub struct DzDeviceInfo {
     pub reserved_seats: u16,
     pub multicast_publishers_count: u16,
     pub max_multicast_publishers: u16,
+    pub public_ip: Ipv4Addr,
+    /// IPs from device interfaces where `user_tunnel_endpoint == true`.
+    pub user_tunnel_endpoints: Vec<Ipv4Addr>,
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +124,7 @@ impl DzLedgerReader for RpcDzLedgerReader {
                 tenant_pk: user.tenant_pk,
                 user_type: user.user_type,
                 publishers: user.publishers.clone(),
+                tunnel_endpoint: user.tunnel_endpoint,
             });
         }
 
@@ -276,6 +281,18 @@ pub fn fetch_device_infos(
             .get(&device.location_pk)
             .copied()
             .unwrap_or((0.0, 0.0));
+        let user_tunnel_endpoints = device
+            .interfaces
+            .iter()
+            .filter_map(|iface| {
+                let iface = iface.into_current_version();
+                if iface.user_tunnel_endpoint && iface.ip_net != Default::default() {
+                    Some(iface.ip_net.ip())
+                } else {
+                    None
+                }
+            })
+            .collect();
         infos.insert(
             pk,
             DzDeviceInfo {
@@ -288,6 +305,8 @@ pub fn fetch_device_infos(
                 reserved_seats: device.reserved_seats,
                 multicast_publishers_count: device.multicast_publishers_count,
                 max_multicast_publishers: device.max_multicast_publishers,
+                public_ip: device.public_ip,
+                user_tunnel_endpoints,
             },
         );
     }

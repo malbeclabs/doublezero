@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.
   - SDK now auto-detects the correct AccessPass PDA (static or dynamic) for allowlist operations based on whether an `allow_multiple_ip` pass exists
 - Sentinel
   - Make the multicast publisher worker's `--client-filter` flag repeatable so multiple validator client names can be matched in one run (OR semantics), matching the admin CLI behavior
+  - Set a concrete `tunnel_endpoint` on multicast publisher create, preferring a `user_tunnel_endpoint` interface IP and falling back to the device's `public_ip`, excluding IPs already in use by another user at the same `client_ip`
 
 ## [v0.18.0](https://github.com/malbeclabs/doublezero/compare/client/v0.17.0...client/v0.18.0) - 2026-04-17
 

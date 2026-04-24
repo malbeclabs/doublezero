@@ -1695,22 +1695,23 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
         "Expected no segments before BackfillTopology"
     );
 
-    // Step 8: Call BackfillTopology instruction
+    // Step 8: Call BackfillTopology instruction.
+    // Accounts: [topology, sr_ids, globalstate, device..., payer, system_program]
+    // (payer and system_program are appended by the transaction builder)
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    let base_accounts = vec![
+    let backfill_accounts = vec![
         AccountMeta::new_readonly(topology_pda, false),
         AccountMeta::new(segment_routing_ids_pda, false),
         AccountMeta::new_readonly(globalstate_pubkey, false),
+        AccountMeta::new(device_pubkey, false),
     ];
-    let extra_accounts = vec![AccountMeta::new(device_pubkey, false)];
-    let mut tx = create_transaction_with_extra_accounts(
+    let mut tx = create_transaction(
         program_id,
         &DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
             name: "unicast-default".to_string(),
         }),
-        &base_accounts,
+        &backfill_accounts,
         &payer,
-        &extra_accounts,
     );
     tx.try_sign(&[&payer], recent_blockhash).unwrap();
     banks_client.process_transaction(tx).await.unwrap();
@@ -1732,14 +1733,13 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
 
     // Step 9: Call BackfillTopology again — idempotent, no duplicate segment
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    let mut tx2 = create_transaction_with_extra_accounts(
+    let mut tx2 = create_transaction(
         program_id,
         &DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
             name: "unicast-default".to_string(),
         }),
-        &base_accounts,
+        &backfill_accounts,
         &payer,
-        &extra_accounts,
     );
     tx2.try_sign(&[&payer], recent_blockhash).unwrap();
     banks_client.process_transaction(tx2).await.unwrap();
@@ -1867,15 +1867,15 @@ async fn test_topology_backfill_nonexistent_topology_rejected() {
 #[tokio::test]
 async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     // BackfillTopology allocates the flex-algo node_segment_idx from the on-chain
-    // SegmentRoutingIds resource. Keeping that resource in sync with the base
-    // node_segment_idx stored on an interface only happens when the interface is
-    // activated with onchain allocation enabled; backfill does not second-guess
-    // the resource.
+    // SegmentRoutingIds resource. The flex-algo SID must not collide with any
+    // existing base node_segment_idx — backfill skips any SR ID that is already
+    // in use as a base SID, keeping the skipped IDs marked in the resource to
+    // prevent future reuse.
     //
     // This scenario activates the loopback with onchain allocation disabled: the
-    // base node_segment_idx is set to 1 directly on the interface, and the on-chain
-    // SR resource is left untouched. Backfill's allocate_id call therefore also
-    // returns 1 — the expected behavior when the SR resource was never updated.
+    // base node_segment_idx is set to 1 directly on the interface without touching
+    // the SR resource. The backfill must therefore skip SR ID 1 (it conflicts with
+    // the base SID) and allocate SR ID 2 for the flex-algo segment.
     println!("[TEST] test_topology_backfill_allocates_sr_id_from_onchain_resource");
 
     let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
@@ -2082,23 +2082,23 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     .await;
 
     // Step 9: Call BackfillTopology. allocate_id draws from the on-chain SR resource,
-    // which still believes ID 1 is free (step 7 used the off-chain allocation path),
-    // so the flex-algo segment also receives ID 1.
+    // which still believes ID 1 is free (step 7 used the off-chain allocation path).
+    // Backfill detects that ID 1 conflicts with the base node_segment_idx and skips
+    // it, then allocates ID 2 for the flex-algo segment.
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    let base_accounts = vec![
+    let backfill_accounts = vec![
         AccountMeta::new_readonly(topology_pda, false),
         AccountMeta::new(segment_routing_ids_pda, false),
         AccountMeta::new_readonly(globalstate_pubkey, false),
+        AccountMeta::new(device_pubkey, false),
     ];
-    let extra_accounts = vec![AccountMeta::new(device_pubkey, false)];
-    let mut tx = create_transaction_with_extra_accounts(
+    let mut tx = create_transaction(
         program_id,
         &DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
             name: "unicast-default".to_string(),
         }),
-        &base_accounts,
+        &backfill_accounts,
         &payer,
-        &extra_accounts,
     );
     tx.try_sign(&[&payer], recent_blockhash).unwrap();
     banks_client.process_transaction(tx).await.unwrap();
@@ -2123,10 +2123,9 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
         "Segment should point to the backfilled topology"
     );
     assert_eq!(
-        iface.flex_algo_node_segments[0].node_segment_idx, 1,
-        "flex-algo node_segment_idx is allocated from the on-chain SR resource; \
-         ID 1 is still free there because the interface was activated with onchain \
-         allocation disabled"
+        iface.flex_algo_node_segments[0].node_segment_idx, 2,
+        "flex-algo SID must not equal the base SID (1); backfill skips SR ID 1 \
+         because it conflicts with the base node_segment_idx and allocates 2 instead"
     );
 
     println!("[PASS] test_topology_backfill_allocates_sr_id_from_onchain_resource");

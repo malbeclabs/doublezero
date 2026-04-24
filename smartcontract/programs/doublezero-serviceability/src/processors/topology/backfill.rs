@@ -30,12 +30,15 @@ pub struct TopologyBackfillArgs {
 /// an entry for this topology.
 ///
 /// Accounts layout:
-/// [0]  topology PDA        (readonly — must already exist)
-/// [1]  segment_routing_ids (writable, ResourceExtension)
-/// [2]  globalstate         (readonly)
-/// [3]  payer               (writable, signer, must be in foundation_allowlist)
-/// [4]  system_program
-/// [5+] Device accounts     (writable)
+/// [0]    topology PDA        (readonly — must already exist)
+/// [1]    segment_routing_ids (writable, ResourceExtension)
+/// [2]    globalstate         (readonly)
+/// [3..n] Device accounts     (writable)
+/// [n+1]  payer               (writable, signer, must be in foundation_allowlist)
+/// [n+2]  system_program
+///
+/// Note: payer and system_program are the last two accounts. The SDK client
+/// always appends them after the variable-length device list.
 pub fn process_topology_backfill(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -46,8 +49,17 @@ pub fn process_topology_backfill(
     let topology_account = next_account_info(accounts_iter)?;
     let segment_routing_ids_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
-    let payer_account = next_account_info(accounts_iter)?;
-    let _system_program = next_account_info(accounts_iter)?;
+
+    // Collect remaining accounts. The SDK client always appends payer and
+    // system_program at the end, after the variable-length device list.
+    let all_remaining: Vec<&AccountInfo> = accounts_iter.collect();
+    if all_remaining.len() < 2 {
+        msg!("TopologyBackfill: expected at least payer and system_program accounts");
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+    let payer_account = all_remaining[all_remaining.len() - 2];
+    let _system_program = all_remaining[all_remaining.len() - 1];
+    let device_accounts = &all_remaining[..all_remaining.len() - 2];
 
     #[cfg(test)]
     msg!("process_topology_backfill(name={})", value.name);
@@ -108,10 +120,29 @@ pub fn process_topology_backfill(
     let mut backfilled_count: usize = 0;
     let mut skipped_count: usize = 0;
 
-    let device_accounts: Vec<&AccountInfo> = accounts_iter.collect();
+    // Collect all existing base node_segment_idx values across every device so
+    // that the flex-algo SID we allocate doesn't collide with any base SID.
+    // This matters when base SIDs were assigned without going through the
+    // SegmentRoutingIds resource (e.g. off-chain activation paths); the resource
+    // bitmap wouldn't know about them and would otherwise re-issue the same index.
+    let base_sids_in_use: std::collections::HashSet<u16> = device_accounts
+        .iter()
+        .flat_map(|da| {
+            match Device::try_from(&da.data.borrow()[..]) {
+                Ok(d) => d
+                    .interfaces
+                    .into_iter()
+                    .map(|i| i.into_current_version().node_segment_idx)
+                    .filter(|&idx| idx > 0)
+                    .collect::<Vec<u16>>(),
+                Err(_) => vec![],
+            }
+        })
+        .collect();
 
     // Allocate new IDs for loopbacks missing this topology's segment.
-    for device_account in &device_accounts {
+    for device_account in device_accounts {
+        msg!("BackfillTopology: processing device {}", device_account.key);
         let mut device = Device::try_from(&device_account.data.borrow()[..])?;
         let mut modified = false;
         for iface in device.interfaces.iter_mut() {
@@ -128,7 +159,13 @@ pub fn process_topology_backfill(
                 skipped_count += 1;
                 continue;
             }
-            let node_segment_idx = allocate_id(segment_routing_ids_account)?;
+            // Allocate a fresh SR ID. Skip (keep as allocated) any ID that
+            // conflicts with an existing base node_segment_idx — those IDs
+            // remain marked used in the resource to avoid future collisions.
+            let mut node_segment_idx = allocate_id(segment_routing_ids_account)?;
+            while base_sids_in_use.contains(&node_segment_idx) {
+                node_segment_idx = allocate_id(segment_routing_ids_account)?;
+            }
             match iface {
                 Interface::V3(ref mut v3) => {
                     v3.flex_algo_node_segments.push(FlexAlgoNodeSegment {

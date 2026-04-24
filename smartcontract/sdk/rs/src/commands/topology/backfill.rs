@@ -8,8 +8,8 @@ use doublezero_serviceability::{
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 /// Max device accounts per backfill transaction. Solana caps transactions at
-/// 32 accounts; with 4 fixed accounts (topology PDA, segment_routing_ids PDA,
-/// globalstate, payer) we stay well under that limit at 16.
+/// 32 accounts; with 5 non-device accounts (3 fixed PDAs + payer + system_program
+/// appended by the client) we stay well under that limit at 16.
 pub const BACKFILL_BATCH_SIZE: usize = 16;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -28,13 +28,10 @@ impl BackfillTopologyCommand {
         let (segment_routing_ids_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
 
-        let payer = client.get_payer();
-
         let fixed_accounts = [
             AccountMeta::new_readonly(topology_pda, false),
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
-            AccountMeta::new(payer, true),
         ];
 
         let mut signatures = Vec::new();
@@ -94,7 +91,6 @@ mod tests {
         let (topology_pda, _) = get_topology_pda(&client.get_program_id(), "algo128");
         let (sr_ids_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
-        let payer = client.get_payer();
         let device1 = Pubkey::new_unique();
         let device2 = Pubkey::new_unique();
 
@@ -110,7 +106,6 @@ mod tests {
                     AccountMeta::new_readonly(topology_pda, false),
                     AccountMeta::new(sr_ids_pda, false),
                     AccountMeta::new_readonly(globalstate_pubkey, false),
-                    AccountMeta::new(payer, true),
                     AccountMeta::new(device1, false),
                     AccountMeta::new(device2, false),
                 ]),
@@ -134,7 +129,6 @@ mod tests {
         let (topology_pda, _) = get_topology_pda(&client.get_program_id(), "algo128");
         let (sr_ids_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
-        let payer = client.get_payer();
 
         let devices: Vec<Pubkey> = (0..33).map(|_| Pubkey::new_unique()).collect();
 
@@ -142,7 +136,6 @@ mod tests {
             AccountMeta::new_readonly(topology_pda, false),
             AccountMeta::new(sr_ids_pda, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
-            AccountMeta::new(payer, true),
         ];
 
         let expected_args = DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {

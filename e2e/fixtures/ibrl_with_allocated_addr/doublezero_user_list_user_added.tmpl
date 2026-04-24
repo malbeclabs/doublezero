@@ -1,5 +1,5 @@
  account | tenant | user_type           | groups | device   | location    | cyoa_type  | client_ip     | dz_ip         | accesspass     | tunnel_id | tunnel_net      | tunnel_endpoint | status    | bgp_status | owner
 {{- range .IBRLUsers}}
- IGNORED |        | IBRL                |        | la2-dz01 | Los Angeles | GREOverDIA | {{.ClientIP}} | {{.ClientIP}} | Prepaid: (MAX) | {{.TunnelID}} | {{.TunnelNet}} | 0.0.0.0         | activated | unknown    | {{$.ClientPubkeyAddress}}
+ IGNORED |        | IBRL                |        | la2-dz01 | Los Angeles | GREOverDIA | {{.ClientIP}} | {{.ClientIP}} | Prepaid: (MAX) | {{.TunnelID}} | {{.TunnelNet}} | 207.45.216.134  | activated | unknown    | {{$.ClientPubkeyAddress}}
 {{- end}}
- IGNORED |        | IBRLWithAllocatedIP |        | ny5-dz01 | New York    | GREOverDIA | {{.ClientIP}} | {{.ExpectedAllocatedClientIP}} | Prepaid: (MAX) | {{.AllocatedUserTunnelID}} | {{.AllocatedUserTunnelNet}} | 0.0.0.0         | activated | unknown    | {{.ClientPubkeyAddress}}
+ IGNORED |        | IBRLWithAllocatedIP |        | ny5-dz01 | New York    | GREOverDIA | {{.ClientIP}} | {{.ExpectedAllocatedClientIP}} | Prepaid: (MAX) | {{.AllocatedUserTunnelID}} | {{.AllocatedUserTunnelNet}} | {{.DeviceIP}}   | activated | unknown    | {{.ClientPubkeyAddress}}

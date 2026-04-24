@@ -1,2 +1,2 @@
  account | tenant | user_type | groups | device   | location | cyoa_type  | client_ip    | dz_ip        | accesspass     | tunnel_id | tunnel_net     | tunnel_endpoint | status    | bgp_status | owner
- IGNORED |        | IBRL      |        | ny5-dz01 | New York | GREOverDIA | {{.ClientIP}} | {{.ClientIP}} | Prepaid: (MAX) | 500       | 169.254.0.0/31 | 0.0.0.0         | activated | unknown    | {{.ClientPubkeyAddress}}
+ IGNORED |        | IBRL      |        | ny5-dz01 | New York | GREOverDIA | {{.ClientIP}} | {{.ClientIP}} | Prepaid: (MAX) | 500       | 169.254.0.0/31 | {{.DeviceIP}}   | activated | unknown    | {{.ClientPubkeyAddress}}

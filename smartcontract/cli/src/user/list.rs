@@ -77,6 +77,10 @@ pub struct ListUserCliCommand {
     /// Output as compact JSON.
     #[arg(long, default_value_t = false)]
     pub json_compact: bool,
+    /// Narrow table output: abbreviates user_type and groups, drops location, cyoa_type,
+    /// accesspass, and tunnel_net.
+    #[arg(long, default_value_t = false)]
+    pub narrow: bool,
 }
 
 #[derive(Tabled, Serialize)]
@@ -375,6 +379,14 @@ impl ListUserCliCommand {
             serde_json::to_string_pretty(&users_displays)?
         } else if self.json_compact {
             serde_json::to_string(&users_displays)?
+        } else if self.narrow {
+            let narrow: Vec<UserDisplayNarrow> = users_displays
+                .iter()
+                .map(|d| UserDisplayNarrow::from_display(d, &mgroups))
+                .collect();
+            Table::new(narrow)
+                .with(Style::psql().remove_horizontals())
+                .to_string()
         } else {
             Table::new(users_displays)
                 .with(Style::psql().remove_horizontals())
@@ -411,10 +423,105 @@ pub fn format_multicast_group_names(
         .join(",")
 }
 
+#[derive(Tabled)]
+pub struct UserDisplayNarrow {
+    pub account: Pubkey,
+    pub tenant: String,
+    pub user_type: String,
+    pub groups: String,
+    pub device: String,
+    pub client_ip: Ipv4Addr,
+    pub dz_ip: Ipv4Addr,
+    pub tunnel_id: u16,
+    pub status: UserStatus,
+    pub bgp_status: BGPStatus,
+    pub owner: Pubkey,
+}
+
+impl UserDisplayNarrow {
+    fn from_display(d: &UserDisplay, mgroups: &HashMap<Pubkey, MulticastGroup>) -> Self {
+        Self {
+            account: d.account,
+            tenant: d.tenant.clone(),
+            user_type: abbreviate_user_type(&d.user_type),
+            groups: narrow_groups(&d.publishers, &d.subscribers, mgroups),
+            device: d.device_name.clone(),
+            client_ip: d.client_ip,
+            dz_ip: d.dz_ip,
+            tunnel_id: d.tunnel_id,
+            status: d.status,
+            bgp_status: d.bgp_status,
+            owner: d.owner,
+        }
+    }
+}
+
+fn abbreviate_name(name: &str) -> String {
+    if name.len() > 10 {
+        let first: String = name.chars().take(4).collect();
+        let last: String = name
+            .chars()
+            .rev()
+            .take(4)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        format!("{first}..{last}")
+    } else {
+        name.to_string()
+    }
+}
+
+fn abbreviate_user_type(ut: &UserType) -> String {
+    match ut {
+        UserType::IBRL => "IBRL".to_string(),
+        UserType::IBRLWithAllocatedIP => "IBRL+IP".to_string(),
+        UserType::EdgeFiltering => "EdgeFilt".to_string(),
+        UserType::Multicast => "Multicast".to_string(),
+    }
+}
+
+/// Build the narrow `groups` cell: up to one `P:` entry and one `S:` entry,
+/// each showing the first group's abbreviated name plus `+N` for remaining
+/// groups of that role. Empty roles are omitted.
+fn narrow_groups(
+    publishers: &[Pubkey],
+    subscribers: &[Pubkey],
+    mgroups: &HashMap<Pubkey, MulticastGroup>,
+) -> String {
+    let mut parts = Vec::new();
+    if let Some(entry) = narrow_role_entry("P", publishers, mgroups) {
+        parts.push(entry);
+    }
+    if let Some(entry) = narrow_role_entry("S", subscribers, mgroups) {
+        parts.push(entry);
+    }
+    parts.join(",")
+}
+
+fn narrow_role_entry(
+    prefix: &str,
+    pks: &[Pubkey],
+    mgroups: &HashMap<Pubkey, MulticastGroup>,
+) -> Option<String> {
+    let first = pks.first()?;
+    let name = mgroups
+        .get(first)
+        .map_or_else(|| first.to_string(), |g| abbreviate_name(&g.code));
+    let extra = pks.len() - 1;
+    Some(if extra > 0 {
+        format!("{prefix}:{name}+{extra}")
+    } else {
+        format!("{prefix}:{name}")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
+    use super::narrow_groups;
     use crate::{
         doublezerocommand::CliCommand,
         tests::utils::create_test_client,
@@ -435,6 +542,49 @@ mod tests {
         },
     };
     use solana_sdk::pubkey::Pubkey;
+
+    #[test]
+    fn narrow_groups_formats_each_role_independently() {
+        fn mg(code: &str) -> MulticastGroup {
+            MulticastGroup {
+                account_type: AccountType::MulticastGroup,
+                index: 0,
+                bump_seed: 0,
+                tenant_pk: Pubkey::default(),
+                code: code.to_string(),
+                multicast_ip: [0, 0, 0, 0].into(),
+                max_bandwidth: 0,
+                status: MulticastGroupStatus::Activated,
+                owner: Pubkey::default(),
+                publisher_count: 0,
+                subscriber_count: 0,
+            }
+        }
+        let g1 = Pubkey::new_unique();
+        let g2 = Pubkey::new_unique();
+        let g3 = Pubkey::new_unique();
+        let mut mgroups = HashMap::new();
+        mgroups.insert(g1, mg("edge-solana-shreds"));
+        mgroups.insert(g2, mg("rebop"));
+        mgroups.insert(g3, mg("jito-shredstream"));
+
+        // Empty.
+        assert_eq!(narrow_groups(&[], &[], &mgroups), "");
+        // Subscriber-only, one group, short name stays as-is.
+        assert_eq!(narrow_groups(&[], &[g2], &mgroups), "S:rebop");
+        // Subscriber-only with overflow, long name abbreviates.
+        assert_eq!(
+            narrow_groups(&[], &[g1, g2, g3], &mgroups),
+            "S:edge..reds+2",
+        );
+        // Publisher-only.
+        assert_eq!(narrow_groups(&[g3], &[], &mgroups), "P:jito..ream");
+        // Both roles present — each gets its own entry and independent +N.
+        assert_eq!(
+            narrow_groups(&[g1, g2], &[g3, g1], &mgroups),
+            "P:edge..reds+1,S:jito..ream+1",
+        );
+    }
 
     #[test]
     fn test_cli_user_list() {
@@ -739,6 +889,7 @@ mod tests {
             all_tenants: true,
             json: false,
             json_compact: false,
+            narrow: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -765,12 +916,72 @@ mod tests {
             all_tenants: true,
             json: false,
             json_compact: true,
+            narrow: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"tenant\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"S:m_code\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"Prepaid: (expires epoch 10)\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"bgp_status\":\"Unknown\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+
+        let mut output = Vec::new();
+        let res = ListUserCliCommand {
+            prepaid: false,
+            solana_validator: false,
+            solana_identity: None,
+            device: None,
+            location: None,
+            owner: None,
+            user_payer: None,
+            client_ip: None,
+            user_type: None,
+            cyoa_type: None,
+            dz_ip: None,
+            tunnel_id: None,
+            status: None,
+            multicast_group: None,
+            tenant: None,
+            all_tenants: true,
+            json: false,
+            json_compact: false,
+            narrow: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        let header = output_str.lines().next().unwrap();
+        for expected in [
+            "account",
+            "tenant",
+            "user_type",
+            "groups",
+            "device",
+            "client_ip",
+            "dz_ip",
+            "tunnel_id",
+            "status",
+            "bgp_status",
+            "owner",
+        ] {
+            assert!(header.contains(expected), "missing header {expected}");
+        }
+        for hidden in ["location", "cyoa_type", "accesspass", "tunnel_net"] {
+            assert!(
+                !header.contains(hidden),
+                "narrow header should not contain {hidden}"
+            );
+        }
+        // user2 subscribes to a single multicast group, so no +N overflow.
+        assert!(output_str.contains(" S:m_code "));
+        assert!(!output_str.contains("+1"));
+        // Every rendered line must fit within 240 columns.
+        for line in output_str.lines() {
+            assert!(
+                line.len() <= 240,
+                "narrow line exceeds 240 cols: {}",
+                line.len()
+            );
+        }
     }
 
     #[test]
@@ -873,6 +1084,7 @@ mod tests {
             all_tenants: true,
             json: false,
             json_compact: false,
+            narrow: false,
         }
         .execute(&client, &mut output);
 
@@ -982,6 +1194,7 @@ mod tests {
             all_tenants: true,
             json: false,
             json_compact: false,
+            narrow: false,
         }
         .execute(&client, &mut output);
 
@@ -1091,6 +1304,7 @@ mod tests {
             all_tenants: true,
             json: false,
             json_compact: false,
+            narrow: false,
         }
         .execute(&client, &mut output);
 
@@ -1200,6 +1414,7 @@ mod tests {
             all_tenants: true,
             json: false,
             json_compact: false,
+            narrow: false,
         }
         .execute(&client, &mut output);
 
@@ -1309,6 +1524,7 @@ mod tests {
             all_tenants: true,
             json: false,
             json_compact: false,
+            narrow: false,
         }
         .execute(&client, &mut output);
 
@@ -1435,6 +1651,7 @@ mod tests {
             all_tenants: true,
             json: false,
             json_compact: false,
+            narrow: false,
         }
         .execute(&client, &mut output);
 
@@ -1584,6 +1801,7 @@ mod tests {
             all_tenants: false,
             json: false,
             json_compact: false,
+            narrow: false,
         }
         .execute(&client, &mut output);
 
@@ -1613,6 +1831,7 @@ mod tests {
             all_tenants: false,
             json: false,
             json_compact: false,
+            narrow: false,
         }
         .execute(&client, &mut output);
 
@@ -1761,6 +1980,7 @@ mod tests {
             all_tenants: true,
             json: false,
             json_compact: false,
+            narrow: false,
         }
         .execute(&client, &mut output);
 

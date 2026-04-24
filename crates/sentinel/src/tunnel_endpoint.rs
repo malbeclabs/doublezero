@@ -46,14 +46,33 @@ pub fn select_tunnel_endpoint(
 
 /// Collect the set of tunnel endpoints already in use by other user accounts
 /// at the same `client_ip`.
-pub fn in_use_tunnel_endpoints<'a, I>(users: I, client_ip: Ipv4Addr) -> Vec<Ipv4Addr>
+///
+/// A user with `tunnel_endpoint == UNSPECIFIED` is a legacy account from
+/// before the field was populated onchain; the activator implicitly routes
+/// its tunnel through the device's `public_ip`, so resolve it from
+/// `device_endpoints` rather than dropping the user.
+pub fn in_use_tunnel_endpoints<'a, I>(
+    users: I,
+    client_ip: Ipv4Addr,
+    device_endpoints: &std::collections::HashMap<Pubkey, DeviceEndpoints>,
+) -> Vec<Ipv4Addr>
 where
     I: IntoIterator<Item = &'a crate::dz_ledger_reader::DzUser>,
 {
     users
         .into_iter()
-        .filter(|u| u.client_ip == client_ip && u.tunnel_endpoint != Ipv4Addr::UNSPECIFIED)
-        .map(|u| u.tunnel_endpoint)
+        .filter(|u| u.client_ip == client_ip)
+        .map(|u| {
+            if u.tunnel_endpoint != Ipv4Addr::UNSPECIFIED {
+                u.tunnel_endpoint
+            } else {
+                device_endpoints
+                    .get(&u.device_pk)
+                    .map(|d| d.public_ip)
+                    .unwrap_or(Ipv4Addr::UNSPECIFIED)
+            }
+        })
+        .filter(|ip| *ip != Ipv4Addr::UNSPECIFIED)
         .collect()
 }
 
@@ -69,7 +88,7 @@ pub fn select_tunnel_endpoint_for_user(
     let Some(endpoints) = device_endpoints.get(device_pk) else {
         return Ipv4Addr::UNSPECIFIED;
     };
-    let exclude = in_use_tunnel_endpoints(all_users, client_ip);
+    let exclude = in_use_tunnel_endpoints(all_users, client_ip, device_endpoints);
     select_tunnel_endpoint(
         endpoints.public_ip,
         &endpoints.user_tunnel_endpoints,
@@ -140,11 +159,11 @@ mod tests {
         );
     }
 
-    fn make_user(ip: [u8; 4], tunnel_endpoint: Ipv4Addr) -> DzUser {
+    fn make_user(ip: [u8; 4], device_pk: Pubkey, tunnel_endpoint: Ipv4Addr) -> DzUser {
         DzUser {
             owner: Pubkey::default(),
             client_ip: Ipv4Addr::from(ip),
-            device_pk: Pubkey::default(),
+            device_pk,
             tenant_pk: Pubkey::default(),
             user_type: UserType::IBRL,
             publishers: vec![],
@@ -153,18 +172,55 @@ mod tests {
     }
 
     #[test]
-    fn in_use_tunnel_endpoints_filters_by_client_ip_and_drops_unspecified() {
+    fn in_use_tunnel_endpoints_filters_by_client_ip() {
         let ip_a = [10, 0, 0, 1];
         let ip_b = [10, 0, 0, 2];
         let ep1 = Ipv4Addr::new(1, 1, 1, 1);
         let ep2 = Ipv4Addr::new(2, 2, 2, 2);
         let users = vec![
-            make_user(ip_a, ep1),
-            make_user(ip_a, Ipv4Addr::UNSPECIFIED),
-            make_user(ip_b, ep2),
+            make_user(ip_a, Pubkey::new_unique(), ep1),
+            make_user(ip_b, Pubkey::new_unique(), ep2),
         ];
-        let in_use = in_use_tunnel_endpoints(&users, Ipv4Addr::from(ip_a));
+        let in_use = in_use_tunnel_endpoints(&users, Ipv4Addr::from(ip_a), &HashMap::new());
         assert_eq!(in_use, vec![ep1]);
+    }
+
+    #[test]
+    fn in_use_tunnel_endpoints_resolves_legacy_unspecified_via_device_public_ip() {
+        // A legacy user predating the tunnel_endpoint field stores UNSPECIFIED
+        // onchain; the activator implicitly routes its tunnel through the
+        // device's public_ip, so we must add that to the in-use set.
+        let ip_a = [10, 0, 0, 1];
+        let device_a = Pubkey::new_unique();
+        let public_ip_a = Ipv4Addr::new(1, 1, 1, 1);
+
+        let mut device_endpoints = HashMap::new();
+        device_endpoints.insert(
+            device_a,
+            DeviceEndpoints {
+                public_ip: public_ip_a,
+                user_tunnel_endpoints: vec![],
+            },
+        );
+
+        let users = vec![make_user(ip_a, device_a, Ipv4Addr::UNSPECIFIED)];
+        let in_use = in_use_tunnel_endpoints(&users, Ipv4Addr::from(ip_a), &device_endpoints);
+        assert_eq!(in_use, vec![public_ip_a]);
+    }
+
+    #[test]
+    fn in_use_tunnel_endpoints_drops_legacy_when_device_unknown() {
+        // If the user's device isn't in the endpoint map (e.g., deactivated),
+        // we have no way to resolve the implicit endpoint — drop the entry
+        // rather than poison the exclude list with UNSPECIFIED.
+        let ip_a = [10, 0, 0, 1];
+        let users = vec![make_user(
+            ip_a,
+            Pubkey::new_unique(),
+            Ipv4Addr::UNSPECIFIED,
+        )];
+        let in_use = in_use_tunnel_endpoints(&users, Ipv4Addr::from(ip_a), &HashMap::new());
+        assert!(in_use.is_empty());
     }
 
     #[test]
@@ -184,7 +240,7 @@ mod tests {
         );
 
         // One existing IBRL user at this client_ip already consumed ute1.
-        let users = vec![make_user([10, 0, 0, 1], ute1)];
+        let users = vec![make_user([10, 0, 0, 1], device_pk, ute1)];
 
         let ep = select_tunnel_endpoint_for_user(&device_pk, client_ip, &users, &device_endpoints);
         assert_eq!(ep, ute2);

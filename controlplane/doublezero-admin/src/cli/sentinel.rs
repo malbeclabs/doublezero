@@ -672,14 +672,7 @@ impl CreateValidatorMulticastPublishersCommand {
                     .unwrap_or_else(|| "-".to_string());
                 let tunnel_endpoint = target_device
                     .map(|d| {
-                        let exclude: Vec<Ipv4Addr> = all_users
-                            .iter()
-                            .filter(|u| {
-                                u.client_ip == c.client_ip
-                                    && u.tunnel_endpoint != Ipv4Addr::UNSPECIFIED
-                            })
-                            .map(|u| u.tunnel_endpoint)
-                            .collect();
+                        let exclude = tunnel_exclude_ips(&all_users, c.client_ip, &device_infos);
                         select_tunnel_endpoint(d.public_ip, &d.user_tunnel_endpoints, &exclude)
                     })
                     .unwrap_or(Ipv4Addr::UNSPECIFIED);
@@ -766,14 +759,8 @@ impl CreateValidatorMulticastPublishersCommand {
             let tunnel_endpoint = device_infos
                 .get(&target_device_pk)
                 .map(|d| {
-                    let exclude: Vec<Ipv4Addr> = all_users
-                        .iter()
-                        .filter(|u| {
-                            u.client_ip == candidate.client_ip
-                                && u.tunnel_endpoint != Ipv4Addr::UNSPECIFIED
-                        })
-                        .map(|u| u.tunnel_endpoint)
-                        .collect();
+                    let exclude =
+                        tunnel_exclude_ips(&all_users, candidate.client_ip, &device_infos);
                     select_tunnel_endpoint(d.public_ip, &d.user_tunnel_endpoints, &exclude)
                 })
                 .unwrap_or(Ipv4Addr::UNSPECIFIED);
@@ -845,6 +832,34 @@ impl CreateValidatorMulticastPublishersCommand {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Build the set of tunnel endpoints already in use by users at `client_ip`.
+///
+/// For users with an explicit `tunnel_endpoint` onchain, use that value.
+/// For legacy users where `tunnel_endpoint == UNSPECIFIED`, the activator
+/// implicitly routes their tunnel through the device's `public_ip`, so
+/// resolve it from `device_infos` rather than dropping the entry.
+fn tunnel_exclude_ips(
+    users: &[DzUser],
+    client_ip: Ipv4Addr,
+    device_infos: &HashMap<Pubkey, DzDeviceInfo>,
+) -> Vec<Ipv4Addr> {
+    users
+        .iter()
+        .filter(|u| u.client_ip == client_ip)
+        .map(|u| {
+            if u.tunnel_endpoint != Ipv4Addr::UNSPECIFIED {
+                u.tunnel_endpoint
+            } else {
+                device_infos
+                    .get(&u.device_pk)
+                    .map(|d| d.public_ip)
+                    .unwrap_or(Ipv4Addr::UNSPECIFIED)
+            }
+        })
+        .filter(|ip| *ip != Ipv4Addr::UNSPECIFIED)
+        .collect()
+}
 
 /// Format a nearest-device label with its proximity score.
 /// Shows `"code (1234 µs)"` in latency mode or `"code (365 km)"` in geo mode.

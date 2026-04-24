@@ -1192,6 +1192,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn legacy_unspecified_tunnel_endpoint_excludes_device_public_ip() {
+        // An IBRL user predating the tunnel_endpoint field stores UNSPECIFIED
+        // onchain; the activator implicitly put its tunnel on the device's
+        // public_ip. The multicast publisher must therefore skip the public_ip
+        // and land on a UTE.
+        let group = Pubkey::new_unique();
+        let ip = [10, 0, 0, 1];
+        let device = Pubkey::new_unique();
+        let public_ip = Ipv4Addr::new(1, 1, 1, 1);
+        let ute = Ipv4Addr::new(192, 168, 1, 11);
+
+        let mut api = MockValidatorListReader::new();
+        let mut validators = HashMap::new();
+        validators.insert(
+            Ipv4Addr::from(ip),
+            ValidatorStake {
+                activated_stake: 100,
+                software_client: String::new(),
+            },
+        );
+        api.expect_fetch_validators()
+            .returning(move || Ok(validators.clone()));
+
+        let mut dz = MockMulticastDzLedgerClient::new();
+        dz.expect_fetch_all_dz_users().returning(move || {
+            // Legacy IBRL user: tunnel_endpoint is UNSPECIFIED.
+            Ok(vec![make_ibrl_user(ip, device)])
+        });
+        dz.expect_fetch_all_device_endpoints().returning(move || {
+            let mut map = HashMap::new();
+            map.insert(
+                device,
+                DeviceEndpoints {
+                    public_ip,
+                    user_tunnel_endpoints: vec![ute],
+                },
+            );
+            Ok(map)
+        });
+
+        dz.expect_create_multicast_publisher()
+            .withf(move |g, u, ep| {
+                *g == group && u.client_ip == Ipv4Addr::from(ip) && *ep == ute
+            })
+            .times(1)
+            .returning(|_, _, _| Ok(()));
+
+        let sentinel = make_sentinel(dz, api, vec![group]);
+        sentinel.poll_cycle().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn ibrl_with_allocated_ip_users_are_candidates() {
         let group = Pubkey::new_unique();
         let ip = [10, 0, 0, 1];

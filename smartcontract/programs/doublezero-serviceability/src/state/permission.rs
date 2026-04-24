@@ -20,7 +20,7 @@ pub mod permission_flags {
     pub const CONTRIBUTOR_ADMIN: u128 = 1 << 14;
 
     // ── Tier 2: Infrastructure management ─────────────────────────────────
-    /// Can manage infrastructure: locations and exchanges.
+    /// Can manage infrastructure: facilities and metros.
     pub const INFRA_ADMIN: u128 = 1 << 2;
     /// Can manage network devices and links: create, activate, reject, update, delete, sethealth.
     pub const NETWORK_ADMIN: u128 = 1 << 3;

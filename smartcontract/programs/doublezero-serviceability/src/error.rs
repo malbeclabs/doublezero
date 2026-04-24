@@ -8,12 +8,12 @@ pub enum DoubleZeroError {
     Custom(u32), // variant 0
     #[error("Only the owner can perform this action")]
     InvalidOwnerPubkey, // variant 1
-    #[error("You are trying to assign a Pubkey that does not correspond to a Exchange")]
-    InvalidExchangePubkey, // variant 2
+    #[error("You are trying to assign a Pubkey that does not correspond to a Metro")]
+    InvalidMetroPubkey, // variant 2
     #[error("You are trying to assign a Pubkey that does not correspond to a Device")]
     InvalidDevicePubkey, // variant 3
-    #[error("You are trying to assign a Pubkey that does not correspond to a Location")]
-    InvalidLocationPubkey, // variant 4
+    #[error("You are trying to assign a Pubkey that does not correspond to a Facility")]
+    InvalidFacilityPubkey, // variant 4
     #[error("You are trying to assign a Pubkey that does not correspond to a Device A")]
     InvalidDeviceAPubkey, // variant 5
     #[error("You are trying to assign a Pubkey that does not correspond to a Device Z")]
@@ -76,10 +76,10 @@ pub enum DoubleZeroError {
     CodeTooLong, // variant 34
     #[error("No DZ Prefixes")]
     NoDzPrefixes, // variant 35
-    #[error("Invalid Location")]
-    InvalidLocation, // variant 36
-    #[error("Invalid Exchange")]
-    InvalidExchange, // variant 37
+    #[error("Invalid Facility")]
+    InvalidFacility, // variant 36
+    #[error("Invalid Metro")]
+    InvalidMetro, // variant 37
     #[error("Invalid DZ Prefix")]
     InvalidDzPrefix, // variant 38
     #[error("Name too long")]
@@ -88,7 +88,7 @@ pub enum DoubleZeroError {
     InvalidLatitude, // variant 40
     #[error("Invalid Longitude")]
     InvalidLongitude, // variant 41
-    #[error("Invalid Location ID")]
+    #[error("Invalid Facility ID")]
     InvalidLocId, // variant 42
     #[error("Invalid Country Code")]
     InvalidCountryCode, // variant 43
@@ -124,8 +124,8 @@ pub enum DoubleZeroError {
     InvalidLoopbackType, // variant 58
     #[error("Invalid Minimum Compatible Version")]
     InvalidMinCompatibleVersion, // variant 59
-    #[error("Invalid Actual Location")]
-    InvalidActualLocation, // variant 60
+    #[error("Invalid Actual Facility")]
+    InvalidActualFacility, // variant 60
     #[error("Invalid User Pubkey")]
     InvalidUserPubkey, // variant 61
     #[error("Invalid Public IP: IP conflicts with DZ prefix")]
@@ -187,8 +187,8 @@ impl From<DoubleZeroError> for ProgramError {
         match e {
             DoubleZeroError::Custom(e) => ProgramError::Custom(e),
             DoubleZeroError::InvalidOwnerPubkey => ProgramError::Custom(1),
-            DoubleZeroError::InvalidLocationPubkey => ProgramError::Custom(2),
-            DoubleZeroError::InvalidExchangePubkey => ProgramError::Custom(3),
+            DoubleZeroError::InvalidFacilityPubkey => ProgramError::Custom(2),
+            DoubleZeroError::InvalidMetroPubkey => ProgramError::Custom(3),
             DoubleZeroError::InvalidDeviceAPubkey => ProgramError::Custom(4),
             DoubleZeroError::InvalidDeviceZPubkey => ProgramError::Custom(5),
             DoubleZeroError::InvalidDevicePubkey => ProgramError::Custom(6),
@@ -221,8 +221,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidJitter => ProgramError::Custom(33),
             DoubleZeroError::CodeTooLong => ProgramError::Custom(34),
             DoubleZeroError::NoDzPrefixes => ProgramError::Custom(35),
-            DoubleZeroError::InvalidLocation => ProgramError::Custom(36),
-            DoubleZeroError::InvalidExchange => ProgramError::Custom(37),
+            DoubleZeroError::InvalidFacility => ProgramError::Custom(36),
+            DoubleZeroError::InvalidMetro => ProgramError::Custom(37),
             DoubleZeroError::InvalidDzPrefix => ProgramError::Custom(38),
             DoubleZeroError::NameTooLong => ProgramError::Custom(39),
             DoubleZeroError::InvalidLatitude => ProgramError::Custom(40),
@@ -245,7 +245,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidInterfaceType => ProgramError::Custom(57),
             DoubleZeroError::InvalidLoopbackType => ProgramError::Custom(58),
             DoubleZeroError::InvalidMinCompatibleVersion => ProgramError::Custom(59),
-            DoubleZeroError::InvalidActualLocation => ProgramError::Custom(60),
+            DoubleZeroError::InvalidActualFacility => ProgramError::Custom(60),
             DoubleZeroError::InvalidUserPubkey => ProgramError::Custom(61),
             DoubleZeroError::InvalidPublicIp => ProgramError::Custom(62),
             DoubleZeroError::AllocationFailed => ProgramError::Custom(63),
@@ -281,8 +281,8 @@ impl From<u32> for DoubleZeroError {
     fn from(e: u32) -> Self {
         match e {
             1 => DoubleZeroError::InvalidOwnerPubkey,
-            2 => DoubleZeroError::InvalidLocationPubkey,
-            3 => DoubleZeroError::InvalidExchangePubkey,
+            2 => DoubleZeroError::InvalidFacilityPubkey,
+            3 => DoubleZeroError::InvalidMetroPubkey,
             4 => DoubleZeroError::InvalidDeviceAPubkey,
             5 => DoubleZeroError::InvalidDeviceZPubkey,
             6 => DoubleZeroError::InvalidDevicePubkey,
@@ -315,8 +315,8 @@ impl From<u32> for DoubleZeroError {
             33 => DoubleZeroError::InvalidJitter,
             34 => DoubleZeroError::CodeTooLong,
             35 => DoubleZeroError::NoDzPrefixes,
-            36 => DoubleZeroError::InvalidLocation,
-            37 => DoubleZeroError::InvalidExchange,
+            36 => DoubleZeroError::InvalidFacility,
+            37 => DoubleZeroError::InvalidMetro,
             38 => DoubleZeroError::InvalidDzPrefix,
             39 => DoubleZeroError::NameTooLong,
             40 => DoubleZeroError::InvalidLatitude,
@@ -339,7 +339,7 @@ impl From<u32> for DoubleZeroError {
             57 => DoubleZeroError::InvalidInterfaceType,
             58 => DoubleZeroError::InvalidLoopbackType,
             59 => DoubleZeroError::InvalidMinCompatibleVersion,
-            60 => DoubleZeroError::InvalidActualLocation,
+            60 => DoubleZeroError::InvalidActualFacility,
             61 => DoubleZeroError::InvalidUserPubkey,
             62 => DoubleZeroError::InvalidPublicIp,
             63 => DoubleZeroError::AllocationFailed,

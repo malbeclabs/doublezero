@@ -13,8 +13,8 @@ use doublezero_serviceability::{
     entrypoint::process_instruction,
     instructions::DoubleZeroInstruction,
     pda::{
-        get_accesspass_pda, get_contributor_pda, get_device_pda, get_exchange_pda,
-        get_globalconfig_pda, get_globalstate_pda, get_location_pda, get_multicastgroup_pda,
+        get_accesspass_pda, get_contributor_pda, get_device_pda, get_facility_pda,
+        get_globalconfig_pda, get_globalstate_pda, get_metro_pda, get_multicastgroup_pda,
         get_program_config_pda, get_resource_extension_pda, get_tenant_pda, get_user_pda,
     },
     processors::{
@@ -23,10 +23,10 @@ use doublezero_serviceability::{
         device::{
             activate::DeviceActivateArgs, create::DeviceCreateArgs, update::DeviceUpdateArgs,
         },
-        exchange::create::ExchangeCreateArgs,
+        facility::create::FacilityCreateArgs,
         globalconfig::set::SetGlobalConfigArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
-        location::create::LocationCreateArgs,
+        metro::create::MetroCreateArgs,
         multicastgroup::{
             activate::MulticastGroupActivateArgs,
             allowlist::{
@@ -158,12 +158,12 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
 
     // Create Location
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, gs.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, gs.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
             code: "test".to_string(),
             name: "Test Location".to_string(),
             country: "us".to_string(),
@@ -181,12 +181,12 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
 
     // Create Exchange
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, gs.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, gs.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "test".to_string(),
             name: "Test Exchange".to_string(),
             lat: 0.0,
@@ -1600,12 +1600,12 @@ async fn test_create_subscribe_user_foundation_owner_override() {
 
     // Create Location, Exchange, Contributor
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, gs.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, gs.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
             code: "test".to_string(),
             name: "Test Location".to_string(),
             country: "us".to_string(),
@@ -1622,12 +1622,12 @@ async fn test_create_subscribe_user_foundation_owner_override() {
     .await;
 
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, gs.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, gs.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "test".to_string(),
             name: "Test Exchange".to_string(),
             lat: 0.0,
@@ -1961,12 +1961,12 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
 
     // Create Location, Exchange, Contributor
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, gs.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, gs.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
             code: "test".to_string(),
             name: "Test Location".to_string(),
             country: "us".to_string(),
@@ -1983,12 +1983,12 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
     .await;
 
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, gs.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, gs.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "test".to_string(),
             name: "Test Exchange".to_string(),
             lat: 0.0,
@@ -2304,12 +2304,12 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
 
     // Create Location, Exchange, Contributor (with foundation payer)
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, gs.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, gs.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
             code: "test".to_string(),
             name: "Test Location".to_string(),
             country: "us".to_string(),
@@ -2326,12 +2326,12 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
     .await;
 
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, gs.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, gs.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "test".to_string(),
             name: "Test Exchange".to_string(),
             lat: 0.0,

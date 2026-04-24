@@ -1,6 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    state::{accounttype::AccountType, exchange::BGP_COMMUNITY_MIN},
+    state::{accounttype::AccountType, metro::BGP_COMMUNITY_MIN},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::types::NetworkV4;

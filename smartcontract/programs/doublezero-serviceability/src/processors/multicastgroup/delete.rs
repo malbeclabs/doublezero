@@ -55,7 +55,7 @@ pub fn process_delete_multicastgroup(
     //   [mgroup, globalstate, multicast_group_block, owner, payer, system]
     // Account layout WITHOUT (legacy, use_onchain_deallocation = false):
     //   [mgroup, globalstate, payer, system]
-    let deallocation_accounts = if value.use_onchain_deallocation {
+    let dealfacility_accounts = if value.use_onchain_deallocation {
         let multicast_group_block_ext = next_account_info(accounts_iter)?;
         let owner_account = next_account_info(accounts_iter)?;
         Some((multicast_group_block_ext, owner_account))
@@ -112,7 +112,7 @@ pub fn process_delete_multicastgroup(
         return Err(DoubleZeroError::MulticastGroupNotEmpty.into());
     }
 
-    if let Some((multicast_group_block_ext, owner_account)) = deallocation_accounts {
+    if let Some((multicast_group_block_ext, owner_account)) = dealfacility_accounts {
         // Atomic delete+deallocate+close path
         if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
             return Err(DoubleZeroError::FeatureNotEnabled.into());

@@ -130,8 +130,8 @@ async fn test_delete_cyoa_interface_with_invalid_sibling() {
         owner: payer.pubkey(),
         index: 2,
         bump_seed: dev_bump,
-        location_pk: Pubkey::new_unique(), // non-default to pass validation
-        exchange_pk: Pubkey::new_unique(), // non-default to pass validation
+        facility_pk: Pubkey::new_unique(), // non-default to pass validation
+        metro_pk: Pubkey::new_unique(),    // non-default to pass validation
         device_type: DeviceType::Hybrid,
         public_ip: [8, 8, 8, 8].into(),
         status: DeviceStatus::Activated,
@@ -362,8 +362,8 @@ async fn test_update_cyoa_interface_with_invalid_sibling() {
         owner: payer.pubkey(),
         index: 2,
         bump_seed: dev_bump,
-        location_pk: Pubkey::new_unique(),
-        exchange_pk: Pubkey::new_unique(),
+        facility_pk: Pubkey::new_unique(),
+        metro_pk: Pubkey::new_unique(),
         device_type: DeviceType::Hybrid,
         public_ip: [8, 8, 8, 8].into(),
         status: DeviceStatus::Activated,

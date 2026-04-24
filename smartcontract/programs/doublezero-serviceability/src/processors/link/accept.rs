@@ -63,7 +63,7 @@ pub fn process_accept_link(
     let globalstate_account = next_account_info(accounts_iter)?;
 
     // Optional: onchain allocation accounts (before payer)
-    let onchain_allocation_accounts = if value.use_onchain_allocation {
+    let onchain_alfacility_accounts = if value.use_onchain_allocation {
         let side_a_device_account = next_account_info(accounts_iter)?;
         let device_tunnel_block_ext = next_account_info(accounts_iter)?;
         let link_ids_ext = next_account_info(accounts_iter)?;
@@ -126,7 +126,7 @@ pub fn process_accept_link(
     link.side_z_iface_name = value.side_z_iface_name.clone();
 
     if let Some((side_a_device_account, device_tunnel_block_ext, link_ids_ext)) =
-        onchain_allocation_accounts
+        onchain_alfacility_accounts
     {
         // Combined accept + activate path with onchain allocation.
         // Gated on the OnChainAllocation feature flag (checked inside validate_and_allocate_link_resources).

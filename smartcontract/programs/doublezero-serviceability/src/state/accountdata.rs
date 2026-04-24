@@ -2,8 +2,8 @@ use crate::{
     error::DoubleZeroError,
     state::{
         accesspass::AccessPass, accounttype::AccountType, contributor::Contributor, device::Device,
-        exchange::Exchange, globalconfig::GlobalConfig, globalstate::GlobalState, index::Index,
-        link::Link, location::Location, multicastgroup::MulticastGroup, permission::Permission,
+        facility::Facility, globalconfig::GlobalConfig, globalstate::GlobalState, index::Index,
+        link::Link, metro::Metro, multicastgroup::MulticastGroup, permission::Permission,
         programconfig::ProgramConfig, resource_extension::ResourceExtensionOwned, tenant::Tenant,
         topology::TopologyInfo, user::User,
     },
@@ -17,8 +17,8 @@ pub enum AccountData {
     None,
     GlobalState(GlobalState),
     GlobalConfig(GlobalConfig),
-    Location(Location),
-    Exchange(Exchange),
+    Facility(Facility),
+    Metro(Metro),
     Device(Device),
     Link(Link),
     User(User),
@@ -39,8 +39,8 @@ impl AccountData {
             AccountData::None => "None",
             AccountData::GlobalState(_) => "GlobalState",
             AccountData::GlobalConfig(_) => "GlobalConfig",
-            AccountData::Location(_) => "Location",
-            AccountData::Exchange(_) => "Exchange",
+            AccountData::Facility(_) => "Facility",
+            AccountData::Metro(_) => "Metro",
             AccountData::Device(_) => "Device",
             AccountData::Link(_) => "Link",
             AccountData::User(_) => "User",
@@ -61,8 +61,8 @@ impl AccountData {
             AccountData::None => "".to_string(),
             AccountData::GlobalState(global_state) => global_state.to_string(),
             AccountData::GlobalConfig(global_config) => global_config.to_string(),
-            AccountData::Location(location) => location.to_string(),
-            AccountData::Exchange(exchange) => exchange.to_string(),
+            AccountData::Facility(facility) => facility.to_string(),
+            AccountData::Metro(metro) => metro.to_string(),
             AccountData::Device(device) => device.to_string(),
             AccountData::Link(tunnel) => tunnel.to_string(),
             AccountData::User(user) => user.to_string(),
@@ -94,17 +94,17 @@ impl AccountData {
         }
     }
 
-    pub fn get_location(&self) -> Result<Location, DoubleZeroError> {
-        if let AccountData::Location(location) = self {
-            Ok(location.clone())
+    pub fn get_facility(&self) -> Result<Facility, DoubleZeroError> {
+        if let AccountData::Facility(facility) = self {
+            Ok(facility.clone())
         } else {
             Err(DoubleZeroError::InvalidAccountType)
         }
     }
 
-    pub fn get_exchange(&self) -> Result<Exchange, DoubleZeroError> {
-        if let AccountData::Exchange(exchange) = self {
-            Ok(exchange.clone())
+    pub fn get_metro(&self) -> Result<Metro, DoubleZeroError> {
+        if let AccountData::Metro(metro) = self {
+            Ok(metro.clone())
         } else {
             Err(DoubleZeroError::InvalidAccountType)
         }
@@ -222,8 +222,8 @@ impl TryFrom<&[u8]> for AccountData {
             AccountType::GlobalConfig => Ok(AccountData::GlobalConfig(GlobalConfig::try_from(
                 bytes as &[u8],
             )?)),
-            AccountType::Location => Ok(AccountData::Location(Location::try_from(bytes as &[u8])?)),
-            AccountType::Exchange => Ok(AccountData::Exchange(Exchange::try_from(bytes as &[u8])?)),
+            AccountType::Facility => Ok(AccountData::Facility(Facility::try_from(bytes as &[u8])?)),
+            AccountType::Metro => Ok(AccountData::Metro(Metro::try_from(bytes as &[u8])?)),
             AccountType::Device => Ok(AccountData::Device(Device::try_from(bytes as &[u8])?)),
             AccountType::Link => Ok(AccountData::Link(Link::try_from(bytes as &[u8])?)),
             AccountType::User => Ok(AccountData::User(User::try_from(bytes as &[u8])?)),

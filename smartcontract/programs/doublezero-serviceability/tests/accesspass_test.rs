@@ -823,12 +823,12 @@ async fn setup_device_and_tenants() -> (BanksClient, Keypair, Pubkey, Pubkey, Pu
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     // Create location
-    let (location_pubkey, _) = get_location_pda(&program_id, 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(facility::create::FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -845,12 +845,12 @@ async fn setup_device_and_tenants() -> (BanksClient, Keypair, Pubkey, Pubkey, Pu
     .await;
 
     // Create exchange
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, 2);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, 2);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(metro::create::MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,

@@ -5,8 +5,8 @@ use crate::{
     resource::ResourceType,
     serializer::{try_acc_close, try_acc_write},
     state::{
-        accounttype::AccountType, contributor::Contributor, device::*, globalstate::GlobalState,
-        location::Location, resource_extension::ResourceExtensionBorrowed,
+        accounttype::AccountType, contributor::Contributor, device::*, facility::Facility,
+        globalstate::GlobalState, resource_extension::ResourceExtensionBorrowed,
     },
 };
 use borsh::BorshSerialize;
@@ -134,7 +134,7 @@ pub fn process_update_device(
 
     let device_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
-    // Update location accounts (old and new)
+    // Update facility accounts (old and new)
 
     let (location_old_account, location_new_account) = if accounts.len() > 5 {
         (
@@ -320,30 +320,30 @@ pub fn process_update_device(
         device.max_multicast_publishers = max_multicast_publishers;
     }
 
-    // Handle location update if both old and new location accounts are provided
+    // Handle facility update if both old and new facility accounts are provided
     if let (Some(location_old_account), Some(location_new_account)) =
         (location_old_account, location_new_account)
     {
         if location_old_account.key != location_new_account.key {
-            let mut location_old = Location::try_from(location_old_account)?;
-            let mut location_new = Location::try_from(location_new_account)?;
-            if device.location_pk != *location_old_account.key {
+            let mut facility_old = Facility::try_from(location_old_account)?;
+            let mut facility_new = Facility::try_from(location_new_account)?;
+            if device.facility_pk != *location_old_account.key {
                 msg!(
-                    "Invalid location account. Device location_pk: {}, location_old_account: {}",
-                    device.location_pk,
+                    "Invalid facility account. Device facility_pk: {}, facility_old_account: {}",
+                    device.facility_pk,
                     location_old_account.key
                 );
-                return Err(DoubleZeroError::InvalidActualLocation.into());
+                return Err(DoubleZeroError::InvalidActualFacility.into());
             }
 
-            location_old.reference_count = location_old.reference_count.saturating_sub(1);
-            location_new.reference_count = location_new.reference_count.saturating_add(1);
+            facility_old.reference_count = facility_old.reference_count.saturating_sub(1);
+            facility_new.reference_count = facility_new.reference_count.saturating_add(1);
 
-            // Set new location pk in device
-            device.location_pk = *location_new_account.key;
+            // Set new facility pk in device
+            device.facility_pk = *location_new_account.key;
 
-            try_acc_write(&location_old, location_old_account, payer_account, accounts)?;
-            try_acc_write(&location_new, location_new_account, payer_account, accounts)?;
+            try_acc_write(&facility_old, location_old_account, payer_account, accounts)?;
+            try_acc_write(&facility_new, location_new_account, payer_account, accounts)?;
         }
     }
 

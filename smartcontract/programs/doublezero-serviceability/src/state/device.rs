@@ -238,7 +238,7 @@ pub struct Device {
             deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
-    pub location_pk: Pubkey, // 32
+    pub facility_pk: Pubkey, // 32
     #[cfg_attr(
         feature = "serde",
         serde(
@@ -246,7 +246,7 @@ pub struct Device {
             deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
-    pub exchange_pk: Pubkey, // 32
+    pub metro_pk: Pubkey, // 32
     pub device_type: DeviceType,   // 1
     pub public_ip: Ipv4Addr,       // 4
     pub status: DeviceStatus,      // 1
@@ -291,8 +291,8 @@ impl Default for Device {
             owner: Pubkey::default(),
             index: 0,
             bump_seed: 0,
-            location_pk: Pubkey::default(),
-            exchange_pk: Pubkey::default(),
+            facility_pk: Pubkey::default(),
+            metro_pk: Pubkey::default(),
             device_type: DeviceType::Hybrid,
             public_ip: Ipv4Addr::new(0, 0, 0, 0),
             status: DeviceStatus::Pending,
@@ -464,12 +464,12 @@ impl fmt::Display for Device {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, contributor_pk: {}, location_pk: {}, exchange_pk: {}, device_type: {}, \
+            "account_type: {}, owner: {}, index: {}, contributor_pk: {}, facility_pk: {}, metro_pk: {}, device_type: {}, \
             public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}, mgmt_vrf: {}, interfaces: {:?}, \
             reference_count: {}, users_count: {}, max_users: {}, device_health: {}, desired_status: {}, \
             unicast_users_count: {}, multicast_subscribers_count: {}, max_unicast_users: {}, max_multicast_subscribers: {}, reserved_seats: {}, \
             multicast_publishers_count: {}, max_multicast_publishers: {}",
-            self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type,
+            self.account_type, self.owner, self.index, self.contributor_pk, self.facility_pk, self.metro_pk, self.device_type,
             &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.mgmt_vrf, self.interfaces,
             self.reference_count, self.users_count, self.max_users, self.device_health, self.desired_status,
             self.unicast_users_count, self.multicast_subscribers_count, self.max_unicast_users, self.max_multicast_subscribers, self.reserved_seats,
@@ -487,8 +487,8 @@ impl TryFrom<&[u8]> for Device {
             owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            location_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            exchange_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            facility_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            metro_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             device_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             public_ip: BorshDeserialize::deserialize(&mut data).unwrap_or([0, 0, 0, 0].into()),
             status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
@@ -547,15 +547,15 @@ impl Validate for Device {
             msg!("Code too long: {} bytes", self.code.len());
             return Err(DoubleZeroError::CodeTooLong);
         }
-        // Location ID must be valid
-        if self.location_pk == Pubkey::default() {
-            msg!("Invalid location ID: {}", self.location_pk);
-            return Err(DoubleZeroError::InvalidLocation);
+        // Facility ID must be valid
+        if self.facility_pk == Pubkey::default() {
+            msg!("Invalid facility ID: {}", self.facility_pk);
+            return Err(DoubleZeroError::InvalidFacility);
         }
-        // Exchange ID must be valid
-        if self.exchange_pk == Pubkey::default() {
-            msg!("Invalid exchange ID: {}", self.exchange_pk);
-            return Err(DoubleZeroError::InvalidExchange);
+        // Metro ID must be valid
+        if self.metro_pk == Pubkey::default() {
+            msg!("Invalid metro ID: {}", self.metro_pk);
+            return Err(DoubleZeroError::InvalidMetro);
         }
         // Public IP must be a global address
         if self.device_type != DeviceType::Transit && !is_global(self.public_ip) {
@@ -700,8 +700,8 @@ mod tests {
         assert_eq!(val.index, 0);
         assert_eq!(val.code, "");
         assert_eq!(val.dz_prefixes.len(), 0);
-        assert_eq!(val.location_pk, Pubkey::default());
-        assert_eq!(val.exchange_pk, Pubkey::default());
+        assert_eq!(val.facility_pk, Pubkey::default());
+        assert_eq!(val.metro_pk, Pubkey::default());
         assert_eq!(val.public_ip, Ipv4Addr::new(0, 0, 0, 0));
         assert_eq!(val.status, DeviceStatus::Pending);
         assert_eq!(val.device_type, DeviceType::Hybrid);
@@ -725,8 +725,8 @@ mod tests {
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
             device_type: DeviceType::Hybrid,
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             dz_prefixes: "100.0.0.1/24".parse().unwrap(),
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
@@ -760,8 +760,8 @@ mod tests {
             contributor_pk: Pubkey::new_unique(),
             code: "a".repeat(33), // More than 32 bytes
             device_type: DeviceType::Hybrid,
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
@@ -795,8 +795,8 @@ mod tests {
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
             device_type: DeviceType::Hybrid,
-            location_pk: Pubkey::default(), // Invalid
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::default(), // Invalid
+            metro_pk: Pubkey::new_unique(),
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
@@ -816,7 +816,7 @@ mod tests {
             max_multicast_publishers: 0,
         };
         let err = val.validate();
-        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidLocation);
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidFacility);
     }
 
     #[test]
@@ -830,8 +830,8 @@ mod tests {
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
             device_type: DeviceType::Hybrid,
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::default(), // Invalid
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::default(), // Invalid
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
@@ -852,7 +852,7 @@ mod tests {
         };
         let err = val.validate();
         assert!(err.is_err());
-        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidExchange);
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidMetro);
     }
 
     #[test]
@@ -866,8 +866,8 @@ mod tests {
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
             device_type: DeviceType::Hybrid,
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
             public_ip: [0, 0, 0, 0].into(), // Invalid
             status: DeviceStatus::Activated,
@@ -901,8 +901,8 @@ mod tests {
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
             device_type: DeviceType::Hybrid,
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             dz_prefixes: "0.0.0.0".parse().unwrap(),
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
@@ -936,8 +936,8 @@ mod tests {
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
             device_type: DeviceType::Hybrid,
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             dz_prefixes: "100.0.0.1/24".parse().unwrap(),
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
@@ -971,8 +971,8 @@ mod tests {
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
             device_type: DeviceType::Hybrid,
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             dz_prefixes: "100.0.0.1/24".parse().unwrap(),
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
@@ -1007,8 +1007,8 @@ mod tests {
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
             device_type: DeviceType::Hybrid,
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             dz_prefixes: "0.0.0.0/24".parse().unwrap(), // Invalid
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
@@ -1061,8 +1061,8 @@ mod tests {
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
             device_type: DeviceType::Hybrid,
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
@@ -1097,8 +1097,8 @@ mod tests {
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
             device_type: DeviceType::Hybrid,
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             dz_prefixes: "100.0.0.1/24,101.0.0.1/24".parse().unwrap(),
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
@@ -1172,8 +1172,8 @@ mod tests {
         assert_eq!(val.contributor_pk, val2.contributor_pk);
         assert_eq!(val.device_type, val2.device_type);
         assert_eq!(val.dz_prefixes, val2.dz_prefixes);
-        assert_eq!(val.location_pk, val2.location_pk);
-        assert_eq!(val.exchange_pk, val2.exchange_pk);
+        assert_eq!(val.facility_pk, val2.facility_pk);
+        assert_eq!(val.metro_pk, val2.metro_pk);
         assert_eq!(val.public_ip, val2.public_ip);
         assert_eq!(val.dz_prefixes, val2.dz_prefixes);
         assert_eq!(val.status, val2.status);
@@ -1204,8 +1204,8 @@ mod tests {
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
             device_type: DeviceType::Hybrid,
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             dz_prefixes: "10.0.0.1/24,11.0.0.1/24".parse().unwrap(),
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
@@ -1250,8 +1250,8 @@ mod test_device_validate {
             owner: Pubkey::new_unique(),
             index: 1,
             bump_seed: 1,
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             device_type: DeviceType::default(),
             public_ip: "200.100.50.25".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -1288,8 +1288,8 @@ mod test_device_validate_errors {
             owner: Pubkey::new_unique(),
             index: 1,
             bump_seed: 1,
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             device_type: DeviceType::Hybrid,
             public_ip: "200.100.50.25".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -1333,17 +1333,17 @@ mod test_device_validate_errors {
     #[test]
     fn test_invalid_location() {
         let mut device = base_device();
-        device.location_pk = Pubkey::default();
+        device.facility_pk = Pubkey::default();
         let err = device.validate();
-        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidLocation);
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidFacility);
     }
 
     #[test]
     fn test_invalid_exchange() {
         let mut device = base_device();
-        device.exchange_pk = Pubkey::default();
+        device.metro_pk = Pubkey::default();
         let err = device.validate();
-        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidExchange);
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidMetro);
     }
 
     #[test]

@@ -102,13 +102,13 @@ async fn test_wan_link() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 0);
 
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(facility::create::FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -130,13 +130,13 @@ async fn test_wan_link() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 1);
 
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(metro::create::MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,
@@ -307,14 +307,14 @@ async fn test_wan_link() {
     let location = get_account_data(&mut banks_client, location_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_location()
+        .get_facility()
         .unwrap();
     assert_eq!(location.reference_count, 1);
     //check reference counts
     let exchange = get_account_data(&mut banks_client, exchange_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_exchange()
+        .get_metro()
         .unwrap();
     assert_eq!(exchange.reference_count, 1);
 
@@ -438,14 +438,14 @@ async fn test_wan_link() {
     let location = get_account_data(&mut banks_client, location_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_location()
+        .get_facility()
         .unwrap();
     assert_eq!(location.reference_count, 2);
     //check reference counts
     let exchange = get_account_data(&mut banks_client, exchange_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_exchange()
+        .get_metro()
         .unwrap();
     assert_eq!(exchange.reference_count, 2);
 
@@ -950,13 +950,13 @@ async fn test_wan_link_rejects_cyoa_interface() {
 
     // 2. Create location and exchange
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(facility::create::FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -973,13 +973,13 @@ async fn test_wan_link_rejects_cyoa_interface() {
     .await;
 
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(metro::create::MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,
@@ -1517,12 +1517,12 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
 
     // Create location, exchange, contributor
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(facility::create::FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -1539,12 +1539,12 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
     .await;
 
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(metro::create::MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,
@@ -1981,12 +1981,12 @@ async fn setup_link_env() -> (
 
     // Location
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(facility::create::FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -2004,12 +2004,12 @@ async fn setup_link_env() -> (
 
     // Exchange
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(metro::create::MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,
@@ -2717,12 +2717,12 @@ async fn test_link_activation_succeeds_without_unicast_default() {
 
     // Location
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(facility::create::FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -2740,12 +2740,12 @@ async fn test_link_activation_succeeds_without_unicast_default() {
 
     // Exchange
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(metro::create::MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,

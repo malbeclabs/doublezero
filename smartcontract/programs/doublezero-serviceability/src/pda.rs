@@ -5,8 +5,8 @@ use solana_program::pubkey::Pubkey;
 use crate::{
     seeds::{
         SEED_ACCESS_PASS, SEED_ADMIN_GROUP_BITS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE,
-        SEED_DEVICE_TUNNEL_BLOCK, SEED_DZ_PREFIX_BLOCK, SEED_EXCHANGE, SEED_GLOBALSTATE,
-        SEED_INDEX, SEED_LINK, SEED_LINK_IDS, SEED_LOCATION, SEED_MULTICASTGROUP_BLOCK,
+        SEED_DEVICE_TUNNEL_BLOCK, SEED_DZ_PREFIX_BLOCK, SEED_FACILITY, SEED_GLOBALSTATE,
+        SEED_INDEX, SEED_LINK, SEED_LINK_IDS, SEED_METRO, SEED_MULTICASTGROUP_BLOCK,
         SEED_MULTICAST_GROUP, SEED_MULTICAST_PUBLISHER_BLOCK, SEED_PERMISSION, SEED_PREFIX,
         SEED_PROGRAM_CONFIG, SEED_SEGMENT_ROUTING_IDS, SEED_TENANT, SEED_TOPOLOGY, SEED_TUNNEL_IDS,
         SEED_USER, SEED_USER_TUNNEL_BLOCK, SEED_VRF_IDS,
@@ -26,18 +26,15 @@ pub fn get_program_config_pda(program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[SEED_PREFIX, SEED_PROGRAM_CONFIG], program_id)
 }
 
-pub fn get_location_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {
+pub fn get_facility_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &[SEED_PREFIX, SEED_LOCATION, &index.to_le_bytes()],
+        &[SEED_PREFIX, SEED_FACILITY, &index.to_le_bytes()],
         program_id,
     )
 }
 
-pub fn get_exchange_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[SEED_PREFIX, SEED_EXCHANGE, &index.to_le_bytes()],
-        program_id,
-    )
+pub fn get_metro_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_PREFIX, SEED_METRO, &index.to_le_bytes()], program_id)
 }
 
 pub fn get_device_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {

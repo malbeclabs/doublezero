@@ -55,7 +55,7 @@ pub fn process_request_ban_user(
     //   [user, globalstate, user_tunnel_block, multicast_publisher_block?, device_tunnel_ids, dz_prefix_0..N, payer, system]
     // Account layout WITHOUT (legacy, dz_prefix_count == 0):
     //   [user, globalstate, payer, system]
-    let deallocation_accounts = if value.dz_prefix_count > 0 {
+    let dealfacility_accounts = if value.dz_prefix_count > 0 {
         let user_tunnel_block_ext = next_account_info(accounts_iter)?;
 
         let multicast_publisher_block_ext = if value.multicast_publisher_count > 0 {
@@ -119,7 +119,7 @@ pub fn process_request_ban_user(
         multicast_publisher_block_ext,
         device_tunnel_ids_ext,
         dz_prefix_accounts,
-    )) = deallocation_accounts
+    )) = dealfacility_accounts
     {
         // Atomic path: deallocate resources and set status to Banned
         if !user.publishers.is_empty() || !user.subscribers.is_empty() {

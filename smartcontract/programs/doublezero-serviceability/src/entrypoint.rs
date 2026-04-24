@@ -37,10 +37,10 @@ use crate::{
             sethealth::process_set_health_device,
             update::process_update_device,
         },
-        exchange::{
-            create::process_create_exchange, delete::process_delete_exchange,
-            resume::process_resume_exchange, setdevice::process_setdevice_exchange,
-            suspend::process_suspend_exchange, update::process_update_exchange,
+        facility::{
+            create::process_create_facility, delete::process_delete_facility,
+            resume::process_resume_facility, suspend::process_suspend_facility,
+            update::process_update_facility,
         },
         globalconfig::set::process_set_globalconfig,
         globalstate::{
@@ -55,10 +55,10 @@ use crate::{
             delete::process_delete_link, reject::process_reject_link,
             sethealth::process_set_health_link, update::process_update_link,
         },
-        location::{
-            create::process_create_location, delete::process_delete_location,
-            resume::process_resume_location, suspend::process_suspend_location,
-            update::process_update_location,
+        metro::{
+            create::process_create_metro, delete::process_delete_metro,
+            resume::process_resume_metro, setdevice::process_setdevice_metro,
+            suspend::process_suspend_metro, update::process_update_metro,
         },
         migrate::process_migrate,
         multicastgroup::{
@@ -144,11 +144,11 @@ pub fn process_instruction(
         DoubleZeroInstruction::SetGlobalConfig(value) => {
             process_set_globalconfig(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::CreateLocation(value) => {
-            process_create_location(program_id, accounts, &value)?
+        DoubleZeroInstruction::CreateFacility(value) => {
+            process_create_facility(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::CreateExchange(value) => {
-            process_create_exchange(program_id, accounts, &value)?
+        DoubleZeroInstruction::CreateMetro(value) => {
+            process_create_metro(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CreateDevice(value) => {
             process_create_device(program_id, accounts, &value)?
@@ -180,17 +180,17 @@ pub fn process_instruction(
         DoubleZeroInstruction::DeleteLink(value) => {
             process_delete_link(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::DeleteExchange(value) => {
-            process_delete_exchange(program_id, accounts, &value)?
+        DoubleZeroInstruction::DeleteMetro(value) => {
+            process_delete_metro(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::DeleteLocation(value) => {
-            process_delete_location(program_id, accounts, &value)?
+        DoubleZeroInstruction::DeleteFacility(value) => {
+            process_delete_facility(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::UpdateLocation(value) => {
-            process_update_location(program_id, accounts, &value)?
+        DoubleZeroInstruction::UpdateFacility(value) => {
+            process_update_facility(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::UpdateExchange(value) => {
-            process_update_exchange(program_id, accounts, &value)?
+        DoubleZeroInstruction::UpdateMetro(value) => {
+            process_update_metro(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::UpdateLink(value) => {
             process_update_link(program_id, accounts, &value)?
@@ -198,22 +198,22 @@ pub fn process_instruction(
         DoubleZeroInstruction::UpdateUser(value) => {
             process_update_user(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::SuspendLocation(value) => {
-            process_suspend_location(program_id, accounts, &value)?
+        DoubleZeroInstruction::SuspendFacility(value) => {
+            process_suspend_facility(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::SuspendExchange(value) => {
-            process_suspend_exchange(program_id, accounts, &value)?
+        DoubleZeroInstruction::SuspendMetro(value) => {
+            process_suspend_metro(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::SuspendDevice() => return Err(DoubleZeroError::Deprecated.into()),
         DoubleZeroInstruction::SuspendLink() => return Err(DoubleZeroError::Deprecated.into()),
         DoubleZeroInstruction::SuspendUser() => {
             return Err(DoubleZeroError::Deprecated.into());
         }
-        DoubleZeroInstruction::ResumeLocation(value) => {
-            process_resume_location(program_id, accounts, &value)?
+        DoubleZeroInstruction::ResumeFacility(value) => {
+            process_resume_facility(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ResumeExchange(value) => {
-            process_resume_exchange(program_id, accounts, &value)?
+        DoubleZeroInstruction::ResumeMetro(value) => {
+            process_resume_metro(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::ResumeDevice() => return Err(DoubleZeroError::Deprecated.into()),
         DoubleZeroInstruction::ResumeLink() => return Err(DoubleZeroError::Deprecated.into()),
@@ -319,8 +319,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::DeleteContributor(value) => {
             process_delete_contributor(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::SetDeviceExchange(value) => {
-            process_setdevice_exchange(program_id, accounts, &value)?
+        DoubleZeroInstruction::SetDeviceMetro(value) => {
+            process_setdevice_metro(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::AcceptLink(value) => {
             process_accept_link(program_id, accounts, &value)?

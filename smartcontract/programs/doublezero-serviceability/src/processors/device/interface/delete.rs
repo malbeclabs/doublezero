@@ -63,7 +63,7 @@ pub fn process_delete_device_interface(
     //   [device, contributor, globalstate, device_tunnel_block, segment_routing_ids, payer, system]
     // Account layout WITHOUT (legacy, use_onchain_deallocation = false):
     //   [device, contributor, globalstate, payer, system]
-    let deallocation_accounts = if value.use_onchain_deallocation {
+    let dealfacility_accounts = if value.use_onchain_deallocation {
         let device_tunnel_block_ext = next_account_info(accounts_iter)?;
         let segment_routing_ids_ext = next_account_info(accounts_iter)?;
         Some((device_tunnel_block_ext, segment_routing_ids_ext))
@@ -127,7 +127,7 @@ pub fn process_delete_device_interface(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    if let Some((device_tunnel_block_ext, segment_routing_ids_ext)) = deallocation_accounts {
+    if let Some((device_tunnel_block_ext, segment_routing_ids_ext)) = dealfacility_accounts {
         // Atomic delete+deallocate path
         if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
             return Err(DoubleZeroError::FeatureNotEnabled.into());

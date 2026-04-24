@@ -62,7 +62,7 @@ pub fn process_delete_user(
     //   [user, accesspass, globalstate, device, user_tunnel_block, multicast_publisher_block?, device_tunnel_ids, dz_prefix_0..N, optional_tenant, owner, payer, system]
     // Account layout WITHOUT (legacy, dz_prefix_count == 0):
     //   [user, accesspass, globalstate, payer, system]
-    let deallocation_accounts = if value.dz_prefix_count > 0 {
+    let dealfacility_accounts = if value.dz_prefix_count > 0 {
         let device_account = next_account_info(accounts_iter)?;
         let user_tunnel_block_ext = next_account_info(accounts_iter)?;
 
@@ -219,7 +219,7 @@ pub fn process_delete_user(
         multicast_publisher_block_ext,
         device_tunnel_ids_ext,
         dz_prefix_accounts,
-    )) = deallocation_accounts
+    )) = dealfacility_accounts
     {
         let owner_account = owner_account.unwrap();
 

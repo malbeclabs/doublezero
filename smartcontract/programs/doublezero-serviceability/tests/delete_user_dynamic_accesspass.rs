@@ -98,12 +98,12 @@ async fn setup_test_env() -> TestEnv {
     .await;
 
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, gs.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, gs.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(facility::create::FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -120,12 +120,12 @@ async fn setup_test_env() -> TestEnv {
     .await;
 
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, gs.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, gs.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(metro::create::MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.0,

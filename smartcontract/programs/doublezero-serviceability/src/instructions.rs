@@ -27,9 +27,9 @@ use crate::processors::{
         sethealth::DeviceSetHealthArgs,
         update::DeviceUpdateArgs,
     },
-    exchange::{
-        create::ExchangeCreateArgs, delete::ExchangeDeleteArgs, resume::ExchangeResumeArgs,
-        setdevice::ExchangeSetDeviceArgs, suspend::ExchangeSuspendArgs, update::ExchangeUpdateArgs,
+    facility::{
+        create::FacilityCreateArgs, delete::FacilityDeleteArgs, resume::FacilityResumeArgs,
+        suspend::FacilitySuspendArgs, update::FacilityUpdateArgs,
     },
     globalconfig::set::SetGlobalConfigArgs,
     globalstate::{
@@ -42,9 +42,9 @@ use crate::processors::{
         create::LinkCreateArgs, delete::LinkDeleteArgs, reject::LinkRejectArgs,
         sethealth::LinkSetHealthArgs, update::LinkUpdateArgs,
     },
-    location::{
-        create::LocationCreateArgs, delete::LocationDeleteArgs, resume::LocationResumeArgs,
-        suspend::LocationSuspendArgs, update::LocationUpdateArgs,
+    metro::{
+        create::MetroCreateArgs, delete::MetroDeleteArgs, resume::MetroResumeArgs,
+        setdevice::MetroSetDeviceArgs, suspend::MetroSuspendArgs, update::MetroUpdateArgs,
     },
     migrate::MigrateArgs,
     multicastgroup::{
@@ -112,17 +112,17 @@ pub enum DoubleZeroInstruction {
     AddUserAllowlist(),                                 // variant 8
     RemoveUserAllowlist(),                              // variant 9
 
-    CreateLocation(LocationCreateArgs),   // variant 10
-    UpdateLocation(LocationUpdateArgs),   // variant 11
-    SuspendLocation(LocationSuspendArgs), // variant 12
-    ResumeLocation(LocationResumeArgs),   // variant 13
-    DeleteLocation(LocationDeleteArgs),   // variant 14
+    CreateFacility(FacilityCreateArgs),   // variant 10
+    UpdateFacility(FacilityUpdateArgs),   // variant 11
+    SuspendFacility(FacilitySuspendArgs), // variant 12
+    ResumeFacility(FacilityResumeArgs),   // variant 13
+    DeleteFacility(FacilityDeleteArgs),   // variant 14
 
-    CreateExchange(ExchangeCreateArgs),   // variant 15
-    UpdateExchange(ExchangeUpdateArgs),   // variant 16
-    SuspendExchange(ExchangeSuspendArgs), // variant 17
-    ResumeExchange(ExchangeResumeArgs),   // variant 18
-    DeleteExchange(ExchangeDeleteArgs),   // variant 19
+    CreateMetro(MetroCreateArgs),   // variant 15
+    UpdateMetro(MetroUpdateArgs),   // variant 16
+    SuspendMetro(MetroSuspendArgs), // variant 17
+    ResumeMetro(MetroResumeArgs),   // variant 18
+    DeleteMetro(MetroDeleteArgs),   // variant 19
 
     CreateDevice(DeviceCreateArgs),             // variant 20
     ActivateDevice(DeviceActivateArgs),         // variant 21
@@ -176,13 +176,13 @@ pub enum DoubleZeroInstruction {
     ResumeContributor(ContributorResumeArgs),   // variant 63
     DeleteContributor(ContributorDeleteArgs),   // variant 64
 
-    SetDeviceExchange(ExchangeSetDeviceArgs), // variant 65
-    AcceptLink(LinkAcceptArgs),               // variant 66
-    SetAccessPass(SetAccessPassArgs),         // variant 67
-    SetAirdrop(SetAirdropArgs),               // variant 68
-    CloseAccessPass(CloseAccessPassArgs),     // variant 69
+    SetDeviceMetro(MetroSetDeviceArgs),               // variant 65
+    AcceptLink(LinkAcceptArgs),                       // variant 66
+    SetAccessPass(SetAccessPassArgs),                 // variant 67
+    SetAirdrop(SetAirdropArgs),                       // variant 68
+    CloseAccessPass(CloseAccessPassArgs),             // variant 69
     CheckStatusAccessPass(CheckStatusAccessPassArgs), // variant 70
-    CheckUserAccessPass(CheckUserAccessPassArgs), // variant 71
+    CheckUserAccessPass(CheckUserAccessPassArgs),     // variant 71
 
     ActivateDeviceInterface(DeviceInterfaceActivateArgs), // variant 72
     CreateDeviceInterface(DeviceInterfaceCreateArgs),     // variant 73
@@ -261,17 +261,17 @@ impl DoubleZeroInstruction {
             8 => Ok(Self::AddUserAllowlist()),
             9 => Ok(Self::RemoveUserAllowlist()),
 
-            10 => Ok(Self::CreateLocation(LocationCreateArgs::try_from(rest).unwrap())),
-            11 => Ok(Self::UpdateLocation(LocationUpdateArgs::try_from(rest).unwrap())),
-            12 => Ok(Self::SuspendLocation(LocationSuspendArgs::try_from(rest).unwrap())),
-            13 => Ok(Self::ResumeLocation(LocationResumeArgs::try_from(rest).unwrap())),
-            14 => Ok(Self::DeleteLocation(LocationDeleteArgs::try_from(rest).unwrap())),
+            10 => Ok(Self::CreateFacility(FacilityCreateArgs::try_from(rest).unwrap())),
+            11 => Ok(Self::UpdateFacility(FacilityUpdateArgs::try_from(rest).unwrap())),
+            12 => Ok(Self::SuspendFacility(FacilitySuspendArgs::try_from(rest).unwrap())),
+            13 => Ok(Self::ResumeFacility(FacilityResumeArgs::try_from(rest).unwrap())),
+            14 => Ok(Self::DeleteFacility(FacilityDeleteArgs::try_from(rest).unwrap())),
 
-            15 => Ok(Self::CreateExchange(ExchangeCreateArgs::try_from(rest).unwrap())),
-            16 => Ok(Self::UpdateExchange(ExchangeUpdateArgs::try_from(rest).unwrap())),
-            17 => Ok(Self::SuspendExchange(ExchangeSuspendArgs::try_from(rest).unwrap())),
-            18 => Ok(Self::ResumeExchange(ExchangeResumeArgs::try_from(rest).unwrap())),
-            19 => Ok(Self::DeleteExchange(ExchangeDeleteArgs::try_from(rest).unwrap())),
+            15 => Ok(Self::CreateMetro(MetroCreateArgs::try_from(rest).unwrap())),
+            16 => Ok(Self::UpdateMetro(MetroUpdateArgs::try_from(rest).unwrap())),
+            17 => Ok(Self::SuspendMetro(MetroSuspendArgs::try_from(rest).unwrap())),
+            18 => Ok(Self::ResumeMetro(MetroResumeArgs::try_from(rest).unwrap())),
+            19 => Ok(Self::DeleteMetro(MetroDeleteArgs::try_from(rest).unwrap())),
 
             20 => Ok(Self::CreateDevice(DeviceCreateArgs::try_from(rest).unwrap())),
             21 => Ok(Self::ActivateDevice(DeviceActivateArgs::try_from(rest).unwrap())),
@@ -325,7 +325,7 @@ impl DoubleZeroInstruction {
             63 => Ok(Self::ResumeContributor(ContributorResumeArgs::try_from(rest).unwrap())),
             64 => Ok(Self::DeleteContributor(ContributorDeleteArgs::try_from(rest).unwrap())),
 
-            65 => Ok(Self::SetDeviceExchange(ExchangeSetDeviceArgs::try_from(rest).unwrap())),
+            65 => Ok(Self::SetDeviceMetro(MetroSetDeviceArgs::try_from(rest).unwrap())),
             66 => Ok(Self::AcceptLink(LinkAcceptArgs::try_from(rest).unwrap())),
             67 => Ok(Self::SetAccessPass(SetAccessPassArgs::try_from(rest).unwrap())),
 
@@ -396,17 +396,17 @@ impl DoubleZeroInstruction {
             Self::AddUserAllowlist() => "AddUserAllowlist".to_string(),     // variant 8
             Self::RemoveUserAllowlist() => "RemoveUserAllowlist".to_string(), // variant 9
 
-            Self::CreateLocation(_) => "CreateLocation".to_string(), // variant 10
-            Self::UpdateLocation(_) => "UpdateLocation".to_string(), // variant 11
-            Self::SuspendLocation(_) => "SuspendLocation".to_string(), // variant 12
-            Self::ResumeLocation(_) => "ResumeLocation".to_string(), // variant 13
-            Self::DeleteLocation(_) => "DeleteLocation".to_string(), // variant 14
+            Self::CreateFacility(_) => "CreateFacility".to_string(), // variant 10
+            Self::UpdateFacility(_) => "UpdateFacility".to_string(), // variant 11
+            Self::SuspendFacility(_) => "SuspendFacility".to_string(), // variant 12
+            Self::ResumeFacility(_) => "ResumeFacility".to_string(), // variant 13
+            Self::DeleteFacility(_) => "DeleteFacility".to_string(), // variant 14
 
-            Self::CreateExchange(_) => "CreateExchange".to_string(), // variant 15
-            Self::UpdateExchange(_) => "UpdateExchange".to_string(), // variant 16
-            Self::SuspendExchange(_) => "SuspendExchange".to_string(), // variant 17
-            Self::ResumeExchange(_) => "ResumeExchange".to_string(), // variant 18
-            Self::DeleteExchange(_) => "DeleteExchange".to_string(), // variant 19
+            Self::CreateMetro(_) => "CreateMetro".to_string(), // variant 15
+            Self::UpdateMetro(_) => "UpdateMetro".to_string(), // variant 16
+            Self::SuspendMetro(_) => "SuspendMetro".to_string(), // variant 17
+            Self::ResumeMetro(_) => "ResumeMetro".to_string(), // variant 18
+            Self::DeleteMetro(_) => "DeleteMetro".to_string(), // variant 19
 
             Self::CreateDevice(_) => "CreateDevice".to_string(), // variant 20
             Self::ActivateDevice(_) => "ActivateDevice".to_string(), // variant 21
@@ -465,11 +465,11 @@ impl DoubleZeroInstruction {
             Self::ResumeContributor(_) => "ResumeContributor".to_string(), // variant 63
             Self::DeleteContributor(_) => "DeleteContributor".to_string(), // variant 64
 
-            Self::SetDeviceExchange(_) => "SetDeviceExchange".to_string(), // variant 65
-            Self::AcceptLink(_) => "AcceptLink".to_string(),               // variant 66
-            Self::SetAccessPass(_) => "SetAccessPass".to_string(),         // variant 67
-            Self::SetAirdrop(_) => "SetAirdrop".to_string(),               // variant 68
-            Self::CloseAccessPass(_) => "CloseAccessPass".to_string(),     // variant 69
+            Self::SetDeviceMetro(_) => "SetDeviceMetro".to_string(), // variant 65
+            Self::AcceptLink(_) => "AcceptLink".to_string(),         // variant 66
+            Self::SetAccessPass(_) => "SetAccessPass".to_string(),   // variant 67
+            Self::SetAirdrop(_) => "SetAirdrop".to_string(),         // variant 68
+            Self::CloseAccessPass(_) => "CloseAccessPass".to_string(), // variant 69
             Self::CheckStatusAccessPass(_) => "CheckStatusAccessPass".to_string(), // variant 70
             Self::CheckUserAccessPass(_) => "CheckUserAccessPass".to_string(), // variant 71
 
@@ -538,17 +538,17 @@ impl DoubleZeroInstruction {
             Self::AddUserAllowlist() => "".to_string(),                // variant 8
             Self::RemoveUserAllowlist() => "".to_string(),             // variant 9
 
-            Self::CreateLocation(args) => format!("{args:?}"), // variant 10
-            Self::UpdateLocation(args) => format!("{args:?}"), // variant 11
-            Self::SuspendLocation(args) => format!("{args:?}"), // variant 12
-            Self::ResumeLocation(args) => format!("{args:?}"), // variant 13
-            Self::DeleteLocation(args) => format!("{args:?}"), // variant 14
+            Self::CreateFacility(args) => format!("{args:?}"), // variant 10
+            Self::UpdateFacility(args) => format!("{args:?}"), // variant 11
+            Self::SuspendFacility(args) => format!("{args:?}"), // variant 12
+            Self::ResumeFacility(args) => format!("{args:?}"), // variant 13
+            Self::DeleteFacility(args) => format!("{args:?}"), // variant 14
 
-            Self::CreateExchange(args) => format!("{args:?}"), // variant 15
-            Self::UpdateExchange(args) => format!("{args:?}"), // variant 16
-            Self::SuspendExchange(args) => format!("{args:?}"), // variant 17
-            Self::ResumeExchange(args) => format!("{args:?}"), // variant 18
-            Self::DeleteExchange(args) => format!("{args:?}"), // variant 19
+            Self::CreateMetro(args) => format!("{args:?}"), // variant 15
+            Self::UpdateMetro(args) => format!("{args:?}"), // variant 16
+            Self::SuspendMetro(args) => format!("{args:?}"), // variant 17
+            Self::ResumeMetro(args) => format!("{args:?}"), // variant 18
+            Self::DeleteMetro(args) => format!("{args:?}"), // variant 19
 
             Self::CreateDevice(args) => format!("{args:?}"), // variant 20
             Self::ActivateDevice(args) => format!("{args:?}"), // variant 21
@@ -601,11 +601,11 @@ impl DoubleZeroInstruction {
             Self::ResumeContributor(args) => format!("{args:?}"), // variant 63
             Self::DeleteContributor(args) => format!("{args:?}"), // variant 64
 
-            Self::SetDeviceExchange(args) => format!("{args:?}"), // variant 65
-            Self::AcceptLink(args) => format!("{args:?}"),        // variant 66
-            Self::SetAccessPass(args) => format!("{args:?}"),     // variant 67
-            Self::SetAirdrop(args) => format!("{args:?}"),        // variant 68
-            Self::CloseAccessPass(args) => format!("{args:?}"),   // variant 69
+            Self::SetDeviceMetro(args) => format!("{args:?}"), // variant 65
+            Self::AcceptLink(args) => format!("{args:?}"),     // variant 66
+            Self::SetAccessPass(args) => format!("{args:?}"),  // variant 67
+            Self::SetAirdrop(args) => format!("{args:?}"),     // variant 68
+            Self::CloseAccessPass(args) => format!("{args:?}"), // variant 69
             Self::CheckStatusAccessPass(args) => format!("{args:?}"), // variant 70
             Self::CheckUserAccessPass(args) => format!("{args:?}"), // variant 71
 
@@ -664,7 +664,7 @@ impl DoubleZeroInstruction {
 #[cfg(test)]
 mod tests {
     use crate::{
-        processors::exchange::setdevice::SetDeviceOption,
+        processors::metro::setdevice::SetDeviceOption,
         resource::{IdOrIp, ResourceType},
         state::{
             device::{DeviceHealth, DeviceType},
@@ -706,7 +706,7 @@ mod tests {
             "SetGlobalConfig",
         );
         test_instruction(
-            DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+            DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
                 lat: 1.0,
                 lng: 2.0,
                 loc_id: 123,
@@ -714,10 +714,10 @@ mod tests {
                 name: "test".to_string(),
                 country: "US".to_string(),
             }),
-            "CreateLocation",
+            "CreateFacility",
         );
         test_instruction(
-            DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
+            DoubleZeroInstruction::UpdateFacility(FacilityUpdateArgs {
                 lat: Some(1.0),
                 lng: Some(2.0),
                 loc_id: Some(123),
@@ -725,51 +725,51 @@ mod tests {
                 name: Some("test".to_string()),
                 country: Some("US".to_string()),
             }),
-            "UpdateLocation",
+            "UpdateFacility",
         );
         test_instruction(
-            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {}),
-            "SuspendLocation",
+            DoubleZeroInstruction::SuspendFacility(FacilitySuspendArgs {}),
+            "SuspendFacility",
         );
         test_instruction(
-            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {}),
-            "ResumeLocation",
+            DoubleZeroInstruction::ResumeFacility(FacilityResumeArgs {}),
+            "ResumeFacility",
         );
         test_instruction(
-            DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {}),
-            "DeleteLocation",
+            DoubleZeroInstruction::DeleteFacility(FacilityDeleteArgs {}),
+            "DeleteFacility",
         );
         test_instruction(
-            DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+            DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
                 code: "test".to_string(),
                 name: "test".to_string(),
                 lat: 1.0,
                 lng: 2.0,
                 reserved: 0,
             }),
-            "CreateExchange",
+            "CreateMetro",
         );
         test_instruction(
-            DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
+            DoubleZeroInstruction::UpdateMetro(MetroUpdateArgs {
                 lat: Some(1.0),
                 lng: Some(2.0),
                 bgp_community: Some(123),
                 code: Some("test".to_string()),
                 name: Some("test".to_string()),
             }),
-            "UpdateExchange",
+            "UpdateMetro",
         );
         test_instruction(
-            DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {}),
-            "SuspendExchange",
+            DoubleZeroInstruction::SuspendMetro(MetroSuspendArgs {}),
+            "SuspendMetro",
         );
         test_instruction(
-            DoubleZeroInstruction::ResumeExchange(ExchangeResumeArgs {}),
-            "ResumeExchange",
+            DoubleZeroInstruction::ResumeMetro(MetroResumeArgs {}),
+            "ResumeMetro",
         );
         test_instruction(
-            DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {}),
-            "DeleteExchange",
+            DoubleZeroInstruction::DeleteMetro(MetroDeleteArgs {}),
+            "DeleteMetro",
         );
         test_instruction(
             DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
@@ -1147,11 +1147,11 @@ mod tests {
             "AcceptLink",
         );
         test_instruction(
-            DoubleZeroInstruction::SetDeviceExchange(ExchangeSetDeviceArgs {
+            DoubleZeroInstruction::SetDeviceMetro(MetroSetDeviceArgs {
                 index: 1,
                 set: SetDeviceOption::Set,
             }),
-            "SetDeviceExchange",
+            "SetDeviceMetro",
         );
         test_instruction(
             DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {

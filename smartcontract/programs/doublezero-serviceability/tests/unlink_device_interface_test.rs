@@ -8,9 +8,9 @@ use doublezero_serviceability::{
             create::*,
             interface::{create::*, unlink::*},
         },
-        exchange::create::*,
+        facility::create::*,
         link::{activate::*, create::*, delete::*, update::*},
-        location::create::*,
+        metro::create::*,
     },
     resource::ResourceType,
     state::{
@@ -46,12 +46,12 @@ async fn setup_two_devices_with_link() -> (
 
     // Create location
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -69,12 +69,12 @@ async fn setup_two_devices_with_link() -> (
 
     // Create exchange
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,
@@ -418,12 +418,12 @@ async fn test_unlink_from_pending() {
 
     // Create location, exchange, contributor, device
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -440,12 +440,12 @@ async fn test_unlink_from_pending() {
     .await;
 
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,

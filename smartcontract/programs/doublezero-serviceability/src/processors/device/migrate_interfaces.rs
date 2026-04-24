@@ -40,9 +40,9 @@ fn deserialize_device_legacy(data: &[u8]) -> Result<Device, ProgramError> {
         borsh::BorshDeserialize::deserialize(&mut reader).unwrap_or_default();
     let index: u128 = borsh::BorshDeserialize::deserialize(&mut reader).unwrap_or_default();
     let bump_seed: u8 = borsh::BorshDeserialize::deserialize(&mut reader).unwrap_or_default();
-    let location_pk: solana_program::pubkey::Pubkey =
+    let facility_pk: solana_program::pubkey::Pubkey =
         borsh::BorshDeserialize::deserialize(&mut reader).unwrap_or_default();
-    let exchange_pk: solana_program::pubkey::Pubkey =
+    let metro_pk: solana_program::pubkey::Pubkey =
         borsh::BorshDeserialize::deserialize(&mut reader).unwrap_or_default();
     let device_type: crate::state::device::DeviceType =
         borsh::BorshDeserialize::deserialize(&mut reader).unwrap_or_default();
@@ -122,8 +122,8 @@ fn deserialize_device_legacy(data: &[u8]) -> Result<Device, ProgramError> {
         owner,
         index,
         bump_seed,
-        location_pk,
-        exchange_pk,
+        facility_pk,
+        metro_pk,
         device_type,
         public_ip,
         status,

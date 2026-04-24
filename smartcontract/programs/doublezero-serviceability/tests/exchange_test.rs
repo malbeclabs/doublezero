@@ -4,11 +4,11 @@ use doublezero_serviceability::{
     pda::*,
     processors::{
         allowlist::foundation::add::AddFoundationAllowlistArgs,
-        exchange::{create::*, delete::*, resume::*, suspend::*, update::*},
         globalconfig::set::SetGlobalConfigArgs,
+        metro::{create::*, delete::*, resume::*, suspend::*, update::*},
     },
     resource::ResourceType,
-    state::{accounttype::AccountType, exchange::*},
+    state::{accounttype::AccountType, metro::*},
 };
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
@@ -96,13 +96,13 @@ async fn test_exchange() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 0);
 
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "LA".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,
@@ -121,11 +121,11 @@ async fn test_exchange() {
     let exchange_la = get_account_data(&mut banks_client, exchange_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_exchange()
+        .get_metro()
         .unwrap();
-    assert_eq!(exchange_la.account_type, AccountType::Exchange);
+    assert_eq!(exchange_la.account_type, AccountType::Metro);
     assert_eq!(exchange_la.code, "LA".to_string());
-    assert_eq!(exchange_la.status, ExchangeStatus::Activated);
+    assert_eq!(exchange_la.status, MetroStatus::Activated);
 
     println!("✅ Exchange initialized successfully",);
     /*****************************************************************************************************************************************************/
@@ -134,7 +134,7 @@ async fn test_exchange() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {}),
+        DoubleZeroInstruction::SuspendMetro(MetroSuspendArgs {}),
         vec![
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -146,10 +146,10 @@ async fn test_exchange() {
     let exchange_la = get_account_data(&mut banks_client, exchange_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_exchange()
+        .get_metro()
         .unwrap();
-    assert_eq!(exchange_la.account_type, AccountType::Exchange);
-    assert_eq!(exchange_la.status, ExchangeStatus::Suspended);
+    assert_eq!(exchange_la.account_type, AccountType::Metro);
+    assert_eq!(exchange_la.status, MetroStatus::Suspended);
 
     println!("✅ Exchange suspended");
     /*****************************************************************************************************************************************************/
@@ -158,7 +158,7 @@ async fn test_exchange() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ResumeExchange(ExchangeResumeArgs {}),
+        DoubleZeroInstruction::ResumeMetro(MetroResumeArgs {}),
         vec![
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -170,17 +170,17 @@ async fn test_exchange() {
     let exchange = get_account_data(&mut banks_client, exchange_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_exchange()
+        .get_metro()
         .unwrap();
-    assert_eq!(exchange.account_type, AccountType::Exchange);
-    assert_eq!(exchange.status, ExchangeStatus::Activated);
+    assert_eq!(exchange.account_type, AccountType::Metro);
+    assert_eq!(exchange.status, MetroStatus::Activated);
 
     println!("✅ Exchange resumed");
     let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ResumeExchange(ExchangeResumeArgs {}),
+        DoubleZeroInstruction::ResumeMetro(MetroResumeArgs {}),
         vec![
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -203,7 +203,7 @@ async fn test_exchange() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
+        DoubleZeroInstruction::UpdateMetro(MetroUpdateArgs {
             code: Some("LA2".to_string()),
             name: Some("Los Angeles - Los Angeles".to_string()),
             lat: Some(3.433),
@@ -222,12 +222,12 @@ async fn test_exchange() {
     let exchange_la = get_account_data(&mut banks_client, exchange_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_exchange()
+        .get_metro()
         .unwrap();
-    assert_eq!(exchange_la.account_type, AccountType::Exchange);
+    assert_eq!(exchange_la.account_type, AccountType::Metro);
     assert_eq!(exchange_la.code, "LA2".to_string());
     assert_eq!(exchange_la.name, "Los Angeles - Los Angeles".to_string());
-    assert_eq!(exchange_la.status, ExchangeStatus::Activated);
+    assert_eq!(exchange_la.status, MetroStatus::Activated);
 
     println!("✅ Exchange updated");
     /*****************************************************************************************************************************************************/
@@ -236,7 +236,7 @@ async fn test_exchange() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {}),
+        DoubleZeroInstruction::DeleteMetro(MetroDeleteArgs {}),
         vec![
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -319,13 +319,13 @@ async fn test_exchange_delete_from_suspended() {
     .await;
 
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,
@@ -345,7 +345,7 @@ async fn test_exchange_delete_from_suspended() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {}),
+        DoubleZeroInstruction::SuspendMetro(MetroSuspendArgs {}),
         vec![
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -357,15 +357,15 @@ async fn test_exchange_delete_from_suspended() {
     let exchange_la = get_account_data(&mut banks_client, exchange_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_exchange()
+        .get_metro()
         .unwrap();
-    assert_eq!(exchange_la.status, ExchangeStatus::Suspended);
+    assert_eq!(exchange_la.status, MetroStatus::Suspended);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {}),
+        DoubleZeroInstruction::DeleteMetro(MetroDeleteArgs {}),
         vec![
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -448,13 +448,13 @@ async fn test_exchange_owner_and_foundation_can_update_status() {
 
     // 3. Create an exchange owned by payer
     let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "own".to_string(),
             name: "Owner Exchange".to_string(),
             lat: 0.0,
@@ -475,7 +475,7 @@ async fn test_exchange_owner_and_foundation_can_update_status() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {}),
+        DoubleZeroInstruction::SuspendMetro(MetroSuspendArgs {}),
         vec![
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -487,9 +487,9 @@ async fn test_exchange_owner_and_foundation_can_update_status() {
     let exchange = get_account_data(&mut banks_client, exchange_pubkey)
         .await
         .expect("Unable to get Exchange")
-        .get_exchange()
+        .get_metro()
         .unwrap();
-    assert_eq!(exchange.status, ExchangeStatus::Suspended);
+    assert_eq!(exchange.status, MetroStatus::Suspended);
 
     // 5. Add a different foundation allowlisted account
     let foundation_actor = test_payer();
@@ -511,7 +511,7 @@ async fn test_exchange_owner_and_foundation_can_update_status() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ResumeExchange(ExchangeResumeArgs {}),
+        DoubleZeroInstruction::ResumeMetro(MetroResumeArgs {}),
         vec![
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -523,9 +523,9 @@ async fn test_exchange_owner_and_foundation_can_update_status() {
     let exchange = get_account_data(&mut banks_client, exchange_pubkey)
         .await
         .expect("Unable to get Exchange")
-        .get_exchange()
+        .get_metro()
         .unwrap();
-    assert_eq!(exchange.status, ExchangeStatus::Activated);
+    assert_eq!(exchange.status, MetroStatus::Activated);
 
     println!("✅ Owner and foundation-allowlisted non-owner can suspend/resume the exchange");
     println!("🟢  End test_exchange_owner_and_foundation_can_update_status");
@@ -616,13 +616,13 @@ async fn test_exchange_bgp_community_autoassignment() {
 
     println!("Creating first exchange...");
     let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange1_pubkey, _) = get_exchange_pda(&program_id, globalstate.account_index + 1);
+    let (exchange1_pubkey, _) = get_metro_pda(&program_id, globalstate.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "nyc".to_string(),
             name: "New York".to_string(),
             lat: 40.7128,
@@ -641,7 +641,7 @@ async fn test_exchange_bgp_community_autoassignment() {
     let exchange1 = get_account_data(&mut banks_client, exchange1_pubkey)
         .await
         .expect("Unable to get Exchange 1")
-        .get_exchange()
+        .get_metro()
         .unwrap();
     assert_eq!(exchange1.bgp_community, 10000);
     println!("✅ First exchange created with bgp_community: 10000");
@@ -656,13 +656,13 @@ async fn test_exchange_bgp_community_autoassignment() {
 
     println!("Creating second exchange...");
     let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange2_pubkey, _) = get_exchange_pda(&program_id, globalstate.account_index + 1);
+    let (exchange2_pubkey, _) = get_metro_pda(&program_id, globalstate.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "lax".to_string(),
             name: "Los Angeles".to_string(),
             lat: 34.0522,
@@ -681,7 +681,7 @@ async fn test_exchange_bgp_community_autoassignment() {
     let exchange2 = get_account_data(&mut banks_client, exchange2_pubkey)
         .await
         .expect("Unable to get Exchange 2")
-        .get_exchange()
+        .get_metro()
         .unwrap();
     assert_eq!(exchange2.bgp_community, 10001);
     println!("✅ Second exchange created with bgp_community: 10001");
@@ -696,13 +696,13 @@ async fn test_exchange_bgp_community_autoassignment() {
 
     println!("Creating third exchange...");
     let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange3_pubkey, _) = get_exchange_pda(&program_id, globalstate.account_index + 1);
+    let (exchange3_pubkey, _) = get_metro_pda(&program_id, globalstate.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "sfo".to_string(),
             name: "San Francisco".to_string(),
             lat: 37.7749,
@@ -721,7 +721,7 @@ async fn test_exchange_bgp_community_autoassignment() {
     let exchange3 = get_account_data(&mut banks_client, exchange3_pubkey)
         .await
         .expect("Unable to get Exchange 3")
-        .get_exchange()
+        .get_metro()
         .unwrap();
     assert_eq!(exchange3.bgp_community, 10002);
     println!("✅ Third exchange created with bgp_community: 10002");
@@ -774,13 +774,13 @@ async fn test_exchange_bgp_community_autoassignment() {
 
     println!("Creating fourth exchange with bgp_community at upper bound (10999)...");
     let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange4_pubkey, _) = get_exchange_pda(&program_id, globalstate.account_index + 1);
+    let (exchange4_pubkey, _) = get_metro_pda(&program_id, globalstate.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "sea".to_string(),
             name: "Seattle".to_string(),
             lat: 47.6062,
@@ -799,7 +799,7 @@ async fn test_exchange_bgp_community_autoassignment() {
     let exchange4 = get_account_data(&mut banks_client, exchange4_pubkey)
         .await
         .expect("Unable to get Exchange 4")
-        .get_exchange()
+        .get_metro()
         .unwrap();
     assert_eq!(exchange4.bgp_community, 10999);
     println!("✅ Fourth exchange created with bgp_community: 10999 (upper bound)");
@@ -814,13 +814,13 @@ async fn test_exchange_bgp_community_autoassignment() {
 
     println!("Attempting to create fifth exchange with invalid bgp_community (11000)...");
     let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange5_pubkey, _) = get_exchange_pda(&program_id, globalstate.account_index + 1);
+    let (exchange5_pubkey, _) = get_metro_pda(&program_id, globalstate.account_index + 1);
 
     let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "chi".to_string(),
             name: "Chicago".to_string(),
             lat: 41.8781,
@@ -919,13 +919,13 @@ async fn test_suspend_exchange_from_suspended_fails() {
 
     // Create an exchange
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "test".to_string(),
             name: "Test Exchange".to_string(),
             lat: 1.0,
@@ -946,7 +946,7 @@ async fn test_suspend_exchange_from_suspended_fails() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {}),
+        DoubleZeroInstruction::SuspendMetro(MetroSuspendArgs {}),
         vec![
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -959,16 +959,16 @@ async fn test_suspend_exchange_from_suspended_fails() {
     let exchange = get_account_data(&mut banks_client, exchange_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_exchange()
+        .get_metro()
         .unwrap();
-    assert_eq!(exchange.status, ExchangeStatus::Suspended);
+    assert_eq!(exchange.status, MetroStatus::Suspended);
 
     // Second suspend (should fail with InvalidStatus)
     let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {}),
+        DoubleZeroInstruction::SuspendMetro(MetroSuspendArgs {}),
         vec![
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),

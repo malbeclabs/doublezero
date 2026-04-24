@@ -2,8 +2,8 @@ use crate::{
     error::DoubleZeroError,
     serializer::{try_acc_close, try_acc_write},
     state::{
-        contributor::Contributor, device::*, exchange::Exchange, globalstate::GlobalState,
-        location::Location,
+        contributor::Contributor, device::*, facility::Facility, globalstate::GlobalState,
+        metro::Metro,
     },
 };
 use borsh::BorshSerialize;
@@ -42,8 +42,8 @@ pub fn process_closeaccount_device(
     let device_account = next_account_info(accounts_iter)?;
     let owner_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
-    let location_account = next_account_info(accounts_iter)?;
-    let exchange_account = next_account_info(accounts_iter)?;
+    let facility_account = next_account_info(accounts_iter)?;
+    let metro_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let globalconfig_account = next_account_info(accounts_iter)?;
     let mut resource_accounts = vec![];
@@ -81,12 +81,12 @@ pub fn process_closeaccount_device(
         "Invalid GlobalConfig Account Owner"
     );
     assert_eq!(
-        location_account.owner, program_id,
-        "Invalid Location Owner Account"
+        facility_account.owner, program_id,
+        "Invalid Facility Owner Account"
     );
     assert_eq!(
-        exchange_account.owner, program_id,
-        "Invalid Exchange Owner Account"
+        metro_account.owner, program_id,
+        "Invalid Metro Owner Account"
     );
 
     assert!(device_account.is_writable, "PDA Account is not writable");
@@ -119,26 +119,26 @@ pub fn process_closeaccount_device(
     if device.reference_count > 0 {
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }
-    if device.location_pk != *location_account.key {
-        return Err(DoubleZeroError::InvalidLocationPubkey.into());
+    if device.facility_pk != *facility_account.key {
+        return Err(DoubleZeroError::InvalidFacilityPubkey.into());
     }
-    if device.exchange_pk != *exchange_account.key {
-        return Err(DoubleZeroError::InvalidExchangePubkey.into());
+    if device.metro_pk != *metro_account.key {
+        return Err(DoubleZeroError::InvalidMetroPubkey.into());
     }
     if device.contributor_pk != *contributor_account.key {
         return Err(DoubleZeroError::InvalidContributorPubkey.into());
     }
     let mut contributor = Contributor::try_from(contributor_account)?;
-    let mut location = Location::try_from(location_account)?;
-    let mut exchange = Exchange::try_from(exchange_account)?;
+    let mut facility = Facility::try_from(facility_account)?;
+    let mut metro = Metro::try_from(metro_account)?;
 
     contributor.reference_count = contributor.reference_count.saturating_sub(1);
-    location.reference_count = location.reference_count.saturating_sub(1);
-    exchange.reference_count = exchange.reference_count.saturating_sub(1);
+    facility.reference_count = facility.reference_count.saturating_sub(1);
+    metro.reference_count = metro.reference_count.saturating_sub(1);
 
     try_acc_write(&contributor, contributor_account, payer_account, accounts)?;
-    try_acc_write(&location, location_account, payer_account, accounts)?;
-    try_acc_write(&exchange, exchange_account, payer_account, accounts)?;
+    try_acc_write(&facility, facility_account, payer_account, accounts)?;
+    try_acc_write(&metro, metro_account, payer_account, accounts)?;
     try_acc_close(device_account, owner_account)?;
 
     for (resource_account, res_owner_account) in resource_accounts.iter().zip(owner_accounts.iter())

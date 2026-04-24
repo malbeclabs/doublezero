@@ -101,13 +101,13 @@ async fn device_update_location_test() {
     assert_eq!(globalstate_account.account_index, 0);
 
     let (location_la_pubkey, _) =
-        get_location_pda(&program_id, globalstate_account.account_index + 1);
+        get_facility_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(facility::create::FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -129,13 +129,13 @@ async fn device_update_location_test() {
     assert_eq!(globalstate_account.account_index, 1);
 
     let (location_ny_pubkey, _) =
-        get_location_pda(&program_id, globalstate_account.account_index + 1);
+        get_facility_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(facility::create::FacilityCreateArgs {
             code: "ny".to_string(),
             name: "New York".to_string(),
             country: "us".to_string(),
@@ -156,13 +156,13 @@ async fn device_update_location_test() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 2);
 
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(metro::create::MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,
@@ -292,7 +292,7 @@ async fn device_update_location_test() {
         .get_device()
         .unwrap();
     assert_eq!(device_la.max_users, 128);
-    assert_eq!(device_la.location_pk, location_ny_pubkey);
+    assert_eq!(device_la.facility_pk, location_ny_pubkey);
 
     // check reference counts
     let contributor = get_account_data(&mut banks_client, contributor_pubkey)
@@ -305,21 +305,21 @@ async fn device_update_location_test() {
     let location_la = get_account_data(&mut banks_client, location_la_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_location()
+        .get_facility()
         .unwrap();
     assert_eq!(location_la.reference_count, 0);
     //check reference counts
     let location_ny = get_account_data(&mut banks_client, location_ny_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_location()
+        .get_facility()
         .unwrap();
     assert_eq!(location_ny.reference_count, 1);
     //check reference counts
     let exchange = get_account_data(&mut banks_client, exchange_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_exchange()
+        .get_metro()
         .unwrap();
     assert_eq!(exchange.reference_count, 1);
 
@@ -399,7 +399,7 @@ async fn device_update_location_test() {
         .unwrap();
     assert_eq!(device_la.account_type, AccountType::Device);
     assert_eq!(device_la.code, "la".to_string());
-    assert_eq!(device_la.location_pk, location_ny_pubkey);
+    assert_eq!(device_la.facility_pk, location_ny_pubkey);
     assert_eq!(device_la.status, DeviceStatus::Activated);
 
     println!("✅ Device updated");
@@ -509,8 +509,8 @@ async fn device_update_location_test() {
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(device.owner, false),
             AccountMeta::new(device.contributor_pk, false),
-            AccountMeta::new(device.location_pk, false),
-            AccountMeta::new(device.exchange_pk, false),
+            AccountMeta::new(device.facility_pk, false),
+            AccountMeta::new(device.metro_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(config_pubkey, false),
             AccountMeta::new(tunnel_ids_pda, false),
@@ -536,14 +536,14 @@ async fn device_update_location_test() {
     let location = get_account_data(&mut banks_client, location_la_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_location()
+        .get_facility()
         .unwrap();
     assert_eq!(location.reference_count, 0);
     //check reference counts
     let exchange = get_account_data(&mut banks_client, exchange_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_exchange()
+        .get_metro()
         .unwrap();
     assert_eq!(exchange.reference_count, 0);
 

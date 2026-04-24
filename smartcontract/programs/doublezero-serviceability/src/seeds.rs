@@ -3,8 +3,12 @@ pub const SEED_GLOBALSTATE: &[u8] = b"globalstate";
 pub const SEED_ACCESS_PASS: &[u8] = b"accesspass";
 pub const SEED_PROGRAM_CONFIG: &[u8] = b"programconfig";
 pub const SEED_CONFIG: &[u8] = b"config";
-pub const SEED_LOCATION: &[u8] = b"location";
-pub const SEED_EXCHANGE: &[u8] = b"exchange";
+// Seed string kept as "location" to preserve existing onchain PDA addresses.
+// The constant is named SEED_FACILITY to match the current domain terminology.
+pub const SEED_FACILITY: &[u8] = b"location";
+// Seed string kept as "exchange" to preserve existing onchain PDA addresses.
+// The constant is named SEED_METRO to match the current domain terminology.
+pub const SEED_METRO: &[u8] = b"exchange";
 pub const SEED_DEVICE: &[u8] = b"device";
 pub const SEED_LINK: &[u8] = b"link";
 pub const SEED_USER: &[u8] = b"user";

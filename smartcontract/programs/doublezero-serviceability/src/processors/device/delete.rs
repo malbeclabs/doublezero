@@ -3,8 +3,8 @@ use crate::{
     processors::validation::validate_program_account,
     serializer::{try_acc_close, try_acc_write},
     state::{
-        accounttype::AccountType, contributor::Contributor, device::*, exchange::Exchange,
-        globalstate::GlobalState, location::Location,
+        accounttype::AccountType, contributor::Contributor, device::*, facility::Facility,
+        globalstate::GlobalState, metro::Metro,
     },
 };
 use borsh::BorshSerialize;
@@ -42,12 +42,12 @@ pub fn process_delete_device(
     let globalstate_account = next_account_info(accounts_iter)?;
 
     // Account layout WITH atomic close (resource_count > 0):
-    //   [device, contributor, globalstate, location, exchange, resource_0..N, res_owner_0..N, owner, payer, system]
+    //   [device, contributor, globalstate, facility, metro, resource_0..N, res_owner_0..N, owner, payer, system]
     // Account layout WITHOUT (legacy, resource_count == 0):
     //   [device, contributor, globalstate, payer, system]
     let atomic_accounts = if value.resource_count > 0 {
-        let location_account = next_account_info(accounts_iter)?;
-        let exchange_account = next_account_info(accounts_iter)?;
+        let facility_account = next_account_info(accounts_iter)?;
+        let metro_account = next_account_info(accounts_iter)?;
 
         let mut resource_accounts = Vec::with_capacity(value.resource_count as usize);
         for _ in 0..value.resource_count {
@@ -60,8 +60,8 @@ pub fn process_delete_device(
 
         let owner_account = next_account_info(accounts_iter)?;
         Some((
-            location_account,
-            exchange_account,
+            facility_account,
+            metro_account,
             resource_accounts,
             res_owner_accounts,
             owner_account,
@@ -128,8 +128,8 @@ pub fn process_delete_device(
     }
 
     if let Some((
-        location_account,
-        exchange_account,
+        facility_account,
+        metro_account,
         resource_accounts,
         res_owner_accounts,
         owner_account,
@@ -137,20 +137,20 @@ pub fn process_delete_device(
     {
         // Validate additional account owners
         assert_eq!(
-            location_account.owner, program_id,
-            "Invalid Location Account Owner"
+            facility_account.owner, program_id,
+            "Invalid Facility Account Owner"
         );
         assert_eq!(
-            exchange_account.owner, program_id,
-            "Invalid Exchange Account Owner"
+            metro_account.owner, program_id,
+            "Invalid Metro Account Owner"
         );
 
         // Validate device references match accounts
-        if device.location_pk != *location_account.key {
-            return Err(DoubleZeroError::InvalidLocationPubkey.into());
+        if device.facility_pk != *facility_account.key {
+            return Err(DoubleZeroError::InvalidFacilityPubkey.into());
         }
-        if device.exchange_pk != *exchange_account.key {
-            return Err(DoubleZeroError::InvalidExchangePubkey.into());
+        if device.metro_pk != *metro_account.key {
+            return Err(DoubleZeroError::InvalidMetroPubkey.into());
         }
         if device.contributor_pk != *contributor_account.key {
             return Err(DoubleZeroError::InvalidContributorPubkey.into());
@@ -166,16 +166,16 @@ pub fn process_delete_device(
         }
 
         // Decrement reference counts
-        let mut location = Location::try_from(location_account)?;
-        let mut exchange = Exchange::try_from(exchange_account)?;
+        let mut facility = Facility::try_from(facility_account)?;
+        let mut metro = Metro::try_from(metro_account)?;
 
         contributor.reference_count = contributor.reference_count.saturating_sub(1);
-        location.reference_count = location.reference_count.saturating_sub(1);
-        exchange.reference_count = exchange.reference_count.saturating_sub(1);
+        facility.reference_count = facility.reference_count.saturating_sub(1);
+        metro.reference_count = metro.reference_count.saturating_sub(1);
 
         try_acc_write(&contributor, contributor_account, payer_account, accounts)?;
-        try_acc_write(&location, location_account, payer_account, accounts)?;
-        try_acc_write(&exchange, exchange_account, payer_account, accounts)?;
+        try_acc_write(&facility, facility_account, payer_account, accounts)?;
+        try_acc_write(&metro, metro_account, payer_account, accounts)?;
         try_acc_close(device_account, owner_account)?;
 
         for (resource_account, res_owner_account) in

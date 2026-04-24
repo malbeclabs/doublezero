@@ -65,7 +65,7 @@ pub fn process_delete_link(
     // each referenced topology's reference_count before the link is closed.
     // Account layout WITHOUT (legacy, use_onchain_deallocation = false):
     //   [link, contributor, globalstate, payer, system]
-    let deallocation_accounts = if value.use_onchain_deallocation {
+    let dealfacility_accounts = if value.use_onchain_deallocation {
         let side_a_account = next_account_info(accounts_iter)?;
         let side_z_account = next_account_info(accounts_iter)?;
         let device_tunnel_block_ext = next_account_info(accounts_iter)?;
@@ -145,7 +145,7 @@ pub fn process_delete_link(
         device_tunnel_block_ext,
         link_ids_ext,
         owner_account,
-    )) = deallocation_accounts
+    )) = dealfacility_accounts
     {
         // Validate additional accounts
         validate_program_account!(side_a_account, program_id, writable = true, "SideA");

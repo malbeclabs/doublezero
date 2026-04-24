@@ -125,13 +125,13 @@ async fn setup_fixture() -> TestFixture {
 
     // 3. Create location
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, gs.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, gs.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(
-            doublezero_serviceability::processors::location::create::LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(
+            doublezero_serviceability::processors::facility::create::FacilityCreateArgs {
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 country: "us".to_string(),
@@ -150,13 +150,13 @@ async fn setup_fixture() -> TestFixture {
 
     // 4. Create exchange
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, gs.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, gs.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(
-            doublezero_serviceability::processors::exchange::create::ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(
+            doublezero_serviceability::processors::metro::create::MetroCreateArgs {
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 lat: 1.0,

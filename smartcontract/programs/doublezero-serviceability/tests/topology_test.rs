@@ -3,8 +3,8 @@
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
-        get_contributor_pda, get_device_pda, get_exchange_pda, get_globalconfig_pda, get_link_pda,
-        get_location_pda, get_resource_extension_pda, get_topology_pda,
+        get_contributor_pda, get_device_pda, get_facility_pda, get_globalconfig_pda, get_link_pda,
+        get_metro_pda, get_resource_extension_pda, get_topology_pda,
     },
     processors::{
         contributor::create::ContributorCreateArgs,
@@ -16,9 +16,9 @@ use doublezero_serviceability::{
                 unlink::DeviceInterfaceUnlinkArgs,
             },
         },
-        exchange::create::ExchangeCreateArgs,
+        facility::create::FacilityCreateArgs,
         link::{activate::LinkActivateArgs, create::LinkCreateArgs, update::LinkUpdateArgs},
-        location::create::LocationCreateArgs,
+        metro::create::MetroCreateArgs,
         topology::{
             backfill::TopologyBackfillArgs, clear::TopologyClearArgs, create::TopologyCreateArgs,
             delete::TopologyDeleteArgs,
@@ -562,12 +562,12 @@ async fn setup_wan_link(
 
     // Location
     let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -586,12 +586,12 @@ async fn setup_wan_link(
     // Exchange
     let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
     let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,
@@ -1530,12 +1530,12 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
 
     // Step 1: Create Location
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -1553,12 +1553,12 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
 
     // Step 2: Create Exchange
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,
@@ -1889,12 +1889,12 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
 
     // Step 1: Create Location
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -1912,12 +1912,12 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
 
     // Step 2: Create Exchange
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,

@@ -11,10 +11,10 @@ use doublezero_serviceability::{
             interface::{DeviceInterfaceCreateArgs, DeviceInterfaceUnlinkArgs},
             update::DeviceUpdateArgs,
         },
-        exchange::create::*,
+        facility::create::*,
         globalconfig::set::SetGlobalConfigArgs,
         link::{activate::*, create::*, update::LinkUpdateArgs},
-        location::create::*,
+        metro::create::*,
         user::{activate::*, create::*},
     },
     resource::ResourceType,
@@ -23,9 +23,9 @@ use doublezero_serviceability::{
         accounttype::AccountType,
         contributor::ContributorStatus,
         device::*,
+        facility::*,
         interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
         link::*,
-        location::*,
         user::*,
     },
 };
@@ -115,8 +115,8 @@ async fn test_doublezero_program() {
 
     let location_la_code = "la".to_string();
     let (location_la_pubkey, _) =
-        get_location_pda(&program_id, globalstate_account.account_index + 1);
-    let location_la: LocationCreateArgs = LocationCreateArgs {
+        get_facility_pda(&program_id, globalstate_account.account_index + 1);
+    let location_la: FacilityCreateArgs = FacilityCreateArgs {
         code: location_la_code.clone(),
         name: "Los Angeles".to_string(),
         country: "us".to_string(),
@@ -129,7 +129,7 @@ async fn test_doublezero_program() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(location_la),
+        DoubleZeroInstruction::CreateFacility(location_la),
         vec![
             AccountMeta::new(location_la_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -141,11 +141,11 @@ async fn test_doublezero_program() {
     let location_la = get_account_data(&mut banks_client, location_la_pubkey)
         .await
         .expect("Unable to get Location")
-        .get_location()
+        .get_facility()
         .unwrap();
-    assert_eq!(location_la.account_type, AccountType::Location);
+    assert_eq!(location_la.account_type, AccountType::Facility);
     assert_eq!(location_la.code, location_la_code);
-    assert_eq!(location_la.status, LocationStatus::Activated);
+    assert_eq!(location_la.status, FacilityStatus::Activated);
 
     println!(
         "✅ Location LA initialized successfully with index: {}",
@@ -160,8 +160,8 @@ async fn test_doublezero_program() {
 
     let location_ny_code = "ny".to_string();
     let (location_ny_pubkey, _) =
-        get_location_pda(&program_id, globalstate_account.account_index + 1);
-    let location_ny: LocationCreateArgs = LocationCreateArgs {
+        get_facility_pda(&program_id, globalstate_account.account_index + 1);
+    let location_ny: FacilityCreateArgs = FacilityCreateArgs {
         code: location_ny_code.clone(),
         name: "New York".to_string(),
         country: "us".to_string(),
@@ -174,7 +174,7 @@ async fn test_doublezero_program() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(location_ny),
+        DoubleZeroInstruction::CreateFacility(location_ny),
         vec![
             AccountMeta::new(location_ny_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -186,9 +186,9 @@ async fn test_doublezero_program() {
     let location_ny = get_account_data(&mut banks_client, location_ny_pubkey)
         .await
         .expect("Unable to get Location")
-        .get_location()
+        .get_facility()
         .unwrap();
-    assert_eq!(location_ny.account_type, AccountType::Location);
+    assert_eq!(location_ny.account_type, AccountType::Facility);
     assert_eq!(location_ny.code, location_ny_code);
     println!(
         "✅ Location initialized successfully with index: {}",
@@ -202,9 +202,8 @@ async fn test_doublezero_program() {
     assert_eq!(globalstate_account.account_index, 2);
 
     let exchange_la_code = "la".to_string();
-    let (exchange_la_pubkey, _) =
-        get_exchange_pda(&program_id, globalstate_account.account_index + 1);
-    let exchange_la: ExchangeCreateArgs = ExchangeCreateArgs {
+    let (exchange_la_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
+    let exchange_la: MetroCreateArgs = MetroCreateArgs {
         code: exchange_la_code.clone(),
         name: "Los Angeles".to_string(),
         lat: 1.234,
@@ -217,7 +216,7 @@ async fn test_doublezero_program() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(exchange_la),
+        DoubleZeroInstruction::CreateMetro(exchange_la),
         vec![
             AccountMeta::new(exchange_la_pubkey, false),
             AccountMeta::new(globalconfig_pubkey, false),
@@ -230,9 +229,9 @@ async fn test_doublezero_program() {
     let exchange_la = get_account_data(&mut banks_client, exchange_la_pubkey)
         .await
         .expect("Unable to get Exchange")
-        .get_exchange()
+        .get_metro()
         .unwrap();
-    assert_eq!(exchange_la.account_type, AccountType::Exchange);
+    assert_eq!(exchange_la.account_type, AccountType::Metro);
     assert_eq!(exchange_la.code, exchange_la_code);
     println!(
         "✅ Exchange initialized successfully with index: {}",
@@ -245,9 +244,8 @@ async fn test_doublezero_program() {
     assert_eq!(globalstate_account.account_index, 3);
 
     let exchange_ny_code = "ny".to_string();
-    let (exchange_ny_pubkey, _) =
-        get_exchange_pda(&program_id, globalstate_account.account_index + 1);
-    let exchange_ny: ExchangeCreateArgs = ExchangeCreateArgs {
+    let (exchange_ny_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
+    let exchange_ny: MetroCreateArgs = MetroCreateArgs {
         code: exchange_ny_code.clone(),
         name: "New York".to_string(),
         lat: 1.234,
@@ -259,7 +257,7 @@ async fn test_doublezero_program() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(exchange_ny),
+        DoubleZeroInstruction::CreateMetro(exchange_ny),
         vec![
             AccountMeta::new(exchange_ny_pubkey, false),
             AccountMeta::new(globalconfig_pubkey, false),
@@ -272,10 +270,10 @@ async fn test_doublezero_program() {
     let exchange_ny = get_account_data(&mut banks_client, exchange_ny_pubkey)
         .await
         .expect("Unable to get Exchange")
-        .get_exchange()
+        .get_metro()
         .unwrap();
 
-    assert_eq!(exchange_ny.account_type, AccountType::Exchange);
+    assert_eq!(exchange_ny.account_type, AccountType::Metro);
     assert_eq!(exchange_ny.code, exchange_ny_code);
     println!(
         "✅ Exchange initialized successfully with index: {}",

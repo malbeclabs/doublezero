@@ -12,7 +12,7 @@ use doublezero_program_common::types::NetworkV4List;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
-        get_contributor_pda, get_device_pda, get_exchange_pda, get_location_pda,
+        get_contributor_pda, get_device_pda, get_facility_pda, get_metro_pda,
         get_resource_extension_pda,
     },
     processors::{
@@ -28,8 +28,8 @@ use doublezero_serviceability::{
             },
             update::DeviceUpdateArgs,
         },
-        exchange::create::ExchangeCreateArgs,
-        location::create::LocationCreateArgs,
+        facility::create::FacilityCreateArgs,
+        metro::create::MetroCreateArgs,
         resource::{
             allocate::ResourceAllocateArgs, closeaccount::ResourceExtensionCloseAccountArgs,
             create::ResourceCreateArgs, deallocate::ResourceDeallocateArgs,
@@ -852,13 +852,13 @@ async fn setup_device_for_dz_prefix_tests(
 
     // Create location
     let globalstate = get_globalstate(banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate.account_index + 1);
 
     execute_transaction(
         banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
             code: "test".to_string(),
             name: "Test Location".to_string(),
             country: "us".to_string(),
@@ -876,13 +876,13 @@ async fn setup_device_for_dz_prefix_tests(
 
     // Create exchange
     let globalstate = get_globalstate(banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate.account_index + 1);
 
     execute_transaction(
         banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "test".to_string(),
             name: "Test Exchange".to_string(),
             lat: 0.0,
@@ -1373,7 +1373,7 @@ async fn test_device_create_update_close_manages_resources() {
         globalstate_pubkey,
         globalconfig_pubkey,
         device_pubkey,
-        device.location_pk,
+        device.facility_pk,
         device.contributor_pk,
         "110.1.0.0/24,110.2.0.0/24",
     )
@@ -1408,9 +1408,9 @@ async fn test_device_create_update_close_manages_resources() {
         globalconfig_pubkey,
         device_pubkey,
         device.owner,
-        device.location_pk,
+        device.facility_pk,
         device.contributor_pk,
-        device.exchange_pk,
+        device.metro_pk,
         resource_pdas,
     )
     .await;
@@ -2219,9 +2219,9 @@ async fn test_device_update_dz_prefixes_shrink_closes_orphaned_blocks() {
         globalconfig_pubkey,
         device_pubkey,
         device.owner,
-        device.location_pk,
+        device.facility_pk,
         device.contributor_pk,
-        device.exchange_pk,
+        device.metro_pk,
         resource_pdas,
     )
     .await;

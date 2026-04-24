@@ -6,8 +6,8 @@ use crate::{
     seeds::{SEED_CONFIG, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
-        accounttype::AccountType, exchange::BGP_COMMUNITY_MIN, globalconfig::GlobalConfig,
-        globalstate::GlobalState,
+        accounttype::AccountType, globalconfig::GlobalConfig, globalstate::GlobalState,
+        metro::BGP_COMMUNITY_MIN,
     },
 };
 use borsh::BorshSerialize;

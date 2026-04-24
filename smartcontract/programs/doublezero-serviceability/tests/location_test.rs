@@ -1,8 +1,8 @@
 use doublezero_serviceability::{
     instructions::*,
     pda::*,
-    processors::location::{create::*, delete::*, resume::*, suspend::*, update::*},
-    state::{accounttype::AccountType, location::*},
+    processors::facility::{create::*, delete::*, resume::*, suspend::*, update::*},
+    state::{accounttype::AccountType, facility::*},
 };
 use solana_program_test::*;
 use solana_sdk::instruction::AccountMeta;
@@ -43,13 +43,13 @@ async fn test_location() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 0);
 
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
             code: "LA".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -68,11 +68,11 @@ async fn test_location() {
     let location_la = get_account_data(&mut banks_client, location_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_location()
+        .get_facility()
         .unwrap();
-    assert_eq!(location_la.account_type, AccountType::Location);
+    assert_eq!(location_la.account_type, AccountType::Facility);
     assert_eq!(location_la.code, "LA".to_string());
-    assert_eq!(location_la.status, LocationStatus::Activated);
+    assert_eq!(location_la.status, FacilityStatus::Activated);
 
     println!("✅ Location initialized successfully",);
     /*****************************************************************************************************************************************************/
@@ -81,7 +81,7 @@ async fn test_location() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {}),
+        DoubleZeroInstruction::SuspendFacility(FacilitySuspendArgs {}),
         vec![
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -93,10 +93,10 @@ async fn test_location() {
     let location_la = get_account_data(&mut banks_client, location_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_location()
+        .get_facility()
         .unwrap();
-    assert_eq!(location_la.account_type, AccountType::Location);
-    assert_eq!(location_la.status, LocationStatus::Suspended);
+    assert_eq!(location_la.account_type, AccountType::Facility);
+    assert_eq!(location_la.status, FacilityStatus::Suspended);
 
     println!("✅ Location suspended");
     /*****************************************************************************************************************************************************/
@@ -105,7 +105,7 @@ async fn test_location() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {}),
+        DoubleZeroInstruction::ResumeFacility(FacilityResumeArgs {}),
         vec![
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -117,17 +117,17 @@ async fn test_location() {
     let location = get_account_data(&mut banks_client, location_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_location()
+        .get_facility()
         .unwrap();
-    assert_eq!(location.account_type, AccountType::Location);
-    assert_eq!(location.status, LocationStatus::Activated);
+    assert_eq!(location.account_type, AccountType::Facility);
+    assert_eq!(location.status, FacilityStatus::Activated);
 
     println!("✅ Location resumed");
     let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {}),
+        DoubleZeroInstruction::ResumeFacility(FacilityResumeArgs {}),
         vec![
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -150,7 +150,7 @@ async fn test_location() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
+        DoubleZeroInstruction::UpdateFacility(FacilityUpdateArgs {
             code: Some("LA2".to_string()),
             name: Some("Los Angeles - Los Angeles".to_string()),
             country: Some("CA".to_string()),
@@ -169,12 +169,12 @@ async fn test_location() {
     let location_la = get_account_data(&mut banks_client, location_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_location()
+        .get_facility()
         .unwrap();
-    assert_eq!(location_la.account_type, AccountType::Location);
+    assert_eq!(location_la.account_type, AccountType::Facility);
     assert_eq!(location_la.code, "LA2".to_string());
     assert_eq!(location_la.name, "Los Angeles - Los Angeles".to_string());
-    assert_eq!(location_la.status, LocationStatus::Activated);
+    assert_eq!(location_la.status, FacilityStatus::Activated);
 
     println!("✅ Location updated");
     /*****************************************************************************************************************************************************/
@@ -183,7 +183,7 @@ async fn test_location() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {}),
+        DoubleZeroInstruction::DeleteFacility(FacilityDeleteArgs {}),
         vec![
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -223,13 +223,13 @@ async fn test_location_delete_from_suspended() {
     // Create location
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -250,7 +250,7 @@ async fn test_location_delete_from_suspended() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {}),
+        DoubleZeroInstruction::SuspendFacility(FacilitySuspendArgs {}),
         vec![
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -262,15 +262,15 @@ async fn test_location_delete_from_suspended() {
     let location_la = get_account_data(&mut banks_client, location_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_location()
+        .get_facility()
         .unwrap();
-    assert_eq!(location_la.status, LocationStatus::Suspended);
+    assert_eq!(location_la.status, FacilityStatus::Suspended);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {}),
+        DoubleZeroInstruction::DeleteFacility(FacilityDeleteArgs {}),
         vec![
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),

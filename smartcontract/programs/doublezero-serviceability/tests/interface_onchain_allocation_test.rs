@@ -20,9 +20,9 @@ use doublezero_serviceability::{
                 update::DeviceInterfaceUpdateArgs,
             },
         },
-        exchange::create::ExchangeCreateArgs,
+        facility::create::FacilityCreateArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
-        location::create::LocationCreateArgs,
+        metro::create::MetroCreateArgs,
     },
     resource::{IdOrIp, ResourceType},
     state::{
@@ -54,13 +54,13 @@ async fn setup_device(
 
     // Create Location
     let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -79,13 +79,13 @@ async fn setup_device(
     // Create Exchange
     let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
     let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,
@@ -166,13 +166,13 @@ async fn setup_device_with_interface(
 ) -> (Pubkey, Pubkey, Pubkey) {
     // Create Location
     let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -190,13 +190,13 @@ async fn setup_device_with_interface(
 
     // Create Exchange
     let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,

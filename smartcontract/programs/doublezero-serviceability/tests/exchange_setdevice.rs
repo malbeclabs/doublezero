@@ -5,7 +5,7 @@ use doublezero_serviceability::{
     processors::{
         contributor::create::ContributorCreateArgs,
         device::{create::*, update::DeviceUpdateArgs},
-        exchange::setdevice::SetDeviceOption,
+        metro::setdevice::SetDeviceOption,
         *,
     },
     resource::ResourceType,
@@ -93,13 +93,13 @@ async fn exchange_setdevice() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 0);
 
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(facility::create::FacilityCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -120,13 +120,13 @@ async fn exchange_setdevice() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 1);
 
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(metro::create::MetroCreateArgs {
             code: "la".to_string(),
             name: "Los Angeles".to_string(),
             lat: 1.234,
@@ -262,14 +262,14 @@ async fn exchange_setdevice() {
     let location = get_account_data(&mut banks_client, location_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_location()
+        .get_facility()
         .unwrap();
     assert_eq!(location.reference_count, 1);
     //check reference counts
     let exchange = get_account_data(&mut banks_client, exchange_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_exchange()
+        .get_metro()
         .unwrap();
     assert_eq!(exchange.reference_count, 1);
 
@@ -308,7 +308,7 @@ async fn exchange_setdevice() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SetDeviceExchange(exchange::setdevice::ExchangeSetDeviceArgs {
+        DoubleZeroInstruction::SetDeviceMetro(metro::setdevice::MetroSetDeviceArgs {
             index: 1,
             set: SetDeviceOption::Set,
         }),
@@ -324,9 +324,9 @@ async fn exchange_setdevice() {
     let exchange = get_account_data(&mut banks_client, exchange_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_exchange()
+        .get_metro()
         .unwrap();
-    assert_eq!(exchange.account_type, AccountType::Exchange);
+    assert_eq!(exchange.account_type, AccountType::Metro);
     assert_eq!(exchange.device1_pk, device_pubkey);
     assert_eq!(exchange.device2_pk, Pubkey::default());
     println!(" SetDevice on Exchange OK...");

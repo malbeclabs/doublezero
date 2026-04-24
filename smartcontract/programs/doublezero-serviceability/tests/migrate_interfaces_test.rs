@@ -105,12 +105,12 @@ async fn setup_with_device(
 
     // Location
     let gs = get_globalstate(banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, gs.account_index + 1);
+    let (location_pubkey, _) = get_facility_pda(&program_id, gs.account_index + 1);
     execute_transaction(
         banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+        DoubleZeroInstruction::CreateFacility(facility::create::FacilityCreateArgs {
             code: "test".to_string(),
             name: "Test Location".to_string(),
             country: "us".to_string(),
@@ -128,12 +128,12 @@ async fn setup_with_device(
 
     // Exchange
     let gs = get_globalstate(banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, gs.account_index + 1);
+    let (exchange_pubkey, _) = get_metro_pda(&program_id, gs.account_index + 1);
     execute_transaction(
         banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
+        DoubleZeroInstruction::CreateMetro(metro::create::MetroCreateArgs {
             code: "test".to_string(),
             name: "Test Exchange".to_string(),
             lat: 0.0,
@@ -428,8 +428,8 @@ async fn test_migrate_device_interfaces_activator_authority() {
         owner: payer.pubkey(),
         index: 2,
         bump_seed: dev_bump,
-        location_pk: Pubkey::new_unique(),
-        exchange_pk: Pubkey::new_unique(),
+        facility_pk: Pubkey::new_unique(),
+        metro_pk: Pubkey::new_unique(),
         device_type: DeviceType::Hybrid,
         public_ip: [100, 0, 0, 1].into(),
         status: DeviceStatus::Pending,
@@ -630,15 +630,15 @@ async fn test_migrate_device_interfaces_legacy_account() {
         node_segment_idx: 0,
         user_tunnel_endpoint: false,
     };
-    let location_pk = Pubkey::new_unique();
-    let exchange_pk = Pubkey::new_unique();
+    let facility_pk = Pubkey::new_unique();
+    let metro_pk = Pubkey::new_unique();
     let device = Device {
         account_type: AccountType::Device,
         owner: payer.pubkey(),
         index: 2,
         bump_seed: dev_bump,
-        location_pk,
-        exchange_pk,
+        facility_pk,
+        metro_pk,
         device_type: DeviceType::Hybrid,
         public_ip: [100, 0, 0, 1].into(),
         status: DeviceStatus::Pending,

@@ -34,6 +34,7 @@ All notable changes to this project will be documented in this file.
   - Extend `link get` and `link list` to display topology assignments and drain status; add `--link-topology <name>` filter to `link list` and `--link-topology` (comma-separated topology names) / `--unicast-drained` flags to `link update`; use `default` as the value to clear all topology assignments
   - Extend `tenant get` and `tenant list` to display included topologies; add `--include-topologies` (comma-separated topology names) flag to `tenant update`; use `default` to clear
 - Sentinel
+  - Set a concrete `tunnel_endpoint` on multicast publisher create, preferring a `user_tunnel_endpoint` interface IP and falling back to the device's `public_ip`, excluding IPs already in use by another user at the same `client_ip`
   - Make the multicast publisher worker's `--client-filter` flag repeatable so multiple validator client names can be matched in one run (OR semantics), matching the admin CLI behavior
 - Tools
   - Add `doublezero-admin migrate flex-algo [--dry-run]` command to backfill link topology assignments and VPNv4 loopback flex-algo node segments across all existing devices and links

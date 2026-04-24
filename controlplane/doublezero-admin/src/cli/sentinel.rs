@@ -9,6 +9,7 @@ use doublezero_sentinel::{
     multicast_find::{apply_filters, FindFilters},
     nearest_device::{device_proximity_score, find_nearest_device_for_multicast},
     output::{print_table, OutputOptions},
+    tunnel_endpoint::select_tunnel_endpoint,
     validator_metadata_reader::{
         HttpValidatorMetadataReader, ValidatorMetadataReader, DEFAULT_VALIDATOR_METADATA_URL,
     },
@@ -620,9 +621,12 @@ impl CreateValidatorMulticastPublishersCommand {
 
         // Display plan (snapshot — target devices are re-evaluated at execution time).
         eprintln!(
-            "\nWill create {} multicast publisher user(s) on group {}:\n",
+            "\nWill create {} multicast publisher user(s) on group {}:",
             candidates.len(),
             self.multicast_group,
+        );
+        eprintln!(
+            "  user_type=Multicast  cyoa_type=GREOverDIA  publisher=true  subscriber=false\n"
         );
         #[derive(Tabled, Serialize)]
         struct PlanRow {
@@ -634,6 +638,10 @@ impl CreateValidatorMulticastPublishersCommand {
             device: String,
             #[tabled(rename = "NEAREST DEVICE")]
             nearest_device: String,
+            #[tabled(rename = "DEVICE IP")]
+            device_ip: String,
+            #[tabled(rename = "TUNNEL ENDPOINT")]
+            tunnel_endpoint: String,
             #[tabled(rename = "CLIENT")]
             client: String,
             #[tabled(rename = "STAKE (SOL)")]
@@ -643,11 +651,12 @@ impl CreateValidatorMulticastPublishersCommand {
         let plan_rows: Vec<PlanRow> = candidates
             .iter()
             .map(|c| {
-                let nearest = match find_nearest_device_for_multicast(
+                let target_device = find_nearest_device_for_multicast(
                     &c.device_pk,
                     &device_infos,
                     latency_map.as_ref(),
-                ) {
+                );
+                let nearest = match target_device {
                     None => "none".to_string(),
                     Some(d) if d.pk == c.device_pk => d.code.clone(),
                     Some(d) => {
@@ -658,11 +667,26 @@ impl CreateValidatorMulticastPublishersCommand {
                         fmt_nearest_label(&d.code, score, self.nearest_via_geo)
                     }
                 };
+                let device_ip = target_device
+                    .map(|d| d.public_ip.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let tunnel_endpoint = target_device
+                    .map(|d| {
+                        let exclude = tunnel_exclude_ips(&all_users, c.client_ip, &device_infos);
+                        select_tunnel_endpoint(d.public_ip, &d.user_tunnel_endpoints, &exclude)
+                    })
+                    .unwrap_or(Ipv4Addr::UNSPECIFIED);
                 PlanRow {
                     owner: c.owner.to_string(),
                     client_ip: c.client_ip.to_string(),
                     device: c.device_label.clone(),
                     nearest_device: nearest,
+                    device_ip,
+                    tunnel_endpoint: if tunnel_endpoint == Ipv4Addr::UNSPECIFIED {
+                        "(activator-assigned)".to_string()
+                    } else {
+                        tunnel_endpoint.to_string()
+                    },
                     client: c.software_client.clone(),
                     stake_sol: format!("{:.2}", c.stake_sol),
                 }
@@ -729,7 +753,27 @@ impl CreateValidatorMulticastPublishersCommand {
                 tenant_pk: Pubkey::default(),
                 user_type: doublezero_sdk::UserType::IBRL,
                 publishers: vec![],
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             };
+
+            let tunnel_endpoint = device_infos
+                .get(&target_device_pk)
+                .map(|d| {
+                    let exclude =
+                        tunnel_exclude_ips(&all_users, candidate.client_ip, &device_infos);
+                    select_tunnel_endpoint(d.public_ip, &d.user_tunnel_endpoints, &exclude)
+                })
+                .unwrap_or(Ipv4Addr::UNSPECIFIED);
+
+            if tunnel_endpoint == Ipv4Addr::UNSPECIFIED {
+                eprintln!(
+                    "  Error: no tunnel endpoint available on device {} for {} — all public_ip \
+                     and user_tunnel_endpoint IPs are already in use by this client_ip. Skipping.",
+                    target_device_label, candidate.client_ip,
+                );
+                skipped += 1;
+                continue;
+            }
 
             let ixs = match build_create_multicast_publisher_instructions(
                 &program_id,
@@ -737,6 +781,7 @@ impl CreateValidatorMulticastPublishersCommand {
                 &candidate.owner,
                 &multicast_group_pk,
                 &dz_user,
+                tunnel_endpoint,
             ) {
                 Ok(ixs) => ixs,
                 Err(e) => {
@@ -797,6 +842,34 @@ impl CreateValidatorMulticastPublishersCommand {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Build the set of tunnel endpoints already in use by users at `client_ip`.
+///
+/// For users with an explicit `tunnel_endpoint` onchain, use that value.
+/// For legacy users where `tunnel_endpoint == UNSPECIFIED`, the activator
+/// implicitly routes their tunnel through the device's `public_ip`, so
+/// resolve it from `device_infos` rather than dropping the entry.
+fn tunnel_exclude_ips(
+    users: &[DzUser],
+    client_ip: Ipv4Addr,
+    device_infos: &HashMap<Pubkey, DzDeviceInfo>,
+) -> Vec<Ipv4Addr> {
+    users
+        .iter()
+        .filter(|u| u.client_ip == client_ip)
+        .map(|u| {
+            if u.tunnel_endpoint != Ipv4Addr::UNSPECIFIED {
+                u.tunnel_endpoint
+            } else {
+                device_infos
+                    .get(&u.device_pk)
+                    .map(|d| d.public_ip)
+                    .unwrap_or(Ipv4Addr::UNSPECIFIED)
+            }
+        })
+        .filter(|ip| *ip != Ipv4Addr::UNSPECIFIED)
+        .collect()
+}
 
 /// Format a nearest-device label with its proximity score.
 /// Shows `"code (1234 µs)"` in latency mode or `"code (365 km)"` in geo mode.

@@ -2,10 +2,11 @@
 
 ## Unreleased
 
+- register rewards integrations (#113)
+- simplify already-registered rejection (#114)
+- scaffold integration harvesting (#115)
 - collect integration rewards (#116)
 - track collected integrations via inline bitmap on distribution (#117)
-- scaffold integration harvesting (#115)
-- register rewards integrations (#113)
 
 ## [v0.3.4]
 - withdraw deposited SOL (#111)
@@ -92,3 +93,4 @@
 [v0.3.1]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.3.1
 [v0.3.2]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.3.2
 [v0.3.3]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.3.3
+[v0.3.4]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.3.4

@@ -211,7 +211,7 @@ func TestGlobalMonitor_SolanaValidatorICMPPlanner_Record_WritesExpectedInfluxPoi
 		requireTag(t, tags, "target_ip", val.Node.GossipIP.To4().String())
 
 		requireTag(t, tags, "target_dzd_code", uTarget.Device.Code)
-		requireTag(t, tags, "target_dzd_metro_code", uTarget.Device.Exchange.Code)
+		requireTag(t, tags, "target_dzd_metro_code", uTarget.Device.Metro.Code)
 
 		require.Equal(t, true, requireField[bool](t, fields, "probe_ok"))
 		require.Contains(t, fields, "probe_rtt_avg_ms")
@@ -362,7 +362,7 @@ func TestGlobalMonitor_SolanaValidatorICMPPlanner_Record_WritesExpectedClickHous
 		require.Equal(t, "dz0", row.SourceIface)
 		require.Equal(t, src.User.DZIP.String(), row.SourceIP)
 		require.Equal(t, uTarget.Device.Code, row.TargetDZDCode)
-		require.Equal(t, uTarget.Device.Exchange.Code, row.TargetDZDMetroCode)
+		require.Equal(t, uTarget.Device.Metro.Code, row.TargetDZDMetroCode)
 
 		require.True(t, row.ProbeOK)
 		require.Empty(t, row.ProbeFailReason)

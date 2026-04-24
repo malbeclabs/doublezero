@@ -29,13 +29,13 @@ type User struct {
 }
 
 type Device struct {
-	PubKey   solana.PublicKey
-	Code     string
-	Name     string
-	Exchange *Exchange
+	PubKey solana.PublicKey
+	Code   string
+	Name   string
+	Metro  *Metro
 }
 
-type Exchange struct {
+type Metro struct {
 	PubKey solana.PublicKey
 	Code   string
 	Name   string
@@ -47,7 +47,7 @@ type ServiceabilityProgramData struct {
 	UsersByClientIP map[string]User
 	DevicesByPK     map[solana.PublicKey]*Device
 	DevicesByCode   map[string]*Device
-	ExchangesByPK   map[solana.PublicKey]*Exchange
+	MetrosByPK      map[solana.PublicKey]*Metro
 }
 
 type ServiceabilityRPC interface {
@@ -96,21 +96,21 @@ func (v *ServiceabilityView) GetProgramData(ctx context.Context) (*Serviceabilit
 	for _, device := range data.Devices {
 		rpcDevicesByPK[device.PubKey] = &device
 	}
-	rpcExchangesByPK := make(map[solana.PublicKey]*serviceability.Exchange)
-	for _, exchange := range data.Exchanges {
-		rpcExchangesByPK[exchange.PubKey] = &exchange
+	rpcMetrosByPK := make(map[solana.PublicKey]*serviceability.Metro)
+	for _, metro := range data.Metros {
+		rpcMetrosByPK[metro.PubKey] = &metro
 	}
 	rpcUsersByPK := make(map[solana.PublicKey]serviceability.User)
 	for _, user := range data.Users {
 		rpcUsersByPK[user.PubKey] = user
 	}
 
-	exchangesByPK := make(map[solana.PublicKey]*Exchange)
-	for _, exchange := range data.Exchanges {
-		exchangesByPK[exchange.PubKey] = &Exchange{
-			PubKey: exchange.PubKey,
-			Code:   exchange.Code,
-			Name:   exchange.Name,
+	metrosByPK := make(map[solana.PublicKey]*Metro)
+	for _, metro := range data.Metros {
+		metrosByPK[metro.PubKey] = &Metro{
+			PubKey: metro.PubKey,
+			Code:   metro.Code,
+			Name:   metro.Name,
 		}
 	}
 
@@ -118,14 +118,14 @@ func (v *ServiceabilityView) GetProgramData(ctx context.Context) (*Serviceabilit
 	devicesByCode := make(map[string]*Device)
 	for _, device := range data.Devices {
 		devicesByPK[device.PubKey] = &Device{
-			PubKey:   device.PubKey,
-			Code:     device.Code,
-			Exchange: exchangesByPK[device.ExchangePubKey],
+			PubKey: device.PubKey,
+			Code:   device.Code,
+			Metro:  metrosByPK[device.MetroPubKey],
 		}
 		devicesByCode[device.Code] = &Device{
-			PubKey:   device.PubKey,
-			Code:     device.Code,
-			Exchange: exchangesByPK[device.ExchangePubKey],
+			PubKey: device.PubKey,
+			Code:   device.Code,
+			Metro:  metrosByPK[device.MetroPubKey],
 		}
 	}
 
@@ -161,6 +161,6 @@ func (v *ServiceabilityView) GetProgramData(ctx context.Context) (*Serviceabilit
 		UsersByClientIP: usersByClientIP,
 		DevicesByPK:     devicesByPK,
 		DevicesByCode:   devicesByCode,
-		ExchangesByPK:   exchangesByPK,
+		MetrosByPK:      metrosByPK,
 	}, nil
 }

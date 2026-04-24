@@ -155,7 +155,7 @@ func mkUser(pub solana.PublicKey, clientIP, dzip string, exch string, userType d
 		ValidatorPK: validatorPK,
 		Device: &dz.Device{
 			Code: fmt.Sprintf("dev-%s", pub.String()[:6]),
-			Exchange: &dz.Exchange{
+			Metro: &dz.Metro{
 				Code: exch,
 				Name: "Exchange " + exch,
 			},

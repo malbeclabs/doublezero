@@ -126,7 +126,7 @@ func (p *DoubleZeroUserICMPPlanner) getTargets(svcData *dz.ServiceabilityProgram
 	for _, users := range usersByDZIP {
 		for _, user := range users {
 			// Exclude users on DZ who are in the same exchange as the source DZD.
-			if user.Device.Exchange.Code == source.User.Device.Exchange.Code {
+			if user.Device.Metro.Code == source.User.Device.Metro.Code {
 				continue
 			}
 
@@ -176,15 +176,15 @@ func (p *DoubleZeroUserICMPPlanner) recordResult(source *Source, user *dz.User, 
 		tags["source_user_pubkey"] = source.User.PubKey.String()
 		if source.User.Device != nil {
 			tags["source_dzd_code"] = source.User.Device.Code
-			tags["source_dzd_metro_code"] = source.User.Device.Exchange.Code
-			tags["source_dzd_metro_name"] = source.User.Device.Exchange.Name
+			tags["source_dzd_metro_code"] = source.User.Device.Metro.Code
+			tags["source_dzd_metro_name"] = source.User.Device.Metro.Name
 		}
 	}
 
 	// Target tags.
 	tags["target_dzd_code"] = user.Device.Code
-	tags["target_dzd_metro_code"] = user.Device.Exchange.Code
-	tags["target_dzd_metro_name"] = user.Device.Exchange.Name
+	tags["target_dzd_metro_code"] = user.Device.Metro.Code
+	tags["target_dzd_metro_name"] = user.Device.Metro.Name
 
 	iface := target.Interface()
 	switch iface {

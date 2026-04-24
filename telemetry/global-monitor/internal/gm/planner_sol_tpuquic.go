@@ -154,7 +154,7 @@ func (p *SolanaValidatorTPUQUICPlanner) getTargets(validators map[solana.PublicK
 			}
 
 			// Exclude users on DZ who are in the same exchange as the source DZD.
-			if user.Device.Exchange.Code == source.User.Device.Exchange.Code {
+			if user.Device.Metro.Code == source.User.Device.Metro.Code {
 				continue
 			}
 
@@ -216,15 +216,15 @@ func (p *SolanaValidatorTPUQUICPlanner) recordResult(source *Source, val *sol.Va
 	// Source tags.
 	if source.User != nil && source.User.Device != nil {
 		tags["source_dzd_code"] = source.User.Device.Code
-		tags["source_dzd_metro_code"] = source.User.Device.Exchange.Code
-		tags["source_dzd_metro_name"] = source.User.Device.Exchange.Name
+		tags["source_dzd_metro_code"] = source.User.Device.Metro.Code
+		tags["source_dzd_metro_name"] = source.User.Device.Metro.Name
 	}
 
 	// Target tags.
 	if targetUser != nil {
 		tags["target_dzd_code"] = targetUser.Device.Code
-		tags["target_dzd_metro_code"] = targetUser.Device.Exchange.Code
-		tags["target_dzd_metro_name"] = targetUser.Device.Exchange.Name
+		tags["target_dzd_metro_code"] = targetUser.Device.Metro.Code
+		tags["target_dzd_metro_name"] = targetUser.Device.Metro.Name
 	}
 
 	switch targetIface {

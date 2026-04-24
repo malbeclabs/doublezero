@@ -218,14 +218,14 @@ func TestFlowEnrichment(t *testing.T) {
 	}
 
 	// Mock serviceability data with two users
-	// User 1: 137.174.145.144 on device "test-device-1" in location "TEST-LOC1" and exchange "tst1"
-	// User 2: 137.174.145.145 on device "test-device-2" in location "TEST-LOC2" and exchange "tst2"
+	// User 1: 137.174.145.144 on device "test-device-1" in facility "TEST-LOC1" and metro "tst1"
+	// User 2: 137.174.145.145 on device "test-device-2" in facility "TEST-LOC2" and metro "tst2"
 	device1PK := [32]byte{1}
 	device2PK := [32]byte{2}
-	location1PK := [32]byte{3}
-	location2PK := [32]byte{4}
-	exchange1PK := [32]byte{5}
-	exchange2PK := [32]byte{6}
+	facility1PK := [32]byte{3}
+	facility2PK := [32]byte{4}
+	metro1PK := [32]byte{5}
+	metro2PK := [32]byte{6}
 
 	mockServiceability := &MockServiceabilityFetcher{}
 	mockServiceability.SetProgramData(&serviceability.ProgramData{
@@ -243,38 +243,38 @@ func TestFlowEnrichment(t *testing.T) {
 			{
 				PubKey:         device1PK,
 				Code:           "test-device-1",
-				LocationPubKey: location1PK,
-				ExchangePubKey: exchange1PK,
+				FacilityPubKey: facility1PK,
+				MetroPubKey:    metro1PK,
 			},
 			{
 				PubKey:         device2PK,
 				Code:           "test-device-2",
-				LocationPubKey: location2PK,
-				ExchangePubKey: exchange2PK,
+				FacilityPubKey: facility2PK,
+				MetroPubKey:    metro2PK,
 			},
 		},
-		Locations: []serviceability.Location{
+		Facilities: []serviceability.Facility{
 			{
-				PubKey: location1PK,
+				PubKey: facility1PK,
 				Code:   "TEST-LOC1",
-				Name:   "Test Location 1",
+				Name:   "Test Facility 1",
 			},
 			{
-				PubKey: location2PK,
+				PubKey: facility2PK,
 				Code:   "TEST-LOC2",
-				Name:   "Test Location 2",
+				Name:   "Test Facility 2",
 			},
 		},
-		Exchanges: []serviceability.Exchange{
+		Metros: []serviceability.Metro{
 			{
-				PubKey: exchange1PK,
+				PubKey: metro1PK,
 				Code:   "tst1",
-				Name:   "Test Exchange 1",
+				Name:   "Test Metro 1",
 			},
 			{
-				PubKey: exchange2PK,
+				PubKey: metro2PK,
 				Code:   "tst2",
-				Name:   "Test Exchange 2",
+				Name:   "Test Metro 2",
 			},
 		},
 	})
@@ -336,10 +336,10 @@ func TestFlowEnrichment(t *testing.T) {
 		EType         string `db:"etype"`
 		SrcDeviceCode string `db:"src_device_code"`
 		DstDeviceCode string `db:"dst_device_code"`
-		SrcLocation   string `db:"src_location"`
-		DstLocation   string `db:"dst_location"`
-		SrcExchange   string `db:"src_exchange"`
-		DstExchange   string `db:"dst_exchange"`
+		SrcFacility   string `db:"src_facility"`
+		DstFacility   string `db:"dst_facility"`
+		SrcMetro      string `db:"src_metro"`
+		DstMetro      string `db:"dst_metro"`
 	}
 
 	var rows []flowRow
@@ -347,7 +347,7 @@ func TestFlowEnrichment(t *testing.T) {
 		rows = nil // Reset at the start of each attempt
 		dbRows, err := conn.Query(fmt.Sprintf(`
 			SELECT src_addr, dst_addr, src_port, dst_port, proto, etype,
-			       src_device_code, dst_device_code, src_location, dst_location, src_exchange, dst_exchange
+			       src_device_code, dst_device_code, src_facility, dst_facility, src_metro, dst_metro
 			FROM %s.%s
 		`, chDbname, chTable))
 		if err != nil {
@@ -360,7 +360,7 @@ func TestFlowEnrichment(t *testing.T) {
 			var row flowRow
 			if err := dbRows.Scan(
 				&row.SrcAddr, &row.DstAddr, &row.SrcPort, &row.DstPort, &row.Proto, &row.EType,
-				&row.SrcDeviceCode, &row.DstDeviceCode, &row.SrcLocation, &row.DstLocation, &row.SrcExchange, &row.DstExchange,
+				&row.SrcDeviceCode, &row.DstDeviceCode, &row.SrcFacility, &row.DstFacility, &row.SrcMetro, &row.DstMetro,
 			); err != nil {
 				t.Logf("error scanning row: %v", err)
 				return false
@@ -384,12 +384,12 @@ func TestFlowEnrichment(t *testing.T) {
 		// Validate enriched serviceability fields
 		// Source IP 137.174.145.145 maps to test-device-2, TEST-LOC2, tst2
 		require.Equal(t, "test-device-2", row.SrcDeviceCode, "unexpected src_device_code")
-		require.Equal(t, "TEST-LOC2", row.SrcLocation, "unexpected src_location")
-		require.Equal(t, "tst2", row.SrcExchange, "unexpected src_exchange")
+		require.Equal(t, "TEST-LOC2", row.SrcFacility, "unexpected src_facility")
+		require.Equal(t, "tst2", row.SrcMetro, "unexpected src_metro")
 
 		// Destination IP 137.174.145.147 is not in serviceability data, so fields should be empty
 		require.Equal(t, "", row.DstDeviceCode, "unexpected dst_device_code")
-		require.Equal(t, "", row.DstLocation, "unexpected dst_location")
-		require.Equal(t, "", row.DstExchange, "unexpected dst_exchange")
+		require.Equal(t, "", row.DstFacility, "unexpected dst_facility")
+		require.Equal(t, "", row.DstMetro, "unexpected dst_metro")
 	}
 }

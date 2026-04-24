@@ -131,8 +131,8 @@ type FlowSample struct {
 	OutputInterface string `json:"out_ifname"`
 	SrcDeviceCode   string `json:"src_device_code"`
 	DstDeviceCode   string `json:"dst_device_code"`
-	SrcLocation     string `json:"src_location"`
-	DstLocation     string `json:"dst_location"`
-	SrcExchange     string `json:"src_exchange"`
-	DstExchange     string `json:"dst_exchange"`
+	SrcFacility     string `json:"src_facility"`
+	DstFacility     string `json:"dst_facility"`
+	SrcMetro        string `json:"src_metro"`
+	DstMetro        string `json:"dst_metro"`
 }

@@ -16,8 +16,8 @@ type ServiceabilityAnnotator struct {
 	programData    serviceability.ProgramData
 	devices        map[[32]byte]serviceability.Device   // keyed by PubKey
 	users          map[netip.Addr]serviceability.User   // keyed by DzIp
-	locations      map[[32]byte]serviceability.Location // keyed by PubKey
-	exchanges      map[[32]byte]serviceability.Exchange // keyed by PubKey
+	facilities     map[[32]byte]serviceability.Facility // keyed by PubKey
+	metros         map[[32]byte]serviceability.Metro    // keyed by PubKey
 	mu             sync.RWMutex
 }
 
@@ -47,12 +47,12 @@ func (s *ServiceabilityAnnotator) Init(ctx context.Context) error {
 }
 
 func (s *ServiceabilityAnnotator) Annotate(flow *FlowSample) error {
-	flow.SrcDeviceCode, flow.SrcLocation, flow.SrcExchange = s.lookupByIP(flow.SrcAddress)
-	flow.DstDeviceCode, flow.DstLocation, flow.DstExchange = s.lookupByIP(flow.DstAddress)
+	flow.SrcDeviceCode, flow.SrcFacility, flow.SrcMetro = s.lookupByIP(flow.SrcAddress)
+	flow.DstDeviceCode, flow.DstFacility, flow.DstMetro = s.lookupByIP(flow.DstAddress)
 	return nil
 }
 
-func (s *ServiceabilityAnnotator) lookupByIP(ip net.IP) (deviceCode, locationCode, exchangeCode string) {
+func (s *ServiceabilityAnnotator) lookupByIP(ip net.IP) (deviceCode, facilityCode, metroCode string) {
 	addr, ok := netip.AddrFromSlice(ip.To4())
 	if !ok {
 		return
@@ -72,12 +72,12 @@ func (s *ServiceabilityAnnotator) lookupByIP(ip net.IP) (deviceCode, locationCod
 	}
 	deviceCode = device.Code
 
-	if location, found := s.locations[device.LocationPubKey]; found {
-		locationCode = location.Code
+	if facility, found := s.facilities[device.FacilityPubKey]; found {
+		facilityCode = facility.Code
 	}
 
-	if exchange, found := s.exchanges[device.ExchangePubKey]; found {
-		exchangeCode = exchange.Code
+	if metro, found := s.metros[device.MetroPubKey]; found {
+		metroCode = metro.Code
 	}
 
 	return
@@ -91,15 +91,15 @@ func (s *ServiceabilityAnnotator) updateServiceabilityCache() {
 	programData := s.getProgramData()
 	users := BuildUserMap(&programData)
 	devices := BuildDeviceMap(&programData)
-	locations := BuildLocationMap(&programData)
-	exchanges := BuildExchangeMap(&programData)
+	facilities := BuildFacilityMap(&programData)
+	metros := BuildMetroMap(&programData)
 
 	s.mu.Lock()
 	s.programData = programData
 	s.users = users
 	s.devices = devices
-	s.locations = locations
-	s.exchanges = exchanges
+	s.facilities = facilities
+	s.metros = metros
 	s.mu.Unlock()
 }
 
@@ -122,20 +122,20 @@ func BuildDeviceMap(data *serviceability.ProgramData) map[[32]byte]serviceabilit
 	return devices
 }
 
-// BuildLocationMap creates a map of serviceability.Location keyed by their PubKey.
-func BuildLocationMap(data *serviceability.ProgramData) map[[32]byte]serviceability.Location {
-	locations := make(map[[32]byte]serviceability.Location, len(data.Locations))
-	for _, location := range data.Locations {
-		locations[location.PubKey] = location
+// BuildFacilityMap creates a map of serviceability.Facility keyed by their PubKey.
+func BuildFacilityMap(data *serviceability.ProgramData) map[[32]byte]serviceability.Facility {
+	facilities := make(map[[32]byte]serviceability.Facility, len(data.Facilities))
+	for _, facility := range data.Facilities {
+		facilities[facility.PubKey] = facility
 	}
-	return locations
+	return facilities
 }
 
-// BuildExchangeMap creates a map of serviceability.Exchange keyed by their PubKey.
-func BuildExchangeMap(data *serviceability.ProgramData) map[[32]byte]serviceability.Exchange {
-	exchanges := make(map[[32]byte]serviceability.Exchange, len(data.Exchanges))
-	for _, exchange := range data.Exchanges {
-		exchanges[exchange.PubKey] = exchange
+// BuildMetroMap creates a map of serviceability.Metro keyed by their PubKey.
+func BuildMetroMap(data *serviceability.ProgramData) map[[32]byte]serviceability.Metro {
+	metros := make(map[[32]byte]serviceability.Metro, len(data.Metros))
+	for _, metro := range data.Metros {
+		metros[metro.PubKey] = metro
 	}
-	return exchanges
+	return metros
 }

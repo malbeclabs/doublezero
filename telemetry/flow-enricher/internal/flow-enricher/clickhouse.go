@@ -167,10 +167,10 @@ func (cw *ClickhouseWriter) BatchInsert(ctx context.Context, samples []FlowSampl
 				out_ifname,
 				src_device_code,
 				dst_device_code,
-				src_location,
-				dst_location,
-				src_exchange,
-				dst_exchange
+				src_facility,
+				dst_facility,
+				src_metro,
+				dst_metro
 			)`)
 	if err != nil {
 		return fmt.Errorf("error beginning clickhouse batch: %v", err)
@@ -238,10 +238,10 @@ func (cw *ClickhouseWriter) BatchInsert(ctx context.Context, samples []FlowSampl
 			sample.OutputInterface,
 			sample.SrcDeviceCode,
 			sample.DstDeviceCode,
-			sample.SrcLocation,
-			sample.DstLocation,
-			sample.SrcExchange,
-			sample.DstExchange,
+			sample.SrcFacility,
+			sample.DstFacility,
+			sample.SrcMetro,
+			sample.DstMetro,
 		)
 		if err != nil {
 			cw.logger.Error("error appending to clickhouse batch", "error", err)

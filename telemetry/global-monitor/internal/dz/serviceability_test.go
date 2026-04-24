@@ -48,7 +48,7 @@ func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_Success(t *testing.T
 	logger := newTestLogger()
 
 	// Keys
-	exchangePK := solana.NewWallet().PublicKey()
+	metroPK := solana.NewWallet().PublicKey()
 	devicePK := solana.NewWallet().PublicKey()
 	userPK := solana.NewWallet().PublicKey()
 	validatorPK := solana.NewWallet().PublicKey()
@@ -59,16 +59,16 @@ func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_Success(t *testing.T
 	var dzIP [4]byte
 	copy(dzIP[:], v4)
 
-	exchange := serviceability.Exchange{
-		PubKey: exchangePK,
+	metro := serviceability.Metro{
+		PubKey: metroPK,
 		Code:   "EXCH",
 		Name:   "Example Exchange",
 	}
 
 	device := serviceability.Device{
-		PubKey:         devicePK,
-		Code:           "DEV1",
-		ExchangePubKey: exchangePK,
+		PubKey:      devicePK,
+		Code:        "DEV1",
+		MetroPubKey: metroPK,
 	}
 
 	user := serviceability.User{
@@ -79,9 +79,9 @@ func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_Success(t *testing.T
 	}
 
 	programData := &serviceability.ProgramData{
-		Exchanges: []serviceability.Exchange{exchange},
-		Devices:   []serviceability.Device{device},
-		Users:     []serviceability.User{user},
+		Metros:  []serviceability.Metro{metro},
+		Devices: []serviceability.Device{device},
+		Users:   []serviceability.User{user},
 	}
 
 	rpc := &MockServiceabilityRPC{
@@ -97,11 +97,11 @@ func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_Success(t *testing.T
 	require.NoError(t, err)
 	require.NotNil(t, out)
 
-	// Exchanges
-	require.Len(t, out.ExchangesByPK, 1)
-	exOut, ok := out.ExchangesByPK[exchangePK]
+	// Metros
+	require.Len(t, out.MetrosByPK, 1)
+	exOut, ok := out.MetrosByPK[metroPK]
 	require.True(t, ok)
-	require.Equal(t, exchangePK, exOut.PubKey)
+	require.Equal(t, metroPK, exOut.PubKey)
 	require.Equal(t, "EXCH", exOut.Code)
 	require.Equal(t, "Example Exchange", exOut.Name)
 
@@ -113,15 +113,15 @@ func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_Success(t *testing.T
 	require.True(t, ok)
 	require.Equal(t, devicePK, devByPK.PubKey)
 	require.Equal(t, "DEV1", devByPK.Code)
-	require.NotNil(t, devByPK.Exchange)
-	require.Equal(t, exOut, devByPK.Exchange)
+	require.NotNil(t, devByPK.Metro)
+	require.Equal(t, exOut, devByPK.Metro)
 
 	devByCode, ok := out.DevicesByCode["DEV1"]
 	require.True(t, ok)
 	require.Equal(t, devicePK, devByCode.PubKey)
 	require.Equal(t, "DEV1", devByCode.Code)
-	require.NotNil(t, devByCode.Exchange)
-	require.Equal(t, exOut, devByCode.Exchange)
+	require.NotNil(t, devByCode.Metro)
+	require.Equal(t, exOut, devByCode.Metro)
 
 	// Users
 	require.Len(t, out.UsersByPK, 1)
@@ -135,8 +135,8 @@ func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_Success(t *testing.T
 	require.NotNil(t, userOut.Device)
 	require.Equal(t, devicePK, userOut.Device.PubKey)
 	require.Equal(t, "DEV1", userOut.Device.Code)
-	require.NotNil(t, userOut.Device.Exchange)
-	require.Equal(t, exOut, userOut.Device.Exchange)
+	require.NotNil(t, userOut.Device.Metro)
+	require.Equal(t, exOut, userOut.Device.Metro)
 
 	userOutByIP, ok := out.UsersByDZIP["10.0.0.1"]
 	require.True(t, ok)
@@ -176,9 +176,9 @@ func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_EmptyProgram(t *test
 	rpc := &MockServiceabilityRPC{
 		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 			return &serviceability.ProgramData{
-				Users:     []serviceability.User{},
-				Devices:   []serviceability.Device{},
-				Exchanges: []serviceability.Exchange{},
+				Users:   []serviceability.User{},
+				Devices: []serviceability.Device{},
+				Metros:  []serviceability.Metro{},
 			}, nil
 		},
 	}
@@ -194,7 +194,7 @@ func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_EmptyProgram(t *test
 	require.Empty(t, out.UsersByDZIP)
 	require.Empty(t, out.DevicesByPK)
 	require.Empty(t, out.DevicesByCode)
-	require.Empty(t, out.ExchangesByPK)
+	require.Empty(t, out.MetrosByPK)
 }
 
 func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_UserMissingDevice(t *testing.T) {
@@ -220,9 +220,9 @@ func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_UserMissingDevice(t 
 	}
 
 	pd := &serviceability.ProgramData{
-		Users:     []serviceability.User{user},
-		Devices:   []serviceability.Device{},   // no devices
-		Exchanges: []serviceability.Exchange{}, // no exchanges
+		Users:   []serviceability.User{user},
+		Devices: []serviceability.Device{}, // no devices
+		Metros:  []serviceability.Metro{},  // no metros
 	}
 
 	rpc := &MockServiceabilityRPC{
@@ -250,7 +250,7 @@ func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_DuplicateClientIP_Pr
 	ctx := context.Background()
 	logger := newTestLogger()
 
-	exchangePK := solana.NewWallet().PublicKey()
+	metroPK := solana.NewWallet().PublicKey()
 	ibrlDevicePK := solana.NewWallet().PublicKey()
 	multicastDevicePK := solana.NewWallet().PublicKey()
 	ibrlUserPK := solana.NewWallet().PublicKey()
@@ -267,12 +267,12 @@ func TestGlobalMonitor_DZ_ServiceabilityView_GetProgramData_DuplicateClientIP_Pr
 	copy(multicastDZIP[:], net.ParseIP("84.32.223.132").To4())
 
 	pd := &serviceability.ProgramData{
-		Exchanges: []serviceability.Exchange{
-			{PubKey: exchangePK, Code: "EXCH", Name: "Exchange"},
+		Metros: []serviceability.Metro{
+			{PubKey: metroPK, Code: "EXCH", Name: "Exchange"},
 		},
 		Devices: []serviceability.Device{
-			{PubKey: ibrlDevicePK, Code: "frankry", ExchangePubKey: exchangePK},
-			{PubKey: multicastDevicePK, Code: "fr2-dzx-001", ExchangePubKey: exchangePK},
+			{PubKey: ibrlDevicePK, Code: "frankry", MetroPubKey: metroPK},
+			{PubKey: multicastDevicePK, Code: "fr2-dzx-001", MetroPubKey: metroPK},
 		},
 		// Multicast user listed first to ensure ordering doesn't matter.
 		Users: []serviceability.User{

@@ -213,7 +213,7 @@ func TestGlobalMonitor_SolanaValidatorTPUQUICPlanner_Record_WritesExpectedInflux
 		requireTag(t, tags, "target_port", fmt.Sprintf("%d", val.Node.TPUQUICPort))
 
 		requireTag(t, tags, "target_dzd_code", uTarget.Device.Code)
-		requireTag(t, tags, "target_dzd_metro_code", uTarget.Device.Exchange.Code)
+		requireTag(t, tags, "target_dzd_metro_code", uTarget.Device.Metro.Code)
 
 		require.Equal(t, true, requireField[bool](t, fields, "probe_ok"))
 		require.Contains(t, fields, "probe_rtt_avg_ms")

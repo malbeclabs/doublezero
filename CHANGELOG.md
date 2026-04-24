@@ -6,7 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
-- CLI upgrade required: the new `InterfaceV3` onchain account format adds `flex_algo_node_segments` (RFC-18). CLI versions prior to this release cannot deserialize device accounts written by the new program. Operators must upgrade the CLI before or alongside the program upgrade.
+### Changes
+
+## [v0.19.0](https://github.com/malbeclabs/doublezero/compare/client/v0.18.0...client/v0.19.0) - 2026-04-24
+
+### Breaking
 
 ### Changes
 
@@ -22,9 +26,18 @@ All notable changes to this project will be documented in this file.
   - Fix `BackfillTopology` SID collision: flex-algo node segment indices are now guaranteed not to duplicate any existing base `node_segment_idx` value on the device
   - Fix multicast group allowlist add/remove for AccessPasses created with `allow_multiple_ip=true`; the processors were rejecting requests with a real client IP because the stored IP is always `0.0.0.0` for these passes ([#3551](https://github.com/malbeclabs/doublezero/issues/3551))
   - SDK now auto-detects the correct AccessPass PDA (static or dynamic) for allowlist operations based on whether an `allow_multiple_ip` pass exists
+  - Add `doublezero link topology {create,delete,clear,backfill,list}` subcommands for managing flex-algo topologies; `topology clear` auto-discovers tagged links when `--links` is omitted
+  - Add `TopologyInfo` onchain account for IS-IS flex-algo link classification: auto-assigned TE admin-group bit (1–62), derived flex-algo number (128 + bit), and constraint type (`include-any`/`include-all`); capped at 62 topologies via `AdminGroupBits` resource extension
+  - Add `link_topologies: Vec<Pubkey>` (capped at 8) and `link_flags: u32` (bit 0 = unicast-drained) to the `Link` account
+  - Add `include_topologies` to the `Tenant` account for topology-filtered routing opt-in
+  - Enforce UNICAST-DEFAULT topology existence as a precondition for link activation
+  - Extend `link get` and `link list` to display topology assignments and drain status; add `--link-topology <name>` filter to `link list` and `--link-topology` (comma-separated topology names) / `--unicast-drained` flags to `link update`; use `default` as the value to clear all topology assignments
+  - Extend `tenant get` and `tenant list` to display included topologies; add `--include-topologies` (comma-separated topology names) flag to `tenant update`; use `default` to clear
 - Sentinel
-  - Make the multicast publisher worker's `--client-filter` flag repeatable so multiple validator client names can be matched in one run (OR semantics), matching the admin CLI behavior
   - Set a concrete `tunnel_endpoint` on multicast publisher create, preferring a `user_tunnel_endpoint` interface IP and falling back to the device's `public_ip`, excluding IPs already in use by another user at the same `client_ip`
+  - Make the multicast publisher worker's `--client-filter` flag repeatable so multiple validator client names can be matched in one run (OR semantics), matching the admin CLI behavior
+- Tools
+  - Add `doublezero-admin migrate flex-algo [--dry-run]` command to backfill link topology assignments and VPNv4 loopback flex-algo node segments across all existing devices and links
 
 ## [v0.18.0](https://github.com/malbeclabs/doublezero/compare/client/v0.17.0...client/v0.18.0) - 2026-04-17
 
@@ -92,13 +105,6 @@ All notable changes to this project will be documented in this file.
   - Extend `validate_program_account!` migration to remaining user and multicastgroup allowlist processors (`set_bgp_status`, `delete`, `closeaccount`, publisher/subscriber `add`/`remove`)
   - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
   - Allow pending users with subs to be deleted
-  - Add `doublezero link topology {create,delete,clear,backfill,list}` subcommands for managing flex-algo topologies; `topology clear` auto-discovers tagged links when `--links` is omitted
-  - Add `TopologyInfo` onchain account for IS-IS flex-algo link classification: auto-assigned TE admin-group bit (1–62), derived flex-algo number (128 + bit), and constraint type (`include-any`/`include-all`); capped at 62 topologies via `AdminGroupBits` resource extension
-  - Add `link_topologies: Vec<Pubkey>` (capped at 8) and `link_flags: u32` (bit 0 = unicast-drained) to the `Link` account
-  - Add `include_topologies` to the `Tenant` account for topology-filtered routing opt-in
-  - Enforce UNICAST-DEFAULT topology existence as a precondition for link activation
-  - Extend `link get` and `link list` to display topology assignments and drain status; add `--link-topology <name>` filter to `link list` and `--link-topology` (comma-separated topology names) / `--unicast-drained` flags to `link update`; use `default` as the value to clear all topology assignments
-  - Extend `tenant get` and `tenant list` to display included topologies; add `--include-topologies` (comma-separated topology names) flag to `tenant update`; use `default` to clear
 - Onchain programs
   - Add `tunnel_endpoint` field to the `UpdateUser` instruction (`UserUpdateArgs`), allowing the activator to overwrite a user's tunnel endpoint onchain; field is optional and backward compatible via incremental deserialization
 - Telemetry
@@ -108,7 +114,6 @@ All notable changes to this project will be documented in this file.
   - Add BGP status submitter: on each tick, reads BGP socket state from the device namespace, maps each activated user to their tunnel peer IP, and submits `SetUserBGPStatus` onchain; supports a configurable down grace period and periodic keepalive refresh; enabled via `--bgp-status-enable` with `--bgp-status-interval`, `--bgp-status-refresh-interval`, and `--bgp-status-down-grace-period` flags
 - Tools
   - Add `IsRetryableFunc` field to `RetryOptions` for configurable retry criteria in the Solana JSON-RPC client; add `"rate limited"` string match and RPC code `-32429` to the default implementation
-  - Add `doublezero-admin migrate flex-algo [--dry-run]` command to backfill link topology assignments and VPNv4 loopback flex-algo node segments across all existing devices and links
 - Geolocation
   - Standardize CLI flag naming: probe mutation commands use `--probe` (was `--code`) accepting pubkey or code; rename `--signing-keypair` → `--signing-pubkey` and `--target-pk` → `--target-signing-pubkey`; add `--json-compact` to `get` commands
   - geoprobe-target can now store LocationOffset messages in ClickHouse

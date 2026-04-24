@@ -127,16 +127,14 @@ pub fn process_topology_backfill(
     // bitmap wouldn't know about them and would otherwise re-issue the same index.
     let base_sids_in_use: std::collections::HashSet<u16> = device_accounts
         .iter()
-        .flat_map(|da| {
-            match Device::try_from(&da.data.borrow()[..]) {
-                Ok(d) => d
-                    .interfaces
-                    .into_iter()
-                    .map(|i| i.into_current_version().node_segment_idx)
-                    .filter(|&idx| idx > 0)
-                    .collect::<Vec<u16>>(),
-                Err(_) => vec![],
-            }
+        .flat_map(|da| match Device::try_from(&da.data.borrow()[..]) {
+            Ok(d) => d
+                .interfaces
+                .into_iter()
+                .map(|i| i.into_current_version().node_segment_idx)
+                .filter(|&idx| idx > 0)
+                .collect::<Vec<u16>>(),
+            Err(_) => vec![],
         })
         .collect();
 

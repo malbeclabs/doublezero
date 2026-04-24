@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - CLI
+  - Add `tunnel_endpoint` field to `doublezero user list` output (table and JSON) showing the device-side GRE endpoint IP assigned to each user
   - Add `cyoa_ips` field to `doublezero device get` and `doublezero device list` output, showing the IP networks of interfaces with `user_tunnel_endpoint` enabled
   - Extend `doublezero resource verify` to check `MulticastPublisherBlock` against multicast publisher users' `dz_ip` allocations; legacy `dz_ip`s that fall outside the block's range are ignored so pre-existing users allocated before this extension existed do not produce false discrepancies
   - Fix `doublezero resource verify` to report missing `TunnelIds` resource extensions for all devices, including those without any users; previously the discrepancy was suppressed when a device had no users, hiding unallocated extensions

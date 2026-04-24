@@ -8,19 +8,19 @@ import (
 )
 
 type InitializeInternetLatencySamplesInstructionConfig struct {
-	OriginExchangePK             solana.PublicKey
-	TargetExchangePK             solana.PublicKey
+	OriginMetroPK                solana.PublicKey
+	TargetMetroPK                solana.PublicKey
 	DataProviderName             string
 	Epoch                        uint64
 	SamplingIntervalMicroseconds uint64
 }
 
 func (c *InitializeInternetLatencySamplesInstructionConfig) Validate() error {
-	if c.OriginExchangePK.IsZero() {
-		return fmt.Errorf("origin exchange public key is required")
+	if c.OriginMetroPK.IsZero() {
+		return fmt.Errorf("origin metro public key is required")
 	}
-	if c.TargetExchangePK.IsZero() {
-		return fmt.Errorf("target exchange public key is required")
+	if c.TargetMetroPK.IsZero() {
+		return fmt.Errorf("target metro public key is required")
 	}
 	if c.DataProviderName == "" {
 		return fmt.Errorf("data provider name is required")
@@ -67,8 +67,8 @@ func BuildInitializeInternetLatencySamplesInstruction(
 		programID,
 		signerPK,
 		config.DataProviderName,
-		config.OriginExchangePK,
-		config.TargetExchangePK,
+		config.OriginMetroPK,
+		config.TargetMetroPK,
 		config.Epoch,
 	)
 	if err != nil {
@@ -79,8 +79,8 @@ func BuildInitializeInternetLatencySamplesInstruction(
 	accounts := []*solana.AccountMeta{
 		{PublicKey: pda, IsSigner: false, IsWritable: true},
 		{PublicKey: signerPK, IsSigner: true, IsWritable: true},
-		{PublicKey: config.OriginExchangePK, IsSigner: false, IsWritable: false},
-		{PublicKey: config.TargetExchangePK, IsSigner: false, IsWritable: false},
+		{PublicKey: config.OriginMetroPK, IsSigner: false, IsWritable: false},
+		{PublicKey: config.TargetMetroPK, IsSigner: false, IsWritable: false},
 		{PublicKey: solana.SystemProgramID, IsSigner: false, IsWritable: false},
 	}
 

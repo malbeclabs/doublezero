@@ -47,14 +47,14 @@ func TestToLineProtocol(t *testing.T) {
 		NoTag   string
 	}
 
-	type testExchange struct {
-		Owner   [32]byte       `influx:"tag,owner,pubkey"`
-		Lat     float64        `influx:"field,lat"`
-		Lng     float64        `influx:"field,lng"`
-		Status  ExchangeStatus `influx:"tag,status"`
-		Code    string         `influx:"tag,code"`
-		Name    string         `influx:"tag,name"`
-		Ignored string         `influx:"-"`
+	type testMetro struct {
+		Owner   [32]byte    `influx:"tag,owner,pubkey"`
+		Lat     float64     `influx:"field,lat"`
+		Lng     float64     `influx:"field,lng"`
+		Status  MetroStatus `influx:"tag,status"`
+		Code    string      `influx:"tag,code"`
+		Name    string      `influx:"tag,name"`
+		Ignored string      `influx:"-"`
 		NoTag   string
 	}
 
@@ -108,15 +108,15 @@ func TestToLineProtocol(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name:        "full exchange struct",
-			measurement: "exchanges",
-			input: testExchange{
+			name:        "full metro struct",
+			measurement: "metros",
+			input: testMetro{
 				Owner:   pubKey1,
 				Lat:     10.0,
 				Lng:     20.0,
-				Status:  ExchangeStatusActivated,
+				Status:  MetroStatusActivated,
 				Code:    "dev-01",
-				Name:    "test-exchange",
+				Name:    "test-metro",
 				Ignored: "should be ignored",
 				NoTag:   "should be ignored",
 			},
@@ -124,7 +124,7 @@ func TestToLineProtocol(t *testing.T) {
 			additionalTags: map[string]string{
 				"env": "testnet",
 			},
-			expected:  `exchanges,code=dev-01,env=testnet,name=test-exchange,owner=` + pubKey1B58 + `,status=activated lat=10,lng=20`,
+			expected:  `metros,code=dev-01,env=testnet,name=test-metro,owner=` + pubKey1B58 + `,status=activated lat=10,lng=20`,
 			expectErr: false,
 		},
 		{
@@ -270,15 +270,15 @@ func TestToLineProtocol(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name:        "field with spaces",
-			measurement: "exchanges",
-			input: testExchange{
+			name:        "field with spaces (metro)",
+			measurement: "metros",
+			input: testMetro{
 				Owner:   pubKey1,
 				Lat:     10.0,
 				Lng:     20.0,
-				Status:  ExchangeStatusActivated,
+				Status:  MetroStatusActivated,
 				Code:    "dev-01",
-				Name:    "test exchange",
+				Name:    "test metro",
 				Ignored: "should be ignored",
 				NoTag:   "should be ignored",
 			},
@@ -286,7 +286,7 @@ func TestToLineProtocol(t *testing.T) {
 			additionalTags: map[string]string{
 				"env": "testnet",
 			},
-			expected:  `exchanges,code=dev-01,env=testnet,name=test\ exchange,owner=` + pubKey1B58 + `,status=activated lat=10,lng=20`,
+			expected:  `metros,code=dev-01,env=testnet,name=test\ metro,owner=` + pubKey1B58 + `,status=activated lat=10,lng=20`,
 			expectErr: false,
 		},
 	}

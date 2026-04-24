@@ -335,8 +335,8 @@ func (c *Client) WriteDeviceLatencySamples(
 func (c *Client) GetInternetLatencySamples(
 	ctx context.Context,
 	dataProviderName string,
-	originLocationPK solana.PublicKey,
-	targetLocationPK solana.PublicKey,
+	originMetroPK solana.PublicKey,
+	targetMetroPK solana.PublicKey,
 	agentPK solana.PublicKey,
 	epoch uint64,
 ) (*InternetLatencySamples, error) {
@@ -344,8 +344,8 @@ func (c *Client) GetInternetLatencySamples(
 		c.executor.programID,
 		agentPK,
 		dataProviderName,
-		originLocationPK,
-		targetLocationPK,
+		originMetroPK,
+		targetMetroPK,
 		epoch,
 	)
 	if err != nil {

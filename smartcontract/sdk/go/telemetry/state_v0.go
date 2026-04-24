@@ -28,10 +28,10 @@ type DeviceLatencySamplesHeaderV0 struct {
 	TargetDevicePK solana.PublicKey // 32
 
 	// Cached location of origin device for query/UI optimization
-	OriginDeviceLocationPK solana.PublicKey // 32
+	OriginDeviceFacilityPK solana.PublicKey // 32
 
 	// Cached location of target device
-	TargetDeviceLocationPK solana.PublicKey // 32
+	TargetDeviceFacilityPK solana.PublicKey // 32
 
 	// Link over which the RTT samples were taken
 	LinkPK solana.PublicKey // 32
@@ -101,8 +101,8 @@ func (d *DeviceLatencySamplesHeaderV0) ToV1Header() DeviceLatencySamplesHeader {
 		OriginDeviceAgentPK:          d.OriginDeviceAgentPK,
 		OriginDevicePK:               d.OriginDevicePK,
 		TargetDevicePK:               d.TargetDevicePK,
-		OriginDeviceLocationPK:       d.OriginDeviceLocationPK,
-		TargetDeviceLocationPK:       d.TargetDeviceLocationPK,
+		OriginDeviceFacilityPK:       d.OriginDeviceFacilityPK,
+		TargetDeviceFacilityPK:       d.TargetDeviceFacilityPK,
 		LinkPK:                       d.LinkPK,
 		SamplingIntervalMicroseconds: d.SamplingIntervalMicroseconds,
 		StartTimestampMicroseconds:   d.StartTimestampMicroseconds,

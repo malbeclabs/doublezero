@@ -24,8 +24,8 @@ func TestSDK_Telemetry_State_DeviceLatencySamplesV0(t *testing.T) {
 				OriginDeviceAgentPK:          origin,
 				OriginDevicePK:               origin,
 				TargetDevicePK:               target,
-				OriginDeviceLocationPK:       loc1,
-				TargetDeviceLocationPK:       loc2,
+				OriginDeviceFacilityPK:       loc1,
+				TargetDeviceFacilityPK:       loc2,
 				LinkPK:                       link,
 				SamplingIntervalMicroseconds: 250_000,
 				StartTimestampMicroseconds:   1_625_000_000,
@@ -123,8 +123,8 @@ func TestSDK_Telemetry_State_DeviceLatencySamplesV0(t *testing.T) {
 				OriginDeviceAgentPK:          origin,
 				OriginDevicePK:               origin,
 				TargetDevicePK:               target,
-				OriginDeviceLocationPK:       loc1,
-				TargetDeviceLocationPK:       loc2,
+				OriginDeviceFacilityPK:       loc1,
+				TargetDeviceFacilityPK:       loc2,
 				LinkPK:                       link,
 				SamplingIntervalMicroseconds: 1_000_000,
 				StartTimestampMicroseconds:   2_000_000,
@@ -141,8 +141,8 @@ func TestSDK_Telemetry_State_DeviceLatencySamplesV0(t *testing.T) {
 		require.Equal(t, v0.OriginDeviceAgentPK, v1.OriginDeviceAgentPK)
 		require.Equal(t, v0.OriginDevicePK, v1.OriginDevicePK)
 		require.Equal(t, v0.TargetDevicePK, v1.TargetDevicePK)
-		require.Equal(t, v0.OriginDeviceLocationPK, v1.OriginDeviceLocationPK)
-		require.Equal(t, v0.TargetDeviceLocationPK, v1.TargetDeviceLocationPK)
+		require.Equal(t, v0.OriginDeviceFacilityPK, v1.OriginDeviceFacilityPK)
+		require.Equal(t, v0.TargetDeviceFacilityPK, v1.TargetDeviceFacilityPK)
 		require.Equal(t, v0.LinkPK, v1.LinkPK)
 		require.Equal(t, v0.SamplingIntervalMicroseconds, v1.SamplingIntervalMicroseconds)
 		require.Equal(t, v0.StartTimestampMicroseconds, v1.StartTimestampMicroseconds)

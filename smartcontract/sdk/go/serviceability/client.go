@@ -15,8 +15,8 @@ type Client struct {
 type ProgramData struct {
 	GlobalState        *GlobalState
 	GlobalConfig       *GlobalConfig
-	Locations          []Location
-	Exchanges          []Exchange
+	Facilities         []Facility
+	Metros             []Metro
 	Contributors       []Contributor
 	Tenants            []Tenant
 	Devices            []Device
@@ -48,8 +48,8 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 	}
 
 	pd := &ProgramData{
-		Locations:          []Location{},
-		Exchanges:          []Exchange{},
+		Facilities:         []Facility{},
+		Metros:             []Metro{},
 		Contributors:       []Contributor{},
 		Tenants:            []Tenant{},
 		Devices:            []Device{},
@@ -79,16 +79,16 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 			DeserializeGlobalConfig(reader, &gc)
 			gc.PubKey = element.Pubkey
 			pd.GlobalConfig = &gc
-		case LocationType:
-			var loc Location
-			DeserializeLocation(reader, &loc)
+		case FacilityType:
+			var loc Facility
+			DeserializeFacility(reader, &loc)
 			loc.PubKey = element.Pubkey
-			pd.Locations = append(pd.Locations, loc)
-		case ExchangeType:
-			var exch Exchange
-			DeserializeExchange(reader, &exch)
-			exch.PubKey = element.Pubkey
-			pd.Exchanges = append(pd.Exchanges, exch)
+			pd.Facilities = append(pd.Facilities, loc)
+		case MetroType:
+			var metro Metro
+			DeserializeMetro(reader, &metro)
+			metro.PubKey = element.Pubkey
+			pd.Metros = append(pd.Metros, metro)
 		case ContributorType:
 			var contrib Contributor
 			DeserializeContributor(reader, &contrib)

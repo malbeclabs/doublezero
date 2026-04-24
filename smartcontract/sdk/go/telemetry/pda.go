@@ -37,8 +37,8 @@ func DeriveInternetLatencySamplesPDA(
 	programID solana.PublicKey,
 	collectorOraclePK solana.PublicKey,
 	dataProviderName string,
-	originLocationPK solana.PublicKey,
-	targetLocationPK solana.PublicKey,
+	originMetroPK solana.PublicKey,
+	targetMetroPK solana.PublicKey,
 	epoch uint64,
 ) (solana.PublicKey, uint8, error) {
 	// Convert epoch to little-endian bytes
@@ -51,8 +51,8 @@ func DeriveInternetLatencySamplesPDA(
 		[]byte(InternetLatencySamplesSeed),
 		collectorOraclePK[:],
 		[]byte(dataProviderName),
-		originLocationPK[:],
-		targetLocationPK[:],
+		originMetroPK[:],
+		targetMetroPK[:],
 		epochBytes,
 	}
 

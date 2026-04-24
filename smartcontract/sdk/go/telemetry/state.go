@@ -58,10 +58,10 @@ type DeviceLatencySamplesHeader struct {
 	TargetDevicePK solana.PublicKey // 32
 
 	// Cached location of origin device for query/UI optimization
-	OriginDeviceLocationPK solana.PublicKey // 32
+	OriginDeviceFacilityPK solana.PublicKey // 32
 
 	// Cached location of target device
-	TargetDeviceLocationPK solana.PublicKey // 32
+	TargetDeviceFacilityPK solana.PublicKey // 32
 
 	// Link over which the RTT samples were taken
 	LinkPK solana.PublicKey // 32
@@ -136,11 +136,11 @@ type InternetLatencySamplesHeader struct {
 	// OracleAgentPK authorized to write latency samples (must match signer)
 	OracleAgentPK solana.PublicKey // 32
 
-	// OriginExchangePK is the dz exchange of the origin for sample collection.
-	OriginExchangePK solana.PublicKey // 32
+	// OriginMetroPK is the dz metro of the origin for sample collection.
+	OriginMetroPK solana.PublicKey // 32
 
-	// TargetExchangePK is the dz exchange of the target for sample collection.
-	TargetExchangePK solana.PublicKey // 32
+	// TargetMetroPK is the dz metro of the target for sample collection.
+	TargetMetroPK solana.PublicKey // 32
 
 	// SamplingIntervalMicroseconds is the interval between samples (in microseconds).
 	SamplingIntervalMicroseconds uint64 // 8

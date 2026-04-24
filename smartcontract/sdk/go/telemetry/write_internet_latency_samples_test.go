@@ -14,16 +14,16 @@ func TestSDK_Telemetry_WriteInternetLatencySamples_HappyPath(t *testing.T) {
 
 	programID := solana.NewWallet().PublicKey()
 	oracleAgentPK := solana.NewWallet().PublicKey()
-	originLocationPK := solana.NewWallet().PublicKey()
-	targetLocationPK := solana.NewWallet().PublicKey()
+	originMetroPK := solana.NewWallet().PublicKey()
+	targetMetroPK := solana.NewWallet().PublicKey()
 	dataProviderName := "test"
 	epoch := uint64(123)
 	timestamp := uint64(1_600_000_000)
 	samples := []uint32{1, 2, 3, 4}
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OriginExchangePK:           originLocationPK,
-		TargetExchangePK:           targetLocationPK,
+		OriginMetroPK:              originMetroPK,
+		TargetMetroPK:              targetMetroPK,
 		DataProviderName:           dataProviderName,
 		Epoch:                      epoch,
 		StartTimestampMicroseconds: timestamp,
@@ -57,8 +57,8 @@ func TestSDK_Telemetry_WriteInternetLatencySamples_MissingFields(t *testing.T) {
 
 	programID := solana.NewWallet().PublicKey()
 	base := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OriginExchangePK:           solana.NewWallet().PublicKey(),
-		TargetExchangePK:           solana.NewWallet().PublicKey(),
+		OriginMetroPK:              solana.NewWallet().PublicKey(),
+		TargetMetroPK:              solana.NewWallet().PublicKey(),
 		DataProviderName:           "test",
 		Epoch:                      123,
 		StartTimestampMicroseconds: 1_600_000_000,
@@ -71,18 +71,18 @@ func TestSDK_Telemetry_WriteInternetLatencySamples_MissingFields(t *testing.T) {
 		expectError string
 	}{
 		{
-			name: "missing_origin_exchange_pk",
+			name: "missing_origin_metro_pk",
 			mutate: func(c *telemetry.WriteInternetLatencySamplesInstructionConfig) {
-				c.OriginExchangePK = solana.PublicKey{}
+				c.OriginMetroPK = solana.PublicKey{}
 			},
-			expectError: "origin exchange public key is required",
+			expectError: "origin metro public key is required",
 		},
 		{
-			name: "missing_target_exchange_pk",
+			name: "missing_target_metro_pk",
 			mutate: func(c *telemetry.WriteInternetLatencySamplesInstructionConfig) {
-				c.TargetExchangePK = solana.PublicKey{}
+				c.TargetMetroPK = solana.PublicKey{}
 			},
-			expectError: "target exchange public key is required",
+			expectError: "target metro public key is required",
 		},
 		{
 			name: "missing_data_provider_name",
@@ -119,8 +119,8 @@ func TestSDK_Telemetry_WriteInternetLatencySamples_BorshEncoding(t *testing.T) {
 	samples := []uint32{100, 200, 300}
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OriginExchangePK:           solana.NewWallet().PublicKey(),
-		TargetExchangePK:           solana.NewWallet().PublicKey(),
+		OriginMetroPK:              solana.NewWallet().PublicKey(),
+		TargetMetroPK:              solana.NewWallet().PublicKey(),
 		DataProviderName:           "test",
 		Epoch:                      555,
 		StartTimestampMicroseconds: timestamp,

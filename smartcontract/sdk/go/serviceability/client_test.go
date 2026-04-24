@@ -17,7 +17,7 @@ f14abe7ea3118aefd4cfe0000e9fd0000ac10000010a9fe0000
 10df000000043a2793337e0017
 `
 
-var locationPayload = `
+var facilityPayload = `
 030a3b74b3535cdeb34fd5e4cd7ea1133e55abc521c8850f6d0
 8166d11e482897806000000000000000000000000000000fea2
 e3b2a599d54140b03f0a3a80786140000000000103000000747
@@ -25,7 +25,7 @@ e3b2a599d54140b03f0a3a80786140000000000103000000747
 fd841907413a92
 `
 
-var exchangePayload = `
+var metroPayload = `
 040a3b74b3535cdeb34fd5e4cd7ea1133e55abc521c8850f6d0
 8166d11e48289780c000000000000000000000000000000ff35
 71de7a8e0f494029845566ba482140000000000104000000786
@@ -188,11 +188,11 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 					MulticastPublisherBlock: [5]byte{147, 51, 126, 0, 23},
 					PubKey:                  pubkeys[0],
 				},
-				Locations:          []Location{},
+				Facilities:         []Facility{},
 				Devices:            []Device{},
 				Links:              []Link{},
 				Users:              []User{},
-				Exchanges:          []Exchange{},
+				Metros:             []Metro{},
 				Contributors:       []Contributor{},
 				Tenants:            []Tenant{},
 				MulticastGroups:    []MulticastGroup{},
@@ -202,16 +202,16 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			},
 		},
 		{
-			Name:        "parse_valid_exchange",
-			Description: "parse and populate a valid exchange struct",
-			Payload:     strings.TrimSuffix(exchangePayload, "\n"),
+			Name:        "parse_valid_metro",
+			Description: "parse and populate a valid metro struct",
+			Payload:     strings.TrimSuffix(metroPayload, "\n"),
 			Want: &ProgramData{
-				Exchanges: []Exchange{
+				Metros: []Metro{
 					{
-						AccountType:    ExchangeType,
+						AccountType:    MetroType,
 						Index:          Uint128{High: 12, Low: 0},
 						BumpSeed:       255,
-						Owner:          getOwner(exchangePayload),
+						Owner:          getOwner(metroPayload),
 						Lat:            50.1215356432098,
 						Lng:            8.642047117175098,
 						BgpCommunity:   0,
@@ -230,7 +230,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						PubKey: pubkeys[1],
 					},
 				},
-				Locations:          []Location{},
+				Facilities:         []Facility{},
 				Devices:            []Device{},
 				Links:              []Link{},
 				Users:              []User{},
@@ -252,9 +252,9 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						AccountType:            DeviceType,
 						Index:                  Uint128{High: 22, Low: 0},
 						BumpSeed:               255,
-						Owner:                  getOwner(exchangePayload),
-						LocationPubKey:         getPubKeyOffset(devicePayload, 50, 82),
-						ExchangePubKey:         getPubKeyOffset(devicePayload, 82, 114),
+						Owner:                  getOwner(metroPayload),
+						FacilityPubKey:         getPubKeyOffset(devicePayload, 50, 82),
+						MetroPubKey:            getPubKeyOffset(devicePayload, 82, 114),
 						DeviceType:             0,
 						PublicIp:               [4]byte{0xb4, 0x57, 0x9a, 0x70},
 						Status:                 1,
@@ -293,8 +293,8 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						PubKey:         pubkeys[2],
 					},
 				},
-				Locations:          []Location{},
-				Exchanges:          []Exchange{},
+				Facilities:         []Facility{},
+				Metros:             []Metro{},
 				Links:              []Link{},
 				Users:              []User{},
 				Contributors:       []Contributor{},
@@ -306,16 +306,16 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			},
 		},
 		{
-			Name:        "parse_valid_location",
-			Description: "parse and populate a valid location struct",
-			Payload:     strings.TrimSuffix(locationPayload, "\n"),
+			Name:        "parse_valid_facility",
+			Description: "parse and populate a valid facility struct",
+			Payload:     strings.TrimSuffix(facilityPayload, "\n"),
 			Want: &ProgramData{
-				Locations: []Location{
+				Facilities: []Facility{
 					{
-						AccountType:    LocationType,
+						AccountType:    FacilityType,
 						Index:          Uint128{High: 6, Low: 0},
 						BumpSeed:       254,
-						Owner:          getOwner(locationPayload),
+						Owner:          getOwner(facilityPayload),
 						Lat:            35.66875144228767,
 						Lng:            139.76565267564501,
 						LocId:          0,
@@ -327,7 +327,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						PubKey:         pubkeys[3],
 					},
 				},
-				Exchanges:          []Exchange{},
+				Metros:             []Metro{},
 				Devices:            []Device{},
 				Links:              []Link{},
 				Users:              []User{},
@@ -363,10 +363,10 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						PubKey:         pubkeys[4],
 					},
 				},
-				Locations:          []Location{},
+				Facilities:         []Facility{},
 				Devices:            []Device{},
 				Links:              []Link{},
-				Exchanges:          []Exchange{},
+				Metros:             []Metro{},
 				Contributors:       []Contributor{},
 				Tenants:            []Tenant{},
 				MulticastGroups:    []MulticastGroup{},
@@ -406,9 +406,9 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						PubKey:            pubkeys[5],
 					},
 				},
-				Locations:          []Location{},
+				Facilities:         []Facility{},
 				Devices:            []Device{},
-				Exchanges:          []Exchange{},
+				Metros:             []Metro{},
 				Users:              []User{},
 				Contributors:       []Contributor{},
 				Tenants:            []Tenant{},
@@ -424,9 +424,9 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			Payload:     strings.TrimSuffix(multicastgroupPayload, "\n"),
 			Want: &ProgramData{
 				Links:        []Link{},
-				Locations:    []Location{},
+				Facilities:   []Facility{},
 				Devices:      []Device{},
-				Exchanges:    []Exchange{},
+				Metros:       []Metro{},
 				Users:        []User{},
 				Contributors: []Contributor{},
 				Tenants:      []Tenant{},
@@ -477,10 +477,10 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						PubKey:        pubkeys[7],
 					},
 				},
-				Locations:          []Location{},
+				Facilities:         []Facility{},
 				Devices:            []Device{},
 				Links:              []Link{},
-				Exchanges:          []Exchange{},
+				Metros:             []Metro{},
 				Users:              []User{},
 				Contributors:       []Contributor{},
 				MulticastGroups:    []MulticastGroup{},
@@ -495,9 +495,9 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			Payload:     strings.TrimSuffix(programconfigPayload, "\n"),
 			Want: &ProgramData{
 				Links:           []Link{},
-				Locations:       []Location{},
+				Facilities:      []Facility{},
 				Devices:         []Device{},
-				Exchanges:       []Exchange{},
+				Metros:          []Metro{},
 				Users:           []User{},
 				Contributors:    []Contributor{},
 				Tenants:         []Tenant{},

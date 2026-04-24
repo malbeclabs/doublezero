@@ -13,8 +13,8 @@ type AccountType uint8
 const (
 	GlobalStateType AccountType = iota + 1
 	GlobalConfigType
-	LocationType
-	ExchangeType
+	FacilityType
+	MetroType
 	DeviceType
 	LinkType
 	UserType
@@ -28,21 +28,21 @@ const (
 	PermissionType AccountType = 15
 )
 
-type LocationStatus uint8
+type FacilityStatus uint8
 
 const (
-	LocationStatusPending   LocationStatus = 0
-	LocationStatusActivated LocationStatus = 1
-	LocationStatusSuspended LocationStatus = 2
+	FacilityStatusPending   FacilityStatus = 0
+	FacilityStatusActivated FacilityStatus = 1
+	FacilityStatusSuspended FacilityStatus = 2
 )
 
-func (s LocationStatus) String() string {
+func (s FacilityStatus) String() string {
 	switch s {
-	case LocationStatusPending:
+	case FacilityStatusPending:
 		return "pending"
-	case LocationStatusActivated:
+	case FacilityStatusActivated:
 		return "activated"
-	case LocationStatusSuspended:
+	case FacilityStatusSuspended:
 		return "suspended"
 	default:
 		return "unknown"
@@ -84,7 +84,7 @@ type GlobalState struct {
 	PubKey                     [32]byte
 }
 
-type Location struct {
+type Facility struct {
 	AccountType    AccountType
 	Owner          [32]uint8
 	Index          Uint128
@@ -92,7 +92,7 @@ type Location struct {
 	Lat            float64
 	Lng            float64
 	LocId          uint32
-	Status         LocationStatus
+	Status         FacilityStatus
 	Code           string
 	Name           string
 	Country        string
@@ -100,42 +100,42 @@ type Location struct {
 	PubKey         [32]byte
 }
 
-type ExchangeStatus uint8
+type MetroStatus uint8
 
 const (
-	ExchangeStatusPending   ExchangeStatus = 0
-	ExchangeStatusActivated ExchangeStatus = 1
-	ExchangeStatusSuspended ExchangeStatus = 2
+	MetroStatusPending   MetroStatus = 0
+	MetroStatusActivated MetroStatus = 1
+	MetroStatusSuspended MetroStatus = 2
 )
 
-func (e ExchangeStatus) String() string {
+func (e MetroStatus) String() string {
 	switch e {
-	case ExchangeStatusPending:
+	case MetroStatusPending:
 		return "pending"
-	case ExchangeStatusActivated:
+	case MetroStatusActivated:
 		return "activated"
-	case ExchangeStatusSuspended:
+	case MetroStatusSuspended:
 		return "suspended"
 	default:
 		return "unknown"
 	}
 }
 
-type Exchange struct {
+type Metro struct {
 	AccountType    AccountType
-	Owner          [32]uint8      `influx:"tag,owner,pubkey"`
-	Index          Uint128        `influx:"-"`
-	BumpSeed       uint8          `influx:"-"`
-	Lat            float64        `influx:"field,lat"`
-	Lng            float64        `influx:"field,lng"`
-	BgpCommunity   uint16         `influx:"field,bgp_community"`
-	ReferenceCount uint32         `influx:"field,reference_count"`
-	Status         ExchangeStatus `influx:"tag,status"`
-	Code           string         `influx:"tag,code"`
-	Name           string         `influx:"tag,name"`
-	Device1PK      [32]byte       `influx:"tag,device1_pk,pubkey"`
-	Device2PK      [32]byte       `influx:"tag,device2_pk,pubkey"`
-	PubKey         [32]byte       `influx:"tag,pubkey,pubkey"`
+	Owner          [32]uint8   `influx:"tag,owner,pubkey"`
+	Index          Uint128     `influx:"-"`
+	BumpSeed       uint8       `influx:"-"`
+	Lat            float64     `influx:"field,lat"`
+	Lng            float64     `influx:"field,lng"`
+	BgpCommunity   uint16      `influx:"field,bgp_community"`
+	ReferenceCount uint32      `influx:"field,reference_count"`
+	Status         MetroStatus `influx:"tag,status"`
+	Code           string      `influx:"tag,code"`
+	Name           string      `influx:"tag,name"`
+	Device1PK      [32]byte    `influx:"tag,device1_pk,pubkey"`
+	Device2PK      [32]byte    `influx:"tag,device2_pk,pubkey"`
+	PubKey         [32]byte    `influx:"tag,pubkey,pubkey"`
 }
 
 type DeviceDeviceType uint8
@@ -444,8 +444,8 @@ type Device struct {
 	Owner                     [32]uint8           `influx:"tag,owner,pubkey"`
 	Index                     Uint128             `influx:"-"`
 	BumpSeed                  uint8               `influx:"-"`
-	LocationPubKey            [32]uint8           `influx:"tag,location_pubkey,pubkey"`
-	ExchangePubKey            [32]uint8           `influx:"tag,exchange_pubkey,pubkey"`
+	FacilityPubKey            [32]uint8           `influx:"tag,facility_pubkey,pubkey"`
+	MetroPubKey               [32]uint8           `influx:"tag,metro_pubkey,pubkey"`
 	DeviceType                DeviceDeviceType    `influx:"tag,device_type"`
 	PublicIp                  [4]uint8            `influx:"tag,public_ip,ip"`
 	Status                    DeviceStatus        `influx:"tag,status"`
@@ -476,8 +476,8 @@ func (d Device) MarshalJSON() ([]byte, error) {
 	jsonDevice := &struct {
 		DeviceAlias
 		Owner                  string   `json:"Owner"`
-		LocationPubKey         string   `json:"LocationPubKey"`
-		ExchangePubKey         string   `json:"ExchangePubKey"`
+		FacilityPubKey         string   `json:"FacilityPubKey"`
+		MetroPubKey            string   `json:"MetroPubKey"`
 		PublicIp               string   `json:"PublicIp"`
 		DzPrefixes             []string `json:"DzPrefixes"`
 		MetricsPublisherPubKey string   `json:"MetricsPublisherPubKey"`
@@ -491,8 +491,8 @@ func (d Device) MarshalJSON() ([]byte, error) {
 	}
 
 	jsonDevice.Owner = base58.Encode(d.Owner[:])
-	jsonDevice.LocationPubKey = base58.Encode(d.LocationPubKey[:])
-	jsonDevice.ExchangePubKey = base58.Encode(d.ExchangePubKey[:])
+	jsonDevice.FacilityPubKey = base58.Encode(d.FacilityPubKey[:])
+	jsonDevice.MetroPubKey = base58.Encode(d.MetroPubKey[:])
 	jsonDevice.MetricsPublisherPubKey = base58.Encode(d.MetricsPublisherPubKey[:])
 	jsonDevice.ContributorPubKey = base58.Encode(d.ContributorPubKey[:])
 	jsonDevice.PubKey = base58.Encode(d.PubKey[:])

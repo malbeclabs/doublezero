@@ -37,7 +37,7 @@ func DeserializeConfig(reader *ByteReader, cfg *GlobalConfig) {
 	DeserializeGlobalConfig(reader, cfg)
 }
 
-func DeserializeLocation(reader *ByteReader, loc *Location) {
+func DeserializeFacility(reader *ByteReader, loc *Facility) {
 	loc.AccountType = AccountType(reader.ReadU8())
 	loc.Owner = reader.ReadPubkey()
 	loc.Index = reader.ReadU128()
@@ -45,28 +45,28 @@ func DeserializeLocation(reader *ByteReader, loc *Location) {
 	loc.Lat = reader.ReadF64()
 	loc.Lng = reader.ReadF64()
 	loc.LocId = reader.ReadU32()
-	loc.Status = LocationStatus(reader.ReadU8())
+	loc.Status = FacilityStatus(reader.ReadU8())
 	loc.Code = reader.ReadString()
 	loc.Name = reader.ReadString()
 	loc.Country = reader.ReadString()
 	loc.ReferenceCount = reader.ReadU32()
 }
 
-func DeserializeExchange(reader *ByteReader, exchange *Exchange) {
-	exchange.AccountType = AccountType(reader.ReadU8())
-	exchange.Owner = reader.ReadPubkey()
-	exchange.Index = reader.ReadU128()
-	exchange.BumpSeed = reader.ReadU8()
-	exchange.Lat = reader.ReadF64()
-	exchange.Lng = reader.ReadF64()
-	exchange.BgpCommunity = reader.ReadU16()
+func DeserializeMetro(reader *ByteReader, metro *Metro) {
+	metro.AccountType = AccountType(reader.ReadU8())
+	metro.Owner = reader.ReadPubkey()
+	metro.Index = reader.ReadU128()
+	metro.BumpSeed = reader.ReadU8()
+	metro.Lat = reader.ReadF64()
+	metro.Lng = reader.ReadF64()
+	metro.BgpCommunity = reader.ReadU16()
 	_ = reader.ReadU16() // unused padding
-	exchange.Status = ExchangeStatus(reader.ReadU8())
-	exchange.Code = reader.ReadString()
-	exchange.Name = reader.ReadString()
-	exchange.ReferenceCount = reader.ReadU32()
-	exchange.Device1PK = reader.ReadPubkey()
-	exchange.Device2PK = reader.ReadPubkey()
+	metro.Status = MetroStatus(reader.ReadU8())
+	metro.Code = reader.ReadString()
+	metro.Name = reader.ReadString()
+	metro.ReferenceCount = reader.ReadU32()
+	metro.Device1PK = reader.ReadPubkey()
+	metro.Device2PK = reader.ReadPubkey()
 }
 
 func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
@@ -149,8 +149,8 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.Owner = reader.ReadPubkey()
 	dev.Index = reader.ReadU128()
 	dev.BumpSeed = reader.ReadU8()
-	dev.LocationPubKey = reader.ReadPubkey()
-	dev.ExchangePubKey = reader.ReadPubkey()
+	dev.FacilityPubKey = reader.ReadPubkey()
+	dev.MetroPubKey = reader.ReadPubkey()
 	dev.DeviceType = DeviceDeviceType(reader.ReadU8())
 	dev.PublicIp = reader.ReadIPv4()
 	dev.Status = DeviceStatus(reader.ReadU8())

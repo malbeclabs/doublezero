@@ -142,7 +142,7 @@ pub fn process_topology_backfill(
             // Allocate a fresh SR ID. Skip (keep as allocated) any ID that
             // conflicts with an existing base node_segment_idx — those IDs
             // remain marked used in the resource to avoid future collisions.
-            let mut node_segment_idx = allocate_id(segment_routing_ids_account)?;
+            let node_segment_idx = allocate_id(segment_routing_ids_account)?;
             match iface {
                 Interface::V3(ref mut v3) => {
                     v3.flex_algo_node_segments.push(FlexAlgoNodeSegment {

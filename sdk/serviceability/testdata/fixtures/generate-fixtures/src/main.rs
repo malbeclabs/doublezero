@@ -26,7 +26,7 @@ use doublezero_serviceability::state::{
     globalstate::GlobalState,
     interface::{
         Interface, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, InterfaceV1,
-        InterfaceV2, LoopbackType, RoutingMode,
+        InterfaceV2, InterfaceV3, LoopbackType, RoutingMode,
     },
     link::{Link, LinkDesiredStatus, LinkHealth, LinkLinkType, LinkStatus},
     facility::{Facility, FacilityStatus},
@@ -308,7 +308,7 @@ fn generate_device(dir: &Path) {
                 node_segment_idx: 100,
                 user_tunnel_endpoint: false,
             }),
-            Interface::V2(InterfaceV2 {
+            Interface::V3(InterfaceV3 {
                 status: InterfaceStatus::Activated,
                 name: "Ethernet1".into(),
                 interface_type: InterfaceType::Physical,

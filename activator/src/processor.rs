@@ -4,9 +4,9 @@ use crate::{
     process::{
         accesspass::process_access_pass_event,
         device::{process_device_event, process_device_event_stateless},
-        exchange::process_exchange_event,
+        facility::process_facility_event,
         link::{process_link_event, process_link_event_stateless},
-        location::process_location_event,
+        metro::process_metro_event,
         multicastgroup::{process_multicastgroup_event, process_multicastgroup_event_stateless},
         user::{process_user_event, process_user_event_stateless},
     },
@@ -16,13 +16,12 @@ use backon::{BlockingRetryable, ExponentialBuilder};
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::{
-        device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
-        link::list::ListLinkCommand, location::list::ListLocationCommand,
-        user::list::ListUserCommand,
+        device::list::ListDeviceCommand, facility::list::ListFacilityCommand,
+        link::list::ListLinkCommand, metro::list::ListMetroCommand, user::list::ListUserCommand,
     },
     doublezeroclient::DoubleZeroClient,
-    AccountData, Device, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType, Link,
-    LinkStatus, Location, MulticastGroup, User, UserStatus, UserType,
+    AccountData, Device, DeviceStatus, Facility, GetGlobalConfigCommand, InterfaceType, Link,
+    LinkStatus, Metro, MulticastGroup, User, UserStatus, UserType,
 };
 use log::{debug, error, info, warn};
 use solana_sdk::pubkey::Pubkey;
@@ -35,8 +34,8 @@ use tokio::sync::mpsc;
 
 pub type DeviceMap = HashMap<Pubkey, DeviceState>;
 pub type DeviceMapStateless = HashMap<Pubkey, DeviceStateStateless>;
-pub type LocationMap = HashMap<Pubkey, Location>;
-pub type ExchangeMap = HashMap<Pubkey, Exchange>;
+pub type FacilityMap = HashMap<Pubkey, Facility>;
+pub type MetroMap = HashMap<Pubkey, Metro>;
 pub type MulticastGroupMap = HashMap<Pubkey, MulticastGroup>;
 
 /// Stateful processor for offchain allocation mode.
@@ -51,8 +50,8 @@ pub struct Processor<T: DoubleZeroClient> {
     user_tunnel_ips: IPBlockAllocator,
     publisher_dz_ips: IPBlockAllocator,
     devices: DeviceMap,
-    locations: LocationMap,
-    exchanges: ExchangeMap,
+    facilities: FacilityMap,
+    metros: MetroMap,
     multicastgroups: MulticastGroupMap,
 }
 
@@ -224,8 +223,8 @@ impl<T: DoubleZeroClient> Processor<T> {
         let devices = ListDeviceCommand.execute(client.as_ref())?;
         let links = ListLinkCommand.execute(client.as_ref())?;
         let users = ListUserCommand.execute(client.as_ref())?;
-        let locations = ListLocationCommand.execute(client.as_ref())?;
-        let exchanges = ListExchangeCommand.execute(client.as_ref())?;
+        let facilities = ListFacilityCommand.execute(client.as_ref())?;
+        let metros = ListMetroCommand.execute(client.as_ref())?;
         let mut device_map: DeviceMap = DeviceMap::new();
         let mut link_ids = IDAllocator::new(0, vec![]);
         let mut link_ips = IPBlockAllocator::new(config.device_tunnel_block.into());
@@ -266,8 +265,8 @@ impl<T: DoubleZeroClient> Processor<T> {
             user_tunnel_ips,
             publisher_dz_ips,
             devices: device_map,
-            locations,
-            exchanges,
+            facilities,
+            metros,
             multicastgroups: HashMap::new(),
         })
     }
@@ -314,15 +313,15 @@ impl<T: DoubleZeroClient> Processor<T> {
                     &mut self.publisher_dz_ips,
                     &mut self.link_ids,
                     user,
-                    &self.locations,
-                    &self.exchanges,
+                    &self.facilities,
+                    &self.metros,
                 );
             }
-            AccountData::Location(location) => {
-                process_location_event(pubkey, &mut self.locations, location);
+            AccountData::Facility(facility) => {
+                process_facility_event(pubkey, &mut self.facilities, facility);
             }
-            AccountData::Exchange(exchange) => {
-                process_exchange_event(pubkey, &mut self.exchanges, exchange);
+            AccountData::Metro(metro) => {
+                process_metro_event(pubkey, &mut self.metros, metro);
             }
             AccountData::MulticastGroup(multicastgroup) => {
                 let _ = process_multicastgroup_event(
@@ -370,7 +369,7 @@ impl<T: DoubleZeroClient> ProcessorStateless<T> {
             .call()
             .expect("Failed to get global config after retries");
 
-        // In stateless mode, we still cache device/location/exchange info for logging/context,
+        // In stateless mode, we still cache device/facility/metro info for logging/context,
         // but we don't track allocation state
         let devices = ListDeviceCommand.execute(client.as_ref())?;
 
@@ -557,8 +556,8 @@ mod tests {
             reference_count: 0,
             bump_seed: 0,
             contributor_pk: Pubkey::new_unique(),
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             device_type: DeviceType::Hybrid,
             public_ip: [192, 168, 1, 2].into(),
             status: DeviceStatus::Activated,
@@ -653,8 +652,8 @@ mod tests {
             bump_seed: 0,
             reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             device_type: DeviceType::Hybrid,
             public_ip: [192, 168, 1, 1].into(),
             status: DeviceStatus::Drained,

@@ -1,4 +1,4 @@
-use doublezero_sdk::{Exchange, Location};
+use doublezero_sdk::{Facility, Metro};
 use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
 
@@ -7,23 +7,23 @@ use crate::states::devicestate::DeviceState;
 pub fn record_device_ip_metrics(
     device_pk: &Pubkey,
     device_state: &DeviceState,
-    locations: &HashMap<Pubkey, Location>,
-    exchanges: &HashMap<Pubkey, Exchange>,
+    facilities: &HashMap<Pubkey, Facility>,
+    metros: &HashMap<Pubkey, Metro>,
 ) {
     let (assigned, total_ips) = ip_count(device_state);
     let mut labels = Vec::new();
     labels.push(("device_pk", device_pk.to_string()));
     labels.push(("code", device_state.device.code.clone()));
 
-    if let Some(location) = locations.get(&device_state.device.location_pk) {
-        labels.push(("location", location.name.clone()));
-        labels.push(("location_code", location.code.clone()));
-        labels.push(("location_country", location.country.clone()));
+    if let Some(facility) = facilities.get(&device_state.device.facility_pk) {
+        labels.push(("facility", facility.name.clone()));
+        labels.push(("facility_code", facility.code.clone()));
+        labels.push(("facility_country", facility.country.clone()));
     }
 
-    if let Some(exchange) = exchanges.get(&device_state.device.exchange_pk) {
-        labels.push(("exchange", exchange.name.clone()));
-        labels.push(("exchange_code", exchange.code.clone()));
+    if let Some(metro) = metros.get(&device_state.device.metro_pk) {
+        labels.push(("metro", metro.name.clone()));
+        labels.push(("metro_code", metro.code.clone()));
     }
 
     metrics::counter!("doublezero_activator_device_assigned_ips", &labels)
@@ -57,8 +57,8 @@ mod tests {
             bump_seed: 0,
             reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             device_type: DeviceType::Hybrid,
             public_ip: [192, 168, 1, 1].into(),
             status: DeviceStatus::Pending,

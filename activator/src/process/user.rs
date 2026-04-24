@@ -14,7 +14,7 @@ use doublezero_sdk::{
             closeaccount::CloseAccountUserCommand, get::GetUserCommand, reject::RejectUserCommand,
         },
     },
-    DoubleZeroClient, Exchange, Location, SimulationError, User, UserStatus, UserType,
+    DoubleZeroClient, Facility, Metro, SimulationError, User, UserStatus, UserType,
 };
 use doublezero_serviceability::error::DoubleZeroError;
 use log::{debug, info};
@@ -34,8 +34,8 @@ pub fn process_user_event(
     publisher_dz_ips: &mut IPBlockAllocator,
     link_ids: &mut IDAllocator,
     user: &User,
-    locations: &HashMap<Pubkey, Location>,
-    exchanges: &HashMap<Pubkey, Exchange>,
+    facilities: &HashMap<Pubkey, Facility>,
+    metros: &HashMap<Pubkey, Metro>,
 ) {
     match user.status {
         // Create User
@@ -223,7 +223,7 @@ pub fn process_user_event(
                     .increment(1);
                     // Register the tunnel endpoint as in use for this client
                     device_state.register_tunnel_endpoint(user.client_ip, tunnel_endpoint);
-                    record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
+                    record_device_ip_metrics(&user.device_pk, device_state, facilities, metros);
                 }
                 Err(e) => {
                     // Roll back eagerly-allocated resources since the transaction failed
@@ -379,7 +379,7 @@ pub fn process_user_event(
                         "user-pubkey" => pubkey.to_string(),
                     )
                     .increment(1);
-                    record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
+                    record_device_ip_metrics(&user.device_pk, device_state, facilities, metros);
                 }
                 Err(e) => {
                     handle_simulation_error(
@@ -494,7 +494,7 @@ pub fn process_user_event(
                         }
                     }
                 }
-                record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
+                record_device_ip_metrics(&user.device_pk, device_state, facilities, metros);
             }
 
             info!("{log_msg}");
@@ -975,8 +975,8 @@ mod tests {
                 reference_count: 0,
                 bump_seed: get_device_bump_seed(&client),
                 contributor_pk: Pubkey::new_unique(),
-                location_pk: Pubkey::new_unique(),
-                exchange_pk: Pubkey::new_unique(),
+                facility_pk: Pubkey::new_unique(),
+                metro_pk: Pubkey::new_unique(),
                 device_type: DeviceType::Hybrid,
                 public_ip: [192, 168, 1, 2].into(),
                 status: DeviceStatus::Activated,
@@ -1089,8 +1089,8 @@ mod tests {
             let mut devices = HashMap::new();
             devices.insert(device_pubkey, DeviceState::new(&device));
 
-            let locations = HashMap::<Pubkey, Location>::new();
-            let exchanges = HashMap::<Pubkey, Exchange>::new();
+            let facilities = HashMap::<Pubkey, Facility>::new();
+            let metros = HashMap::<Pubkey, Metro>::new();
 
             process_user_event(
                 &client,
@@ -1100,8 +1100,8 @@ mod tests {
                 &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
-                &locations,
-                &exchanges,
+                &facilities,
+                &metros,
             );
 
             assert!(!user_tunnel_ips.assigned_ips.is_empty());
@@ -1185,8 +1185,8 @@ mod tests {
                 reference_count: 0,
                 bump_seed: get_device_bump_seed(&client),
                 contributor_pk: Pubkey::new_unique(),
-                location_pk: Pubkey::new_unique(),
-                exchange_pk: Pubkey::new_unique(),
+                facility_pk: Pubkey::new_unique(),
+                metro_pk: Pubkey::new_unique(),
                 device_type: DeviceType::Hybrid,
                 public_ip: [192, 168, 1, 2].into(),
                 status: DeviceStatus::Activated,
@@ -1300,8 +1300,8 @@ mod tests {
             let mut devices = HashMap::new();
             devices.insert(device_pubkey, DeviceState::new(&device));
 
-            let locations = HashMap::<Pubkey, Location>::new();
-            let exchanges = HashMap::<Pubkey, Exchange>::new();
+            let facilities = HashMap::<Pubkey, Facility>::new();
+            let metros = HashMap::<Pubkey, Metro>::new();
 
             let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
 
@@ -1313,8 +1313,8 @@ mod tests {
                 &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
-                &locations,
-                &exchanges,
+                &facilities,
+                &metros,
             );
 
             assert!(!user_tunnel_ips.assigned_ips.is_empty());
@@ -1412,8 +1412,8 @@ mod tests {
 
             let mut devices = HashMap::new();
 
-            let locations = HashMap::<Pubkey, Location>::new();
-            let exchanges = HashMap::<Pubkey, Exchange>::new();
+            let facilities = HashMap::<Pubkey, Facility>::new();
+            let metros = HashMap::<Pubkey, Metro>::new();
 
             process_user_event(
                 &client,
@@ -1423,8 +1423,8 @@ mod tests {
                 &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
-                &locations,
-                &exchanges,
+                &facilities,
+                &metros,
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -1461,8 +1461,8 @@ mod tests {
                 reference_count: 0,
                 bump_seed: get_device_bump_seed(&client),
                 contributor_pk: Pubkey::new_unique(),
-                location_pk: Pubkey::new_unique(),
-                exchange_pk: Pubkey::new_unique(),
+                facility_pk: Pubkey::new_unique(),
+                metro_pk: Pubkey::new_unique(),
                 device_type: DeviceType::Hybrid,
                 public_ip: [192, 168, 1, 2].into(),
                 status: DeviceStatus::Activated,
@@ -1533,8 +1533,8 @@ mod tests {
                 None
             );
 
-            let locations = HashMap::<Pubkey, Location>::new();
-            let exchanges = HashMap::<Pubkey, Exchange>::new();
+            let facilities = HashMap::<Pubkey, Facility>::new();
+            let metros = HashMap::<Pubkey, Metro>::new();
 
             process_user_event(
                 &client,
@@ -1544,8 +1544,8 @@ mod tests {
                 &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
-                &locations,
-                &exchanges,
+                &facilities,
+                &metros,
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -1585,8 +1585,8 @@ mod tests {
                 reference_count: 0,
                 bump_seed: get_device_bump_seed(&client),
                 contributor_pk: Pubkey::new_unique(),
-                location_pk: Pubkey::new_unique(),
-                exchange_pk: Pubkey::new_unique(),
+                facility_pk: Pubkey::new_unique(),
+                metro_pk: Pubkey::new_unique(),
                 device_type: DeviceType::Hybrid,
                 public_ip: [192, 168, 1, 2].into(),
                 status: DeviceStatus::Activated,
@@ -1651,8 +1651,8 @@ mod tests {
             let device2 = device.clone();
             devices.insert(device_pubkey, DeviceState::new(&device2));
 
-            let locations = HashMap::<Pubkey, Location>::new();
-            let exchanges = HashMap::<Pubkey, Exchange>::new();
+            let facilities = HashMap::<Pubkey, Facility>::new();
+            let metros = HashMap::<Pubkey, Metro>::new();
 
             process_user_event(
                 &client,
@@ -1662,8 +1662,8 @@ mod tests {
                 &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
-                &locations,
-                &exchanges,
+                &facilities,
+                &metros,
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -1700,8 +1700,8 @@ mod tests {
                 reference_count: 0,
                 bump_seed: get_device_bump_seed(&client),
                 contributor_pk: Pubkey::new_unique(),
-                location_pk: Pubkey::new_unique(),
-                exchange_pk: Pubkey::new_unique(),
+                facility_pk: Pubkey::new_unique(),
+                metro_pk: Pubkey::new_unique(),
                 device_type: DeviceType::Hybrid,
                 public_ip: [192, 168, 1, 2].into(),
                 status: DeviceStatus::Activated,
@@ -1806,8 +1806,8 @@ mod tests {
             let mut devices = HashMap::new();
             devices.insert(device_pubkey, DeviceState::new(&device));
 
-            let locations = HashMap::<Pubkey, Location>::new();
-            let exchanges = HashMap::<Pubkey, Exchange>::new();
+            let facilities = HashMap::<Pubkey, Facility>::new();
+            let metros = HashMap::<Pubkey, Metro>::new();
 
             // Snapshot allocator state before
             let tunnel_ips_before = user_tunnel_ips.assigned_ips.len();
@@ -1828,8 +1828,8 @@ mod tests {
                 &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
-                &locations,
-                &exchanges,
+                &facilities,
+                &metros,
             );
 
             // All allocators must be restored to pre-call state
@@ -1931,8 +1931,8 @@ mod tests {
             let mut devices = HashMap::new();
             devices.insert(device_pubkey, DeviceState::new(&device));
 
-            let locations = HashMap::<Pubkey, Location>::new();
-            let exchanges = HashMap::<Pubkey, Exchange>::new();
+            let facilities = HashMap::<Pubkey, Facility>::new();
+            let metros = HashMap::<Pubkey, Metro>::new();
 
             let tunnel_ips_before = user_tunnel_ips.assigned_ips.len();
 
@@ -1944,8 +1944,8 @@ mod tests {
                 &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
-                &locations,
-                &exchanges,
+                &facilities,
+                &metros,
             );
 
             // tunnel_id and tunnel_net must be rolled back after endpoint rejection
@@ -1985,8 +1985,8 @@ mod tests {
                 reference_count: 0,
                 bump_seed: get_device_bump_seed(&client),
                 contributor_pk: Pubkey::new_unique(),
-                location_pk: Pubkey::new_unique(),
-                exchange_pk: Pubkey::new_unique(),
+                facility_pk: Pubkey::new_unique(),
+                metro_pk: Pubkey::new_unique(),
                 device_type: DeviceType::Hybrid,
                 public_ip: [192, 168, 1, 2].into(),
                 status: DeviceStatus::Activated,
@@ -2057,8 +2057,8 @@ mod tests {
                 .next_available_block(1, 1)
                 .is_some());
 
-            let locations = HashMap::<Pubkey, Location>::new();
-            let exchanges = HashMap::<Pubkey, Exchange>::new();
+            let facilities = HashMap::<Pubkey, Facility>::new();
+            let metros = HashMap::<Pubkey, Metro>::new();
 
             let tunnel_ips_before = user_tunnel_ips.assigned_ips.len();
 
@@ -2070,8 +2070,8 @@ mod tests {
                 &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
-                &locations,
-                &exchanges,
+                &facilities,
+                &metros,
             );
 
             // tunnel_id and tunnel_net must be rolled back after dz_ip exhaustion
@@ -2151,8 +2151,8 @@ mod tests {
                 reference_count: 0,
                 bump_seed: get_device_bump_seed(&client),
                 contributor_pk: Pubkey::new_unique(),
-                location_pk: Pubkey::new_unique(),
-                exchange_pk: Pubkey::new_unique(),
+                facility_pk: Pubkey::new_unique(),
+                metro_pk: Pubkey::new_unique(),
                 device_type: DeviceType::Hybrid,
                 public_ip: [192, 168, 1, 2].into(),
                 status: DeviceStatus::Activated,
@@ -2182,8 +2182,8 @@ mod tests {
 
             assert!(link_ids.assigned.contains(&102));
 
-            let locations = HashMap::<Pubkey, Location>::new();
-            let exchanges = HashMap::<Pubkey, Exchange>::new();
+            let facilities = HashMap::<Pubkey, Facility>::new();
+            let metros = HashMap::<Pubkey, Metro>::new();
 
             process_user_event(
                 &client,
@@ -2193,8 +2193,8 @@ mod tests {
                 &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
-                &locations,
-                &exchanges,
+                &facilities,
+                &metros,
             );
 
             assert!(!link_ids.assigned.contains(&102));
@@ -2423,8 +2423,8 @@ mod tests {
             reference_count: 0,
             bump_seed,
             contributor_pk: Pubkey::new_unique(),
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            facility_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             device_type: DeviceType::Hybrid,
             public_ip: [192, 168, 1, 2].into(),
             status: DeviceStatus::Activated,
@@ -2557,8 +2557,8 @@ mod tests {
             let mut devices = HashMap::new();
             devices.insert(device_pubkey, DeviceState::new(&device));
 
-            let locations = HashMap::<Pubkey, Location>::new();
-            let exchanges = HashMap::<Pubkey, Exchange>::new();
+            let facilities = HashMap::<Pubkey, Facility>::new();
+            let metros = HashMap::<Pubkey, Metro>::new();
 
             process_user_event(
                 &client,
@@ -2568,8 +2568,8 @@ mod tests {
                 &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
-                &locations,
-                &exchanges,
+                &facilities,
+                &metros,
             );
 
             let device_pk_str = user.device_pk.to_string();
@@ -2665,8 +2665,8 @@ mod tests {
             let mut devices = HashMap::new();
             devices.insert(device_pubkey, DeviceState::new(&device));
 
-            let locations = HashMap::<Pubkey, Location>::new();
-            let exchanges = HashMap::<Pubkey, Exchange>::new();
+            let facilities = HashMap::<Pubkey, Facility>::new();
+            let metros = HashMap::<Pubkey, Metro>::new();
 
             process_user_event(
                 &client,
@@ -2676,8 +2676,8 @@ mod tests {
                 &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
-                &locations,
-                &exchanges,
+                &facilities,
+                &metros,
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -2806,8 +2806,8 @@ mod tests {
             let mut devices = HashMap::new();
             devices.insert(device_pubkey, DeviceState::new(&device));
 
-            let locations = HashMap::<Pubkey, Location>::new();
-            let exchanges = HashMap::<Pubkey, Exchange>::new();
+            let facilities = HashMap::<Pubkey, Facility>::new();
+            let metros = HashMap::<Pubkey, Metro>::new();
 
             process_user_event(
                 &client,
@@ -2817,8 +2817,8 @@ mod tests {
                 &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
-                &locations,
-                &exchanges,
+                &facilities,
+                &metros,
             );
 
             let device_pk_str = user.device_pk.to_string();
@@ -2963,8 +2963,8 @@ mod tests {
             let mut devices = HashMap::new();
             devices.insert(device_pubkey, DeviceState::new(&device));
 
-            let locations = HashMap::<Pubkey, Location>::new();
-            let exchanges = HashMap::<Pubkey, Exchange>::new();
+            let facilities = HashMap::<Pubkey, Facility>::new();
+            let metros = HashMap::<Pubkey, Metro>::new();
 
             process_user_event(
                 &client,
@@ -2974,8 +2974,8 @@ mod tests {
                 &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
-                &locations,
-                &exchanges,
+                &facilities,
+                &metros,
             );
 
             let device_pk_str = user.device_pk.to_string();
@@ -3070,8 +3070,8 @@ mod tests {
             let mut devices = HashMap::new();
             devices.insert(device_pubkey, DeviceState::new(&device));
 
-            let locations = HashMap::<Pubkey, Location>::new();
-            let exchanges = HashMap::<Pubkey, Exchange>::new();
+            let facilities = HashMap::<Pubkey, Facility>::new();
+            let metros = HashMap::<Pubkey, Metro>::new();
 
             process_user_event(
                 &client,
@@ -3081,8 +3081,8 @@ mod tests {
                 &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
-                &locations,
-                &exchanges,
+                &facilities,
+                &metros,
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -3118,8 +3118,8 @@ mod tests {
                 reference_count: 0,
                 bump_seed: get_device_bump_seed(&client),
                 contributor_pk: Pubkey::new_unique(),
-                location_pk: Pubkey::new_unique(),
-                exchange_pk: Pubkey::new_unique(),
+                facility_pk: Pubkey::new_unique(),
+                metro_pk: Pubkey::new_unique(),
                 device_type: DeviceType::Hybrid,
                 public_ip: [192, 168, 1, 2].into(),
                 status: DeviceStatus::Activated,
@@ -3281,8 +3281,8 @@ mod tests {
                 reference_count: 0,
                 bump_seed: get_device_bump_seed(&client),
                 contributor_pk: Pubkey::new_unique(),
-                location_pk: Pubkey::new_unique(),
-                exchange_pk: Pubkey::new_unique(),
+                facility_pk: Pubkey::new_unique(),
+                metro_pk: Pubkey::new_unique(),
                 device_type: DeviceType::Hybrid,
                 public_ip: [192, 168, 1, 2].into(),
                 status: DeviceStatus::Activated,
@@ -3404,8 +3404,8 @@ mod tests {
                 reference_count: 0,
                 bump_seed: get_device_bump_seed(&client),
                 contributor_pk: Pubkey::new_unique(),
-                location_pk: Pubkey::new_unique(),
-                exchange_pk: Pubkey::new_unique(),
+                facility_pk: Pubkey::new_unique(),
+                metro_pk: Pubkey::new_unique(),
                 device_type: DeviceType::Hybrid,
                 public_ip: [192, 168, 1, 2].into(),
                 status: DeviceStatus::Activated,

@@ -78,6 +78,8 @@ pub struct DeviceDisplay {
     #[tabled(display = "doublezero_program_common::types::NetworkV4List::to_string")]
     #[serde(serialize_with = "serializer::serialize_networkv4list_as_string")]
     pub dz_prefixes: NetworkV4List,
+    #[tabled(display = "crate::util::display_string_vec")]
+    pub cyoa_ips: Vec<String>,
     pub users: u16,
     pub max_users: u16,
     #[tabled(skip)]
@@ -223,6 +225,13 @@ impl ListDeviceCliCommand {
                     public_ip: device.public_ip,
                     status: device.status,
                     dz_prefixes: device.dz_prefixes.clone(),
+                    cyoa_ips: device
+                        .interfaces
+                        .iter()
+                        .map(|iface| iface.into_current_version())
+                        .filter(|iface| iface.user_tunnel_endpoint)
+                        .map(|iface| iface.ip_net.to_string())
+                        .collect(),
                     mgmt_vrf: device.mgmt_vrf.clone(),
                     users: device.users_count,
                     max_users: device.max_users,
@@ -396,7 +405,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code         | contributor       | location       | exchange       | device_type | public_ip | dz_prefixes | users | max_users | status    | health          | mgmt_vrf | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | contributor1_code | location1_code | exchange1_code | hybrid      | 1.2.3.4   | 1.2.3.4/32  | 0     | 255       | activated | ready-for-users | default  | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | code         | contributor       | location       | exchange       | device_type | public_ip | dz_prefixes | cyoa_ips | users | max_users | status    | health          | mgmt_vrf | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | contributor1_code | location1_code | exchange1_code | hybrid      | 1.2.3.4   | 1.2.3.4/32  |          | 0     | 255       | activated | ready-for-users | default  | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
@@ -414,7 +423,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Hybrid\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"users\":0,\"max_users\":255,\"unicast_users_count\":0,\"max_unicast_users\":0,\"multicast_subscribers_count\":0,\"max_multicast_subscribers\":0,\"multicast_publishers_count\":0,\"max_multicast_publishers\":0,\"status\":\"Activated\",\"health\":\"ReadyForUsers\",\"desired_status\":\"Activated\",\"mgmt_vrf\":\"default\",\"metrics_publisher_pk\":\"11111111111111111111111111111111\",\"reference_count\":0,\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Hybrid\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"cyoa_ips\":[],\"users\":0,\"max_users\":255,\"unicast_users_count\":0,\"max_unicast_users\":0,\"multicast_subscribers_count\":0,\"max_multicast_subscribers\":0,\"multicast_publishers_count\":0,\"max_multicast_publishers\":0,\"status\":\"Activated\",\"health\":\"ReadyForUsers\",\"desired_status\":\"Activated\",\"mgmt_vrf\":\"default\",\"metrics_publisher_pk\":\"11111111111111111111111111111111\",\"reference_count\":0,\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 
     #[test]

@@ -638,6 +638,8 @@ impl CreateValidatorMulticastPublishersCommand {
             device: String,
             #[tabled(rename = "NEAREST DEVICE")]
             nearest_device: String,
+            #[tabled(rename = "DEVICE IP")]
+            device_ip: String,
             #[tabled(rename = "TUNNEL ENDPOINT")]
             tunnel_endpoint: String,
             #[tabled(rename = "CLIENT")]
@@ -665,6 +667,9 @@ impl CreateValidatorMulticastPublishersCommand {
                         fmt_nearest_label(&d.code, score, self.nearest_via_geo)
                     }
                 };
+                let device_ip = target_device
+                    .map(|d| d.public_ip.to_string())
+                    .unwrap_or_else(|| "-".to_string());
                 let tunnel_endpoint = target_device
                     .map(|d| {
                         let exclude: Vec<Ipv4Addr> = all_users
@@ -683,6 +688,7 @@ impl CreateValidatorMulticastPublishersCommand {
                     client_ip: c.client_ip.to_string(),
                     device: c.device_label.clone(),
                     nearest_device: nearest,
+                    device_ip,
                     tunnel_endpoint: if tunnel_endpoint == Ipv4Addr::UNSPECIFIED {
                         "(activator-assigned)".to_string()
                     } else {

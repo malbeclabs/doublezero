@@ -765,6 +765,16 @@ impl CreateValidatorMulticastPublishersCommand {
                 })
                 .unwrap_or(Ipv4Addr::UNSPECIFIED);
 
+            if tunnel_endpoint == Ipv4Addr::UNSPECIFIED {
+                eprintln!(
+                    "  Error: no tunnel endpoint available on device {} for {} — all public_ip \
+                     and user_tunnel_endpoint IPs are already in use by this client_ip. Skipping.",
+                    target_device_label, candidate.client_ip,
+                );
+                skipped += 1;
+                continue;
+            }
+
             let ixs = match build_create_multicast_publisher_instructions(
                 &program_id,
                 &payer_pk,

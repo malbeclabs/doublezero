@@ -247,6 +247,22 @@ impl<D: MulticastDzLedgerClient, V: ValidatorListReader> MulticastPublisherSenti
                     &all_users,
                     &device_endpoints,
                 );
+                if tunnel_endpoint == Ipv4Addr::UNSPECIFIED {
+                    error!(
+                        ip = %user.client_ip,
+                        device = %user.device_pk,
+                        group = %mgroup_pk,
+                        "skipping multicast publisher create: no tunnel endpoint available \
+                         on device (all public_ip and user_tunnel_endpoint IPs are already in \
+                         use by this client_ip); will retry on next poll"
+                    );
+                    metrics::counter!(
+                        "doublezero_sentinel_multicast_pub_no_endpoint",
+                        "group" => mgroup_pk.to_string()
+                    )
+                    .increment(1);
+                    continue;
+                }
                 if let Err(err) = self
                     .dz_client
                     .create_multicast_publisher(mgroup_pk, user, tunnel_endpoint)
@@ -663,6 +679,26 @@ mod tests {
         }
     }
 
+    /// Build a minimal `DeviceEndpoints` map covering every device seen in `users`.
+    /// Each device gets a unique synthetic `public_ip` plus one UTE so tunnel-endpoint
+    /// selection returns a concrete (non-UNSPECIFIED) IP even when the IBRL user's
+    /// legacy UNSPECIFIED tunnel_endpoint implicitly occupies the device's public_ip.
+    fn default_endpoints_for(users: &[DzUser]) -> HashMap<Pubkey, DeviceEndpoints> {
+        let mut map = HashMap::new();
+        let mut next = 1u8;
+        for u in users {
+            map.entry(u.device_pk).or_insert_with(|| {
+                let ep = DeviceEndpoints {
+                    public_ip: Ipv4Addr::new(100, 0, 0, next),
+                    user_tunnel_endpoints: vec![Ipv4Addr::new(192, 168, 0, next)],
+                };
+                next = next.wrapping_add(1);
+                ep
+            });
+        }
+        map
+    }
+
     fn make_sentinel_with_filter(
         dz: MockMulticastDzLedgerClient,
         api: MockValidatorListReader,
@@ -783,19 +819,19 @@ mod tests {
         api.expect_fetch_validators()
             .returning(move || Ok(validators.clone()));
 
-        let group_clone = group;
-        let device2_clone = device2;
+        let users = vec![
+            make_ibrl_user(ip1, Pubkey::new_unique()),
+            make_ibrl_user(ip2, device2),
+            make_ibrl_user(ip3, Pubkey::new_unique()),
+            make_multicast_publisher(ip1, vec![group]),
+        ];
+        let endpoints = default_endpoints_for(&users);
         let mut dz = MockMulticastDzLedgerClient::new();
-        dz.expect_fetch_all_dz_users().returning(move || {
-            Ok(vec![
-                make_ibrl_user(ip1, Pubkey::new_unique()),
-                make_ibrl_user(ip2, device2_clone),
-                make_ibrl_user(ip3, Pubkey::new_unique()),
-                make_multicast_publisher(ip1, vec![group_clone]),
-            ])
-        });
+        let users_clone = users.clone();
+        dz.expect_fetch_all_dz_users()
+            .returning(move || Ok(users_clone.clone()));
         dz.expect_fetch_all_device_endpoints()
-            .returning(|| Ok(HashMap::new()));
+            .returning(move || Ok(endpoints.clone()));
 
         // Only ip2 should be created.
         dz.expect_create_multicast_publisher()
@@ -834,15 +870,17 @@ mod tests {
         api.expect_fetch_validators()
             .returning(move || Ok(validators.clone()));
 
+        let users = vec![
+            make_ibrl_user(ip1, Pubkey::new_unique()),
+            make_ibrl_user(ip2, Pubkey::new_unique()),
+        ];
+        let endpoints = default_endpoints_for(&users);
         let mut dz = MockMulticastDzLedgerClient::new();
-        dz.expect_fetch_all_dz_users().returning(move || {
-            Ok(vec![
-                make_ibrl_user(ip1, Pubkey::new_unique()),
-                make_ibrl_user(ip2, Pubkey::new_unique()),
-            ])
-        });
+        let users_clone = users.clone();
+        dz.expect_fetch_all_dz_users()
+            .returning(move || Ok(users_clone.clone()));
         dz.expect_fetch_all_device_endpoints()
-            .returning(|| Ok(HashMap::new()));
+            .returning(move || Ok(endpoints.clone()));
 
         let mut seq = mockall::Sequence::new();
         // First call (ip2, higher stake) fails.
@@ -878,16 +916,17 @@ mod tests {
         api.expect_fetch_validators()
             .returning(move || Ok(validators.clone()));
 
-        let group_a_clone = group_a;
+        let users = vec![
+            make_ibrl_user(ip, Pubkey::new_unique()),
+            make_multicast_publisher(ip, vec![group_a]),
+        ];
+        let endpoints = default_endpoints_for(&users);
         let mut dz = MockMulticastDzLedgerClient::new();
-        dz.expect_fetch_all_dz_users().returning(move || {
-            Ok(vec![
-                make_ibrl_user(ip, Pubkey::new_unique()),
-                make_multicast_publisher(ip, vec![group_a_clone]),
-            ])
-        });
+        let users_clone = users.clone();
+        dz.expect_fetch_all_dz_users()
+            .returning(move || Ok(users_clone.clone()));
         dz.expect_fetch_all_device_endpoints()
-            .returning(|| Ok(HashMap::new()));
+            .returning(move || Ok(endpoints.clone()));
 
         // Should only create for group B.
         dz.expect_create_multicast_publisher()
@@ -965,15 +1004,17 @@ mod tests {
         api.expect_fetch_validators()
             .returning(move || Ok(validators.clone()));
 
+        let users = vec![
+            make_ibrl_user(ip_jito, Pubkey::new_unique()),
+            make_ibrl_user(ip_agave, Pubkey::new_unique()),
+        ];
+        let endpoints = default_endpoints_for(&users);
         let mut dz = MockMulticastDzLedgerClient::new();
-        dz.expect_fetch_all_dz_users().returning(move || {
-            Ok(vec![
-                make_ibrl_user(ip_jito, Pubkey::new_unique()),
-                make_ibrl_user(ip_agave, Pubkey::new_unique()),
-            ])
-        });
+        let users_clone = users.clone();
+        dz.expect_fetch_all_dz_users()
+            .returning(move || Ok(users_clone.clone()));
         dz.expect_fetch_all_device_endpoints()
-            .returning(|| Ok(HashMap::new()));
+            .returning(move || Ok(endpoints.clone()));
 
         // Only JitoLabs validator should be created.
         dz.expect_create_multicast_publisher()
@@ -1018,16 +1059,18 @@ mod tests {
         api.expect_fetch_validators()
             .returning(move || Ok(validators.clone()));
 
+        let users = vec![
+            make_ibrl_user(ip_jito, Pubkey::new_unique()),
+            make_ibrl_user(ip_agave, Pubkey::new_unique()),
+            make_ibrl_user(ip_frank, Pubkey::new_unique()),
+        ];
+        let endpoints = default_endpoints_for(&users);
         let mut dz = MockMulticastDzLedgerClient::new();
-        dz.expect_fetch_all_dz_users().returning(move || {
-            Ok(vec![
-                make_ibrl_user(ip_jito, Pubkey::new_unique()),
-                make_ibrl_user(ip_agave, Pubkey::new_unique()),
-                make_ibrl_user(ip_frank, Pubkey::new_unique()),
-            ])
-        });
+        let users_clone = users.clone();
+        dz.expect_fetch_all_dz_users()
+            .returning(move || Ok(users_clone.clone()));
         dz.expect_fetch_all_device_endpoints()
-            .returning(|| Ok(HashMap::new()));
+            .returning(move || Ok(endpoints.clone()));
 
         // Both JitoLabs and Frankendancer should be created; Agave skipped.
         let created_ips = Arc::new(std::sync::Mutex::new(HashSet::new()));
@@ -1114,15 +1157,17 @@ mod tests {
         api.expect_fetch_validators()
             .returning(move || Ok(validators.clone()));
 
+        let users = vec![
+            make_ibrl_user(ip1, Pubkey::new_unique()),
+            make_ibrl_user(ip2, Pubkey::new_unique()),
+        ];
+        let endpoints = default_endpoints_for(&users);
         let mut dz = MockMulticastDzLedgerClient::new();
-        dz.expect_fetch_all_dz_users().returning(move || {
-            Ok(vec![
-                make_ibrl_user(ip1, Pubkey::new_unique()),
-                make_ibrl_user(ip2, Pubkey::new_unique()),
-            ])
-        });
+        let users_clone = users.clone();
+        dz.expect_fetch_all_dz_users()
+            .returning(move || Ok(users_clone.clone()));
         dz.expect_fetch_all_device_endpoints()
-            .returning(|| Ok(HashMap::new()));
+            .returning(move || Ok(endpoints.clone()));
 
         // Both should be created (no client filter).
         let created_ips = Arc::new(std::sync::Mutex::new(HashSet::new()));
@@ -1186,6 +1231,55 @@ mod tests {
             .withf(move |g, u, ep| *g == group && u.client_ip == Ipv4Addr::from(ip) && *ep == ute2)
             .times(1)
             .returning(|_, _, _| Ok(()));
+
+        let sentinel = make_sentinel(dz, api, vec![group]);
+        sentinel.poll_cycle().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn skips_candidate_when_no_tunnel_endpoint_available() {
+        // Device has one UTE; the IBRL user already occupies it AND the
+        // device's public_ip is also excluded (via a second user with matching
+        // client_ip). No endpoint left — sentinel should skip rather than
+        // send UNSPECIFIED for a guaranteed activator rejection.
+        let group = Pubkey::new_unique();
+        let ip = [10, 0, 0, 1];
+        let device = Pubkey::new_unique();
+        let public_ip = Ipv4Addr::new(1, 1, 1, 1);
+        let ute = Ipv4Addr::new(192, 168, 1, 11);
+
+        let mut api = MockValidatorListReader::new();
+        let mut validators = HashMap::new();
+        validators.insert(
+            Ipv4Addr::from(ip),
+            ValidatorStake {
+                activated_stake: 100,
+                software_client: String::new(),
+            },
+        );
+        api.expect_fetch_validators()
+            .returning(move || Ok(validators.clone()));
+
+        let mut dz = MockMulticastDzLedgerClient::new();
+        dz.expect_fetch_all_dz_users().returning(move || {
+            let mut u1 = make_ibrl_user(ip, device);
+            u1.tunnel_endpoint = ute;
+            let mut u2 = make_ibrl_user(ip, device);
+            u2.tunnel_endpoint = public_ip;
+            Ok(vec![u1, u2])
+        });
+        dz.expect_fetch_all_device_endpoints().returning(move || {
+            let mut map = HashMap::new();
+            map.insert(
+                device,
+                DeviceEndpoints {
+                    public_ip,
+                    user_tunnel_endpoints: vec![ute],
+                },
+            );
+            Ok(map)
+        });
+        dz.expect_create_multicast_publisher().never();
 
         let sentinel = make_sentinel(dz, api, vec![group]);
         sentinel.poll_cycle().await.unwrap();
@@ -1259,12 +1353,14 @@ mod tests {
         api.expect_fetch_validators()
             .returning(move || Ok(validators.clone()));
 
-        let device_clone = device;
+        let users = vec![make_ibrl_with_allocated_ip_user(ip, device)];
+        let endpoints = default_endpoints_for(&users);
         let mut dz = MockMulticastDzLedgerClient::new();
+        let users_clone = users.clone();
         dz.expect_fetch_all_dz_users()
-            .returning(move || Ok(vec![make_ibrl_with_allocated_ip_user(ip, device_clone)]));
+            .returning(move || Ok(users_clone.clone()));
         dz.expect_fetch_all_device_endpoints()
-            .returning(|| Ok(HashMap::new()));
+            .returning(move || Ok(endpoints.clone()));
 
         dz.expect_create_multicast_publisher()
             .withf(move |g, u, _| {

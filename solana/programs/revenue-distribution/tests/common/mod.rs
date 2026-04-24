@@ -25,12 +25,12 @@ use doublezero_program_tools::{
 use doublezero_revenue_distribution::{
     instruction::{
         account::{
-            ConfigureContributorRewardsAccounts, ConfigureDistributionDebtAccounts,
-            ConfigureDistributionRewardsAccounts, ConfigureProgramAccounts,
-            DistributeRewardsAccounts, EnableSolanaValidatorDebtWriteOffAccounts,
-            FinalizeDistributionDebtAccounts, FinalizeDistributionRewardsAccounts,
-            InitializeContributorRewardsAccounts, InitializeDistributionAccounts,
-            InitializeJournalAccounts, InitializeProgramAccounts,
+            CollectIntegrationRewardsAccounts, ConfigureContributorRewardsAccounts,
+            ConfigureDistributionDebtAccounts, ConfigureDistributionRewardsAccounts,
+            ConfigureProgramAccounts, DistributeRewardsAccounts,
+            EnableSolanaValidatorDebtWriteOffAccounts, FinalizeDistributionDebtAccounts,
+            FinalizeDistributionRewardsAccounts, InitializeContributorRewardsAccounts,
+            InitializeDistributionAccounts, InitializeJournalAccounts, InitializeProgramAccounts,
             InitializeRewardsIntegrationAccounts, InitializeSolanaValidatorDepositAccounts,
             InitializeSwapDestinationAccounts, PaySolanaValidatorDebtAccounts, SetAdminAccounts,
             SetDistributionEconomicBurnRateAccounts, SetRewardsManagerAccounts,
@@ -86,6 +86,11 @@ pub async fn start_test_with_accounts(accounts: Vec<TestAccount>) -> ProgramTest
     program_test.prefer_bpf(true);
 
     program_test.add_program("mock_swap_sol_2z", mock_swap_sol_2z::ID, None);
+    program_test.add_program(
+        "mock_rewards_integration",
+        mock_rewards_integration::ID,
+        None,
+    );
 
     let owner_signer = Keypair::new();
 
@@ -901,6 +906,38 @@ impl ProgramTestWithOwner {
         Ok(self)
     }
 
+    pub async fn collect_integration_rewards(
+        &mut self,
+        dz_epoch: DoubleZeroEpoch,
+        integration_program_id: &Pubkey,
+        integration_distribution_key: &Pubkey,
+        integration_2z_bucket_key: &Pubkey,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.context.payer;
+
+        let collect_integration_rewards_ix = try_build_instruction(
+            &ID,
+            CollectIntegrationRewardsAccounts::new(
+                dz_epoch,
+                integration_program_id,
+                integration_distribution_key,
+                integration_2z_bucket_key,
+            ),
+            &RevenueDistributionInstructionData::CollectIntegrationRewards,
+        )
+        .unwrap();
+
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
+            &[collect_integration_rewards_ix],
+            &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
     pub async fn pay_solana_validator_debt(
         &mut self,
         dz_epoch: DoubleZeroEpoch,
@@ -1078,6 +1115,28 @@ impl ProgramTestWithOwner {
     //
     // Mock Swap SOL/2Z integration.
     //
+
+    pub async fn mock_initialize_integration_distribution(
+        &mut self,
+        dz_epoch: DoubleZeroEpoch,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.context.payer;
+
+        let ix = mock_rewards_integration::instruction::initialize_integration_distribution(
+            &payer_signer.pubkey(),
+            dz_epoch,
+        );
+
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
+            &[ix],
+            &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
 
     pub async fn mock_buy_sol(
         &mut self,

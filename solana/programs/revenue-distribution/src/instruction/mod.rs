@@ -119,6 +119,13 @@ pub enum RevenueDistributionInstructionData {
     /// program ID. Registration is a prerequisite for that program to drive
     /// `DistributeIntegrationRewards`.
     InitializeRewardsIntegration(Pubkey),
+
+    /// CPIs into a whitelisted integration's `WithdrawIntegrationRewards`
+    /// handler and credits the transferred 2Z into the current epoch's
+    /// `Distribution`. The target integration is identified by the passed
+    /// `RewardsIntegration` PDA; rev-distr signs the `Distribution` PDA so
+    /// the integration can verify the caller.
+    CollectIntegrationRewards,
 }
 
 impl RevenueDistributionInstructionData {
@@ -170,6 +177,8 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::withdraw_solana_validator_deposit");
     pub const INITIALIZE_REWARDS_INTEGRATION: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::initialize_rewards_integration");
+    pub const COLLECT_INTEGRATION_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::collect_integration_rewards");
 
     //
     // Versioned instruction selectors.
@@ -271,6 +280,7 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
             Self::INITIALIZE_REWARDS_INTEGRATION => {
                 BorshDeserialize::deserialize_reader(reader).map(Self::InitializeRewardsIntegration)
             }
+            Self::COLLECT_INTEGRATION_REWARDS => Ok(Self::CollectIntegrationRewards),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid discriminator",
@@ -377,6 +387,7 @@ impl BorshSerialize for RevenueDistributionInstructionData {
                 Self::INITIALIZE_REWARDS_INTEGRATION.serialize(writer)?;
                 integration_program_id.serialize(writer)
             }
+            Self::CollectIntegrationRewards => Self::COLLECT_INTEGRATION_REWARDS.serialize(writer),
         }
     }
 }

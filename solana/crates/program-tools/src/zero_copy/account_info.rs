@@ -13,8 +13,7 @@ use solana_pubkey::Pubkey;
 
 use crate::{
     account_info::{
-        try_borrow_data, try_borrow_mut_data, try_next_enumerated_account, NextAccountOptions,
-        TryNextAccounts,
+        try_borrow_data, try_borrow_mut_data, try_next_enumerated_account, TryNextAccounts,
     },
     Discriminator, PrecomputedDiscriminator, DISCRIMINATOR_LEN,
 };
@@ -37,21 +36,22 @@ impl<T: Pod + PrecomputedDiscriminator> Deref for ZeroCopyAccount<'_, '_, T> {
     }
 }
 
-impl<'a, 'b, T: Pod + PrecomputedDiscriminator> TryNextAccounts<'a, 'b, Option<&'a Pubkey>>
-    for ZeroCopyAccount<'a, 'b, T>
-{
+impl<'a, 'b, T: Pod + PrecomputedDiscriminator> ZeroCopyAccount<'a, 'b, T> {
+    /// Build a read-only zero-copy view from an already-held `&AccountInfo`.
+    /// Callers that peel accounts via a shared helper (e.g. interface
+    /// structs) can use this to typed-deserialize a specific slot after the
+    /// fact. Enforces optional owner check + discriminator.
     #[inline]
-    fn try_next_accounts(
-        accounts_iter: &mut Enumerate<Iter<'a, AccountInfo<'b>>>,
-        program_id: Option<&'a Pubkey>,
+    pub fn try_from_account_info(
+        index: usize,
+        account_info: &'a AccountInfo<'b>,
+        program_id: Option<&Pubkey>,
     ) -> Result<Self, ProgramError> {
-        let (index, account_info) = try_next_enumerated_account(
-            accounts_iter,
-            NextAccountOptions {
-                owned_by: program_id,
-                ..Default::default()
-            },
-        )?;
+        if let Some(expected_owner) = program_id {
+            if account_info.owner != expected_owner {
+                return Err(ProgramError::InvalidAccountOwner);
+            }
+        }
 
         let data = try_borrow_data(account_info)?;
         let RefSplit {
@@ -78,6 +78,20 @@ impl<'a, 'b, T: Pod + PrecomputedDiscriminator> TryNextAccounts<'a, 'b, Option<&
     }
 }
 
+impl<'a, 'b, T: Pod + PrecomputedDiscriminator> TryNextAccounts<'a, 'b, Option<&'a Pubkey>>
+    for ZeroCopyAccount<'a, 'b, T>
+{
+    #[inline]
+    fn try_next_accounts(
+        accounts_iter: &mut Enumerate<Iter<'a, AccountInfo<'b>>>,
+        program_id: Option<&'a Pubkey>,
+    ) -> Result<Self, ProgramError> {
+        let (index, account_info) = try_next_enumerated_account(accounts_iter, Default::default())?;
+
+        Self::try_from_account_info(index, account_info, program_id)
+    }
+}
+
 #[derive(Debug)]
 pub struct ZeroCopyMutAccount<'a, 'b, T: Pod + PrecomputedDiscriminator> {
     pub index: usize,
@@ -100,22 +114,26 @@ impl<T: Pod + PrecomputedDiscriminator> DerefMut for ZeroCopyMutAccount<'_, '_, 
     }
 }
 
-impl<'a, 'b, T: Pod + PrecomputedDiscriminator> TryNextAccounts<'a, 'b, Option<&'a Pubkey>>
-    for ZeroCopyMutAccount<'a, 'b, T>
-{
+impl<'a, 'b, T: Pod + PrecomputedDiscriminator> ZeroCopyMutAccount<'a, 'b, T> {
+    /// Build a mutable zero-copy view from an already-held `&AccountInfo`.
+    /// Callers that peel accounts via a shared helper can use this to
+    /// typed-deserialize a specific slot afterwards. Enforces writable,
+    /// optional owner check, and discriminator.
     #[inline]
-    fn try_next_accounts(
-        accounts_iter: &mut Enumerate<Iter<'a, AccountInfo<'b>>>,
-        program_id: Option<&'a Pubkey>,
+    pub fn try_from_account_info(
+        index: usize,
+        account_info: &'a AccountInfo<'b>,
+        program_id: Option<&Pubkey>,
     ) -> Result<Self, ProgramError> {
-        let (index, account_info) = try_next_enumerated_account(
-            accounts_iter,
-            NextAccountOptions {
-                must_be_writable: true,
-                owned_by: program_id,
-                ..Default::default()
-            },
-        )?;
+        if !account_info.is_writable {
+            msg!("Account {} must be writable", index);
+            return Err(ProgramError::InvalidAccountData);
+        }
+        if let Some(expected_owner) = program_id {
+            if account_info.owner != expected_owner {
+                return Err(ProgramError::InvalidAccountOwner);
+            }
+        }
 
         let data = try_borrow_mut_data(account_info)?;
         let RefMutSplit {
@@ -139,6 +157,20 @@ impl<'a, 'b, T: Pod + PrecomputedDiscriminator> TryNextAccounts<'a, 'b, Option<&
             data: mucked_data,
             remaining_data,
         })
+    }
+}
+
+impl<'a, 'b, T: Pod + PrecomputedDiscriminator> TryNextAccounts<'a, 'b, Option<&'a Pubkey>>
+    for ZeroCopyMutAccount<'a, 'b, T>
+{
+    #[inline]
+    fn try_next_accounts(
+        accounts_iter: &mut Enumerate<Iter<'a, AccountInfo<'b>>>,
+        program_id: Option<&'a Pubkey>,
+    ) -> Result<Self, ProgramError> {
+        let (index, account_info) = try_next_enumerated_account(accounts_iter, Default::default())?;
+
+        Self::try_from_account_info(index, account_info, program_id)
     }
 }
 

@@ -31,6 +31,7 @@ use crate::{
         DistributionMerkleRootKind, ProgramConfiguration, ProgramFeatureConfiguration,
         ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
+    integration::{IntegrationInstructionData, WithdrawIntegrationRewardsAccounts},
     state::{
         self, CommunityBurnRateParameters, ContributorRewards, Distribution, Journal,
         ProgramConfig, RecipientShare, RecipientShares, RelayParameters, RewardsIntegration,
@@ -144,6 +145,9 @@ fn try_process_instruction(
         RevenueDistributionInstructionData::InitializeRewardsIntegration(
             integration_program_id,
         ) => try_initialize_rewards_integration(accounts, integration_program_id),
+        RevenueDistributionInstructionData::CollectIntegrationRewards => {
+            try_collect_integration_rewards(accounts)
+        }
     }
 }
 
@@ -1883,6 +1887,127 @@ fn try_initialize_rewards_integration(
     Ok(())
 }
 
+fn try_collect_integration_rewards(accounts: &[AccountInfo]) -> ProgramResult {
+    msg!("Collect integration rewards");
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Distribution (writable).
+    // - 2: Rewards integration (whitelist entry for the target integration).
+    // - 3: Integration's distribution account (writable, opaque to rev-distr).
+    // - 4: Integration's 2Z bucket (writable).
+    // - 5: Destination 2Z token account (writable, the distribution's 2Z PDA).
+    // - 6: Integration program (CPI target; required by the runtime when the
+    //      CPI below runs — no check needed here).
+    // - 7: SPL Token program (required so the integration's own token CPI
+    //      can resolve).
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    let program_config =
+        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+    program_config.try_require_unpaused()?;
+
+    let mut distribution =
+        ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Refuse once every registered integration has already been collected
+    // for this epoch.
+    if distribution.are_all_integrations_collected() {
+        msg!("All integrations already collected for this epoch");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    let rewards_integration =
+        ZeroCopyAccount::<RewardsIntegration>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    let registration_index = rewards_integration.registration_index;
+    let already_collected = distribution
+        .checked_is_integration_collected(registration_index)
+        .ok_or_else(|| {
+            msg!(
+                "Integration registration index {} exceeds bitmap capacity",
+                registration_index
+            );
+            ProgramError::InvalidAccountData
+        })?;
+    if already_collected {
+        msg!(
+            "Integration {} already collected this epoch",
+            rewards_integration.program_id
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Accounts 3 and 4 are opaque to rev-distr and forwarded to the CPI. The
+    // integration enforces its own layout on these slots.
+    let (_, integration_distribution_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+    let (_, integration_2z_bucket_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    // Account 5 must be this distribution's 2Z token PDA.
+    let (_, destination_token_account_info, _) = try_next_2z_token_pda_info(
+        &mut accounts_iter,
+        distribution.info.key,
+        "distribution's",
+        Some(distribution.token_2z_pda_bump_seed),
+    )?;
+
+    // Snapshot destination balance pre-CPI so we can measure the transferred
+    // amount via delta.
+    let balance_before = try_token_account_amount(destination_token_account_info)?;
+
+    let withdraw_ix = try_build_instruction(
+        &rewards_integration.program_id,
+        WithdrawIntegrationRewardsAccounts {
+            integration_distribution_key: *integration_distribution_info.key,
+            integration_2z_bucket_key: *integration_2z_bucket_info.key,
+            destination_token_account_key: *destination_token_account_info.key,
+            parent_distribution_key: *distribution.info.key,
+        },
+        &IntegrationInstructionData::WithdrawIntegrationRewards,
+    )
+    .unwrap();
+
+    let distribution_signer_seeds = &[
+        Distribution::SEED_PREFIX,
+        &distribution.dz_epoch.as_seed(),
+        &[distribution.bump_seed],
+    ];
+
+    invoke_signed_unchecked(&withdraw_ix, accounts, &[distribution_signer_seeds])?;
+
+    let balance_after = try_token_account_amount(destination_token_account_info)?;
+    // No underflow: destination is rev-distr's Distribution 2Z PDA
+    let collected_amount = balance_after - balance_before;
+
+    distribution.collected_2z_from_integrations = distribution
+        .collected_2z_from_integrations
+        .checked_add(collected_amount)
+        .expect("Distribution.collected_2z_from_integrations overflowed");
+    distribution.integrations_collected_count = distribution
+        .integrations_collected_count
+        .checked_add(1)
+        .expect("Distribution.integrations_collected_count overflowed");
+    distribution
+        .checked_set_integration_collected(registration_index)
+        .ok_or_else(|| {
+            msg!(
+                "Integration registration index {} exceeds bitmap capacity",
+                registration_index
+            );
+            ProgramError::InvalidAccountData
+        })?;
+
+    msg!(
+        "Collected {} 2Z from integration {}",
+        collected_amount,
+        rewards_integration.program_id
+    );
+
+    Ok(())
+}
+
 fn try_pay_solana_validator_debt(
     accounts: &[AccountInfo],
     amount: u64,
@@ -3031,6 +3156,11 @@ fn try_next_2z_token_pda_info<'a, 'b>(
     }
 
     Ok((account_index, token_pda_info, token_pda_bump))
+}
+
+#[inline(always)]
+fn try_token_account_amount(info: &AccountInfo) -> Result<u64, ProgramError> {
+    Ok(spl_token_interface::state::Account::unpack(&info.data.borrow()[..])?.amount)
 }
 
 #[inline(always)]

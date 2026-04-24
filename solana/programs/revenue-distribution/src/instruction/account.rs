@@ -1067,6 +1067,66 @@ impl From<InitializeRewardsIntegrationAccounts> for Vec<AccountMeta> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CollectIntegrationRewardsAccounts {
+    pub program_config_key: Pubkey,
+    pub distribution_key: Pubkey,
+    pub rewards_integration_key: Pubkey,
+    pub integration_distribution_key: Pubkey,
+    pub integration_2z_bucket_key: Pubkey,
+    pub destination_token_account_key: Pubkey,
+    pub integration_program_key: Pubkey,
+    pub token_program_key: Pubkey,
+}
+
+impl CollectIntegrationRewardsAccounts {
+    pub fn new(
+        dz_epoch: DoubleZeroEpoch,
+        integration_program_id: &Pubkey,
+        integration_distribution_key: &Pubkey,
+        integration_2z_bucket_key: &Pubkey,
+    ) -> Self {
+        let distribution_key = Distribution::find_address(dz_epoch).0;
+
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            distribution_key,
+            rewards_integration_key: RewardsIntegration::find_address(integration_program_id).0,
+            integration_distribution_key: *integration_distribution_key,
+            integration_2z_bucket_key: *integration_2z_bucket_key,
+            destination_token_account_key: find_2z_token_pda_address(&distribution_key).0,
+            integration_program_key: *integration_program_id,
+            token_program_key: spl_token_interface::ID,
+        }
+    }
+}
+
+impl From<CollectIntegrationRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: CollectIntegrationRewardsAccounts) -> Self {
+        let CollectIntegrationRewardsAccounts {
+            program_config_key,
+            distribution_key,
+            rewards_integration_key,
+            integration_distribution_key,
+            integration_2z_bucket_key,
+            destination_token_account_key,
+            integration_program_key,
+            token_program_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new(distribution_key, false),
+            AccountMeta::new_readonly(rewards_integration_key, false),
+            AccountMeta::new(integration_distribution_key, false),
+            AccountMeta::new(integration_2z_bucket_key, false),
+            AccountMeta::new(destination_token_account_key, false),
+            AccountMeta::new_readonly(integration_program_key, false),
+            AccountMeta::new_readonly(token_program_key, false),
+        ]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

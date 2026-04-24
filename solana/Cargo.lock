@@ -1435,6 +1435,7 @@ dependencies = [
  "doublezero-program-tools",
  "env_logger",
  "log",
+ "mock-rewards-integration",
  "mock-swap-sol-2z",
  "ruint",
  "solana-account-info",
@@ -2890,6 +2891,27 @@ dependencies = [
  "libc",
  "wasi 0.11.1+wasi-snapshot-preview1",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "mock-rewards-integration"
+version = "0.0.0"
+dependencies = [
+ "borsh",
+ "bytemuck",
+ "doublezero-program-tools",
+ "doublezero-revenue-distribution",
+ "solana-account-info",
+ "solana-cpi",
+ "solana-instruction",
+ "solana-msg",
+ "solana-program-entrypoint",
+ "solana-program-error",
+ "solana-program-pack",
+ "solana-pubkey 3.0.0",
+ "solana-system-interface",
+ "solana-sysvar",
+ "spl-token-interface",
 ]
 
 [[package]]

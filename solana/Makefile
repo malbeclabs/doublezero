@@ -46,6 +46,7 @@ build-checked-artifacts: build-artifacts verify-checksums
 .PHONY: build-sbf-mock
 build-sbf-mock:
 	cargo build-sbf --features $(CARGO_FEATURES) --manifest-path mock/swap-sol-2z/Cargo.toml
+	cargo build-sbf --features $(CARGO_FEATURES) --manifest-path mock/rewards-integration/Cargo.toml
 
 .PHONY: test-sbf
 test-sbf: build-sbf-mock

@@ -170,7 +170,6 @@ mod tests {
             get_resource_extension_pda(&client.get_program_id(), ResourceType::AdminGroupBits);
         let (sr_ids_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
-        let payer = client.get_payer();
 
         let vpnv4_device_pk = Pubkey::new_unique();
         let vpnv4_device = Device {
@@ -238,7 +237,6 @@ mod tests {
                     AccountMeta::new_readonly(topology_pda, false),
                     AccountMeta::new(sr_ids_pda, false),
                     AccountMeta::new_readonly(globalstate_pubkey, false),
-                    AccountMeta::new(payer, true),
                     AccountMeta::new(vpnv4_device_pk, false),
                 ]),
             )

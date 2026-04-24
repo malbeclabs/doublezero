@@ -6,8 +6,8 @@ use doublezero_geolocation::{
     serviceability_program_id,
 };
 use doublezero_serviceability::state::{
-    exchange::{Exchange, ExchangeStatus},
     globalstate::GlobalState,
+    metro::{Metro, MetroStatus},
 };
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
 #[allow(deprecated)]
@@ -35,13 +35,13 @@ pub fn build_program_data_account(upgrade_authority: &Pubkey) -> AccountSharedDa
     account
 }
 
-/// Creates a mock Exchange account owned by the serviceability program (for set_account)
+/// Creates a mock Metro account owned by the serviceability program (for set_account)
 pub fn create_mock_exchange_account_shared(
     owner: &Pubkey,
-    status: ExchangeStatus,
+    status: MetroStatus,
 ) -> AccountSharedData {
-    let exchange = Exchange {
-        account_type: doublezero_serviceability::state::accounttype::AccountType::Exchange,
+    let metro = Metro {
+        account_type: doublezero_serviceability::state::accounttype::AccountType::Metro,
         owner: *owner,
         index: 1,
         bump_seed: 1,
@@ -57,7 +57,7 @@ pub fn create_mock_exchange_account_shared(
         device2_pk: Pubkey::new_unique(),
     };
 
-    let data = borsh::to_vec(&exchange).unwrap();
+    let data = borsh::to_vec(&metro).unwrap();
     let mut account =
         AccountSharedData::new(1_000_000_000, data.len(), &serviceability_program_id());
     account.set_data_from_slice(&data);
@@ -92,9 +92,9 @@ pub fn create_mock_globalstate_account_shared(
     account
 }
 
-/// Sets up test with config and an exchange
+/// Sets up test with config and a metro
 pub async fn setup_test_with_exchange(
-    exchange_status: ExchangeStatus,
+    exchange_status: MetroStatus,
 ) -> (
     BanksClient,
     Pubkey,

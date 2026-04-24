@@ -64,9 +64,8 @@ pub fn process_create_geo_probe(
     }
 
     // Verify it's a valid, activated Exchange account
-    let exchange =
-        doublezero_serviceability::state::exchange::Exchange::try_from(exchange_account)?;
-    if exchange.status != doublezero_serviceability::state::exchange::ExchangeStatus::Activated {
+    let exchange = doublezero_serviceability::state::metro::Metro::try_from(exchange_account)?;
+    if exchange.status != doublezero_serviceability::state::metro::MetroStatus::Activated {
         msg!(
             "Exchange {} is not activated (status: {:?})",
             exchange_account.key,
@@ -93,7 +92,7 @@ pub fn process_create_geo_probe(
     let probe = GeoProbe {
         account_type: AccountType::GeoProbe,
         owner: *payer_account.key,
-        exchange_pk: *exchange_account.key,
+        metro_pk: *exchange_account.key,
         public_ip: args.public_ip,
         location_offset_port: args.location_offset_port,
         metrics_publisher_pk: args.metrics_publisher_pk,

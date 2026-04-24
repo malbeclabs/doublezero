@@ -25,7 +25,7 @@ pub struct GeoProbe {
             deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
-    pub exchange_pk: Pubkey, // 32
+    pub metro_pk: Pubkey, // 32
     #[incremental(default = Ipv4Addr::UNSPECIFIED)]
     pub public_ip: Ipv4Addr, // 4
     pub location_offset_port: u16, // 2
@@ -51,11 +51,18 @@ impl fmt::Display for GeoProbe {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, exchange_pk: {}, public_ip: {}, location_offset_port: {}, \
+            "account_type: {}, owner: {}, metro_pk: {}, public_ip: {}, location_offset_port: {}, \
             metrics_publisher_pk: {}, reference_count: {}, code: {}, parent_devices: {:?}, \
             target_update_count: {}",
-            self.account_type, self.owner, self.exchange_pk, self.public_ip, self.location_offset_port,
-            self.metrics_publisher_pk, self.reference_count, self.code, self.parent_devices,
+            self.account_type,
+            self.owner,
+            self.metro_pk,
+            self.public_ip,
+            self.location_offset_port,
+            self.metrics_publisher_pk,
+            self.reference_count,
+            self.code,
+            self.parent_devices,
             self.target_update_count,
         )
     }
@@ -87,7 +94,7 @@ mod tests {
         let val = GeoProbe {
             account_type: AccountType::GeoProbe,
             owner: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             public_ip: [8, 8, 8, 8].into(),
             location_offset_port: 4242,
             metrics_publisher_pk: Pubkey::new_unique(),
@@ -113,7 +120,7 @@ mod tests {
         let old = GeoProbe {
             account_type: AccountType::GeoProbe,
             owner: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
+            metro_pk: Pubkey::new_unique(),
             public_ip: [8, 8, 8, 8].into(),
             location_offset_port: 4242,
             metrics_publisher_pk: Pubkey::new_unique(),

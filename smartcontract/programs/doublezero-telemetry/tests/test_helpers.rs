@@ -3,8 +3,8 @@ use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
-        get_contributor_pda, get_device_pda, get_exchange_pda, get_globalconfig_pda,
-        get_globalstate_pda, get_link_pda, get_location_pda, get_program_config_pda,
+        get_contributor_pda, get_device_pda, get_facility_pda, get_globalconfig_pda,
+        get_globalstate_pda, get_link_pda, get_metro_pda, get_program_config_pda,
         get_resource_extension_pda, get_topology_pda,
     },
     processors::{
@@ -16,23 +16,23 @@ use doublezero_serviceability::{
             sethealth::DeviceSetHealthArgs,
             update::DeviceUpdateArgs,
         },
-        exchange::{create::ExchangeCreateArgs, suspend::ExchangeSuspendArgs},
+        facility::{create::FacilityCreateArgs, suspend::FacilitySuspendArgs},
         globalconfig::set::SetGlobalConfigArgs,
         link::{
             activate::LinkActivateArgs, create::LinkCreateArgs, sethealth::LinkSetHealthArgs,
             update::LinkUpdateArgs,
         },
-        location::{create::LocationCreateArgs, suspend::LocationSuspendArgs},
+        metro::{create::MetroCreateArgs, suspend::MetroSuspendArgs},
         topology::create::TopologyCreateArgs,
     },
     resource::ResourceType,
     state::{
         device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceType},
-        exchange::Exchange,
+        facility::Facility,
         globalstate::GlobalState,
         interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
         link::{Link, LinkDesiredStatus, LinkHealth, LinkLinkType},
-        location::Location,
+        metro::Metro,
         topology::TopologyConstraint,
     },
 };
@@ -84,13 +84,13 @@ fn init_logger() {
     });
 }
 
-pub trait LocationCreateArgsExt {
-    fn default() -> LocationCreateArgs;
+pub trait FacilityCreateArgsExt {
+    fn default() -> FacilityCreateArgs;
 }
 
-impl LocationCreateArgsExt for LocationCreateArgs {
-    fn default() -> LocationCreateArgs {
-        LocationCreateArgs {
+impl FacilityCreateArgsExt for FacilityCreateArgs {
+    fn default() -> FacilityCreateArgs {
+        FacilityCreateArgs {
             code: "".to_string(),
             name: "".to_string(),
             country: "".to_string(),
@@ -101,13 +101,13 @@ impl LocationCreateArgsExt for LocationCreateArgs {
     }
 }
 
-pub trait ExchangeCreateArgsExt {
-    fn default() -> ExchangeCreateArgs;
+pub trait MetroCreateArgsExt {
+    fn default() -> MetroCreateArgs;
 }
 
-impl ExchangeCreateArgsExt for ExchangeCreateArgs {
-    fn default() -> ExchangeCreateArgs {
-        ExchangeCreateArgs {
+impl MetroCreateArgsExt for MetroCreateArgs {
+    fn default() -> MetroCreateArgs {
+        MetroCreateArgs {
             code: "".to_string(),
             name: "".to_string(),
             lat: 0.0,
@@ -295,23 +295,23 @@ impl LedgerHelper {
         // Create alocation.
         let location_pk = self
             .serviceability
-            .create_location(LocationCreateArgs {
+            .create_facility(FacilityCreateArgs {
                 code: "LOC1".to_string(),
-                name: "Test Location".to_string(),
+                name: "Test Facility".to_string(),
                 country: "US".to_string(),
                 loc_id: 1,
-                ..LocationCreateArgs::default()
+                ..FacilityCreateArgs::default()
             })
             .await?;
 
         // Create an exchange.
         let exchange_pk = self
             .serviceability
-            .create_exchange(ExchangeCreateArgs {
+            .create_metro(MetroCreateArgs {
                 code: "EX1".to_string(),
-                name: "Test Exchange".to_string(),
+                name: "Test Metro".to_string(),
                 reserved: 0,
-                ..ExchangeCreateArgs::default()
+                ..MetroCreateArgs::default()
             })
             .await?;
 
@@ -403,21 +403,21 @@ impl LedgerHelper {
         // create exchanges
         let exchange1_pk = self
             .serviceability
-            .create_exchange(ExchangeCreateArgs {
+            .create_metro(MetroCreateArgs {
                 code: "EX1".to_string(),
                 name: "Test Exchange1".to_string(),
                 reserved: 0,
-                ..ExchangeCreateArgs::default()
+                ..MetroCreateArgs::default()
             })
             .await?;
 
         let exchange2_pk = self
             .serviceability
-            .create_exchange(ExchangeCreateArgs {
+            .create_metro(MetroCreateArgs {
                 code: "EX2".to_string(),
                 name: "Test Exchange2".to_string(),
                 reserved: 0,
-                ..ExchangeCreateArgs::default()
+                ..MetroCreateArgs::default()
             })
             .await?;
 
@@ -881,15 +881,15 @@ impl ServiceabilityProgramHelper {
         Ok(global_state.account_index + 1)
     }
 
-    pub async fn create_location(
+    pub async fn create_facility(
         &mut self,
-        location: LocationCreateArgs,
+        location: FacilityCreateArgs,
     ) -> Result<Pubkey, BanksClientError> {
         let index = self.get_next_global_state_index().await?;
-        let (location_pubkey, _) = get_location_pda(&self.program_id, index);
+        let (location_pubkey, _) = get_facility_pda(&self.program_id, index);
 
         self.execute_transaction(
-            DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+            DoubleZeroInstruction::CreateFacility(FacilityCreateArgs {
                 code: location.code,
                 name: location.name,
                 country: location.country,
@@ -907,15 +907,15 @@ impl ServiceabilityProgramHelper {
         Ok(location_pubkey)
     }
 
-    pub async fn create_exchange(
+    pub async fn create_metro(
         &mut self,
-        exchange: ExchangeCreateArgs,
+        exchange: MetroCreateArgs,
     ) -> Result<Pubkey, BanksClientError> {
         let index = self.get_next_global_state_index().await?;
-        let (exchange_pubkey, _) = get_exchange_pda(&self.program_id, index);
+        let (exchange_pubkey, _) = get_metro_pda(&self.program_id, index);
 
         self.execute_transaction(
-            DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+            DoubleZeroInstruction::CreateMetro(MetroCreateArgs {
                 code: exchange.code,
                 name: exchange.name,
                 lat: exchange.lat,
@@ -1115,18 +1115,18 @@ impl ServiceabilityProgramHelper {
         .await
     }
 
-    pub async fn get_location(&mut self, pubkey: Pubkey) -> Result<Location, BanksClientError> {
+    pub async fn get_location(&mut self, pubkey: Pubkey) -> Result<Facility, BanksClientError> {
         let banks_client = {
             let context = self.context.lock().unwrap();
             context.banks_client.clone()
         };
         let location = banks_client.get_account(pubkey).await.unwrap().unwrap();
-        Ok(Location::try_from(&location.data[..]).unwrap())
+        Ok(Facility::try_from(&location.data[..]).unwrap())
     }
 
     pub async fn suspend_location(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
-            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {}),
+            DoubleZeroInstruction::SuspendFacility(FacilitySuspendArgs {}),
             vec![
                 AccountMeta::new(pubkey, false),
                 AccountMeta::new(self.global_state_pubkey, false),
@@ -1135,18 +1135,18 @@ impl ServiceabilityProgramHelper {
         .await
     }
 
-    pub async fn get_exchange(&mut self, pubkey: Pubkey) -> Result<Exchange, BanksClientError> {
+    pub async fn get_exchange(&mut self, pubkey: Pubkey) -> Result<Metro, BanksClientError> {
         let banks_client = {
             let context = self.context.lock().unwrap();
             context.banks_client.clone()
         };
         let exchange = banks_client.get_account(pubkey).await.unwrap().unwrap();
-        Ok(Exchange::try_from(&exchange.data[..]).unwrap())
+        Ok(Metro::try_from(&exchange.data[..]).unwrap())
     }
 
     pub async fn suspend_exchange(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
-            DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {}),
+            DoubleZeroInstruction::SuspendMetro(MetroSuspendArgs {}),
             vec![
                 AccountMeta::new(pubkey, false),
                 AccountMeta::new(self.global_state_pubkey, false),

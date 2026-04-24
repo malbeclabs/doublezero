@@ -8,7 +8,7 @@ use crate::{
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::create_account::try_create_account;
-use doublezero_serviceability::state::exchange::{Exchange, ExchangeStatus};
+use doublezero_serviceability::state::metro::{Metro, MetroStatus};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -83,17 +83,17 @@ pub fn process_initialize_internet_latency_samples(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let origin_exchange = Exchange::try_from(origin_exchange_account)?;
-    if origin_exchange.status != ExchangeStatus::Activated
-        && origin_exchange.status != ExchangeStatus::Suspended
+    let origin_exchange = Metro::try_from(origin_exchange_account)?;
+    if origin_exchange.status != MetroStatus::Activated
+        && origin_exchange.status != MetroStatus::Suspended
     {
         msg!("Origin exchange is not activated");
         return Err(TelemetryError::ExchangeNotActiveOrSuspended.into());
     }
 
-    let target_exchange = Exchange::try_from(target_exchange_account)?;
-    if target_exchange.status != ExchangeStatus::Activated
-        && target_exchange.status != ExchangeStatus::Suspended
+    let target_exchange = Metro::try_from(target_exchange_account)?;
+    if target_exchange.status != MetroStatus::Activated
+        && target_exchange.status != MetroStatus::Suspended
     {
         msg!("Target exchange is not activated");
         return Err(TelemetryError::ExchangeNotActiveOrSuspended.into());

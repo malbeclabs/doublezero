@@ -2,7 +2,7 @@ use std::{collections::HashMap, net::Ipv4Addr};
 
 use anyhow::{bail, Context, Result};
 use doublezero_sdk::{
-    AccountData, AccountType, DeviceStatus, LocationStatus, MulticastGroupStatus, UserStatus,
+    AccountData, AccountType, DeviceStatus, FacilityStatus, MulticastGroupStatus, UserStatus,
     UserType,
 };
 use doublezero_telemetry::state::device_latency_samples::DeviceLatencySamples;
@@ -238,7 +238,7 @@ pub fn fetch_device_infos(
             continue;
         };
         if device.status == DeviceStatus::Activated {
-            location_pks.push(device.location_pk);
+            location_pks.push(device.facility_pk);
             devices.push((*pk, device));
         }
     }
@@ -261,10 +261,10 @@ pub fn fetch_device_infos(
         let Ok(ad) = AccountData::try_from(account.data.as_slice()) else {
             continue;
         };
-        let Ok(loc) = ad.get_location() else {
+        let Ok(loc) = ad.get_facility() else {
             continue;
         };
-        if loc.status == LocationStatus::Activated {
+        if loc.status == FacilityStatus::Activated {
             location_coords.insert(*pk, (loc.lat, loc.lng));
         }
     }
@@ -273,7 +273,7 @@ pub fn fetch_device_infos(
     let mut infos = HashMap::new();
     for (pk, device) in devices {
         let (lat, lng) = location_coords
-            .get(&device.location_pk)
+            .get(&device.facility_pk)
             .copied()
             .unwrap_or((0.0, 0.0));
         infos.insert(

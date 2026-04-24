@@ -25,7 +25,7 @@ use doublezero_geolocation::{
         },
     },
 };
-use doublezero_serviceability::state::exchange::ExchangeStatus;
+use doublezero_serviceability::state::metro::MetroStatus;
 use solana_program_test::*;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction, InstructionError},
@@ -296,7 +296,7 @@ async fn test_update_geolocation_user_not_owner() {
 #[tokio::test]
 async fn test_delete_geolocation_user_not_owner_not_foundation() {
     let (mut banks_client, program_id, recent_blockhash, payer, _) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let code = "geo-user-delauth";
     let token_account = Pubkey::new_unique();
@@ -359,7 +359,7 @@ async fn test_delete_geolocation_user_not_owner_not_foundation() {
 #[tokio::test]
 async fn test_delete_geolocation_user_success() {
     let (mut banks_client, program_id, recent_blockhash, payer, _) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let code = "geo-user-del";
     let token_account = Pubkey::new_unique();
@@ -404,7 +404,7 @@ async fn test_delete_geolocation_user_success() {
 #[tokio::test]
 async fn test_delete_geolocation_user_by_foundation() {
     let (mut banks_client, program_id, recent_blockhash, payer, _) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     // Create a user owned by a different keypair.
     let user_owner = Keypair::new();
@@ -555,7 +555,7 @@ fn build_remove_target_ix(
 #[tokio::test]
 async fn test_add_target_outbound_success() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let probe_pda = create_geo_probe(
         &mut banks_client,
@@ -655,7 +655,7 @@ async fn test_add_target_outbound_success() {
 #[tokio::test]
 async fn test_add_target_outbound_invalid_ip() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let probe_pda = create_geo_probe(
         &mut banks_client,
@@ -715,7 +715,7 @@ async fn test_add_target_outbound_invalid_ip() {
 #[tokio::test]
 async fn test_add_target_duplicate_rejected() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let probe_pda = create_geo_probe(
         &mut banks_client,
@@ -790,7 +790,7 @@ async fn test_add_target_duplicate_rejected() {
 #[tokio::test]
 async fn test_add_target_outbound_icmp_success() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let probe_pda = create_geo_probe(
         &mut banks_client,
@@ -858,7 +858,7 @@ async fn test_add_target_outbound_icmp_success() {
 #[tokio::test]
 async fn test_add_target_outbound_icmp_invalid_ip() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let probe_pda = create_geo_probe(
         &mut banks_client,
@@ -919,7 +919,7 @@ async fn test_add_target_outbound_icmp_invalid_ip() {
 #[tokio::test]
 async fn test_remove_target_success() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let probe_pda = create_geo_probe(
         &mut banks_client,
@@ -1009,7 +1009,7 @@ async fn test_remove_target_success() {
 #[tokio::test]
 async fn test_remove_target_outbound_icmp_success() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let probe_pda = create_geo_probe(
         &mut banks_client,
@@ -1094,7 +1094,7 @@ async fn test_remove_target_outbound_icmp_success() {
 #[tokio::test]
 async fn test_remove_target_not_found() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let probe_pda = create_geo_probe(
         &mut banks_client,
@@ -1152,7 +1152,7 @@ async fn test_remove_target_not_found() {
 #[tokio::test]
 async fn test_remove_target_foundation_can_remove() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let probe_pda = create_geo_probe(
         &mut banks_client,
@@ -1245,7 +1245,7 @@ async fn test_remove_target_foundation_can_remove() {
 #[tokio::test]
 async fn test_remove_target_unauthorized_non_owner() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let probe_pda = create_geo_probe(
         &mut banks_client,
@@ -1338,7 +1338,7 @@ async fn test_remove_target_unauthorized_non_owner() {
 #[tokio::test]
 async fn test_update_payment_status_success() {
     let (mut banks_client, program_id, recent_blockhash, payer, _) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let user_code = "user-pay-ok";
     let ix = build_create_user_ix(
@@ -1395,7 +1395,7 @@ async fn test_update_payment_status_success() {
 #[tokio::test]
 async fn test_update_payment_status_invalid_value() {
     let (mut banks_client, program_id, recent_blockhash, payer, _) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let user_code = "user-pay-inv";
     let ix = build_create_user_ix(
@@ -1482,7 +1482,7 @@ fn build_set_result_destination_ix(
 #[tokio::test]
 async fn test_set_result_destination_success() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let probe_pda = create_geo_probe(
         &mut banks_client,
@@ -1564,7 +1564,7 @@ async fn test_set_result_destination_success() {
 #[tokio::test]
 async fn test_set_result_destination_clear() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let probe_pda = create_geo_probe(
         &mut banks_client,
@@ -1900,7 +1900,7 @@ async fn test_set_result_destination_invalid_format() {
 #[tokio::test]
 async fn test_set_result_destination_unrelated_probe() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let probe_pda = create_geo_probe(
         &mut banks_client,
@@ -1986,7 +1986,7 @@ async fn test_set_result_destination_unrelated_probe() {
 #[tokio::test]
 async fn test_set_result_destination_wrong_probe_count() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     let probe_pda = create_geo_probe(
         &mut banks_client,

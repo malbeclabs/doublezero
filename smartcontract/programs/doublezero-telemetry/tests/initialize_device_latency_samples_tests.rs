@@ -2,8 +2,8 @@ use borsh::BorshSerialize;
 use doublezero_program_common::types::{NetworkV4, NetworkV4List};
 use doublezero_serviceability::{
     processors::{
-        device::create::DeviceCreateArgs, exchange::create::ExchangeCreateArgs,
-        link::create::LinkCreateArgs, location::create::LocationCreateArgs,
+        device::create::DeviceCreateArgs, facility::create::FacilityCreateArgs,
+        link::create::LinkCreateArgs, metro::create::MetroCreateArgs,
     },
     state::{
         accounttype::AccountType,
@@ -508,12 +508,12 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
         code: "invalid".to_string(),
         owner: agent.pubkey(),
         contributor_pk: Pubkey::new_unique(),
-        exchange_pk: Pubkey::new_unique(),
+        metro_pk: Pubkey::new_unique(),
         device_type: DeviceType::Hybrid,
         public_ip: Ipv4Addr::UNSPECIFIED,
         status: DeviceStatus::Activated,
         metrics_publisher_pk: agent.pubkey(),
-        location_pk: Pubkey::new_unique(),
+        facility_pk: Pubkey::new_unique(),
         dz_prefixes: NetworkV4List::default(),
         mgmt_vrf: "default".to_string(),
         interfaces: vec![],
@@ -598,7 +598,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
     let fake_target_device = Device {
         status: DeviceStatus::Activated,
         metrics_publisher_pk: Pubkey::new_unique(), // doesn't matter for Z
-        location_pk: Pubkey::new_unique(),
+        facility_pk: Pubkey::new_unique(),
         dz_prefixes: NetworkV4List::default(),
         account_type: AccountType::Device,
         owner: wrong_owner,
@@ -606,7 +606,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         bump_seed: 0,
         reference_count: 0,
         contributor_pk: Pubkey::new_unique(),
-        exchange_pk: Pubkey::new_unique(),
+        metro_pk: Pubkey::new_unique(),
         device_type: DeviceType::Hybrid,
         public_ip: Ipv4Addr::UNSPECIFIED,
         code: "invalid".to_string(),
@@ -771,23 +771,23 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
 
     let location_pk = ledger
         .serviceability
-        .create_location(LocationCreateArgs {
+        .create_facility(FacilityCreateArgs {
             code: "LOC1".to_string(),
             name: "Test Location".to_string(),
             country: "US".to_string(),
             loc_id: 1,
-            ..LocationCreateArgs::default()
+            ..FacilityCreateArgs::default()
         })
         .await
         .unwrap();
 
     let exchange_pk = ledger
         .serviceability
-        .create_exchange(ExchangeCreateArgs {
+        .create_metro(MetroCreateArgs {
             code: "EX1".to_string(),
             name: "Test Exchange".to_string(),
             reserved: 0,
-            ..ExchangeCreateArgs::default()
+            ..MetroCreateArgs::default()
         })
         .await
         .unwrap();
@@ -903,23 +903,23 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
 
     let location_pk = ledger
         .serviceability
-        .create_location(LocationCreateArgs {
+        .create_facility(FacilityCreateArgs {
             code: "LOC1".to_string(),
             name: "Test Location".to_string(),
             country: "US".to_string(),
             loc_id: 1,
-            ..LocationCreateArgs::default()
+            ..FacilityCreateArgs::default()
         })
         .await
         .unwrap();
 
     let exchange_pk = ledger
         .serviceability
-        .create_exchange(ExchangeCreateArgs {
+        .create_metro(MetroCreateArgs {
             code: "EX1".to_string(),
             name: "Test Exchange".to_string(),
             reserved: 0,
-            ..ExchangeCreateArgs::default()
+            ..MetroCreateArgs::default()
         })
         .await
         .unwrap();
@@ -1041,23 +1041,23 @@ async fn test_initialize_device_latency_samples_success_provisioning_link() {
 
     let location_pk = ledger
         .serviceability
-        .create_location(LocationCreateArgs {
+        .create_facility(FacilityCreateArgs {
             code: "LOC1".to_string(),
             name: "Test Location".to_string(),
             country: "US".to_string(),
             loc_id: 1,
-            ..LocationCreateArgs::default()
+            ..FacilityCreateArgs::default()
         })
         .await
         .unwrap();
 
     let exchange_pk = ledger
         .serviceability
-        .create_exchange(ExchangeCreateArgs {
+        .create_metro(MetroCreateArgs {
             code: "EX1".to_string(),
             name: "Test Exchange".to_string(),
             reserved: 0,
-            ..ExchangeCreateArgs::default()
+            ..MetroCreateArgs::default()
         })
         .await
         .unwrap();
@@ -1270,23 +1270,23 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
 
     let location_pk = ledger
         .serviceability
-        .create_location(LocationCreateArgs {
+        .create_facility(FacilityCreateArgs {
             code: "LOC1".to_string(),
             name: "Test Location".to_string(),
             country: "US".to_string(),
             loc_id: 1,
-            ..LocationCreateArgs::default()
+            ..FacilityCreateArgs::default()
         })
         .await
         .unwrap();
 
     let exchange_pk = ledger
         .serviceability
-        .create_exchange(ExchangeCreateArgs {
+        .create_metro(MetroCreateArgs {
             code: "EX1".to_string(),
             name: "Test Exchange".to_string(),
             reserved: 0,
-            ..ExchangeCreateArgs::default()
+            ..MetroCreateArgs::default()
         })
         .await
         .unwrap();
@@ -1441,23 +1441,23 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
 
     let location_pk = ledger
         .serviceability
-        .create_location(LocationCreateArgs {
+        .create_facility(FacilityCreateArgs {
             code: "LOC1".into(),
             name: "Location".into(),
             country: "US".into(),
             loc_id: 1,
-            ..LocationCreateArgs::default()
+            ..FacilityCreateArgs::default()
         })
         .await
         .unwrap();
 
     let exchange_pk = ledger
         .serviceability
-        .create_exchange(ExchangeCreateArgs {
+        .create_metro(MetroCreateArgs {
             code: "EX1".into(),
             name: "Exchange".into(),
             reserved: 0,
-            ..ExchangeCreateArgs::default()
+            ..MetroCreateArgs::default()
         })
         .await
         .unwrap();
@@ -1779,23 +1779,23 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
 
     let location_pk = ledger
         .serviceability
-        .create_location(LocationCreateArgs {
+        .create_facility(FacilityCreateArgs {
             code: "LOC1".to_string(),
             name: "Loc".to_string(),
             country: "CA".to_string(),
             loc_id: 1,
-            ..LocationCreateArgs::default()
+            ..FacilityCreateArgs::default()
         })
         .await
         .unwrap();
 
     let exchange_pk = ledger
         .serviceability
-        .create_exchange(ExchangeCreateArgs {
+        .create_metro(MetroCreateArgs {
             code: "EX".to_string(),
             name: "Exchange".to_string(),
             reserved: 0,
-            ..ExchangeCreateArgs::default()
+            ..MetroCreateArgs::default()
         })
         .await
         .unwrap();

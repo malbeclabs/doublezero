@@ -1,7 +1,7 @@
 use borsh::BorshSerialize;
 use doublezero_serviceability::state::{
     accounttype::AccountType,
-    exchange::{Exchange, ExchangeStatus},
+    metro::{Metro, MetroStatus},
 };
 use doublezero_telemetry::{
     error::TelemetryError,
@@ -175,7 +175,7 @@ async fn test_initialize_internet_latency_samples_success_suspended_origin_excha
         .get_exchange(origin_exchange_pk)
         .await
         .unwrap();
-    assert_eq!(exchange.status, ExchangeStatus::Suspended);
+    assert_eq!(exchange.status, MetroStatus::Suspended);
 
     let provider_name = "RIPE Atlas".to_string();
 
@@ -231,7 +231,7 @@ async fn test_initialize_internet_latency_samples_success_suspended_target_excha
         .get_exchange(target_exchange_pk)
         .await
         .unwrap();
-    assert_eq!(exchange.status, ExchangeStatus::Suspended);
+    assert_eq!(exchange.status, MetroStatus::Suspended);
 
     let provider_name = "RIPE Atlas".to_string();
 
@@ -333,11 +333,11 @@ async fn test_initialize_internet_latency_samples_fail_origin_exchange_wrong_own
     let agent = Keypair::new();
     let fake_origin_exchange_pk = Pubkey::new_unique();
 
-    let fake_origin_exchange = Exchange {
+    let fake_origin_exchange = Metro {
         index: 0,
         bump_seed: 0,
         code: "invalid".to_string(),
-        account_type: AccountType::Exchange,
+        account_type: AccountType::Metro,
         owner: agent.pubkey(),
         device1_pk: Pubkey::default(),
         device2_pk: Pubkey::default(),
@@ -346,7 +346,7 @@ async fn test_initialize_internet_latency_samples_fail_origin_exchange_wrong_own
         bgp_community: 0,
         unused: 0,
         reference_count: 0,
-        status: ExchangeStatus::Activated,
+        status: MetroStatus::Activated,
         name: "invalid exchange".to_string(),
     };
 
@@ -399,18 +399,18 @@ async fn test_initialize_internet_latency_samples_fail_target_exchange_wrong_own
     let agent = Keypair::new();
     let fake_target_exchange_pk = Pubkey::new_unique();
 
-    let fake_target_exchange = Exchange {
+    let fake_target_exchange = Metro {
         index: 0,
         bump_seed: 0,
         code: "invalid".to_string(),
-        account_type: AccountType::Exchange,
+        account_type: AccountType::Metro,
         owner: agent.pubkey(),
         lat: 0.0,
         lng: 0.0,
         bgp_community: 0,
         unused: 0,
         reference_count: 0,
-        status: ExchangeStatus::Activated,
+        status: MetroStatus::Activated,
         name: "invalid exchange".to_string(),
         device1_pk: Pubkey::default(),
         device2_pk: Pubkey::default(),

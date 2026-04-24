@@ -10,7 +10,7 @@ use doublezero_geolocation::{
     serviceability_program_id,
     state::{accounttype::AccountType, geo_probe::GeoProbe},
 };
-use doublezero_serviceability::state::exchange::ExchangeStatus;
+use doublezero_serviceability::state::metro::MetroStatus;
 use solana_program_test::*;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction, InstructionError},
@@ -24,7 +24,7 @@ use test_helpers::setup_test_with_exchange;
 #[tokio::test]
 async fn test_create_geo_probe_success() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     // Create GeoProbe
     let code = "probe-ams-01";
@@ -68,7 +68,7 @@ async fn test_create_geo_probe_success() {
     let expected_probe = GeoProbe {
         account_type: AccountType::GeoProbe,
         owner: payer.pubkey(),
-        exchange_pk: exchange_pubkey,
+        metro_pk: exchange_pubkey,
         public_ip: Ipv4Addr::new(8, 8, 8, 8),
         location_offset_port: 4242,
         metrics_publisher_pk: args.metrics_publisher_pk,
@@ -84,7 +84,7 @@ async fn test_create_geo_probe_success() {
 #[tokio::test]
 async fn test_create_geo_probe_invalid_code_length() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     // Try to create GeoProbe with code that's too long
     // Use exactly 33 chars which exceeds the 32 byte limit
@@ -136,7 +136,7 @@ async fn test_create_geo_probe_invalid_code_length() {
 #[tokio::test]
 async fn test_create_geo_probe_exchange_not_activated() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Pending).await;
+        setup_test_with_exchange(MetroStatus::Pending).await;
 
     let code = "probe-pending";
     let (probe_pda, _) = get_geo_probe_pda(&program_id, code);
@@ -187,7 +187,7 @@ async fn test_create_geo_probe_exchange_not_activated() {
 #[tokio::test]
 async fn test_update_geo_probe_success() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     // First create a GeoProbe
     let code = "probe-update";
@@ -259,7 +259,7 @@ async fn test_update_geo_probe_success() {
     let expected_probe = GeoProbe {
         account_type: AccountType::GeoProbe,
         owner: payer.pubkey(),
-        exchange_pk: exchange_pubkey,
+        metro_pk: exchange_pubkey,
         public_ip: Ipv4Addr::new(1, 1, 1, 1),        // Updated
         location_offset_port: 5353,                  // Updated
         metrics_publisher_pk: new_metrics_publisher, // Updated
@@ -275,7 +275,7 @@ async fn test_update_geo_probe_success() {
 #[tokio::test]
 async fn test_delete_geo_probe_success() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Activated).await;
+        setup_test_with_exchange(MetroStatus::Activated).await;
 
     // First create a GeoProbe
     let code = "probe-delete";

@@ -202,8 +202,8 @@ pub fn process_initialize_device_latency_samples(
         origin_device_agent_pk: *agent.key,
         origin_device_pk: *origin_device_account.key,
         target_device_pk: *target_device_account.key,
-        origin_device_location_pk: origin_device.location_pk,
-        target_device_location_pk: target_device.location_pk,
+        origin_device_location_pk: origin_device.facility_pk,
+        target_device_location_pk: target_device.facility_pk,
         link_pk: *link_account.key,
         sampling_interval_microseconds: args.sampling_interval_microseconds,
         start_timestamp_microseconds: 0, // Will be set on first write

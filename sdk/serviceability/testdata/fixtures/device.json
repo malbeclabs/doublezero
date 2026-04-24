@@ -23,12 +23,12 @@
       "typ": "u8"
     },
     {
-      "name": "LocationPk",
+      "name": "FacilityPk",
       "value": "5NjW2CAV6MBQYxpL4oK2CESrpdj6tkcvxP3iigAgrHyR",
       "typ": "pubkey"
     },
     {
-      "name": "ExchangePk",
+      "name": "MetroPk",
       "value": "5SdufgtZzBg7xewJaJaU6AC65eHsbhiqYFMcDsUga6dm",
       "typ": "pubkey"
     },

@@ -238,7 +238,7 @@ type MetroPriceRingBuffer struct {
 
 // MetroHistory tracks pricing history for a metro area.
 type MetroHistory struct {
-	ExchangeKey             solana.PublicKey
+	MetroKey                solana.PublicKey
 	Flags                   uint64
 	TotalInitializedDevices uint16
 	Padding0                [6]byte
@@ -282,7 +282,7 @@ type DeviceHistory struct {
 	BumpSeed                  uint8
 	USDCTokenPDABumpSeed      uint8
 	Padding0                  [6]byte
-	MetroExchangeKey          solana.PublicKey
+	MetroKey                  solana.PublicKey
 	ActiveGrantedSeats        uint16
 	ActiveTotalAvailableSeats uint16
 	ActiveSeatsPadding        [28]byte

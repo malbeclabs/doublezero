@@ -122,8 +122,8 @@ func TestDeriveWithdrawSeatRequestPDA(t *testing.T) {
 }
 
 func TestDeriveMetroHistoryPDA(t *testing.T) {
-	exchange := solana.NewWallet().PublicKey()
-	addr, _, err := DeriveMetroHistoryPDA(testProgramID, exchange)
+	metro := solana.NewWallet().PublicKey()
+	addr, _, err := DeriveMetroHistoryPDA(testProgramID, metro)
 	if err != nil {
 		t.Fatalf("DeriveMetroHistoryPDA: %v", err)
 	}

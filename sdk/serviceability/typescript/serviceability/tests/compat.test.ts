@@ -184,14 +184,14 @@ describe("compat: getProgramData", () => {
     expect(pd.globalState).not.toBeNull();
     expect(pd.globalConfig).not.toBeNull();
     expect(pd.programConfig).not.toBeNull();
-    expect(pd.locations.length).toBeGreaterThan(0);
-    expect(pd.exchanges.length).toBeGreaterThan(0);
+    expect(pd.facilities.length).toBeGreaterThan(0);
+    expect(pd.metros.length).toBeGreaterThan(0);
     expect(pd.devices.length).toBeGreaterThan(0);
     expect(pd.links.length).toBeGreaterThan(0);
     expect(pd.contributors.length).toBeGreaterThan(0);
 
     console.log(
-      `ProgramData: ${pd.locations.length} locations, ${pd.exchanges.length} exchanges, ` +
+      `ProgramData: ${pd.facilities.length} facilities, ${pd.metros.length} metros, ` +
         `${pd.devices.length} devices, ${pd.links.length} links, ${pd.users.length} users, ` +
         `${pd.contributors.length} contributors, ${pd.accessPasses.length} access passes`,
     );

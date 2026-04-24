@@ -10,11 +10,11 @@ from serviceability.state import (
     BGPStatus,
     Contributor,
     Device,
-    Exchange,
+    Facility,
     GlobalConfig,
     GlobalState,
     Link,
-    Location,
+    Metro,
     MulticastGroup,
     ProgramConfig,
     Tenant,
@@ -99,10 +99,10 @@ class TestFixtureGlobalConfig:
         )
 
 
-class TestFixtureLocation:
+class TestFixtureFacility:
     def test_deserialize(self):
-        data, meta = _load_fixture("location")
-        loc = Location.from_bytes(data)
+        data, meta = _load_fixture("facility")
+        loc = Facility.from_bytes(data)
         _assert_fields(
             meta["fields"],
             {
@@ -116,10 +116,10 @@ class TestFixtureLocation:
         )
 
 
-class TestFixtureExchange:
+class TestFixtureMetro:
     def test_deserialize(self):
-        data, meta = _load_fixture("exchange")
-        ex = Exchange.from_bytes(data)
+        data, meta = _load_fixture("metro")
+        ex = Metro.from_bytes(data)
         _assert_fields(
             meta["fields"],
             {

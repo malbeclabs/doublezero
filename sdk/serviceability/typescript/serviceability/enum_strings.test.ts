@@ -2,8 +2,8 @@ import { describe, test, expect } from "bun:test";
 import { readFileSync } from "fs";
 import path from "path";
 import {
-  locationStatusString,
-  exchangeStatusString,
+  facilityStatusString,
+  metroStatusString,
   deviceDeviceTypeString,
   deviceStatusString,
   deviceHealthString,
@@ -33,8 +33,8 @@ const fixtureData: Record<string, Record<string, string>> = JSON.parse(
 );
 
 const fnMap: Record<string, (v: number) => string> = {
-  LocationStatus: locationStatusString,
-  ExchangeStatus: exchangeStatusString,
+  FacilityStatus: facilityStatusString,
+  MetroStatus: metroStatusString,
   DeviceDeviceType: deviceDeviceTypeString,
   DeviceStatus: deviceStatusString,
   DeviceHealth: deviceHealthString,

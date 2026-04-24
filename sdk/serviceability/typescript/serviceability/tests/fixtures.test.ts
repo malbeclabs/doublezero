@@ -9,8 +9,8 @@ import { PublicKey } from "@solana/web3.js";
 import {
   deserializeGlobalState,
   deserializeGlobalConfig,
-  deserializeLocation,
-  deserializeExchange,
+  deserializeFacility,
+  deserializeMetro,
   deserializeDevice,
   deserializeLink,
   deserializeUser,
@@ -113,10 +113,10 @@ describe("GlobalConfig fixture", () => {
   });
 });
 
-describe("Location fixture", () => {
+describe("Facility fixture", () => {
   test("deserialize", () => {
-    const [data, meta] = loadFixture("location");
-    const loc = deserializeLocation(data);
+    const [data, meta] = loadFixture("facility");
+    const loc = deserializeFacility(data);
     assertFields(meta.fields, {
       AccountType: loc.accountType,
       Owner: loc.owner,
@@ -128,10 +128,10 @@ describe("Location fixture", () => {
   });
 });
 
-describe("Exchange fixture", () => {
+describe("Metro fixture", () => {
   test("deserialize", () => {
-    const [data, meta] = loadFixture("exchange");
-    const ex = deserializeExchange(data);
+    const [data, meta] = loadFixture("metro");
+    const ex = deserializeMetro(data);
     assertFields(meta.fields, {
       AccountType: ex.accountType,
       Owner: ex.owner,

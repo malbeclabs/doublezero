@@ -31,8 +31,8 @@ def _read_pubkey_vec(r: DefensiveReader) -> list[Pubkey]:
 class AccountTypeEnum(IntEnum):
     GLOBAL_STATE = 1
     GLOBAL_CONFIG = 2
-    LOCATION = 3
-    EXCHANGE = 4
+    FACILITY = 3
+    METRO = 4
     DEVICE = 5
     LINK = 6
     USER = 7
@@ -50,7 +50,7 @@ class AccountTypeEnum(IntEnum):
 # ---------------------------------------------------------------------------
 
 
-class LocationStatus(IntEnum):
+class FacilityStatus(IntEnum):
     PENDING = 0
     ACTIVATED = 1
     SUSPENDED = 2
@@ -60,7 +60,7 @@ class LocationStatus(IntEnum):
         return _names.get(self.value, "unknown")
 
 
-class ExchangeStatus(IntEnum):
+class MetroStatus(IntEnum):
     PENDING = 0
     ACTIVATED = 1
     SUSPENDED = 2
@@ -535,7 +535,7 @@ class GlobalConfig:
 
 
 @dataclass
-class Location:
+class Facility:
     account_type: int = 0
     owner: Pubkey = Pubkey.default()
     index: int = 0
@@ -543,14 +543,14 @@ class Location:
     lat: float = 0.0
     lng: float = 0.0
     loc_id: int = 0
-    status: LocationStatus = LocationStatus.PENDING
+    status: FacilityStatus = FacilityStatus.PENDING
     code: str = ""
     name: str = ""
     country: str = ""
     reference_count: int = 0
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> Location:
+    def from_bytes(cls, data: bytes) -> Facility:
         r = DefensiveReader(data)
         loc = cls()
         loc.account_type = r.read_u8()
@@ -560,7 +560,7 @@ class Location:
         loc.lat = r.read_f64()
         loc.lng = r.read_f64()
         loc.loc_id = r.read_u32()
-        loc.status = LocationStatus(r.read_u8())
+        loc.status = FacilityStatus(r.read_u8())
         loc.code = r.read_string()
         loc.name = r.read_string()
         loc.country = r.read_string()
@@ -569,7 +569,7 @@ class Location:
 
 
 @dataclass
-class Exchange:
+class Metro:
     account_type: int = 0
     owner: Pubkey = Pubkey.default()
     index: int = 0
@@ -577,7 +577,7 @@ class Exchange:
     lat: float = 0.0
     lng: float = 0.0
     bgp_community: int = 0
-    status: ExchangeStatus = ExchangeStatus.PENDING
+    status: MetroStatus = MetroStatus.PENDING
     code: str = ""
     name: str = ""
     reference_count: int = 0
@@ -585,7 +585,7 @@ class Exchange:
     device2_pk: Pubkey = Pubkey.default()
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> Exchange:
+    def from_bytes(cls, data: bytes) -> Metro:
         r = DefensiveReader(data)
         ex = cls()
         ex.account_type = r.read_u8()
@@ -596,7 +596,7 @@ class Exchange:
         ex.lng = r.read_f64()
         ex.bgp_community = r.read_u16()
         r.read_u16()  # reserved padding
-        ex.status = ExchangeStatus(r.read_u8())
+        ex.status = MetroStatus(r.read_u8())
         ex.code = r.read_string()
         ex.name = r.read_string()
         ex.reference_count = r.read_u32()
@@ -611,8 +611,8 @@ class Device:
     owner: Pubkey = Pubkey.default()
     index: int = 0
     bump_seed: int = 0
-    location_pub_key: Pubkey = Pubkey.default()
-    exchange_pub_key: Pubkey = Pubkey.default()
+    facility_pub_key: Pubkey = Pubkey.default()
+    metro_pub_key: Pubkey = Pubkey.default()
     device_type: DeviceDeviceType = DeviceDeviceType.HYBRID
     public_ip: bytes = b"\x00" * 4
     status: DeviceStatus = DeviceStatus.PENDING
@@ -643,8 +643,8 @@ class Device:
         dev.owner = _read_pubkey(r)
         dev.index = r.read_u128()
         dev.bump_seed = r.read_u8()
-        dev.location_pub_key = _read_pubkey(r)
-        dev.exchange_pub_key = _read_pubkey(r)
+        dev.facility_pub_key = _read_pubkey(r)
+        dev.metro_pub_key = _read_pubkey(r)
         dev.device_type = DeviceDeviceType(r.read_u8())
         dev.public_ip = r.read_ipv4()
         dev.status = DeviceStatus(r.read_u8())

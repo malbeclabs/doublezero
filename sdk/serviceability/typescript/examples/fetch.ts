@@ -3,8 +3,8 @@
 
 import { Client } from "../serviceability/client.js";
 import {
-  locationStatusString,
-  exchangeStatusString,
+  facilityStatusString,
+  metroStatusString,
   deviceStatusString,
   deviceHealthString,
   linkLinkTypeString,
@@ -41,8 +41,8 @@ async function main() {
 
   // Summary
   console.log("=== Summary ===");
-  console.log(`Locations:        ${data.locations.length}`);
-  console.log(`Exchanges:        ${data.exchanges.length}`);
+  console.log(`Facilities:       ${data.facilities.length}`);
+  console.log(`Metros:           ${data.metros.length}`);
   console.log(`Contributors:     ${data.contributors.length}`);
   console.log(`Devices:          ${data.devices.length}`);
   console.log(`Links:            ${data.links.length}`);
@@ -59,23 +59,23 @@ async function main() {
     console.log();
   }
 
-  // Locations
-  if (data.locations.length > 0) {
-    console.log("=== Locations ===");
-    for (const loc of data.locations) {
+  // Facilities
+  if (data.facilities.length > 0) {
+    console.log("=== Facilities ===");
+    for (const loc of data.facilities) {
       console.log(
-        `  ${loc.code} (${loc.name}) - ${loc.country} [${locationStatusString(loc.status)}]`,
+        `  ${loc.code} (${loc.name}) - ${loc.country} [${facilityStatusString(loc.status)}]`,
       );
     }
     console.log();
   }
 
-  // Exchanges
-  if (data.exchanges.length > 0) {
-    console.log("=== Exchanges ===");
-    for (const ex of data.exchanges) {
+  // Metros
+  if (data.metros.length > 0) {
+    console.log("=== Metros ===");
+    for (const ex of data.metros) {
       console.log(
-        `  ${ex.code} (${ex.name}) [${exchangeStatusString(ex.status)}]`,
+        `  ${ex.code} (${ex.name}) [${metroStatusString(ex.status)}]`,
       );
     }
     console.log();

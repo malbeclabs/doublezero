@@ -6,8 +6,8 @@ import { newConnection } from "./rpc.js";
 import {
   ACCOUNT_TYPE_GLOBAL_STATE,
   ACCOUNT_TYPE_GLOBAL_CONFIG,
-  ACCOUNT_TYPE_LOCATION,
-  ACCOUNT_TYPE_EXCHANGE,
+  ACCOUNT_TYPE_FACILITY,
+  ACCOUNT_TYPE_METRO,
   ACCOUNT_TYPE_DEVICE,
   ACCOUNT_TYPE_LINK,
   ACCOUNT_TYPE_USER,
@@ -18,8 +18,8 @@ import {
   ACCOUNT_TYPE_PERMISSION,
   deserializeGlobalState,
   deserializeGlobalConfig,
-  deserializeLocation,
-  deserializeExchange,
+  deserializeFacility,
+  deserializeMetro,
   deserializeDevice,
   deserializeLink,
   deserializeUser,
@@ -30,8 +30,8 @@ import {
   deserializePermission,
   type GlobalState,
   type GlobalConfig,
-  type Location,
-  type Exchange,
+  type Facility,
+  type Metro,
   type Device,
   type Link,
   type User,
@@ -46,8 +46,8 @@ export interface ProgramData {
   globalState: GlobalState | null;
   globalConfig: GlobalConfig | null;
   programConfig: ProgramConfig | null;
-  locations: Location[];
-  exchanges: Exchange[];
+  facilities: Facility[];
+  metros: Metro[];
   devices: Device[];
   links: Link[];
   users: User[];
@@ -98,8 +98,8 @@ export class Client {
       globalState: null,
       globalConfig: null,
       programConfig: null,
-      locations: [],
-      exchanges: [],
+      facilities: [],
+      metros: [],
       devices: [],
       links: [],
       users: [],
@@ -122,11 +122,11 @@ export class Client {
         case ACCOUNT_TYPE_GLOBAL_CONFIG:
           pd.globalConfig = deserializeGlobalConfig(data);
           break;
-        case ACCOUNT_TYPE_LOCATION:
-          pd.locations.push(deserializeLocation(data));
+        case ACCOUNT_TYPE_FACILITY:
+          pd.facilities.push(deserializeFacility(data));
           break;
-        case ACCOUNT_TYPE_EXCHANGE:
-          pd.exchanges.push(deserializeExchange(data));
+        case ACCOUNT_TYPE_METRO:
+          pd.metros.push(deserializeMetro(data));
           break;
         case ACCOUNT_TYPE_DEVICE:
           pd.devices.push(deserializeDevice(data));

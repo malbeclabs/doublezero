@@ -14,14 +14,14 @@ from serviceability.state import (
     DeviceDeviceType,
     DeviceHealth,
     DeviceStatus,
-    ExchangeStatus,
+    FacilityStatus,
     InterfaceStatus,
     InterfaceType,
     LinkDesiredStatus,
     LinkHealth,
     LinkLinkType,
     LinkStatus,
-    LocationStatus,
+    MetroStatus,
     LoopbackType,
     MulticastGroupStatus,
     TenantPaymentStatus,
@@ -32,8 +32,8 @@ from serviceability.state import (
 FIXTURE_PATH = Path(__file__).resolve().parent.parent.parent.parent / "testdata" / "enum_strings.json"
 
 ENUM_MAP = {
-    "LocationStatus": LocationStatus,
-    "ExchangeStatus": ExchangeStatus,
+    "FacilityStatus": FacilityStatus,
+    "MetroStatus": MetroStatus,
     "DeviceDeviceType": DeviceDeviceType,
     "DeviceStatus": DeviceStatus,
     "DeviceHealth": DeviceHealth,

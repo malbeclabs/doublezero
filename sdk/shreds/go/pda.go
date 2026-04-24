@@ -59,8 +59,8 @@ func DeriveWithdrawSeatRequestPDA(programID solana.PublicKey, clientSeatKey sola
 	return solana.FindProgramAddress([][]byte{seedWithdrawSeatRequest, clientSeatKey[:]}, programID)
 }
 
-func DeriveMetroHistoryPDA(programID solana.PublicKey, exchangeKey solana.PublicKey) (solana.PublicKey, uint8, error) {
-	return solana.FindProgramAddress([][]byte{seedMetroHistory, exchangeKey[:]}, programID)
+func DeriveMetroHistoryPDA(programID solana.PublicKey, metroKey solana.PublicKey) (solana.PublicKey, uint8, error) {
+	return solana.FindProgramAddress([][]byte{seedMetroHistory, metroKey[:]}, programID)
 }
 
 func DeriveDeviceHistoryPDA(programID solana.PublicKey, deviceKey solana.PublicKey) (solana.PublicKey, uint8, error) {

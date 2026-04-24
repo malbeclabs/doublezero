@@ -106,6 +106,16 @@
       "name": "DesiredStatus",
       "value": "1",
       "typ": "u8"
+    },
+    {
+      "name": "LinkTopologiesLen",
+      "value": "0",
+      "typ": "u32"
+    },
+    {
+      "name": "LinkFlags",
+      "value": "0",
+      "typ": "u32"
     }
   ]
 }

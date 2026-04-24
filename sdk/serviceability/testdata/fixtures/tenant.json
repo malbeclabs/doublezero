@@ -76,6 +76,11 @@
       "name": "BillingLastDeductionDzEpoch",
       "value": "0",
       "typ": "u64"
+    },
+    {
+      "name": "IncludeTopologiesLen",
+      "value": "0",
+      "typ": "u32"
     }
   ]
 }

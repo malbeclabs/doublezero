@@ -37,7 +37,7 @@ func TestSDK_Geolocation_State_GeoProbe_RoundTrip(t *testing.T) {
 	original := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		ExchangePK:         solana.NewWallet().PublicKey(),
+		MetroPK:            solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{10, 0, 1, 42},
 		LocationOffsetPort: 8923,
 		Code:               "ams-probe-01",
@@ -58,7 +58,7 @@ func TestSDK_Geolocation_State_GeoProbe_RoundTrip(t *testing.T) {
 
 	require.Equal(t, original.AccountType, decoded.AccountType)
 	require.Equal(t, original.Owner, decoded.Owner)
-	require.Equal(t, original.ExchangePK, decoded.ExchangePK)
+	require.Equal(t, original.MetroPK, decoded.MetroPK)
 	require.Equal(t, original.PublicIP, decoded.PublicIP)
 	require.Equal(t, original.LocationOffsetPort, decoded.LocationOffsetPort)
 	require.Equal(t, original.Code, decoded.Code)
@@ -74,7 +74,7 @@ func TestSDK_Geolocation_State_GeoProbe_EmptyParentDevices(t *testing.T) {
 	original := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		ExchangePK:         solana.NewWallet().PublicKey(),
+		MetroPK:            solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{192, 168, 1, 1},
 		LocationOffsetPort: 8923,
 		Code:               "test",
@@ -104,7 +104,7 @@ func TestSDK_Geolocation_State_GeoProbe_MaxParentDevices(t *testing.T) {
 	original := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		ExchangePK:         solana.NewWallet().PublicKey(),
+		MetroPK:            solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{172, 16, 0, 1},
 		LocationOffsetPort: 9000,
 		Code:               "max-devices-probe",
@@ -133,7 +133,7 @@ func TestSDK_Geolocation_State_GeoProbe_BackwardCompat_NoTargetUpdateCount(t *te
 	original := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		ExchangePK:         solana.NewWallet().PublicKey(),
+		MetroPK:            solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{10, 0, 1, 1},
 		LocationOffsetPort: 8923,
 		Code:               "old-probe",

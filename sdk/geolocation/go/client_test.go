@@ -69,7 +69,7 @@ func TestSDK_Geolocation_Client_GetGeoProbeByCode_HappyPath(t *testing.T) {
 	expected := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		ExchangePK:         solana.NewWallet().PublicKey(),
+		MetroPK:            solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{10, 0, 1, 42},
 		LocationOffsetPort: 8923,
 		Code:               "ams-probe-01",
@@ -125,7 +125,7 @@ func TestSDK_Geolocation_Client_GetGeoProbes_HappyPath(t *testing.T) {
 	probe1 := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		ExchangePK:         solana.NewWallet().PublicKey(),
+		MetroPK:            solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{10, 0, 1, 1},
 		LocationOffsetPort: 8923,
 		Code:               "ams-probe-01",
@@ -136,7 +136,7 @@ func TestSDK_Geolocation_Client_GetGeoProbes_HappyPath(t *testing.T) {
 	probe2 := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		ExchangePK:         solana.NewWallet().PublicKey(),
+		MetroPK:            solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{10, 0, 1, 2},
 		LocationOffsetPort: 8923,
 		Code:               "fra-probe-01",

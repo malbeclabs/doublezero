@@ -21,7 +21,7 @@ use doublezero_serviceability::state::{
     accounttype::AccountType,
     contributor::{Contributor, ContributorStatus},
     device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
-    exchange::{Exchange, ExchangeStatus},
+    metro::{Metro, MetroStatus},
     globalconfig::GlobalConfig,
     globalstate::GlobalState,
     interface::{
@@ -29,7 +29,7 @@ use doublezero_serviceability::state::{
         InterfaceV2, LoopbackType, RoutingMode,
     },
     link::{Link, LinkDesiredStatus, LinkHealth, LinkLinkType, LinkStatus},
-    location::{Location, LocationStatus},
+    facility::{Facility, FacilityStatus},
     multicastgroup::{MulticastGroup, MulticastGroupStatus},
     programconfig::ProgramConfig,
     tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
@@ -76,8 +76,8 @@ fn main() {
 
     generate_global_state(&fixtures_dir);
     generate_global_config(&fixtures_dir);
-    generate_location(&fixtures_dir);
-    generate_exchange(&fixtures_dir);
+    generate_facility(&fixtures_dir);
+    generate_metro(&fixtures_dir);
     generate_device(&fixtures_dir);
     generate_link(&fixtures_dir);
     generate_user(&fixtures_dir);
@@ -185,18 +185,18 @@ fn generate_global_config(dir: &Path) {
     write_fixture(dir, "global_config", &data, &meta);
 }
 
-fn generate_location(dir: &Path) {
+fn generate_facility(dir: &Path) {
     let owner = pubkey_from_byte(0x20);
 
-    let val = Location {
-        account_type: AccountType::Location,
+    let val = Facility {
+        account_type: AccountType::Facility,
         owner,
         index: 4,
         bump_seed: 252,
         lat: 52.3676,
         lng: 4.9041,
         loc_id: 4818,
-        status: LocationStatus::Activated,
+        status: FacilityStatus::Activated,
         code: "ams".into(),
         name: "Amsterdam".into(),
         country: "NL".into(),
@@ -206,7 +206,7 @@ fn generate_location(dir: &Path) {
     let data = borsh::to_vec(&val).unwrap();
 
     let meta = FixtureMeta {
-        name: "Location".into(),
+        name: "Facility".into(),
         account_type: 3,
         fields: vec![
             FieldValue { name: "AccountType".into(), value: "3".into(), typ: "u8".into() },
@@ -224,16 +224,16 @@ fn generate_location(dir: &Path) {
         ],
     };
 
-    write_fixture(dir, "location", &data, &meta);
+    write_fixture(dir, "facility", &data, &meta);
 }
 
-fn generate_exchange(dir: &Path) {
+fn generate_metro(dir: &Path) {
     let owner = pubkey_from_byte(0x30);
     let device1_pk = pubkey_from_byte(0x31);
     let device2_pk = pubkey_from_byte(0x32);
 
-    let val = Exchange {
-        account_type: AccountType::Exchange,
+    let val = Metro {
+        account_type: AccountType::Metro,
         owner,
         index: 12,
         bump_seed: 251,
@@ -241,7 +241,7 @@ fn generate_exchange(dir: &Path) {
         lng: 4.9041,
         bgp_community: 10100,
         unused: 0,
-        status: ExchangeStatus::Activated,
+        status: MetroStatus::Activated,
         code: "xams".into(),
         name: "Amsterdam IX".into(),
         reference_count: 5,
@@ -252,7 +252,7 @@ fn generate_exchange(dir: &Path) {
     let data = borsh::to_vec(&val).unwrap();
 
     let meta = FixtureMeta {
-        name: "Exchange".into(),
+        name: "Metro".into(),
         account_type: 4,
         fields: vec![
             FieldValue { name: "AccountType".into(), value: "4".into(), typ: "u8".into() },
@@ -272,13 +272,13 @@ fn generate_exchange(dir: &Path) {
         ],
     };
 
-    write_fixture(dir, "exchange", &data, &meta);
+    write_fixture(dir, "metro", &data, &meta);
 }
 
 fn generate_device(dir: &Path) {
     let owner = pubkey_from_byte(0x40);
-    let location_pk = pubkey_from_byte(0x41);
-    let exchange_pk = pubkey_from_byte(0x42);
+    let facility_pk = pubkey_from_byte(0x41);
+    let metro_pk = pubkey_from_byte(0x42);
     let metrics_publisher_pk = pubkey_from_byte(0x43);
     let contributor_pk = pubkey_from_byte(0x44);
 
@@ -287,8 +287,8 @@ fn generate_device(dir: &Path) {
         owner,
         index: 7,
         bump_seed: 250,
-        location_pk,
-        exchange_pk,
+        facility_pk,
+        metro_pk,
         device_type: DeviceType::Edge,
         public_ip: Ipv4Addr::new(203, 0, 113, 1),
         status: DeviceStatus::Activated,
@@ -350,8 +350,8 @@ fn generate_device(dir: &Path) {
             FieldValue { name: "Owner".into(), value: pubkey_bs58(&owner), typ: "pubkey".into() },
             FieldValue { name: "Index".into(), value: "7".into(), typ: "u128".into() },
             FieldValue { name: "BumpSeed".into(), value: "250".into(), typ: "u8".into() },
-            FieldValue { name: "LocationPk".into(), value: pubkey_bs58(&location_pk), typ: "pubkey".into() },
-            FieldValue { name: "ExchangePk".into(), value: pubkey_bs58(&exchange_pk), typ: "pubkey".into() },
+            FieldValue { name: "FacilityPk".into(), value: pubkey_bs58(&facility_pk), typ: "pubkey".into() },
+            FieldValue { name: "MetroPk".into(), value: pubkey_bs58(&metro_pk), typ: "pubkey".into() },
             FieldValue { name: "DeviceType".into(), value: "2".into(), typ: "u8".into() },
             FieldValue { name: "PublicIp".into(), value: "203.0.113.1".into(), typ: "ipv4".into() },
             FieldValue { name: "Status".into(), value: "1".into(), typ: "u8".into() },
@@ -465,6 +465,8 @@ fn generate_link(dir: &Path) {
             FieldValue { name: "DelayOverrideNs".into(), value: "0".into(), typ: "u64".into() },
             FieldValue { name: "LinkHealth".into(), value: "2".into(), typ: "u8".into() },
             FieldValue { name: "DesiredStatus".into(), value: "1".into(), typ: "u8".into() },
+            FieldValue { name: "LinkTopologiesLen".into(), value: "0".into(), typ: "u32".into() },
+            FieldValue { name: "LinkFlags".into(), value: "0".into(), typ: "u32".into() },
         ],
     };
 
@@ -786,6 +788,7 @@ fn generate_tenant(dir: &Path) {
             FieldValue { name: "BillingDiscriminant".into(), value: "0".into(), typ: "u8".into() },
             FieldValue { name: "BillingRate".into(), value: "0".into(), typ: "u64".into() },
             FieldValue { name: "BillingLastDeductionDzEpoch".into(), value: "0".into(), typ: "u64".into() },
+            FieldValue { name: "IncludeTopologiesLen".into(), value: "0".into(), typ: "u32".into() },
         ],
     };
 

@@ -13,11 +13,11 @@ from serviceability.state import (
     AccessPass,
     Contributor,
     Device,
-    Exchange,
+    Facility,
     GlobalConfig,
     GlobalState,
     Link,
-    Location,
+    Metro,
     MulticastGroup,
     Permission,
     ProgramConfig,
@@ -36,8 +36,8 @@ class ProgramData:
         self.global_state: GlobalState | None = None
         self.global_config: GlobalConfig | None = None
         self.program_config: ProgramConfig | None = None
-        self.locations: list[Location] = []
-        self.exchanges: list[Exchange] = []
+        self.facilities: list[Facility] = []
+        self.metros: list[Metro] = []
         self.devices: list[Device] = []
         self.links: list[Link] = []
         self.users: list[User] = []
@@ -109,12 +109,12 @@ class Client:
                 pd.global_state = GlobalState.from_bytes(data)
             elif account_type == AccountTypeEnum.GLOBAL_CONFIG:
                 pd.global_config = GlobalConfig.from_bytes(data)
-            elif account_type == AccountTypeEnum.LOCATION:
-                loc = Location.from_bytes(data)
-                pd.locations.append(loc)
-            elif account_type == AccountTypeEnum.EXCHANGE:
-                ex = Exchange.from_bytes(data)
-                pd.exchanges.append(ex)
+            elif account_type == AccountTypeEnum.FACILITY:
+                loc = Facility.from_bytes(data)
+                pd.facilities.append(loc)
+            elif account_type == AccountTypeEnum.METRO:
+                ex = Metro.from_bytes(data)
+                pd.metros.append(ex)
             elif account_type == AccountTypeEnum.DEVICE:
                 dev = Device.from_bytes(data)
                 pd.devices.append(dev)

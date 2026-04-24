@@ -147,8 +147,8 @@ func (c *Client) FetchValidatorClientRewards(ctx context.Context, clientID uint1
 	return deserializeAccount[ValidatorClientRewards](data, DiscriminatorValidatorClientRewards)
 }
 
-func (c *Client) FetchMetroHistory(ctx context.Context, exchangeKey solana.PublicKey) (*MetroHistory, error) {
-	addr, _, err := DeriveMetroHistoryPDA(c.programID, exchangeKey)
+func (c *Client) FetchMetroHistory(ctx context.Context, metroKey solana.PublicKey) (*MetroHistory, error) {
+	addr, _, err := DeriveMetroHistoryPDA(c.programID, metroKey)
 	if err != nil {
 		return nil, fmt.Errorf("deriving metro history PDA: %w", err)
 	}

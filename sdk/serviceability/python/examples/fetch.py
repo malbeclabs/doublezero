@@ -29,8 +29,8 @@ def main() -> None:
 
     # Summary
     print("=== Summary ===")
-    print(f"Locations:        {len(data.locations)}")
-    print(f"Exchanges:        {len(data.exchanges)}")
+    print(f"Facilities:       {len(data.facilities)}")
+    print(f"Metros:           {len(data.metros)}")
     print(f"Contributors:     {len(data.contributors)}")
     print(f"Devices:          {len(data.devices)}")
     print(f"Links:            {len(data.links)}")
@@ -46,17 +46,17 @@ def main() -> None:
         print(f"Remote ASN:       {data.global_config.remote_asn}")
         print()
 
-    # Locations
-    if data.locations:
-        print("=== Locations ===")
-        for loc in data.locations:
+    # Facilities
+    if data.facilities:
+        print("=== Facilities ===")
+        for loc in data.facilities:
             print(f"  {loc.code} ({loc.name}) - {loc.country} [{loc.status}]")
         print()
 
-    # Exchanges
-    if data.exchanges:
-        print("=== Exchanges ===")
-        for ex in data.exchanges:
+    # Metros
+    if data.metros:
+        print("=== Metros ===")
+        for ex in data.metros:
             print(f"  {ex.code} ({ex.name}) [{ex.status}]")
         print()
 

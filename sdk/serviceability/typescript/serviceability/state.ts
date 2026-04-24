@@ -21,8 +21,8 @@ function readPubkeyVec(r: DefensiveReader): PublicKey[] {
 
 export const ACCOUNT_TYPE_GLOBAL_STATE = 1;
 export const ACCOUNT_TYPE_GLOBAL_CONFIG = 2;
-export const ACCOUNT_TYPE_LOCATION = 3;
-export const ACCOUNT_TYPE_EXCHANGE = 4;
+export const ACCOUNT_TYPE_FACILITY = 3;
+export const ACCOUNT_TYPE_METRO = 4;
 export const ACCOUNT_TYPE_DEVICE = 5;
 export const ACCOUNT_TYPE_LINK = 6;
 export const ACCOUNT_TYPE_USER = 7;
@@ -37,22 +37,22 @@ export const ACCOUNT_TYPE_PERMISSION = 15;
 // Enum string mappings
 // ---------------------------------------------------------------------------
 
-const LOCATION_STATUS_NAMES: Record<number, string> = {
+const FACILITY_STATUS_NAMES: Record<number, string> = {
   0: "pending",
   1: "activated",
   2: "suspended",
 };
-export function locationStatusString(v: number): string {
-  return LOCATION_STATUS_NAMES[v] ?? "unknown";
+export function facilityStatusString(v: number): string {
+  return FACILITY_STATUS_NAMES[v] ?? "unknown";
 }
 
-const EXCHANGE_STATUS_NAMES: Record<number, string> = {
+const METRO_STATUS_NAMES: Record<number, string> = {
   0: "pending",
   1: "activated",
   2: "suspended",
 };
-export function exchangeStatusString(v: number): string {
-  return EXCHANGE_STATUS_NAMES[v] ?? "unknown";
+export function metroStatusString(v: number): string {
+  return METRO_STATUS_NAMES[v] ?? "unknown";
 }
 
 const DEVICE_DEVICE_TYPE_NAMES: Record<number, string> = {
@@ -377,10 +377,10 @@ export function deserializeGlobalConfig(data: Uint8Array): GlobalConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Location
+// Facility
 // ---------------------------------------------------------------------------
 
-export interface Location {
+export interface Facility {
   accountType: number;
   owner: PublicKey;
   index: bigint;
@@ -395,7 +395,7 @@ export interface Location {
   referenceCount: number;
 }
 
-export function deserializeLocation(data: Uint8Array): Location {
+export function deserializeFacility(data: Uint8Array): Facility {
   const r = new DefensiveReader(data);
   return {
     accountType: r.readU8(),
@@ -414,10 +414,10 @@ export function deserializeLocation(data: Uint8Array): Location {
 }
 
 // ---------------------------------------------------------------------------
-// Exchange
+// Metro
 // ---------------------------------------------------------------------------
 
-export interface Exchange {
+export interface Metro {
   accountType: number;
   owner: PublicKey;
   index: bigint;
@@ -433,7 +433,7 @@ export interface Exchange {
   device2Pk: PublicKey;
 }
 
-export function deserializeExchange(data: Uint8Array): Exchange {
+export function deserializeMetro(data: Uint8Array): Metro {
   const r = new DefensiveReader(data);
   const accountType = r.readU8();
   const owner = readPubkey(r);
@@ -574,8 +574,8 @@ export interface Device {
   owner: PublicKey;
   index: bigint;
   bumpSeed: number;
-  locationPubKey: PublicKey;
-  exchangePubKey: PublicKey;
+  facilityPubKey: PublicKey;
+  metroPubKey: PublicKey;
   deviceType: number;
   publicIp: Uint8Array;
   status: number;
@@ -605,8 +605,8 @@ export function deserializeDevice(data: Uint8Array): Device {
   const owner = readPubkey(r);
   const index = r.readU128();
   const bumpSeed = r.readU8();
-  const locationPubKey = readPubkey(r);
-  const exchangePubKey = readPubkey(r);
+  const facilityPubKey = readPubkey(r);
+  const metroPubKey = readPubkey(r);
   const deviceType = r.readU8();
   const publicIp = r.readIPv4();
   const status = r.readU8();
@@ -640,8 +640,8 @@ export function deserializeDevice(data: Uint8Array): Device {
     owner,
     index,
     bumpSeed,
-    locationPubKey,
-    exchangePubKey,
+    facilityPubKey,
+    metroPubKey,
     deviceType,
     publicIp,
     status,

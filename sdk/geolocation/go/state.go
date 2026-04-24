@@ -67,7 +67,7 @@ type KeyedGeoProbe struct {
 type GeoProbe struct {
 	AccountType        AccountType        // 1 byte
 	Owner              solana.PublicKey   // 32 bytes
-	ExchangePK         solana.PublicKey   // 32 bytes
+	MetroPK            solana.PublicKey   // 32 bytes
 	PublicIP           [4]uint8           // 4 bytes (IPv4 octets)
 	LocationOffsetPort uint16             // 2 bytes LE
 	MetricsPublisherPK solana.PublicKey   // 32 bytes
@@ -85,7 +85,7 @@ func (g *GeoProbe) Serialize(w io.Writer) error {
 	if err := enc.Encode(g.Owner); err != nil {
 		return err
 	}
-	if err := enc.Encode(g.ExchangePK); err != nil {
+	if err := enc.Encode(g.MetroPK); err != nil {
 		return err
 	}
 	if err := enc.Encode(g.PublicIP); err != nil {
@@ -120,7 +120,7 @@ func (g *GeoProbe) Deserialize(data []byte) error {
 	if err := dec.Decode(&g.Owner); err != nil {
 		return err
 	}
-	if err := dec.Decode(&g.ExchangePK); err != nil {
+	if err := dec.Decode(&g.MetroPK); err != nil {
 		return err
 	}
 	if err := dec.Decode(&g.PublicIP); err != nil {

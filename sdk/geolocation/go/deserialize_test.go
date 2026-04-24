@@ -35,7 +35,7 @@ func TestSDK_Geolocation_DeserializeProgramConfig_WrongAccountType(t *testing.T)
 	original := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		ExchangePK:         solana.NewWallet().PublicKey(),
+		MetroPK:            solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{10, 0, 0, 1},
 		LocationOffsetPort: 8923,
 		Code:               "test",
@@ -66,7 +66,7 @@ func TestSDK_Geolocation_DeserializeGeoProbe_HappyPath(t *testing.T) {
 	original := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		ExchangePK:         solana.NewWallet().PublicKey(),
+		MetroPK:            solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{10, 0, 1, 42},
 		LocationOffsetPort: 8923,
 		Code:               "ams-probe-01",
@@ -119,7 +119,7 @@ func TestSDK_Geolocation_DeserializeGeoProbe_ExtraTrailingBytes(t *testing.T) {
 	original := &geolocation.GeoProbe{
 		AccountType:        geolocation.AccountTypeGeoProbe,
 		Owner:              solana.NewWallet().PublicKey(),
-		ExchangePK:         solana.NewWallet().PublicKey(),
+		MetroPK:            solana.NewWallet().PublicKey(),
 		PublicIP:           [4]uint8{10, 0, 0, 1},
 		LocationOffsetPort: 8923,
 		Code:               "test",

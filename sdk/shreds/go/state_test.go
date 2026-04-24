@@ -243,8 +243,8 @@ func TestMetroHistoryDeserialization(t *testing.T) {
 	if err := binary.Read(bytes.NewReader(data), binary.LittleEndian, &mh); err != nil {
 		t.Fatalf("deserializing: %v", err)
 	}
-	if mh.ExchangeKey[0] != 1 {
-		t.Error("ExchangeKey not deserialized correctly")
+	if mh.MetroKey[0] != 1 {
+		t.Error("MetroKey not deserialized correctly")
 	}
 	if !mh.IsCurrentPriceFinalized() {
 		t.Error("expected IsCurrentPriceFinalized = true")

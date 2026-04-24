@@ -164,15 +164,15 @@ class TestCompatGetProgramData:
         assert pd.global_state is not None, "GlobalState is None"
         assert pd.global_config is not None, "GlobalConfig is None"
         assert pd.program_config is not None, "ProgramConfig is None"
-        assert len(pd.locations) > 0, "no locations found on mainnet"
-        assert len(pd.exchanges) > 0, "no exchanges found on mainnet"
+        assert len(pd.facilities) > 0, "no facilities found on mainnet"
+        assert len(pd.metros) > 0, "no metros found on mainnet"
         assert len(pd.devices) > 0, "no devices found on mainnet"
         assert len(pd.links) > 0, "no links found on mainnet"
         assert len(pd.contributors) > 0, "no contributors found on mainnet"
 
         # Log summary for debugging.
         print(
-            f"\nProgramData: {len(pd.locations)} locations, {len(pd.exchanges)} exchanges, "
+            f"\nProgramData: {len(pd.facilities)} facilities, {len(pd.metros)} metros, "
             f"{len(pd.devices)} devices, {len(pd.links)} links, {len(pd.users)} users, "
             f"{len(pd.contributors)} contributors, {len(pd.access_passes)} access passes"
         )

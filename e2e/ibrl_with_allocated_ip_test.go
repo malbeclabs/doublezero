@@ -20,9 +20,10 @@ import (
 
 // ibrlUserTunnelInfo holds tunnel assignment info for an IBRL user, parsed from user list output.
 type ibrlUserTunnelInfo struct {
-	ClientIP  string
-	TunnelID  string
-	TunnelNet string
+	ClientIP       string
+	TunnelID       string
+	TunnelNet      string
+	TunnelEndpoint string
 }
 
 // parseIBRLTunnelInfo parses user list output and returns tunnel info for IBRL and IBRLWithAllocatedIP users.
@@ -32,9 +33,10 @@ func parseIBRLTunnelInfo(output []byte) (ibrlUsers []ibrlUserTunnelInfo, allocUs
 		switch row["user_type"] {
 		case "IBRL":
 			ibrlUsers = append(ibrlUsers, ibrlUserTunnelInfo{
-				ClientIP:  row["client_ip"],
-				TunnelID:  row["tunnel_id"],
-				TunnelNet: row["tunnel_net"],
+				ClientIP:       row["client_ip"],
+				TunnelID:       row["tunnel_id"],
+				TunnelNet:      row["tunnel_net"],
+				TunnelEndpoint: row["tunnel_endpoint"],
 			})
 		case "IBRLWithAllocatedIP":
 			allocUserTunnelID = row["tunnel_id"]

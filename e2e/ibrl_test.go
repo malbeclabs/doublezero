@@ -178,6 +178,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 				data: map[string]any{
 					"ClientIP":            client.CYOANetworkIP,
 					"ClientPubkeyAddress": client.Pubkey,
+					"DeviceIP":            device.CYOANetworkIP,
 				},
 				cmd: []string{"doublezero", "user", "list"},
 			},

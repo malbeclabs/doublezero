@@ -238,7 +238,7 @@ func (c *ControllerCommand) Run() error {
 		}
 		chPass := os.Getenv("CLICKHOUSE_PASS")
 		chTLSDisabled := os.Getenv("CLICKHOUSE_TLS_DISABLED") == "true"
-		cw, err := controller.NewClickhouseWriter(log, chAddr, chDB, chUser, chPass, chTLSDisabled)
+		cw, err := controller.NewClickhouseWriter(log, chAddr, chDB, chUser, chPass, chTLSDisabled, version, commit, date)
 		if err != nil {
 			log.Warn("clickhouse connection failed, continuing without clickhouse", "addr", chAddr, "error", err)
 		} else {

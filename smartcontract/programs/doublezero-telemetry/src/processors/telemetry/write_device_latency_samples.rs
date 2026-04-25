@@ -1,5 +1,6 @@
 use crate::{
     error::TelemetryError,
+    processors::telemetry::write_timestamp_index::append_timestamp_index_entry,
     state::{
         accounttype::AccountType,
         device_latency_samples::{
@@ -67,7 +68,7 @@ pub fn process_write_device_latency_samples(
 
     let accounts_iter = &mut accounts.iter();
 
-    // Expected order: [latency_samples_account, agent, system_program]
+    // Expected order: [latency_samples_account, agent, system_program, timestamp_index_account (optional)]
     let latency_samples_account = next_account_info(accounts_iter)?;
     let agent = next_account_info(accounts_iter)?;
 
@@ -161,6 +162,22 @@ pub fn process_write_device_latency_samples(
             "Updated account, now has {} samples",
             header.next_sample_index
         );
+    }
+
+    // If a timestamp index account is provided (after
+    // latency_samples, agent, system_program), append an entry.
+    // Skip past system_program in the iterator first.
+    let _ = next_account_info(accounts_iter);
+    if let Ok(timestamp_index_account) = next_account_info(accounts_iter) {
+        append_timestamp_index_entry(
+            program_id,
+            timestamp_index_account,
+            latency_samples_account,
+            agent,
+            accounts,
+            write_index as u32,
+            args.start_timestamp_microseconds,
+        )?;
     }
 
     Ok(())

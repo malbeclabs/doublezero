@@ -15,6 +15,7 @@ const (
 	AccountTypeInternetLatencySamplesV0
 	AccountTypeDeviceLatencySamples
 	AccountTypeInternetLatencySamples
+	AccountTypeTimestampIndex
 )
 
 // Covers both V0 (350 bytes) and V1 (349 bytes) header layouts.
@@ -191,4 +192,107 @@ func (d *InternetLatencySamples) Deserialize(data []byte) error {
 		}
 	}
 	return nil
+}
+
+type TimestampIndexEntry struct {
+	SampleIndex           uint32 // 4
+	TimestampMicroseconds uint64 // 8
+}
+
+type TimestampIndexHeader struct {
+	AccountType      AccountType      // 1
+	SamplesAccountPK solana.PublicKey // 32
+	NextEntryIndex   uint32           // 4
+	Unused           [64]uint8        // 64
+}
+
+type TimestampIndex struct {
+	TimestampIndexHeader
+	Entries []TimestampIndexEntry
+}
+
+func (d *TimestampIndex) Deserialize(data []byte) error {
+	dec := bin.NewBorshDecoder(data)
+	if err := dec.Decode(&d.TimestampIndexHeader); err != nil {
+		return fmt.Errorf("timestamp index header: %w", err)
+	}
+
+	entryBytes := int(d.NextEntryIndex) * (4 + 8)
+	if dec.Remaining() < entryBytes {
+		return fmt.Errorf("data too short for %d timestamp index entries: %d < %d", d.NextEntryIndex, dec.Remaining(), entryBytes)
+	}
+
+	d.Entries = make([]TimestampIndexEntry, d.NextEntryIndex)
+	for i := range d.Entries {
+		if err := dec.Decode(&d.Entries[i]); err != nil {
+			return fmt.Errorf("entry %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
+// ReconstructTimestamp returns the wall-clock timestamp (in microseconds) for
+// the sample at the given index, using the timestamp index entries and the
+// sampling interval from the samples account header.
+//
+// Uses binary search over entries. O(log m) where m is the number of entries.
+// If the timestamp index has no entries, falls back to the implicit model.
+func ReconstructTimestamp(
+	entries []TimestampIndexEntry,
+	sampleIndex uint32,
+	startTimestampMicroseconds uint64,
+	samplingIntervalMicroseconds uint64,
+) uint64 {
+	if len(entries) == 0 {
+		return startTimestampMicroseconds + uint64(sampleIndex)*samplingIntervalMicroseconds
+	}
+
+	// Binary search: find the last entry where SampleIndex <= sampleIndex.
+	lo, hi := 0, len(entries)-1
+	for lo < hi {
+		mid := lo + (hi-lo+1)/2
+		if entries[mid].SampleIndex <= sampleIndex {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+
+	entry := entries[lo]
+	if entry.SampleIndex > sampleIndex {
+		return startTimestampMicroseconds + uint64(sampleIndex)*samplingIntervalMicroseconds
+	}
+	return entry.TimestampMicroseconds + uint64(sampleIndex-entry.SampleIndex)*samplingIntervalMicroseconds
+}
+
+// ReconstructTimestamps returns wall-clock timestamps (in microseconds) for all
+// samples, using the timestamp index to correct for gaps.
+//
+// Single-pass O(n + m) where n is sampleCount and m is the number of entries.
+func ReconstructTimestamps(
+	sampleCount uint32,
+	entries []TimestampIndexEntry,
+	startTimestampMicroseconds uint64,
+	samplingIntervalMicroseconds uint64,
+) []uint64 {
+	timestamps := make([]uint64, sampleCount)
+	if sampleCount == 0 {
+		return timestamps
+	}
+
+	entryIdx := 0
+	for i := range sampleCount {
+		// Advance to the last entry that covers this sample index.
+		for entryIdx+1 < len(entries) && entries[entryIdx+1].SampleIndex <= i {
+			entryIdx++
+		}
+
+		if len(entries) == 0 || entries[entryIdx].SampleIndex > i {
+			timestamps[i] = startTimestampMicroseconds + uint64(i)*samplingIntervalMicroseconds
+		} else {
+			e := entries[entryIdx]
+			timestamps[i] = e.TimestampMicroseconds + uint64(i-e.SampleIndex)*samplingIntervalMicroseconds
+		}
+	}
+	return timestamps
 }

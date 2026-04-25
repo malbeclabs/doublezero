@@ -1,4 +1,4 @@
  account | tenant | user_type | groups | device   | location    | cyoa_type  | client_ip | dz_ip   | accesspass     | tunnel_id | tunnel_net      | tunnel_endpoint | status      | bgp_status | owner
 {{- range .IBRLUsers}}
- IGNORED |  | IBRL      |        | la2-dz01 | Los Angeles | GREOverDIA | {{.ClientIP}} | {{if eq .ClientIP "3.4.5.6"}}0.0.0.0{{else}}{{.ClientIP}}{{end}} | Prepaid: (MAX) | {{.TunnelID}} | {{.TunnelNet}} | 207.45.216.134  | {{if eq .ClientIP "3.4.5.6"}}banned{{else}}activated{{end}} | unknown    | {{$.ClientPubkeyAddress}}
+ IGNORED |  | IBRL      |        | la2-dz01 | Los Angeles | GREOverDIA | {{.ClientIP}} | {{if eq .ClientIP "3.4.5.6"}}0.0.0.0{{else}}{{.ClientIP}}{{end}} | Prepaid: (MAX) | {{.TunnelID}} | {{.TunnelNet}} | {{.TunnelEndpoint}} | {{if eq .ClientIP "3.4.5.6"}}banned{{else}}activated{{end}} | unknown    | {{$.ClientPubkeyAddress}}
 {{- end}}

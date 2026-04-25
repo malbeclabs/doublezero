@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - Add `--narrow` flag to `doublezero user list` that hides `location`, `cyoa_type`, `accesspass`, and `tunnel_net`, abbreviates `user_type`, and summarizes `groups` as one publisher entry plus one subscriber entry with independent `+N` overflow counts; default output is unchanged
+
 ## [v0.19.0](https://github.com/malbeclabs/doublezero/compare/client/v0.18.0...client/v0.19.0) - 2026-04-24
 
 ### Breaking

@@ -162,6 +162,42 @@ impl GeolocationUserView {
         Ok(())
     }
 
+    /// Re-serialize the view's prefix (everything before `targets_count`) at
+    /// offset `0` of the account. Used by metadata-only updates to avoid
+    /// rewriting the targets section or `result_destination`.
+    ///
+    /// **Invariant:** the serialized prefix size must equal
+    /// `self.targets_offset - 4`. Today's processors only modify fixed-size
+    /// fields (`token_account`, `payment_status`, `billing`), so the size
+    /// is preserved. If a future processor allows changing the variable-
+    /// length `code` field, it must memmove the targets and trailing bytes
+    /// instead.
+    pub fn write_prefix(&self, account: &AccountInfo) -> ProgramResult {
+        let prefix_size = self
+            .targets_offset
+            .checked_sub(4)
+            .ok_or(ProgramError::InvalidAccountData)?;
+
+        let mut data = account.try_borrow_mut_data()?;
+        let mut writer: &mut [u8] = &mut data[..prefix_size];
+        let err = |_| ProgramError::InvalidAccountData;
+        self.account_type.serialize(&mut writer).map_err(err)?;
+        self.owner.serialize(&mut writer).map_err(err)?;
+        self.code.serialize(&mut writer).map_err(err)?;
+        self.token_account.serialize(&mut writer).map_err(err)?;
+        self.payment_status.serialize(&mut writer).map_err(err)?;
+        self.billing.serialize(&mut writer).map_err(err)?;
+        self.status.serialize(&mut writer).map_err(err)?;
+        if !writer.is_empty() {
+            msg!(
+                "prefix size mismatch: {} bytes left unwritten",
+                writer.len()
+            );
+            return Err(ProgramError::InvalidAccountData);
+        }
+        Ok(())
+    }
+
     /// Remove the target at `index` via swap-remove. Shifts trailing bytes
     /// (`result_destination`) left, patches `targets_count`, and shrinks the
     /// account by `STRIDE`.

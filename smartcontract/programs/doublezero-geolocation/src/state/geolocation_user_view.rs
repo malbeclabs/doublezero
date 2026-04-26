@@ -198,6 +198,42 @@ impl GeolocationUserView {
         Ok(())
     }
 
+    /// Replace the trailing `result_destination` with `new_dest`. Resizes the
+    /// account to fit, then writes the new length prefix and chars directly
+    /// at the post-targets offset. Updates `self.result_destination` to
+    /// match. The targets section is left untouched.
+    pub fn write_result_destination(
+        &mut self,
+        account: &AccountInfo,
+        payer: &AccountInfo,
+        accounts: &[AccountInfo],
+        new_dest: String,
+    ) -> ProgramResult {
+        let trailing_offset = self
+            .targets_offset
+            .checked_add((self.targets_count as usize) * STRIDE)
+            .ok_or(ProgramError::InvalidAccountData)?;
+        let new_trailing_size = 4usize
+            .checked_add(new_dest.len())
+            .ok_or(ProgramError::InvalidAccountData)?;
+        let new_account_len = trailing_offset
+            .checked_add(new_trailing_size)
+            .ok_or(ProgramError::InvalidAccountData)?;
+
+        resize_account_if_needed(account, payer, accounts, new_account_len)?;
+
+        {
+            let mut data = account.try_borrow_mut_data()?;
+            let len_le = (new_dest.len() as u32).to_le_bytes();
+            data[trailing_offset..trailing_offset + 4].copy_from_slice(&len_le);
+            data[trailing_offset + 4..trailing_offset + 4 + new_dest.len()]
+                .copy_from_slice(new_dest.as_bytes());
+        }
+
+        self.result_destination = new_dest;
+        Ok(())
+    }
+
     /// Remove the target at `index` via swap-remove. Shifts trailing bytes
     /// (`result_destination`) left, patches `targets_count`, and shrinks the
     /// account by `STRIDE`.

@@ -1,7 +1,7 @@
 use crate::{
     error::GeolocationError,
     serializer::try_acc_write,
-    state::{geo_probe::GeoProbe, geolocation_user::GeolocationUser},
+    state::{geo_probe::GeoProbe, geolocation_user_view::GeolocationUserView},
     validation::validate_public_ip,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -9,7 +9,7 @@ use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
     pubkey::Pubkey,
 };
-use std::{collections::HashSet, net::Ipv4Addr};
+use std::net::Ipv4Addr;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct SetResultDestinationArgs {
@@ -105,37 +105,25 @@ pub fn process_set_result_destination(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let mut user = GeolocationUser::try_from(user_account)?;
+    let mut view = GeolocationUserView::try_from_account(user_account)?;
 
-    if user.owner != *payer_account.key {
+    if view.owner != *payer_account.key {
         msg!("Signer is not the account owner");
         return Err(GeolocationError::Unauthorized.into());
     }
 
-    if args.destination.is_empty() {
-        user.result_destination = String::new();
+    let new_destination = if args.destination.is_empty() {
+        String::new()
     } else {
         validate_destination(&args.destination)?;
-        user.result_destination = args.destination.clone();
-    }
+        args.destination.clone()
+    };
 
-    // Collect unique probe pubkeys from the user's targets.
-    let mut unique_probes: HashSet<Pubkey> = HashSet::new();
-    for target in &user.targets {
-        if !unique_probes.contains(&target.geoprobe_pk) {
-            unique_probes.insert(target.geoprobe_pk);
-        }
-    }
-
-    if probe_accounts.len() != unique_probes.len() {
-        msg!(
-            "Expected {} probe accounts, got {}",
-            unique_probes.len(),
-            probe_accounts.len()
-        );
-        return Err(GeolocationError::ProbeAccountCountMismatch.into());
-    }
-
+    // Phase 0: pre-flight each provided probe account (owner / writable /
+    // dedup), and assemble a small sorted Vec<Pubkey> of provided keys that
+    // we can binary-search per target during the cursor scan. Bounded by
+    // the tx accounts list size (~30), so heap usage stays small.
+    let mut provided: Vec<Pubkey> = Vec::with_capacity(probe_accounts.len());
     for probe_account in probe_accounts {
         if probe_account.owner != program_id {
             msg!("Invalid GeoProbe account owner");
@@ -145,16 +133,63 @@ pub fn process_set_result_destination(
             msg!("GeoProbe account must be writable");
             return Err(ProgramError::InvalidAccountData);
         }
-        if !unique_probes.contains(probe_account.key) {
-            msg!(
-                "Probe account {} not referenced by user targets",
-                probe_account.key
-            );
+        let key = *probe_account.key;
+        match provided.binary_search(&key) {
+            Ok(_) => {
+                msg!("Duplicate probe account: {}", key);
+                return Err(ProgramError::InvalidAccountData);
+            }
+            Err(insert_at) => provided.insert(insert_at, key),
+        }
+    }
+
+    // Phase 1: build a sorted set of unique probes referenced by the
+    // targets, via a cursor scan. We only need to know whether
+    // |unique-from-targets| equals |provided|, so we cap the set at
+    // |provided| + 1: anything beyond that is already a count mismatch.
+    // Heap bound: (provided.len() + 1) * 32 bytes (≤ ~1 KB at realistic
+    // tx-size limits).
+    let unique_cap = provided.len().saturating_add(1);
+    let mut unique_from_targets: Vec<Pubkey> = Vec::with_capacity(unique_cap);
+    {
+        let data = user_account.try_borrow_data()?;
+        let cursor = view.cursor(&data)?;
+        for entry in cursor.iter() {
+            let target = entry?;
+            if let Err(insert_at) = unique_from_targets.binary_search(&target.geoprobe_pk) {
+                if unique_from_targets.len() >= unique_cap {
+                    msg!(
+                        "Targets reference more than {} unique probes",
+                        provided.len()
+                    );
+                    return Err(GeolocationError::ProbeAccountCountMismatch.into());
+                }
+                unique_from_targets.insert(insert_at, target.geoprobe_pk);
+            }
+        }
+    }
+
+    // Phase 2: cardinality check.
+    if provided.len() != unique_from_targets.len() {
+        msg!(
+            "Expected {} probe accounts, got {}",
+            unique_from_targets.len(),
+            provided.len()
+        );
+        return Err(GeolocationError::ProbeAccountCountMismatch.into());
+    }
+
+    // Phase 3: membership — every provided probe must appear among the
+    // unique-from-targets set. (Cardinalities are equal, so this also
+    // implies the reverse direction.)
+    for p in &provided {
+        if unique_from_targets.binary_search(p).is_err() {
+            msg!("Probe account {} not referenced by user targets", p);
             return Err(ProgramError::InvalidAccountData);
         }
     }
 
-    try_acc_write(&user, user_account, payer_account, accounts)?;
+    view.write_result_destination(user_account, payer_account, accounts, new_destination)?;
 
     for probe_account in probe_accounts {
         let mut probe = GeoProbe::try_from(probe_account)?;

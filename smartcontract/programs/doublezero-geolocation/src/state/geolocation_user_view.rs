@@ -13,12 +13,17 @@
 
 use crate::state::{
     accounttype::AccountType,
-    geolocation_user::{GeolocationBillingConfig, GeolocationPaymentStatus, GeolocationUserStatus},
-    targets_cursor::{TargetsCursor, STRIDE},
+    geolocation_user::{
+        GeolocationBillingConfig, GeolocationPaymentStatus, GeolocationTarget,
+        GeolocationUserStatus,
+    },
+    targets_cursor::{append_target_bytes, TargetsCursor, STRIDE},
 };
-use borsh::BorshDeserialize;
+use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::resize_account::resize_account_if_needed;
 use solana_program::{
-    account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey,
+    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
+    pubkey::Pubkey,
 };
 
 /// Parsed `GeolocationUser` metadata + a byte offset to the targets section.
@@ -119,6 +124,42 @@ impl GeolocationUserView {
             return Err(ProgramError::InvalidAccountData);
         }
         TargetsCursor::new(&data[self.targets_offset..end], self.targets_count)
+    }
+
+    /// Append `target` to the account's targets section. Resizes the account
+    /// by `+STRIDE`, shifts trailing bytes (`result_destination`) forward, and
+    /// patches `targets_count` in place. The view's `targets_count` is updated
+    /// to match.
+    ///
+    /// Caller is responsible for the duplicate check and `MAX_TARGETS` bound.
+    pub fn append_target(
+        &mut self,
+        account: &AccountInfo,
+        payer: &AccountInfo,
+        accounts: &[AccountInfo],
+        target: &GeolocationTarget,
+    ) -> ProgramResult {
+        let mut buf = [0u8; STRIDE];
+        {
+            let mut out: &mut [u8] = &mut buf;
+            target
+                .serialize(&mut out)
+                .map_err(|_| ProgramError::InvalidAccountData)?;
+        }
+
+        let new_len = account
+            .data_len()
+            .checked_add(STRIDE)
+            .ok_or(ProgramError::InvalidAccountData)?;
+        resize_account_if_needed(account, payer, accounts, new_len)?;
+
+        let new_count = {
+            let mut data = account.try_borrow_mut_data()?;
+            append_target_bytes(&mut data, self.targets_offset, self.targets_count, &buf)?
+        };
+
+        self.targets_count = new_count;
+        Ok(())
     }
 }
 

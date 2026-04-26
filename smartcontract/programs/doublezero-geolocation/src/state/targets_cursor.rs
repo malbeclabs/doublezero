@@ -79,6 +79,43 @@ impl<'a> TargetsCursor<'a> {
     }
 }
 
+/// Insert `target_bytes` at the end of the targets section in `data`, shifting
+/// any trailing bytes (e.g. `result_destination`) by `+STRIDE`. The buffer
+/// must already be sized to the post-append length (i.e. caller has resized
+/// the account by `+STRIDE` first). Patches the `u32` count at
+/// `targets_offset - 4`. Returns the new count.
+pub fn append_target_bytes(
+    data: &mut [u8],
+    targets_offset: usize,
+    targets_count: u32,
+    target_bytes: &[u8; STRIDE],
+) -> Result<u32, ProgramError> {
+    let count_offset = targets_offset
+        .checked_sub(4)
+        .ok_or(ProgramError::InvalidAccountData)?;
+    let new_count = targets_count
+        .checked_add(1)
+        .ok_or(ProgramError::InvalidAccountData)?;
+    let insert_at = targets_offset
+        .checked_add((targets_count as usize) * STRIDE)
+        .ok_or(ProgramError::InvalidAccountData)?;
+    let new_len = data.len();
+    let old_len = new_len
+        .checked_sub(STRIDE)
+        .ok_or(ProgramError::InvalidAccountData)?;
+    let trailing_len = old_len
+        .checked_sub(insert_at)
+        .ok_or(ProgramError::InvalidAccountData)?;
+
+    if trailing_len > 0 {
+        data.copy_within(insert_at..insert_at + trailing_len, insert_at + STRIDE);
+    }
+    data[insert_at..insert_at + STRIDE].copy_from_slice(target_bytes);
+    data[count_offset..count_offset + 4].copy_from_slice(&new_count.to_le_bytes());
+
+    Ok(new_count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,5 +210,118 @@ mod tests {
         let cursor = TargetsCursor::new(&bytes, 1).unwrap();
         assert_eq!(cursor.len(), 1);
         assert_eq!(cursor.get(0).unwrap(), target);
+    }
+
+    /// Build a buffer mimicking the targets-and-trailing layout:
+    /// `[count: u32 LE][targets_count * STRIDE bytes][trailing bytes]`.
+    /// `targets_offset` is 4 (the count prefix is the first thing). Returns
+    /// the buffer and the targets_offset.
+    fn synthetic_buffer(targets: &[GeolocationTarget], trailing: &[u8]) -> (Vec<u8>, usize) {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&(targets.len() as u32).to_le_bytes());
+        buf.extend_from_slice(&pack(targets));
+        buf.extend_from_slice(trailing);
+        let targets_offset = 4;
+        (buf, targets_offset)
+    }
+
+    fn target_bytes(t: &GeolocationTarget) -> [u8; STRIDE] {
+        let mut buf = [0u8; STRIDE];
+        let mut out: &mut [u8] = &mut buf;
+        t.serialize(&mut out).unwrap();
+        buf
+    }
+
+    #[test]
+    fn append_bytes_into_empty_targets_no_trailing() {
+        let (mut data, targets_offset) = synthetic_buffer(&[], &[]);
+        let new_target = sample_target(7);
+        // Caller must resize first.
+        data.resize(data.len() + STRIDE, 0);
+
+        let new_count = append_target_bytes(
+            &mut data,
+            targets_offset,
+            0,
+            &target_bytes(&new_target),
+        )
+        .unwrap();
+
+        assert_eq!(new_count, 1);
+        // Verify the count prefix updated.
+        assert_eq!(u32::from_le_bytes(data[0..4].try_into().unwrap()), 1);
+        // Verify the bytes round-trip.
+        let cursor = TargetsCursor::new(&data[targets_offset..targets_offset + STRIDE], 1).unwrap();
+        assert_eq!(cursor.get(0).unwrap(), new_target);
+    }
+
+    #[test]
+    fn append_bytes_with_trailing_shifts_correctly() {
+        let existing: Vec<_> = (0..3).map(sample_target).collect();
+        let trailing = b"\x05\x00\x00\x00hello"; // mimics result_destination = "hello"
+        let (mut data, targets_offset) = synthetic_buffer(&existing, trailing);
+        let new_target = sample_target(99);
+        let pre_len = data.len();
+        data.resize(pre_len + STRIDE, 0);
+
+        let new_count = append_target_bytes(
+            &mut data,
+            targets_offset,
+            existing.len() as u32,
+            &target_bytes(&new_target),
+        )
+        .unwrap();
+
+        assert_eq!(new_count, (existing.len() + 1) as u32);
+        // Existing targets unchanged.
+        let cursor = TargetsCursor::new(
+            &data[targets_offset..targets_offset + new_count as usize * STRIDE],
+            new_count,
+        )
+        .unwrap();
+        for (i, original) in existing.iter().enumerate() {
+            assert_eq!(&cursor.get(i as u32).unwrap(), original);
+        }
+        // New target at the end.
+        assert_eq!(cursor.get(existing.len() as u32).unwrap(), new_target);
+        // Trailing bytes intact at the new offset.
+        let trailing_offset = targets_offset + new_count as usize * STRIDE;
+        assert_eq!(&data[trailing_offset..trailing_offset + trailing.len()], trailing);
+    }
+
+    #[test]
+    fn append_bytes_round_trip_oracle() {
+        // Oracle: keep a Vec<GeolocationTarget> mirror; after each append,
+        // the borsh-serialized Vec must match the cursor view of `data`.
+        let mut oracle: Vec<GeolocationTarget> = Vec::new();
+        let trailing = b"\x00\x00\x00\x00"; // empty result_destination
+        let (mut data, targets_offset) = synthetic_buffer(&oracle, trailing);
+
+        for i in 0..50 {
+            let new = sample_target(1000 + i);
+            data.resize(data.len() + STRIDE, 0);
+            let new_count = append_target_bytes(
+                &mut data,
+                targets_offset,
+                oracle.len() as u32,
+                &target_bytes(&new),
+            )
+            .unwrap();
+            oracle.push(new);
+            assert_eq!(new_count, oracle.len() as u32);
+
+            // Every existing target should still be readable.
+            let cursor = TargetsCursor::new(
+                &data[targets_offset..targets_offset + new_count as usize * STRIDE],
+                new_count,
+            )
+            .unwrap();
+            for (j, expected) in oracle.iter().enumerate() {
+                assert_eq!(&cursor.get(j as u32).unwrap(), expected);
+            }
+            // Trailing bytes intact.
+            let trailing_offset = targets_offset + new_count as usize * STRIDE;
+            assert_eq!(&data[trailing_offset..trailing_offset + trailing.len()], trailing);
+        }
     }
 }

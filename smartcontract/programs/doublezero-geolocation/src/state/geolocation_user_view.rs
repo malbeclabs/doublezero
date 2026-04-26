@@ -17,7 +17,7 @@ use crate::state::{
         GeolocationBillingConfig, GeolocationPaymentStatus, GeolocationTarget,
         GeolocationUserStatus,
     },
-    targets_cursor::{append_target_bytes, TargetsCursor, STRIDE},
+    targets_cursor::{append_target_bytes, swap_remove_target_bytes, TargetsCursor, STRIDE},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::resize_account::resize_account_if_needed;
@@ -157,6 +157,31 @@ impl GeolocationUserView {
             let mut data = account.try_borrow_mut_data()?;
             append_target_bytes(&mut data, self.targets_offset, self.targets_count, &buf)?
         };
+
+        self.targets_count = new_count;
+        Ok(())
+    }
+
+    /// Remove the target at `index` via swap-remove. Shifts trailing bytes
+    /// (`result_destination`) left, patches `targets_count`, and shrinks the
+    /// account by `STRIDE`.
+    pub fn swap_remove_target(
+        &mut self,
+        account: &AccountInfo,
+        payer: &AccountInfo,
+        accounts: &[AccountInfo],
+        index: u32,
+    ) -> ProgramResult {
+        let new_count = {
+            let mut data = account.try_borrow_mut_data()?;
+            swap_remove_target_bytes(&mut data, self.targets_offset, self.targets_count, index)?
+        };
+
+        let new_len = account
+            .data_len()
+            .checked_sub(STRIDE)
+            .ok_or(ProgramError::InvalidAccountData)?;
+        resize_account_if_needed(account, payer, accounts, new_len)?;
 
         self.targets_count = new_count;
         Ok(())

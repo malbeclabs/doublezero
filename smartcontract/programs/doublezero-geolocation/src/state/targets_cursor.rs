@@ -79,6 +79,50 @@ impl<'a> TargetsCursor<'a> {
     }
 }
 
+/// Remove the target at `index` via swap-remove: copies the bytes of the
+/// last target over the slot at `index`, then shifts trailing bytes (e.g.
+/// `result_destination`) left by `STRIDE`. Patches the `u32` count at
+/// `targets_offset - 4`. Returns the new count.
+///
+/// Caller must subsequently resize the account by `-STRIDE` to drop the
+/// stale trailing bytes left at the end of the buffer.
+pub fn swap_remove_target_bytes(
+    data: &mut [u8],
+    targets_offset: usize,
+    targets_count: u32,
+    index: u32,
+) -> Result<u32, ProgramError> {
+    if index >= targets_count {
+        return Err(ProgramError::InvalidArgument);
+    }
+    let count_offset = targets_offset
+        .checked_sub(4)
+        .ok_or(ProgramError::InvalidAccountData)?;
+    let new_count = targets_count - 1;
+    let removed_offset = targets_offset + (index as usize) * STRIDE;
+    let last_offset = targets_offset + (new_count as usize) * STRIDE;
+
+    // 1. If we're removing a non-last entry, copy the last target's bytes
+    // into the removed slot. (For index == new_count the slot is already at
+    // the boundary; no swap needed.)
+    if index != new_count {
+        data.copy_within(last_offset..last_offset + STRIDE, removed_offset);
+    }
+
+    // 2. Shift trailing bytes left by STRIDE so they sit immediately after
+    // the (now smaller) targets section.
+    let trailing_src = last_offset + STRIDE;
+    let trailing_len = data.len().saturating_sub(trailing_src);
+    if trailing_len > 0 {
+        data.copy_within(trailing_src..trailing_src + trailing_len, last_offset);
+    }
+
+    // 3. Patch the count prefix.
+    data[count_offset..count_offset + 4].copy_from_slice(&new_count.to_le_bytes());
+
+    Ok(new_count)
+}
+
 /// Insert `target_bytes` at the end of the targets section in `data`, shifting
 /// any trailing bytes (e.g. `result_destination`) by `+STRIDE`. The buffer
 /// must already be sized to the post-append length (i.e. caller has resized
@@ -322,6 +366,141 @@ mod tests {
             // Trailing bytes intact.
             let trailing_offset = targets_offset + new_count as usize * STRIDE;
             assert_eq!(&data[trailing_offset..trailing_offset + trailing.len()], trailing);
+        }
+    }
+
+    #[test]
+    fn swap_remove_bytes_last_index_no_swap() {
+        let existing: Vec<_> = (0..3).map(sample_target).collect();
+        let trailing = b"\x05\x00\x00\x00hello";
+        let (mut data, targets_offset) = synthetic_buffer(&existing, trailing);
+
+        let new_count =
+            swap_remove_target_bytes(&mut data, targets_offset, existing.len() as u32, 2)
+                .unwrap();
+        assert_eq!(new_count, 2);
+
+        let cursor = TargetsCursor::new(
+            &data[targets_offset..targets_offset + new_count as usize * STRIDE],
+            new_count,
+        )
+        .unwrap();
+        assert_eq!(cursor.get(0).unwrap(), existing[0]);
+        assert_eq!(cursor.get(1).unwrap(), existing[1]);
+
+        // Trailing bytes should now sit immediately after the truncated
+        // targets section — i.e. at `targets_offset + 2 * STRIDE`.
+        let trailing_offset = targets_offset + 2 * STRIDE;
+        assert_eq!(&data[trailing_offset..trailing_offset + trailing.len()], trailing);
+    }
+
+    #[test]
+    fn swap_remove_bytes_middle_index_swaps_last_in() {
+        let existing: Vec<_> = (0..5).map(sample_target).collect();
+        let (mut data, targets_offset) = synthetic_buffer(&existing, &[]);
+
+        let new_count =
+            swap_remove_target_bytes(&mut data, targets_offset, existing.len() as u32, 1)
+                .unwrap();
+        assert_eq!(new_count, 4);
+
+        let cursor = TargetsCursor::new(
+            &data[targets_offset..targets_offset + new_count as usize * STRIDE],
+            new_count,
+        )
+        .unwrap();
+        // index 0 unchanged
+        assert_eq!(cursor.get(0).unwrap(), existing[0]);
+        // index 1 now holds what used to be the last entry (existing[4])
+        assert_eq!(cursor.get(1).unwrap(), existing[4]);
+        // index 2,3 unchanged
+        assert_eq!(cursor.get(2).unwrap(), existing[2]);
+        assert_eq!(cursor.get(3).unwrap(), existing[3]);
+    }
+
+    #[test]
+    fn swap_remove_bytes_out_of_range_errors() {
+        let existing = vec![sample_target(0)];
+        let (mut data, targets_offset) = synthetic_buffer(&existing, &[]);
+        assert_eq!(
+            swap_remove_target_bytes(&mut data, targets_offset, 1, 1).unwrap_err(),
+            ProgramError::InvalidArgument
+        );
+    }
+
+    #[test]
+    fn append_and_swap_remove_oracle() {
+        // Drive the byte helpers through an interleaved sequence of appends
+        // and removes; mirror the same sequence on a Vec<GeolocationTarget>;
+        // after each step assert the cursor view matches the oracle.
+        let trailing = b"\x05\x00\x00\x00hello";
+        let mut oracle: Vec<GeolocationTarget> = Vec::new();
+        let (mut data, targets_offset) = synthetic_buffer(&oracle, trailing);
+
+        // Operations: A=append, R=remove. Indices interpreted against the
+        // oracle's current length, with `% len()`.
+        let ops = [
+            ("A", 0),
+            ("A", 1),
+            ("A", 2),
+            ("A", 3),
+            ("A", 4),
+            ("R", 1), // remove middle
+            ("R", 2),
+            ("A", 99),
+            ("R", 0), // remove first
+            ("A", 100),
+            ("A", 101),
+            ("R", 4), // remove last (oracle len after last A is 5)
+        ];
+
+        for (op, key) in ops {
+            match op {
+                "A" => {
+                    let new = sample_target(2000 + key);
+                    data.resize(data.len() + STRIDE, 0);
+                    let new_count = append_target_bytes(
+                        &mut data,
+                        targets_offset,
+                        oracle.len() as u32,
+                        &target_bytes(&new),
+                    )
+                    .unwrap();
+                    oracle.push(new);
+                    assert_eq!(new_count, oracle.len() as u32);
+                }
+                "R" => {
+                    let idx = (key as usize) % oracle.len();
+                    let new_count = swap_remove_target_bytes(
+                        &mut data,
+                        targets_offset,
+                        oracle.len() as u32,
+                        idx as u32,
+                    )
+                    .unwrap();
+                    oracle.swap_remove(idx);
+                    let new_size = data.len() - STRIDE;
+                    data.truncate(new_size);
+                    assert_eq!(new_count, oracle.len() as u32);
+                }
+                _ => unreachable!(),
+            }
+
+            // After every op, cursor view must match the oracle exactly.
+            let cursor = TargetsCursor::new(
+                &data[targets_offset..targets_offset + oracle.len() * STRIDE],
+                oracle.len() as u32,
+            )
+            .unwrap();
+            for (i, expected) in oracle.iter().enumerate() {
+                assert_eq!(&cursor.get(i as u32).unwrap(), expected);
+            }
+            // Trailing bytes must always sit at the end, intact.
+            let trailing_off = targets_offset + oracle.len() * STRIDE;
+            assert_eq!(
+                &data[trailing_off..trailing_off + trailing.len()],
+                trailing
+            );
         }
     }
 }

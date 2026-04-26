@@ -1,15 +1,17 @@
 //! Heap-friendly read of a `GeolocationUser` account.
 //!
 //! `GeolocationUser::try_from` borsh-deserializes `targets: Vec<GeolocationTarget>`
-//! onto the BPF heap, which OOMs at N≈250 (#3591). This view reads the same
-//! wire format but **skips** past the targets bytes — their length is fully
+//! onto the BPF heap, which OOMs at N≈250. This view reads the same wire
+//! format but **skips** past the targets bytes — their length is fully
 //! determined by the preceding `u32` count, so we can record the offset and
 //! continue parsing `result_destination` without materializing any per-target
 //! data. Heap usage is bounded by `code` + `result_destination` lengths,
 //! independent of N.
 //!
-//! Use `cursor()` to scan the targets section. Use `with_cursor()` for the
-//! common borrow + scan + drop pattern.
+//! Use [`GeolocationUserView::cursor`] over a borrowed `&data` slice to scan
+//! the targets section. Mutating operations (`append_target`,
+//! `swap_remove_target`, `write_prefix`, `write_result_destination`) take
+//! `&AccountInfo` and handle the resize + memmove bookkeeping in place.
 
 use crate::state::{
     accounttype::AccountType,
@@ -71,8 +73,8 @@ impl GeolocationUserView {
             .map_err(|_| ProgramError::InvalidAccountData)?;
         let status = GeolocationUserStatus::deserialize_reader(&mut reader)
             .map_err(|_| ProgramError::InvalidAccountData)?;
-        let targets_count = u32::deserialize_reader(&mut reader)
-            .map_err(|_| ProgramError::InvalidAccountData)?;
+        let targets_count =
+            u32::deserialize_reader(&mut reader).map_err(|_| ProgramError::InvalidAccountData)?;
 
         // Position right after the targets length prefix.
         let targets_offset = data.len() - reader.len();
@@ -90,8 +92,7 @@ impl GeolocationUserView {
         let result_destination = if reader.is_empty() {
             String::new()
         } else {
-            String::deserialize_reader(&mut reader)
-                .map_err(|_| ProgramError::InvalidAccountData)?
+            String::deserialize_reader(&mut reader).map_err(|_| ProgramError::InvalidAccountData)?
         };
 
         Ok(Self {

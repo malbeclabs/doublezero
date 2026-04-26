@@ -7,7 +7,7 @@
 //!         --test add_target_cu_benchmark -p doublezero-geolocation --release \
 //!         -- --ignored --nocapture
 //!
-//! After the cursor refactor (#3591) the targets section is read and written
+//! With the cursor-based read/write paths the targets section is processed
 //! in place, so heap usage no longer scales with N. CU on the per-call dup
 //! scan is now the binding constraint.
 
@@ -202,10 +202,9 @@ async fn measure_add_target(target_count: usize) -> Measurement {
 #[tokio::test]
 #[ignore = "benchmark - run explicitly via `cargo test --test add_target_cu_benchmark -- --ignored --nocapture`"]
 async fn benchmark_add_target_cu_scaling() {
-    // Sweep up through where CU becomes the binding constraint. Pre-cursor
-    // (issue #3591) this OOM'd at N≈250 due to heap; post-cursor heap is
-    // bounded so we can climb until the dup-scan exhausts the 1.4 M CU
-    // budget.
+    // Sweep up through where CU becomes the binding constraint. Before the
+    // cursor refactor this OOM'd at N≈250 due to heap; with bounded heap we
+    // can climb until the dup-scan exhausts the 1.4 M CU budget.
     // MAX_TARGETS is currently 4096 and add_target rejects beyond that, so
     // 4095 is the highest reachable sample. Raising MAX_TARGETS based on
     // these measurements is a separate PR.

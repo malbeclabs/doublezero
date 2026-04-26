@@ -4,7 +4,6 @@
 //! Per-call heap usage is bounded by a single `GeolocationTarget` (71 bytes)
 //! regardless of `N`. This avoids the OOM that hits the default 32 KiB BPF
 //! heap when borsh-deserializing a `Vec<GeolocationTarget>` past N≈250.
-//! See https://github.com/malbeclabs/doublezero/issues/3591.
 
 use crate::state::geolocation_user::GeolocationTarget;
 use solana_program::program_error::ProgramError;
@@ -228,10 +227,7 @@ mod tests {
     #[test]
     fn get_out_of_range_errors() {
         let cursor = TargetsCursor::new(&[], 0).unwrap();
-        assert_eq!(
-            cursor.get(0).unwrap_err(),
-            ProgramError::InvalidArgument
-        );
+        assert_eq!(cursor.get(0).unwrap_err(), ProgramError::InvalidArgument);
     }
 
     #[test]
@@ -283,13 +279,8 @@ mod tests {
         // Caller must resize first.
         data.resize(data.len() + STRIDE, 0);
 
-        let new_count = append_target_bytes(
-            &mut data,
-            targets_offset,
-            0,
-            &target_bytes(&new_target),
-        )
-        .unwrap();
+        let new_count =
+            append_target_bytes(&mut data, targets_offset, 0, &target_bytes(&new_target)).unwrap();
 
         assert_eq!(new_count, 1);
         // Verify the count prefix updated.
@@ -330,7 +321,10 @@ mod tests {
         assert_eq!(cursor.get(existing.len() as u32).unwrap(), new_target);
         // Trailing bytes intact at the new offset.
         let trailing_offset = targets_offset + new_count as usize * STRIDE;
-        assert_eq!(&data[trailing_offset..trailing_offset + trailing.len()], trailing);
+        assert_eq!(
+            &data[trailing_offset..trailing_offset + trailing.len()],
+            trailing
+        );
     }
 
     #[test]
@@ -365,7 +359,10 @@ mod tests {
             }
             // Trailing bytes intact.
             let trailing_offset = targets_offset + new_count as usize * STRIDE;
-            assert_eq!(&data[trailing_offset..trailing_offset + trailing.len()], trailing);
+            assert_eq!(
+                &data[trailing_offset..trailing_offset + trailing.len()],
+                trailing
+            );
         }
     }
 
@@ -376,8 +373,7 @@ mod tests {
         let (mut data, targets_offset) = synthetic_buffer(&existing, trailing);
 
         let new_count =
-            swap_remove_target_bytes(&mut data, targets_offset, existing.len() as u32, 2)
-                .unwrap();
+            swap_remove_target_bytes(&mut data, targets_offset, existing.len() as u32, 2).unwrap();
         assert_eq!(new_count, 2);
 
         let cursor = TargetsCursor::new(
@@ -391,7 +387,10 @@ mod tests {
         // Trailing bytes should now sit immediately after the truncated
         // targets section — i.e. at `targets_offset + 2 * STRIDE`.
         let trailing_offset = targets_offset + 2 * STRIDE;
-        assert_eq!(&data[trailing_offset..trailing_offset + trailing.len()], trailing);
+        assert_eq!(
+            &data[trailing_offset..trailing_offset + trailing.len()],
+            trailing
+        );
     }
 
     #[test]
@@ -400,8 +399,7 @@ mod tests {
         let (mut data, targets_offset) = synthetic_buffer(&existing, &[]);
 
         let new_count =
-            swap_remove_target_bytes(&mut data, targets_offset, existing.len() as u32, 1)
-                .unwrap();
+            swap_remove_target_bytes(&mut data, targets_offset, existing.len() as u32, 1).unwrap();
         assert_eq!(new_count, 4);
 
         let cursor = TargetsCursor::new(
@@ -497,10 +495,7 @@ mod tests {
             }
             // Trailing bytes must always sit at the end, intact.
             let trailing_off = targets_offset + oracle.len() * STRIDE;
-            assert_eq!(
-                &data[trailing_off..trailing_off + trailing.len()],
-                trailing
-            );
+            assert_eq!(&data[trailing_off..trailing_off + trailing.len()], trailing);
         }
     }
 }

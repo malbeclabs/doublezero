@@ -1,6 +1,4 @@
-use crate::{
-    error::GeolocationError, state::geolocation_user_view::GeolocationUserView,
-};
+use crate::{error::GeolocationError, state::geolocation_user_view::GeolocationUserView};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},

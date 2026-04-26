@@ -3,8 +3,7 @@ use crate::{
     processors::check_foundation_allowlist,
     serializer::try_acc_write,
     state::{
-        geo_probe::GeoProbe,
-        geolocation_user::GeoLocationTargetType,
+        geo_probe::GeoProbe, geolocation_user::GeoLocationTargetType,
         geolocation_user_view::GeolocationUserView,
     },
 };

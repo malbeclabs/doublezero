@@ -119,10 +119,10 @@ pub fn process_set_result_destination(
         args.destination.clone()
     };
 
-    // Phase 0: pre-flight each provided probe account (owner / writable /
-    // dedup), and assemble a small sorted Vec<Pubkey> of provided keys that
-    // we can binary-search per target during the cursor scan. Bounded by
-    // the tx accounts list size (~30), so heap usage stays small.
+    // Pre-flight each provided probe account (owner / writable / dedup) and
+    // assemble a small sorted Vec<Pubkey> we can binary-search per target
+    // during the cursor scan. Bounded by the tx accounts list size (~30),
+    // so heap usage stays small.
     let mut provided: Vec<Pubkey> = Vec::with_capacity(probe_accounts.len());
     for probe_account in probe_accounts {
         if probe_account.owner != program_id {
@@ -143,12 +143,11 @@ pub fn process_set_result_destination(
         }
     }
 
-    // Phase 1: build a sorted set of unique probes referenced by the
-    // targets, via a cursor scan. We only need to know whether
-    // |unique-from-targets| equals |provided|, so we cap the set at
-    // |provided| + 1: anything beyond that is already a count mismatch.
-    // Heap bound: (provided.len() + 1) * 32 bytes (≤ ~1 KB at realistic
-    // tx-size limits).
+    // Build a sorted set of unique probes referenced by the targets via a
+    // cursor scan. We only need to know whether |unique-from-targets|
+    // equals |provided|, so we cap the set at |provided| + 1: anything
+    // beyond that is already a count mismatch. Heap bound:
+    // (provided.len() + 1) * 32 bytes (≤ ~1 KB at realistic tx-size limits).
     let unique_cap = provided.len().saturating_add(1);
     let mut unique_from_targets: Vec<Pubkey> = Vec::with_capacity(unique_cap);
     {
@@ -169,7 +168,7 @@ pub fn process_set_result_destination(
         }
     }
 
-    // Phase 2: cardinality check.
+    // Cardinality check.
     if provided.len() != unique_from_targets.len() {
         msg!(
             "Expected {} probe accounts, got {}",
@@ -179,7 +178,7 @@ pub fn process_set_result_destination(
         return Err(GeolocationError::ProbeAccountCountMismatch.into());
     }
 
-    // Phase 3: membership — every provided probe must appear among the
+    // Membership: every provided probe must appear among the
     // unique-from-targets set. (Cardinalities are equal, so this also
     // implies the reverse direction.)
     for p in &provided {

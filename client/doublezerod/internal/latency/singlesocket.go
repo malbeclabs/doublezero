@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -96,11 +97,20 @@ func SingleSocketPing(ctx context.Context, targets []ProbeTarget) []LatencyResul
 			}
 
 			for _, idx := range indices {
-				if !states[idx].rtts[seq].got {
-					states[idx].rtts[seq].got = true
-					states[idx].rtts[seq].rtt = receiveTime.Sub(states[idx].rtts[seq].sent)
-					totalReceived.Add(1)
+				// Lock pairs with the sender's write of `.sent` below. The kernel
+				// roundtrip provides a logical happens-before, but the race
+				// detector can't see across socket I/O — explicit synchronization
+				// is required.
+				states[idx].mu.Lock()
+				if states[idx].rtts[seq].got {
+					states[idx].mu.Unlock()
+					continue
 				}
+				sent := states[idx].rtts[seq].sent
+				states[idx].rtts[seq].got = true
+				states[idx].rtts[seq].rtt = receiveTime.Sub(sent)
+				states[idx].mu.Unlock()
+				totalReceived.Add(1)
 			}
 		}
 	}()
@@ -122,7 +132,9 @@ func SingleSocketPing(ctx context.Context, targets []ProbeTarget) []LatencyResul
 				slog.Error("latency: failed to marshal ICMP message", "target", t.IP, "error", err)
 				continue
 			}
+			states[i].mu.Lock()
 			states[i].rtts[seq].sent = time.Now()
+			states[i].mu.Unlock()
 			_, err = conn.WriteTo(b, &net.IPAddr{IP: t.IP})
 			if err != nil {
 				slog.Error("latency: failed to send ICMP echo", "target", t.IP, "error", err)
@@ -154,17 +166,27 @@ type rttEntry struct {
 
 type probeState struct {
 	target ProbeTarget
-	rtts   [pingCount]rttEntry
+	// mu protects concurrent access to rtts[*].sent between the sender (main)
+	// goroutine and the reader goroutine. The other rtts fields are only
+	// written by the reader and read by buildResults after readerDone closes.
+	mu   sync.Mutex
+	rtts [pingCount]rttEntry
 }
 
 func buildResults(states []probeState) []LatencyResult {
 	results := make([]LatencyResult, len(states))
-	for i, s := range states {
+	// Iterate by index so we don't copy probeState (which contains a Mutex).
+	// Safe to read rtts without locking: this is called only after
+	// readerDone closes, which establishes happens-before with the reader
+	// goroutine, and the sender goroutine has long since finished.
+	for i := range states {
+		s := &states[i]
 		var received int
 		var total, minRtt, maxRtt time.Duration
 		minRtt = time.Hour // sentinel
 
-		for _, r := range s.rtts {
+		for j := range s.rtts {
+			r := &s.rtts[j]
 			if r.got {
 				received++
 				total += r.rtt

@@ -3,8 +3,8 @@ use crate::{
     processors::check_foundation_allowlist,
     serializer::try_acc_write,
     state::{
-        geo_probe::GeoProbe,
-        geolocation_user::{GeoLocationTargetType, GeolocationUser},
+        geo_probe::GeoProbe, geolocation_user::GeoLocationTargetType,
+        geolocation_user_view::GeolocationUserView,
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -61,9 +61,9 @@ pub fn process_remove_target(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let mut user = GeolocationUser::try_from(user_account)?;
+    let mut view = GeolocationUserView::try_from_account(user_account)?;
 
-    if user.owner != *payer_account.key {
+    if view.owner != *payer_account.key {
         check_foundation_allowlist(
             program_config_account,
             serviceability_globalstate_account,
@@ -73,30 +73,29 @@ pub fn process_remove_target(
     }
 
     let mut probe = GeoProbe::try_from(probe_account)?;
-
     let geoprobe_pk = *probe_account.key;
 
-    let index = user
-        .targets
-        .iter()
-        .position(|t| {
-            t.target_type == args.target_type
-                && t.geoprobe_pk == geoprobe_pk
-                && match args.target_type {
-                    GeoLocationTargetType::Outbound | GeoLocationTargetType::OutboundIcmp => {
-                        t.ip_address == args.ip_address
+    let index = {
+        let data = user_account.try_borrow_data()?;
+        let cursor = view.cursor(&data)?;
+        cursor
+            .find_match(|t| {
+                t.target_type == args.target_type
+                    && t.geoprobe_pk == geoprobe_pk
+                    && match args.target_type {
+                        GeoLocationTargetType::Outbound | GeoLocationTargetType::OutboundIcmp => {
+                            t.ip_address == args.ip_address
+                        }
+                        GeoLocationTargetType::Inbound => t.target_pk == args.target_pk,
                     }
-                    GeoLocationTargetType::Inbound => t.target_pk == args.target_pk,
-                }
-        })
-        .ok_or(GeolocationError::TargetNotFound)?;
+            })?
+            .ok_or(GeolocationError::TargetNotFound)?
+    };
 
-    user.targets.swap_remove(index);
+    view.swap_remove_target(user_account, payer_account, accounts, index)?;
 
     probe.reference_count = probe.reference_count.saturating_sub(1);
     probe.target_update_count = probe.target_update_count.wrapping_add(1);
-
-    try_acc_write(&user, user_account, payer_account, accounts)?;
     try_acc_write(&probe, probe_account, payer_account, accounts)?;
 
     Ok(())

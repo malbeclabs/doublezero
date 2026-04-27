@@ -1,6 +1,4 @@
-use crate::{
-    error::GeolocationError, serializer::try_acc_write, state::geolocation_user::GeolocationUser,
-};
+use crate::{error::GeolocationError, state::geolocation_user_view::GeolocationUserView};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -44,18 +42,18 @@ pub fn process_update_geolocation_user(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let mut user = GeolocationUser::try_from(user_account)?;
+    let mut view = GeolocationUserView::try_from_account(user_account)?;
 
-    if user.owner != *payer_account.key {
+    if view.owner != *payer_account.key {
         msg!("Signer is not the account owner");
         return Err(GeolocationError::Unauthorized.into());
     }
 
     if let Some(token_account) = args.token_account {
-        user.token_account = token_account;
+        view.token_account = token_account;
     }
 
-    try_acc_write(&user, user_account, payer_account, accounts)?;
+    view.write_prefix(user_account)?;
 
     Ok(())
 }

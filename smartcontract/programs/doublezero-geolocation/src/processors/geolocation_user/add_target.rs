@@ -3,9 +3,8 @@ use crate::{
     serializer::try_acc_write,
     state::{
         geo_probe::GeoProbe,
-        geolocation_user::{
-            GeoLocationTargetType, GeolocationTarget, GeolocationUser, MAX_TARGETS,
-        },
+        geolocation_user::{GeoLocationTargetType, GeolocationTarget, MAX_TARGETS},
+        geolocation_user_view::GeolocationUserView,
     },
     validation::validate_public_ip,
 };
@@ -62,16 +61,16 @@ pub fn process_add_target(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let mut user = GeolocationUser::try_from(user_account)?;
+    let mut view = GeolocationUserView::try_from_account(user_account)?;
 
-    if user.owner != *payer_account.key {
+    if view.owner != *payer_account.key {
         msg!("Signer is not the account owner");
         return Err(GeolocationError::Unauthorized.into());
     }
 
     let mut probe = GeoProbe::try_from(probe_account)?;
 
-    if user.targets.len() >= MAX_TARGETS {
+    if (view.targets_count as usize) >= MAX_TARGETS {
         msg!("Cannot add target: already at maximum of {}", MAX_TARGETS);
         return Err(GeolocationError::MaxTargetsReached.into());
     }
@@ -90,29 +89,34 @@ pub fn process_add_target(
         }
     }
 
-    let duplicate = user.targets.iter().any(|t| {
-        t.target_type == args.target_type
-            && t.geoprobe_pk == geoprobe_pk
-            && t.ip_address == args.ip_address
-            && t.target_pk == args.target_pk
-    });
-    if duplicate {
-        msg!("Target already exists");
-        return Err(GeolocationError::TargetAlreadyExists.into());
+    // Duplicate check: scan the targets section without materializing it.
+    {
+        let data = user_account.try_borrow_data()?;
+        let cursor = view.cursor(&data)?;
+        let duplicate = cursor.find_match(|t| {
+            t.target_type == args.target_type
+                && t.geoprobe_pk == geoprobe_pk
+                && t.ip_address == args.ip_address
+                && t.target_pk == args.target_pk
+        })?;
+        if duplicate.is_some() {
+            msg!("Target already exists");
+            return Err(GeolocationError::TargetAlreadyExists.into());
+        }
     }
 
-    user.targets.push(GeolocationTarget {
+    let new_target = GeolocationTarget {
         target_type: args.target_type,
         ip_address: args.ip_address,
         location_offset_port: args.location_offset_port,
         target_pk: args.target_pk,
         geoprobe_pk,
-    });
+    };
+    view.append_target(user_account, payer_account, accounts, &new_target)?;
 
     probe.reference_count = probe.reference_count.saturating_add(1);
     probe.target_update_count = probe.target_update_count.wrapping_add(1);
 
-    try_acc_write(&user, user_account, payer_account, accounts)?;
     try_acc_write(&probe, probe_account, payer_account, accounts)?;
 
     Ok(())

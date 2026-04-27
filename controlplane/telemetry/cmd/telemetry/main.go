@@ -423,7 +423,7 @@ func startBGPStatusSubmitter(
 		Log:                     log,
 		Executor:                executor,
 		ServiceabilityClient:    svcClient,
-		LocalNet:                localNet,
+		Collector:               bgpstatus.DefaultCollector(localNet),
 		LocalDevicePK:           localDevicePK,
 		BGPNamespace:            bgpNamespace,
 		Interval:                *bgpStatusInterval,

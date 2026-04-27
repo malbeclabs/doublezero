@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,12 +35,18 @@ type ServiceabilityClient interface {
 	GetProgramData(ctx context.Context) (*serviceability.ProgramData, error)
 }
 
+// NamespaceCollector collects BGP session state and local network interfaces
+// from a single Linux VRF network namespace. It returns the set of remote IP
+// strings with ESTABLISHED BGP sessions, the local interfaces, and any error.
+// Implement with DefaultCollector for production; use a mock in tests.
+type NamespaceCollector func(ctx context.Context, namespace string) (established map[string]struct{}, ifaces []netutil.Interface, err error)
+
 // Config holds all parameters for the BGP status submitter.
 type Config struct {
 	Log                     *slog.Logger
 	Executor                BGPStatusExecutor
 	ServiceabilityClient    ServiceabilityClient
-	LocalNet                netutil.LocalNet
+	Collector               NamespaceCollector
 	LocalDevicePK           solana.PublicKey
 	BGPNamespace            string
 	Interval                time.Duration // default: 60s
@@ -57,8 +65,8 @@ func (c *Config) validate() error {
 	if c.ServiceabilityClient == nil {
 		return errors.New("serviceability client is required")
 	}
-	if c.LocalNet == nil {
-		return errors.New("local net is required")
+	if c.Collector == nil {
+		return errors.New("collector is required")
 	}
 	if c.LocalDevicePK.IsZero() {
 		return errors.New("local device pubkey is required")
@@ -192,6 +200,27 @@ func computeEffectiveStatus(
 		return serviceability.BGPStatusUp
 	}
 	return serviceability.BGPStatusDown
+}
+
+// vrfNamespaces builds the list of Linux network namespaces to check for BGP
+// sockets and tunnel interfaces. It derives additional namespaces from tenant
+// VRF IDs by replacing the trailing numeric suffix of base (e.g. "ns-vrf1")
+// with each tenant's VrfId. The base namespace is always included first.
+func vrfNamespaces(base string, tenants []serviceability.Tenant) []string {
+	prefix := strings.TrimRight(base, "0123456789")
+	seen := map[string]struct{}{base: {}}
+	nss := []string{base}
+	for _, t := range tenants {
+		if t.VrfId == 0 {
+			continue
+		}
+		ns := prefix + strconv.FormatUint(uint64(t.VrfId), 10)
+		if _, ok := seen[ns]; !ok {
+			seen[ns] = struct{}{}
+			nss = append(nss, ns)
+		}
+	}
+	return nss
 }
 
 // shouldSubmit returns true when a submission is warranted: either the status

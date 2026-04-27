@@ -44,13 +44,6 @@ func SingleSocketPing(ctx context.Context, targets []ProbeTarget) []LatencyResul
 		states[i].target = t
 	}
 
-	// Build a lookup from destination IP to list of target indices (multiple
-	// targets can share an IP in theory, but typically they don't).
-	ipToIndices := make(map[string][]int, len(targets))
-	for i, t := range targets {
-		ipToIndices[t.IP.String()] = append(ipToIndices[t.IP.String()], i)
-	}
-
 	payload := make([]byte, pingPayload)
 
 	// Set read deadline for the entire probe session.
@@ -90,28 +83,41 @@ func SingleSocketPing(ctx context.Context, targets []ProbeTarget) []LatencyResul
 				continue
 			}
 
-			peerIP := peer.String()
-			indices, ok := ipToIndices[peerIP]
-			if !ok {
+			// Match by echo.ID = the target index we set when sending. Raw
+			// ICMP sockets preserve the ID byte-for-byte, so this filters out
+			// stray echo replies (e.g. responses to other processes' pings on
+			// the host) that would otherwise be misattributed to one of our
+			// slots and produce bogus RTTs.
+			idx := echo.ID
+			if idx < 0 || idx >= len(targets) {
+				continue
+			}
+			if peer.String() != targets[idx].IP.String() {
 				continue
 			}
 
-			for _, idx := range indices {
-				// Lock pairs with the sender's write of `.sent` below. The kernel
-				// roundtrip provides a logical happens-before, but the race
-				// detector can't see across socket I/O — explicit synchronization
-				// is required.
-				states[idx].mu.Lock()
-				if states[idx].rtts[seq].got {
-					states[idx].mu.Unlock()
-					continue
-				}
-				sent := states[idx].rtts[seq].sent
-				states[idx].rtts[seq].got = true
-				states[idx].rtts[seq].rtt = receiveTime.Sub(sent)
+			// Lock pairs with the sender's write of `.sent` below. The kernel
+			// roundtrip provides a logical happens-before, but the race
+			// detector can't see across socket I/O — explicit synchronization
+			// is required.
+			states[idx].mu.Lock()
+			if states[idx].rtts[seq].got {
 				states[idx].mu.Unlock()
-				totalReceived.Add(1)
+				continue
 			}
+			sent := states[idx].rtts[seq].sent
+			if sent.IsZero() {
+				// Reply arrived before the matching send was recorded —
+				// shouldn't happen given the echo.ID match, but defensive:
+				// computing receiveTime.Sub(zero) would saturate to
+				// MaxDuration and poison the result.
+				states[idx].mu.Unlock()
+				continue
+			}
+			states[idx].rtts[seq].got = true
+			states[idx].rtts[seq].rtt = receiveTime.Sub(sent)
+			states[idx].mu.Unlock()
+			totalReceived.Add(1)
 		}
 	}()
 

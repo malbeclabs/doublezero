@@ -310,9 +310,12 @@ func TestE2E_UserBGPStatus_NonDefaultTenant(t *testing.T) {
 		}, 60*time.Second, 2*time.Second, "device was not activated within timeout")
 	})
 
-	// Create a non-default tenant so the user's tunnel lands in VrfId != 1.
-	if !t.Run("create_tenant", func(t *testing.T) {
-		_, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "tenant", "create", "--code", "tenant-alpha"})
+	// Create two tenants: the first consumes VrfId=1 (the default), so the
+	// second ("tenant-alpha") receives VrfId=2, guaranteeing a non-default VRF.
+	if !t.Run("create_tenants", func(t *testing.T) {
+		_, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "tenant", "create", "--code", "tenant-placeholder"})
+		require.NoError(t, err)
+		_, err = dn.Manager.Exec(t.Context(), []string{"doublezero", "tenant", "create", "--code", "tenant-alpha"})
 		require.NoError(t, err)
 	}) {
 		t.FailNow()

@@ -2070,3 +2070,168 @@ async fn test_set_result_destination_wrong_probe_count() {
         _ => panic!("Expected ProbeAccountCountMismatch error, got: {:?}", err),
     }
 }
+
+// `result_destination` lives at the tail of the account, after the targets section. `add_target`
+// shifts the tail forward by one stride, `remove_target` (swap-remove) shifts it back. Drives the
+// full add/remove cycle through `banks_client` so the in-place mutations get a CI signal.
+#[tokio::test]
+async fn test_result_destination_survives_add_remove_cycle() {
+    let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
+        setup_test_with_exchange(ExchangeStatus::Activated).await;
+
+    let probe1_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-cycle-1",
+    )
+    .await;
+    let probe2_pda = create_geo_probe(
+        &mut banks_client,
+        &program_id,
+        &recent_blockhash,
+        &payer,
+        &exchange_pubkey,
+        "probe-cycle-2",
+    )
+    .await;
+
+    let user_code = "user-cycle";
+    let ix = build_create_user_ix(
+        &program_id,
+        user_code,
+        &Pubkey::new_unique(),
+        &payer.pubkey(),
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+    let (user_pda, _) = get_geolocation_user_pda(&program_id, user_code);
+
+    // Add first target referencing probe1.
+    let add1_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe1_pda,
+        &payer.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            location_offset_port: 8923,
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[add1_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    // Stamp the result_destination with one target in place.
+    let expected_destination = "185.199.108.1:9000".to_string();
+    let set_ix = build_set_result_destination_ix(
+        &program_id,
+        &user_pda,
+        &payer.pubkey(),
+        &[probe1_pda],
+        SetResultDestinationArgs {
+            destination: expected_destination.clone(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[set_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert_eq!(user.result_destination, expected_destination);
+
+    // Add a second target — shifts the tail forward by one stride.
+    let add2_ix = build_add_target_ix(
+        &program_id,
+        &user_pda,
+        &probe2_pda,
+        &payer.pubkey(),
+        AddTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(1, 1, 1, 1),
+            location_offset_port: 8924,
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[add2_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert_eq!(user.result_destination, expected_destination);
+    assert_eq!(user.targets.len(), 2);
+
+    // Remove the first target — swap-remove pulls target2 into slot 0 and shifts the tail back.
+    let rm1_ix = build_remove_target_ix(
+        &program_id,
+        &user_pda,
+        &probe1_pda,
+        &payer.pubkey(),
+        RemoveTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(8, 8, 8, 8),
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[rm1_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert_eq!(user.result_destination, expected_destination);
+    assert_eq!(user.targets.len(), 1);
+    assert_eq!(user.targets[0].ip_address, Ipv4Addr::new(1, 1, 1, 1));
+
+    // Remove the last remaining target — trailing-section truncation, no swap.
+    let rm2_ix = build_remove_target_ix(
+        &program_id,
+        &user_pda,
+        &probe2_pda,
+        &payer.pubkey(),
+        RemoveTargetArgs {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(1, 1, 1, 1),
+            target_pk: Pubkey::default(),
+        },
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[rm2_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        *recent_blockhash.read().await,
+    );
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let account = banks_client.get_account(user_pda).await.unwrap().unwrap();
+    let user = GeolocationUser::try_from(&account.data[..]).unwrap();
+    assert_eq!(user.result_destination, expected_destination);
+    assert!(user.targets.is_empty());
+}

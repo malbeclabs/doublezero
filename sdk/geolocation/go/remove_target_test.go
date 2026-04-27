@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuildRemoveTargetInstruction_Valid(t *testing.T) {
+func TestBuildRemoveTargetInstructions_Valid(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
@@ -17,7 +17,7 @@ func TestBuildRemoveTargetInstruction_Valid(t *testing.T) {
 	targetPK := solana.NewWallet().PublicKey()
 	serviceabilityGS := solana.NewWallet().PublicKey()
 
-	ix, err := geolocation.BuildRemoveTargetInstruction(programID, signerPK, geolocation.RemoveTargetInstructionConfig{
+	ixs, err := geolocation.BuildRemoveTargetInstructions(programID, signerPK, geolocation.RemoveTargetInstructionConfig{
 		Code:                      "test-user",
 		ProbePK:                   probePK,
 		TargetType:                geolocation.GeoLocationTargetTypeOutbound,
@@ -26,7 +26,9 @@ func TestBuildRemoveTargetInstruction_Valid(t *testing.T) {
 		ServiceabilityGlobalState: serviceabilityGS,
 	})
 	require.NoError(t, err)
-	require.NotNil(t, ix)
+	require.Len(t, ixs, 2, "expected [SetComputeUnitLimit, RemoveTarget]")
+	assertComputeBudgetPrefix(t, ixs[0])
+	ix := ixs[1]
 
 	// Verify program ID.
 	require.Equal(t, programID, ix.ProgramID())
@@ -72,13 +74,13 @@ func TestBuildRemoveTargetInstruction_Valid(t *testing.T) {
 	require.False(t, accounts[5].IsSigner)
 }
 
-func TestBuildRemoveTargetInstruction_EmptyCode(t *testing.T) {
+func TestBuildRemoveTargetInstructions_EmptyCode(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
 	signerPK := solana.NewWallet().PublicKey()
 
-	_, err := geolocation.BuildRemoveTargetInstruction(programID, signerPK, geolocation.RemoveTargetInstructionConfig{
+	_, err := geolocation.BuildRemoveTargetInstructions(programID, signerPK, geolocation.RemoveTargetInstructionConfig{
 		Code:                      "",
 		ProbePK:                   solana.NewWallet().PublicKey(),
 		TargetType:                geolocation.GeoLocationTargetTypeOutbound,
@@ -90,13 +92,13 @@ func TestBuildRemoveTargetInstruction_EmptyCode(t *testing.T) {
 	require.Contains(t, err.Error(), "code is required")
 }
 
-func TestBuildRemoveTargetInstruction_ZeroProbePK(t *testing.T) {
+func TestBuildRemoveTargetInstructions_ZeroProbePK(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
 	signerPK := solana.NewWallet().PublicKey()
 
-	_, err := geolocation.BuildRemoveTargetInstruction(programID, signerPK, geolocation.RemoveTargetInstructionConfig{
+	_, err := geolocation.BuildRemoveTargetInstructions(programID, signerPK, geolocation.RemoveTargetInstructionConfig{
 		Code:                      "test-user",
 		ProbePK:                   solana.PublicKey{},
 		TargetType:                geolocation.GeoLocationTargetTypeOutbound,
@@ -108,13 +110,13 @@ func TestBuildRemoveTargetInstruction_ZeroProbePK(t *testing.T) {
 	require.Contains(t, err.Error(), "probe public key is required")
 }
 
-func TestBuildRemoveTargetInstruction_InboundZeroTargetPK(t *testing.T) {
+func TestBuildRemoveTargetInstructions_InboundZeroTargetPK(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
 	signerPK := solana.NewWallet().PublicKey()
 
-	_, err := geolocation.BuildRemoveTargetInstruction(programID, signerPK, geolocation.RemoveTargetInstructionConfig{
+	_, err := geolocation.BuildRemoveTargetInstructions(programID, signerPK, geolocation.RemoveTargetInstructionConfig{
 		Code:                      "test-user",
 		ProbePK:                   solana.NewWallet().PublicKey(),
 		TargetType:                geolocation.GeoLocationTargetTypeInbound,
@@ -123,4 +125,27 @@ func TestBuildRemoveTargetInstruction_InboundZeroTargetPK(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "target public key is required for inbound target type")
+}
+
+// TestBuildRemoveTargetInstructions_ComputeBudgetPrefix mirrors the AddTarget regression
+// guard — RemoveTarget also does an O(n) scan onchain and would CU-fail at scale without
+// the prefix.
+func TestBuildRemoveTargetInstructions_ComputeBudgetPrefix(t *testing.T) {
+	t.Parallel()
+
+	programID := solana.NewWallet().PublicKey()
+	signerPK := solana.NewWallet().PublicKey()
+
+	ixs, err := geolocation.BuildRemoveTargetInstructions(programID, signerPK, geolocation.RemoveTargetInstructionConfig{
+		Code:                      "test-user",
+		ProbePK:                   solana.NewWallet().PublicKey(),
+		TargetType:                geolocation.GeoLocationTargetTypeOutbound,
+		IPAddress:                 [4]uint8{8, 8, 8, 8},
+		TargetPK:                  solana.NewWallet().PublicKey(),
+		ServiceabilityGlobalState: solana.NewWallet().PublicKey(),
+	})
+	require.NoError(t, err)
+	require.Len(t, ixs, 2)
+	assertComputeBudgetPrefix(t, ixs[0])
+	require.Equal(t, programID, ixs[1].ProgramID())
 }

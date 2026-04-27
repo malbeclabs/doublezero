@@ -17,7 +17,7 @@ func TestSDK_Geolocation_Instructions_AddTarget_Serialization(t *testing.T) {
 	probePK := solana.NewWallet().PublicKey()
 	targetPK := solana.NewWallet().PublicKey()
 
-	ix, err := geolocation.BuildAddTargetInstruction(programID, signerPK, geolocation.AddTargetInstructionConfig{
+	ixs, err := geolocation.BuildAddTargetInstructions(programID, signerPK, geolocation.AddTargetInstructionConfig{
 		Code:               "test-user",
 		ProbePK:            probePK,
 		TargetType:         geolocation.GeoLocationTargetTypeOutbound,
@@ -26,6 +26,8 @@ func TestSDK_Geolocation_Instructions_AddTarget_Serialization(t *testing.T) {
 		TargetPK:           targetPK,
 	})
 	require.NoError(t, err)
+	require.Len(t, ixs, 2)
+	ix := ixs[1]
 
 	data, err := ix.Data()
 	require.NoError(t, err)
@@ -58,7 +60,7 @@ func TestSDK_Geolocation_Instructions_RemoveTarget_Serialization(t *testing.T) {
 	targetPK := solana.NewWallet().PublicKey()
 	serviceabilityGS := solana.NewWallet().PublicKey()
 
-	ix, err := geolocation.BuildRemoveTargetInstruction(programID, signerPK, geolocation.RemoveTargetInstructionConfig{
+	ixs, err := geolocation.BuildRemoveTargetInstructions(programID, signerPK, geolocation.RemoveTargetInstructionConfig{
 		Code:                      "test-user",
 		ProbePK:                   probePK,
 		TargetType:                geolocation.GeoLocationTargetTypeInbound,
@@ -67,6 +69,8 @@ func TestSDK_Geolocation_Instructions_RemoveTarget_Serialization(t *testing.T) {
 		ServiceabilityGlobalState: serviceabilityGS,
 	})
 	require.NoError(t, err)
+	require.Len(t, ixs, 2)
+	ix := ixs[1]
 
 	data, err := ix.Data()
 	require.NoError(t, err)

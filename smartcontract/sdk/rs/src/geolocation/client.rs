@@ -14,6 +14,7 @@ use solana_rpc_client_api::config::RpcProgramAccountsConfig;
 use solana_sdk::{
     account::Account,
     commitment_config::CommitmentConfig,
+    compute_budget::ComputeBudgetInstruction,
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signature::{Keypair, Signature, Signer},
@@ -21,6 +22,40 @@ use solana_sdk::{
 };
 use solana_system_interface::program;
 use std::{path::PathBuf, str::FromStr};
+
+/// CU budget for instructions that scan the targets section of a `GeolocationUser`.
+/// `AddTarget`, `RemoveTarget`, and `SetResultDestination` all walk every target onchain
+/// (duplicate check, find-by-fields, and unique-probe-set check respectively); each
+/// scan exhausts the default 200K CU limit well before the program's `MAX_TARGETS = 4096`
+/// upper bound (~743 in practice for AddTarget). Sized to match the value validated by
+/// `add_target_cu_benchmark.rs`, which is also the per-tx cap.
+pub const TARGET_SCAN_COMPUTE_UNIT_LIMIT: u32 = 1_400_000;
+
+/// Returns the CU limit the SDK should request for a given geolocation instruction, or
+/// `None` to leave the runtime default (200K) in place. Exhaustive match: adding a new
+/// instruction variant forces a decision here.
+fn compute_unit_limit_for(instruction: &GeolocationInstruction) -> Option<u32> {
+    use GeolocationInstruction::*;
+    match instruction {
+        // O(n) walk over all targets onchain. See add_target_cu_benchmark.rs.
+        AddTarget(_) | RemoveTarget(_) | SetResultDestination(_) => {
+            Some(TARGET_SCAN_COMPUTE_UNIT_LIMIT)
+        }
+        // Cursor-based prefix-only writes; cost is O(1) in target count.
+        InitProgramConfig(_)
+        | UpdateProgramConfig(_)
+        | CreateGeoProbe(_)
+        | UpdateGeoProbe(_)
+        | DeleteGeoProbe
+        | AddParentDevice
+        | RemoveParentDevice(_)
+        | CreateGeolocationUser(_)
+        | UpdateGeolocationUser(_)
+        // DeleteGeolocationUser refuses if targets_count != 0, so it never scans.
+        | DeleteGeolocationUser
+        | UpdatePaymentStatus(_) => None,
+    }
+}
 
 #[automock]
 pub trait GeolocationClient {
@@ -117,21 +152,28 @@ impl GeolocationClient for GeoClient {
         let data = borsh::to_vec(&instruction)
             .map_err(|e| eyre!("failed to serialize instruction: {e}"))?;
 
-        let mut transaction = Transaction::new_with_payer(
-            &[Instruction::new_with_bytes(
-                self.program_id,
-                &data,
-                [
-                    accounts,
-                    vec![
-                        AccountMeta::new(payer.pubkey(), true),
-                        AccountMeta::new(program::id(), false),
-                    ],
-                ]
-                .concat(),
-            )],
-            Some(&payer.pubkey()),
+        let main_ix = Instruction::new_with_bytes(
+            self.program_id,
+            &data,
+            [
+                accounts,
+                vec![
+                    AccountMeta::new(payer.pubkey(), true),
+                    AccountMeta::new(program::id(), false),
+                ],
+            ]
+            .concat(),
         );
+
+        let instructions: Vec<Instruction> = match compute_unit_limit_for(&instruction) {
+            Some(limit) => vec![
+                ComputeBudgetInstruction::set_compute_unit_limit(limit),
+                main_ix,
+            ],
+            None => vec![main_ix],
+        };
+
+        let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
 
         let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
         transaction.sign(&[payer], blockhash);
@@ -155,5 +197,97 @@ impl GeolocationClient for GeoClient {
         self.client
             .send_and_confirm_transaction(&transaction)
             .map_err(|e| eyre!(e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use doublezero_geolocation::{
+        instructions::{
+            AddTargetArgs, CreateGeoProbeArgs, CreateGeolocationUserArgs, GeolocationInstruction,
+            InitProgramConfigArgs, RemoveParentDeviceArgs, RemoveTargetArgs,
+            SetResultDestinationArgs, UpdateGeoProbeArgs, UpdateGeolocationUserArgs,
+            UpdatePaymentStatusArgs, UpdateProgramConfigArgs,
+        },
+        state::geolocation_user::{GeoLocationTargetType, GeolocationPaymentStatus},
+    };
+    use std::net::Ipv4Addr;
+
+    #[test]
+    fn target_scan_instructions_request_max_compute_budget() {
+        // AddTarget, RemoveTarget, and SetResultDestination all walk every target in the
+        // user account onchain (duplicate check, find-by-fields, and unique-probe-set
+        // check respectively). At MAX_TARGETS=4096 the scan exceeds the default 200K CU
+        // limit; the SDK bumps every such transaction to the per-tx ceiling (1.4M) so
+        // consumers don't have to think about compute budgets up to that bound.
+        let target_scan: &[GeolocationInstruction] = &[
+            GeolocationInstruction::AddTarget(AddTargetArgs {
+                target_type: GeoLocationTargetType::Outbound,
+                ip_address: Ipv4Addr::new(8, 8, 8, 8),
+                location_offset_port: 0,
+                target_pk: Pubkey::default(),
+            }),
+            GeolocationInstruction::RemoveTarget(RemoveTargetArgs {
+                target_type: GeoLocationTargetType::Outbound,
+                ip_address: Ipv4Addr::new(8, 8, 8, 8),
+                target_pk: Pubkey::default(),
+            }),
+            GeolocationInstruction::SetResultDestination(SetResultDestinationArgs {
+                destination: String::new(),
+            }),
+        ];
+        for ix in target_scan {
+            assert_eq!(
+                compute_unit_limit_for(ix),
+                Some(TARGET_SCAN_COMPUTE_UNIT_LIMIT),
+                "{ix:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn non_target_instructions_use_default_compute_budget() {
+        // None ⇒ no ComputeBudgetInstruction prepended; the runtime default (200K CU) is
+        // sufficient for these. Listed exhaustively so a new variant cannot silently fall
+        // into either bucket — the match in compute_unit_limit_for is exhaustive too.
+        let no_budget: &[GeolocationInstruction] = &[
+            GeolocationInstruction::InitProgramConfig(InitProgramConfigArgs {}),
+            GeolocationInstruction::UpdateProgramConfig(UpdateProgramConfigArgs {
+                version: None,
+                min_compatible_version: None,
+            }),
+            GeolocationInstruction::CreateGeoProbe(CreateGeoProbeArgs {
+                code: "p".to_string(),
+                public_ip: Ipv4Addr::new(8, 8, 8, 8),
+                location_offset_port: 0,
+                metrics_publisher_pk: Pubkey::default(),
+            }),
+            GeolocationInstruction::UpdateGeoProbe(UpdateGeoProbeArgs {
+                public_ip: None,
+                location_offset_port: None,
+                metrics_publisher_pk: None,
+            }),
+            GeolocationInstruction::DeleteGeoProbe,
+            GeolocationInstruction::AddParentDevice,
+            GeolocationInstruction::RemoveParentDevice(RemoveParentDeviceArgs {
+                device_pk: Pubkey::default(),
+            }),
+            GeolocationInstruction::CreateGeolocationUser(CreateGeolocationUserArgs {
+                code: "u".to_string(),
+                token_account: Pubkey::default(),
+            }),
+            GeolocationInstruction::UpdateGeolocationUser(UpdateGeolocationUserArgs {
+                token_account: None,
+            }),
+            GeolocationInstruction::DeleteGeolocationUser,
+            GeolocationInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
+                payment_status: GeolocationPaymentStatus::Paid,
+                last_deduction_dz_epoch: None,
+            }),
+        ];
+        for ix in no_budget {
+            assert_eq!(compute_unit_limit_for(ix), None, "{ix:?}");
+        }
     }
 }

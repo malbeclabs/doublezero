@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/gagliardetto/solana-go"
+	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	geolocation "github.com/malbeclabs/doublezero/sdk/geolocation/go"
 )
 
@@ -606,6 +607,35 @@ func TestTargetDiscovery_MixedOutboundAndIcmp(t *testing.T) {
 	}
 	if len(keys) != 0 {
 		t.Errorf("expected 0 keys, got %d", len(keys))
+	}
+}
+
+func TestTargetDiscovery_OutboundIcmpZeroPortDefaulted(t *testing.T) {
+	probePK := testProbePubkey()
+	client := &mockGeolocationUserClient{
+		users: []geolocation.KeyedGeolocationUser{
+			makeUserWithResultDest(
+				geolocation.GeolocationUserStatusActivated,
+				geolocation.GeolocationPaymentStatusPaid,
+				"user1",
+				[]geolocation.GeolocationTarget{
+					outboundIcmpTarget([4]uint8{44, 0, 0, 1}, 0, probePK),
+				},
+				"results.example.com:9000",
+			),
+		},
+	}
+
+	td := newTestTargetDiscovery(client)
+	_, icmpTargets, _, _, _, err := td.discover(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(icmpTargets) != 1 {
+		t.Fatalf("expected 1 ICMP target (zero port should default, not be rejected), got %d", len(icmpTargets))
+	}
+	if icmpTargets[0].Port != telemetryconfig.DefaultGeoprobeUDPPort {
+		t.Errorf("expected Port=%d (default), got %d", telemetryconfig.DefaultGeoprobeUDPPort, icmpTargets[0].Port)
 	}
 }
 

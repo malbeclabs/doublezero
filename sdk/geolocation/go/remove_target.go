@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gagliardetto/solana-go"
+	computebudget "github.com/gagliardetto/solana-go/programs/compute-budget"
 	"github.com/near/borsh-go"
 )
 
@@ -41,11 +42,16 @@ func (c *RemoveTargetInstructionConfig) Validate() error {
 	return nil
 }
 
-func BuildRemoveTargetInstruction(
+// BuildRemoveTargetInstructions returns the instruction list to remove a target: a
+// SetComputeUnitLimit prefix sized for MaxTargets followed by the RemoveTarget call.
+// The onchain handler does an O(n) scan to find the target by fields; same budget
+// rationale as BuildAddTargetInstructions. Pass the returned slice to
+// executor.ExecuteTransactions.
+func BuildRemoveTargetInstructions(
 	programID solana.PublicKey,
 	signerPK solana.PublicKey,
 	config RemoveTargetInstructionConfig,
-) (solana.Instruction, error) {
+) ([]solana.Instruction, error) {
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("failed to validate config: %w", err)
 	}
@@ -86,9 +92,13 @@ func BuildRemoveTargetInstruction(
 		{PublicKey: solana.SystemProgramID, IsSigner: false, IsWritable: false},
 	}
 
-	return &solana.GenericInstruction{
+	mainIx := &solana.GenericInstruction{
 		ProgID:        programID,
 		AccountValues: accounts,
 		DataBytes:     data,
-	}, nil
+	}
+
+	budgetIx := computebudget.NewSetComputeUnitLimitInstruction(TargetMutationComputeUnitLimit).Build()
+
+	return []solana.Instruction{budgetIx, mainIx}, nil
 }

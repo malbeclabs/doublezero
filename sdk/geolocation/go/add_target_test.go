@@ -8,14 +8,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuildAddTargetInstruction_Outbound(t *testing.T) {
+// addTargetMainIx returns the AddTarget instruction from the slice (index 1, after
+// the SetComputeUnitLimit prefix). assertComputeBudgetPrefix verifies the prefix.
+func addTargetMainIx(t *testing.T, ixs []solana.Instruction) solana.Instruction {
+	t.Helper()
+	require.Len(t, ixs, 2, "expected [SetComputeUnitLimit, AddTarget]")
+	assertComputeBudgetPrefix(t, ixs[0])
+	return ixs[1]
+}
+
+// assertComputeBudgetPrefix checks that ix is a SetComputeUnitLimit instruction
+// requesting TargetMutationComputeUnitLimit. The discriminator for SetComputeUnitLimit
+// in the ComputeBudget program is 2 (RequestUnits=0, RequestHeapFrame=1,
+// SetComputeUnitLimit=2, SetComputeUnitPrice=3).
+func assertComputeBudgetPrefix(t *testing.T, ix solana.Instruction) {
+	t.Helper()
+	require.Equal(t, solana.ComputeBudget, ix.ProgramID(), "first ix must be ComputeBudget")
+	data, err := ix.Data()
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(data), 5, "SetComputeUnitLimit data is 5 bytes: discriminator + u32")
+	require.Equal(t, uint8(2), data[0], "discriminator should be SetComputeUnitLimit (2)")
+	limit := uint32(data[1]) | uint32(data[2])<<8 | uint32(data[3])<<16 | uint32(data[4])<<24
+	require.Equal(t, geolocation.TargetMutationComputeUnitLimit, limit)
+}
+
+func TestBuildAddTargetInstructions_Outbound(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
 	signerPK := solana.NewWallet().PublicKey()
 	probePK := solana.NewWallet().PublicKey()
 
-	ix, err := geolocation.BuildAddTargetInstruction(programID, signerPK, geolocation.AddTargetInstructionConfig{
+	ixs, err := geolocation.BuildAddTargetInstructions(programID, signerPK, geolocation.AddTargetInstructionConfig{
 		Code:               "test-user",
 		ProbePK:            probePK,
 		TargetType:         geolocation.GeoLocationTargetTypeOutbound,
@@ -24,7 +48,7 @@ func TestBuildAddTargetInstruction_Outbound(t *testing.T) {
 		TargetPK:           solana.NewWallet().PublicKey(),
 	})
 	require.NoError(t, err)
-	require.NotNil(t, ix)
+	ix := addTargetMainIx(t, ixs)
 
 	// Verify program ID.
 	require.Equal(t, programID, ix.ProgramID())
@@ -58,7 +82,7 @@ func TestBuildAddTargetInstruction_Outbound(t *testing.T) {
 	require.False(t, accounts[3].IsSigner)
 }
 
-func TestBuildAddTargetInstruction_Inbound(t *testing.T) {
+func TestBuildAddTargetInstructions_Inbound(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
@@ -66,7 +90,7 @@ func TestBuildAddTargetInstruction_Inbound(t *testing.T) {
 	probePK := solana.NewWallet().PublicKey()
 	targetPK := solana.NewWallet().PublicKey()
 
-	ix, err := geolocation.BuildAddTargetInstruction(programID, signerPK, geolocation.AddTargetInstructionConfig{
+	ixs, err := geolocation.BuildAddTargetInstructions(programID, signerPK, geolocation.AddTargetInstructionConfig{
 		Code:               "test-user",
 		ProbePK:            probePK,
 		TargetType:         geolocation.GeoLocationTargetTypeInbound,
@@ -75,7 +99,7 @@ func TestBuildAddTargetInstruction_Inbound(t *testing.T) {
 		TargetPK:           targetPK,
 	})
 	require.NoError(t, err)
-	require.NotNil(t, ix)
+	ix := addTargetMainIx(t, ixs)
 
 	// Verify the instruction data discriminator is AddTarget (10).
 	data, err := ix.Data()
@@ -90,14 +114,14 @@ func TestBuildAddTargetInstruction_Inbound(t *testing.T) {
 	require.Len(t, accounts, 4)
 }
 
-func TestBuildAddTargetInstruction_OutboundIcmp(t *testing.T) {
+func TestBuildAddTargetInstructions_OutboundIcmp(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
 	signerPK := solana.NewWallet().PublicKey()
 	probePK := solana.NewWallet().PublicKey()
 
-	ix, err := geolocation.BuildAddTargetInstruction(programID, signerPK, geolocation.AddTargetInstructionConfig{
+	ixs, err := geolocation.BuildAddTargetInstructions(programID, signerPK, geolocation.AddTargetInstructionConfig{
 		Code:               "test-user",
 		ProbePK:            probePK,
 		TargetType:         geolocation.GeoLocationTargetTypeOutboundIcmp,
@@ -106,7 +130,7 @@ func TestBuildAddTargetInstruction_OutboundIcmp(t *testing.T) {
 		TargetPK:           solana.NewWallet().PublicKey(),
 	})
 	require.NoError(t, err)
-	require.NotNil(t, ix)
+	ix := addTargetMainIx(t, ixs)
 
 	// Verify the instruction data discriminator is AddTarget (10).
 	data, err := ix.Data()
@@ -117,7 +141,7 @@ func TestBuildAddTargetInstruction_OutboundIcmp(t *testing.T) {
 	require.Equal(t, uint8(2), data[1], "target type should be OutboundIcmp (2)")
 }
 
-func TestBuildAddTargetInstruction_NonPublicIP(t *testing.T) {
+func TestBuildAddTargetInstructions_NonPublicIP(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
@@ -165,7 +189,7 @@ func TestBuildAddTargetInstruction_NonPublicIP(t *testing.T) {
 			t.Run(tt.name+"/"+ttype.name, func(t *testing.T) {
 				t.Parallel()
 
-				_, err := geolocation.BuildAddTargetInstruction(programID, signerPK, geolocation.AddTargetInstructionConfig{
+				_, err := geolocation.BuildAddTargetInstructions(programID, signerPK, geolocation.AddTargetInstructionConfig{
 					Code:               "test-user",
 					ProbePK:            probePK,
 					TargetType:         ttype.t,
@@ -180,9 +204,9 @@ func TestBuildAddTargetInstruction_NonPublicIP(t *testing.T) {
 	}
 }
 
-// TestBuildAddTargetInstruction_PublicIPEdgeCases covers addresses adjacent to
+// TestBuildAddTargetInstructions_PublicIPEdgeCases covers addresses adjacent to
 // rejected ranges to confirm they still pass validation.
-func TestBuildAddTargetInstruction_PublicIPEdgeCases(t *testing.T) {
+func TestBuildAddTargetInstructions_PublicIPEdgeCases(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
@@ -205,7 +229,7 @@ func TestBuildAddTargetInstruction_PublicIPEdgeCases(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := geolocation.BuildAddTargetInstruction(programID, signerPK, geolocation.AddTargetInstructionConfig{
+			_, err := geolocation.BuildAddTargetInstructions(programID, signerPK, geolocation.AddTargetInstructionConfig{
 				Code:               "test-user",
 				ProbePK:            probePK,
 				TargetType:         geolocation.GeoLocationTargetTypeOutbound,
@@ -218,14 +242,14 @@ func TestBuildAddTargetInstruction_PublicIPEdgeCases(t *testing.T) {
 	}
 }
 
-func TestBuildAddTargetInstruction_InboundDefaultTargetPK(t *testing.T) {
+func TestBuildAddTargetInstructions_InboundDefaultTargetPK(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
 	signerPK := solana.NewWallet().PublicKey()
 	probePK := solana.NewWallet().PublicKey()
 
-	_, err := geolocation.BuildAddTargetInstruction(programID, signerPK, geolocation.AddTargetInstructionConfig{
+	_, err := geolocation.BuildAddTargetInstructions(programID, signerPK, geolocation.AddTargetInstructionConfig{
 		Code:               "test-user",
 		ProbePK:            probePK,
 		TargetType:         geolocation.GeoLocationTargetTypeInbound,
@@ -235,4 +259,27 @@ func TestBuildAddTargetInstruction_InboundDefaultTargetPK(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "target public key is required for inbound target type")
+}
+
+// TestBuildAddTargetInstructions_ComputeBudgetPrefix is a focused regression test:
+// without the SetComputeUnitLimit prefix, the onchain duplicate scan exhausts CU at
+// ~743 targets in the wild. Asserting it here catches accidental removal in code review
+// without re-running the full stress test.
+func TestBuildAddTargetInstructions_ComputeBudgetPrefix(t *testing.T) {
+	t.Parallel()
+
+	programID := solana.NewWallet().PublicKey()
+	signerPK := solana.NewWallet().PublicKey()
+
+	ixs, err := geolocation.BuildAddTargetInstructions(programID, signerPK, geolocation.AddTargetInstructionConfig{
+		Code:               "test-user",
+		ProbePK:            solana.NewWallet().PublicKey(),
+		TargetType:         geolocation.GeoLocationTargetTypeOutbound,
+		IPAddress:          [4]uint8{8, 8, 8, 8},
+		LocationOffsetPort: 443,
+	})
+	require.NoError(t, err)
+	require.Len(t, ixs, 2)
+	assertComputeBudgetPrefix(t, ixs[0])
+	require.Equal(t, programID, ixs[1].ProgramID())
 }

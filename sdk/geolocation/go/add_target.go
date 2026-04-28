@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gagliardetto/solana-go"
+	computebudget "github.com/gagliardetto/solana-go/programs/compute-budget"
 	"github.com/near/borsh-go"
 )
 
@@ -43,11 +44,16 @@ func (c *AddTargetInstructionConfig) Validate() error {
 	return nil
 }
 
-func BuildAddTargetInstruction(
+// BuildAddTargetInstructions returns the instruction list to add a target: a
+// SetComputeUnitLimit prefix sized for MaxTargets followed by the AddTarget call.
+// The onchain handler does an O(n) duplicate scan that exhausts the default 200K CU
+// budget below ~750 targets; the SDK owns this so callers don't have to. Pass the
+// returned slice to executor.ExecuteTransactions.
+func BuildAddTargetInstructions(
 	programID solana.PublicKey,
 	signerPK solana.PublicKey,
 	config AddTargetInstructionConfig,
-) (solana.Instruction, error) {
+) ([]solana.Instruction, error) {
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("failed to validate config: %w", err)
 	}
@@ -84,9 +90,13 @@ func BuildAddTargetInstruction(
 		{PublicKey: solana.SystemProgramID, IsSigner: false, IsWritable: false},
 	}
 
-	return &solana.GenericInstruction{
+	mainIx := &solana.GenericInstruction{
 		ProgID:        programID,
 		AccountValues: accounts,
 		DataBytes:     data,
-	}, nil
+	}
+
+	budgetIx := computebudget.NewSetComputeUnitLimitInstruction(TargetMutationComputeUnitLimit).Build()
+
+	return []solana.Instruction{budgetIx, mainIx}, nil
 }

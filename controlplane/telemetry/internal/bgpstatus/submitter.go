@@ -5,6 +5,7 @@ package bgpstatus
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -34,35 +35,66 @@ func (s *Submitter) run(ctx context.Context) error {
 	}
 }
 
+// DefaultCollector returns a NamespaceCollector that collects BGP socket stats
+// via netlink and local interfaces via Linux namespace switching.
+func DefaultCollector(localNet netutil.LocalNet) NamespaceCollector {
+	return func(ctx context.Context, namespace string) (map[string]struct{}, []netutil.Interface, error) {
+		rawSockets, err := state.GetBGPSocketStatsInNamespace(ctx, namespace)
+		if err != nil {
+			return nil, nil, fmt.Errorf("bgp sockets in %s: %w", namespace, err)
+		}
+		socks := make([]bgpSocket, len(rawSockets))
+		for i, rs := range rawSockets {
+			socks[i] = bgpSocket{RemoteIP: rs.RemoteIP, State: rs.State}
+		}
+		established := buildEstablishedIPSet(socks)
+
+		ifaces, err := netns.RunInNamespace(namespace, func() ([]netutil.Interface, error) {
+			return localNet.Interfaces()
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("interfaces in %s: %w", namespace, err)
+		}
+		return established, ifaces, nil
+	}
+}
+
 // tick collects BGP socket state, fetches activated users for this device,
 // maps each user to their tunnel peer IP, determines Up/Down status (with
 // grace period), and enqueues submission tasks for users whose status needs
 // updating.
 func (s *Submitter) tick(ctx context.Context) {
-	rawSockets, err := state.GetBGPSocketStatsInNamespace(ctx, s.cfg.BGPNamespace)
-	if err != nil {
-		s.log.Error("bgpstatus: failed to collect BGP sockets", "error", err)
-		return
-	}
-	sockets := make([]bgpSocket, len(rawSockets))
-	for i, rs := range rawSockets {
-		sockets[i] = bgpSocket{RemoteIP: rs.RemoteIP, State: rs.State}
-	}
-	establishedIPs := buildEstablishedIPSet(sockets)
-
 	programData, err := s.cfg.ServiceabilityClient.GetProgramData(ctx)
 	if err != nil {
 		s.log.Error("bgpstatus: failed to fetch program data", "error", err)
 		return
 	}
 
-	// Tunnel interfaces for user sessions live in the BGP VRF namespace (e.g. ns-vrf1),
-	// not the default namespace, so we must read them from there.
-	interfaces, err := netns.RunInNamespace(s.cfg.BGPNamespace, func() ([]netutil.Interface, error) {
-		return s.cfg.LocalNet.Interfaces()
-	})
-	if err != nil {
-		s.log.Error("bgpstatus: failed to get local interfaces", "error", err)
+	// User tunnel interfaces live in a per-tenant VRF namespace (e.g. ns-vrf1,
+	// ns-vrf2). Collect state from all relevant namespaces so that users whose
+	// tenant has VrfId != 1 are handled correctly.
+	// Tunnel IPs are globally unique (onchain-allocated), so merging is safe.
+	namespaces := vrfNamespaces(s.cfg.BGPNamespace, programData.Tenants)
+
+	establishedIPs := make(map[string]struct{})
+	var interfaces []netutil.Interface
+	successCount := 0
+
+	for _, ns := range namespaces {
+		established, ifaces, err := s.cfg.Collector(ctx, ns)
+		if err != nil {
+			s.log.Warn("bgpstatus: failed to collect namespace state", "namespace", ns, "error", err)
+			continue
+		}
+		for ip := range established {
+			establishedIPs[ip] = struct{}{}
+		}
+		interfaces = append(interfaces, ifaces...)
+		successCount++
+	}
+
+	if successCount == 0 {
+		s.log.Error("bgpstatus: failed to collect state from all namespaces", "namespaces", namespaces)
 		return
 	}
 

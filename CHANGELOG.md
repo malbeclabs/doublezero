@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Smartcontract
+  - Allow `count > max` in `Device::validate` for all four per-device caps (`max_users`, `max_unicast_users`, `max_multicast_subscribers`, `max_multicast_publishers`) so operators can lower a cap below the live count; admission-time gates in user create still reject new connections when at capacity, letting the live count drain through natural churn
+
 ## [v0.19.0](https://github.com/malbeclabs/doublezero/compare/client/v0.18.0...client/v0.19.0) - 2026-04-24
 
 ### Breaking

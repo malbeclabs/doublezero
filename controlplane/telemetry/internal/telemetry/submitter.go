@@ -124,6 +124,8 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 			Epoch:                      &partitionKey.Epoch,
 			StartTimestampMicroseconds: uint64(minTimestamp.UnixMicro()),
 			Samples:                    rtts,
+			AgentVersion:               s.cfg.AgentVersion,
+			AgentCommit:                s.cfg.AgentCommit,
 		}
 
 		_, _, err := s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)

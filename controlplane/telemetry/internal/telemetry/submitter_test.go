@@ -806,6 +806,44 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		}
 	})
 
+	t.Run("passes_agent_version_and_commit_to_write", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+
+		var receivedConfig sdktelemetry.WriteDeviceLatencySamplesInstructionConfig
+
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				receivedConfig = config
+				return solana.Signature{}, nil, nil
+			},
+		}
+
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buf.Add(newTestPartitionKey(), newTestSample())
+
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:       time.Hour,
+			Buffer:         buf,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    1,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
+			AgentVersion: "1.2.3",
+			AgentCommit:  "aabbccdd",
+		})
+		require.NoError(t, err)
+
+		submitter.Tick(context.Background())
+
+		assert.Equal(t, "1.2.3", receivedConfig.AgentVersion)
+		assert.Equal(t, "aabbccdd", receivedConfig.AgentCommit)
+	})
+
 	t.Run("drops_failed_samples_when_requeue_would_meet_capacity", func(t *testing.T) {
 		t.Parallel()
 

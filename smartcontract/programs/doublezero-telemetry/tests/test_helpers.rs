@@ -488,6 +488,35 @@ impl TelemetryProgramHelper {
             TelemetryInstruction::WriteDeviceLatencySamples(WriteDeviceLatencySamplesArgs {
                 start_timestamp_microseconds,
                 samples,
+                agent_version: [0; 16],
+                agent_commit: [0; 8],
+            }),
+            &[agent],
+            vec![
+                AccountMeta::new(latency_samples_pda, false),
+                AccountMeta::new(agent.pubkey(), true),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            ],
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn write_device_latency_samples_with_version(
+        &mut self,
+        agent: &Keypair,
+        latency_samples_pda: Pubkey,
+        samples: Vec<u32>,
+        start_timestamp_microseconds: u64,
+        agent_version: [u8; 16],
+        agent_commit: [u8; 8],
+    ) -> Result<(), BanksClientError> {
+        self.execute_transaction(
+            TelemetryInstruction::WriteDeviceLatencySamples(WriteDeviceLatencySamplesArgs {
+                start_timestamp_microseconds,
+                samples,
+                agent_version,
+                agent_commit,
             }),
             &[agent],
             vec![
@@ -544,6 +573,8 @@ impl TelemetryProgramHelper {
         let args = WriteDeviceLatencySamplesArgs {
             start_timestamp_microseconds: timestamp,
             samples,
+            agent_version: [0; 16],
+            agent_commit: [0; 8],
         };
 
         let ix = TelemetryInstruction::WriteDeviceLatencySamples(args)

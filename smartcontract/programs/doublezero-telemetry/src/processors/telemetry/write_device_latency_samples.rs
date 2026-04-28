@@ -25,6 +25,8 @@ use solana_program::{
 pub struct WriteDeviceLatencySamplesArgs {
     pub start_timestamp_microseconds: u64,
     pub samples: Vec<u32>,
+    pub agent_version: [u8; 16],
+    pub agent_commit: [u8; 8],
 }
 
 impl fmt::Debug for WriteDeviceLatencySamplesArgs {
@@ -125,6 +127,16 @@ pub fn process_write_device_latency_samples(
     // Set the first-write timestamp exactly once.
     if header.start_timestamp_microseconds == 0 {
         header.start_timestamp_microseconds = args.start_timestamp_microseconds;
+    }
+
+    // Update agent version fields when non-zero (old agents omit these, defaulting
+    // to zero via BorshDeserializeIncremental, so we skip the update to preserve
+    // the version set at initialization).
+    if args.agent_version != [0; 16] {
+        header.agent_version = args.agent_version;
+    }
+    if args.agent_commit != [0; 8] {
+        header.agent_commit = args.agent_commit;
     }
 
     // Pre-check the total size after append to avoid realloc panics.

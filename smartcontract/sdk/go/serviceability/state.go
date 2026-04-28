@@ -688,6 +688,9 @@ type Link struct {
 	PubKey            [32]byte          `influx:"tag,pubkey,pubkey"`
 }
 
+// LinkFlagUnicastDrained is set in LinkFlags when the link is marked as unicast-drained.
+const LinkFlagUnicastDrained uint32 = 0x01
+
 func (l Link) MarshalJSON() ([]byte, error) {
 	type LinkAlias Link
 

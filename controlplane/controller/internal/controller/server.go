@@ -412,7 +412,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 			d.Interfaces[i].IsLink = true
 			d.Interfaces[i].LinkStatus = link.Status
-			d.Interfaces[i].UnicastDrained = link.LinkFlags&0x01 != 0
+			d.Interfaces[i].UnicastDrained = link.LinkFlags&serviceability.LinkFlagUnicastDrained != 0
 			d.Interfaces[i].PubKey = base58.Encode(link.PubKey[:])
 
 			// Resolve topology names from link_topologies pubkeys
@@ -774,6 +774,8 @@ func (c *Controller) deduplicateTunnels(device *Device) []*Tunnel {
 	return unique
 }
 
+const defaultTopologyName = "unicast-default"
+
 // resolveTenantColors computes the "color N color M ..." string for a tenant's include_topologies.
 // If include_topologies is empty, uses the unicast-default topology.
 // Returns empty string if no topologies can be resolved.
@@ -788,7 +790,7 @@ func resolveTenantColors(includeTopologies [][32]byte, topologyMap map[string]se
 	} else {
 		// default: use unicast-default topology
 		for _, topo := range topologyMap {
-			if strings.EqualFold(topo.Name, "unicast-default") {
+			if strings.EqualFold(topo.Name, defaultTopologyName) {
 				colors = append(colors, fmt.Sprintf("color %d", int(topo.AdminGroupBit)+1))
 				break
 			}

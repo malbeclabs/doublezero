@@ -2600,3 +2600,223 @@ func Test_GetConfig_DuplicateTunnelPairs_Integration(t *testing.T) {
 		t.Errorf("expected 2 tunnels in config (2 'tunnel source' lines), got %d", tunnelSourceCount)
 	}
 }
+
+func TestGetConfig_FlexAlgo(t *testing.T) {
+	// A minimal physical link interface with topology assignments (RFC-18 fields).
+	const linkPubKey = "linkpubkey123"
+	taggedLink := Interface{
+		Name:           "Ethernet2",
+		Ip:             netip.MustParsePrefix("10.0.0.1/30"),
+		InterfaceType:  InterfaceTypePhysical,
+		Metric:         10,
+		IsLink:         true,
+		PubKey:         linkPubKey,
+		LinkTopologies: []string{"unicast-default"},
+	}
+	untaggedLink := Interface{
+		Name:          "Ethernet2",
+		Ip:            netip.MustParsePrefix("10.0.0.1/30"),
+		InterfaceType: InterfaceTypePhysical,
+		Metric:        10,
+		IsLink:        true,
+		PubKey:        linkPubKey,
+	}
+
+	minimalDevice := func(ifaces ...Interface) *Device {
+		return &Device{
+			ExchangeCode:          "tst",
+			BgpCommunity:          10050,
+			PublicIP:              net.IP{7, 7, 7, 7},
+			Vpn4vLoopbackIP:       net.IP{5, 5, 5, 5},
+			Vpn4vLoopbackIntfName: "Loopback255",
+			IsisNet:               "49.0000.0505.0505.0000.00",
+			Tunnels:               []*Tunnel{},
+			DevicePathologies:     []string{},
+			Interfaces:            ifaces,
+		}
+	}
+
+	allTopologies := []TopologyModel{
+		{
+			Name:           "unicast-default",
+			AdminGroupBit:  67,
+			FlexAlgoNumber: 128,
+			Color:          68,
+			ConstraintStr:  "include-any",
+		},
+		{
+			Name:           "fast-path",
+			AdminGroupBit:  68,
+			FlexAlgoNumber: 129,
+			Color:          69,
+			ConstraintStr:  "exclude",
+		},
+	}
+
+	enabledCfg := &FeaturesConfig{}
+	enabledCfg.Features.FlexAlgo.Enabled = true
+
+	disabledCfg := &FeaturesConfig{}
+	disabledCfg.Features.FlexAlgo.Enabled = false
+
+	excludedCfg := &FeaturesConfig{}
+	excludedCfg.Features.FlexAlgo.Enabled = true
+	excludedCfg.Features.FlexAlgo.LinkTagging.Exclude.Links = []string{linkPubKey}
+
+	tests := []struct {
+		name         string
+		data         templateData
+		wantContains []string
+		wantAbsent   []string
+	}{
+		{
+			name: "flex_algo_disabled_emits_no_router_traffic_engineering",
+			data: templateData{
+				Device:              minimalDevice(untaggedLink),
+				Config:              disabledCfg,
+				AllTopologies:       allTopologies,
+				LocalASN:            65342,
+				MulticastGroupBlock: "239.0.0.0/24",
+				Strings:             StringsHelper{},
+			},
+			wantContains: []string{
+				"no router traffic-engineering",
+				"no traffic-engineering administrative-group",
+				"no traffic-engineering",
+			},
+			wantAbsent: []string{
+				"\nrouter traffic-engineering\n",
+				"flex-algo 128",
+			},
+		},
+		{
+			name: "flex_algo_enabled_emits_full_te_block_for_both_constraint_types",
+			data: templateData{
+				Device:              minimalDevice(taggedLink),
+				Config:              enabledCfg,
+				AllTopologies:       allTopologies,
+				LocalASN:            65342,
+				MulticastGroupBlock: "239.0.0.0/24",
+				Strings:             StringsHelper{},
+			},
+			wantContains: []string{
+				"\nrouter traffic-engineering\n",
+				"administrative-group alias UNICAST-DRAINED group 0",
+				"administrative-group alias UNICAST-DEFAULT group 67",
+				"administrative-group alias FAST-PATH group 68",
+				"flex-algo 128 UNICAST-DEFAULT",
+				"administrative-group include any 67 exclude 0",
+				"flex-algo 129 FAST-PATH",
+				"administrative-group exclude 68,0",
+				"traffic-engineering administrative-group UNICAST-DEFAULT",
+			},
+			wantAbsent: []string{
+				"no router traffic-engineering",
+				"no traffic-engineering administrative-group",
+			},
+		},
+		{
+			name: "flex_algo_enabled_excluded_link_emits_no_administrative_group",
+			data: templateData{
+				Device:              minimalDevice(taggedLink),
+				Config:              excludedCfg,
+				AllTopologies:       allTopologies,
+				LocalASN:            65342,
+				MulticastGroupBlock: "239.0.0.0/24",
+				Strings:             StringsHelper{},
+			},
+			wantContains: []string{
+				"\nrouter traffic-engineering\n",
+				"no traffic-engineering administrative-group",
+			},
+			wantAbsent: []string{
+				"traffic-engineering administrative-group UNICAST-DEFAULT",
+				"no router traffic-engineering",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := renderConfig(tt.data)
+			if err != nil {
+				t.Fatalf("renderConfig() error: %v", err)
+			}
+			for _, want := range tt.wantContains {
+				if !strings.Contains(got, want) {
+					t.Errorf("expected config to contain %q\nfull config:\n%s", want, got)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if strings.Contains(got, absent) {
+					t.Errorf("expected config NOT to contain %q\nfull config:\n%s", absent, got)
+				}
+			}
+		})
+	}
+}
+
+func Test_resolveTenantColors(t *testing.T) {
+	// Use solana.PublicKey (which is [32]byte) to get base58-encoded map keys
+	// that match what resolveTenantColors uses internally.
+	pk1 := [32]byte{1}
+	pk2 := [32]byte{2}
+	pkUnicast := [32]byte{100}
+
+	pk1str := solana.PublicKey(pk1).String()
+	pk2str := solana.PublicKey(pk2).String()
+	pkUnicastStr := solana.PublicKey(pkUnicast).String()
+
+	fullMap := map[string]serviceability.TopologyInfo{
+		pk1str:       {Name: "FOO", AdminGroupBit: 67},
+		pk2str:       {Name: "BAR", AdminGroupBit: 71},
+		pkUnicastStr: {Name: defaultTopologyName, AdminGroupBit: 10},
+	}
+
+	tests := []struct {
+		name              string
+		includeTopologies [][32]byte
+		topologyMap       map[string]serviceability.TopologyInfo
+		want              string
+	}{
+		{
+			name:              "empty include_topologies falls back to unicast-default",
+			includeTopologies: nil,
+			topologyMap:       map[string]serviceability.TopologyInfo{pkUnicastStr: {Name: defaultTopologyName, AdminGroupBit: 10}},
+			want:              "color 11",
+		},
+		{
+			name:              "empty include_topologies with no unicast-default returns empty",
+			includeTopologies: nil,
+			topologyMap:       map[string]serviceability.TopologyInfo{pk1str: {Name: "FOO", AdminGroupBit: 67}},
+			want:              "",
+		},
+		{
+			name:              "single known pubkey returns its color",
+			includeTopologies: [][32]byte{pk1},
+			topologyMap:       fullMap,
+			want:              "color 68",
+		},
+		{
+			name:              "multiple known pubkeys returns colors in slice order",
+			includeTopologies: [][32]byte{pk1, pk2},
+			topologyMap:       fullMap,
+			want:              "color 68 color 72",
+		},
+		{
+			name:              "unknown pubkey is silently skipped",
+			includeTopologies: [][32]byte{{99}},
+			topologyMap:       fullMap,
+			want:              "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveTenantColors(tt.includeTopologies, tt.topologyMap)
+			if got != tt.want {
+				t.Errorf("resolveTenantColors() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

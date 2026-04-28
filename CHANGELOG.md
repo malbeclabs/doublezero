@@ -11,9 +11,9 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Controller
-  - Add `--features-config` flag accepting a YAML file with a `flex_algo.enabled` toggle; when enabled, populates topology data into the state cache, resolves tenant color communities from `Tenant.include_topologies`, and emits IS-IS flex-algo node segment and BGP color community stamping blocks into the Arista EOS template (disabled by default)
+  - Auto-loads `/etc/doublezero-controller/features.yaml` at startup if present (silently skips if absent); when `flex_algo.enabled: true`, populates topology data into the state cache, resolves tenant color communities from `Tenant.include_topologies`, and emits IS-IS flex-algo node segment and BGP color community stamping blocks into the Arista EOS template (disabled by default)
 - SDK
-  - Go serviceability SDK adds `TopologyInfo` account type with `TopologyConstraint`, `IndexType` / `TopologyType` account-type constants, and `ListTopologies` client method; extends `Link` with `LinkTopologies` and `LinkFlags`; extends `Tenant` with `IncludeTopologies`
+  - Go serviceability SDK adds `TopologyInfo` account type with `TopologyConstraint`, `IndexType` / `TopologyType` account-type constants, and `GetProgramData` dispatch case; extends `Link` with `LinkTopologies` and `LinkFlags`; extends `Tenant` with `IncludeTopologies`
 - CLI
   - Extend `doublezero resource verify` to check `MulticastPublisherBlock` against multicast publisher users' `dz_ip` allocations; legacy `dz_ip`s that fall outside the block's range are ignored so pre-existing users allocated before this extension existed do not produce false discrepancies
   - Fix `doublezero resource verify` to report missing `TunnelIds` resource extensions for all devices, including those without any users; previously the discrepancy was suppressed when a device had no users, hiding unallocated extensions

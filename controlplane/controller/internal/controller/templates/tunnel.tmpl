@@ -132,7 +132,6 @@ interface {{ .Name }}
    {{- end }}
    isis hello padding
    isis network point-to-point
-   {{- if and .Ip.IsValid .IsPhysical .Metric .IsLink (not .IsSubInterfaceParent) (not .IsCYOA) (not .IsDIA) }}
    {{- if $.FlexAlgoEnabled }}
    traffic-engineering
    {{- if and .LinkTopologies (not ($.Config.Features.FlexAlgo.LinkTagging.IsExcluded .PubKey)) }}
@@ -145,7 +144,6 @@ interface {{ .Name }}
    {{- else if $.Config }}
    no traffic-engineering administrative-group
    no traffic-engineering
-   {{- end }}
    {{- end }}
    {{- end }}
 !
@@ -349,6 +347,11 @@ router traffic-engineering
       {{- if eq .ConstraintStr "include-any" }}
       flex-algo {{ .FlexAlgoNumber }} {{ $.Strings.ToUpper .Name }}
          administrative-group include any {{ .AdminGroupBit }} exclude 0
+         color {{ .Color }}
+      !
+      {{- else if eq .ConstraintStr "exclude" }}
+      flex-algo {{ .FlexAlgoNumber }} {{ $.Strings.ToUpper .Name }}
+         administrative-group exclude {{ .AdminGroupBit }},0
          color {{ .Color }}
       !
       {{- end }}

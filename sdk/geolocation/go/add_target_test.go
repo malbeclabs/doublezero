@@ -9,7 +9,7 @@ import (
 )
 
 // addTargetMainIx returns the AddTarget instruction from the slice (index 1, after
-// the SetComputeUnitLimit prefix). assertHasComputeBudget verifies the prefix.
+// the SetComputeUnitLimit prefix). assertComputeBudgetPrefix verifies the prefix.
 func addTargetMainIx(t *testing.T, ixs []solana.Instruction) solana.Instruction {
 	t.Helper()
 	require.Len(t, ixs, 2, "expected [SetComputeUnitLimit, AddTarget]")

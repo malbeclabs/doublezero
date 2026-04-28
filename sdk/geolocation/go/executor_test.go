@@ -35,7 +35,7 @@ func TestNewExecutor_WithTimeout(t *testing.T) {
 	require.NotNil(t, executor, "executor should not be nil with custom timeout")
 }
 
-func TestExecuteTransaction_NoPrivateKey(t *testing.T) {
+func TestExecuteTransactions_NoPrivateKey(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
@@ -48,7 +48,7 @@ func TestExecuteTransaction_NoPrivateKey(t *testing.T) {
 	require.ErrorIs(t, err, geolocation.ErrNoPrivateKey)
 }
 
-func TestExecuteTransaction_NoProgramID(t *testing.T) {
+func TestExecuteTransactions_NoProgramID(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -92,7 +92,7 @@ func finalizedTxResult() *solanarpc.GetTransactionResult {
 	return &solanarpc.GetTransactionResult{Meta: &solanarpc.TransactionMeta{}}
 }
 
-func TestExecuteTransaction_HappyPath(t *testing.T) {
+func TestExecuteTransactions_HappyPath(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -125,7 +125,7 @@ func TestExecuteTransaction_HappyPath(t *testing.T) {
 	require.NotNil(t, res)
 }
 
-func TestExecuteTransaction_BlockhashError(t *testing.T) {
+func TestExecuteTransactions_BlockhashError(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -144,7 +144,7 @@ func TestExecuteTransaction_BlockhashError(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 }
 
-func TestExecuteTransaction_SendError(t *testing.T) {
+func TestExecuteTransactions_SendError(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -168,7 +168,7 @@ func TestExecuteTransaction_SendError(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 }
 
-func TestExecuteTransaction_ConfirmationTransitions(t *testing.T) {
+func TestExecuteTransactions_ConfirmationTransitions(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -215,7 +215,7 @@ func TestExecuteTransaction_ConfirmationTransitions(t *testing.T) {
 	require.GreaterOrEqual(t, call.Load(), int32(3), "should have polled through Processed/Confirmed before Finalized")
 }
 
-func TestExecuteTransaction_WaitForVisibleTimeout(t *testing.T) {
+func TestExecuteTransactions_WaitForVisibleTimeout(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -246,7 +246,7 @@ func TestExecuteTransaction_WaitForVisibleTimeout(t *testing.T) {
 	require.Contains(t, err.Error(), "not visible")
 }
 
-func TestExecuteTransaction_ContextCancellationDuringFinalization(t *testing.T) {
+func TestExecuteTransactions_ContextCancellationDuringFinalization(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -286,7 +286,7 @@ func TestExecuteTransaction_ContextCancellationDuringFinalization(t *testing.T) 
 	require.ErrorIs(t, err, context.Canceled)
 }
 
-func TestExecuteTransaction_FinalizationTimeout(t *testing.T) {
+func TestExecuteTransactions_FinalizationTimeout(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -321,7 +321,7 @@ func TestExecuteTransaction_FinalizationTimeout(t *testing.T) {
 	require.Contains(t, err.Error(), "not finalized within")
 }
 
-func TestExecuteTransaction_SkipPreflightPassthrough(t *testing.T) {
+func TestExecuteTransactions_SkipPreflightPassthrough(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey

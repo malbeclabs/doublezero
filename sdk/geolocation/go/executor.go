@@ -33,7 +33,7 @@ func WithWaitForVisibleTimeout(timeout time.Duration) ExecutorOption {
 	}
 }
 
-// WithFinalizationTimeout bounds how long ExecuteTransaction will poll for the
+// WithFinalizationTimeout bounds how long ExecuteTransactions will poll for the
 // transaction to reach Finalized commitment once it is visible on the cluster.
 // Callers can also cancel the context to cut the wait short.
 func WithFinalizationTimeout(timeout time.Duration) ExecutorOption {
@@ -59,10 +59,6 @@ func NewExecutor(log *slog.Logger, rpc ExecutorRPCClient, signer *solana.Private
 
 type ExecuteTransactionOptions struct {
 	SkipPreflight bool
-}
-
-func (e *executor) ExecuteTransaction(ctx context.Context, instruction solana.Instruction, opts *ExecuteTransactionOptions) (solana.Signature, *solanarpc.GetTransactionResult, error) {
-	return e.ExecuteTransactions(ctx, []solana.Instruction{instruction}, opts)
 }
 
 func (e *executor) ExecuteTransactions(ctx context.Context, instructions []solana.Instruction, opts *ExecuteTransactionOptions) (solana.Signature, *solanarpc.GetTransactionResult, error) {

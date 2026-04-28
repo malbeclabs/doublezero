@@ -33,9 +33,11 @@ impl fmt::Debug for WriteDeviceLatencySamplesArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "start_timestamp_microseconds: {}, samples: {}",
+            "start_timestamp_microseconds: {}, samples: {}, agent_version: {}, agent_commit: {}",
             self.start_timestamp_microseconds,
-            self.samples.len()
+            self.samples.len(),
+            String::from_utf8_lossy(&self.agent_version),
+            String::from_utf8_lossy(&self.agent_commit),
         )
     }
 }

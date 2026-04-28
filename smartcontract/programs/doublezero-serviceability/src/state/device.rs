@@ -572,47 +572,10 @@ impl Validate for Device {
             msg!("Invalid device prefixes: {:?}", self.dz_prefixes);
             return Err(DoubleZeroError::InvalidDzPrefix);
         }
-        // users_count + reserved_seats must be <= max_users when max_users > 0
-        if self.users_count + self.reserved_seats > self.max_users {
-            msg!(
-                "Max users exceeded or invalid: users_count = {}, reserved_seats = {}, max_users = {}",
-                self.users_count,
-                self.reserved_seats,
-                self.max_users
-            );
-            return Err(DoubleZeroError::MaxUsersExceeded);
-        }
-        // unicast_users_count must be <= max_unicast_users when max_unicast_users > 0
-        if self.max_unicast_users > 0 && self.unicast_users_count > self.max_unicast_users {
-            msg!(
-                "Max unicast users exceeded: unicast_users_count = {}, max_unicast_users = {}",
-                self.unicast_users_count,
-                self.max_unicast_users
-            );
-            return Err(DoubleZeroError::MaxUnicastUsersExceeded);
-        }
-        // multicast_subscribers_count must be <= max_multicast_subscribers when max_multicast_subscribers > 0
-        if self.max_multicast_subscribers > 0
-            && self.multicast_subscribers_count > self.max_multicast_subscribers
-        {
-            msg!(
-                "Max multicast subscribers exceeded: multicast_subscribers_count = {}, max_multicast_subscribers = {}",
-                self.multicast_subscribers_count,
-                self.max_multicast_subscribers
-            );
-            return Err(DoubleZeroError::MaxMulticastSubscribersExceeded);
-        }
-        // multicast_publishers_count must be <= max_multicast_publishers when max_multicast_publishers > 0
-        if self.max_multicast_publishers > 0
-            && self.multicast_publishers_count > self.max_multicast_publishers
-        {
-            msg!(
-                "Max multicast publishers exceeded: multicast_publishers_count = {}, max_multicast_publishers = {}",
-                self.multicast_publishers_count,
-                self.max_multicast_publishers
-            );
-            return Err(DoubleZeroError::MaxMulticastPublishersExceeded);
-        }
+        // Note: count <= max invariants are enforced at user-creation admission
+        // time (see processors/user/create_core.rs), not here. Allowing count > max
+        // in stored state lets operators lower a cap below the live count and drain
+        // it down through natural churn.
         // validate Interfaces
         for interface in &self.interfaces {
             interface.validate()?;
@@ -961,7 +924,9 @@ mod tests {
     }
 
     #[test]
-    fn test_state_device_validate_error_max_users_exceeded() {
+    fn test_state_device_validate_count_exceeds_max_is_allowed() {
+        // count > max is allowed in stored state so operators can shrink a cap
+        // below the live count; admission gates prevent further growth.
         let val = Device {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
@@ -983,17 +948,16 @@ mod tests {
             max_users: 5,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
-            unicast_users_count: 0,
-            multicast_subscribers_count: 0,
-            max_unicast_users: 0,
-            max_multicast_subscribers: 0,
+            unicast_users_count: 4,
+            multicast_subscribers_count: 3,
+            max_unicast_users: 2,
+            max_multicast_subscribers: 1,
             reserved_seats: 0,
-            multicast_publishers_count: 0,
-            max_multicast_publishers: 0,
+            multicast_publishers_count: 2,
+            max_multicast_publishers: 1,
         };
 
-        let err = val.validate();
-        assert_eq!(err.unwrap_err(), DoubleZeroError::MaxUsersExceeded);
+        assert!(val.validate().is_ok());
     }
 
     #[test]
@@ -1390,12 +1354,11 @@ mod test_device_validate_errors {
     }
 
     #[test]
-    fn test_max_users_exceeded() {
+    fn test_max_users_count_exceeds_max_is_allowed() {
         let mut device = base_device();
         device.users_count = 11;
         device.max_users = 10;
-        let err = device.validate();
-        assert_eq!(err.unwrap_err(), DoubleZeroError::MaxUsersExceeded);
+        assert!(device.validate().is_ok());
     }
 
     #[test]

@@ -60,11 +60,11 @@ impl MulticastUnsubscribeCliCommand {
     pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
         let controller = ServiceControllerImpl::new(None);
         let client_ip = crate::command::helpers::resolve_client_ip(&controller).await?;
-        self.execute_inner(client, client_ip).await
+        self.execute_inner(client, client_ip)
     }
 
     /// Testable core: takes an already-resolved client_ip.
-    async fn execute_inner(self, client: &dyn CliCommand, client_ip: Ipv4Addr) -> eyre::Result<()> {
+    fn execute_inner(self, client: &dyn CliCommand, client_ip: Ipv4Addr) -> eyre::Result<()> {
         let spinner = init_command(2);
         spinner.println(format!("⚡  Unsubscribing (client_ip: {client_ip})..."));
 
@@ -82,30 +82,49 @@ impl MulticastUnsubscribeCliCommand {
             spinner.println(warn_idle_tunnel());
         }
 
+        let mut failures: Vec<String> = Vec::new();
         for (code, group_pk) in groups {
             if !user.subscribers.contains(&group_pk) {
                 spinner.println(format!("    not subscribed to {code} — skipping"));
                 continue;
             }
             let carry_pub = user.publishers.contains(&group_pk);
-            client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
+            match client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
                 user_pk,
                 group_pk,
                 client_ip,
                 publisher: carry_pub,
                 subscriber: false,
-            })?;
-            spinner.println(format!("    unsubscribed from {code}"));
+            }) {
+                Ok(_) => spinner.println(format!("    unsubscribed from {code}")),
+                Err(e) => {
+                    spinner.println(format!("    ❌ failed to unsubscribe from {code}: {e}"));
+                    failures.push(code);
+                }
+            }
         }
 
         finish_update(&spinner);
-        Ok(())
+        report_failures("unsubscribe", &failures)
     }
 }
 
 fn finish_update(spinner: &ProgressBar) {
     spinner.println("✅  Updated. Routes will adjust shortly.");
     spinner.finish_and_clear();
+}
+
+/// If any per-group calls failed, surface a non-zero exit by returning an error
+/// listing the affected codes. Per-group failures are already printed inline.
+fn report_failures(op: &str, failures: &[String]) -> eyre::Result<()> {
+    if failures.is_empty() {
+        return Ok(());
+    }
+    Err(eyre::eyre!(
+        "{op} failed for {} group(s): {}",
+        failures.len(),
+        failures.join(", ")
+    ))
 }
 
 /// Returns true when removing `to_remove` publisher roles from `user` would leave
@@ -157,10 +176,10 @@ impl MulticastUnpublishCliCommand {
     pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
         let controller = ServiceControllerImpl::new(None);
         let client_ip = crate::command::helpers::resolve_client_ip(&controller).await?;
-        self.execute_inner(client, client_ip).await
+        self.execute_inner(client, client_ip)
     }
 
-    async fn execute_inner(self, client: &dyn CliCommand, client_ip: Ipv4Addr) -> eyre::Result<()> {
+    fn execute_inner(self, client: &dyn CliCommand, client_ip: Ipv4Addr) -> eyre::Result<()> {
         let spinner = init_command(2);
         spinner.println(format!("⚡  Unpublishing (client_ip: {client_ip})..."));
 
@@ -187,24 +206,30 @@ impl MulticastUnpublishCliCommand {
             spinner.println(warn_idle_tunnel());
         }
 
+        let mut failures: Vec<String> = Vec::new();
         for (code, group_pk) in groups {
             if !user.publishers.contains(&group_pk) {
                 spinner.println(format!("    not publishing to {code} — skipping"));
                 continue;
             }
             let carry_sub = user.subscribers.contains(&group_pk);
-            client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
+            match client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
                 user_pk,
                 group_pk,
                 client_ip,
                 publisher: false,
                 subscriber: carry_sub,
-            })?;
-            spinner.println(format!("    unpublished from {code}"));
+            }) {
+                Ok(_) => spinner.println(format!("    unpublished from {code}")),
+                Err(e) => {
+                    spinner.println(format!("    ❌ failed to unpublish from {code}: {e}"));
+                    failures.push(code);
+                }
+            }
         }
 
         finish_update(&spinner);
-        Ok(())
+        report_failures("unpublish", &failures)
     }
 }
 
@@ -212,10 +237,10 @@ impl MulticastSubscribeCliCommand {
     pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
         let controller = ServiceControllerImpl::new(None);
         let client_ip = crate::command::helpers::resolve_client_ip(&controller).await?;
-        self.execute_inner(client, client_ip).await
+        self.execute_inner(client, client_ip)
     }
 
-    async fn execute_inner(self, client: &dyn CliCommand, client_ip: Ipv4Addr) -> eyre::Result<()> {
+    fn execute_inner(self, client: &dyn CliCommand, client_ip: Ipv4Addr) -> eyre::Result<()> {
         let spinner = init_command(2);
         spinner.println(format!("⚡  Subscribing (client_ip: {client_ip})..."));
 
@@ -223,24 +248,30 @@ impl MulticastSubscribeCliCommand {
         let groups = resolve_groups(client, &self.groups)?;
         spinner.inc(1);
 
+        let mut failures: Vec<String> = Vec::new();
         for (code, group_pk) in groups {
             if user.subscribers.contains(&group_pk) {
                 spinner.println(format!("    already subscribed to {code} — skipping"));
                 continue;
             }
             let carry_pub = user.publishers.contains(&group_pk);
-            client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
+            match client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
                 user_pk,
                 group_pk,
                 client_ip,
                 publisher: carry_pub,
                 subscriber: true,
-            })?;
-            spinner.println(format!("    subscribed to {code}"));
+            }) {
+                Ok(_) => spinner.println(format!("    subscribed to {code}")),
+                Err(e) => {
+                    spinner.println(format!("    ❌ failed to subscribe to {code}: {e}"));
+                    failures.push(code);
+                }
+            }
         }
 
         finish_update(&spinner);
-        Ok(())
+        report_failures("subscribe", &failures)
     }
 }
 
@@ -248,10 +279,10 @@ impl MulticastPublishCliCommand {
     pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
         let controller = ServiceControllerImpl::new(None);
         let client_ip = crate::command::helpers::resolve_client_ip(&controller).await?;
-        self.execute_inner(client, client_ip).await
+        self.execute_inner(client, client_ip)
     }
 
-    async fn execute_inner(self, client: &dyn CliCommand, client_ip: Ipv4Addr) -> eyre::Result<()> {
+    fn execute_inner(self, client: &dyn CliCommand, client_ip: Ipv4Addr) -> eyre::Result<()> {
         let spinner = init_command(2);
         spinner.println(format!("⚡  Publishing (client_ip: {client_ip})..."));
 
@@ -259,24 +290,30 @@ impl MulticastPublishCliCommand {
         let groups = resolve_groups(client, &self.groups)?;
         spinner.inc(1);
 
+        let mut failures: Vec<String> = Vec::new();
         for (code, group_pk) in groups {
             if user.publishers.contains(&group_pk) {
                 spinner.println(format!("    already publishing to {code} — skipping"));
                 continue;
             }
             let carry_sub = user.subscribers.contains(&group_pk);
-            client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
+            match client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
                 user_pk,
                 group_pk,
                 client_ip,
                 publisher: true,
                 subscriber: carry_sub,
-            })?;
-            spinner.println(format!("    publishing to {code}"));
+            }) {
+                Ok(_) => spinner.println(format!("    publishing to {code}")),
+                Err(e) => {
+                    spinner.println(format!("    ❌ failed to publish to {code}: {e}"));
+                    failures.push(code);
+                }
+            }
         }
 
         finish_update(&spinner);
-        Ok(())
+        report_failures("publish", &failures)
     }
 }
 
@@ -431,8 +468,8 @@ mod tests {
         u
     }
 
-    #[tokio::test]
-    async fn unsubscribe_removes_subscriber_role_and_preserves_publisher_role() {
+    #[test]
+    fn unsubscribe_removes_subscriber_role_and_preserves_publisher_role() {
         let ip = Ipv4Addr::new(10, 0, 0, 1);
         let g_pk = Pubkey::new_unique();
         let user_pk = Pubkey::new_unique();
@@ -467,11 +504,11 @@ mod tests {
         let cmd = MulticastUnsubscribeCliCommand {
             groups: vec!["g".into()],
         };
-        cmd.execute_inner(&client, ip).await.unwrap();
+        cmd.execute_inner(&client, ip).unwrap();
     }
 
-    #[tokio::test]
-    async fn unsubscribe_skips_group_user_is_not_subscribed_to() {
+    #[test]
+    fn unsubscribe_skips_group_user_is_not_subscribed_to() {
         let ip = Ipv4Addr::new(10, 0, 0, 1);
         let g_pk = Pubkey::new_unique();
         let user_pk = Pubkey::new_unique();
@@ -495,11 +532,11 @@ mod tests {
         let cmd = MulticastUnsubscribeCliCommand {
             groups: vec!["g".into()],
         };
-        cmd.execute_inner(&client, ip).await.unwrap();
+        cmd.execute_inner(&client, ip).unwrap();
     }
 
-    #[tokio::test]
-    async fn unsubscribe_errors_when_user_missing() {
+    #[test]
+    fn unsubscribe_errors_when_user_missing() {
         let ip = Ipv4Addr::new(10, 0, 0, 1);
         let mut client = create_test_client();
         client.expect_list_user().returning(|_| Ok(HashMap::new()));
@@ -507,12 +544,12 @@ mod tests {
         let cmd = MulticastUnsubscribeCliCommand {
             groups: vec!["g".into()],
         };
-        let err = cmd.execute_inner(&client, ip).await.unwrap_err();
+        let err = cmd.execute_inner(&client, ip).unwrap_err();
         assert!(err.to_string().contains("No active multicast user"));
     }
 
-    #[tokio::test]
-    async fn unsubscribe_errors_on_unknown_group_before_any_onchain_call() {
+    #[test]
+    fn unsubscribe_errors_on_unknown_group_before_any_onchain_call() {
         let ip = Ipv4Addr::new(10, 0, 0, 1);
         let user_pk = Pubkey::new_unique();
         let mut client = create_test_client();
@@ -532,16 +569,61 @@ mod tests {
         let cmd = MulticastUnsubscribeCliCommand {
             groups: vec!["unknown".into()],
         };
-        let err = cmd.execute_inner(&client, ip).await.unwrap_err();
+        let err = cmd.execute_inner(&client, ip).unwrap_err();
         assert!(err
             .to_string()
             .contains("Multicast group not found: unknown"));
     }
 
+    #[test]
+    fn unsubscribe_continues_after_per_group_failure_and_aggregates_error() {
+        // g1's onchain call fails; g2's must still be attempted, and the
+        // command must return an aggregated error naming g1.
+        let ip = Ipv4Addr::new(10, 0, 0, 1);
+        let g1 = Pubkey::new_unique();
+        let g2 = Pubkey::new_unique();
+        let user_pk = Pubkey::new_unique();
+
+        let mut client = create_test_client();
+        let user = user_with_roles(ip, vec![], vec![g1, g2]);
+        let mut users = HashMap::new();
+        users.insert(user_pk, user);
+        client
+            .expect_list_user()
+            .returning(move |_| Ok(users.clone()));
+
+        let mut groups = HashMap::new();
+        groups.insert(g1, make_group("g1"));
+        groups.insert(g2, make_group("g2"));
+        client
+            .expect_list_multicastgroup()
+            .returning(move |_| Ok(groups.clone()));
+
+        client
+            .expect_update_multicastgroup_roles()
+            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| cmd.group_pk == g1)
+            .once()
+            .returning(|_| Err(eyre::eyre!("simulated chain failure")));
+        client
+            .expect_update_multicastgroup_roles()
+            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| cmd.group_pk == g2)
+            .once()
+            .returning(|_| Ok(solana_sdk::signature::Signature::default()));
+
+        let cmd = MulticastUnsubscribeCliCommand {
+            groups: vec!["g1".into(), "g2".into()],
+        };
+        let err = cmd.execute_inner(&client, ip).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("unsubscribe failed"), "got: {msg}");
+        assert!(msg.contains("g1"), "got: {msg}");
+        assert!(!msg.contains("g2"), "g2 should have succeeded; got: {msg}");
+    }
+
     // --- MulticastUnpublishCliCommand tests ---
 
-    #[tokio::test]
-    async fn unpublish_removes_publisher_role_and_preserves_subscriber_role() {
+    #[test]
+    fn unpublish_removes_publisher_role_and_preserves_subscriber_role() {
         let ip = Ipv4Addr::new(10, 0, 0, 1);
         let g1 = Pubkey::new_unique();
         let g2 = Pubkey::new_unique();
@@ -574,11 +656,11 @@ mod tests {
         let cmd = MulticastUnpublishCliCommand {
             groups: vec!["g1".into()],
         };
-        cmd.execute_inner(&client, ip).await.unwrap();
+        cmd.execute_inner(&client, ip).unwrap();
     }
 
-    #[tokio::test]
-    async fn unpublish_skips_group_user_is_not_publishing_to() {
+    #[test]
+    fn unpublish_skips_group_user_is_not_publishing_to() {
         let ip = Ipv4Addr::new(10, 0, 0, 1);
         let g_pk = Pubkey::new_unique();
         let user_pk = Pubkey::new_unique();
@@ -602,11 +684,11 @@ mod tests {
         let cmd = MulticastUnpublishCliCommand {
             groups: vec!["g".into()],
         };
-        cmd.execute_inner(&client, ip).await.unwrap();
+        cmd.execute_inner(&client, ip).unwrap();
     }
 
-    #[tokio::test]
-    async fn unpublish_last_publisher_still_issues_onchain_call() {
+    #[test]
+    fn unpublish_last_publisher_still_issues_onchain_call() {
         // The CLI prints a warning but does not block.
         let ip = Ipv4Addr::new(10, 0, 0, 1);
         let g_pk = Pubkey::new_unique();
@@ -634,11 +716,11 @@ mod tests {
         let cmd = MulticastUnpublishCliCommand {
             groups: vec!["g".into()],
         };
-        cmd.execute_inner(&client, ip).await.unwrap();
+        cmd.execute_inner(&client, ip).unwrap();
     }
 
-    #[tokio::test]
-    async fn unpublish_of_nonlast_publisher_does_not_claim_last() {
+    #[test]
+    fn unpublish_of_nonlast_publisher_does_not_claim_last() {
         // would_empty_publishers logic: user has two, remove one — NOT last.
         let ip = Ipv4Addr::new(10, 0, 0, 1);
         let g1 = Pubkey::new_unique();
@@ -697,8 +779,8 @@ mod tests {
 
     // --- MulticastSubscribeCliCommand tests ---
 
-    #[tokio::test]
-    async fn subscribe_adds_subscriber_role_and_preserves_publisher_role() {
+    #[test]
+    fn subscribe_adds_subscriber_role_and_preserves_publisher_role() {
         let ip = Ipv4Addr::new(10, 0, 0, 1);
         let g_pk = Pubkey::new_unique();
         let user_pk = Pubkey::new_unique();
@@ -729,11 +811,11 @@ mod tests {
         let cmd = MulticastSubscribeCliCommand {
             groups: vec!["g".into()],
         };
-        cmd.execute_inner(&client, ip).await.unwrap();
+        cmd.execute_inner(&client, ip).unwrap();
     }
 
-    #[tokio::test]
-    async fn subscribe_skips_already_subscribed_group() {
+    #[test]
+    fn subscribe_skips_already_subscribed_group() {
         let ip = Ipv4Addr::new(10, 0, 0, 1);
         let g_pk = Pubkey::new_unique();
         let user_pk = Pubkey::new_unique();
@@ -757,13 +839,13 @@ mod tests {
         let cmd = MulticastSubscribeCliCommand {
             groups: vec!["g".into()],
         };
-        cmd.execute_inner(&client, ip).await.unwrap();
+        cmd.execute_inner(&client, ip).unwrap();
     }
 
     // --- MulticastPublishCliCommand tests ---
 
-    #[tokio::test]
-    async fn publish_adds_publisher_role_and_preserves_subscriber_role() {
+    #[test]
+    fn publish_adds_publisher_role_and_preserves_subscriber_role() {
         let ip = Ipv4Addr::new(10, 0, 0, 1);
         let g_pk = Pubkey::new_unique();
         let user_pk = Pubkey::new_unique();
@@ -794,11 +876,11 @@ mod tests {
         let cmd = MulticastPublishCliCommand {
             groups: vec!["g".into()],
         };
-        cmd.execute_inner(&client, ip).await.unwrap();
+        cmd.execute_inner(&client, ip).unwrap();
     }
 
-    #[tokio::test]
-    async fn publish_skips_already_published_group() {
+    #[test]
+    fn publish_skips_already_published_group() {
         let ip = Ipv4Addr::new(10, 0, 0, 1);
         let g_pk = Pubkey::new_unique();
         let user_pk = Pubkey::new_unique();
@@ -822,6 +904,6 @@ mod tests {
         let cmd = MulticastPublishCliCommand {
             groups: vec!["g".into()],
         };
-        cmd.execute_inner(&client, ip).await.unwrap();
+        cmd.execute_inner(&client, ip).unwrap();
     }
 }

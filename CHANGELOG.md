@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - Telemetry
   - Fix BGP status submitter to collect socket stats and tunnel interfaces from all tenant VRF namespaces (`ns-vrf<N>`), not only `ns-vrf1`; users whose tenant has a non-default `VrfId` were previously always reporting "tunnel not found" and had their onchain BGP status left stale
+  - Fix BGP status submitter to also collect from `ns-vrf0` (the global VRF) when multicast users are present on a device; multicast GRE tunnels live in the global VRF rather than a per-tenant namespace, so their BGP sessions were never detected and onchain status remained permanently stale
 - CLI
   - Add `--narrow` flag to `doublezero user list` that hides `location`, `cyoa_type`, `accesspass`, and `tunnel_net`, abbreviates `user_type`, and summarizes `groups` as one publisher entry plus one subscriber entry with independent `+N` overflow counts; default output is unchanged
 - Smartcontract

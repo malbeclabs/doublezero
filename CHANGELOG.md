@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
   - Fix BGP status submitter to collect socket stats and tunnel interfaces from all tenant VRF namespaces (`ns-vrf<N>`), not only `ns-vrf1`; users whose tenant has a non-default `VrfId` were previously always reporting "tunnel not found" and had their onchain BGP status left stale
 - CLI
   - Add `--narrow` flag to `doublezero user list` that hides `location`, `cyoa_type`, `accesspass`, and `tunnel_net`, abbreviates `user_type`, and summarizes `groups` as one publisher entry plus one subscriber entry with independent `+N` overflow counts; default output is unchanged
+  - Add `doublezero-geolocation user update --user <code-or-pubkey> --token-account <pubkey>` to update a geolocation user's payment token account; the underlying `UpdateGeolocationUser` instruction was already onchain but had no CLI entrypoint
 - Smartcontract
   - Allow `count > max` in `Device::validate` for all four per-device caps (`max_users`, `max_unicast_users`, `max_multicast_subscribers`, `max_multicast_publishers`) so operators can lower a cap below the live count; admission-time gates in user create still reject new connections when at capacity, letting the live count drain through natural churn
 

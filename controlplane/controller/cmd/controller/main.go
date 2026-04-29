@@ -227,6 +227,21 @@ func (c *ControllerCommand) Run() error {
 
 	options = append(options, controller.WithDeviceLocalASN(deviceLocalASN))
 
+	const defaultFeaturesConfigPath = "/etc/doublezero-controller/features.yaml"
+	if f, err := os.Open(defaultFeaturesConfigPath); err == nil {
+		cfg, err := controller.LoadFeaturesConfig(f)
+		f.Close()
+		if err != nil {
+			log.Error("failed to parse features config", "path", defaultFeaturesConfigPath, "error", err)
+			os.Exit(1)
+		}
+		options = append(options, controller.WithFeaturesConfig(cfg))
+		log.Info("loaded features config", "path", defaultFeaturesConfigPath, "flex_algo_enabled", cfg.Features.FlexAlgo.Enabled)
+	} else if !os.IsNotExist(err) {
+		log.Error("failed to open features config", "path", defaultFeaturesConfigPath, "error", err)
+		os.Exit(1)
+	}
+
 	if chAddr := os.Getenv("CLICKHOUSE_ADDR"); chAddr != "" {
 		chDB := os.Getenv("CLICKHOUSE_DB")
 		if chDB == "" {

@@ -26,6 +26,8 @@ const (
 	TenantType            // 13
 	// 14 is reserved
 	PermissionType AccountType = 15
+	IndexType      AccountType = 16
+	TopologyType   AccountType = 17
 )
 
 type LocationStatus uint8
@@ -681,8 +683,13 @@ type Link struct {
 	DelayOverrideNs   uint64            `influx:"field,delay_override_ns"`
 	LinkHealth        LinkHealth        `influx:"field,link_health"`
 	LinkDesiredStatus LinkDesiredStatus `influx:"tag,link_desired_status"`
+	LinkTopologies    [][32]byte        `json:",omitempty"`
+	LinkFlags         uint32            `json:",omitempty"`
 	PubKey            [32]byte          `influx:"tag,pubkey,pubkey"`
 }
+
+// LinkFlagUnicastDrained is set in LinkFlags when the link is marked as unicast-drained.
+const LinkFlagUnicastDrained uint32 = 0x01
 
 func (l Link) MarshalJSON() ([]byte, error) {
 	type LinkAlias Link
@@ -808,6 +815,7 @@ type Tenant struct {
 	BillingDiscriminant         uint8               `influx:"-"`
 	BillingRate                 uint64              `influx:"field,billing_rate"`
 	BillingLastDeductionDzEpoch uint64              `influx:"field,billing_last_deduction_dz_epoch"`
+	IncludeTopologies           [][32]byte          `json:",omitempty"`
 	PubKey                      [32]byte            `influx:"tag,pubkey,pubkey"`
 }
 
@@ -1320,4 +1328,34 @@ func (r ResourceExtension) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(jsonExt)
+}
+
+type TopologyConstraint uint8
+
+const (
+	TopologyConstraintIncludeAny TopologyConstraint = 0
+	TopologyConstraintExclude    TopologyConstraint = 1
+)
+
+func (c TopologyConstraint) String() string {
+	switch c {
+	case TopologyConstraintIncludeAny:
+		return "include-any"
+	case TopologyConstraintExclude:
+		return "exclude"
+	default:
+		return "unknown"
+	}
+}
+
+type TopologyInfo struct {
+	AccountType    AccountType
+	Owner          [32]byte
+	BumpSeed       uint8
+	Name           string
+	AdminGroupBit  uint8
+	FlexAlgoNumber uint8
+	Constraint     TopologyConstraint
+	ReferenceCount uint32
+	PubKey         [32]byte
 }

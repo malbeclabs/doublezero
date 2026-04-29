@@ -21,6 +21,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Controller
+  - Auto-loads `/etc/doublezero-controller/features.yaml` at startup if present (silently skips if absent); when `flex_algo.enabled: true`, populates topology data into the state cache, resolves tenant color communities from `Tenant.include_topologies`, and emits IS-IS flex-algo node segment and BGP color community stamping blocks into the Arista EOS template (disabled by default)
+- SDK
+  - Go serviceability SDK adds `TopologyInfo` account type with `TopologyConstraint`, `IndexType` / `TopologyType` account-type constants, and `GetProgramData` dispatch case; extends `Link` with `LinkTopologies` and `LinkFlags`; extends `Tenant` with `IncludeTopologies`
 - CLI
   - Add `cyoa_ips` field to `doublezero device get` and `doublezero device list` output, showing the IP networks of interfaces with `user_tunnel_endpoint` enabled
   - Add `--tunnel_endpoint` flag to `user update` command so operators can set the tunnel endpoint IP of an existing user

@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.20.0](https://github.com/malbeclabs/doublezero/compare/client/v0.19.0...client/v0.20.0) - 2026-04-29
+
+### Breaking
+
+### Changes
+
 - Telemetry
   - Fix BGP status submitter to collect socket stats and tunnel interfaces from all tenant VRF namespaces (`ns-vrf<N>`), not only `ns-vrf1`; users whose tenant has a non-default `VrfId` were previously always reporting "tunnel not found" and had their onchain BGP status left stale
   - Fix BGP status submitter to collect from the root Linux network namespace when multicast users are present on a device; multicast GRE tunnels live in the global VRF (root namespace) rather than a per-tenant namespace, so their BGP sessions were never detected and onchain status remained permanently stale

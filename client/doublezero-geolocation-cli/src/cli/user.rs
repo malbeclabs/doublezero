@@ -4,7 +4,7 @@ use doublezero_cli::geolocation::user::{
     delete::DeleteGeolocationUserCliCommand, get::GetGeolocationUserCliCommand,
     list::ListGeolocationUserCliCommand, remove_target::RemoveTargetCliCommand,
     set_result_destination::SetResultDestinationCliCommand,
-    update_payment_status::UpdatePaymentStatusCliCommand,
+    update::UpdateGeolocationUserCliCommand, update_payment_status::UpdatePaymentStatusCliCommand,
 };
 
 #[derive(Args, Debug)]
@@ -19,6 +19,8 @@ pub enum UserCommands {
     Create(CreateGeolocationUserCliCommand),
     /// Delete a geolocation user
     Delete(DeleteGeolocationUserCliCommand),
+    /// Update a geolocation user's payment token account
+    Update(UpdateGeolocationUserCliCommand),
     /// Get details of a specific user
     Get(GetGeolocationUserCliCommand),
     /// List all geolocation users

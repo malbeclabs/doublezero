@@ -55,6 +55,13 @@ func makeActivatedUser(devicePK solana.PublicKey, tunnelNet [5]byte) serviceabil
 	return u
 }
 
+// makeMulticastUser returns a multicast User activated on devicePK with the given /31 tunnelNet.
+func makeMulticastUser(devicePK solana.PublicKey, tunnelNet [5]byte) serviceability.User {
+	u := makeActivatedUser(devicePK, tunnelNet)
+	u.UserType = serviceability.UserTypeMulticast
+	return u
+}
+
 // ============================================================
 // tick() – multi-namespace collection
 // ============================================================
@@ -182,6 +189,55 @@ func TestTick_MultiNamespace_PartialFailure(t *testing.T) {
 		}
 		return map[string]struct{}{"10.0.1.1": {}}, []netutil.Interface{iface}, nil
 	}
+
+	s := newTestSubmitter(t, clk, exec, svc, col, devicePK, 0, 6*time.Hour)
+	s.tick(context.Background())
+
+	s.mu.Lock()
+	enqueued := len(s.taskCh)
+	s.mu.Unlock()
+
+	if enqueued != 1 {
+		t.Fatalf("expected 1 task enqueued, got %d", enqueued)
+	}
+	task := <-s.taskCh
+	if task.status != serviceability.BGPStatusUp {
+		t.Errorf("expected Up task, got %v", task.status)
+	}
+	if solana.PublicKeyFromBytes(task.user.PubKey[:]).String() != userPK {
+		t.Errorf("unexpected user in task")
+	}
+}
+
+// TestTick_MulticastUser_UsesRootNamespace verifies that a multicast user whose
+// tunnel lives in the root network namespace (global VRF) is found and reported
+// Up. No tenant VRF is needed; the multicast user type alone causes the root
+// namespace collector to be invoked.
+func TestTick_MulticastUser_UsesRootNamespace(t *testing.T) {
+	devicePK := solana.NewWallet().PublicKey()
+	tunnelNet := [5]byte{10, 0, 3, 0, 31} // 10.0.3.0/31
+
+	user := makeMulticastUser(devicePK, tunnelNet)
+	userPK := solana.PublicKeyFromBytes(user.PubKey[:]).String()
+
+	exec := &mockExecutor{}
+	clk := clockwork.NewFakeClock()
+	svc := &mockSvcClient{data: &serviceability.ProgramData{
+		Users: []serviceability.User{user},
+	}}
+
+	// The tunnel (10.0.3.0/31) lives in the root namespace (global VRF) with an ESTABLISHED BGP session.
+	iface := makeInterface("tu500", "10.0.3.0/31")
+	col := staticCollector(
+		map[string]map[string]struct{}{
+			"ns-vrf1":     {},
+			rootNamespace: {"10.0.3.1": {}}, // peer IP is ESTABLISHED in the global VRF
+		},
+		map[string][]netutil.Interface{
+			"ns-vrf1":     nil,
+			rootNamespace: {iface},
+		},
+	)
 
 	s := newTestSubmitter(t, clk, exec, svc, col, devicePK, 0, 6*time.Hour)
 	s.tick(context.Background())

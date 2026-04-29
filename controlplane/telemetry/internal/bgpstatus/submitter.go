@@ -70,11 +70,23 @@ func (s *Submitter) tick(ctx context.Context) {
 		return
 	}
 
+	// Pre-collect activated users for this device. This is needed both to
+	// derive the full namespace set (multicast users require the root namespace) and to
+	// drive the per-user status loop below.
+	var deviceUsers []serviceability.User
+	for _, u := range programData.Users {
+		if u.Status == serviceability.UserStatusActivated &&
+			solana.PublicKeyFromBytes(u.DevicePubKey[:]) == s.cfg.LocalDevicePK {
+			deviceUsers = append(deviceUsers, u)
+		}
+	}
+
 	// User tunnel interfaces live in a per-tenant VRF namespace (e.g. ns-vrf1,
-	// ns-vrf2). Collect state from all relevant namespaces so that users whose
-	// tenant has VrfId != 1 are handled correctly.
+	// ns-vrf2). Multicast users are an exception: their tunnels live in the
+	// global VRF (root network namespace). Collect state from all relevant namespaces so that
+	// all user types are handled correctly.
 	// Tunnel IPs are globally unique (onchain-allocated), so merging is safe.
-	namespaces := vrfNamespaces(s.cfg.BGPNamespace, programData.Tenants)
+	namespaces := vrfNamespaces(s.cfg.BGPNamespace, programData.Tenants, deviceUsers)
 
 	establishedIPs := make(map[string]struct{})
 	var interfaces []netutil.Interface
@@ -105,14 +117,7 @@ func (s *Submitter) tick(ctx context.Context) {
 
 	activeUserKeys := make(map[string]struct{})
 
-	for _, user := range programData.Users {
-		if user.Status != serviceability.UserStatusActivated {
-			continue
-		}
-		if solana.PublicKeyFromBytes(user.DevicePubKey[:]) != s.cfg.LocalDevicePK {
-			continue
-		}
-
+	for _, user := range deviceUsers {
 		userPK := solana.PublicKeyFromBytes(user.PubKey[:]).String()
 		activeUserKeys[userPK] = struct{}{}
 

@@ -202,11 +202,22 @@ func computeEffectiveStatus(
 	return serviceability.BGPStatusDown
 }
 
+// rootNamespace is the sentinel passed to DefaultCollector / RunInNamespace
+// to indicate the root (global) Linux network namespace. Arista EOS places
+// the default VRF in the root namespace rather than a named namespace under
+// /var/run/netns/, so there is no file to open with netns.GetFromName.
+// RunInNamespace treats "" as "execute in the current namespace" (no switching).
+const rootNamespace = ""
+
 // vrfNamespaces builds the list of Linux network namespaces to check for BGP
-// sockets and tunnel interfaces. It derives additional namespaces from tenant
-// VRF IDs by replacing the trailing numeric suffix of base (e.g. "ns-vrf1")
-// with each tenant's VrfId. The base namespace is always included first.
-func vrfNamespaces(base string, tenants []serviceability.Tenant) []string {
+// sockets and tunnel interfaces. The base namespace is always included first.
+// Additional namespaces are derived from two sources:
+//   - Tenant VRF IDs (non-zero): replaces the trailing numeric suffix of base
+//     (e.g. "ns-vrf1") with each tenant's VrfId, giving e.g. "ns-vrf2".
+//   - Multicast users: GRE tunnels for multicast users live in the global VRF
+//     (the root network namespace), not in a per-tenant namespace. rootNamespace
+//     is appended if any user in the provided slice has UserTypeMulticast.
+func vrfNamespaces(base string, tenants []serviceability.Tenant, users []serviceability.User) []string {
 	prefix := strings.TrimRight(base, "0123456789")
 	seen := map[string]struct{}{base: {}}
 	nss := []string{base}
@@ -218,6 +229,16 @@ func vrfNamespaces(base string, tenants []serviceability.Tenant) []string {
 		if _, ok := seen[ns]; !ok {
 			seen[ns] = struct{}{}
 			nss = append(nss, ns)
+		}
+	}
+	// Multicast users' GRE tunnels live in the root network namespace (global VRF).
+	if _, ok := seen[rootNamespace]; !ok {
+		for _, u := range users {
+			if u.UserType == serviceability.UserTypeMulticast {
+				seen[rootNamespace] = struct{}{}
+				nss = append(nss, rootNamespace)
+				break
+			}
 		}
 	}
 	return nss

@@ -262,7 +262,7 @@ func TestShouldSubmit_PeriodicRefresh(t *testing.T) {
 // ============================================================
 
 func TestVrfNamespaces_NoTenants(t *testing.T) {
-	nss := vrfNamespaces("ns-vrf1", nil)
+	nss := vrfNamespaces("ns-vrf1", nil, nil)
 	if len(nss) != 1 || nss[0] != "ns-vrf1" {
 		t.Errorf("expected [ns-vrf1], got %v", nss)
 	}
@@ -270,7 +270,7 @@ func TestVrfNamespaces_NoTenants(t *testing.T) {
 
 func TestVrfNamespaces_SameVrf(t *testing.T) {
 	tenants := []serviceability.Tenant{{VrfId: 1}}
-	nss := vrfNamespaces("ns-vrf1", tenants)
+	nss := vrfNamespaces("ns-vrf1", tenants, nil)
 	if len(nss) != 1 || nss[0] != "ns-vrf1" {
 		t.Errorf("expected [ns-vrf1], got %v", nss)
 	}
@@ -278,7 +278,7 @@ func TestVrfNamespaces_SameVrf(t *testing.T) {
 
 func TestVrfNamespaces_AdditionalVrf(t *testing.T) {
 	tenants := []serviceability.Tenant{{VrfId: 1}, {VrfId: 2}}
-	nss := vrfNamespaces("ns-vrf1", tenants)
+	nss := vrfNamespaces("ns-vrf1", tenants, nil)
 	if len(nss) != 2 || nss[0] != "ns-vrf1" || nss[1] != "ns-vrf2" {
 		t.Errorf("expected [ns-vrf1 ns-vrf2], got %v", nss)
 	}
@@ -286,7 +286,7 @@ func TestVrfNamespaces_AdditionalVrf(t *testing.T) {
 
 func TestVrfNamespaces_Deduplication(t *testing.T) {
 	tenants := []serviceability.Tenant{{VrfId: 2}, {VrfId: 2}, {VrfId: 2}}
-	nss := vrfNamespaces("ns-vrf1", tenants)
+	nss := vrfNamespaces("ns-vrf1", tenants, nil)
 	if len(nss) != 2 {
 		t.Errorf("expected 2 unique namespaces, got %v", nss)
 	}
@@ -294,9 +294,34 @@ func TestVrfNamespaces_Deduplication(t *testing.T) {
 
 func TestVrfNamespaces_SkipsZeroVrfId(t *testing.T) {
 	tenants := []serviceability.Tenant{{VrfId: 0}, {VrfId: 3}}
-	nss := vrfNamespaces("ns-vrf1", tenants)
+	nss := vrfNamespaces("ns-vrf1", tenants, nil)
 	if len(nss) != 2 || nss[0] != "ns-vrf1" || nss[1] != "ns-vrf3" {
 		t.Errorf("expected [ns-vrf1 ns-vrf3], got %v", nss)
+	}
+}
+
+func TestVrfNamespaces_MulticastUserAddsVrf0(t *testing.T) {
+	users := []serviceability.User{{UserType: serviceability.UserTypeMulticast}}
+	nss := vrfNamespaces("ns-vrf1", nil, users)
+	if len(nss) != 2 || nss[0] != "ns-vrf1" || nss[1] != "ns-vrf0" {
+		t.Errorf("expected [ns-vrf1 ns-vrf0], got %v", nss)
+	}
+}
+
+func TestVrfNamespaces_NonMulticastUserNoVrf0(t *testing.T) {
+	users := []serviceability.User{{UserType: serviceability.UserTypeIBRL}}
+	nss := vrfNamespaces("ns-vrf1", nil, users)
+	if len(nss) != 1 || nss[0] != "ns-vrf1" {
+		t.Errorf("expected [ns-vrf1], got %v", nss)
+	}
+}
+
+func TestVrfNamespaces_MulticastAndTenantVrfs(t *testing.T) {
+	tenants := []serviceability.Tenant{{VrfId: 2}}
+	users := []serviceability.User{{UserType: serviceability.UserTypeMulticast}}
+	nss := vrfNamespaces("ns-vrf1", tenants, users)
+	if len(nss) != 3 || nss[0] != "ns-vrf1" || nss[1] != "ns-vrf2" || nss[2] != "ns-vrf0" {
+		t.Errorf("expected [ns-vrf1 ns-vrf2 ns-vrf0], got %v", nss)
 	}
 }
 

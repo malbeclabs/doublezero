@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
@@ -215,8 +217,23 @@ func (c *Client) GetUSDCBalance(ctx context.Context) (uint64, error) {
 	}
 
 	solanaClient := rpc.New(c.SolanaRPCURL)
-	result, err := solanaClient.GetTokenAccountBalance(ctx, ata, rpc.CommitmentConfirmed)
-	if err != nil {
+
+	var result *rpc.GetTokenAccountBalanceResult
+	exp := backoff.NewExponentialBackOff()
+	exp.InitialInterval = 1 * time.Second
+	exp.MaxElapsedTime = 30 * time.Second
+	retryPolicy := backoff.WithMaxRetries(exp, 5)
+	retryPolicy = backoff.WithContext(retryPolicy, ctx)
+
+	if err := backoff.Retry(func() error {
+		var rpcErr error
+		result, rpcErr = solanaClient.GetTokenAccountBalance(ctx, ata, rpc.CommitmentConfirmed)
+		if rpcErr != nil {
+			c.log.Debug("Retryable RPC error fetching USDC balance", "host", c.Host, "ata", ata, "error", rpcErr)
+			return rpcErr
+		}
+		return nil
+	}, retryPolicy); err != nil {
 		return 0, fmt.Errorf("failed to get token account balance for ATA %s on host %s: %w", ata, c.Host, err)
 	}
 

@@ -308,7 +308,7 @@ func TestVrfNamespaces_MulticastUserAddsRootNamespace(t *testing.T) {
 	}
 }
 
-func TestVrfNamespaces_NonMulticastUserNoVrf0(t *testing.T) {
+func TestVrfNamespaces_NonMulticastUserNoRootNamespace(t *testing.T) {
 	users := []serviceability.User{{UserType: serviceability.UserTypeIBRL}}
 	nss := vrfNamespaces("ns-vrf1", nil, users)
 	if len(nss) != 1 || nss[0] != "ns-vrf1" {

@@ -71,7 +71,7 @@ func (s *Submitter) tick(ctx context.Context) {
 	}
 
 	// Pre-collect activated users for this device. This is needed both to
-	// derive the full namespace set (multicast users require ns-vrf0) and to
+	// derive the full namespace set (multicast users require the root namespace) and to
 	// drive the per-user status loop below.
 	var deviceUsers []serviceability.User
 	for _, u := range programData.Users {
@@ -83,7 +83,7 @@ func (s *Submitter) tick(ctx context.Context) {
 
 	// User tunnel interfaces live in a per-tenant VRF namespace (e.g. ns-vrf1,
 	// ns-vrf2). Multicast users are an exception: their tunnels live in the
-	// global VRF (ns-vrf0). Collect state from all relevant namespaces so that
+	// global VRF (root network namespace). Collect state from all relevant namespaces so that
 	// all user types are handled correctly.
 	// Tunnel IPs are globally unique (onchain-allocated), so merging is safe.
 	namespaces := vrfNamespaces(s.cfg.BGPNamespace, programData.Tenants, deviceUsers)

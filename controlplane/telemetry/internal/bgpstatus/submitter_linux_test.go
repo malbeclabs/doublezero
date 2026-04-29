@@ -209,10 +209,11 @@ func TestTick_MultiNamespace_PartialFailure(t *testing.T) {
 	}
 }
 
-// TestTick_MulticastUser_UsesVrf0 verifies that a multicast user whose tunnel
-// lives in ns-vrf0 (the global VRF) is found and reported Up. No tenant VRF
-// is needed; the multicast user type alone causes ns-vrf0 to be collected.
-func TestTick_MulticastUser_UsesVrf0(t *testing.T) {
+// TestTick_MulticastUser_UsesRootNamespace verifies that a multicast user whose
+// tunnel lives in the root network namespace (global VRF) is found and reported
+// Up. No tenant VRF is needed; the multicast user type alone causes the root
+// namespace collector to be invoked.
+func TestTick_MulticastUser_UsesRootNamespace(t *testing.T) {
 	devicePK := solana.NewWallet().PublicKey()
 	tunnelNet := [5]byte{10, 0, 3, 0, 31} // 10.0.3.0/31
 

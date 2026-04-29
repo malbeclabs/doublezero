@@ -262,10 +262,10 @@ func TestE2E_UserBGPStatus_MulticastUser(t *testing.T) {
 	require.NoError(t, err)
 
 	device, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
-		Code:               "dz1",
-		Location:           "ewr",
-		Exchange:           "xewr",
-		MetricsPublisherPK: telemetryKeypairPK.String(),
+		Code:                         "dz1",
+		Location:                     "ewr",
+		Exchange:                     "xewr",
+		MetricsPublisherPK:           telemetryKeypairPK.String(),
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
 		LoopbackInterfaces: map[string]string{
@@ -475,10 +475,10 @@ func TestE2E_UserBGPStatus_NonDefaultTenant(t *testing.T) {
 	require.NoError(t, err)
 
 	device, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
-		Code:               "dz1",
-		Location:           "ewr",
-		Exchange:           "xewr",
-		MetricsPublisherPK: telemetryKeypairPK.String(),
+		Code:                         "dz1",
+		Location:                     "ewr",
+		Exchange:                     "xewr",
+		MetricsPublisherPK:           telemetryKeypairPK.String(),
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
 		LoopbackInterfaces: map[string]string{

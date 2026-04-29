@@ -229,8 +229,8 @@ func TestTick_MulticastUser_UsesVrf0(t *testing.T) {
 	iface := makeInterface("tu500", "10.0.3.0/31")
 	col := staticCollector(
 		map[string]map[string]struct{}{
-			"ns-vrf1":      {},
-			rootNamespace:  {"10.0.3.1": {}}, // peer IP is ESTABLISHED in the global VRF
+			"ns-vrf1":     {},
+			rootNamespace: {"10.0.3.1": {}}, // peer IP is ESTABLISHED in the global VRF
 		},
 		map[string][]netutil.Interface{
 			"ns-vrf1":     nil,

@@ -220,8 +220,8 @@ func TestE2E_UserBGPStatus(t *testing.T) {
 
 // TestE2E_UserBGPStatus_MulticastUser verifies that the BGP status submitter
 // correctly reports Up and Down for a multicast user, whose GRE tunnel lives
-// in the global VRF (ns-vrf0) rather than in a per-tenant VRF namespace.
-// This exercises the ns-vrf0 collection path added to support multicast users.
+// in the global VRF (root network namespace) rather than in a per-tenant VRF
+// namespace. This exercises the root-namespace collection path for multicast users.
 func TestE2E_UserBGPStatus_MulticastUser(t *testing.T) {
 	t.Parallel()
 

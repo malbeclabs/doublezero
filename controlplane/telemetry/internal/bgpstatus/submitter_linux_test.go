@@ -225,16 +225,16 @@ func TestTick_MulticastUser_UsesVrf0(t *testing.T) {
 		Users: []serviceability.User{user},
 	}}
 
-	// The tunnel (10.0.3.0/31) lives in ns-vrf0 with an ESTABLISHED BGP session.
+	// The tunnel (10.0.3.0/31) lives in the root namespace (global VRF) with an ESTABLISHED BGP session.
 	iface := makeInterface("tu500", "10.0.3.0/31")
 	col := staticCollector(
 		map[string]map[string]struct{}{
-			"ns-vrf1": {},
-			"ns-vrf0": {"10.0.3.1": {}}, // peer IP is ESTABLISHED in the global VRF
+			"ns-vrf1":      {},
+			rootNamespace:  {"10.0.3.1": {}}, // peer IP is ESTABLISHED in the global VRF
 		},
 		map[string][]netutil.Interface{
-			"ns-vrf1": nil,
-			"ns-vrf0": {iface},
+			"ns-vrf1":     nil,
+			rootNamespace: {iface},
 		},
 	)
 

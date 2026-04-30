@@ -47,9 +47,6 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(true),
-		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
@@ -276,9 +273,6 @@ func TestE2E_MulticastGroup_AllocationLifecycle(t *testing.T) {
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(true),
-		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
@@ -306,7 +300,7 @@ func TestE2E_MulticastGroup_AllocationLifecycle(t *testing.T) {
 
 	// Create multicast group
 	// Note: We don't use -w (wait for activation) here because there's a race condition
-	// between the activator's initial fetch and the multicast group creation. The activator
+	// between the program's initial fetch and the multicast group creation. The program
 	// polls every 60 seconds, which matches the CLI's -w timeout, causing failures.
 	// Instead, we let require.Eventually below handle the wait for activation.
 	log.Debug("==> Creating multicast group")
@@ -317,7 +311,7 @@ func TestE2E_MulticastGroup_AllocationLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for multicast group to be activated
-	// Note: Activator polls every 60 seconds, so we need a timeout > 60s to be safe
+	// Note: Reactivation polling every 60 seconds, so we need a timeout > 60s to be safe
 	log.Debug("==> Waiting for multicast group activation")
 	var activatedMC *serviceability.MulticastGroup
 	require.Eventually(t, func() bool {
@@ -418,9 +412,6 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 		},
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
-		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(true),
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
@@ -595,7 +586,7 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 // Bug scenario:
 // 1. User with Multicast type is activated as publisher → allocates tunnel_net, tunnel_id, dz_ip
 // 2. User disconnects and reconnects with two pub groups → sets status to Updating
-// 3. Activator re-activates user → BUG: would allocate NEW resources instead of keeping existing
+// 3. Program re-activates user → BUG: would allocate NEW resources instead of keeping existing
 //
 // The fix preserves existing tunnel_net/tunnel_id/dz_ip allocations.
 func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
@@ -620,9 +611,6 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 		},
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
-		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(true),
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
@@ -967,9 +955,6 @@ func TestE2E_LoopbackInterface_AllocationLifecycle(t *testing.T) {
 		},
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
-		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(true),
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)

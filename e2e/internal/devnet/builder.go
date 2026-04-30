@@ -65,12 +65,6 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 		args       []string
 	}{
 		{
-			name:       "activator",
-			image:      os.Getenv("DZ_ACTIVATOR_IMAGE"),
-			dockerfile: filepath.Join(dockerfilesDir, "activator", "Dockerfile"),
-			args:       append([]string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "activator")}, extraArgs...),
-		},
-		{
 			name:       "client",
 			image:      os.Getenv("DZ_CLIENT_IMAGE"),
 			dockerfile: filepath.Join(dockerfilesDir, "client", "Dockerfile"),

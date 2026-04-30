@@ -185,9 +185,6 @@ func NewSingleDeviceSingleClientTestDevnetWithOnchainAllocation(t *testing.T) (*
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(true),
-		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 

@@ -46,9 +46,6 @@ func TestE2E_ContributorAuth(t *testing.T) {
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(true),
-		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
@@ -245,8 +242,8 @@ func TestE2E_ContributorAuth(t *testing.T) {
 		})
 		require.NoError(t, err, "failed to create interface on test-dev-co04")
 
-		// Step 7: Wait for interface to exist and be unlinked by activator
-		log.Debug("==> Waiting for interface to be unlinked by activator")
+		// Step 7: Wait for interface to exist and be unlinked by program
+		log.Debug("==> Waiting for interface to be unlinked by program")
 		require.Eventually(t, func() bool {
 			client, err := dn.Ledger.GetServiceabilityClient()
 			if err != nil {

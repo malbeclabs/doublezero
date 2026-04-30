@@ -727,7 +727,7 @@ func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_SamplesBatchTooLarge(t *
 		LinkPK:                     solana.NewWallet().PublicKey(),
 		Epoch:                      &epoch,
 		StartTimestampMicroseconds: 1_600_000_000,
-		Samples:                    make([]uint32, telemetry.MaxSamplesPerBatch+1),
+		Samples:                    make([]uint32, telemetry.MaxDeviceLatencySamplesPerBatch+1),
 	}
 
 	sig, tx, err := client.WriteDeviceLatencySamples(context.Background(), config)

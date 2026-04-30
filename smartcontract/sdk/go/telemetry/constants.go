@@ -21,14 +21,16 @@ const (
 	// when the given PDA does not exist.
 	InstructionErrorAccountDoesNotExist = 1011
 
-	// MaxSamplesPerBatch is the maximum number of samples that can be written in a single batch.
-	//
 	// Messages transmitted to Solana validators must not exceed the IPv6 MTU size to ensure fast
 	// and reliable network transmission of cluster info over UDP. Solana's networking stack uses a
 	// conservative MTU size of 1280 bytes which, after accounting for headers, leaves 1232 bytes
 	// for packet data like serialized transactions.
 	// https://docs.anza.xyz/proposals/versioned-transactions#problem
-	MaxSamplesPerBatch = 239 // 956 bytes
+	//
+	// MaxDeviceLatencySamplesPerBatch accounts for the agent_version (16 bytes) and
+	// agent_commit (8 bytes) fields in WriteDeviceLatencySamples.
+	MaxDeviceLatencySamplesPerBatch   = 239 // 956 bytes of samples
+	MaxInternetLatencySamplesPerBatch = 245 // 980 bytes of samples
 
 	// MaxDeviceLatencySamplesPerAccount is the maximum number of samples that can be written to a single device latency samples account.
 	// This provides space for just over 12 samples per minute, or 1 sample every 5 seconds.

@@ -481,7 +481,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			if i == 23 {
 				assert.Equal(t, 3, samplesPerCall[i])
 			} else {
-				assert.Equal(t, sdktelemetry.MaxSamplesPerBatch, samplesPerCall[i])
+				assert.Equal(t, sdktelemetry.MaxDeviceLatencySamplesPerBatch, samplesPerCall[i])
 			}
 		}
 	})

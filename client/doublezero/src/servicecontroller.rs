@@ -7,10 +7,12 @@ use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use hyperlocal::{UnixConnector, Uri};
 use mockall::automock;
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs::File, path::Path};
+use std::{fmt, fs::File, path::Path, sync::OnceLock};
 use tabled::{derive::display, Tabled};
 
+const DEFAULT_SOCKET_PATH: &str = "/var/run/doublezerod/doublezerod.sock";
 const NANOS_TO_MS: f64 = 1000000.0;
+static SOCKET_PATH_OVERRIDE: OnceLock<String> = OnceLock::new();
 
 #[derive(Clone, Tabled, Deserialize, Serialize, Debug)]
 pub struct LatencyRecord {
@@ -199,23 +201,32 @@ pub struct ServiceControllerImpl {
 }
 
 impl ServiceControllerImpl {
+    pub fn set_default_socket_path(socket_path: impl Into<String>) {
+        let _ = SOCKET_PATH_OVERRIDE.set(socket_path.into());
+    }
+
     pub fn new(socket_path: Option<String>) -> ServiceControllerImpl {
         ServiceControllerImpl {
-            socket_path: socket_path.unwrap_or("/var/run/doublezerod/doublezerod.sock".to_string()),
+            socket_path: socket_path.unwrap_or_else(|| {
+                SOCKET_PATH_OVERRIDE
+                    .get()
+                    .cloned()
+                    .unwrap_or_else(|| DEFAULT_SOCKET_PATH.to_string())
+            }),
         }
     }
 }
 
 impl ServiceController for ServiceControllerImpl {
     fn service_controller_check(&self) -> bool {
-        Path::new("/var/run/doublezerod/doublezerod.sock").exists()
+        Path::new(&self.socket_path).exists()
     }
 
     fn service_controller_can_open(&self) -> bool {
         let file = File::options()
             .read(true)
             .write(true)
-            .open("/var/run/doublezerod/doublezerod.sock");
+            .open(&self.socket_path);
         match file {
             Ok(_) => true,
             Err(e) => !matches!(e.kind(), std::io::ErrorKind::PermissionDenied),
@@ -362,6 +373,25 @@ impl ServiceController for ServiceControllerImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn test_service_controller_uses_explicit_socket_path_for_checks() {
+        let socket_path =
+            std::env::temp_dir().join(format!("doublezerod-test-{}.sock", std::process::id()));
+        {
+            let mut file = File::create(&socket_path).expect("create socket placeholder");
+            file.write_all(b"test").expect("write socket placeholder");
+        }
+
+        let controller =
+            ServiceControllerImpl::new(Some(socket_path.to_string_lossy().into_owned()));
+
+        assert!(controller.service_controller_check());
+        assert!(controller.service_controller_can_open());
+
+        std::fs::remove_file(socket_path).expect("remove socket placeholder");
+    }
 
     /// Test that validates the JSON output format for LatencyRecord.
     /// This test catches breaking changes to the JSON API contract.

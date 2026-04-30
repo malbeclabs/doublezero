@@ -92,8 +92,8 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 		return nil
 	}
 
-	for i := 0; i < len(samples); i += telemetry.MaxSamplesPerBatch {
-		end := min(i+telemetry.MaxSamplesPerBatch, len(samples))
+	for i := 0; i < len(samples); i += telemetry.MaxDeviceLatencySamplesPerBatch {
+		end := min(i+telemetry.MaxDeviceLatencySamplesPerBatch, len(samples))
 		batch := samples[i:end]
 
 		rtts := make([]uint32, len(batch))
@@ -124,6 +124,8 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 			Epoch:                      &partitionKey.Epoch,
 			StartTimestampMicroseconds: uint64(minTimestamp.UnixMicro()),
 			Samples:                    rtts,
+			AgentVersion:               s.cfg.AgentVersion,
+			AgentCommit:                s.cfg.AgentCommit,
 		}
 
 		_, _, err := s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)

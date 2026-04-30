@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Telemetry
+  - Add `agent_version` and `agent_commit` to `WriteDeviceLatencySamples` so the onchain header is refreshed on every write (~60s) instead of only at initialization; fixes stale version reporting after mid-epoch agent upgrades ([#3598](https://github.com/malbeclabs/doublezero/issues/3598))
+
 ## [v0.20.0](https://github.com/malbeclabs/doublezero/compare/client/v0.19.0...client/v0.20.0) - 2026-04-29
 
 ### Breaking

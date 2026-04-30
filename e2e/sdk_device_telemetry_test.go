@@ -361,7 +361,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			LinkPK:                     la2ToNy5LinkPK,
 			Epoch:                      &epoch,
 			StartTimestampMicroseconds: secondStartTimestampMicroseconds,
-			Samples:                    make([]uint32, telemetry.MaxSamplesPerBatch),
+			Samples:                    make([]uint32, telemetry.MaxDeviceLatencySamplesPerBatch),
 		})
 		require.NoError(t, err)
 		for _, msg := range res.Meta.LogMessages {
@@ -382,7 +382,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			LinkPK:                     la2ToNy5LinkPK,
 			Epoch:                      &epoch,
 			StartTimestampMicroseconds: secondStartTimestampMicroseconds,
-			Samples:                    make([]uint32, telemetry.MaxSamplesPerBatch+1),
+			Samples:                    make([]uint32, telemetry.MaxDeviceLatencySamplesPerBatch+1),
 		})
 		require.ErrorIs(t, err, telemetry.ErrSamplesBatchTooLarge)
 	})

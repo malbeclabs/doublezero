@@ -15,6 +15,8 @@ type WriteDeviceLatencySamplesInstructionConfig struct {
 	Epoch                      *uint64
 	StartTimestampMicroseconds uint64
 	Samples                    []uint32
+	AgentVersion               string
+	AgentCommit                string
 }
 
 func (c *WriteDeviceLatencySamplesInstructionConfig) Validate() error {
@@ -47,14 +49,23 @@ func BuildWriteDeviceLatencySamplesInstruction(
 	epoch := *config.Epoch
 
 	// Serialize the instruction data.
+	var agentVersion [16]byte
+	copy(agentVersion[:], config.AgentVersion)
+	var agentCommit [8]byte
+	copy(agentCommit[:], config.AgentCommit)
+
 	data, err := borsh.Serialize(struct {
 		Discriminator              uint8
 		StartTimestampMicroseconds uint64
 		Samples                    []uint32
+		AgentVersion               [16]byte
+		AgentCommit                [8]byte
 	}{
 		Discriminator:              uint8(WriteDeviceLatencySamplesInstructionIndex),
 		StartTimestampMicroseconds: config.StartTimestampMicroseconds,
 		Samples:                    config.Samples,
+		AgentVersion:               agentVersion,
+		AgentCommit:                agentCommit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize args: %w", err)

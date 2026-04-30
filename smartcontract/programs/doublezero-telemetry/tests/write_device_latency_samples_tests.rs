@@ -395,6 +395,8 @@ async fn test_write_device_latency_samples_fail_agent_not_signer() {
     let args = WriteDeviceLatencySamplesArgs {
         start_timestamp_microseconds: 1_700_000_000_000_000,
         samples: vec![1000, 1100],
+        agent_version: [0; 16],
+        agent_commit: [0; 8],
     };
 
     let ix = TelemetryInstruction::WriteDeviceLatencySamples(args)
@@ -855,4 +857,86 @@ async fn test_write_device_latency_samples_fail_samples_batch_too_large() {
         }
         e => panic!("unexpected error: {e:?}"),
     }
+}
+
+#[tokio::test]
+async fn test_write_device_latency_samples_updates_agent_version() {
+    let mut ledger = LedgerHelper::new().await.unwrap();
+
+    let payer_pubkey = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer_pubkey)
+        .await
+        .unwrap();
+
+    let (agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
+    ledger.wait_for_new_blockhash().await.unwrap();
+
+    let pda = ledger
+        .telemetry
+        .initialize_device_latency_samples(
+            &agent,
+            origin_device_pk,
+            target_device_pk,
+            link_pk,
+            1,
+            5_000_000,
+        )
+        .await
+        .unwrap();
+
+    // Write samples with version "2.0.0" / commit "11223344".
+    let mut version = [0u8; 16];
+    version[..5].copy_from_slice(b"2.0.0");
+    let mut commit = [0u8; 8];
+    commit[..8].copy_from_slice(b"11223344");
+
+    ledger
+        .telemetry
+        .write_device_latency_samples_with_version(
+            &agent,
+            pda,
+            vec![1000, 1100],
+            1_700_000_000_000_000,
+            version,
+            commit,
+        )
+        .await
+        .unwrap();
+
+    // Verify header shows new version and commit.
+    let account = ledger.get_account(pda).await.unwrap().unwrap();
+    let data = DeviceLatencySamples::try_from(&account.data[..]).unwrap();
+    assert_eq!(data.header.agent_version, version);
+    assert_eq!(data.header.agent_commit, commit);
+
+    // Write again with zero version/commit (simulating old agent).
+    ledger
+        .telemetry
+        .write_device_latency_samples_with_version(
+            &agent,
+            pda,
+            vec![1200],
+            1_700_000_000_000_001,
+            [0; 16],
+            [0; 8],
+        )
+        .await
+        .unwrap();
+
+    // Verify header still shows "2.0.0" / "11223344".
+    let account = ledger.get_account(pda).await.unwrap().unwrap();
+    let data = DeviceLatencySamples::try_from(&account.data[..]).unwrap();
+    assert_eq!(data.header.agent_version, version);
+    assert_eq!(data.header.agent_commit, commit);
 }

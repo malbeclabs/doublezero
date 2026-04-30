@@ -23,6 +23,7 @@ use crate::cli::{
 };
 use doublezero_cli::{checkversion::check_version, doublezerocommand::CliCommandImpl};
 use doublezero_sdk::{DZClient, ProgramVersion};
+use servicecontroller::ServiceControllerImpl;
 
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
@@ -47,6 +48,15 @@ struct App {
     /// Path to the keypair file
     #[arg(long, value_name = "KEYPAIR", global = true)]
     keypair: Option<PathBuf>,
+    /// Path to the doublezerod Unix socket
+    #[arg(
+        long = "sock-file",
+        alias = "socket",
+        alias = "socket-path",
+        value_name = "SOCK_FILE",
+        global = true
+    )]
+    sock_file: Option<PathBuf>,
     /// Suppress version warning output
     #[arg(long, global = true)]
     no_version_warning: bool,
@@ -59,6 +69,10 @@ async fn main() -> eyre::Result<()> {
     }
 
     let app = App::parse();
+
+    if let Some(sock_file) = &app.sock_file {
+        ServiceControllerImpl::set_default_socket_path(sock_file.to_string_lossy());
+    }
 
     if let Some(keypair) = &app.keypair {
         println!("using keypair: {}", keypair.display());

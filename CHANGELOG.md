@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
   - Add `AccessPassType::EdgeSeat(Pubkey)` variant to associate an access pass with a specific onchain Seat pubkey
   - Add `--accesspass-type edge-seat --seat <PUBKEY>` to `access-pass set`
   - Add `--edge-seat` and `--seat-pubkey` filters to `access-pass list`
+- Controller
+  - Fix unknown BGP peer cleanup in the Arista EOS template: hoist per-peer `no neighbor X` removal into its own `router bgp 65342` block so EOS's silent context-exit on `no neighbor` for a non-existent peer can't misroute subsequent peers' removal commands ([#3627](https://github.com/malbeclabs/doublezero/pull/3627))
+- Telemetry
+  - Add `agent_version` and `agent_commit` to `WriteDeviceLatencySamples` so the onchain header is refreshed on every write (~60s) instead of only at initialization; fixes stale version reporting after mid-epoch agent upgrades ([#3598](https://github.com/malbeclabs/doublezero/issues/3598))
 
 ## [v0.20.0](https://github.com/malbeclabs/doublezero/compare/client/v0.19.0...client/v0.20.0) - 2026-04-29
 

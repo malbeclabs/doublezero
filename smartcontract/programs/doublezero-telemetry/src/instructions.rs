@@ -93,6 +93,8 @@ mod tests {
             WriteDeviceLatencySamplesArgs {
                 start_timestamp_microseconds: 1000,
                 samples: vec![],
+                agent_version: [0; 16],
+                agent_commit: [0; 8],
             },
         ));
         test_instruction(TelemetryInstruction::InitializeInternetLatencySamples(

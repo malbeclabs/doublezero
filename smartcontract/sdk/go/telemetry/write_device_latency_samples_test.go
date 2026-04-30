@@ -128,6 +128,8 @@ func TestSDK_Telemetry_WriteDeviceLatencySamples_BorshEncoding(t *testing.T) {
 		Epoch:                      &epoch,
 		StartTimestampMicroseconds: timestamp,
 		Samples:                    samples,
+		AgentVersion:               "1.2.3",
+		AgentCommit:                "aabbccdd",
 	}
 
 	ix, err := telemetry.BuildWriteDeviceLatencySamplesInstruction(programID, config)
@@ -137,6 +139,8 @@ func TestSDK_Telemetry_WriteDeviceLatencySamples_BorshEncoding(t *testing.T) {
 		Discriminator              uint8
 		StartTimestampMicroseconds uint64
 		Samples                    []uint32
+		AgentVersion               [16]byte
+		AgentCommit                [8]byte
 	}
 
 	data, err := ix.Data()
@@ -148,4 +152,48 @@ func TestSDK_Telemetry_WriteDeviceLatencySamples_BorshEncoding(t *testing.T) {
 	require.Equal(t, uint8(telemetry.WriteDeviceLatencySamplesInstructionIndex), decoded.Discriminator)
 	require.Equal(t, timestamp, decoded.StartTimestampMicroseconds)
 	require.Equal(t, samples, decoded.Samples)
+
+	var expectedVersion [16]byte
+	copy(expectedVersion[:], "1.2.3")
+	require.Equal(t, expectedVersion, decoded.AgentVersion)
+
+	var expectedCommit [8]byte
+	copy(expectedCommit[:], "aabbccdd")
+	require.Equal(t, expectedCommit, decoded.AgentCommit)
+}
+
+func TestSDK_Telemetry_WriteDeviceLatencySamples_BorshEncoding_EmptyVersion(t *testing.T) {
+	t.Parallel()
+
+	programID := solana.NewWallet().PublicKey()
+	epoch := uint64(555)
+	config := telemetry.WriteDeviceLatencySamplesInstructionConfig{
+		AgentPK:                    solana.NewWallet().PublicKey(),
+		OriginDevicePK:             solana.NewWallet().PublicKey(),
+		TargetDevicePK:             solana.NewWallet().PublicKey(),
+		LinkPK:                     solana.NewWallet().PublicKey(),
+		Epoch:                      &epoch,
+		StartTimestampMicroseconds: 1_650_000_000,
+		Samples:                    []uint32{100},
+	}
+
+	ix, err := telemetry.BuildWriteDeviceLatencySamplesInstruction(programID, config)
+	require.NoError(t, err)
+
+	var decoded struct {
+		Discriminator              uint8
+		StartTimestampMicroseconds uint64
+		Samples                    []uint32
+		AgentVersion               [16]byte
+		AgentCommit                [8]byte
+	}
+
+	data, err := ix.Data()
+	require.NoError(t, err)
+
+	err = borsh.Deserialize(&decoded, data)
+	require.NoError(t, err)
+
+	require.Equal(t, [16]byte{}, decoded.AgentVersion)
+	require.Equal(t, [8]byte{}, decoded.AgentCommit)
 }

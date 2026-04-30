@@ -198,6 +198,21 @@ interface Tunnel{{ .Id }}
 !
 {{- end }}
 {{- end }}
+{{- range $peer := .UnknownBgpPeers }}
+router bgp 65342
+   no neighbor {{ $peer }}
+   address-family ipv4
+      no neighbor {{ $peer }}
+   !
+   address-family vpn-ipv4
+      no neighbor {{ $peer }}
+   !
+   {{- range $vrfId := $.UnicastVrfs }}
+   vrf vrf{{ $vrfId }}
+      no neighbor {{ $peer }}
+   {{- end }}
+!
+{{- end }}
 router bgp 65342
    router-id {{ .Device.Vpn4vLoopbackIP }}
    timers bgp 1 3
@@ -256,18 +271,12 @@ router bgp 65342
       no neighbor {{ .PeerIP }} activate
    {{- end }}
    {{- end }}
-   {{- range .UnknownBgpPeers }}
-      no neighbor {{ . }}
-   {{- end }}
    !
    address-family vpn-ipv4
       {{- range .Vpnv4BgpPeers }}
       {{- if ne .PeerIP.String $.Device.Vpn4vLoopbackIP.String }}
       neighbor {{ .PeerIP }} activate
       {{- end }}
-      {{- end }}
-      {{- range .UnknownBgpPeers }}
-      no neighbor {{ . }}
       {{- end }}
       {{- if $.FlexAlgoEnabled }}
       next-hop resolution ribs tunnel-rib colored system-colored-tunnel-rib tunnel-rib system-tunnel-rib
@@ -296,9 +305,6 @@ router bgp 65342
       neighbor {{ .OverlayDstIP }} shutdown
       {{- end }}
       {{- end }}
-      {{- end }}
-      {{- range $.UnknownBgpPeers }}
-      no neighbor {{ . }}
       {{- end }}
 {{- end }}
 !

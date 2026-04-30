@@ -2,6 +2,12 @@ name: release.devnet.geoprobe-target.daily
 
 on:
   workflow_dispatch:
+    inputs:
+      infra_branch:
+        description: 'Branch of malbeclabs/infra to use for ansible playbooks'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   release:
@@ -9,6 +15,7 @@ jobs:
     with:
       component: geoprobe-target
       playbook: playbooks/geoprobe_targets.yml
+      infra_branch: ${{ inputs.infra_branch }}
     secrets: inherit
     permissions:
       contents: write

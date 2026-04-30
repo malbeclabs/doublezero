@@ -28,7 +28,7 @@ const (
 	// conservative MTU size of 1280 bytes which, after accounting for headers, leaves 1232 bytes
 	// for packet data like serialized transactions.
 	// https://docs.anza.xyz/proposals/versioned-transactions#problem
-	MaxSamplesPerBatch = 245 // 980 bytes
+	MaxSamplesPerBatch = 239 // 956 bytes
 
 	// MaxDeviceLatencySamplesPerAccount is the maximum number of samples that can be written to a single device latency samples account.
 	// This provides space for just over 12 samples per minute, or 1 sample every 5 seconds.

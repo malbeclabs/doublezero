@@ -475,11 +475,11 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 
-		// 5500 / 245 = 22 full batches + 110 remaining = 23 calls.
-		require.Equal(t, 23, calls, "expected 23 submission calls for 5500 samples")
-		for i := range 23 {
-			if i == 22 {
-				assert.Equal(t, 110, samplesPerCall[i])
+		// 5500 / 239 = 23 full batches + 3 remaining = 24 calls.
+		require.Equal(t, 24, calls, "expected 24 submission calls for 5500 samples")
+		for i := range 24 {
+			if i == 23 {
+				assert.Equal(t, 3, samplesPerCall[i])
 			} else {
 				assert.Equal(t, sdktelemetry.MaxSamplesPerBatch, samplesPerCall[i])
 			}

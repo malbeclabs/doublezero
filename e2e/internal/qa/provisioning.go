@@ -519,6 +519,36 @@ func (p *ProvisioningTest) CreateLink(ctx context.Context, link *LinkInfo) error
 // RunAnsibleAgentRestart runs Ansible playbooks to restart both doublezero-agent
 // and doublezero-telemetry daemons with the new pubkey.
 func (p *ProvisioningTest) RunAnsibleAgentRestart(ctx context.Context, deviceCode, newPubkey string) error {
+	// The Ansible restart tasks query the ledger for the device pubkey via
+	// "doublezero device list --code <code> --json | jq -r '.[0].account'".
+	// After a delete+recreate cycle, the RPC may not have caught up yet, causing
+	// the query to return "null". Poll until the CLI returns the expected pubkey.
+	if err := poll.Until(ctx, func() (bool, error) {
+		output, err := p.runCLI(ctx, "device", "list", "--code", deviceCode, "--json")
+		if err != nil {
+			p.log.Info("Waiting for device to be queryable via CLI", "device", deviceCode, "error", err)
+			return false, nil
+		}
+		var devices []struct {
+			Account string `json:"account"`
+		}
+		if err := json.Unmarshal(output, &devices); err != nil {
+			p.log.Info("Waiting for device to be queryable via CLI", "device", deviceCode, "error", err)
+			return false, nil
+		}
+		if len(devices) == 0 || devices[0].Account != newPubkey {
+			got := "empty"
+			if len(devices) > 0 {
+				got = devices[0].Account
+			}
+			p.log.Info("Waiting for device pubkey to propagate", "device", deviceCode, "expected", newPubkey, "got", got)
+			return false, nil
+		}
+		return true, nil
+	}, 2*time.Minute, 5*time.Second); err != nil {
+		return fmt.Errorf("timed out waiting for device pubkey to be queryable: %w", err)
+	}
+
 	inventoryPath := filepath.Join(p.infraPath, "ansible/inventory", p.env, "hosts.yml")
 
 	// Prepare vault password file if available

@@ -16,7 +16,11 @@ impl VersionCliCommand {
         writeln!(out, "client version:       {local_version}")?;
         if let Ok((_, pconfig)) = client.get_program_config(GetProgramConfigCommand) {
             writeln!(out, "program version:      {}", pconfig.version)?;
-            writeln!(out, "min required version: {}", pconfig.min_compatible_version)?;
+            writeln!(
+                out,
+                "min required version: {}",
+                pconfig.min_compatible_version
+            )?;
         }
         Ok(())
     }

@@ -576,6 +576,8 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled {
 					tunnel.TenantTopologyColors = resolveTenantColors(tenant.IncludeTopologies, cache.Topologies)
 				}
+			} else if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled {
+				tunnel.TenantTopologyColors = resolveTenantColors(nil, cache.Topologies)
 			}
 		}
 

@@ -253,7 +253,7 @@ func (cw *ClickhouseRecordWriter) sendBatch(batch interface {
 
 // getOrComputeMetadata returns cached struct metadata or computes and caches it.
 func getOrComputeMetadata(t reflect.Type) (*structMetadata, error) {
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Ptr { // nolint:govet
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
@@ -312,7 +312,7 @@ func getStructColumns(r Record) ([]string, error) {
 // Uses cached field index mapping for performance.
 func getStructValues(r Record, columns []string) ([]any, error) {
 	v := reflect.ValueOf(r)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Ptr { // nolint:govet
 		v = v.Elem()
 	}
 

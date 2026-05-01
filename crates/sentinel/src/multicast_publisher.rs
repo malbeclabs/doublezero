@@ -49,6 +49,7 @@ pub trait MulticastDzLedgerClient: Send + Sync {
         mgroup_pk: &Pubkey,
         user: &DzUser,
         tunnel_endpoint: Ipv4Addr,
+        dz_prefix_count: u8,
     ) -> Result<()>;
 }
 
@@ -263,9 +264,13 @@ impl<D: MulticastDzLedgerClient, V: ValidatorListReader> MulticastPublisherSenti
                     .increment(1);
                     continue;
                 }
+                let dz_prefix_count = device_endpoints
+                    .get(&user.device_pk)
+                    .map(|d| d.dz_prefix_count)
+                    .unwrap_or(0);
                 if let Err(err) = self
                     .dz_client
-                    .create_multicast_publisher(mgroup_pk, user, tunnel_endpoint)
+                    .create_multicast_publisher(mgroup_pk, user, tunnel_endpoint, dz_prefix_count)
                     .await
                 {
                     error!(
@@ -479,6 +484,7 @@ impl MulticastDzLedgerClient for RpcMulticastDzLedgerClient {
                 DeviceEndpoints {
                     public_ip: device.public_ip,
                     user_tunnel_endpoints,
+                    dz_prefix_count: device.dz_prefixes.len() as u8,
                 },
             );
         }
@@ -491,6 +497,7 @@ impl MulticastDzLedgerClient for RpcMulticastDzLedgerClient {
         mgroup_pk: &Pubkey,
         user: &DzUser,
         tunnel_endpoint: Ipv4Addr,
+        dz_prefix_count: u8,
     ) -> Result<()> {
         let payer_pk = self.payer.pubkey();
         let ixs = build_create_multicast_publisher_instructions(
@@ -500,6 +507,7 @@ impl MulticastDzLedgerClient for RpcMulticastDzLedgerClient {
             mgroup_pk,
             user,
             tunnel_endpoint,
+            dz_prefix_count,
         )
         .map_err(|e| SentinelError::Deserialize(format!("build multicast publisher ixs: {e}")))?;
 
@@ -691,6 +699,7 @@ mod tests {
                 let ep = DeviceEndpoints {
                     public_ip: Ipv4Addr::new(100, 0, 0, next),
                     user_tunnel_endpoints: vec![Ipv4Addr::new(192, 168, 0, next)],
+                    dz_prefix_count: 0,
                 };
                 next = next.wrapping_add(1);
                 ep
@@ -835,11 +844,11 @@ mod tests {
 
         // Only ip2 should be created.
         dz.expect_create_multicast_publisher()
-            .withf(move |g, u, _| {
+            .withf(move |g, u, _, _| {
                 *g == group && u.client_ip == Ipv4Addr::from(ip2) && u.device_pk == device2
             })
             .times(1)
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _, _, _| Ok(()));
 
         let sentinel = make_sentinel(dz, api, vec![group]);
         sentinel.poll_cycle().await.unwrap();
@@ -887,12 +896,12 @@ mod tests {
         dz.expect_create_multicast_publisher()
             .times(1)
             .in_sequence(&mut seq)
-            .returning(|_, _, _| Err(SentinelError::Deserialize("simulated failure".into())));
+            .returning(|_, _, _, _| Err(SentinelError::Deserialize("simulated failure".into())));
         // Second call (ip1) should still happen.
         dz.expect_create_multicast_publisher()
             .times(1)
             .in_sequence(&mut seq)
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _, _, _| Ok(()));
 
         let sentinel = make_sentinel(dz, api, vec![group]);
         sentinel.poll_cycle().await.unwrap();
@@ -930,9 +939,9 @@ mod tests {
 
         // Should only create for group B.
         dz.expect_create_multicast_publisher()
-            .withf(move |g, _, _| *g == group_b)
+            .withf(move |g, _, _, _| *g == group_b)
             .times(1)
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _, _, _| Ok(()));
 
         let sentinel = make_sentinel(dz, api, vec![group_a, group_b]);
         sentinel.poll_cycle().await.unwrap();
@@ -1018,9 +1027,9 @@ mod tests {
 
         // Only JitoLabs validator should be created.
         dz.expect_create_multicast_publisher()
-            .withf(move |_, u, _| u.client_ip == Ipv4Addr::from(ip_jito))
+            .withf(move |_, u, _, _| u.client_ip == Ipv4Addr::from(ip_jito))
             .times(1)
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _, _, _| Ok(()));
 
         let sentinel = make_sentinel_with_filter(dz, api, vec![group], vec!["JitoLabs".into()]);
         sentinel.poll_cycle().await.unwrap();
@@ -1077,7 +1086,7 @@ mod tests {
         let created_ips_clone = created_ips.clone();
         dz.expect_create_multicast_publisher()
             .times(2)
-            .returning(move |_, u, _| {
+            .returning(move |_, u, _, _| {
                 created_ips_clone.lock().unwrap().insert(u.client_ip);
                 Ok(())
             });
@@ -1174,7 +1183,7 @@ mod tests {
         let created_ips_clone = created_ips.clone();
         dz.expect_create_multicast_publisher()
             .times(2)
-            .returning(move |_, u, _| {
+            .returning(move |_, u, _, _| {
                 created_ips_clone.lock().unwrap().insert(u.client_ip);
                 Ok(())
             });
@@ -1222,15 +1231,18 @@ mod tests {
                 DeviceEndpoints {
                     public_ip: Ipv4Addr::new(1, 1, 1, 1),
                     user_tunnel_endpoints: vec![ute1, ute2],
+                    dz_prefix_count: 0,
                 },
             );
             Ok(map)
         });
 
         dz.expect_create_multicast_publisher()
-            .withf(move |g, u, ep| *g == group && u.client_ip == Ipv4Addr::from(ip) && *ep == ute2)
+            .withf(move |g, u, ep, _| {
+                *g == group && u.client_ip == Ipv4Addr::from(ip) && *ep == ute2
+            })
             .times(1)
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _, _, _| Ok(()));
 
         let sentinel = make_sentinel(dz, api, vec![group]);
         sentinel.poll_cycle().await.unwrap();
@@ -1275,6 +1287,7 @@ mod tests {
                 DeviceEndpoints {
                     public_ip,
                     user_tunnel_endpoints: vec![ute],
+                    dz_prefix_count: 0,
                 },
             );
             Ok(map)
@@ -1321,15 +1334,18 @@ mod tests {
                 DeviceEndpoints {
                     public_ip,
                     user_tunnel_endpoints: vec![ute],
+                    dz_prefix_count: 0,
                 },
             );
             Ok(map)
         });
 
         dz.expect_create_multicast_publisher()
-            .withf(move |g, u, ep| *g == group && u.client_ip == Ipv4Addr::from(ip) && *ep == ute)
+            .withf(move |g, u, ep, _| {
+                *g == group && u.client_ip == Ipv4Addr::from(ip) && *ep == ute
+            })
             .times(1)
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _, _, _| Ok(()));
 
         let sentinel = make_sentinel(dz, api, vec![group]);
         sentinel.poll_cycle().await.unwrap();
@@ -1363,14 +1379,14 @@ mod tests {
             .returning(move || Ok(endpoints.clone()));
 
         dz.expect_create_multicast_publisher()
-            .withf(move |g, u, _| {
+            .withf(move |g, u, _, _| {
                 *g == group
                     && u.client_ip == Ipv4Addr::from(ip)
                     && u.device_pk == device
                     && u.user_type == UserType::IBRLWithAllocatedIP
             })
             .times(1)
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _, _, _| Ok(()));
 
         let sentinel = make_sentinel(dz, api, vec![group]);
         sentinel.poll_cycle().await.unwrap();

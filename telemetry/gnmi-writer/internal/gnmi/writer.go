@@ -123,7 +123,7 @@ func (s *FlatStdoutRecordWriter) WriteRecords(ctx context.Context, records []Rec
 func structToJSONMap(v any) map[string]any {
 	result := make(map[string]any)
 	val := reflect.ValueOf(v)
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Ptr { // nolint:govet
 		val = val.Elem()
 	}
 	if val.Kind() != reflect.Struct {

@@ -34,3 +34,4 @@ pub mod topology;
 pub mod user;
 pub mod util;
 pub mod validators;
+pub mod version;

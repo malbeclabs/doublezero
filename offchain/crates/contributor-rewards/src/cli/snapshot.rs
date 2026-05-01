@@ -13,7 +13,7 @@ use crate::{
     ingestor::{
         epoch::{EpochFinder, LeaderSchedule},
         fetcher::Fetcher,
-        types::FetchData,
+        types::{FetchData, apply_json_compat_migrations},
     },
     settings::network::Network,
     storage,
@@ -74,11 +74,25 @@ impl CompleteSnapshot {
         Ok(())
     }
 
+    /// Deserialize a snapshot, applying compatibility migrations for older JSON snapshots.
+    pub fn from_json_str(contents: &str) -> Result<Self> {
+        let mut value: serde_json::Value = serde_json::from_str(contents)?;
+        apply_json_compat_migrations(&mut value);
+        Ok(serde_json::from_value(value)?)
+    }
+
+    /// Deserialize a snapshot, applying compatibility migrations for older JSON snapshots.
+    pub fn from_json_slice(contents: &[u8]) -> Result<Self> {
+        let mut value: serde_json::Value = serde_json::from_slice(contents)?;
+        apply_json_compat_migrations(&mut value);
+        Ok(serde_json::from_value(value)?)
+    }
+
     /// Load and validate snapshot from file
     pub fn load_from_file(path: &std::path::Path) -> Result<Self> {
         info!("Loading snapshot from: {:?}", path);
         let contents = std::fs::read_to_string(path)?;
-        let snapshot: Self = serde_json::from_str(&contents)?;
+        let snapshot = Self::from_json_str(&contents)?;
         snapshot.validate()?;
         info!("Snapshot loaded and validated successfully");
         Ok(snapshot)

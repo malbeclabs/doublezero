@@ -3,7 +3,7 @@ use std::{collections::HashMap, fs, path::Path};
 use anyhow::Result;
 use doublezero_contributor_rewards::{
     calculator::shapley::handler::{build_devices, build_private_links},
-    ingestor::types::FetchData,
+    ingestor::types::{FetchData, apply_json_compat_migrations},
     processor::telemetry::DZDTelemetryProcessor,
     settings,
 };
@@ -12,7 +12,8 @@ use serde_json::Value;
 fn load_test_data() -> Result<FetchData> {
     let data_path = Path::new("tests/testnet_snapshot.json");
     let json = fs::read_to_string(data_path)?;
-    let data: Value = serde_json::from_str(&json)?;
+    let mut data: Value = serde_json::from_str(&json)?;
+    apply_json_compat_migrations(&mut data);
 
     // Parse the JSON into FetchData
     let fetch_data: FetchData = serde_json::from_value(data)?;

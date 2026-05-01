@@ -160,8 +160,8 @@ impl SnapshotStorage for S3Storage {
             .context("Failed to read snapshot data")?
             .into_bytes();
 
-        let snapshot: CompleteSnapshot =
-            serde_json::from_slice(&data).context("Failed to deserialize snapshot from S3")?;
+        let snapshot = CompleteSnapshot::from_json_slice(&data)
+            .context("Failed to deserialize snapshot from S3")?;
 
         info!("Snapshot loaded successfully from S3");
         Ok(snapshot)

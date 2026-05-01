@@ -17,6 +17,7 @@ use doublezero_telemetry::state::{
 };
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 
 pub type KeyedAccounts = Vec<(Pubkey, Account)>;
@@ -86,6 +87,59 @@ impl FetchData {
         let from_device = self.dz_serviceability.devices.get(&link.side_a_pk);
         let to_device = self.dz_serviceability.devices.get(&link.side_z_pk);
         (from_device, to_device)
+    }
+}
+
+/// Apply compatibility migrations to snapshot/fetch-data JSON before deserializing.
+///
+/// This keeps snapshots produced by older binaries readable after bumping
+/// `doublezero-serviceability` to account layouts with newly serialized fields.
+pub fn apply_json_compat_migrations(value: &mut Value) {
+    if let Some(serviceability) = value.get_mut("dz_serviceability") {
+        apply_serviceability_json_compat_migrations(serviceability);
+    }
+
+    if let Some(serviceability) = value
+        .get_mut("fetch_data")
+        .and_then(|fetch_data| fetch_data.get_mut("dz_serviceability"))
+    {
+        apply_serviceability_json_compat_migrations(serviceability);
+    }
+}
+
+fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
+    // doublezero-serviceability v0.19 added these Link fields. Historical
+    // snapshots serialized before that bump do not contain them; default them to
+    // the same values used by onchain/Borsh deserialization for absent tails.
+    if let Some(links) = serviceability
+        .get_mut("links")
+        .and_then(|links| links.as_object_mut())
+    {
+        for link in links.values_mut().filter_map(|link| link.as_object_mut()) {
+            link.entry("link_topologies")
+                .or_insert_with(|| Value::Array(Vec::new()));
+            link.entry("link_flags")
+                .or_insert_with(|| Value::Number(0.into()));
+        }
+    }
+
+    // doublezero-serviceability v0.20 added durable tunnel/BGP state to User.
+    if let Some(users) = serviceability
+        .get_mut("users")
+        .and_then(|users| users.as_object_mut())
+    {
+        for user in users.values_mut().filter_map(|user| user.as_object_mut()) {
+            user.entry("tunnel_endpoint")
+                .or_insert_with(|| Value::String("0.0.0.0".to_string()));
+            user.entry("tunnel_flags")
+                .or_insert_with(|| Value::Number(0.into()));
+            user.entry("bgp_status")
+                .or_insert_with(|| Value::String("Unknown".to_string()));
+            user.entry("last_bgp_up_at")
+                .or_insert_with(|| Value::Number(0.into()));
+            user.entry("last_bgp_reported_at")
+                .or_insert_with(|| Value::Number(0.into()));
+        }
     }
 }
 

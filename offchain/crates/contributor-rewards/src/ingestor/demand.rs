@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::{Result, anyhow, bail};
-use doublezero_serviceability::state::user::User as DZUser;
+use doublezero_serviceability::state::user::{User as DZUser, UserStatus, UserType};
 use network_shapley::types::{Demand, Demands};
 use rayon::prelude::*;
 use tracing::info;
@@ -29,7 +29,7 @@ pub struct CityStat {
     pub validator_count: usize,
     /// Sum of all validator stake proxies (leader schedule lengths) in this city
     pub total_stake_proxy: usize,
-    /// Sum of max_multicast_subscribers across devices in this city
+    /// Live multicast subscriber count for this city, derived from User accounts
     pub subscriber_count: u16,
     /// Metro price (whole USDC dollars) for this city
     pub city_price: u16,
@@ -200,8 +200,23 @@ pub fn build_city_stats(
     info!("Pairs without device: {}", pairs_without_device);
     info!("R expects: 422 user-validator pairs, 97548 slots");
 
-    // Populate subscriber counts by iterating over devices
-    for (_device_pk, device) in fetch_data.dz_serviceability.devices.iter() {
+    // Populate subscriber counts from live User accounts, not from denormalized
+    // Device counters. Device counters can be stale and, more importantly, can be
+    // misread by older serviceability decoders when the live account contains a
+    // newer interface variant before the counter fields. User accounts are the
+    // source of truth and match the serviceability migration command's tallying.
+    for user in fetch_data.dz_serviceability.users.values() {
+        let is_live = !matches!(
+            user.status,
+            UserStatus::Rejected | UserStatus::Banned | UserStatus::PendingBan
+        );
+        if user.user_type != UserType::Multicast || !is_live || user.is_publisher() {
+            continue;
+        }
+
+        let Some(device) = fetch_data.dz_serviceability.devices.get(&user.device_pk) else {
+            continue;
+        };
         // Need valid contributor and exchange
         let Some(_contributor) = fetch_data
             .dz_serviceability
@@ -233,9 +248,7 @@ pub fn build_city_stats(
             subscriber_count: 0,
             city_price: 0,
         });
-        stats.subscriber_count = stats
-            .subscriber_count
-            .saturating_add(device.multicast_subscribers_count);
+        stats.subscriber_count = stats.subscriber_count.saturating_add(1);
     }
 
     // Populate city prices from metro_prices

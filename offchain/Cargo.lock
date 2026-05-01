@@ -2350,8 +2350,8 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "doublezero-config"
-version = "0.10.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787#f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
+version = "0.20.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
 dependencies = [
  "eyre",
  "serde",
@@ -2414,8 +2414,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-geolocation"
-version = "0.10.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787#f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
+version = "0.20.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
 dependencies = [
  "borsh 1.5.7",
  "borsh-incremental",
@@ -2505,8 +2505,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.10.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787#f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
+version = "0.20.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -2541,8 +2541,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-record"
-version = "0.10.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787#f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
+version = "0.20.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
 dependencies = [
  "bytemuck",
  "solana-program",
@@ -2601,8 +2601,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.10.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787#f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
+version = "0.20.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
 dependencies = [
  "bitflags",
  "borsh 1.5.7",
@@ -2807,8 +2807,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-telemetry"
-version = "0.10.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787#f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
+version = "0.20.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
 dependencies = [
  "borsh 1.5.7",
  "borsh-incremental",
@@ -2822,8 +2822,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero_sdk"
-version = "0.10.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787#f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
+version = "0.20.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
 dependencies = [
  "async-trait",
  "backon",

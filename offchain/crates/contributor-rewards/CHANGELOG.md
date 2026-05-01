@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(contributor-rewards): subscriber decoding ([#353](https://github.com/doublezerofoundation/doublezero-offchain/pull/353))
+
+## [0.5.0](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.5.0) - 2026-04-24
+
 - feat(contributor-rewards): add shred subscription metro price fetching for demand inputs
 - feat(contributor-rewards): add support for distribution slack notifications and other minor cleanups ([#285](https://github.com/doublezerofoundation/doublezero-offchain/pull/285))
 

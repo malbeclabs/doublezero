@@ -61,8 +61,8 @@ impl SnapshotStorage for LocalFileStorage {
             .await
             .context("Failed to read snapshot file")?;
 
-        let snapshot: CompleteSnapshot =
-            serde_json::from_str(&contents).context("Failed to deserialize snapshot")?;
+        let snapshot =
+            CompleteSnapshot::from_json_str(&contents).context("Failed to deserialize snapshot")?;
 
         Ok(snapshot)
     }

@@ -109,26 +109,26 @@ tag = "revenue-distribution/v0.3.5"
 
 [workspace.dependencies.doublezero-program-common]
 git = "https://github.com/malbeclabs/doublezero"
-rev="f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
+tag = "client/v0.20.0"
 
 [workspace.dependencies.doublezero-record]
 features = ["no-entrypoint"]
 git = "https://github.com/malbeclabs/doublezero"
-rev="f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
+tag = "client/v0.20.0"
 
 [workspace.dependencies.doublezero_sdk]
 git = "https://github.com/malbeclabs/doublezero"
-rev="f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
+tag = "client/v0.20.0"
 
 [workspace.dependencies.doublezero-serviceability]
 features = ["no-entrypoint", "serde"]
 git = "https://github.com/malbeclabs/doublezero"
-rev="f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
+tag = "client/v0.20.0"
 
 [workspace.dependencies.doublezero-telemetry]
 features = ["no-entrypoint", "serde"]
 git = "https://github.com/malbeclabs/doublezero"
-rev="f6698ab6bd7f7ed24878eb3af5d2a22bae2c8787"
+tag = "client/v0.20.0"
 
 ### Other git dependencies
 

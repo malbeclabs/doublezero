@@ -3,12 +3,13 @@ use std::net::Ipv4Addr;
 use anyhow::{Context, Result};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::{get_accesspass_pda, get_globalstate_pda, get_user_pda},
+    pda::{get_accesspass_pda, get_globalstate_pda, get_resource_extension_pda, get_user_pda},
     processors::{
         accesspass::set::SetAccessPassArgs,
         multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
         user::create_subscribe::UserCreateSubscribeArgs,
     },
+    resource::ResourceType,
     state::{
         accesspass::AccessPassType,
         user::{UserCYOA, UserType as SvcUserType},
@@ -32,6 +33,11 @@ pub struct CreateMulticastPublisherInstructions {
 ///
 /// `payer` signs and pays for all transactions. `owner` is the validator's owner pubkey;
 /// the access pass and user account are created under this owner, not the payer.
+///
+/// `dz_prefix_count` is the number of DzPrefixBlock resource extension accounts on the
+/// device (i.e. `device.dz_prefixes.len()`). When > 0 the create_subscribe_user instruction
+/// runs through the atomic create+allocate+activate path; every DzPrefixBlock must be
+/// supplied even though a multicast publisher allocates its dz_ip from MulticastPublisherBlock.
 pub fn build_create_multicast_publisher_instructions(
     program_id: &Pubkey,
     payer: &Pubkey,
@@ -39,6 +45,7 @@ pub fn build_create_multicast_publisher_instructions(
     multicast_group_pk: &Pubkey,
     user: &DzUser,
     tunnel_endpoint: Ipv4Addr,
+    dz_prefix_count: u8,
 ) -> Result<CreateMulticastPublisherInstructions> {
     let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, owner);
     let (globalstate_pda, _) = get_globalstate_pda(program_id);
@@ -77,8 +84,48 @@ pub fn build_create_multicast_publisher_instructions(
         ],
     )?;
 
-    // Step 3: create_subscribe_user (as publisher)
+    // Step 3: create_subscribe_user (as publisher).
+    //
+    // When dz_prefix_count > 0 we append the ResourceExtension accounts so the contract takes
+    // the atomic create+allocate+activate path. Without those accounts the user is created
+    // Pending and — with no activator — never reaches Activated, so the next poll cycle would
+    // re-attempt creation and trip AccountAlreadyInitialized.
     let (user_pda, _) = get_user_pda(program_id, &user.client_ip, SvcUserType::Multicast);
+    let mut create_user_accounts = vec![
+        AccountMeta::new(user_pda, false),
+        AccountMeta::new(user.device_pk, false),
+        AccountMeta::new(*multicast_group_pk, false),
+        AccountMeta::new(accesspass_pda, false),
+        AccountMeta::new(globalstate_pda, false),
+    ];
+
+    if dz_prefix_count > 0 {
+        let (user_tunnel_block_ext, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::UserTunnelBlock);
+        let (multicast_publisher_block_ext, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
+        let (device_tunnel_ids_ext, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::TunnelIds(user.device_pk, 0));
+
+        create_user_accounts.push(AccountMeta::new(user_tunnel_block_ext, false));
+        create_user_accounts.push(AccountMeta::new(multicast_publisher_block_ext, false));
+        create_user_accounts.push(AccountMeta::new(device_tunnel_ids_ext, false));
+
+        for idx in 0..dz_prefix_count as usize {
+            let (dz_prefix_ext, _, _) = get_resource_extension_pda(
+                program_id,
+                ResourceType::DzPrefixBlock(user.device_pk, idx),
+            );
+            create_user_accounts.push(AccountMeta::new(dz_prefix_ext, false));
+        }
+    }
+
+    create_user_accounts.push(AccountMeta::new(*payer, true));
+    create_user_accounts.push(AccountMeta::new_readonly(
+        solana_sdk::system_program::ID,
+        false,
+    ));
+
     let create_user = build_instruction(
         program_id,
         DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
@@ -88,18 +135,10 @@ pub fn build_create_multicast_publisher_instructions(
             publisher: true,
             subscriber: false,
             tunnel_endpoint,
-            dz_prefix_count: 0,
+            dz_prefix_count,
             owner: *owner,
         }),
-        vec![
-            AccountMeta::new(user_pda, false),
-            AccountMeta::new(user.device_pk, false),
-            AccountMeta::new(*multicast_group_pk, false),
-            AccountMeta::new(accesspass_pda, false),
-            AccountMeta::new_readonly(globalstate_pda, false),
-            AccountMeta::new(*payer, true),
-            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
-        ],
+        create_user_accounts,
     )?;
 
     Ok(CreateMulticastPublisherInstructions {
@@ -154,6 +193,7 @@ mod tests {
             &multicast_group,
             &user,
             Ipv4Addr::UNSPECIFIED,
+            0,
         )
         .unwrap();
 
@@ -171,8 +211,52 @@ mod tests {
         assert_eq!(ixs.set_access_pass.accounts.len(), 5);
         // add_allowlist: 5 accounts (multicast_group, accesspass_pda, globalstate, payer, system_program)
         assert_eq!(ixs.add_allowlist.accounts.len(), 5);
-        // create_user: 7 accounts (user_pda, device, multicast_group, accesspass_pda, globalstate, payer, system_program)
+        // create_user (legacy, dz_prefix_count=0): 7 accounts
+        // (user_pda, device, multicast_group, accesspass_pda, globalstate, payer, system_program)
         assert_eq!(ixs.create_user.accounts.len(), 7);
+    }
+
+    #[test]
+    fn build_instructions_with_onchain_allocation() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let multicast_group = Pubkey::new_unique();
+        let user = DzUser {
+            owner: Pubkey::new_unique(),
+            client_ip: Ipv4Addr::new(10, 0, 0, 1),
+            device_pk: Pubkey::new_unique(),
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            publishers: vec![],
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        };
+
+        let owner = Pubkey::new_unique();
+        let dz_prefix_count: u8 = 2;
+
+        let ixs = build_create_multicast_publisher_instructions(
+            &program_id,
+            &payer,
+            &owner,
+            &multicast_group,
+            &user,
+            Ipv4Addr::new(45, 33, 101, 1),
+            dz_prefix_count,
+        )
+        .unwrap();
+
+        // create_user with onchain allocation: 7 base accounts + 3 (UserTunnelBlock,
+        // MulticastPublisherBlock, TunnelIds) + dz_prefix_count DzPrefixBlock accounts.
+        assert_eq!(
+            ixs.create_user.accounts.len(),
+            7 + 3 + dz_prefix_count as usize
+        );
+        // payer must still be the signer regardless of where it lands in the account list.
+        assert!(ixs
+            .create_user
+            .accounts
+            .iter()
+            .any(|a| a.pubkey == payer && a.is_signer));
     }
 
     #[test]
@@ -199,6 +283,7 @@ mod tests {
             &multicast_group,
             &user,
             Ipv4Addr::UNSPECIFIED,
+            0,
         )
         .unwrap();
 

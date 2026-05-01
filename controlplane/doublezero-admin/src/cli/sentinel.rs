@@ -775,6 +775,10 @@ impl CreateValidatorMulticastPublishersCommand {
                 continue;
             }
 
+            let dz_prefix_count = device_infos
+                .get(&target_device_pk)
+                .map(|d| d.dz_prefix_count)
+                .unwrap_or(0);
             let ixs = match build_create_multicast_publisher_instructions(
                 &program_id,
                 &payer_pk,
@@ -782,6 +786,7 @@ impl CreateValidatorMulticastPublishersCommand {
                 &multicast_group_pk,
                 &dz_user,
                 tunnel_endpoint,
+                dz_prefix_count,
             ) {
                 Ok(ixs) => ixs,
                 Err(e) => {

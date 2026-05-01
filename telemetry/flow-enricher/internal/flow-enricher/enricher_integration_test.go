@@ -288,6 +288,17 @@ func TestFlowEnrichment(t *testing.T) {
 	)
 	enricher.AddAnnotator(NewServiceabilityAnnotator(enricher.ServiceabilityData))
 
+	// Create a *sql.DB for the IfNameAnnotator using the same connection params
+	chDB := ch.OpenDB(&ch.Options{
+		Addr: []string{chConn},
+		Auth: ch.Auth{
+			Database: chDbname,
+			Username: chUser,
+			Password: chPassword,
+		},
+	})
+	enricher.AddAnnotator(NewIfNameAnnotator(chDB, logger))
+
 	go func() {
 		if err := enricher.Run(ctx); err != nil {
 			logger.Error("error during enrichment", "error", err)
@@ -328,18 +339,20 @@ func TestFlowEnrichment(t *testing.T) {
 	})
 
 	type flowRow struct {
-		SrcAddr       string `db:"src_addr"`
-		DstAddr       string `db:"dst_addr"`
-		SrcPort       uint16 `db:"src_port"`
-		DstPort       uint16 `db:"dst_port"`
-		Proto         string `db:"proto"`
-		EType         string `db:"etype"`
-		SrcDeviceCode string `db:"src_device_code"`
-		DstDeviceCode string `db:"dst_device_code"`
-		SrcLocation   string `db:"src_location"`
-		DstLocation   string `db:"dst_location"`
-		SrcExchange   string `db:"src_exchange"`
-		DstExchange   string `db:"dst_exchange"`
+		SrcAddr         string `db:"src_addr"`
+		DstAddr         string `db:"dst_addr"`
+		SrcPort         uint16 `db:"src_port"`
+		DstPort         uint16 `db:"dst_port"`
+		Proto           string `db:"proto"`
+		EType           string `db:"etype"`
+		SrcDeviceCode   string `db:"src_device_code"`
+		DstDeviceCode   string `db:"dst_device_code"`
+		SrcLocation     string `db:"src_location"`
+		DstLocation     string `db:"dst_location"`
+		SrcExchange     string `db:"src_exchange"`
+		DstExchange     string `db:"dst_exchange"`
+		InputInterface  string `db:"in_ifname"`
+		OutputInterface string `db:"out_ifname"`
 	}
 
 	var rows []flowRow
@@ -347,7 +360,8 @@ func TestFlowEnrichment(t *testing.T) {
 		rows = nil // Reset at the start of each attempt
 		dbRows, err := conn.Query(fmt.Sprintf(`
 			SELECT src_addr, dst_addr, src_port, dst_port, proto, etype,
-			       src_device_code, dst_device_code, src_location, dst_location, src_exchange, dst_exchange
+			       src_device_code, dst_device_code, src_location, dst_location, src_exchange, dst_exchange,
+				       in_ifname, out_ifname
 			FROM %s.%s
 		`, chDbname, chTable))
 		if err != nil {
@@ -361,6 +375,7 @@ func TestFlowEnrichment(t *testing.T) {
 			if err := dbRows.Scan(
 				&row.SrcAddr, &row.DstAddr, &row.SrcPort, &row.DstPort, &row.Proto, &row.EType,
 				&row.SrcDeviceCode, &row.DstDeviceCode, &row.SrcLocation, &row.DstLocation, &row.SrcExchange, &row.DstExchange,
+				&row.InputInterface, &row.OutputInterface,
 			); err != nil {
 				t.Logf("error scanning row: %v", err)
 				return false
@@ -391,5 +406,10 @@ func TestFlowEnrichment(t *testing.T) {
 		require.Equal(t, "", row.DstDeviceCode, "unexpected dst_device_code")
 		require.Equal(t, "", row.DstLocation, "unexpected dst_location")
 		require.Equal(t, "", row.DstExchange, "unexpected dst_exchange")
+
+		// Validate enriched interface names from device_ifindex table
+		// Sampler 137.174.145.144 with ifindex 8001063 -> eth0, ifindex 8001134 -> eth1
+		require.Equal(t, "eth0", row.InputInterface, "unexpected in_ifname")
+		require.Equal(t, "eth1", row.OutputInterface, "unexpected out_ifname")
 	}
 }

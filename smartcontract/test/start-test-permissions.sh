@@ -16,7 +16,6 @@
 
 clear
 killall solana-test-validator > /dev/null 2>&1
-killall doublezero-activator > /dev/null 2>&1
 killall solana > /dev/null 2>&1
 
 set -e
@@ -31,10 +30,6 @@ export OPENSSL_NO_VENDOR=1
 echo "Build the program"
 cargo build-sbf --manifest-path ../programs/doublezero-serviceability/Cargo.toml -- -Znext-lockfile-bump --target-dir ../../target/
 cp ../../target/deploy/doublezero_serviceability.so ./target/doublezero_serviceability.so
-
-echo "Build the activator"
-cargo build --manifest-path ../../activator/Cargo.toml --target-dir ../../target/
-cp ../../target/debug/doublezero-activator ./target/
 
 echo "Build the client"
 cargo build --manifest-path ../../client/doublezero/Cargo.toml --target-dir ../../target/
@@ -72,12 +67,6 @@ solana logs >./logs/instruction.log 2>&1 &
 ./target/doublezero global-config feature-flags set --enable onchain-allocation
 
 ./target/doublezero global-config feature-flags get
-
-echo "Start the activator"
-RUST_LOG=info ./target/doublezero-activator \
-    --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX \
-    --rpc http://127.0.0.1:8899 --ws ws://127.0.0.1:8900 \
-    --keypair ~/.config/doublezero/id.json >./logs/activator.log 2>&1 &
 
 PAYER=$(./target/doublezero address)
 echo "Payer pubkey: $PAYER"

@@ -2,7 +2,6 @@
 
 clear
 killall solana-test-validator > /dev/null 2>&1
-killall doublezero-activator > /dev/null 2>&1
 killall solana > /dev/null 2>&1
 
 set -e
@@ -21,11 +20,6 @@ echo "Build the program"
 cargo build-sbf --manifest-path ../programs/doublezero-serviceability/Cargo.toml -- -Znext-lockfile-bump --target-dir ${CARGO_TARGET_DIR}
 cp ${CARGO_TARGET_DIR}/deploy/doublezero_serviceability.so ./target/doublezero_serviceability.so
 
-#Build the activator
-echo "Build the activator"
-cargo build --manifest-path ../../activator/Cargo.toml  --target-dir ${CARGO_TARGET_DIR} ; cp ${CARGO_TARGET_DIR}/debug/doublezero-activator ./target/
-
-#Build the activator
 echo "Build the client"
 cargo build --manifest-path ../../client/doublezero/Cargo.toml --target-dir ${CARGO_TARGET_DIR} ; cp ${CARGO_TARGET_DIR}/debug/doublezero ./target/
 
@@ -59,10 +53,6 @@ solana logs >./logs/instruction.log 2>&1 &
 
 # Enable onchain allocation feature flag
 ./target/doublezero global-config feature-flags set --enable onchain-allocation
-
-# Build the activator
-echo "Start the activator"
-RUST_LOG=debug ./target/doublezero-activator --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX --rpc http://127.0.0.1:8899 --ws ws://127.0.0.1:8900 --keypair ~/.config/doublezero/id.json >./logs/activator.log 2>&1 &
 
 echo "Add allowlist"
 ./target/doublezero global-config allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX

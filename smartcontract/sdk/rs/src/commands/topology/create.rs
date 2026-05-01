@@ -1,7 +1,7 @@
 use crate::{
     commands::{
         device::list::ListDeviceCommand, globalstate::get::GetGlobalStateCommand,
-        topology::backfill::BackfillTopologyCommand,
+        topology::assign_node_segments::AssignTopologyNodeSegmentsCommand,
     },
     DoubleZeroClient,
 };
@@ -74,7 +74,7 @@ impl CreateTopologyCommand {
             .collect();
         device_pubkeys.sort();
 
-        let backfill_signatures = BackfillTopologyCommand {
+        let backfill_signatures = AssignTopologyNodeSegmentsCommand {
             name: self.name.clone(),
             device_pubkeys,
         }
@@ -99,7 +99,9 @@ mod tests {
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         pda::{get_globalstate_pda, get_resource_extension_pda, get_topology_pda},
-        processors::topology::{backfill::TopologyBackfillArgs, create::TopologyCreateArgs},
+        processors::topology::{
+            assign_node_segments::AssignTopologyNodeSegmentsArgs, create::TopologyCreateArgs,
+        },
         resource::ResourceType,
         state::{
             accountdata::AccountData,
@@ -228,8 +230,8 @@ mod tests {
             .times(1)
             .in_sequence(&mut seq)
             .with(
-                predicate::eq(DoubleZeroInstruction::BackfillTopology(
-                    TopologyBackfillArgs {
+                predicate::eq(DoubleZeroInstruction::AssignTopologyNodeSegments(
+                    AssignTopologyNodeSegmentsArgs {
                         name: "algo128".to_string(),
                     },
                 )),

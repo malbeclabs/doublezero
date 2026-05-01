@@ -315,6 +315,7 @@ async fn test_device_interfaces() {
             vlan_id: 42,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -342,6 +343,7 @@ async fn test_device_interfaces() {
             vlan_id: 43,
             user_tunnel_endpoint: true,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -369,6 +371,7 @@ async fn test_device_interfaces() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -395,6 +398,7 @@ async fn test_device_interfaces() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -422,6 +426,7 @@ async fn test_device_interfaces() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -450,6 +455,7 @@ async fn test_device_interfaces() {
             vlan_id: 1,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -482,6 +488,7 @@ async fn test_device_interfaces() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -562,6 +569,7 @@ async fn test_device_interfaces() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1144,6 +1152,7 @@ async fn test_device_interfaces() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device2_pubkey, false),
@@ -1172,6 +1181,7 @@ async fn test_device_interfaces() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device2_pubkey, false),
@@ -1623,6 +1633,7 @@ async fn test_interface_create_invalid_mtu_non_cyoa() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1818,6 +1829,7 @@ async fn test_interface_create_invalid_mtu_cyoa() {
             vlan_id: 0,
             user_tunnel_endpoint: true,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

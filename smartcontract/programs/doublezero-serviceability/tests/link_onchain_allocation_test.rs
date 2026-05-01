@@ -184,6 +184,7 @@ async fn test_activate_link_with_onchain_allocation() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -243,6 +244,7 @@ async fn test_activate_link_with_onchain_allocation() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -573,6 +575,7 @@ async fn test_activate_link_legacy_path() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -631,6 +634,7 @@ async fn test_activate_link_legacy_path() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -902,6 +906,7 @@ async fn test_closeaccount_link_with_deallocation() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -960,6 +965,7 @@ async fn test_closeaccount_link_with_deallocation() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -1308,6 +1314,7 @@ async fn setup_wan_link_infra(
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -1367,6 +1374,7 @@ async fn setup_wan_link_infra(
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -2760,6 +2768,7 @@ async fn test_accept_link_with_onchain_allocation() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -2819,6 +2828,7 @@ async fn test_accept_link_with_onchain_allocation() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -3107,6 +3117,7 @@ async fn test_accept_link_onchain_allocation_rejects_feature_flag_disabled() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -3165,6 +3176,7 @@ async fn test_accept_link_onchain_allocation_rejects_feature_flag_disabled() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![

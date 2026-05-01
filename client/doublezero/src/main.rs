@@ -71,7 +71,7 @@ async fn main() -> eyre::Result<()> {
     let app = App::parse();
 
     if let Some(sock_file) = &app.sock_file {
-        ServiceControllerImpl::set_default_socket_path(sock_file.to_string_lossy());
+        ServiceControllerImpl::set_global_socket_path(sock_file.to_string_lossy());
     }
 
     if let Some(keypair) = &app.keypair {

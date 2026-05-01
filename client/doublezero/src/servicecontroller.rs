@@ -12,7 +12,7 @@ use tabled::{derive::display, Tabled};
 
 const DEFAULT_SOCKET_PATH: &str = "/var/run/doublezerod/doublezerod.sock";
 const NANOS_TO_MS: f64 = 1000000.0;
-static SOCKET_PATH_OVERRIDE: OnceLock<String> = OnceLock::new();
+static GLOBAL_SOCKET_PATH: OnceLock<String> = OnceLock::new();
 
 #[derive(Clone, Tabled, Deserialize, Serialize, Debug)]
 pub struct LatencyRecord {
@@ -201,14 +201,14 @@ pub struct ServiceControllerImpl {
 }
 
 impl ServiceControllerImpl {
-    pub fn set_default_socket_path(socket_path: impl Into<String>) {
-        let _ = SOCKET_PATH_OVERRIDE.set(socket_path.into());
+    pub fn set_global_socket_path(socket_path: impl Into<String>) {
+        let _ = GLOBAL_SOCKET_PATH.set(socket_path.into());
     }
 
     pub fn new(socket_path: Option<String>) -> ServiceControllerImpl {
         ServiceControllerImpl {
             socket_path: socket_path.unwrap_or_else(|| {
-                SOCKET_PATH_OVERRIDE
+                GLOBAL_SOCKET_PATH
                     .get()
                     .cloned()
                     .unwrap_or_else(|| DEFAULT_SOCKET_PATH.to_string())

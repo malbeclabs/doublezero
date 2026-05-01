@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.21.0](https://github.com/malbeclabs/doublezero/compare/client/v0.20.0...client/v0.21.0) - 2026-05-01
+
+### Breaking
+
+### Changes
+
 - Smartcontract
   - Add `AccessPassType::EdgeSeat(Pubkey)` variant to associate an access pass with a specific onchain Seat pubkey
   - Add `--accesspass-type edge-seat --seat <PUBKEY>` to `access-pass set`

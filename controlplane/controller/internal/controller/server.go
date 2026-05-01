@@ -657,8 +657,8 @@ func (c *Controller) Run(ctx context.Context) error {
 	}()
 
 	if c.clickhouse != nil {
-		if err := c.clickhouse.CreateTable(ctx); err != nil {
-			c.log.Warn("error creating clickhouse table, continuing without clickhouse", "error", err)
+		if err := c.clickhouse.CreateTables(ctx); err != nil {
+			c.log.Warn("error creating clickhouse tables, continuing without clickhouse", "error", err)
 			c.clickhouse = nil
 		} else {
 			go c.clickhouse.Run(ctx)
@@ -944,6 +944,13 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		c.clickhouse.Record(getConfigEvent{
 			Timestamp:    reqStart,
 			DevicePubkey: req.GetPubkey(),
+		})
+		c.clickhouse.RecordVersion(versionEvent{
+			DevicePubkey: req.GetPubkey(),
+			UpdatedAt:    reqStart,
+			AgentVersion: agentVersion,
+			AgentCommit:  agentCommit,
+			AgentDate:    agentDate,
 		})
 	}
 	return resp, nil

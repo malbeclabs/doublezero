@@ -51,6 +51,8 @@ All notable changes to this project will be documented in this file.
   - Filter devices by type-specific capacity during auto-selection so clients are not provisioned onto devices that have reached their unicast, multicast publisher, or multicast subscriber limits
 - Collector
   - fallback to any probe if anchor probes aren't available
+- Device Controller
+  - store config agent version info in clickhouse
 - Smartcontract
   - Fix `BackfillTopology` account ordering: payer and system_program are now correctly placed after the variable-length device list, not before it
   - Fix `BackfillTopology` SID collision: flex-algo node segment indices are now guaranteed not to duplicate any existing base `node_segment_idx` value on the device

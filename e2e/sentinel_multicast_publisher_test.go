@@ -21,7 +21,7 @@ import (
 // TestE2E_SentinelMulticastPublisherCreatesPublishers verifies that the sentinel's
 // multicast publisher worker detects IBRL validators and creates multicast
 // publisher users on-chain.
-func IgnoreTestE2E_SentinelMulticastPublisherCreatesPublishers(t *testing.T) {
+func TestE2E_SentinelMulticastPublisherCreatesPublishers(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 

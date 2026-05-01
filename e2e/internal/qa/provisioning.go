@@ -593,13 +593,13 @@ func (p *ProvisioningTest) RunAnsibleAgentRestart(ctx context.Context, deviceCod
 
 func formatBandwidth(bps uint64) string {
 	if bps >= 1_000_000_000 {
-		return fmt.Sprintf("%d Gbps", bps/1_000_000_000)
+		return fmt.Sprintf("%dGbps", bps/1_000_000_000)
 	}
 	if bps >= 1_000_000 {
-		return fmt.Sprintf("%d Mbps", bps/1_000_000)
+		return fmt.Sprintf("%dMbps", bps/1_000_000)
 	}
 	if bps >= 1_000 {
-		return fmt.Sprintf("%d Kbps", bps/1_000)
+		return fmt.Sprintf("%dKbps", bps/1_000)
 	}
-	return fmt.Sprintf("%d bps", bps)
+	return fmt.Sprintf("%dbps", bps)
 }

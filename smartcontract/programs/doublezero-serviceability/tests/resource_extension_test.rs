@@ -1466,6 +1466,7 @@ async fn create_loopback_interface(
             ip_net: None,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
             interface_cyoa: InterfaceCYOA::None,
             interface_dia: InterfaceDIA::None,
             bandwidth: 0,

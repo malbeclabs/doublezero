@@ -21,13 +21,16 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, Debug, Clone, PartialEq)]
-pub struct TopologyBackfillArgs {
+pub struct AssignTopologyNodeSegmentsArgs {
     pub name: String,
 }
 
-/// Backfill FlexAlgoNodeSegment entries on existing Vpnv4 loopbacks for an
-/// already-created topology. Idempotent — skips loopbacks that already have
-/// an entry for this topology.
+// Keep the old name as a type alias for backward compatibility with existing serialized data.
+// The on-wire format is identical (same Borsh layout, same instruction discriminant 110).
+pub type TopologyBackfillArgs = AssignTopologyNodeSegmentsArgs;
+
+/// Assign FlexAlgoNodeSegment entries on Vpnv4 loopbacks for a topology.
+/// Idempotent — skips loopbacks that already have an entry for this topology.
 ///
 /// Accounts layout:
 /// [0]    topology PDA        (readonly — must already exist)
@@ -39,10 +42,10 @@ pub struct TopologyBackfillArgs {
 ///
 /// Note: payer and system_program are the last two accounts. The SDK client
 /// always appends them after the variable-length device list.
-pub fn process_topology_backfill(
+pub fn process_assign_topology_node_segments(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &TopologyBackfillArgs,
+    value: &AssignTopologyNodeSegmentsArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -54,7 +57,7 @@ pub fn process_topology_backfill(
     // system_program at the end, after the variable-length device list.
     let all_remaining: Vec<&AccountInfo> = accounts_iter.collect();
     if all_remaining.len() < 2 {
-        msg!("TopologyBackfill: expected at least payer and system_program accounts");
+        msg!("AssignTopologyNodeSegments: expected at least payer and system_program accounts");
         return Err(DoubleZeroError::InvalidArgument.into());
     }
     let payer_account = all_remaining[all_remaining.len() - 2];
@@ -62,10 +65,10 @@ pub fn process_topology_backfill(
     let device_accounts = &all_remaining[..all_remaining.len() - 2];
 
     #[cfg(test)]
-    msg!("process_topology_backfill(name={})", value.name);
+    msg!("process_assign_topology_node_segments(name={})", value.name);
 
     if !payer_account.is_signer {
-        msg!("TopologyBackfill: payer must be a signer");
+        msg!("AssignTopologyNodeSegments: payer must be a signer");
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
@@ -76,13 +79,16 @@ pub fn process_topology_backfill(
     let (expected_topology_pda, _) = get_topology_pda(program_id, &value.name);
     if topology_account.key != &expected_topology_pda {
         msg!(
-            "TopologyBackfill: invalid topology PDA for name '{}'",
+            "AssignTopologyNodeSegments: invalid topology PDA for name '{}'",
             value.name
         );
         return Err(DoubleZeroError::InvalidArgument.into());
     }
     if topology_account.data_is_empty() {
-        msg!("TopologyBackfill: topology '{}' does not exist", value.name);
+        msg!(
+            "AssignTopologyNodeSegments: topology '{}' does not exist",
+            value.name
+        );
         return Err(DoubleZeroError::InvalidArgument.into());
     }
     assert_eq!(
@@ -112,7 +118,7 @@ pub fn process_topology_backfill(
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        msg!("TopologyBackfill: unauthorized — foundation key required");
+        msg!("AssignTopologyNodeSegments: unauthorized — foundation key required");
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
@@ -122,7 +128,10 @@ pub fn process_topology_backfill(
 
     // Allocate new IDs for loopbacks missing this topology's segment.
     for device_account in device_accounts {
-        msg!("BackfillTopology: processing device {}", device_account.key);
+        msg!(
+            "AssignTopologyNodeSegments: processing device {}",
+            device_account.key
+        );
         let mut device = Device::try_from(&device_account.data.borrow()[..])?;
         let mut modified = false;
         for iface in device.interfaces.iter_mut() {
@@ -168,7 +177,7 @@ pub fn process_topology_backfill(
     }
 
     msg!(
-        "TopologyBackfill: '{}' — {} loopback(s) backfilled, {} already had segment",
+        "AssignTopologyNodeSegments: '{}' — {} loopback(s) backfilled, {} already had segment",
         value.name,
         backfilled_count,
         skipped_count

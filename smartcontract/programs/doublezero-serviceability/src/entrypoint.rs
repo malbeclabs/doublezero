@@ -99,8 +99,9 @@ use crate::{
             update::process_update_tenant, update_payment_status::process_update_payment_status,
         },
         topology::{
-            backfill::process_topology_backfill, clear::process_topology_clear,
-            create::process_topology_create, delete::process_topology_delete,
+            assign_node_segments::process_assign_topology_node_segments,
+            clear::process_topology_clear, create::process_topology_create,
+            delete::process_topology_delete,
         },
         user::{
             activate::process_activate_user, ban::process_ban_user,
@@ -445,8 +446,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::ClearTopology(value) => {
             process_topology_clear(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::BackfillTopology(value) => {
-            process_topology_backfill(program_id, accounts, &value)?
+        DoubleZeroInstruction::AssignTopologyNodeSegments(value) => {
+            process_assign_topology_node_segments(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::MigrateDeviceInterfaces(value) => {
             process_migrate_device_interfaces(program_id, accounts, &value)?

@@ -1,6 +1,6 @@
 use crate::{
     error::DoubleZeroError,
-    pda::get_resource_extension_pda,
+    pda::{get_resource_extension_pda, get_topology_pda},
     processors::{
         resource::{allocate_id, allocate_ip},
         validation::validate_program_account,
@@ -17,6 +17,7 @@ use crate::{
             CurrentInterfaceVersion, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType,
             LoopbackType, RoutingMode, CYOA_DIA_INTERFACE_MTU, INTERFACE_MTU,
         },
+        topology::FlexAlgoNodeSegment,
     },
 };
 use borsh::BorshSerialize;
@@ -48,6 +49,11 @@ pub struct DeviceInterfaceCreateArgs {
     /// Performs atomic create+allocate+activate in a single transaction.
     #[incremental(default = false)]
     pub use_onchain_allocation: bool,
+    /// Number of topology PDA accounts appended after segment_routing_ids.
+    /// For each topology, the processor allocates a FlexAlgoNodeSegment on
+    /// Vpnv4 loopbacks. Zero means no topologies (backward compatible).
+    #[incremental(default = 0)]
+    pub topology_count: u8,
 }
 
 impl fmt::Debug for DeviceInterfaceCreateArgs {
@@ -56,7 +62,7 @@ impl fmt::Debug for DeviceInterfaceCreateArgs {
             f,
             "name: {}, loopback_type: {}, vlan_id: {}, ip_net: {:?}, user_tunnel_endpoint: {}, \
 interface_cyoa: {:?}, interface_dia: {:?}, bandwidth: {}, cir: {}, mtu: {}, routing_mode: {:?}, \
-use_onchain_allocation: {}",
+use_onchain_allocation: {}, topology_count: {}",
             self.name,
             self.loopback_type,
             self.vlan_id,
@@ -69,6 +75,7 @@ use_onchain_allocation: {}",
             self.mtu,
             self.routing_mode,
             self.use_onchain_allocation,
+            self.topology_count,
         )
     }
 }
@@ -86,7 +93,7 @@ pub fn process_create_device_interface(
 
     // Optional: ResourceExtension accounts for onchain allocation (before payer)
     // Account layout WITH ResourceExtension (use_onchain_allocation = true):
-    //   [device, contributor, globalstate, device_tunnel_block, segment_routing_ids, payer, system]
+    //   [device, contributor, globalstate, device_tunnel_block, segment_routing_ids, topology_0..N, payer, system]
     // Account layout WITHOUT (legacy, use_onchain_allocation = false):
     //   [device, contributor, globalstate, payer, system]
     let resource_accounts = if value.use_onchain_allocation {
@@ -96,6 +103,12 @@ pub fn process_create_device_interface(
     } else {
         None
     };
+
+    // Read topology PDA accounts (optional, for Vpnv4 loopback flex-algo assignment)
+    let mut topology_accounts = Vec::new();
+    for _ in 0..value.topology_count {
+        topology_accounts.push(next_account_info(accounts_iter)?);
+    }
 
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
@@ -177,6 +190,7 @@ pub fn process_create_device_interface(
     let mut status = InterfaceStatus::Pending;
     let mut ip_net = value.ip_net.unwrap_or_default();
     let mut node_segment_idx: u16 = 0;
+    let mut flex_algo_node_segments = Vec::new();
 
     // Atomic create+allocate+activate if onchain allocation is enabled
     if let Some((device_tunnel_block_ext, segment_routing_ids_ext)) = resource_accounts {
@@ -215,6 +229,20 @@ pub fn process_create_device_interface(
             // Allocate segment routing ID for Vpnv4 loopbacks
             if value.loopback_type == LoopbackType::Vpnv4 {
                 node_segment_idx = allocate_id(segment_routing_ids_ext)?;
+
+                // Allocate a flex-algo node segment for each topology
+                for topo_account in &topology_accounts {
+                    assert_eq!(
+                        topo_account.owner, program_id,
+                        "Invalid Topology Account Owner"
+                    );
+                    assert!(!topo_account.data_is_empty(), "Topology account is empty");
+                    let topo_segment_idx = allocate_id(segment_routing_ids_ext)?;
+                    flex_algo_node_segments.push(FlexAlgoNodeSegment {
+                        topology: *topo_account.key,
+                        node_segment_idx: topo_segment_idx,
+                    });
+                }
             }
 
             status = InterfaceStatus::Activated;
@@ -240,7 +268,7 @@ pub fn process_create_device_interface(
             ip_net,
             node_segment_idx,
             user_tunnel_endpoint: value.user_tunnel_endpoint,
-            flex_algo_node_segments: vec![],
+            flex_algo_node_segments,
         }
         .to_interface(),
     );

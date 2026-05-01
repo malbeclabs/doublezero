@@ -21,8 +21,8 @@ use doublezero_serviceability::{
         link::{activate::LinkActivateArgs, create::LinkCreateArgs, update::LinkUpdateArgs},
         location::create::LocationCreateArgs,
         topology::{
-            backfill::TopologyBackfillArgs, clear::TopologyClearArgs, create::TopologyCreateArgs,
-            delete::TopologyDeleteArgs,
+            assign_node_segments::AssignTopologyNodeSegmentsArgs, clear::TopologyClearArgs,
+            create::TopologyCreateArgs, delete::TopologyDeleteArgs,
         },
     },
     resource::ResourceType,
@@ -675,6 +675,7 @@ async fn setup_wan_link(
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -748,6 +749,7 @@ async fn setup_wan_link(
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
@@ -1663,6 +1665,7 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1709,7 +1712,7 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
     ];
     let mut tx = create_transaction(
         program_id,
-        &DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
+        &DoubleZeroInstruction::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs {
             name: "unicast-default".to_string(),
         }),
         &backfill_accounts,
@@ -1737,7 +1740,7 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     let mut tx2 = create_transaction(
         program_id,
-        &DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
+        &DoubleZeroInstruction::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs {
             name: "unicast-default".to_string(),
         }),
         &backfill_accounts,
@@ -1797,7 +1800,7 @@ async fn test_topology_backfill_non_foundation_rejected() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
+        DoubleZeroInstruction::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs {
             name: "unicast-default".to_string(),
         }),
         vec![
@@ -1839,7 +1842,7 @@ async fn test_topology_backfill_nonexistent_topology_rejected() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
+        DoubleZeroInstruction::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs {
             name: "does-not-exist".to_string(),
         }),
         vec![
@@ -2036,6 +2039,7 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -2087,7 +2091,7 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     ];
     let mut tx = create_transaction(
         program_id,
-        &DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
+        &DoubleZeroInstruction::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs {
             name: "unicast-default".to_string(),
         }),
         &backfill_accounts,

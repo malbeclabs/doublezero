@@ -301,6 +301,7 @@ async fn setup_device_with_interface(
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -367,6 +368,7 @@ async fn test_create_loopback_vpnv4_with_onchain_allocation() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -445,6 +447,7 @@ async fn test_create_loopback_non_vpnv4_with_onchain_allocation() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -527,6 +530,7 @@ async fn test_create_loopback_with_onchain_allocation_honors_supplied_ip_net() {
             vlan_id: 0,
             user_tunnel_endpoint: true,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -611,6 +615,7 @@ async fn test_create_physical_with_onchain_allocation() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -671,6 +676,7 @@ async fn test_create_interface_backward_compat() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -727,6 +733,7 @@ async fn test_create_interface_feature_flag_disabled() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -799,6 +806,7 @@ async fn test_delete_loopback_with_onchain_deallocation() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -900,6 +908,7 @@ async fn test_delete_physical_with_onchain_deallocation() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1000,6 +1009,7 @@ async fn test_delete_interface_backward_compat() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1454,6 +1464,7 @@ async fn test_update_interface_node_segment_idx_duplicate_allocation() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

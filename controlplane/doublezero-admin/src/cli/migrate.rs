@@ -3,7 +3,9 @@ use doublezero_cli::doublezerocommand::CliCommand;
 use doublezero_sdk::commands::{
     device::list::ListDeviceCommand,
     link::{list::ListLinkCommand, update::UpdateLinkCommand},
-    topology::{backfill::BackfillTopologyCommand, list::ListTopologyCommand},
+    topology::{
+        assign_node_segments::AssignTopologyNodeSegmentsCommand, list::ListTopologyCommand,
+    },
 };
 use doublezero_serviceability::{pda::get_topology_pda, state::interface::LoopbackType};
 use solana_sdk::pubkey::Pubkey;
@@ -134,10 +136,11 @@ impl FlexAlgoMigrateCliCommand {
             )?;
 
             if !self.dry_run {
-                let result = client.backfill_topology(BackfillTopologyCommand {
-                    name: topology.name.clone(),
-                    device_pubkeys: devices_needing_backfill,
-                });
+                let result =
+                    client.assign_topology_node_segments(AssignTopologyNodeSegmentsCommand {
+                        name: topology.name.clone(),
+                        device_pubkeys: devices_needing_backfill,
+                    });
                 match result {
                     Ok(sigs) => {
                         writeln!(out, "    backfilled in {} transaction(s)", sigs.len())?;

@@ -7,8 +7,12 @@ use crate::{
 };
 use clap::Args;
 use doublezero_program_common::{types::network_v4::NetworkV4, validate_iface};
-use doublezero_sdk::commands::device::{
-    get::GetDeviceCommand, interface::create::CreateDeviceInterfaceCommand, list::ListDeviceCommand,
+use doublezero_sdk::commands::{
+    device::{
+        get::GetDeviceCommand, interface::create::CreateDeviceInterfaceCommand,
+        list::ListDeviceCommand,
+    },
+    topology::list::ListTopologyCommand,
 };
 use std::io::Write;
 
@@ -115,11 +119,21 @@ impl CreateDeviceInterfaceCliCommand {
             }
         }
 
+        // For Vpnv4 loopbacks, discover existing topologies so the onchain program
+        // can assign FlexAlgoNodeSegment entries atomically during creation.
+        let loopback_type = self.loopback_type.map(|lt| lt.into()).unwrap_or_default();
+        let topology_names = if loopback_type == doublezero_sdk::LoopbackType::Vpnv4 {
+            let topologies = client.list_topology(ListTopologyCommand)?;
+            topologies.values().map(|t| t.name.clone()).collect()
+        } else {
+            vec![]
+        };
+
         let (signature, _) = client.create_device_interface(CreateDeviceInterfaceCommand {
             pubkey: device_pk,
             name: self.name.clone(),
             ip_net: self.ip_net,
-            loopback_type: self.loopback_type.map(|lt| lt.into()).unwrap_or_default(),
+            loopback_type,
             interface_cyoa: self.interface_cyoa.map(|ic| ic.into()).unwrap_or_default(),
             interface_dia: self.interface_dia.map(|id| id.into()).unwrap_or_default(),
             bandwidth: self.bandwidth,
@@ -128,6 +142,7 @@ impl CreateDeviceInterfaceCliCommand {
             routing_mode: self.routing_mode.into(),
             vlan_id: self.vlan_id,
             user_tunnel_endpoint: self.user_tunnel_endpoint.unwrap_or(false),
+            topology_names,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -365,6 +380,7 @@ mod tests {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 20,
                 user_tunnel_endpoint: false,
+                topology_names: vec![],
             }))
             .times(1)
             .returning(move |_| Ok((signature, device1_pubkey)));

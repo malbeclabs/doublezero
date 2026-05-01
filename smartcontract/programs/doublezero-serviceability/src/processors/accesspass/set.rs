@@ -130,6 +130,13 @@ pub fn process_set_access_pass(
         }
     }
 
+    if let AccessPassType::EdgeSeat(seat_pk) = value.accesspass_type {
+        if seat_pk == Pubkey::default() {
+            msg!("EdgeSeat access pass type requires a seat pubkey");
+            return Err(DoubleZeroError::InvalidSolanaPubkey.into());
+        }
+    }
+
     let clock = Clock::get()?;
     let current_epoch = clock.epoch;
 

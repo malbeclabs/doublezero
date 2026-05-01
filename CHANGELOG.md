@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Smartcontract
+  - Add `AccessPassType::EdgeSeat(Pubkey)` variant to associate an access pass with a specific onchain Seat pubkey
+  - Add `--accesspass-type edge-seat --seat <PUBKEY>` to `access-pass set`
+  - Add `--edge-seat` and `--seat-pubkey` filters to `access-pass list`
 - Client
   - Add `--sock-file` global flag (aliases: `--socket`, `--socket-path`) to the `doublezero` CLI to override the default Unix socket path used to communicate with `doublezerod` (`/var/run/doublezerod/doublezerod.sock`)
 - Controller

@@ -10,6 +10,13 @@ All notable changes to this project will be documented in this file.
 
 - Activator
   - Delete the `activator/` crate from the workspace; onchain allocation (RFC-11) supersedes it. The deployed activator was frozen in Phase 1 ([#3608](https://github.com/malbeclabs/doublezero/pull/3608), [#3628](https://github.com/malbeclabs/doublezero/pull/3628)) and removed from e2e in Phase 2 ([#3609](https://github.com/malbeclabs/doublezero/pull/3609), [#3610](https://github.com/malbeclabs/doublezero/pull/3610), [#3611](https://github.com/malbeclabs/doublezero/pull/3611), [#3629](https://github.com/malbeclabs/doublezero/pull/3629)). The `*/activate`, `*/reject`, and `*/closeaccount` onchain instructions and their SDK command modules remain in place for older CLIs until the min-version gate ([#3612](https://github.com/malbeclabs/doublezero/issues/3612))
+
+## [v0.21.0](https://github.com/malbeclabs/doublezero/compare/client/v0.20.0...client/v0.21.0) - 2026-05-01
+
+### Breaking
+
+### Changes
+
 - Smartcontract
   - Add `AccessPassType::EdgeSeat(Pubkey)` variant to associate an access pass with a specific onchain Seat pubkey
   - Add `--accesspass-type edge-seat --seat <PUBKEY>` to `access-pass set`
@@ -24,6 +31,8 @@ All notable changes to this project will be documented in this file.
   - Allow ip_net to be passed when creating a device interface if the interface is CYOA/DIA/user_tunnel_endpoint
 - Telemetry
   - Add `agent_version` and `agent_commit` to `WriteDeviceLatencySamples` so the onchain header is refreshed on every write (~60s) instead of only at initialization; fixes stale version reporting after mid-epoch agent upgrades ([#3598](https://github.com/malbeclabs/doublezero/issues/3598))
+- CLI
+  - `doublezero -V` now shows client version, program version, and minimum required version fetched from the serviceability program
 
 ## [v0.20.0](https://github.com/malbeclabs/doublezero/compare/client/v0.19.0...client/v0.20.0) - 2026-04-29
 

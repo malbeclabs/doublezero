@@ -21,18 +21,20 @@ use crate::cli::{
     location::LocationCommands,
     user::UserCommands,
 };
-use doublezero_cli::{checkversion::check_version, doublezerocommand::CliCommandImpl};
+use doublezero_cli::{
+    checkversion::check_version, doublezerocommand::CliCommandImpl, version::VersionCliCommand,
+};
 use doublezero_sdk::{DZClient, ProgramVersion};
 use servicecontroller::ServiceControllerImpl;
 
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
 #[command(name = "DoubleZero")]
-#[command(version = option_env!("BUILD_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")))]
+#[command(disable_version_flag = true)]
 #[command(about = "DoubleZero client tool", long_about = None)]
 struct App {
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
     /// DZ env (testnet, devnet, or mainnet-beta)
     #[arg(short, long, value_name = "ENV", global = true)]
     env: Option<String>,
@@ -60,6 +62,9 @@ struct App {
     /// Suppress version warning output
     #[arg(long, global = true)]
     no_version_warning: bool,
+    /// Print version information
+    #[arg(short = 'V', long = "version", action = clap::ArgAction::SetTrue)]
+    version: bool,
 }
 
 #[tokio::main]
@@ -107,22 +112,38 @@ async fn main() -> eyre::Result<()> {
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
 
+    if app.version {
+        let local_version = option_env!("BUILD_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+        return VersionCliCommand.execute(&client, local_version, &mut handle);
+    }
+
+    let command = match app.command {
+        Some(cmd) => cmd,
+        None => {
+            App::command().print_help()?;
+            println!();
+            return Ok(());
+        }
+    };
+
     // Skip version check for Status command to allow checking status of services when the program is running
-    if !app.no_version_warning
-        && !matches!(app.command, Command::Status(_))
-        && !matches!(app.command, Command::Enable(_))
-        && !matches!(app.command, Command::Disable(_))
-        && !matches!(app.command, Command::Address(_))
-        && !matches!(app.command, Command::Balance(_))
-        && !matches!(app.command, Command::Export(_))
-        && !matches!(app.command, Command::Completion(_))
-    {
+    let skip_version_check = matches!(
+        &command,
+        Command::Status(_)
+            | Command::Enable(_)
+            | Command::Disable(_)
+            | Command::Address(_)
+            | Command::Balance(_)
+            | Command::Export(_)
+            | Command::Completion(_)
+    );
+    if !app.no_version_warning && !skip_version_check {
         let stderr = std::io::stderr();
         let mut err_handle = stderr.lock();
         check_version(&client, &mut err_handle, ProgramVersion::current())?;
     }
 
-    let res = match app.command {
+    let res = match command {
         Command::Address(args) => args.execute(&client, &mut handle),
         Command::Balance(args) => args.execute(&client, &mut handle),
         Command::Connect(args) => args.execute(&client).await,

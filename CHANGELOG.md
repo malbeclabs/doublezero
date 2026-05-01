@@ -57,6 +57,7 @@ All notable changes to this project will be documented in this file.
 - SDK
   - Go serviceability SDK adds `TopologyInfo` account type with `TopologyConstraint`, `IndexType` / `TopologyType` account-type constants, and `GetProgramData` dispatch case; extends `Link` with `LinkTopologies` and `LinkFlags`; extends `Tenant` with `IncludeTopologies`
 - CLI
+  - Add `tunnel_endpoint` field to `doublezero user list` output (table and JSON) showing the device-side GRE endpoint IP assigned to each user
   - Add `cyoa_ips` field to `doublezero device get` and `doublezero device list` output, showing the IP networks of interfaces with `user_tunnel_endpoint` enabled
   - Add `--tunnel_endpoint` flag to `user update` command so operators can set the tunnel endpoint IP of an existing user
   - Extend `doublezero resource verify` to check `MulticastPublisherBlock` against multicast publisher users' `dz_ip` allocations; legacy `dz_ip`s that fall outside the block's range are ignored so pre-existing users allocated before this extension existed do not produce false discrepancies

@@ -249,7 +249,7 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				LocalASN:                 21682,
-				UnicastVrfs:              []uint16{1},
+				UnicastVrfs:              []uint16{1, 2},
 				Device: &Device{
 					Interfaces:            []Interface{},
 					PublicIP:              net.IP{7, 7, 7, 7},
@@ -278,7 +278,7 @@ func TestRenderConfig(t *testing.T) {
 							OverlayDstIP:  net.IP{169, 254, 0, 3},
 							DzIp:          net.IP{100, 0, 0, 1},
 							Allocated:     true,
-							VrfId:         1,
+							VrfId:         2,
 							MetroRouting:  true,
 						},
 						{
@@ -289,7 +289,7 @@ func TestRenderConfig(t *testing.T) {
 							OverlayDstIP:  net.IP{169, 254, 0, 5},
 							DzIp:          net.IP{100, 0, 0, 2},
 							Allocated:     true,
-							VrfId:         1,
+							VrfId:         2,
 							MetroRouting:  true,
 						},
 					},

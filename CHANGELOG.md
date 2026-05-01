@@ -109,6 +109,7 @@ All notable changes to this project will be documented in this file.
 - Tools
   - Add `IsRetryableFunc` field to `RetryOptions` for configurable retry criteria in the Solana JSON-RPC client; add `"rate limited"` string match and RPC code `-32429` to the default implementation
 - Telemetry
+  - Add shared `telemetry/migrations` package with goose-based ClickHouse schema migrations for all telemetry services; add `CLICKHOUSE_RUN_MIGRATIONS` env var to flow-enricher and gnmi-writer for on-startup schema migration ([#3460](https://github.com/malbeclabs/doublezero/pull/3460))
   - Add optional TLS support to state-ingest server via `--tls-cert-file` and `--tls-key-file` flags; when set, the server listens on both HTTP (`:8080`) and HTTPS (`:8443`) simultaneously
   - Remove `--additional-child-probes` CLI flag from telemetry-agent; child geoprobe discovery now relies entirely on the onchain Geolocation program
   - Add BGP status submitter: on each tick, reads BGP socket state from the device namespace, maps each activated user to their tunnel peer IP, and submits `SetUserBGPStatus` onchain; supports a configurable down grace period and periodic keepalive refresh; enabled via `--bgp-status-enable` with `--bgp-status-interval`, `--bgp-status-refresh-interval`, and `--bgp-status-down-grace-period` flags

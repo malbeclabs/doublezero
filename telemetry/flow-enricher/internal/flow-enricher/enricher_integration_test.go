@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/malbeclabs/doublezero/telemetry/migrations"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
@@ -34,7 +35,7 @@ var (
 	chUser     = "enricher"
 	chPassword = "clickhouse"
 	chDbname   = "default"
-	chTable    = "flows_integration"
+	chTable    = "flows"
 
 	rpBroker        string
 	rpUser          = "enricher"
@@ -53,13 +54,35 @@ func setupClickhouseContainer(ctx context.Context) error {
 		clickhouse.WithUsername(chUser),
 		clickhouse.WithPassword(chPassword),
 		clickhouse.WithDatabase(chDbname),
-		clickhouse.WithInitScripts(
-			filepath.Join("fixtures", "create_table_device_ifindex.sql"),
-			filepath.Join("fixtures", "insert_device_ifindex.sql"),
-			filepath.Join("fixtures", "create_table_flows.sql"),
-		),
 	)
-	return err
+	if err != nil {
+		return err
+	}
+
+	chConn, err := clickhouseCtr.ConnectionHost(ctx)
+	if err != nil {
+		return err
+	}
+
+	if err = migrations.RunMigrations(chConn, chDbname, chUser, chPassword, false, logger); err != nil {
+		return fmt.Errorf("error running clickhouse migrations: %w", err)
+	}
+
+	db, err := migrations.NewDB(chConn, chDbname, chUser, chPassword, false)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	insertSQL, err := os.ReadFile(filepath.Join("fixtures", "insert_device_ifindex.sql"))
+	if err != nil {
+		return fmt.Errorf("error reading insert_device_ifindex.sql: %w", err)
+	}
+	if _, err = db.ExecContext(ctx, string(insertSQL)); err != nil {
+		return fmt.Errorf("error seeding device_ifindex: %w", err)
+	}
+
+	return nil
 }
 
 func setupRedpandaContainer(ctx context.Context) error {
@@ -192,7 +215,7 @@ func TestFlowEnrichment(t *testing.T) {
 		WithClickhouseDB(chDbname),
 		WithClickhouseUser(chUser),
 		WithClickhousePassword(chPassword),
-		WithClickhouseTable("flows_integration"),
+		WithClickhouseTable(chTable),
 		WithTLSDisabled(true),
 		WithClickhouseLogger(logger),
 		WithClickhouseMetrics(NewClickhouseMetrics(reg)),
@@ -297,7 +320,7 @@ func TestFlowEnrichment(t *testing.T) {
 	payload := readPcap(t, "./fixtures/sflow_ingress_user_traffic.pcap")
 
 	f := &flow.FlowSample{
-		ReceiveTimestamp: &timestamppb.Timestamp{Seconds: 1625243456, Nanos: 0},
+		ReceiveTimestamp: timestamppb.Now(),
 		FlowPayload:      payload,
 	}
 

@@ -21,7 +21,7 @@ import (
 // TestE2E_SentinelMulticastPublisherCreatesPublishers verifies that the sentinel's
 // multicast publisher worker detects IBRL validators and creates multicast
 // publisher users on-chain.
-func IgnoreTestE2E_SentinelMulticastPublisherCreatesPublishers(t *testing.T) {
+func TestE2E_SentinelMulticastPublisherCreatesPublishers(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
@@ -46,7 +46,6 @@ func IgnoreTestE2E_SentinelMulticastPublisherCreatesPublishers(t *testing.T) {
 		if t.Failed() {
 			dn.DumpContainerLogs(t, "sentinel", dn.Sentinel.ContainerID)
 			dn.DumpContainerLogs(t, "validator-metadata-service-mock", dn.ValidatorMetadataServiceMock.ContainerID)
-			dn.DumpContainerLogs(t, "activator", dn.Activator.ContainerID)
 		}
 	})
 
@@ -88,9 +87,9 @@ func IgnoreTestE2E_SentinelMulticastPublisherCreatesPublishers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("Device pubkey: %s", devicePK)
 
-		// Register a user tunnel endpoint interface so the activator has a second
-		// endpoint for multicast publishers (the IBRL users consume the device's
-		// public IP endpoint).
+		// Register a user tunnel endpoint interface so multicast publishers have a
+		// second endpoint to use (the IBRL users consume the device's public IP
+		// endpoint).
 		_, err = dn.Manager.Exec(ctx, []string{
 			"doublezero", "device", "interface", "create", "dev01", "Loopback100",
 			"--ip-net", "45.33.101.1/32",

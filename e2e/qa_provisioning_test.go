@@ -99,7 +99,7 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 		require.NoError(t, err, "failed to delete interface %s", iface.Name)
 	}
 
-	// Wait for activator to close link accounts
+	// Wait for the program to close link accounts
 	t.Log("==> Waiting for device reference count to reach zero")
 	err = prov.WaitForRefCountZero(ctx, deviceCode)
 	require.NoError(t, err, "timed out waiting for reference count to reach zero")

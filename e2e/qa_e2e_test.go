@@ -409,7 +409,7 @@ func TestE2E_QAAgent_MultiTunnelConnectivity(t *testing.T) {
 	log.Debug("--> Client2 added", "pubkey", client2.Pubkey, "cyoaIP", client2.CYOANetworkIP, "qaAgentHostPort", client2.QAAgentHostPort)
 
 	// Wait for client latency results from BOTH devices for BOTH clients.
-	// Each client needs latency data from all devices so the activator can assign
+	// Each client needs latency data from all devices so the program can assign
 	// different devices for IBRL and multicast tunnels in multi-tunnel mode.
 	log.Debug("==> Waiting for client latency results from both devices")
 	err = client1.WaitForLatencyResults(ctx, devicePK1, 90*time.Second)
@@ -507,7 +507,7 @@ func TestE2E_QAAgent_MultiTunnelConnectivity(t *testing.T) {
 
 	// In the E2E Docker environment, the QA agent's MulticastAllowListAdd RPC resolves
 	// the client IP via ifconfig.me (getPublicIPv4), which may not return the CYOA network IP.
-	// Add allowlist entries via the manager with the correct CYOA IPs to ensure the activator
+	// Add allowlist entries via the manager with the correct CYOA IPs to ensure the program
 	// can match the allowlist when processing multicast user creation. This mirrors the setup
 	// in the working coexistence tests (setupSingleClientTestDevnet, setupCoexistenceTestDevnet).
 	log.Debug("==> Adding multicast allowlist entries via manager with correct CYOA IPs")

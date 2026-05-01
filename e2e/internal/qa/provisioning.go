@@ -247,7 +247,7 @@ func (p *ProvisioningTest) DeleteInterface(ctx context.Context, deviceCode, ifac
 
 // WaitForRefCountZero polls the device until its reference_count reaches zero.
 // This is needed because link deletion is two-phase: the CLI sets status to Deleting,
-// and the activator later calls CloseAccount which decrements the reference count.
+// and CloseAccount later decrements the reference count.
 func (p *ProvisioningTest) WaitForRefCountZero(ctx context.Context, deviceCode string) error {
 	for {
 		data, err := getProgramDataWithRetry(ctx, p.serviceability)
@@ -422,7 +422,7 @@ func (p *ProvisioningTest) DeleteLink(ctx context.Context, pubkey string) error 
 // the health check and the test's own deletion logic will handle it.
 // If the device is in any other state, it tears down all links, interfaces, and
 // the device itself so the test can reprovision from scratch.
-// Links already in Deleting state are skipped since the activator handles them.
+// Links already in Deleting state are skipped since they will be closed asynchronously.
 // Returns the number of resources cleaned up.
 func (p *ProvisioningTest) CleanupStaleState(ctx context.Context, deviceCode string) (int, error) {
 	data, err := getProgramDataWithRetry(ctx, p.serviceability)

@@ -1,6 +1,6 @@
 use crate::{
     error::DoubleZeroError,
-    pda::{get_resource_extension_pda, get_topology_pda},
+    pda::get_resource_extension_pda,
     processors::{
         resource::{allocate_id, allocate_ip},
         validation::validate_program_account,

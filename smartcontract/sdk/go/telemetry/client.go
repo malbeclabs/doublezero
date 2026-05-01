@@ -17,7 +17,7 @@ import (
 
 var (
 	ErrAccountNotFound      = errors.New("account not found")
-	ErrSamplesBatchTooLarge = fmt.Errorf("samples batch too large, must not exceed %d samples", MaxSamplesPerBatch)
+	ErrSamplesBatchTooLarge = errors.New("samples batch too large")
 	ErrSamplesAccountFull   = errors.New("samples account is full")
 )
 
@@ -291,7 +291,7 @@ func (c *Client) WriteDeviceLatencySamples(
 	config WriteDeviceLatencySamplesInstructionConfig,
 ) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 
-	if len(config.Samples) > MaxSamplesPerBatch {
+	if len(config.Samples) > MaxDeviceLatencySamplesPerBatch {
 		return solana.Signature{}, nil, ErrSamplesBatchTooLarge
 	}
 
@@ -397,7 +397,7 @@ func (c *Client) WriteInternetLatencySamples(
 	config WriteInternetLatencySamplesInstructionConfig,
 ) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 
-	if len(config.Samples) > MaxSamplesPerBatch {
+	if len(config.Samples) > MaxInternetLatencySamplesPerBatch {
 		return solana.Signature{}, nil, ErrSamplesBatchTooLarge
 	}
 

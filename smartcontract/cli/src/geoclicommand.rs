@@ -12,6 +12,7 @@ use doublezero_sdk::{
             delete::DeleteGeolocationUserCommand, get::GetGeolocationUserCommand,
             list::ListGeolocationUserCommand, remove_target::RemoveTargetCommand,
             set_result_destination::SetResultDestinationCommand,
+            update::UpdateGeolocationUserCommand,
             update_payment_status::UpdatePaymentStatusCommand,
         },
         programconfig::init::InitProgramConfigCommand,
@@ -43,6 +44,8 @@ pub trait GeoCliCommand {
         cmd: CreateGeolocationUserCommand,
     ) -> eyre::Result<(Signature, Pubkey)>;
     fn delete_geolocation_user(&self, cmd: DeleteGeolocationUserCommand)
+        -> eyre::Result<Signature>;
+    fn update_geolocation_user(&self, cmd: UpdateGeolocationUserCommand)
         -> eyre::Result<Signature>;
     fn get_geolocation_user(
         &self,
@@ -131,6 +134,13 @@ impl GeoCliCommand for GeoCliCommandImpl<'_> {
     fn delete_geolocation_user(
         &self,
         cmd: DeleteGeolocationUserCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+
+    fn update_geolocation_user(
+        &self,
+        cmd: UpdateGeolocationUserCommand,
     ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }

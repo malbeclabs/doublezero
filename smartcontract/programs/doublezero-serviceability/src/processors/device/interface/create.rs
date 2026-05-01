@@ -205,8 +205,12 @@ pub fn process_create_device_interface(
         );
 
         if interface_type == InterfaceType::Loopback {
-            // Allocate IP from DeviceTunnelBlock
-            ip_net = allocate_ip(device_tunnel_block_ext, 1)?;
+            // Allocate IP from DeviceTunnelBlock only if the caller did not supply one.
+            // Honoring a caller-supplied ip_net lets user-tunnel-endpoint loopbacks land
+            // on a globally routable IP rather than a private device-tunnel-block IP.
+            if ip_net == NetworkV4::default() {
+                ip_net = allocate_ip(device_tunnel_block_ext, 1)?;
+            }
 
             // Allocate segment routing ID for Vpnv4 loopbacks
             if value.loopback_type == LoopbackType::Vpnv4 {

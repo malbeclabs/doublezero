@@ -1,0 +1,384 @@
+//! Heap-friendly read of a `GeolocationUser` account.
+//!
+//! `GeolocationUser::try_from` borsh-deserializes `targets: Vec<GeolocationTarget>`
+//! onto the BPF heap, which OOMs at N≈250. This view reads the same wire
+//! format but **skips** past the targets bytes — their length is fully
+//! determined by the preceding `u32` count, so we can record the offset and
+//! continue parsing `result_destination` without materializing any per-target
+//! data. Heap usage is bounded by `code` + `result_destination` lengths,
+//! independent of N.
+//!
+//! Use [`GeolocationUserView::cursor`] over a borrowed `&data` slice to scan
+//! the targets section. Mutating operations (`append_target`,
+//! `swap_remove_target`, `write_prefix`, `write_result_destination`) take
+//! `&AccountInfo` and handle the resize + memmove bookkeeping in place.
+
+use crate::state::{
+    accounttype::AccountType,
+    geolocation_user::{
+        GeolocationBillingConfig, GeolocationPaymentStatus, GeolocationTarget,
+        GeolocationUserStatus,
+    },
+    targets_cursor::{append_target_bytes, swap_remove_target_bytes, TargetsCursor, STRIDE},
+};
+use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::resize_account::resize_account_if_needed;
+use solana_program::{
+    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
+    pubkey::Pubkey,
+};
+
+/// Parsed `GeolocationUser` metadata + a byte offset to the targets section.
+/// All owned; the targets payload itself is left in the account buffer.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GeolocationUserView {
+    pub account_type: AccountType,
+    pub owner: Pubkey,
+    pub code: String,
+    pub token_account: Pubkey,
+    pub payment_status: GeolocationPaymentStatus,
+    pub billing: GeolocationBillingConfig,
+    pub status: GeolocationUserStatus,
+
+    /// Number of targets in the targets section.
+    pub targets_count: u32,
+    /// Byte offset (within the account data) at which the first target begins,
+    /// i.e. immediately after the `u32` length prefix.
+    pub targets_offset: usize,
+
+    pub result_destination: String,
+}
+
+impl GeolocationUserView {
+    /// Parse the metadata. The targets section is *not* deserialized.
+    pub fn try_from_slice(data: &[u8]) -> Result<Self, ProgramError> {
+        let mut reader = data;
+
+        let account_type = AccountType::deserialize_reader(&mut reader)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        if account_type != AccountType::GeolocationUser {
+            msg!("Invalid account type: {}", account_type);
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        let owner = Pubkey::deserialize_reader(&mut reader)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        let code = String::deserialize_reader(&mut reader)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        let token_account = Pubkey::deserialize_reader(&mut reader)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        let payment_status = GeolocationPaymentStatus::deserialize_reader(&mut reader)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        let billing = GeolocationBillingConfig::deserialize_reader(&mut reader)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        let status = GeolocationUserStatus::deserialize_reader(&mut reader)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        let targets_count =
+            u32::deserialize_reader(&mut reader).map_err(|_| ProgramError::InvalidAccountData)?;
+
+        // Position right after the targets length prefix.
+        let targets_offset = data.len() - reader.len();
+
+        let targets_bytes = (targets_count as usize)
+            .checked_mul(STRIDE)
+            .ok_or(ProgramError::InvalidAccountData)?;
+        if reader.len() < targets_bytes {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        reader = &reader[targets_bytes..];
+
+        // `result_destination` is BDI-style trailing-grace: empty if the
+        // account predates the field being added.
+        let result_destination = if reader.is_empty() {
+            String::new()
+        } else {
+            String::deserialize_reader(&mut reader).map_err(|_| ProgramError::InvalidAccountData)?
+        };
+
+        Ok(Self {
+            account_type,
+            owner,
+            code,
+            token_account,
+            payment_status,
+            billing,
+            status,
+            targets_count,
+            targets_offset,
+            result_destination,
+        })
+    }
+
+    /// Borrow the account data and parse a view from it.
+    pub fn try_from_account(account: &AccountInfo) -> Result<Self, ProgramError> {
+        let data = account.try_borrow_data()?;
+        Self::try_from_slice(&data)
+    }
+
+    /// Build a `TargetsCursor` over the targets section of `data`.
+    pub fn cursor<'a>(&self, data: &'a [u8]) -> Result<TargetsCursor<'a>, ProgramError> {
+        let end = self
+            .targets_offset
+            .checked_add((self.targets_count as usize) * STRIDE)
+            .ok_or(ProgramError::InvalidAccountData)?;
+        if data.len() < end {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        TargetsCursor::new(&data[self.targets_offset..end], self.targets_count)
+    }
+
+    /// Append `target` to the account's targets section. Resizes the account
+    /// by `+STRIDE`, shifts trailing bytes (`result_destination`) forward, and
+    /// patches `targets_count` in place. The view's `targets_count` is updated
+    /// to match.
+    ///
+    /// Caller is responsible for the duplicate check and `MAX_TARGETS` bound.
+    pub fn append_target(
+        &mut self,
+        account: &AccountInfo,
+        payer: &AccountInfo,
+        accounts: &[AccountInfo],
+        target: &GeolocationTarget,
+    ) -> ProgramResult {
+        let mut buf = [0u8; STRIDE];
+        {
+            let mut out: &mut [u8] = &mut buf;
+            target
+                .serialize(&mut out)
+                .map_err(|_| ProgramError::InvalidAccountData)?;
+        }
+
+        let new_len = account
+            .data_len()
+            .checked_add(STRIDE)
+            .ok_or(ProgramError::InvalidAccountData)?;
+        resize_account_if_needed(account, payer, accounts, new_len)?;
+
+        let new_count = {
+            let mut data = account.try_borrow_mut_data()?;
+            append_target_bytes(&mut data, self.targets_offset, self.targets_count, &buf)?
+        };
+
+        self.targets_count = new_count;
+        Ok(())
+    }
+
+    /// Re-serialize the view's prefix (everything before `targets_count`) at
+    /// offset `0` of the account. Used by metadata-only updates to avoid
+    /// rewriting the targets section or `result_destination`.
+    ///
+    /// **Invariant:** the serialized prefix size must equal
+    /// `self.targets_offset - 4`. Today's processors only modify fixed-size
+    /// fields (`token_account`, `payment_status`, `billing`), so the size
+    /// is preserved. If a future processor allows changing the variable-
+    /// length `code` field, it must memmove the targets and trailing bytes
+    /// instead.
+    pub fn write_prefix(&self, account: &AccountInfo) -> ProgramResult {
+        let prefix_size = self
+            .targets_offset
+            .checked_sub(4)
+            .ok_or(ProgramError::InvalidAccountData)?;
+
+        let mut data = account.try_borrow_mut_data()?;
+        let mut writer: &mut [u8] = &mut data[..prefix_size];
+        let err = |_| ProgramError::InvalidAccountData;
+        self.account_type.serialize(&mut writer).map_err(err)?;
+        self.owner.serialize(&mut writer).map_err(err)?;
+        self.code.serialize(&mut writer).map_err(err)?;
+        self.token_account.serialize(&mut writer).map_err(err)?;
+        self.payment_status.serialize(&mut writer).map_err(err)?;
+        self.billing.serialize(&mut writer).map_err(err)?;
+        self.status.serialize(&mut writer).map_err(err)?;
+        if !writer.is_empty() {
+            msg!(
+                "prefix size mismatch: {} bytes left unwritten",
+                writer.len()
+            );
+            return Err(ProgramError::InvalidAccountData);
+        }
+        Ok(())
+    }
+
+    /// Replace the trailing `result_destination` with `new_dest`. Resizes the
+    /// account to fit, then writes the new length prefix and chars directly
+    /// at the post-targets offset. Updates `self.result_destination` to
+    /// match. The targets section is left untouched.
+    pub fn write_result_destination(
+        &mut self,
+        account: &AccountInfo,
+        payer: &AccountInfo,
+        accounts: &[AccountInfo],
+        new_dest: String,
+    ) -> ProgramResult {
+        let trailing_offset = self
+            .targets_offset
+            .checked_add((self.targets_count as usize) * STRIDE)
+            .ok_or(ProgramError::InvalidAccountData)?;
+        let new_trailing_size = 4usize
+            .checked_add(new_dest.len())
+            .ok_or(ProgramError::InvalidAccountData)?;
+        let new_account_len = trailing_offset
+            .checked_add(new_trailing_size)
+            .ok_or(ProgramError::InvalidAccountData)?;
+
+        resize_account_if_needed(account, payer, accounts, new_account_len)?;
+
+        {
+            let mut data = account.try_borrow_mut_data()?;
+            let len_le = (new_dest.len() as u32).to_le_bytes();
+            data[trailing_offset..trailing_offset + 4].copy_from_slice(&len_le);
+            data[trailing_offset + 4..trailing_offset + 4 + new_dest.len()]
+                .copy_from_slice(new_dest.as_bytes());
+        }
+
+        self.result_destination = new_dest;
+        Ok(())
+    }
+
+    /// Remove the target at `index` via swap-remove. Shifts trailing bytes
+    /// (`result_destination`) left, patches `targets_count`, and shrinks the
+    /// account by `STRIDE`.
+    pub fn swap_remove_target(
+        &mut self,
+        account: &AccountInfo,
+        payer: &AccountInfo,
+        accounts: &[AccountInfo],
+        index: u32,
+    ) -> ProgramResult {
+        let new_count = {
+            let mut data = account.try_borrow_mut_data()?;
+            swap_remove_target_bytes(&mut data, self.targets_offset, self.targets_count, index)?
+        };
+
+        let new_len = account
+            .data_len()
+            .checked_sub(STRIDE)
+            .ok_or(ProgramError::InvalidAccountData)?;
+        resize_account_if_needed(account, payer, accounts, new_len)?;
+
+        self.targets_count = new_count;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::geolocation_user::{
+        FlatPerEpochConfig, GeoLocationTargetType, GeolocationTarget, GeolocationUser,
+    };
+    use std::net::Ipv4Addr;
+
+    fn sample_target(seed: u32) -> GeolocationTarget {
+        let octets = seed.to_be_bytes();
+        GeolocationTarget {
+            target_type: GeoLocationTargetType::Outbound,
+            ip_address: Ipv4Addr::new(10, octets[1], octets[2], octets[3]),
+            location_offset_port: 8000,
+            target_pk: Pubkey::default(),
+            geoprobe_pk: Pubkey::new_from_array([seed as u8; 32]),
+        }
+    }
+
+    fn sample_user(targets: Vec<GeolocationTarget>, result_destination: &str) -> GeolocationUser {
+        GeolocationUser {
+            account_type: AccountType::GeolocationUser,
+            owner: Pubkey::new_unique(),
+            code: "geo-user-01".to_string(),
+            token_account: Pubkey::new_unique(),
+            payment_status: GeolocationPaymentStatus::Paid,
+            billing: GeolocationBillingConfig::FlatPerEpoch(FlatPerEpochConfig {
+                rate: 1000,
+                last_deduction_dz_epoch: 42,
+            }),
+            status: GeolocationUserStatus::Activated,
+            targets,
+            result_destination: result_destination.to_string(),
+        }
+    }
+
+    fn assert_view_matches(view: &GeolocationUserView, user: &GeolocationUser) {
+        assert_eq!(view.account_type, user.account_type);
+        assert_eq!(view.owner, user.owner);
+        assert_eq!(view.code, user.code);
+        assert_eq!(view.token_account, user.token_account);
+        assert_eq!(view.payment_status, user.payment_status);
+        assert_eq!(view.billing, user.billing);
+        assert_eq!(view.status, user.status);
+        assert_eq!(view.targets_count, user.targets.len() as u32);
+        assert_eq!(view.result_destination, user.result_destination);
+    }
+
+    #[test]
+    fn parses_user_with_zero_targets() {
+        let user = sample_user(vec![], "host:1234");
+        let bytes = borsh::to_vec(&user).unwrap();
+        let view = GeolocationUserView::try_from_slice(&bytes).unwrap();
+        assert_view_matches(&view, &user);
+        assert_eq!(view.targets_count, 0);
+    }
+
+    #[test]
+    fn parses_user_with_many_targets_without_materializing_them() {
+        let targets: Vec<_> = (0..1000).map(sample_target).collect();
+        let user = sample_user(targets.clone(), "");
+        let bytes = borsh::to_vec(&user).unwrap();
+        let view = GeolocationUserView::try_from_slice(&bytes).unwrap();
+        assert_view_matches(&view, &user);
+
+        // The cursor should hand back exactly what we serialized.
+        let cursor = view.cursor(&bytes).unwrap();
+        for (i, original) in targets.iter().enumerate() {
+            assert_eq!(&cursor.get(i as u32).unwrap(), original);
+        }
+    }
+
+    #[test]
+    fn targets_offset_is_correct() {
+        let target = sample_target(7);
+        let user = sample_user(vec![target.clone()], "");
+        let bytes = borsh::to_vec(&user).unwrap();
+        let view = GeolocationUserView::try_from_slice(&bytes).unwrap();
+
+        // The bytes at `targets_offset` should round-trip through borsh as
+        // the same target.
+        let slice = &bytes[view.targets_offset..view.targets_offset + STRIDE];
+        let decoded: GeolocationTarget = borsh::from_slice(slice).unwrap();
+        assert_eq!(decoded, target);
+    }
+
+    #[test]
+    fn rejects_wrong_account_type() {
+        let mut bytes = borsh::to_vec(&sample_user(vec![], "")).unwrap();
+        bytes[0] = AccountType::GeoProbe as u8;
+        assert_eq!(
+            GeolocationUserView::try_from_slice(&bytes).unwrap_err(),
+            ProgramError::InvalidAccountData
+        );
+    }
+
+    #[test]
+    fn rejects_truncated_targets_section() {
+        let user = sample_user((0..3).map(sample_target).collect(), "");
+        let mut bytes = borsh::to_vec(&user).unwrap();
+        // Drop a byte from inside the targets section.
+        bytes.truncate(bytes.len() - STRIDE - 5);
+        assert_eq!(
+            GeolocationUserView::try_from_slice(&bytes).unwrap_err(),
+            ProgramError::InvalidAccountData
+        );
+    }
+
+    #[test]
+    fn handles_missing_result_destination_field() {
+        // Simulate an old account written before result_destination existed:
+        // borsh-serialize the user, then strip the trailing 4-byte empty
+        // String prefix.
+        let user = sample_user(vec![sample_target(1)], "");
+        let mut bytes = borsh::to_vec(&user).unwrap();
+        bytes.truncate(bytes.len() - 4);
+        let view = GeolocationUserView::try_from_slice(&bytes).unwrap();
+        assert_eq!(view.targets_count, 1);
+        assert_eq!(view.result_destination, "");
+    }
+}

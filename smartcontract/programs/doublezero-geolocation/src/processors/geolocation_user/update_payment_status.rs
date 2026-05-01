@@ -1,7 +1,9 @@
 use crate::{
     processors::check_foundation_allowlist,
-    serializer::try_acc_write,
-    state::geolocation_user::{GeolocationPaymentStatus, GeolocationUser},
+    state::{
+        geolocation_user::{GeolocationBillingConfig, GeolocationPaymentStatus},
+        geolocation_user_view::GeolocationUserView,
+    },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -51,19 +53,19 @@ pub fn process_update_payment_status(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let mut user = GeolocationUser::try_from(user_account)?;
+    let mut view = GeolocationUserView::try_from_account(user_account)?;
 
-    user.payment_status = args.payment_status;
+    view.payment_status = args.payment_status;
 
     if let Some(epoch) = args.last_deduction_dz_epoch {
-        match &mut user.billing {
-            crate::state::geolocation_user::GeolocationBillingConfig::FlatPerEpoch(config) => {
+        match &mut view.billing {
+            GeolocationBillingConfig::FlatPerEpoch(config) => {
                 config.last_deduction_dz_epoch = epoch;
             }
         }
     }
 
-    try_acc_write(&user, user_account, payer_account, accounts)?;
+    view.write_prefix(user_account)?;
 
     Ok(())
 }

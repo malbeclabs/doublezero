@@ -247,7 +247,7 @@ func (p *ProvisioningTest) DeleteInterface(ctx context.Context, deviceCode, ifac
 
 // WaitForRefCountZero polls the device until its reference_count reaches zero.
 // This is needed because link deletion is two-phase: the CLI sets status to Deleting,
-// and the activator later calls CloseAccount which decrements the reference count.
+// and CloseAccount later decrements the reference count.
 func (p *ProvisioningTest) WaitForRefCountZero(ctx context.Context, deviceCode string) error {
 	for {
 		data, err := getProgramDataWithRetry(ctx, p.serviceability)
@@ -422,7 +422,7 @@ func (p *ProvisioningTest) DeleteLink(ctx context.Context, pubkey string) error 
 // the health check and the test's own deletion logic will handle it.
 // If the device is in any other state, it tears down all links, interfaces, and
 // the device itself so the test can reprovision from scratch.
-// Links already in Deleting state are skipped since the activator handles them.
+// Links already in Deleting state are skipped since they will be closed asynchronously.
 // Returns the number of resources cleaned up.
 func (p *ProvisioningTest) CleanupStaleState(ctx context.Context, deviceCode string) (int, error) {
 	data, err := getProgramDataWithRetry(ctx, p.serviceability)
@@ -519,6 +519,36 @@ func (p *ProvisioningTest) CreateLink(ctx context.Context, link *LinkInfo) error
 // RunAnsibleAgentRestart runs Ansible playbooks to restart both doublezero-agent
 // and doublezero-telemetry daemons with the new pubkey.
 func (p *ProvisioningTest) RunAnsibleAgentRestart(ctx context.Context, deviceCode, newPubkey string) error {
+	// The Ansible restart tasks query the ledger for the device pubkey via
+	// "doublezero device list --code <code> --json | jq -r '.[0].account'".
+	// After a delete+recreate cycle, the RPC may not have caught up yet, causing
+	// the query to return "null". Poll until the CLI returns the expected pubkey.
+	if err := poll.Until(ctx, func() (bool, error) {
+		output, err := p.runCLI(ctx, "device", "list", "--code", deviceCode, "--json")
+		if err != nil {
+			p.log.Info("Waiting for device to be queryable via CLI", "device", deviceCode, "error", err)
+			return false, nil
+		}
+		var devices []struct {
+			Account string `json:"account"`
+		}
+		if err := json.Unmarshal(output, &devices); err != nil {
+			p.log.Info("Waiting for device to be queryable via CLI", "device", deviceCode, "error", err)
+			return false, nil
+		}
+		if len(devices) == 0 || devices[0].Account != newPubkey {
+			got := "empty"
+			if len(devices) > 0 {
+				got = devices[0].Account
+			}
+			p.log.Info("Waiting for device pubkey to propagate", "device", deviceCode, "expected", newPubkey, "got", got)
+			return false, nil
+		}
+		return true, nil
+	}, 2*time.Minute, 5*time.Second); err != nil {
+		return fmt.Errorf("timed out waiting for device pubkey to be queryable: %w", err)
+	}
+
 	inventoryPath := filepath.Join(p.infraPath, "ansible/inventory", p.env, "hosts.yml")
 
 	// Prepare vault password file if available
@@ -543,7 +573,11 @@ func (p *ProvisioningTest) RunAnsibleAgentRestart(ctx context.Context, deviceCod
 		sshKeyFile = "~/.ssh/id_runner"
 	}
 
-	// Run agents.yml to restart doublezero-agent
+	// Run restart_agent.yml to update the daemon config with the new pubkey and restart
+	// doublezero-agent. Using a dedicated restart playbook rather than agents.yml because
+	// agents.yml only restarts the daemon as a handler when a new package is downloaded —
+	// it does nothing if the package version hasn't changed, leaving the daemon running
+	// with the old pubkey.
 	p.log.Info("Running Ansible to restart doublezero-agent", "device", deviceCode, "pubkey", newPubkey)
 	agentArgs := []string{
 		"ansible-playbook",
@@ -552,18 +586,19 @@ func (p *ProvisioningTest) RunAnsibleAgentRestart(ctx context.Context, deviceCod
 		"-e", fmt.Sprintf("bm_host=%s", p.bmHost),
 		"-e", fmt.Sprintf("env=%s", p.env),
 		"-e", fmt.Sprintf("ansible_ssh_private_key_file=%s", sshKeyFile),
-		filepath.Join(p.infraPath, "ansible/playbooks/agents.yml"),
+		filepath.Join(p.infraPath, "ansible/playbooks/restart_agent.yml"),
 	}
 	agentArgs = append(agentArgs, vaultArgs...)
 
 	cmd := exec.CommandContext(ctx, agentArgs[0], agentArgs[1:]...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("ansible agents.yml failed: %w, output: %s", err, string(output))
+		return fmt.Errorf("ansible restart_agent.yml failed: %w, output: %s", err, string(output))
 	}
-	p.log.Debug("Ansible agents.yml output", "output", string(output))
+	p.log.Debug("Ansible restart_agent.yml output", "output", string(output))
 
-	// Run device_telemetry_agent.yml to restart doublezero-telemetry
+	// Run restart_device_telemetry_agent.yml to update the daemon config and restart
+	// doublezero-telemetry. Same reasoning as above.
 	p.log.Info("Running Ansible to restart doublezero-telemetry", "device", deviceCode, "pubkey", newPubkey)
 	telemetryArgs := []string{
 		"ansible-playbook",
@@ -572,29 +607,29 @@ func (p *ProvisioningTest) RunAnsibleAgentRestart(ctx context.Context, deviceCod
 		"-e", fmt.Sprintf("bm_host=%s", p.bmHost),
 		"-e", fmt.Sprintf("env=%s", p.env),
 		"-e", fmt.Sprintf("ansible_ssh_private_key_file=%s", sshKeyFile),
-		filepath.Join(p.infraPath, "ansible/playbooks/device_telemetry_agent.yml"),
+		filepath.Join(p.infraPath, "ansible/playbooks/restart_device_telemetry_agent.yml"),
 	}
 	telemetryArgs = append(telemetryArgs, vaultArgs...)
 
 	cmd = exec.CommandContext(ctx, telemetryArgs[0], telemetryArgs[1:]...)
 	output, err = cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("ansible device_telemetry_agent.yml failed: %w, output: %s", err, string(output))
+		return fmt.Errorf("ansible restart_device_telemetry_agent.yml failed: %w, output: %s", err, string(output))
 	}
-	p.log.Debug("Ansible device_telemetry_agent.yml output", "output", string(output))
+	p.log.Debug("Ansible restart_device_telemetry_agent.yml output", "output", string(output))
 
 	return nil
 }
 
 func formatBandwidth(bps uint64) string {
 	if bps >= 1_000_000_000 {
-		return fmt.Sprintf("%d Gbps", bps/1_000_000_000)
+		return fmt.Sprintf("%dGbps", bps/1_000_000_000)
 	}
 	if bps >= 1_000_000 {
-		return fmt.Sprintf("%d Mbps", bps/1_000_000)
+		return fmt.Sprintf("%dMbps", bps/1_000_000)
 	}
 	if bps >= 1_000 {
-		return fmt.Sprintf("%d Kbps", bps/1_000)
+		return fmt.Sprintf("%dKbps", bps/1_000)
 	}
-	return fmt.Sprintf("%d bps", bps)
+	return fmt.Sprintf("%dbps", bps)
 }

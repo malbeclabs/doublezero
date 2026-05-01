@@ -3,7 +3,6 @@
 package e2e_test
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -15,8 +14,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	dockercontainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
@@ -38,8 +35,8 @@ import (
 // bump onchain.
 
 var globalMinVersions = map[string]string{
-	"mainnet-beta": "0.10.0",
-	"testnet":      "0.10.0",
+	"mainnet-beta": "0.12.0",
+	"testnet":      "0.12.0",
 }
 
 // =============================================================================
@@ -155,23 +152,6 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/device_interface_delete_2":       {ranges: []versionRange{{before: "0.19.0"}}},
 	"write/device_interface_delete_3":       {ranges: []versionRange{{before: "0.19.0"}}},
 	"write/device_interface_delete_4":       {ranges: []versionRange{{before: "0.19.0"}}},
-}
-
-// =============================================================================
-// PER-ENVIRONMENT CONFIG - Features that vary by environment
-// =============================================================================
-//
-// Some features are only enabled on certain environments. This config controls
-// environment-specific behavior for the compatibility test.
-
-type compatEnvConfig struct {
-	OnchainAllocation bool // Whether to use onchain resource allocation
-}
-
-var compatEnvConfigs = map[string]compatEnvConfig{
-	"devnet":       {OnchainAllocation: true},
-	"testnet":      {OnchainAllocation: true},
-	"mainnet-beta": {OnchainAllocation: false}, // Not yet enabled on mainnet
 }
 
 // versionInRange checks whether ver falls within the half-open range [from, before).
@@ -572,9 +552,6 @@ func createAndStartDiscoveryDevnet(t *testing.T, cloneEnv string, log *slog.Logg
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 			ServiceabilityProgramID:          programID,
 		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(compatEnvConfigs[cloneEnv].OnchainAllocation),
-		},
 		SkipProgramDeploy: true,
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
@@ -597,8 +574,8 @@ func createAndStartDiscoveryDevnet(t *testing.T, cloneEnv string, log *slog.Logg
 		"upgradeAuthority", managerPubkey,
 	)
 
-	// Start only the components needed for discovery. We skip the activator and
-	// controller since they aren't needed just to enumerate versions.
+	// Start only the components needed for discovery. We skip the controller
+	// since it isn't needed just to enumerate versions.
 	_, err = dn.DefaultNetwork.CreateIfNotExists(t.Context())
 	require.NoError(t, err)
 	_, err = dn.Ledger.StartIfNotRunning(t.Context())
@@ -708,7 +685,6 @@ func createAndStartVersionDevnet(
 	discoveryRPCURL string,
 	programID string,
 	svcKeypairPath string,
-	envConfig compatEnvConfig,
 	log *slog.Logger,
 ) (*devnet.Devnet, string) {
 	versionID := version
@@ -734,9 +710,6 @@ func createAndStartVersionDevnet(
 			ServiceabilityProgramKeypairPath: svcKeypairPath,
 			ServiceabilityProgramID:          programID,
 		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(envConfig.OnchainAllocation),
-		},
 		SkipProgramDeploy: true,
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
@@ -753,8 +726,8 @@ func createAndStartVersionDevnet(
 	dn.Spec.Ledger.UpgradeAuthority = managerPubkey
 	dn.Spec.Ledger.PatchGlobalStateAuthority = managerPubkey
 
-	// Start components individually. We need to init the smart contract before
-	// starting the activator (it needs ProgramConfig and GlobalConfig PDAs).
+	// Start components individually. We need to init the smart contract so the
+	// upgraded program has its ProgramConfig and GlobalConfig PDAs in place.
 	_, err = dn.DefaultNetwork.CreateIfNotExists(t.Context())
 	require.NoError(t, err)
 	_, err = dn.Ledger.StartIfNotRunning(t.Context())
@@ -780,17 +753,11 @@ func createAndStartVersionDevnet(
 	require.NoError(t, err)
 
 	// Ensure global config has multicast_publisher_block set. The cloned mainnet-beta
-	// state may not have it (multicast not yet enabled on mainnet), and the activator
-	// will exit immediately if it's unset. On testnet the field is already set and
-	// immutable, so ignore errors. Use the current CLI since old CLIs are missing
-	// required accounts for the SetGlobalConfig instruction.
+	// state may not have it (multicast not yet enabled on mainnet). On testnet the
+	// field is already set and immutable, so ignore errors. Use the current CLI since
+	// old CLIs are missing required accounts for the SetGlobalConfig instruction.
 	_, _ = dn.Manager.Exec(t.Context(), []string{"bash", "-c",
 		"doublezero global-config set --multicast-publisher-block 148.51.120.0/21"})
-
-	// Start the activator — it needs the PDAs to exist.
-	// Skip the controller (not exercised in compat tests, saves memory).
-	_, err = dn.Activator.StartIfNotRunning(t.Context())
-	require.NoError(t, err)
 
 	// Install the CLI version for this stack from GitHub releases.
 	if version != devnet.CurrentVersionLabel {
@@ -874,7 +841,7 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 			dn, managerPubkey := createAndStartVersionDevnet(
 				t, cloneEnv, version, vi,
 				discoveryRPCURL, programID, serviceabilityProgramKeypairPath,
-				compatEnvConfigs[cloneEnv], vLog,
+				vLog,
 			)
 
 			// Destroy the version devnet when the subtest finishes.
@@ -1056,25 +1023,6 @@ func runWriteWorkflows(
 		for _, dc := range diagCmds {
 			out, _ := dn.Manager.Exec(t.Context(), []string{"bash", "-c", dc.cmd})
 			fmt.Printf("  %s:\n%s\n", dc.label, string(out))
-		}
-		// Dump activator container logs (last 50 lines).
-		if dn.Activator.ContainerID != "" {
-			logsReader, err := dockerClient.ContainerLogs(t.Context(), dn.Activator.ContainerID, dockercontainer.LogsOptions{
-				ShowStdout: true,
-				ShowStderr: true,
-				Tail:       "50",
-			})
-			if err != nil {
-				fmt.Printf("  activator logs: ERROR: %v\n", err)
-			} else {
-				var stdout, stderr bytes.Buffer
-				_, _ = stdcopy.StdCopy(&stdout, &stderr, logsReader)
-				logsReader.Close()
-				fmt.Printf("  activator logs (stdout):\n%s\n", stdout.String())
-				if stderr.Len() > 0 {
-					fmt.Printf("  activator logs (stderr):\n%s\n", stderr.String())
-				}
-			}
 		}
 		fmt.Printf("=== END DIAGNOSTICS [%s %s] ===\n", cloneEnv, formatVersionLabel(version))
 	}

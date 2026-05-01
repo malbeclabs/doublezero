@@ -17,6 +17,7 @@ pub enum CliAccessPassType {
     SolanaValidator,
     SolanaRPC,
     Others,
+    EdgeSeat,
 }
 
 #[derive(Args, Debug)]
@@ -45,6 +46,9 @@ pub struct SetAccessPassCliCommand {
     /// Specifies the key for other access pass types. Required if accesspass_type is others.
     #[arg(long, required_if_eq("accesspass_type", "others"))]
     pub others_key: Option<String>,
+    /// Seat pubkey for EdgeSeat access pass type. Required if accesspass_type is edge-seat.
+    #[arg(long, required_if_eq("accesspass_type", "edge_seat"))]
+    pub seat: Option<Pubkey>,
     /// Tenant code allowed for this access pass
     #[arg(long = "tenant")]
     pub tenant: Option<String>,
@@ -86,6 +90,10 @@ impl SetAccessPassCliCommand {
                 _ => eyre::bail!(
                     "Others access pass type requires --others-name <STRING> and --others-key <STRING>"
                 ),
+            },
+            CliAccessPassType::EdgeSeat => match self.seat {
+                Some(seat_pk) => AccessPassType::EdgeSeat(seat_pk),
+                None => eyre::bail!("EdgeSeat access pass type requires --seat <PUBKEY>"),
             },
         };
 
@@ -180,6 +188,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            seat: None,
             tenant: None,
         }
         .execute(&client, &mut output);
@@ -214,6 +223,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            seat: None,
             tenant: None,
         }
         .execute(&client, &mut output);
@@ -269,6 +279,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            seat: None,
             tenant: None,
         }
         .execute(&client, &mut output);
@@ -323,6 +334,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            seat: None,
             tenant: None,
         }
         .execute(&client, &mut output);
@@ -374,6 +386,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            seat: None,
             tenant: None,
         }
         .execute(&client, &mut output);
@@ -408,6 +421,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            seat: None,
             tenant: None,
         }
         .execute(&client, &mut output);
@@ -441,6 +455,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: Some("custom-name".to_string()),
             others_key: None,
+            seat: None,
             tenant: None,
         }
         .execute(&client, &mut output);
@@ -497,6 +512,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: Some("custom-name".to_string()),
             others_key: Some("custom-key".to_string()),
+            seat: None,
             tenant: None,
         }
         .execute(&client, &mut output);
@@ -528,6 +544,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            seat: None,
             tenant: None,
         }
         .execute(&client, &mut output);
@@ -555,6 +572,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            seat: None,
             tenant: None,
         }
         .execute(&client, &mut output);
@@ -583,6 +601,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            seat: None,
             tenant: Some(too_long.clone()),
         }
         .execute(&client, &mut output);
@@ -628,6 +647,7 @@ mod tests {
             allow_multiple_ip: true,
             others_name: None,
             others_key: None,
+            seat: None,
             tenant: None,
         }
         .execute(&client, &mut output);
@@ -671,6 +691,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            seat: None,
             tenant: Some("acme".to_string()),
         }
         .execute(&client, &mut output);
@@ -711,6 +732,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            seat: None,
             tenant: None,
         }
         .execute(&client, &mut output);
@@ -752,6 +774,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            seat: None,
             tenant: None,
         }
         .execute(&client, &mut output);
@@ -794,9 +817,101 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            seat: None,
             tenant: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_cli_accesspass_set_edge_seat_missing_seat() {
+        let mut client = create_test_client();
+
+        let client_ip = [100, 0, 0, 1].into();
+        let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+
+        client.expect_get_epoch().returning(|| Ok(10));
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+
+        let mut output = Vec::new();
+        let res = SetAccessPassCliCommand {
+            accesspass_type: CliAccessPassType::EdgeSeat,
+            client_ip: Some(client_ip),
+            user_payer: payer.to_string(),
+            epochs: "1".into(),
+            solana_validator: None,
+            allow_multiple_ip: false,
+            others_name: None,
+            others_key: None,
+            seat: None,
+            tenant: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert_eq!(
+            res.err().unwrap().to_string(),
+            "EdgeSeat access pass type requires --seat <PUBKEY>"
+        );
+    }
+
+    #[test]
+    fn test_cli_accesspass_set_edge_seat_success() {
+        let mut client = create_test_client();
+
+        let client_ip = [100, 0, 0, 1].into();
+        let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+
+        let (_pda_pubkey, _bump_seed) =
+            get_accesspass_pda(&client.get_program_id(), &client_ip, &payer);
+        let signature = Signature::from([
+            120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
+            82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
+            139, 130, 217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139,
+            100, 221, 20, 137, 4, 5,
+        ]);
+
+        let seat_pk = Pubkey::new_unique();
+
+        client.expect_get_epoch().returning(|| Ok(10));
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_set_accesspass()
+            .with(predicate::eq(SetAccessPassCommand {
+                accesspass_type: AccessPassType::EdgeSeat(seat_pk),
+                client_ip,
+                user_payer: payer,
+                last_access_epoch: 11,
+                allow_multiple_ip: false,
+                tenant: Pubkey::default(),
+            }))
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let res = SetAccessPassCliCommand {
+            accesspass_type: CliAccessPassType::EdgeSeat,
+            client_ip: Some(client_ip),
+            user_payer: payer.to_string(),
+            epochs: "1".into(),
+            solana_validator: None,
+            allow_multiple_ip: false,
+            others_name: None,
+            others_key: None,
+            seat: Some(seat_pk),
+            tenant: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(
+            output_str,
+            "AccessPass PDA: 6pw9fvwzjjkkocGuwxhmv1TwHHnYTFjGvV9GKX6nkFMw\nSignature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
+        );
     }
 }

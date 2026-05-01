@@ -64,24 +64,34 @@ func makeUser(pubkey solana.PublicKey, devicePK solana.PublicKey, tunnelNet [5]b
 	return u
 }
 
-// newTestSubmitter creates a Submitter with the given clock and executor,
-// using MockLocalNet backed by the provided interfaces.
+// noopCollector returns a NamespaceCollector that always succeeds with empty results.
+// Used by tests that never call tick() and only exercise the worker.
+func noopCollector() NamespaceCollector {
+	return func(_ context.Context, _ string) (map[string]struct{}, []netutil.Interface, error) {
+		return nil, nil, nil
+	}
+}
+
+// newTestSubmitter creates a Submitter with the given clock, executor, and collector.
 func newTestSubmitter(
 	t *testing.T,
 	clk clockwork.Clock,
 	exec BGPStatusExecutor,
 	svcClient ServiceabilityClient,
-	ifaces []netutil.Interface,
+	collector NamespaceCollector,
 	devicePK solana.PublicKey,
 	gracePeriod time.Duration,
 	refreshInterval time.Duration,
 ) *Submitter {
 	t.Helper()
+	if collector == nil {
+		collector = noopCollector()
+	}
 	s, err := NewSubmitter(Config{
 		Log:                     newTestLogger(t),
 		Executor:                exec,
 		ServiceabilityClient:    svcClient,
-		LocalNet:                &netutil.MockLocalNet{InterfacesFunc: func() ([]netutil.Interface, error) { return ifaces, nil }},
+		Collector:               collector,
 		LocalDevicePK:           devicePK,
 		BGPNamespace:            "ns-vrf1",
 		Interval:                time.Hour, // irrelevant; tests call tick() directly
@@ -244,6 +254,74 @@ func TestShouldSubmit_PeriodicRefresh(t *testing.T) {
 	}
 	if !shouldSubmit(us, serviceability.BGPStatusUp, now, 6*time.Hour) {
 		t.Error("expected submit when periodic refresh interval elapsed")
+	}
+}
+
+// ============================================================
+// vrfNamespaces
+// ============================================================
+
+func TestVrfNamespaces_NoTenants(t *testing.T) {
+	nss := vrfNamespaces("ns-vrf1", nil, nil)
+	if len(nss) != 1 || nss[0] != "ns-vrf1" {
+		t.Errorf("expected [ns-vrf1], got %v", nss)
+	}
+}
+
+func TestVrfNamespaces_SameVrf(t *testing.T) {
+	tenants := []serviceability.Tenant{{VrfId: 1}}
+	nss := vrfNamespaces("ns-vrf1", tenants, nil)
+	if len(nss) != 1 || nss[0] != "ns-vrf1" {
+		t.Errorf("expected [ns-vrf1], got %v", nss)
+	}
+}
+
+func TestVrfNamespaces_AdditionalVrf(t *testing.T) {
+	tenants := []serviceability.Tenant{{VrfId: 1}, {VrfId: 2}}
+	nss := vrfNamespaces("ns-vrf1", tenants, nil)
+	if len(nss) != 2 || nss[0] != "ns-vrf1" || nss[1] != "ns-vrf2" {
+		t.Errorf("expected [ns-vrf1 ns-vrf2], got %v", nss)
+	}
+}
+
+func TestVrfNamespaces_Deduplication(t *testing.T) {
+	tenants := []serviceability.Tenant{{VrfId: 2}, {VrfId: 2}, {VrfId: 2}}
+	nss := vrfNamespaces("ns-vrf1", tenants, nil)
+	if len(nss) != 2 {
+		t.Errorf("expected 2 unique namespaces, got %v", nss)
+	}
+}
+
+func TestVrfNamespaces_SkipsZeroVrfId(t *testing.T) {
+	tenants := []serviceability.Tenant{{VrfId: 0}, {VrfId: 3}}
+	nss := vrfNamespaces("ns-vrf1", tenants, nil)
+	if len(nss) != 2 || nss[0] != "ns-vrf1" || nss[1] != "ns-vrf3" {
+		t.Errorf("expected [ns-vrf1 ns-vrf3], got %v", nss)
+	}
+}
+
+func TestVrfNamespaces_MulticastUserAddsRootNamespace(t *testing.T) {
+	users := []serviceability.User{{UserType: serviceability.UserTypeMulticast}}
+	nss := vrfNamespaces("ns-vrf1", nil, users)
+	if len(nss) != 2 || nss[0] != "ns-vrf1" || nss[1] != rootNamespace {
+		t.Errorf("expected [ns-vrf1 %q], got %v", rootNamespace, nss)
+	}
+}
+
+func TestVrfNamespaces_NonMulticastUserNoRootNamespace(t *testing.T) {
+	users := []serviceability.User{{UserType: serviceability.UserTypeIBRL}}
+	nss := vrfNamespaces("ns-vrf1", nil, users)
+	if len(nss) != 1 || nss[0] != "ns-vrf1" {
+		t.Errorf("expected [ns-vrf1], got %v", nss)
+	}
+}
+
+func TestVrfNamespaces_MulticastAndTenantVrfs(t *testing.T) {
+	tenants := []serviceability.Tenant{{VrfId: 2}}
+	users := []serviceability.User{{UserType: serviceability.UserTypeMulticast}}
+	nss := vrfNamespaces("ns-vrf1", tenants, users)
+	if len(nss) != 3 || nss[0] != "ns-vrf1" || nss[1] != "ns-vrf2" || nss[2] != rootNamespace {
+		t.Errorf("expected [ns-vrf1 ns-vrf2 %q], got %v", rootNamespace, nss)
 	}
 }
 
@@ -461,12 +539,12 @@ func TestNewSubmitter_MissingFields(t *testing.T) {
 		name string
 		cfg  Config
 	}{
-		{"no log", Config{Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, LocalNet: &netutil.MockLocalNet{}, LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
-		{"no executor", Config{Log: slog.Default(), ServiceabilityClient: &mockSvcClient{}, LocalNet: &netutil.MockLocalNet{}, LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
-		{"no svc client", Config{Log: slog.Default(), Executor: &mockExecutor{}, LocalNet: &netutil.MockLocalNet{}, LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
-		{"no local net", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
-		{"zero device pk", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, LocalNet: &netutil.MockLocalNet{}, BGPNamespace: "ns-vrf1"}},
-		{"no namespace", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, LocalNet: &netutil.MockLocalNet{}, LocalDevicePK: solana.NewWallet().PublicKey()}},
+		{"no log", Config{Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
+		{"no executor", Config{Log: slog.Default(), ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
+		{"no svc client", Config{Log: slog.Default(), Executor: &mockExecutor{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
+		{"no collector", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
+		{"zero device pk", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), BGPNamespace: "ns-vrf1"}},
+		{"no namespace", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey()}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -489,7 +567,7 @@ func TestTaskChannel_DropWhenFull(t *testing.T) {
 		Log:                     slog.Default(),
 		Executor:                exec,
 		ServiceabilityClient:    &mockSvcClient{data: &serviceability.ProgramData{}},
-		LocalNet:                &netutil.MockLocalNet{InterfacesFunc: func() ([]netutil.Interface, error) { return nil, nil }},
+		Collector:               noopCollector(),
 		LocalDevicePK:           devicePK,
 		BGPNamespace:            "ns-vrf1",
 		Interval:                time.Hour,

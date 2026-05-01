@@ -268,12 +268,19 @@ func targetToProbeAddress(t *geolocation.GeolocationTarget) ProbeAddress {
 }
 
 // icmpTargetToProbeAddress converts an OutboundIcmp GeolocationTarget to a ProbeAddress.
+// ICMP itself uses no port; LocationOffsetPort only matters if offsets are delivered back
+// to the target. Treat 0 as "use the default geoprobe UDP port" so 0:0 targets — common
+// when paired with a ResultDestination override — pass validation.
 func icmpTargetToProbeAddress(t *geolocation.GeolocationTarget) ProbeAddress {
 	host := fmt.Sprintf("%d.%d.%d.%d",
 		t.IPAddress[0], t.IPAddress[1], t.IPAddress[2], t.IPAddress[3])
+	port := t.LocationOffsetPort
+	if port == 0 {
+		port = telemetryconfig.DefaultGeoprobeUDPPort
+	}
 	return ProbeAddress{
 		Host:      host,
-		Port:      t.LocationOffsetPort,
+		Port:      port,
 		TWAMPPort: 0,
 	}
 }

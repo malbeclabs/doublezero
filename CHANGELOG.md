@@ -8,8 +8,43 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.21.0](https://github.com/malbeclabs/doublezero/compare/client/v0.20.0...client/v0.21.0) - 2026-05-01
+
+### Breaking
+
+### Changes
+
+- Smartcontract
+  - Add `AccessPassType::EdgeSeat(Pubkey)` variant to associate an access pass with a specific onchain Seat pubkey
+  - Add `--accesspass-type edge-seat --seat <PUBKEY>` to `access-pass set`
+  - Add `--edge-seat` and `--seat-pubkey` filters to `access-pass list`
+- Client
+  - Add `--sock-file` global flag (aliases: `--socket`, `--socket-path`) to the `doublezero` CLI to override the default Unix socket path used to communicate with `doublezerod` (`/var/run/doublezerod/doublezerod.sock`)
+- Controller
+  - Fix unknown BGP peer cleanup in the Arista EOS template: hoist per-peer `no neighbor X` removal into its own `router bgp 65342` block so EOS's silent context-exit on `no neighbor` for a non-existent peer can't misroute subsequent peers' removal commands ([#3627](https://github.com/malbeclabs/doublezero/pull/3627))
+- Sentinel
+  - Pass dz_prefix resource accounts when creating the multicast user to force onchain allocation
+- Smartcontract
+  - Allow ip_net to be passed when creating a device interface if the interface is CYOA/DIA/user_tunnel_endpoint
+- Telemetry
+  - Add `agent_version` and `agent_commit` to `WriteDeviceLatencySamples` so the onchain header is refreshed on every write (~60s) instead of only at initialization; fixes stale version reporting after mid-epoch agent upgrades ([#3598](https://github.com/malbeclabs/doublezero/issues/3598))
+- CLI
+  - `doublezero -V` now shows client version, program version, and minimum required version fetched from the serviceability program
+
+## [v0.20.0](https://github.com/malbeclabs/doublezero/compare/client/v0.19.0...client/v0.20.0) - 2026-04-29
+
+### Breaking
+
+### Changes
+
+- Telemetry
+  - Fix BGP status submitter to collect socket stats and tunnel interfaces from all tenant VRF namespaces (`ns-vrf<N>`), not only `ns-vrf1`; users whose tenant has a non-default `VrfId` were previously always reporting "tunnel not found" and had their onchain BGP status left stale
+  - Fix BGP status submitter to collect from the root Linux network namespace when multicast users are present on a device; multicast GRE tunnels live in the global VRF (root namespace) rather than a per-tenant namespace, so their BGP sessions were never detected and onchain status remained permanently stale
 - CLI
   - Add `--narrow` flag to `doublezero user list` that hides `location`, `cyoa_type`, `accesspass`, and `tunnel_net`, abbreviates `user_type`, and summarizes `groups` as one publisher entry plus one subscriber entry with independent `+N` overflow counts; default output is unchanged
+  - Add `doublezero-geolocation user update --user <code-or-pubkey> --token-account <pubkey>` to update a geolocation user's payment token account; the underlying `UpdateGeolocationUser` instruction was already onchain but had no CLI entrypoint
+- Smartcontract
+  - Allow `count > max` in `Device::validate` for all four per-device caps (`max_users`, `max_unicast_users`, `max_multicast_subscribers`, `max_multicast_publishers`) so operators can lower a cap below the live count; admission-time gates in user create still reject new connections when at capacity, letting the live count drain through natural churn
 
 ## [v0.19.0](https://github.com/malbeclabs/doublezero/compare/client/v0.18.0...client/v0.19.0) - 2026-04-24
 
@@ -17,12 +52,18 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Controller
+  - Auto-loads `/etc/doublezero-controller/features.yaml` at startup if present (silently skips if absent); when `flex_algo.enabled: true`, populates topology data into the state cache, resolves tenant color communities from `Tenant.include_topologies`, and emits IS-IS flex-algo node segment and BGP color community stamping blocks into the Arista EOS template (disabled by default)
+- SDK
+  - Go serviceability SDK adds `TopologyInfo` account type with `TopologyConstraint`, `IndexType` / `TopologyType` account-type constants, and `GetProgramData` dispatch case; extends `Link` with `LinkTopologies` and `LinkFlags`; extends `Tenant` with `IncludeTopologies`
 - CLI
   - Add `tunnel_endpoint` field to `doublezero user list` output (table and JSON) showing the device-side GRE endpoint IP assigned to each user
   - Add `cyoa_ips` field to `doublezero device get` and `doublezero device list` output, showing the IP networks of interfaces with `user_tunnel_endpoint` enabled
+  - Add `--tunnel_endpoint` flag to `user update` command so operators can set the tunnel endpoint IP of an existing user
   - Extend `doublezero resource verify` to check `MulticastPublisherBlock` against multicast publisher users' `dz_ip` allocations; legacy `dz_ip`s that fall outside the block's range are ignored so pre-existing users allocated before this extension existed do not produce false discrepancies
   - Fix `doublezero resource verify` to report missing `TunnelIds` resource extensions for all devices, including those without any users; previously the discrepancy was suppressed when a device had no users, hiding unallocated extensions
   - Extend `doublezero resource verify` to detect orphaned `ResourceExtension` accounts whose PDA does not correspond to any currently-expected resource type (global singleton or per-device extension for a live device/prefix); `--fix` closes them via the existing y/N confirmation flow
+  - Add `multicast subscribe`, `multicast unsubscribe`, `multicast publish`, and `multicast unpublish` CLI commands so users can modify their multicast role set on a connected session without running `disconnect`. `unpublish` warns when the removal would drop the user's last publisher role (legacy-allocation environments may briefly reprovision in that case).
 - Client
   - Filter devices by type-specific capacity during auto-selection so clients are not provisioned onto devices that have reached their unicast, multicast publisher, or multicast subscriber limits
 - Collector

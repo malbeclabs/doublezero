@@ -323,7 +323,7 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_SamplesBatchTooLarge(t
 		DataProviderName:           "test-data-provider-1",
 		Epoch:                      42,
 		StartTimestampMicroseconds: 1_600_000_000,
-		Samples:                    make([]uint32, telemetry.MaxSamplesPerBatch+1),
+		Samples:                    make([]uint32, telemetry.MaxInternetLatencySamplesPerBatch+1),
 	}
 
 	sig, tx, err := client.WriteInternetLatencySamples(context.Background(), config)

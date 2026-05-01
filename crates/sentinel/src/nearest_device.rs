@@ -117,6 +117,7 @@ mod tests {
             max_multicast_publishers: 0,
             public_ip: std::net::Ipv4Addr::UNSPECIFIED,
             user_tunnel_endpoints: vec![],
+            dz_prefix_count: 0,
         }
     }
 

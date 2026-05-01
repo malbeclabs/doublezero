@@ -221,7 +221,7 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	// Always try disconnecting, even if it looks like the user is already disconnected.
 	// We do this to handle the case where the client thinks it's disconnected but the user exists
 	// onchain, which can happen if the previous connect attempt timed out in the CLI but eventually
-	// succeeded in the activator.
+	// succeeded onchain.
 	ctx, cancel := context.WithTimeout(ctx, disconnectTimeout)
 	defer cancel()
 	_, err = c.grpcClient.Disconnect(ctx, &emptypb.Empty{})

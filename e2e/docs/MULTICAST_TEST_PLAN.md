@@ -61,7 +61,7 @@ dev/dzctl start -v
 **Verify:** Core containers running
 ```bash
 docker ps --format "table {{.Names}}\t{{.Status}}" | grep dz-local
-# Should show: ledger, manager, funder, controller, activator, influxdb, prometheus, device-health-oracle
+# Should show: ledger, manager, funder, controller, influxdb, prometheus, device-health-oracle
 ```
 
 ### 1.4 Add Devices and Clients

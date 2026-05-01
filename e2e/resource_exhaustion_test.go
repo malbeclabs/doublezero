@@ -22,7 +22,7 @@ import (
 // is fully exhausted. It verifies that:
 //   - Users consume IPs until the pool is full
 //   - When the pool is exhausted, user creation fails with an error
-//   - The activator continues to function normally after exhaustion
+//   - The program continues to function normally after exhaustion
 //   - Freeing a slot (deleting a user) allows a new user to be created and activated
 //   - All resources return to baseline after cleanup
 //
@@ -49,9 +49,6 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 		},
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
-		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(true),
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
@@ -99,7 +96,7 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 	require.NoError(t, err)
 	verifier := allocation.NewVerifier(serviceabilityClient)
 
-	// Wait for DzPrefixBlock to be created by the activator, then capture baseline.
+	// Wait for DzPrefixBlock to be created by the program, then capture baseline.
 	log.Debug("==> Waiting for DzPrefixBlock creation and capturing baseline")
 	var baseline *allocation.ResourceSnapshot
 	require.Eventually(t, func() bool {
@@ -258,13 +255,13 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 	}
 
 	// =========================================================================
-	// Subtest 3: Activator still healthy — verify it hasn't crashed after
+	// Subtest 3: Program still healthy — verify it hasn't crashed after
 	// the exhaustion scenario.
 	// =========================================================================
-	if !t.Run("activator_still_healthy", func(t *testing.T) {
-		log.Debug("==> Verifying activator is still operational after exhaustion")
+	if !t.Run("program_still_healthy", func(t *testing.T) {
+		log.Debug("==> Verifying program is still operational after exhaustion")
 
-		// If the activator crashed, the 3 fill users would not still be Activated.
+		// If the program crashed, the 3 fill users would not still be Activated.
 		data, err := serviceabilityClient.GetProgramData(ctx)
 		require.NoError(t, err)
 
@@ -276,7 +273,7 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 		}
 		require.Equal(t, 3, activatedCount, "all 3 fill users should still be Activated")
 
-		log.Debug("==> Activator confirmed healthy — 3 Activated")
+		log.Debug("==> Program confirmed healthy — 3 Activated")
 	}) {
 		t.FailNow()
 	}

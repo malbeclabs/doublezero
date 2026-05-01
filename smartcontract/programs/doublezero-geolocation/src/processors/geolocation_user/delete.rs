@@ -1,6 +1,6 @@
 use crate::{
     error::GeolocationError, processors::check_foundation_allowlist, serializer::try_acc_close,
-    state::geolocation_user::GeolocationUser,
+    state::geolocation_user_view::GeolocationUserView,
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -35,9 +35,9 @@ pub fn process_delete_geolocation_user(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let user = GeolocationUser::try_from(user_account)?;
+    let view = GeolocationUserView::try_from_account(user_account)?;
 
-    if user.owner != *payer_account.key {
+    if view.owner != *payer_account.key {
         check_foundation_allowlist(
             program_config_account,
             serviceability_globalstate_account,
@@ -46,10 +46,10 @@ pub fn process_delete_geolocation_user(
         )?;
     }
 
-    if !user.targets.is_empty() {
+    if view.targets_count != 0 {
         msg!(
             "Cannot delete GeolocationUser with {} remaining targets",
-            user.targets.len()
+            view.targets_count
         );
         return Err(GeolocationError::TargetsNotEmpty.into());
     }

@@ -13,9 +13,18 @@ import (
 // namespace. This allows thread-local operations like dialing sockets to be scoped
 // to a namespace without affecting the rest of the program.
 //
+// If nsName is empty, the function is called in the current (root) namespace
+// without any namespace switching. This is the correct behavior for the global
+// routing table on Arista EOS, which lives in the root network namespace rather
+// than a named namespace under /var/run/netns/.
+//
 // This is safe for use in single-threaded, short-lived operations; not safe for
 // concurrent use.
 func RunInNamespace[T any](nsName string, fn func() (T, error)) (T, error) {
+	if nsName == "" {
+		return fn()
+	}
+
 	var zero T
 
 	runtime.LockOSThread()

@@ -65,7 +65,6 @@ type DevnetSpec struct {
 	Manager                      ManagerSpec
 	Funder                       FunderSpec
 	Controller                   ControllerSpec
-	Activator                    ActivatorSpec
 	DeviceHealthOracle           DeviceHealthOracleSpec
 	InfluxDB                     InfluxDBSpec
 	Prometheus                   PrometheusSpec
@@ -99,7 +98,6 @@ type Devnet struct {
 	Manager                      *Manager
 	Funder                       *Funder
 	Controller                   *Controller
-	Activator                    *Activator
 	DeviceHealthOracle           *DeviceHealthOracle
 	InfluxDB                     *InfluxDB
 	Prometheus                   *Prometheus
@@ -141,10 +139,6 @@ func (s *DevnetSpec) Validate() error {
 
 	if err := s.Controller.Validate(s.CYOANetwork); err != nil {
 		return fmt.Errorf("controller: %w", err)
-	}
-
-	if err := s.Activator.Validate(); err != nil {
-		return fmt.Errorf("activator: %w", err)
 	}
 
 	if err := s.DeviceHealthOracle.Validate(); err != nil {
@@ -327,10 +321,6 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		dn:  dn,
 		log: log.With("component", "controller"),
 	}
-	dn.Activator = &Activator{
-		dn:  dn,
-		log: log.With("component", "activator"),
-	}
 	if spec.DeviceHealthOracle.Enabled {
 		dn.DeviceHealthOracle = &DeviceHealthOracle{
 			dn:  dn,
@@ -490,23 +480,14 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 		}
 	}
 
-	// Set the onchain allocation feature flag if enabled.
-	if d.Spec.Activator.OnchainAllocation != nil && *d.Spec.Activator.OnchainAllocation {
-		if err := d.SetOnchainAllocationFeatureFlag(ctx); err != nil {
-			return fmt.Errorf("failed to set onchain allocation feature flag: %w", err)
-		}
+	// Set the onchain allocation feature flag.
+	if err := d.SetOnchainAllocationFeatureFlag(ctx); err != nil {
+		return fmt.Errorf("failed to set onchain allocation feature flag: %w", err)
 	}
 
 	// Start the controller if it's not already running.
 	if _, err := d.Controller.StartIfNotRunning(ctx); err != nil {
 		return fmt.Errorf("failed to start controller: %w", err)
-	}
-
-	// Start the activator if it's not already running and not disabled.
-	if d.Spec.Activator.Disabled == nil || !*d.Spec.Activator.Disabled {
-		if _, err := d.Activator.StartIfNotRunning(ctx); err != nil {
-			return fmt.Errorf("failed to start activator: %w", err)
-		}
 	}
 
 	// Start the device-health-oracle if it's not already running.

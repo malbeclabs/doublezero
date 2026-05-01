@@ -35,28 +35,20 @@ func TestNewExecutor_WithTimeout(t *testing.T) {
 	require.NotNil(t, executor, "executor should not be nil with custom timeout")
 }
 
-func TestExecuteTransaction_NoPrivateKey(t *testing.T) {
+func TestExecuteTransactions_NoPrivateKey(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
 
 	executor := geolocation.NewExecutor(slog.Default(), nil, nil, programID)
 
-	// Build a dummy instruction to pass to ExecuteTransaction.
-	dummyIx, err := geolocation.BuildAddTargetInstruction(programID, solana.NewWallet().PublicKey(), geolocation.AddTargetInstructionConfig{
-		Code:               "test-user",
-		ProbePK:            solana.NewWallet().PublicKey(),
-		TargetType:         geolocation.GeoLocationTargetTypeOutbound,
-		IPAddress:          [4]uint8{8, 8, 8, 8},
-		LocationOffsetPort: 443,
-	})
-	require.NoError(t, err)
+	dummyIxs := dummyInstructionsFor(t, programID, solana.NewWallet().PublicKey())
 
-	_, _, err = executor.ExecuteTransaction(context.Background(), dummyIx, nil)
+	_, _, err := executor.ExecuteTransactions(context.Background(), dummyIxs, nil)
 	require.ErrorIs(t, err, geolocation.ErrNoPrivateKey)
 }
 
-func TestExecuteTransaction_NoProgramID(t *testing.T) {
+func TestExecuteTransactions_NoProgramID(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -64,27 +56,20 @@ func TestExecuteTransaction_NoProgramID(t *testing.T) {
 
 	executor := geolocation.NewExecutor(slog.Default(), nil, &signer, zeroProgramID)
 
-	// Build a dummy instruction using a non-zero program ID (the builder needs it to derive PDAs).
+	// Build dummy instructions using a non-zero program ID (the builder needs it to derive PDAs).
 	// The executor checks its own programID field, not the instruction's.
 	validProgramID := solana.NewWallet().PublicKey()
-	dummyIx, err := geolocation.BuildAddTargetInstruction(validProgramID, solana.NewWallet().PublicKey(), geolocation.AddTargetInstructionConfig{
-		Code:               "test-user",
-		ProbePK:            solana.NewWallet().PublicKey(),
-		TargetType:         geolocation.GeoLocationTargetTypeOutbound,
-		IPAddress:          [4]uint8{8, 8, 8, 8},
-		LocationOffsetPort: 443,
-	})
-	require.NoError(t, err)
+	dummyIxs := dummyInstructionsFor(t, validProgramID, solana.NewWallet().PublicKey())
 
-	_, _, err = executor.ExecuteTransaction(context.Background(), dummyIx, nil)
+	_, _, err := executor.ExecuteTransactions(context.Background(), dummyIxs, nil)
 	require.ErrorIs(t, err, geolocation.ErrNoProgramID)
 }
 
-// dummyInstructionFor returns a valid AddTarget instruction whose signer matches
-// the given wallet — sufficient for tx.Sign to succeed inside ExecuteTransaction.
-func dummyInstructionFor(t *testing.T, programID solana.PublicKey, signerPK solana.PublicKey) solana.Instruction {
+// dummyInstructionsFor returns a valid AddTarget instruction list whose signer
+// matches the given wallet — sufficient for tx.Sign to succeed inside ExecuteTransactions.
+func dummyInstructionsFor(t *testing.T, programID solana.PublicKey, signerPK solana.PublicKey) []solana.Instruction {
 	t.Helper()
-	ix, err := geolocation.BuildAddTargetInstruction(programID, signerPK, geolocation.AddTargetInstructionConfig{
+	ixs, err := geolocation.BuildAddTargetInstructions(programID, signerPK, geolocation.AddTargetInstructionConfig{
 		Code:               "test-user",
 		ProbePK:            solana.NewWallet().PublicKey(),
 		TargetType:         geolocation.GeoLocationTargetTypeOutbound,
@@ -92,7 +77,7 @@ func dummyInstructionFor(t *testing.T, programID solana.PublicKey, signerPK sola
 		LocationOffsetPort: 443,
 	})
 	require.NoError(t, err)
-	return ix
+	return ixs
 }
 
 func finalizedStatusResult() *solanarpc.GetSignatureStatusesResult {
@@ -107,7 +92,7 @@ func finalizedTxResult() *solanarpc.GetTransactionResult {
 	return &solanarpc.GetTransactionResult{Meta: &solanarpc.TransactionMeta{}}
 }
 
-func TestExecuteTransaction_HappyPath(t *testing.T) {
+func TestExecuteTransactions_HappyPath(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -132,15 +117,15 @@ func TestExecuteTransaction_HappyPath(t *testing.T) {
 	}
 
 	e := geolocation.NewExecutor(slog.Default(), rpc, &signer, programID)
-	ix := dummyInstructionFor(t, programID, signer.PublicKey())
+	ixs := dummyInstructionsFor(t, programID, signer.PublicKey())
 
-	gotSig, res, err := e.ExecuteTransaction(context.Background(), ix, nil)
+	gotSig, res, err := e.ExecuteTransactions(context.Background(), ixs, nil)
 	require.NoError(t, err)
 	require.Equal(t, sig, gotSig)
 	require.NotNil(t, res)
 }
 
-func TestExecuteTransaction_BlockhashError(t *testing.T) {
+func TestExecuteTransactions_BlockhashError(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -153,13 +138,13 @@ func TestExecuteTransaction_BlockhashError(t *testing.T) {
 		},
 	}
 	e := geolocation.NewExecutor(slog.Default(), rpc, &signer, programID)
-	ix := dummyInstructionFor(t, programID, signer.PublicKey())
+	ixs := dummyInstructionsFor(t, programID, signer.PublicKey())
 
-	_, _, err := e.ExecuteTransaction(context.Background(), ix, nil)
+	_, _, err := e.ExecuteTransactions(context.Background(), ixs, nil)
 	require.ErrorIs(t, err, wantErr)
 }
 
-func TestExecuteTransaction_SendError(t *testing.T) {
+func TestExecuteTransactions_SendError(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -177,13 +162,13 @@ func TestExecuteTransaction_SendError(t *testing.T) {
 		},
 	}
 	e := geolocation.NewExecutor(slog.Default(), rpc, &signer, programID)
-	ix := dummyInstructionFor(t, programID, signer.PublicKey())
+	ixs := dummyInstructionsFor(t, programID, signer.PublicKey())
 
-	_, _, err := e.ExecuteTransaction(context.Background(), ix, nil)
+	_, _, err := e.ExecuteTransactions(context.Background(), ixs, nil)
 	require.ErrorIs(t, err, wantErr)
 }
 
-func TestExecuteTransaction_ConfirmationTransitions(t *testing.T) {
+func TestExecuteTransactions_ConfirmationTransitions(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -223,14 +208,14 @@ func TestExecuteTransaction_ConfirmationTransitions(t *testing.T) {
 	}
 
 	e := geolocation.NewExecutor(slog.Default(), rpc, &signer, programID)
-	ix := dummyInstructionFor(t, programID, signer.PublicKey())
+	ixs := dummyInstructionsFor(t, programID, signer.PublicKey())
 
-	_, _, err := e.ExecuteTransaction(context.Background(), ix, nil)
+	_, _, err := e.ExecuteTransactions(context.Background(), ixs, nil)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, call.Load(), int32(3), "should have polled through Processed/Confirmed before Finalized")
 }
 
-func TestExecuteTransaction_WaitForVisibleTimeout(t *testing.T) {
+func TestExecuteTransactions_WaitForVisibleTimeout(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -254,14 +239,14 @@ func TestExecuteTransaction_WaitForVisibleTimeout(t *testing.T) {
 	e := geolocation.NewExecutor(slog.Default(), rpc, &signer, programID,
 		geolocation.WithWaitForVisibleTimeout(200*time.Millisecond),
 	)
-	ix := dummyInstructionFor(t, programID, signer.PublicKey())
+	ixs := dummyInstructionsFor(t, programID, signer.PublicKey())
 
-	_, _, err := e.ExecuteTransaction(context.Background(), ix, nil)
+	_, _, err := e.ExecuteTransactions(context.Background(), ixs, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not visible")
 }
 
-func TestExecuteTransaction_ContextCancellationDuringFinalization(t *testing.T) {
+func TestExecuteTransactions_ContextCancellationDuringFinalization(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -288,7 +273,7 @@ func TestExecuteTransaction_ContextCancellationDuringFinalization(t *testing.T) 
 	}
 
 	e := geolocation.NewExecutor(slog.Default(), rpc, &signer, programID)
-	ix := dummyInstructionFor(t, programID, signer.PublicKey())
+	ixs := dummyInstructionsFor(t, programID, signer.PublicKey())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -296,12 +281,12 @@ func TestExecuteTransaction_ContextCancellationDuringFinalization(t *testing.T) 
 		cancel()
 	}()
 
-	_, _, err := e.ExecuteTransaction(ctx, ix, nil)
+	_, _, err := e.ExecuteTransactions(ctx, ixs, nil)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
-func TestExecuteTransaction_FinalizationTimeout(t *testing.T) {
+func TestExecuteTransactions_FinalizationTimeout(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -329,14 +314,14 @@ func TestExecuteTransaction_FinalizationTimeout(t *testing.T) {
 	e := geolocation.NewExecutor(slog.Default(), rpc, &signer, programID,
 		geolocation.WithFinalizationTimeout(500*time.Millisecond),
 	)
-	ix := dummyInstructionFor(t, programID, signer.PublicKey())
+	ixs := dummyInstructionsFor(t, programID, signer.PublicKey())
 
-	_, _, err := e.ExecuteTransaction(context.Background(), ix, nil)
+	_, _, err := e.ExecuteTransactions(context.Background(), ixs, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not finalized within")
 }
 
-func TestExecuteTransaction_SkipPreflightPassthrough(t *testing.T) {
+func TestExecuteTransactions_SkipPreflightPassthrough(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
@@ -363,9 +348,9 @@ func TestExecuteTransaction_SkipPreflightPassthrough(t *testing.T) {
 	}
 
 	e := geolocation.NewExecutor(slog.Default(), rpc, &signer, programID)
-	ix := dummyInstructionFor(t, programID, signer.PublicKey())
+	ixs := dummyInstructionsFor(t, programID, signer.PublicKey())
 
-	_, _, err := e.ExecuteTransaction(context.Background(), ix, &geolocation.ExecuteTransactionOptions{SkipPreflight: true})
+	_, _, err := e.ExecuteTransactions(context.Background(), ixs, &geolocation.ExecuteTransactionOptions{SkipPreflight: true})
 	require.NoError(t, err)
 	require.True(t, observed.Load(), "mock should have received SkipPreflight=true")
 }

@@ -5,7 +5,7 @@ use crate::{
 use doublezero_program_common::types::network_v4::NetworkV4;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::get_resource_extension_pda,
+    pda::{get_resource_extension_pda, get_topology_pda},
     processors::device::interface::create::DeviceInterfaceCreateArgs,
     resource::ResourceType,
     state::{
@@ -29,6 +29,9 @@ pub struct CreateDeviceInterfaceCommand {
     pub routing_mode: RoutingMode,
     pub vlan_id: u16,
     pub user_tunnel_endpoint: bool,
+    /// Topology names to assign flex-algo node segments for (Vpnv4 loopbacks only).
+    /// Empty means no topology assignment.
+    pub topology_names: Vec<String>,
 }
 
 impl CreateDeviceInterfaceCommand {
@@ -51,6 +54,7 @@ impl CreateDeviceInterfaceCommand {
             AccountMeta::new(globalstate_pubkey, false),
         ];
 
+        let mut topology_count: u8 = 0;
         if use_onchain_allocation {
             let (device_tunnel_block_ext, _, _) = get_resource_extension_pda(
                 &client.get_program_id(),
@@ -62,6 +66,16 @@ impl CreateDeviceInterfaceCommand {
             );
             accounts.push(AccountMeta::new(device_tunnel_block_ext, false));
             accounts.push(AccountMeta::new(segment_routing_ids_ext, false));
+
+            // For Vpnv4 loopbacks, append topology PDAs so the onchain program
+            // can allocate FlexAlgoNodeSegment entries atomically.
+            if self.loopback_type == LoopbackType::Vpnv4 {
+                for name in &self.topology_names {
+                    let (topology_pda, _) = get_topology_pda(&client.get_program_id(), name);
+                    accounts.push(AccountMeta::new_readonly(topology_pda, false));
+                    topology_count += 1;
+                }
+            }
         }
 
         client
@@ -79,6 +93,7 @@ impl CreateDeviceInterfaceCommand {
                     vlan_id: self.vlan_id,
                     user_tunnel_endpoint: self.user_tunnel_endpoint,
                     use_onchain_allocation,
+                    topology_count,
                 }),
                 accounts,
             )
@@ -166,6 +181,7 @@ mod tests {
                         vlan_id: 100,
                         user_tunnel_endpoint: true,
                         use_onchain_allocation: false,
+                        topology_count: 0,
                     },
                 )),
                 predicate::eq(vec![
@@ -189,6 +205,7 @@ mod tests {
             routing_mode: RoutingMode::Static,
             vlan_id: 100,
             user_tunnel_endpoint: true,
+            topology_names: vec![],
         };
 
         let res = command.execute(&client);
@@ -257,6 +274,7 @@ mod tests {
                         vlan_id: 0,
                         user_tunnel_endpoint: false,
                         use_onchain_allocation: true,
+                        topology_count: 0,
                     },
                 )),
                 predicate::eq(vec![
@@ -282,6 +300,7 @@ mod tests {
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
+            topology_names: vec![],
         }
         .execute(&client);
 

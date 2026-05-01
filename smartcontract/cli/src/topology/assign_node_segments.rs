@@ -3,40 +3,38 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use clap::Args;
-use doublezero_sdk::commands::topology::backfill::BackfillTopologyCommand;
+use doublezero_sdk::commands::topology::assign_node_segments::AssignTopologyNodeSegmentsCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct BackfillTopologyCliCommand {
-    /// Name of the topology to backfill
+pub struct AssignTopologyNodeSegmentsCliCommand {
+    /// Name of the topology to assign node segments for
     #[arg(long)]
     pub name: String,
-    /// Device account pubkeys to backfill (one or more)
+    /// Device account pubkeys (one or more)
     #[arg(long = "device", value_name = "PUBKEY")]
     pub device_pubkeys: Vec<Pubkey>,
 }
 
-impl BackfillTopologyCliCommand {
+impl AssignTopologyNodeSegmentsCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         if self.device_pubkeys.is_empty() {
-            return Err(eyre::eyre!(
-                "at least one --device pubkey is required for backfill"
-            ));
+            return Err(eyre::eyre!("at least one --device pubkey is required"));
         }
 
         let name = self.name.to_uppercase();
 
-        let sigs = client.backfill_topology(BackfillTopologyCommand {
+        let sigs = client.assign_topology_node_segments(AssignTopologyNodeSegmentsCommand {
             name: name.clone(),
             device_pubkeys: self.device_pubkeys,
         })?;
 
         writeln!(
             out,
-            "Backfilled topology '{}' across {} transaction(s).",
+            "Assigned node segments for topology '{}' across {} transaction(s).",
             name,
             sigs.len()
         )?;
@@ -49,25 +47,25 @@ impl BackfillTopologyCliCommand {
 mod tests {
     use super::*;
     use crate::doublezerocommand::MockCliCommand;
-    use doublezero_sdk::commands::topology::backfill::BackfillTopologyCommand;
+    use doublezero_sdk::commands::topology::assign_node_segments::AssignTopologyNodeSegmentsCommand;
     use mockall::predicate::eq;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::io::Cursor;
 
     #[test]
-    fn test_backfill_topology_execute_success() {
+    fn test_assign_topology_node_segments_execute_success() {
         let mut mock = MockCliCommand::new();
         let device1 = Pubkey::new_unique();
 
         mock.expect_check_requirements().returning(|_| Ok(()));
-        mock.expect_backfill_topology()
-            .with(eq(BackfillTopologyCommand {
+        mock.expect_assign_topology_node_segments()
+            .with(eq(AssignTopologyNodeSegmentsCommand {
                 name: "UNICAST-DEFAULT".to_string(),
                 device_pubkeys: vec![device1],
             }))
             .returning(|_| Ok(vec![Signature::new_unique()]));
 
-        let cmd = BackfillTopologyCliCommand {
+        let cmd = AssignTopologyNodeSegmentsCliCommand {
             name: "unicast-default".to_string(),
             device_pubkeys: vec![device1],
         };
@@ -75,15 +73,17 @@ mod tests {
         let result = cmd.execute(&mock, &mut out);
         assert!(result.is_ok());
         let output = String::from_utf8(out.into_inner()).unwrap();
-        assert!(output.contains("Backfilled topology 'UNICAST-DEFAULT' across 1 transaction(s)."));
+        assert!(output.contains(
+            "Assigned node segments for topology 'UNICAST-DEFAULT' across 1 transaction(s)."
+        ));
     }
 
     #[test]
-    fn test_backfill_topology_requires_at_least_one_device() {
+    fn test_assign_topology_node_segments_requires_at_least_one_device() {
         let mut mock = MockCliCommand::new();
         mock.expect_check_requirements().returning(|_| Ok(()));
 
-        let cmd = BackfillTopologyCliCommand {
+        let cmd = AssignTopologyNodeSegmentsCliCommand {
             name: "unicast-default".to_string(),
             device_pubkeys: vec![],
         };

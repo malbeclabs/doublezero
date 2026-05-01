@@ -8,6 +8,10 @@ pub struct DeviceEndpoints {
     pub public_ip: Ipv4Addr,
     /// IPs from device interfaces where `user_tunnel_endpoint == true`.
     pub user_tunnel_endpoints: Vec<Ipv4Addr>,
+    /// Number of DzPrefixBlock resource extension accounts on this device — needed when
+    /// building create-user instructions under onchain allocation, since every DzPrefixBlock
+    /// must be supplied even for users that do not allocate from them.
+    pub dz_prefix_count: u8,
 }
 
 impl Default for DeviceEndpoints {
@@ -15,6 +19,7 @@ impl Default for DeviceEndpoints {
         Self {
             public_ip: Ipv4Addr::UNSPECIFIED,
             user_tunnel_endpoints: Vec::new(),
+            dz_prefix_count: 0,
         }
     }
 }
@@ -200,6 +205,7 @@ mod tests {
             DeviceEndpoints {
                 public_ip: public_ip_a,
                 user_tunnel_endpoints: vec![],
+                dz_prefix_count: 0,
             },
         );
 
@@ -232,6 +238,7 @@ mod tests {
             DeviceEndpoints {
                 public_ip: Ipv4Addr::new(1, 1, 1, 1),
                 user_tunnel_endpoints: vec![ute1, ute2],
+                dz_prefix_count: 0,
             },
         );
 

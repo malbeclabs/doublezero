@@ -12,8 +12,14 @@ All notable changes to this project will be documented in this file.
   - Add `AccessPassType::EdgeSeat(Pubkey)` variant to associate an access pass with a specific onchain Seat pubkey
   - Add `--accesspass-type edge-seat --seat <PUBKEY>` to `access-pass set`
   - Add `--edge-seat` and `--seat-pubkey` filters to `access-pass list`
+- Client
+  - Add `--sock-file` global flag (aliases: `--socket`, `--socket-path`) to the `doublezero` CLI to override the default Unix socket path used to communicate with `doublezerod` (`/var/run/doublezerod/doublezerod.sock`)
 - Controller
   - Fix unknown BGP peer cleanup in the Arista EOS template: hoist per-peer `no neighbor X` removal into its own `router bgp 65342` block so EOS's silent context-exit on `no neighbor` for a non-existent peer can't misroute subsequent peers' removal commands ([#3627](https://github.com/malbeclabs/doublezero/pull/3627))
+- Sentinel
+  - Pass dz_prefix resource accounts when creating the multicast user to force onchain allocation
+- Smartcontract
+  - Allow ip_net to be passed when creating a device interface if the interface is CYOA/DIA/user_tunnel_endpoint
 - Telemetry
   - Add `agent_version` and `agent_commit` to `WriteDeviceLatencySamples` so the onchain header is refreshed on every write (~60s) instead of only at initialization; fixes stale version reporting after mid-epoch agent upgrades ([#3598](https://github.com/malbeclabs/doublezero/issues/3598))
 

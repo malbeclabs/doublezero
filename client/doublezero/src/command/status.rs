@@ -5,9 +5,11 @@ use crate::{
         DoubleZeroStatus, MulticastGroups, ServiceController, ServiceControllerImpl, StatusResponse,
     },
 };
+use backon::{ExponentialBuilder, Retryable};
 use clap::Args;
 use doublezero_cli::{doublezerocommand::CliCommand, helpers::print_error};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tabled::Tabled;
 
 #[derive(Args, Debug)]
@@ -66,7 +68,11 @@ impl StatusCliCommand {
         client: &dyn CliCommand,
         controller: &T,
     ) -> eyre::Result<Vec<AppendedStatusResponse>> {
-        let v2_status = controller.v2_status().await?;
+        let backoff = ExponentialBuilder::new()
+            .with_max_times(3)
+            .with_min_delay(Duration::from_millis(500))
+            .with_max_delay(Duration::from_secs(2));
+        let v2_status = (|| controller.v2_status()).retry(backoff).await?;
 
         // When no services are running, synthesize a "disconnected" entry to match
         // the legacy /status endpoint behavior. The QA agent and other tooling
@@ -154,6 +160,10 @@ mod tests {
         DoubleZeroStatus, MockServiceController, MulticastGroups, V2ServiceStatus, V2StatusResponse,
     };
     use doublezero_cli::doublezerocommand::MockCliCommand;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
 
     #[allow(clippy::too_many_arguments)]
     fn make_v2_service(
@@ -800,5 +810,44 @@ mod tests {
             }),
             "P:solana-lv,S:solana-ams,S:solana-fra"
         );
+    }
+
+    #[tokio::test]
+    async fn test_status_retries_transient_error() {
+        let mock_command = MockCliCommand::new();
+        let mut mock_controller = MockServiceController::new();
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_clone = calls.clone();
+        mock_controller.expect_v2_status().returning(move || {
+            if calls_clone.fetch_add(1, Ordering::SeqCst) < 2 {
+                Err(eyre::eyre!("Unable to connect to doublezero daemon: boom"))
+            } else {
+                Ok(V2StatusResponse {
+                    reconciler_enabled: true,
+                    client_ip: String::new(),
+                    network: "testnet".to_string(),
+                    services: vec![make_v2_service(
+                        "BGP Session Up",
+                        Some("doublezero1"),
+                        Some("1.2.3.4"),
+                        Some("5.6.7.8"),
+                        Some("10.0.0.1"),
+                        Some("IBRL"),
+                        "device1",
+                        "device1",
+                        "metro",
+                        "",
+                    )],
+                })
+            }
+        });
+
+        let result = StatusCliCommand { json: true }
+            .command_impl(&mock_command, &mock_controller)
+            .await;
+
+        assert!(result.is_ok());
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
     }
 }

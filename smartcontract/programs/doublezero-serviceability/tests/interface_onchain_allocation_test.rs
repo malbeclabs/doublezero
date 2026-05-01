@@ -476,6 +476,95 @@ async fn test_create_loopback_non_vpnv4_with_onchain_allocation() {
     println!("test_create_loopback_non_vpnv4_with_onchain_allocation PASSED");
 }
 
+/// Test: Create loopback with onchain allocation and a caller-supplied ip_net → the
+/// caller-supplied ip_net is honored rather than overwritten by an allocation from the
+/// DeviceTunnelBlock. User-tunnel-endpoint loopbacks rely on this so they can land on a
+/// globally routable IP rather than a private device-tunnel-block IP.
+#[tokio::test]
+async fn test_create_loopback_with_onchain_allocation_honors_supplied_ip_net() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Enable OnChainAllocation feature flag
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    let (device_pubkey, contributor_pubkey) =
+        setup_device(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    let supplied_ip_net: NetworkV4 = "45.33.101.1/32".parse().unwrap();
+
+    // Create non-Vpnv4 loopback with an explicit ip_net under onchain allocation.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "Loopback100".to_string(),
+            loopback_type: LoopbackType::None,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            bandwidth: 0,
+            cir: 0,
+            ip_net: Some(supplied_ip_net),
+            mtu: 9000,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: true,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device not found");
+    let iface = device.interfaces[0].into_current_version();
+
+    assert_eq!(iface.status, InterfaceStatus::Activated);
+    assert_eq!(iface.interface_type, InterfaceType::Loopback);
+    assert!(iface.user_tunnel_endpoint);
+    assert_eq!(
+        iface.ip_net, supplied_ip_net,
+        "caller-supplied ip_net should be honored, not overwritten by DeviceTunnelBlock allocation"
+    );
+
+    // The DeviceTunnelBlock should be untouched: nothing should have been allocated from it.
+    let dtb = get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
+        .await
+        .expect("DeviceTunnelBlock account not found");
+    assert!(
+        dtb.iter_allocated().is_empty(),
+        "DeviceTunnelBlock should not have allocated when ip_net was caller-supplied, got: {:?}",
+        dtb.iter_allocated()
+    );
+
+    println!("test_create_loopback_with_onchain_allocation_honors_supplied_ip_net PASSED");
+}
+
 /// Test: Create physical interface with onchain allocation → Unlinked, no allocation
 #[tokio::test]
 async fn test_create_physical_with_onchain_allocation() {

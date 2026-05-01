@@ -51,6 +51,10 @@ pub struct DzDeviceInfo {
     pub public_ip: Ipv4Addr,
     /// IPs from device interfaces where `user_tunnel_endpoint == true`.
     pub user_tunnel_endpoints: Vec<Ipv4Addr>,
+    /// Number of DzPrefixBlock resource extension accounts on this device — needed when
+    /// building create-user instructions under onchain allocation, since every DzPrefixBlock
+    /// must be supplied even for users that do not allocate from them.
+    pub dz_prefix_count: u8,
 }
 
 // ---------------------------------------------------------------------------
@@ -307,6 +311,7 @@ pub fn fetch_device_infos(
                 max_multicast_publishers: device.max_multicast_publishers,
                 public_ip: device.public_ip,
                 user_tunnel_endpoints,
+                dz_prefix_count: device.dz_prefixes.len() as u8,
             },
         );
     }

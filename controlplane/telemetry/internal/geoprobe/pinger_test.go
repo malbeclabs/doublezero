@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,6 +29,17 @@ func (m *mockSender) LocalAddr() *net.UDPAddr {
 	return &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 }
 
+func mockFactory(sender, warmup *mockSender) senderFactory {
+	call := 0
+	return func(_ context.Context, _ *slog.Logger, _ string, _, _ *net.UDPAddr) (twamplight.Sender, error) {
+		call++
+		if call%2 == 1 {
+			return sender, nil
+		}
+		return warmup, nil
+	}
+}
+
 func TestNewPinger(t *testing.T) {
 	t.Parallel()
 
@@ -44,8 +56,8 @@ func TestNewPinger(t *testing.T) {
 	require.NotNil(t, pinger)
 	assert.NotNil(t, pinger.log)
 	assert.NotNil(t, pinger.cfg)
-	assert.NotNil(t, pinger.senders)
-	assert.Empty(t, pinger.senders)
+	assert.NotNil(t, pinger.targets)
+	assert.Empty(t, pinger.targets)
 }
 
 func TestPinger_AddProbe(t *testing.T) {
@@ -71,9 +83,9 @@ func TestPinger_AddProbe(t *testing.T) {
 	err := pinger.AddProbe(ctx, addr)
 	require.NoError(t, err)
 
-	pinger.sendersMu.Lock()
-	_, exists := pinger.senders[addr.String()]
-	pinger.sendersMu.Unlock()
+	pinger.targetsMu.Lock()
+	_, exists := pinger.targets[addr.String()]
+	pinger.targetsMu.Unlock()
 
 	assert.True(t, exists, "probe should exist after AddProbe")
 }
@@ -101,20 +113,14 @@ func TestPinger_AddProbe_Duplicate(t *testing.T) {
 	err := pinger.AddProbe(ctx, addr)
 	require.NoError(t, err)
 
-	pinger.sendersMu.Lock()
-	firstSender := pinger.senders[addr.String()].sender
-	pinger.sendersMu.Unlock()
-
 	err = pinger.AddProbe(ctx, addr)
 	require.NoError(t, err)
 
-	pinger.sendersMu.Lock()
-	secondSender := pinger.senders[addr.String()].sender
-	count := len(pinger.senders)
-	pinger.sendersMu.Unlock()
+	pinger.targetsMu.Lock()
+	count := len(pinger.targets)
+	pinger.targetsMu.Unlock()
 
-	assert.Equal(t, 1, count, "should only have one sender after duplicate AddProbe")
-	assert.Equal(t, firstSender, secondSender, "should reuse existing sender on duplicate")
+	assert.Equal(t, 1, count, "should only have one target after duplicate AddProbe")
 }
 
 func TestPinger_AddProbe_InvalidHost(t *testing.T) {
@@ -140,11 +146,11 @@ func TestPinger_AddProbe_InvalidHost(t *testing.T) {
 	err := pinger.AddProbe(ctx, addr)
 	assert.Error(t, err, "should fail with invalid IP address")
 
-	pinger.sendersMu.Lock()
-	count := len(pinger.senders)
-	pinger.sendersMu.Unlock()
+	pinger.targetsMu.Lock()
+	count := len(pinger.targets)
+	pinger.targetsMu.Unlock()
 
-	assert.Equal(t, 0, count, "should not add sender for invalid IP")
+	assert.Equal(t, 0, count, "should not add target for invalid IP")
 }
 
 func TestPinger_RemoveProbe(t *testing.T) {
@@ -173,9 +179,9 @@ func TestPinger_RemoveProbe(t *testing.T) {
 	err = pinger.RemoveProbe(addr)
 	require.NoError(t, err)
 
-	pinger.sendersMu.Lock()
-	_, exists := pinger.senders[addr.String()]
-	pinger.sendersMu.Unlock()
+	pinger.targetsMu.Lock()
+	_, exists := pinger.targets[addr.String()]
+	pinger.targetsMu.Unlock()
 
 	assert.False(t, exists, "probe should not exist after RemoveProbe")
 }
@@ -276,11 +282,11 @@ func TestPinger_Close(t *testing.T) {
 	err = pinger.Close()
 	assert.NoError(t, err)
 
-	pinger.sendersMu.Lock()
-	count := len(pinger.senders)
-	pinger.sendersMu.Unlock()
+	pinger.targetsMu.Lock()
+	count := len(pinger.targets)
+	pinger.targetsMu.Unlock()
 
-	assert.Equal(t, 0, count, "all senders should be removed after Close")
+	assert.Equal(t, 0, count, "all targets should be removed after Close")
 }
 
 func TestPinger_Concurrent(t *testing.T) {
@@ -324,9 +330,9 @@ func TestPinger_Concurrent(t *testing.T) {
 
 	wg.Wait()
 
-	pinger.sendersMu.Lock()
-	count := len(pinger.senders)
-	pinger.sendersMu.Unlock()
+	pinger.targetsMu.Lock()
+	count := len(pinger.targets)
+	pinger.targetsMu.Unlock()
 
 	assert.Equal(t, 0, count, "all probes should be removed after concurrent operations")
 }
@@ -354,25 +360,25 @@ func TestPinger_AddRemoveSequential(t *testing.T) {
 	err := pinger.AddProbe(ctx, addr)
 	require.NoError(t, err)
 
-	pinger.sendersMu.Lock()
-	count1 := len(pinger.senders)
-	pinger.sendersMu.Unlock()
+	pinger.targetsMu.Lock()
+	count1 := len(pinger.targets)
+	pinger.targetsMu.Unlock()
 	assert.Equal(t, 1, count1)
 
 	err = pinger.RemoveProbe(addr)
 	require.NoError(t, err)
 
-	pinger.sendersMu.Lock()
-	count2 := len(pinger.senders)
-	pinger.sendersMu.Unlock()
+	pinger.targetsMu.Lock()
+	count2 := len(pinger.targets)
+	pinger.targetsMu.Unlock()
 	assert.Equal(t, 0, count2)
 
 	err = pinger.AddProbe(ctx, addr)
 	require.NoError(t, err)
 
-	pinger.sendersMu.Lock()
-	count3 := len(pinger.senders)
-	pinger.sendersMu.Unlock()
+	pinger.targetsMu.Lock()
+	count3 := len(pinger.targets)
+	pinger.targetsMu.Unlock()
 	assert.Equal(t, 1, count3)
 }
 
@@ -579,13 +585,14 @@ func TestPinger_DualProbe_MinRTT(t *testing.T) {
 	}
 
 	pinger := NewPinger(cfg)
+	pinger.newSender = mockFactory(
+		&mockSender{rtt: 10 * time.Millisecond},
+		&mockSender{rtt: 50 * time.Millisecond},
+	)
 
 	addr := ProbeAddress{Host: "192.0.2.1", Port: 8923, TWAMPPort: 8925}
-	pinger.senders[addr.String()] = &senderEntry{
-		addr:         addr,
-		sender:       &mockSender{rtt: 10 * time.Millisecond},
-		warmupSender: &mockSender{rtt: 50 * time.Millisecond},
-	}
+	err := pinger.AddProbe(context.Background(), addr)
+	require.NoError(t, err)
 
 	results, err := pinger.MeasureAll(context.Background())
 	require.NoError(t, err)
@@ -606,13 +613,14 @@ func TestPinger_DualProbe_OneFailsUsesOther(t *testing.T) {
 	}
 
 	pinger := NewPinger(cfg)
+	pinger.newSender = mockFactory(
+		&mockSender{err: context.DeadlineExceeded},
+		&mockSender{rtt: 20 * time.Millisecond},
+	)
 
 	addr := ProbeAddress{Host: "192.0.2.1", Port: 8923, TWAMPPort: 8925}
-	pinger.senders[addr.String()] = &senderEntry{
-		addr:         addr,
-		sender:       &mockSender{err: context.DeadlineExceeded},
-		warmupSender: &mockSender{rtt: 20 * time.Millisecond},
-	}
+	err := pinger.AddProbe(context.Background(), addr)
+	require.NoError(t, err)
 
 	results, err := pinger.MeasureAll(context.Background())
 	require.NoError(t, err)
@@ -633,13 +641,14 @@ func TestPinger_DualProbe_BothFail(t *testing.T) {
 	}
 
 	pinger := NewPinger(cfg)
+	pinger.newSender = mockFactory(
+		&mockSender{err: context.DeadlineExceeded},
+		&mockSender{err: context.DeadlineExceeded},
+	)
 
 	addr := ProbeAddress{Host: "192.0.2.1", Port: 8923, TWAMPPort: 8925}
-	pinger.senders[addr.String()] = &senderEntry{
-		addr:         addr,
-		sender:       &mockSender{err: context.DeadlineExceeded},
-		warmupSender: &mockSender{err: context.DeadlineExceeded},
-	}
+	err := pinger.AddProbe(context.Background(), addr)
+	require.NoError(t, err)
 
 	results, err := pinger.MeasureAll(context.Background())
 	require.NoError(t, err)
@@ -675,12 +684,14 @@ func TestPinger_MeasureOne_Success(t *testing.T) {
 		StaggerDelay: 1 * time.Millisecond,
 	})
 
+	pinger.newSender = mockFactory(
+		&mockSender{rtt: 10 * time.Millisecond},
+		&mockSender{rtt: 50 * time.Millisecond},
+	)
+
 	addr := ProbeAddress{Host: "192.0.2.1", Port: 8923, TWAMPPort: 8925}
-	pinger.senders[addr.String()] = &senderEntry{
-		addr:         addr,
-		sender:       &mockSender{rtt: 10 * time.Millisecond},
-		warmupSender: &mockSender{rtt: 50 * time.Millisecond},
-	}
+	err := pinger.AddProbe(context.Background(), addr)
+	require.NoError(t, err)
 
 	rtt, ok := pinger.MeasureOne(context.Background(), addr)
 	assert.True(t, ok)
@@ -699,12 +710,14 @@ func TestPinger_MeasureOne_BothFail(t *testing.T) {
 		StaggerDelay: 1 * time.Millisecond,
 	})
 
+	pinger.newSender = mockFactory(
+		&mockSender{err: context.DeadlineExceeded},
+		&mockSender{err: context.DeadlineExceeded},
+	)
+
 	addr := ProbeAddress{Host: "192.0.2.1", Port: 8923, TWAMPPort: 8925}
-	pinger.senders[addr.String()] = &senderEntry{
-		addr:         addr,
-		sender:       &mockSender{err: context.DeadlineExceeded},
-		warmupSender: &mockSender{err: context.DeadlineExceeded},
-	}
+	err := pinger.AddProbe(context.Background(), addr)
+	require.NoError(t, err)
 
 	rtt, ok := pinger.MeasureOne(context.Background(), addr)
 	assert.False(t, ok)

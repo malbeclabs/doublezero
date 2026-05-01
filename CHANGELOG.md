@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Client
+  - Add `--sock-file` global flag (aliases: `--socket`, `--socket-path`) to the `doublezero` CLI to override the default Unix socket path used to communicate with `doublezerod` (`/var/run/doublezerod/doublezerod.sock`)
 - Controller
   - Fix unknown BGP peer cleanup in the Arista EOS template: hoist per-peer `no neighbor X` removal into its own `router bgp 65342` block so EOS's silent context-exit on `no neighbor` for a non-existent peer can't misroute subsequent peers' removal commands ([#3627](https://github.com/malbeclabs/doublezero/pull/3627))
 - Telemetry

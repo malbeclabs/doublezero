@@ -19,8 +19,10 @@ router pim sparse-mode
       rp address 10.0.0.0 239.0.0.0/24 override
 !
 vrf instance vrf1
+vrf instance vrf2
 ip routing
 ip routing vrf vrf1
+ip routing vrf vrf2
 !
 ntp server 0.pool.ntp.org
 ntp server 1.pool.ntp.org
@@ -92,7 +94,7 @@ interface Tunnel500
 interface Tunnel501
    description USER-UCAST-501
    ip access-group SEC-USER-501-IN in
-   vrf vrf1
+   vrf vrf2
    mtu 9216
    ip address 169.254.0.2/31
    tunnel mode gre
@@ -105,7 +107,7 @@ interface Tunnel501
 interface Tunnel502
    description USER-UCAST-502
    ip access-group SEC-USER-502-IN in
-   vrf vrf1
+   vrf vrf2
    mtu 9216
    ip address 169.254.0.4/31
    tunnel mode gre
@@ -124,6 +126,8 @@ router bgp 65342
       no neighbor 169.254.0.7
    !
    vrf vrf1
+      no neighbor 169.254.0.7
+   vrf vrf2
       no neighbor 169.254.0.7
 !
 router bgp 65342
@@ -148,6 +152,11 @@ router bgp 65342
       neighbor 169.254.0.1 route-map RM-USER-500-OUT out
       neighbor 169.254.0.1 maximum-routes 1
       neighbor 169.254.0.1 maximum-accepted-routes 1
+   vrf vrf2
+      rd 65342:2
+      route-target import vpn-ipv4 65342:2
+      route-target export vpn-ipv4 65342:2
+      router-id 7.7.7.7
       no neighbor 169.254.0.3
       neighbor 169.254.0.3 remote-as 65000
       neighbor 169.254.0.3 local-as 21682 no-prepend replace-as

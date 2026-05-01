@@ -78,8 +78,7 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 	if normalizeEnum(device.Health) == "ready-for-users" && normalizeEnum(device.Status) == "activated" {
 		t.Log("Device is healthy — previous provisioning verified")
 	} else {
-		t.Logf("WARNING: device is not healthy (status=%s health=%s) — previous provisioning may have failed, reprovisioning", device.Status, device.Health)
-		// TODO: fire an alert here
+		t.Errorf("device is not healthy (status=%s health=%s) — previous provisioning may have failed, reprovisioning", device.Status, device.Health)
 	}
 
 	oldPubkey := device.Pubkey

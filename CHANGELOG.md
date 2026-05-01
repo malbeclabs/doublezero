@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
   - Add `AccessPassType::EdgeSeat(Pubkey)` variant to associate an access pass with a specific onchain Seat pubkey
   - Add `--accesspass-type edge-seat --seat <PUBKEY>` to `access-pass set`
   - Add `--edge-seat` and `--seat-pubkey` filters to `access-pass list`
+- CLI
+  - `doublezero -V` now shows client version, program version, and minimum required version fetched from the serviceability program
 
 ## [v0.20.0](https://github.com/malbeclabs/doublezero/compare/client/v0.19.0...client/v0.20.0) - 2026-04-29
 

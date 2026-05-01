@@ -15,7 +15,6 @@ env:
   SHRED_BASE_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/base:${{ github.event.pull_request.head.sha || github.sha }}
   SHRED_LEDGER_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/ledger:${{ github.event.pull_request.head.sha || github.sha }}
   SHRED_MANAGER_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/manager:${{ github.event.pull_request.head.sha || github.sha }}
-  SHRED_ACTIVATOR_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/activator:${{ github.event.pull_request.head.sha || github.sha }}
   SHRED_ORACLE_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/oracle:${{ github.event.pull_request.head.sha || github.sha }}
   SHRED_CLIENT_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/client:${{ github.event.pull_request.head.sha || github.sha }}
 
@@ -60,7 +59,6 @@ jobs:
           docker push ${{ env.SHRED_IMAGE_REPO }}/base:${{ env.SHRED_IMAGE_TAG }}
           docker push ${{ env.SHRED_IMAGE_REPO }}/ledger:${{ env.SHRED_IMAGE_TAG }}
           docker push ${{ env.SHRED_IMAGE_REPO }}/manager:${{ env.SHRED_IMAGE_TAG }}
-          docker push ${{ env.SHRED_IMAGE_REPO }}/activator:${{ env.SHRED_IMAGE_TAG }}
           docker push ${{ env.SHRED_IMAGE_REPO }}/oracle:${{ env.SHRED_IMAGE_TAG }}
           docker push ${{ env.SHRED_IMAGE_REPO }}/client:${{ env.SHRED_IMAGE_TAG }}
       - name: Discover tests and distribute across shards
@@ -174,7 +172,6 @@ jobs:
           pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/base:${{ env.SHRED_IMAGE_TAG }}
           pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/ledger:${{ env.SHRED_IMAGE_TAG }}
           pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/manager:${{ env.SHRED_IMAGE_TAG }}
-          pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/activator:${{ env.SHRED_IMAGE_TAG }}
           pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/oracle:${{ env.SHRED_IMAGE_TAG }}
           pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/client:${{ env.SHRED_IMAGE_TAG }}
       - name: Run e2e tests

@@ -30,16 +30,17 @@ import (
 )
 
 const (
-	defaultTWAMPListenPort       = 8925
-	defaultSignedTWAMPListenPort = 8924
-	defaultUDPListenPort         = 8923
-	defaultProbeInterval         = 30 * time.Second
-	defaultTWAMPSenderTimeout    = 1 * time.Second
-	defaultTWAMPReflectorTimeout = 1 * time.Second
-	defaultMaxOffsetAge          = 1 * time.Hour
-	defaultEvictionInterval      = 30 * time.Minute
-	defaultVerifyInterval        = 29 * time.Second
-	discoveryInterval            = 60 * time.Second
+	defaultTWAMPListenPort            = 8925
+	defaultSignedTWAMPListenPort      = 8924
+	defaultUDPListenPort              = 8923
+	defaultProbeInterval              = 30 * time.Second
+	defaultTWAMPSenderTimeout         = 1 * time.Second
+	defaultTWAMPReflectorTimeout      = 1 * time.Second
+	defaultMaxOffsetAge               = 1 * time.Hour
+	defaultEvictionInterval           = 30 * time.Minute
+	defaultVerifyInterval             = 29 * time.Second
+	discoveryInterval                 = 60 * time.Second
+	defaultDeliveryDNSRefreshInterval = 5 * time.Minute
 )
 
 var (
@@ -612,6 +613,9 @@ func main() {
 
 	// Run main measurement loop. This runs regardless of whether trusted parents
 	// are configured at startup, since they may be added dynamically at runtime.
+	deliveryDNS := geoprobe.NewDeliveryDNSRefresher(log, defaultDeliveryDNSRefreshInterval)
+	go deliveryDNS.Start(ctx, defaultDeliveryDNSRefreshInterval)
+
 	go func() {
 		ml := &measurementLoop{
 			ctx:                ctx,
@@ -624,7 +628,7 @@ func main() {
 			getCurrentSlot:     getCurrentSlot,
 			signedReflector:    signedReflector,
 			metrics:            m,
-			dnsCache:           geoprobe.NewDNSCache(5 * time.Minute),
+			deliveryDNS:        deliveryDNS,
 			targetUpdateCh:     targetUpdateCh,
 			icmpTargetUpdateCh: icmpTargetUpdateCh,
 			inboundKeyCh:       inboundKeyCh,
@@ -740,7 +744,7 @@ type measurementLoop struct {
 	getCurrentSlot  func(ctx context.Context) (uint64, error)
 	signedReflector signed.Reflector
 	metrics         *geoprobe.Metrics
-	dnsCache        *geoprobe.DNSCache
+	deliveryDNS     *geoprobe.DeliveryDNSRefresher
 
 	targets           []geoprobe.ProbeAddress
 	icmpTargets       []geoprobe.ProbeAddress
@@ -798,6 +802,31 @@ func (ml *measurementLoop) reconcileTargets(
 	return newTargets, rttData
 }
 
+// uniqueDeliveryHostPorts returns distinct non-empty result-destination strings
+// from outbound and ICMP delivery maps.
+func uniqueDeliveryHostPorts(outbound, icmp map[geoprobe.ProbeAddress]string) []string {
+	seen := make(map[string]struct{})
+	for _, v := range outbound {
+		if v != "" {
+			seen[v] = struct{}{}
+		}
+	}
+	for _, v := range icmp {
+		if v != "" {
+			seen[v] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for k := range seen {
+		out = append(out, k)
+	}
+	return out
+}
+
+func (ml *measurementLoop) updateDesiredDeliveryDNS() {
+	ml.deliveryDNS.SetDesiredHostPorts(uniqueDeliveryHostPorts(ml.deliveryAddrs, ml.icmpDeliveryAddrs))
+}
+
 func (ml *measurementLoop) run() error {
 	measureTicker := time.NewTicker(*probeInterval)
 	defer measureTicker.Stop()
@@ -820,6 +849,7 @@ func (ml *measurementLoop) run() error {
 			)
 			ml.targets = newTargets
 			ml.deliveryAddrs = update.DeliveryAddrs
+			ml.updateDesiredDeliveryDNS()
 			ml.metrics.TargetsDiscovered.Set(float64(len(ml.targets)))
 			ml.log.Info("Updated targets from discovery", "totalTargets", len(ml.targets))
 			if len(rttData) > 0 {
@@ -836,6 +866,7 @@ func (ml *measurementLoop) run() error {
 			)
 			ml.icmpTargets = newTargets
 			ml.icmpDeliveryAddrs = icmpUpdate.DeliveryAddrs
+			ml.updateDesiredDeliveryDNS()
 			ml.metrics.IcmpTargetsDiscovered.Set(float64(len(ml.icmpTargets)))
 			ml.log.Info("Updated ICMP targets from discovery", "totalIcmpTargets", len(ml.icmpTargets))
 			if len(rttData) > 0 {
@@ -954,11 +985,11 @@ func (ml *measurementLoop) sendCompositeOffsets(
 		_, isICMP := icmpTargets[addr]
 
 		if hasDelivery {
-			// Result destination override — resolve (may involve DNS).
-			resolved, resolveErr := ml.dnsCache.Resolve(deliveryDest)
-			if resolveErr != nil {
-				ml.log.Warn("Failed to resolve delivery address, skipping target",
-					"target", addr, "delivery", deliveryDest, "error", resolveErr)
+			// Result destination override — use addresses refreshed off the measurement loop.
+			resolved, ok := ml.deliveryDNS.Lookup(deliveryDest)
+			if !ok {
+				ml.log.Warn("Delivery address not ready or invalid, skipping target",
+					"target", addr, "delivery", deliveryDest)
 				continue
 			}
 			targetAddr = resolved

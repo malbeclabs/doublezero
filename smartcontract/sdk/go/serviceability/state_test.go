@@ -2,6 +2,7 @@ package serviceability_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -430,6 +431,90 @@ func TestCustomJSONMarshal(t *testing.T) {
 				require.NoError(t, err)
 				assert.JSONEq(t, tc.expected, string(actualJSON), "The marshaled JSON should match the expected output.")
 			}
+		})
+	}
+}
+
+func TestEnumStringDefensive(t *testing.T) {
+	testCases := []struct {
+		name           string
+		maxValidValue  uint8
+		maxValidString string
+		stringFunc     func(v uint8) string
+	}{
+		{
+			name:           "DeviceDeviceType",
+			maxValidValue:  2,
+			maxValidString: "edge",
+			stringFunc:     func(v uint8) string { return serviceability.DeviceDeviceType(v).String() },
+		},
+		{
+			name:           "InterfaceStatus",
+			maxValidValue:  6,
+			maxValidString: "unlinked",
+			stringFunc:     func(v uint8) string { return serviceability.InterfaceStatus(v).String() },
+		},
+		{
+			name:           "InterfaceType",
+			maxValidValue:  2,
+			maxValidString: "physical",
+			stringFunc:     func(v uint8) string { return serviceability.InterfaceType(v).String() },
+		},
+		{
+			name:           "LoopbackType",
+			maxValidValue:  4,
+			maxValidString: "reserved",
+			stringFunc:     func(v uint8) string { return serviceability.LoopbackType(v).String() },
+		},
+		{
+			name:           "InterfaceCYOA",
+			maxValidValue:  5,
+			maxValidString: "gre_over_cable",
+			stringFunc:     func(v uint8) string { return serviceability.InterfaceCYOA(v).String() },
+		},
+		{
+			name:           "InterfaceDIA",
+			maxValidValue:  1,
+			maxValidString: "dia",
+			stringFunc:     func(v uint8) string { return serviceability.InterfaceDIA(v).String() },
+		},
+		{
+			name:           "RoutingMode",
+			maxValidValue:  1,
+			maxValidString: "bgp",
+			stringFunc:     func(v uint8) string { return serviceability.RoutingMode(v).String() },
+		},
+		{
+			name:           "TenantPaymentStatus",
+			maxValidValue:  1,
+			maxValidString: "paid",
+			stringFunc:     func(v uint8) string { return serviceability.TenantPaymentStatus(v).String() },
+		},
+		{
+			name:           "UserUserType",
+			maxValidValue:  3,
+			maxValidString: "multicast",
+			stringFunc:     func(v uint8) string { return serviceability.UserUserType(v).String() },
+		},
+		{
+			name:           "CyoaType",
+			maxValidValue:  5,
+			maxValidString: "gre_over_cable",
+			stringFunc:     func(v uint8) string { return serviceability.CyoaType(v).String() },
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name+"/max_valid", func(t *testing.T) {
+			assert.Equal(t, tc.maxValidString, tc.stringFunc(tc.maxValidValue))
+		})
+
+		t.Run(tc.name+"/out_of_range", func(t *testing.T) {
+			var result string
+			assert.NotPanics(t, func() {
+				result = tc.stringFunc(255)
+			})
+			assert.Equal(t, fmt.Sprintf("unknown(%d)", 255), result)
 		})
 	}
 }

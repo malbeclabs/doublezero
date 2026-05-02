@@ -149,11 +149,15 @@ const (
 )
 
 func (d DeviceDeviceType) String() string {
-	return [...]string{
+	s := [...]string{
 		"hybrid",
 		"transit",
 		"edge",
-	}[d]
+	}
+	if int(d) >= len(s) {
+		return fmt.Sprintf("unknown(%d)", d)
+	}
+	return s[d]
 }
 
 type DeviceStatus uint8
@@ -266,7 +270,7 @@ const (
 )
 
 func (i InterfaceStatus) String() string {
-	return [...]string{
+	s := [...]string{
 		"invalid",
 		"unmanaged",
 		"pending",
@@ -274,7 +278,11 @@ func (i InterfaceStatus) String() string {
 		"deleting",
 		"rejecting",
 		"unlinked",
-	}[i]
+	}
+	if int(i) >= len(s) {
+		return fmt.Sprintf("unknown(%d)", i)
+	}
+	return s[i]
 }
 
 func (i InterfaceStatus) MarshalJSON() ([]byte, error) {
@@ -290,11 +298,15 @@ const (
 )
 
 func (i InterfaceType) String() string {
-	return [...]string{
+	s := [...]string{
 		"invalid",
 		"loopback",
 		"physical",
-	}[i]
+	}
+	if int(i) >= len(s) {
+		return fmt.Sprintf("unknown(%d)", i)
+	}
+	return s[i]
 }
 
 func (i InterfaceType) MarshalJSON() ([]byte, error) {
@@ -312,13 +324,17 @@ const (
 )
 
 func (l LoopbackType) String() string {
-	return [...]string{
+	s := [...]string{
 		"none",
 		"vpnv4",
 		"ipv4",
 		"pim_rp_addr",
 		"reserved",
-	}[l]
+	}
+	if int(l) >= len(s) {
+		return fmt.Sprintf("unknown(%d)", l)
+	}
+	return s[l]
 }
 
 func (l LoopbackType) MarshalJSON() ([]byte, error) {
@@ -337,14 +353,18 @@ const (
 )
 
 func (l InterfaceCYOA) String() string {
-	return [...]string{
+	s := [...]string{
 		"none",
 		"gre_over_dia",
 		"gre_over_fabric",
 		"gre_over_private_peering",
 		"gre_over_public_peering",
 		"gre_over_cable",
-	}[l]
+	}
+	if int(l) >= len(s) {
+		return fmt.Sprintf("unknown(%d)", l)
+	}
+	return s[l]
 }
 
 func (l InterfaceCYOA) MarshalJSON() ([]byte, error) {
@@ -359,10 +379,14 @@ const (
 )
 
 func (l InterfaceDIA) String() string {
-	return [...]string{
+	s := [...]string{
 		"none",
 		"dia",
-	}[l]
+	}
+	if int(l) >= len(s) {
+		return fmt.Sprintf("unknown(%d)", l)
+	}
+	return s[l]
 }
 
 func (l InterfaceDIA) MarshalJSON() ([]byte, error) {
@@ -377,10 +401,14 @@ const (
 )
 
 func (l RoutingMode) String() string {
-	return [...]string{
+	s := [...]string{
 		"static",
 		"bgp",
-	}[l]
+	}
+	if int(l) >= len(s) {
+		return fmt.Sprintf("unknown(%d)", l)
+	}
+	return s[l]
 }
 
 func (l RoutingMode) MarshalJSON() ([]byte, error) {
@@ -789,11 +817,15 @@ const (
 	TenantPaymentStatusPaid
 )
 
-func (s TenantPaymentStatus) String() string {
-	return [...]string{
+func (t TenantPaymentStatus) String() string {
+	s := [...]string{
 		"delinquent",
 		"paid",
-	}[s]
+	}
+	if int(t) >= len(s) {
+		return fmt.Sprintf("unknown(%d)", t)
+	}
+	return s[t]
 }
 
 func (s TenantPaymentStatus) MarshalJSON() ([]byte, error) {
@@ -860,12 +892,16 @@ const (
 const UserTypeIBRLWithAllocIP = UserTypeIBRLWithAllocatedIP
 
 func (u UserUserType) String() string {
-	return [...]string{
+	s := [...]string{
 		"ibrl",
 		"ibrl_with_allocated_ip",
 		"edge_filtering",
 		"multicast",
-	}[u]
+	}
+	if int(u) >= len(s) {
+		return fmt.Sprintf("unknown(%d)", u)
+	}
+	return s[u]
 }
 
 func (u UserUserType) MarshalJSON() ([]byte, error) {
@@ -883,14 +919,18 @@ const (
 )
 
 func (c CyoaType) String() string {
-	return [...]string{
+	s := [...]string{
 		"unknown",
 		"gre_over_dia",
 		"gre_over_fabric",
 		"gre_over_private_peering",
 		"gre_over_public_peering",
 		"gre_over_cable",
-	}[c]
+	}
+	if int(c) >= len(s) {
+		return fmt.Sprintf("unknown(%d)", c)
+	}
+	return s[c]
 }
 
 func (c CyoaType) MarshalJSON() ([]byte, error) {

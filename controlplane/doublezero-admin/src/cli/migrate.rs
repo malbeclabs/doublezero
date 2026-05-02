@@ -107,7 +107,7 @@ impl FlexAlgoMigrateCliCommand {
 
             for (device_pubkey, device) in &device_entries {
                 let needs_backfill = device.interfaces.iter().any(|iface| {
-                    let current = iface.into_current_version();
+                    let current = iface.into_v3();
                     current.loopback_type == LoopbackType::Vpnv4
                         && !current
                             .flex_algo_node_segments

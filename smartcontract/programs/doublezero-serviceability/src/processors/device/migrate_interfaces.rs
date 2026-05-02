@@ -231,11 +231,8 @@ pub fn process_migrate_device_interfaces(
     // Convert all V1/V2 interfaces to V3 (adding empty flex_algo_node_segments vec).
     let migrated: Vec<Interface> = device
         .interfaces
-        .drain(..)
-        .map(|iface| match iface {
-            Interface::V3(_) => iface,
-            _ => Interface::V3(iface.into_current_version()),
-        })
+        .iter()
+        .map(|iface| Interface::V3(iface.into_v3()))
         .collect();
     device.interfaces = migrated;
 

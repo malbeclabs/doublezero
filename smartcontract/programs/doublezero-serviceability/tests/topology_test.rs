@@ -1690,7 +1690,7 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found");
-    let iface = device.interfaces[0].into_current_version();
+    let iface = device.interfaces[0].into_v3();
     assert_eq!(
         iface.flex_algo_node_segments.len(),
         0,
@@ -1722,7 +1722,7 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found after backfill");
-    let iface = device.interfaces[0].into_current_version();
+    let iface = device.interfaces[0].into_v3();
     assert_eq!(
         iface.flex_algo_node_segments.len(),
         1,
@@ -1749,7 +1749,7 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found after second backfill");
-    let iface = device.interfaces[0].into_current_version();
+    let iface = device.interfaces[0].into_v3();
     assert_eq!(
         iface.flex_algo_node_segments.len(),
         1,
@@ -2052,7 +2052,7 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found");
-    let iface = device.interfaces[0].into_current_version();
+    let iface = device.interfaces[0].into_v3();
     assert_eq!(
         iface.node_segment_idx, 1,
         "Base node_segment_idx should be 1 (first ID from SegmentRoutingIds)"
@@ -2100,7 +2100,7 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found after backfill");
-    let iface = device.interfaces[0].into_current_version();
+    let iface = device.interfaces[0].into_v3();
     assert_eq!(
         iface.node_segment_idx, 1,
         "Base node_segment_idx must remain 1"

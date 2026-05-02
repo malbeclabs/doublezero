@@ -136,7 +136,6 @@ mod tests {
                 ip_net: "10.0.0.1/24".parse().unwrap(),
                 node_segment_idx: 42,
                 user_tunnel_endpoint: true,
-                flex_algo_node_segments: vec![],
             }
             .to_interface()],
             max_users: 255,

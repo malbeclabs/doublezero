@@ -1340,6 +1340,7 @@ async fn test_device_interfaces() {
             AccountMeta::new(device2_pubkey, false),
             AccountMeta::new(contributor2_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
         ],
         &payer,
     )

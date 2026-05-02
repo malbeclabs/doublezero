@@ -4,11 +4,7 @@ use crate::{
     processors::{resource::deallocate_ip, validation::validate_program_account},
     resource::ResourceType,
     serializer::{try_acc_close, try_acc_write},
-    state::{
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        globalstate::GlobalState,
-        multicastgroup::*,
-    },
+    state::{globalstate::GlobalState, multicastgroup::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -114,10 +110,6 @@ pub fn process_delete_multicastgroup(
 
     if let Some((multicast_group_block_ext, owner_account)) = deallocation_accounts {
         // Atomic delete+deallocate+close path
-        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-            return Err(DoubleZeroError::FeatureNotEnabled.into());
-        }
-
         let (expected_pda, _, _) =
             get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
         validate_program_account!(

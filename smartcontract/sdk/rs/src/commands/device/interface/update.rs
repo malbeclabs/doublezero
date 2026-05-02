@@ -53,7 +53,10 @@ impl UpdateDeviceInterfaceCommand {
         // Include SegmentRoutingIds resource account when updating node_segment_idx
         // with onchain allocation enabled
         if self.node_segment_idx.is_some()
-            && is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation)
+            && is_feature_enabled(
+                globalstate.feature_flags,
+                FeatureFlag::OnChainAllocationDeprecated,
+            )
         {
             let (seg_routing_pda, _, _) = get_resource_extension_pda(
                 &client.get_program_id(),
@@ -219,7 +222,7 @@ mod tests {
             user_airdrop_lamports: 40_000,
             health_oracle_pk: Pubkey::new_unique(),
             qa_allowlist: vec![],
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
             feed_authority_pk: Pubkey::default(),
         };
         client

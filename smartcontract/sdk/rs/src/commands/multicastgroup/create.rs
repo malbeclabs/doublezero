@@ -26,8 +26,10 @@ impl CreateMulticastGroupCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let use_onchain_allocation =
-            is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation);
+        let use_onchain_allocation = is_feature_enabled(
+            globalstate.feature_flags,
+            FeatureFlag::OnChainAllocationDeprecated,
+        );
 
         let (pda_pubkey, _) =
             get_multicastgroup_pda(&client.get_program_id(), globalstate.account_index + 1);
@@ -144,7 +146,7 @@ mod tests {
             user_airdrop_lamports: 40_000,
             health_oracle_pk: Pubkey::new_unique(),
             qa_allowlist: vec![],
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
             feed_authority_pk: Pubkey::default(),
         };
         client

@@ -6,13 +6,8 @@ use crate::{
     seeds::{SEED_DEVICE, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
-        accounttype::AccountType,
-        contributor::Contributor,
-        device::*,
-        exchange::Exchange,
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        globalstate::GlobalState,
-        location::Location,
+        accounttype::AccountType, contributor::Contributor, device::*, exchange::Exchange,
+        globalstate::GlobalState, location::Location,
     },
 };
 use borsh::BorshSerialize;
@@ -205,10 +200,6 @@ pub fn process_create_device(
 
     // Atomic create+activate with onchain resource allocation
     if value.resource_count > 0 {
-        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-            return Err(DoubleZeroError::FeatureNotEnabled.into());
-        }
-
         assert!(
             value.resource_count >= 2,
             "Resource count must be at least 2 (TunnelIds and at least one DzPrefixBlock)"

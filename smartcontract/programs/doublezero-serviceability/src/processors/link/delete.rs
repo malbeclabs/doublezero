@@ -159,13 +159,12 @@ pub fn process_delete_link(
             return Err(ProgramError::InvalidAccountData);
         }
 
-        // Deallocate resources via helper (checks feature flag, validates PDAs)
+        // Deallocate resources via helper (validates PDAs)
         resource_onchain_helpers::validate_and_deallocate_link_resources(
             program_id,
             &link,
             device_tunnel_block_ext,
             link_ids_ext,
-            &globalstate,
         )?;
 
         // Reset interfaces to Unlinked

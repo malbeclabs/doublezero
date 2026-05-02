@@ -9,7 +9,6 @@ use crate::{
     serializer::try_acc_write,
     state::{
         accesspass::AccessPass,
-        feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         user::{User, UserStatus},
@@ -264,13 +263,6 @@ pub fn process_update_multicastgroup_roles(
 
     if let Some(multicast_publisher_block_ext) = onchain_accounts {
         // Onchain allocation path: allocate dz_ip directly, skip Updating status
-        let globalstate = globalstate_opt
-            .as_ref()
-            .expect("globalstate required for onchain allocation");
-        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-            return Err(DoubleZeroError::FeatureNotEnabled.into());
-        }
-
         // Allocate dz_ip when gaining first publisher
         if result.publisher_list_transitioned
             && value.publisher

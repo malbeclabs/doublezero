@@ -11,7 +11,6 @@ use crate::{
         accounttype::AccountType,
         contributor::Contributor,
         device::*,
-        feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         interface::{
             CurrentInterfaceVersion, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType,
@@ -178,12 +177,8 @@ pub fn process_create_device_interface(
     let mut ip_net = value.ip_net.unwrap_or_default();
     let mut node_segment_idx: u16 = 0;
 
-    // Atomic create+allocate+activate if onchain allocation is enabled
+    // Atomic create+allocate+activate when ResourceExtension accounts are provided
     if let Some((device_tunnel_block_ext, segment_routing_ids_ext)) = resource_accounts {
-        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-            return Err(DoubleZeroError::FeatureNotEnabled.into());
-        }
-
         let (expected_dtb_pda, _, _) =
             get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
         validate_program_account!(

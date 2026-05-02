@@ -32,8 +32,10 @@ impl RequestBanUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let use_onchain_deallocation =
-            is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation);
+        let use_onchain_deallocation = is_feature_enabled(
+            globalstate.feature_flags,
+            FeatureFlag::OnChainAllocationDeprecated,
+        );
 
         let user = client
             .get(self.pubkey)
@@ -198,7 +200,7 @@ mod tests {
             user_airdrop_lamports: 40_000,
             health_oracle_pk: Pubkey::new_unique(),
             qa_allowlist: vec![],
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
             feed_authority_pk: Pubkey::default(),
         };
         client

@@ -2226,7 +2226,7 @@ async fn atomic_create_user_with_resources(
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         payer,
@@ -2445,60 +2445,6 @@ async fn test_create_user_atomic_backward_compat() {
     println!("[PASS] test_create_user_atomic_backward_compat");
 }
 
-/// Test that atomic create fails when feature flag is disabled
-#[tokio::test]
-async fn test_create_user_atomic_feature_flag_disabled() {
-    println!("[TEST] test_create_user_atomic_feature_flag_disabled");
-
-    let client_ip = [100, 0, 0, 3];
-    let (
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        user_pubkey,
-        accesspass_pubkey,
-        (user_tunnel_block, multicast_publisher_block, tunnel_ids, dz_prefix_block),
-    ) = setup_user_infra_without_user(UserType::IBRL, client_ip).await;
-
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // Feature flag NOT enabled — atomic create should fail
-    let result = execute_transaction_expect_failure(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateUser(UserCreateArgs {
-            client_ip: client_ip.into(),
-            user_type: UserType::IBRL,
-            cyoa_type: UserCYOA::GREOverDIA,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 1,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    assert!(result.is_err(), "Should fail when feature flag is disabled");
-
-    // Verify user account was NOT created
-    let user_data = get_account_data(&mut banks_client, user_pubkey).await;
-    assert!(user_data.is_none(), "User account should not exist");
-
-    println!("[PASS] test_create_user_atomic_feature_flag_disabled");
-}
-
 // ============================================================================
 // DeleteUser Atomic Tests
 // ============================================================================
@@ -2532,7 +2478,7 @@ async fn test_delete_user_atomic_with_deallocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -2735,95 +2681,6 @@ async fn test_delete_user_atomic_backward_compat() {
     println!("[PASS] test_delete_user_atomic_backward_compat");
 }
 
-#[tokio::test]
-async fn test_delete_user_atomic_feature_flag_disabled() {
-    println!("[TEST] test_delete_user_atomic_feature_flag_disabled");
-
-    let client_ip = [100, 0, 0, 12];
-    let (
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        user_pubkey,
-        accesspass_pubkey,
-        (
-            user_tunnel_block_pubkey,
-            _multicast_publisher_block_pubkey,
-            tunnel_ids_pubkey,
-            dz_prefix_block_pubkey,
-        ),
-    ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
-
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    // Activate user with legacy path (no feature flag needed for legacy activate)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 501,
-            tunnel_net: "169.254.0.0/25".parse().unwrap(),
-            dz_ip: [200, 0, 0, 1].into(),
-            dz_prefix_count: 0,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    // Atomic delete WITHOUT feature flag enabled should fail
-    let result = try_execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-            dz_prefix_count: 1,
-            multicast_publisher_count: 0,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-            AccountMeta::new(payer.pubkey(), false), // owner
-        ],
-        &payer,
-    )
-    .await;
-
-    assert!(
-        result.is_err(),
-        "Atomic delete should fail when OnChainAllocation feature flag is disabled"
-    );
-
-    // User should still exist (not closed)
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("User should still exist after failed atomic delete")
-        .get_user()
-        .unwrap();
-    assert_eq!(
-        user.status,
-        UserStatus::Activated,
-        "User status should be unchanged after failed atomic delete"
-    );
-
-    println!("[PASS] test_delete_user_atomic_feature_flag_disabled");
-}
-
 // ============================================================================
 // RequestBanUser Atomic Deallocation Tests
 // ============================================================================
@@ -2857,7 +2714,7 @@ async fn test_request_ban_user_onchain_deallocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -3092,92 +2949,6 @@ async fn test_request_ban_user_legacy_backward_compat() {
     println!("[PASS] test_request_ban_user_legacy_backward_compat");
 }
 
-#[tokio::test]
-async fn test_request_ban_user_onchain_feature_flag_disabled() {
-    println!("[TEST] test_request_ban_user_onchain_feature_flag_disabled");
-
-    let client_ip = [100, 0, 0, 22];
-    let (
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        _device_pubkey,
-        user_pubkey,
-        accesspass_pubkey,
-        (
-            user_tunnel_block_pubkey,
-            _multicast_publisher_block_pubkey,
-            tunnel_ids_pubkey,
-            dz_prefix_block_pubkey,
-        ),
-    ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
-
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    // Activate user with legacy path (no feature flag needed for legacy activate)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 501,
-            tunnel_net: "169.254.0.0/25".parse().unwrap(),
-            dz_ip: [200, 0, 0, 1].into(),
-            dz_prefix_count: 0,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    // Atomic request ban WITHOUT feature flag enabled should fail
-    let result = try_execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
-            dz_prefix_count: 1,
-            multicast_publisher_count: 0,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    assert!(
-        result.is_err(),
-        "Atomic request ban should fail when OnChainAllocation feature flag is disabled"
-    );
-
-    // User should still exist with Activated status
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("User should still exist after failed atomic request ban")
-        .get_user()
-        .unwrap();
-    assert_eq!(
-        user.status,
-        UserStatus::Activated,
-        "User status should be unchanged after failed atomic request ban"
-    );
-
-    println!("[PASS] test_request_ban_user_onchain_feature_flag_disabled");
-}
-
 // ============================================================================
 // UpdateUser Onchain Allocation Tests
 // ============================================================================
@@ -3217,7 +2988,7 @@ async fn setup_activated_user_for_update(
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -4084,7 +3855,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -4345,7 +4116,7 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -4958,7 +4729,7 @@ async fn test_closeaccount_user_legacy_decrements_subscribers_count_for_non_publ
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,

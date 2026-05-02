@@ -57,9 +57,10 @@ impl UpdateLinkCommand {
 
         let updating_tunnel_resources = self.tunnel_id.is_some() || self.tunnel_net.is_some();
 
-        let use_onchain_allocation =
-            is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation)
-                && updating_tunnel_resources;
+        let use_onchain_allocation = is_feature_enabled(
+            globalstate.feature_flags,
+            FeatureFlag::OnChainAllocationDeprecated,
+        ) && updating_tunnel_resources;
 
         let mut accounts = vec![
             AccountMeta::new(self.pubkey, false),

@@ -1436,7 +1436,7 @@ async fn test_create_link_atomic_with_onchain_allocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -1582,70 +1582,6 @@ async fn test_create_link_atomic_backward_compat() {
     println!("test_create_link_atomic_backward_compat PASSED");
 }
 
-/// Test that atomic CreateLink fails when OnChainAllocation feature flag is disabled
-#[tokio::test]
-async fn test_create_link_atomic_feature_flag_disabled() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // Do NOT enable OnChainAllocation feature flag
-
-    let (
-        device_a_pubkey,
-        device_z_pubkey,
-        contributor_pubkey,
-        device_tunnel_block_pda,
-        link_ids_pda,
-    ) = setup_wan_link_infra(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
-
-    // Try to create Link with atomic onchain allocation - should fail
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
-
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
-
-    let result = execute_transaction_expect_failure(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
-            code: "wan1".to_string(),
-            link_type: LinkLinkType::WAN,
-            bandwidth: 10_000_000_000,
-            mtu: 9000,
-            delay_ns: 500000,
-            jitter_ns: 50000,
-            side_a_iface_name: "Ethernet0".to_string(),
-            side_z_iface_name: Some("Ethernet1".to_string()),
-            desired_status: Some(LinkDesiredStatus::Activated),
-            use_onchain_allocation: true,
-        }),
-        vec![
-            AccountMeta::new(link_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(link_ids_pda, false),
-            AccountMeta::new(unicast_default_pda, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    assert!(result.is_err(), "Expected FeatureNotEnabled error");
-    println!("test_create_link_atomic_feature_flag_disabled PASSED");
-}
-
 /// Test atomic delete+deallocate+close for an activated link
 #[tokio::test]
 async fn test_delete_link_atomic_with_deallocation() {
@@ -1659,7 +1595,7 @@ async fn test_delete_link_atomic_with_deallocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -1794,7 +1730,7 @@ async fn test_delete_link_atomic_backward_compat() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -1914,7 +1850,7 @@ async fn test_delete_link_atomic_feature_flag_disabled() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -2039,7 +1975,7 @@ async fn test_delete_link_atomic_rejects_activated_status() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -2161,7 +2097,7 @@ async fn test_update_link_tunnel_reallocation_with_onchain_allocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -2396,7 +2332,7 @@ async fn test_update_link_tunnel_reallocation_rejects_non_foundation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -2504,100 +2440,6 @@ async fn test_update_link_tunnel_reallocation_rejects_non_foundation() {
     println!("test_update_link_tunnel_reallocation_rejects_non_foundation PASSED");
 }
 
-/// Test that UpdateLink tunnel reallocation fails when feature flag is disabled
-#[tokio::test]
-async fn test_update_link_tunnel_reallocation_rejects_feature_flag_disabled() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // NOTE: Feature flag is NOT enabled
-
-    let (
-        _device_a_pubkey,
-        _device_z_pubkey,
-        contributor_pubkey,
-        device_tunnel_block_pda,
-        link_ids_pda,
-    ) = setup_wan_link_infra(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
-
-    // Create Link without onchain allocation (legacy path — feature flag off)
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
-
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
-            code: "wan1".to_string(),
-            link_type: LinkLinkType::WAN,
-            bandwidth: 10_000_000_000,
-            mtu: 9000,
-            delay_ns: 500000,
-            jitter_ns: 50000,
-            side_a_iface_name: "Ethernet0".to_string(),
-            side_z_iface_name: None,
-            desired_status: Some(LinkDesiredStatus::Activated),
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(link_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(_device_a_pubkey, false),
-            AccountMeta::new(_device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Attempt tunnel reallocation with use_onchain_allocation=true but feature flag off
-    let result = execute_transaction_expect_failure(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            tunnel_id: Some(99),
-            use_onchain_allocation: true,
-            ..Default::default()
-        }),
-        vec![
-            AccountMeta::new(link_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(link_ids_pda, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // FeatureNotEnabled = Custom(84)
-    match result {
-        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
-            0,
-            InstructionError::Custom(84),
-        ))) => {}
-        _ => panic!(
-            "Expected FeatureNotEnabled error (Custom(84)), got {:?}",
-            result
-        ),
-    }
-
-    println!("test_update_link_tunnel_reallocation_rejects_feature_flag_disabled PASSED");
-}
-
 /// Test that AcceptLink with use_onchain_allocation=true performs combined accept+activate
 #[tokio::test]
 async fn test_accept_link_with_onchain_allocation() {
@@ -2611,7 +2453,7 @@ async fn test_accept_link_with_onchain_allocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -2955,345 +2797,4 @@ async fn test_accept_link_with_onchain_allocation() {
         link.tunnel_id, link.tunnel_net
     );
     println!("test_accept_link_with_onchain_allocation PASSED");
-}
-
-/// Test that AcceptLink with use_onchain_allocation=true fails when feature flag is disabled
-#[tokio::test]
-async fn test_accept_link_onchain_allocation_rejects_feature_flag_disabled() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // NOTE: OnChainAllocation feature flag is NOT enabled
-
-    // Create Location
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
-            code: "la".to_string(),
-            name: "Los Angeles".to_string(),
-            country: "us".to_string(),
-            lat: 1.234,
-            lng: 4.567,
-            loc_id: 0,
-        }),
-        vec![
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Create Exchange
-    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
-            code: "la".to_string(),
-            name: "Los Angeles".to_string(),
-            lat: 1.234,
-            lng: 4.567,
-            reserved: 0,
-        }),
-        vec![
-            AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Create Contributor 1 (side A)
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (contributor1_pubkey, _) =
-        get_contributor_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-            code: "cont1".to_string(),
-        }),
-        vec![
-            AccountMeta::new(contributor1_pubkey, false),
-            AccountMeta::new(payer.pubkey(), false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Create Contributor 2 (side Z)
-    let payer2 = solana_sdk::signer::keypair::Keypair::new();
-    transfer(&mut banks_client, &payer, &payer2.pubkey(), 10_000_000_000).await;
-
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (contributor2_pubkey, _) =
-        get_contributor_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-            code: "cont2".to_string(),
-        }),
-        vec![
-            AccountMeta::new(contributor2_pubkey, false),
-            AccountMeta::new(payer2.pubkey(), false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Create Device A
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (device_a_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
-            code: "A".to_string(),
-            device_type: DeviceType::Hybrid,
-            public_ip: [100, 0, 0, 1].into(),
-            dz_prefixes: "110.1.0.0/24".parse().unwrap(),
-            metrics_publisher_pk: Pubkey::default(),
-            mgmt_vrf: "mgmt".to_string(),
-            desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
-        }),
-        vec![
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(contributor1_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateDeviceInterface(
-            device::interface::create::DeviceInterfaceCreateArgs {
-                name: "Ethernet0".to_string(),
-                interface_dia: InterfaceDIA::None,
-                loopback_type: LoopbackType::None,
-                interface_cyoa: InterfaceCYOA::None,
-                bandwidth: 0,
-                ip_net: None,
-                cir: 0,
-                mtu: 9000,
-                routing_mode: RoutingMode::Static,
-                vlan_id: 0,
-                user_tunnel_endpoint: false,
-                use_onchain_allocation: false,
-            },
-        ),
-        vec![
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(contributor1_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Create Device Z
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (device_z_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
-            code: "Z".to_string(),
-            device_type: DeviceType::Hybrid,
-            public_ip: [11, 0, 0, 1].into(),
-            dz_prefixes: "11.1.0.0/23".parse().unwrap(),
-            metrics_publisher_pk: Pubkey::default(),
-            mgmt_vrf: "mgmt".to_string(),
-            desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
-        }),
-        vec![
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(contributor2_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer2,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateDeviceInterface(
-            device::interface::create::DeviceInterfaceCreateArgs {
-                name: "Ethernet1".to_string(),
-                interface_dia: InterfaceDIA::None,
-                loopback_type: LoopbackType::None,
-                interface_cyoa: InterfaceCYOA::None,
-                bandwidth: 0,
-                ip_net: None,
-                cir: 0,
-                mtu: 9000,
-                routing_mode: RoutingMode::Static,
-                vlan_id: 0,
-                user_tunnel_endpoint: false,
-                use_onchain_allocation: false,
-            },
-        ),
-        vec![
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(contributor2_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer2,
-    )
-    .await;
-
-    // Unlink interfaces
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "Ethernet0".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "Ethernet1".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Create Link
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
-
-    let unicast_default_pda = create_unicast_default_topology(
-        &mut banks_client,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
-            code: "la".to_string(),
-            link_type: LinkLinkType::DZX,
-            bandwidth: 15_000_000_000,
-            mtu: 9000,
-            delay_ns: 1000000,
-            jitter_ns: 100000,
-            side_a_iface_name: "Ethernet0".to_string(),
-            side_z_iface_name: None,
-            desired_status: Some(LinkDesiredStatus::Activated),
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(link_pubkey, false),
-            AccountMeta::new(contributor1_pubkey, false),
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_pda, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Get ResourceExtension PDAs
-    let (device_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
-
-    // AcceptLink with onchain allocation should fail because feature flag is disabled
-    let result = execute_transaction_expect_failure(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
-            side_z_iface_name: "Ethernet1".to_string(),
-            use_onchain_allocation: true,
-        }),
-        vec![
-            AccountMeta::new(link_pubkey, false),
-            AccountMeta::new(contributor2_pubkey, false),
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(link_ids_pda, false),
-        ],
-        &payer2,
-    )
-    .await;
-
-    // FeatureNotEnabled = Custom(84)
-    match result {
-        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
-            0,
-            InstructionError::Custom(84),
-        ))) => {}
-        _ => panic!(
-            "Expected FeatureNotEnabled error (Custom(84)), got {:?}",
-            result
-        ),
-    }
-
-    // Verify link is still in Requested status (not modified)
-    let link = get_account_data(&mut banks_client, link_pubkey)
-        .await
-        .expect("Link not found")
-        .get_tunnel()
-        .unwrap();
-    assert_eq!(link.status, LinkStatus::Requested);
-
-    println!("test_accept_link_onchain_allocation_rejects_feature_flag_disabled PASSED");
 }

@@ -1,16 +1,11 @@
 use crate::{
-    error::DoubleZeroError,
     pda::get_resource_extension_pda,
     processors::{
         resource::{allocate_id, allocate_ip, deallocate_id, deallocate_ip},
         validation::validate_program_account,
     },
     resource::ResourceType,
-    state::{
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        globalstate::GlobalState,
-        link::Link,
-    },
+    state::link::Link,
 };
 use doublezero_program_common::types::NetworkV4;
 use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, pubkey::Pubkey};
@@ -22,13 +17,7 @@ pub fn validate_and_allocate_link_resources<'a>(
     link: &mut Link,
     device_tunnel_block_ext: &AccountInfo<'a>,
     link_ids_ext: &AccountInfo<'a>,
-    globalstate: &GlobalState,
 ) -> ProgramResult {
-    // Check feature flag
-    if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-        return Err(DoubleZeroError::FeatureNotEnabled.into());
-    }
-
     // Validate device_tunnel_block_ext (DeviceTunnelBlock - global)
     let (expected_device_tunnel_pda, _, _) =
         get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
@@ -72,13 +61,7 @@ pub fn validate_and_deallocate_link_resources<'a>(
     link: &Link,
     device_tunnel_block_ext: &AccountInfo<'a>,
     link_ids_ext: &AccountInfo<'a>,
-    globalstate: &GlobalState,
 ) -> ProgramResult {
-    // Check feature flag
-    if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-        return Err(DoubleZeroError::FeatureNotEnabled.into());
-    }
-
     // Validate device_tunnel_block_ext (DeviceTunnelBlock - global)
     let (expected_device_tunnel_pda, _, _) =
         get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);

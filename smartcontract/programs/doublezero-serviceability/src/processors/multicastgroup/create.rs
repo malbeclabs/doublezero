@@ -5,12 +5,7 @@ use crate::{
     resource::ResourceType,
     seeds::{SEED_MULTICAST_GROUP, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
-    state::{
-        accounttype::AccountType,
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        globalstate::GlobalState,
-        multicastgroup::*,
-    },
+    state::{accounttype::AccountType, globalstate::GlobalState, multicastgroup::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -128,12 +123,8 @@ pub fn process_create_multicastgroup(
         subscriber_count: 0,
     };
 
-    // Atomic create+allocate+activate if onchain allocation is enabled
+    // Atomic create+allocate+activate when ResourceExtension account is provided
     if let Some(multicast_group_block_ext) = resource_extension_account {
-        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-            return Err(DoubleZeroError::FeatureNotEnabled.into());
-        }
-
         let (expected_pda, _, _) =
             get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
         validate_program_account!(

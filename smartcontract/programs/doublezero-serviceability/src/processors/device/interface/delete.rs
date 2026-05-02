@@ -11,7 +11,6 @@ use crate::{
         accounttype::AccountType,
         contributor::Contributor,
         device::*,
-        feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         interface::{InterfaceStatus, InterfaceType, LoopbackType},
     },
@@ -129,10 +128,6 @@ pub fn process_delete_device_interface(
 
     if let Some((device_tunnel_block_ext, segment_routing_ids_ext)) = deallocation_accounts {
         // Atomic delete+deallocate path
-        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-            return Err(DoubleZeroError::FeatureNotEnabled.into());
-        }
-
         let (expected_dtb_pda, _, _) =
             get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
         validate_program_account!(

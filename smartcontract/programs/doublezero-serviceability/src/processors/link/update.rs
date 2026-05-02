@@ -8,11 +8,7 @@ use crate::{
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
-        contributor::Contributor,
-        device::Device,
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        globalstate::GlobalState,
-        link::*,
+        contributor::Contributor, device::Device, globalstate::GlobalState, link::*,
         topology::TopologyInfo,
     },
 };
@@ -278,11 +274,6 @@ pub fn process_update_link(
         }
 
         if let Some((device_tunnel_block_ext, link_ids_ext)) = resource_accounts {
-            // Resource accounts provided — require feature flag
-            if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-                return Err(DoubleZeroError::FeatureNotEnabled.into());
-            }
-
             // Validate DeviceTunnelBlock PDA
             let (expected_device_tunnel_pda, _, _) =
                 get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);

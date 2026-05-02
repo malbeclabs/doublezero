@@ -1263,7 +1263,7 @@ async fn enable_onchain_allocation(
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         payer,
@@ -1422,62 +1422,6 @@ async fn test_subscribe_onchain_subscriber_no_allocation() {
         user.dz_ip, user_before.dz_ip,
         "dz_ip should not change for subscriber-only subscription"
     );
-}
-
-/// Onchain allocation with feature flag disabled should fail with FeatureNotEnabled.
-#[tokio::test]
-async fn test_subscribe_onchain_feature_flag_disabled_fails() {
-    let f = setup_fixture().await;
-    let TestFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        recent_blockhash,
-        globalstate_pubkey,
-        accesspass_pubkey,
-        user_pubkey,
-        mgroup1_pubkey,
-        ..
-    } = f;
-
-    // Do NOT enable feature flag
-
-    let (multicast_publisher_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-
-    // Try subscribe with onchain allocation — should fail
-    let result = execute_transaction_expect_failure(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
-            client_ip: [100, 0, 0, 1].into(),
-            publisher: true,
-            subscriber: false,
-            use_onchain_allocation: true,
-        }),
-        vec![
-            AccountMeta::new(mgroup1_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_pda, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // FeatureNotEnabled = Custom(84)
-    match result {
-        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
-            0,
-            InstructionError::Custom(84),
-        ))) => {}
-        _ => panic!(
-            "Expected FeatureNotEnabled error (Custom(84)), got {:?}",
-            result
-        ),
-    }
 }
 
 /// Second publisher subscribe with onchain allocation should not reallocate dz_ip.

@@ -630,7 +630,7 @@ async fn test_create_subscribe_user_atomic_publisher() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -729,7 +729,7 @@ async fn test_create_subscribe_user_atomic_subscriber() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -795,68 +795,6 @@ async fn test_create_subscribe_user_atomic_subscriber() {
 // ============================================================================
 // Error Path Tests
 // ============================================================================
-
-/// Atomic CreateSubscribeUser fails when feature flag is disabled.
-#[tokio::test]
-async fn test_create_subscribe_user_atomic_feature_flag_disabled() {
-    let client_ip = [100, 0, 0, 6];
-    let f = setup_create_subscribe_fixture(client_ip).await;
-    let CreateSubscribeFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        accesspass_pubkey,
-        mgroup_pubkey,
-        user_ip,
-        user_tunnel_block,
-        multicast_publisher_block,
-        tunnel_ids,
-        dz_prefix_block,
-        ..
-    } = f;
-
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
-
-    // Feature flag NOT enabled — atomic create should fail
-    let result = execute_transaction_expect_failure(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: user_ip,
-            publisher: true,
-            subscriber: false,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 1,
-            owner: Pubkey::default(),
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    assert!(result.is_err(), "Should fail when feature flag is disabled");
-
-    // Verify user account was NOT created
-    let user_data = get_account_data(&mut banks_client, user_pubkey).await;
-    assert!(user_data.is_none(), "User account should not exist");
-}
 
 /// CreateSubscribeUser fails when multicast group is not activated (graceful error, not panic).
 #[tokio::test]

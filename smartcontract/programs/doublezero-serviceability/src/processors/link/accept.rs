@@ -29,8 +29,8 @@ use solana_program::{
 pub struct LinkAcceptArgs {
     pub side_z_iface_name: String,
     /// When true, on-chain allocation is used and the link is activated in the same instruction.
-    /// Requires the OnChainAllocation feature flag and additional accounts (side_a_device,
-    /// DeviceTunnelBlock, LinkIds ResourceExtension accounts).
+    /// Requires additional accounts (side_a_device, DeviceTunnelBlock, LinkIds
+    /// ResourceExtension accounts).
     /// When false, legacy behavior is used (link moves to Pending status).
     #[incremental(default = false)]
     pub use_onchain_allocation: bool,
@@ -60,7 +60,7 @@ pub fn process_accept_link(
     let link_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
     let side_z_account = next_account_info(accounts_iter)?;
-    let globalstate_account = next_account_info(accounts_iter)?;
+    let _globalstate_account = next_account_info(accounts_iter)?;
 
     // Optional: onchain allocation accounts (before payer)
     let onchain_allocation_accounts = if value.use_onchain_allocation {
@@ -129,8 +129,6 @@ pub fn process_accept_link(
         onchain_allocation_accounts
     {
         // Combined accept + activate path with onchain allocation.
-        // Gated on the OnChainAllocation feature flag (checked inside validate_and_allocate_link_resources).
-
         validate_program_account!(
             side_a_device_account,
             program_id,
@@ -141,8 +139,6 @@ pub fn process_accept_link(
             side_z_account.is_writable,
             "Side Z PDA Account is not writable"
         );
-
-        let globalstate = crate::state::globalstate::GlobalState::try_from(globalstate_account)?;
 
         let mut side_a_dev = Device::try_from(side_a_device_account)?;
         let mut side_z_dev = Device::try_from(side_z_account)?;
@@ -173,13 +169,12 @@ pub fn process_accept_link(
             return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
         }
 
-        // Allocate resources (validates feature flag + ResourceExtension PDAs internally)
+        // Allocate resources (validates ResourceExtension PDAs internally)
         validate_and_allocate_link_resources(
             program_id,
             &mut link,
             device_tunnel_block_ext,
             link_ids_ext,
-            &globalstate,
         )?;
 
         let mut updated_iface_a = side_a_iface.clone();

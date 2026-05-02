@@ -13,7 +13,6 @@ use crate::{
         accounttype::AccountType,
         contributor::Contributor,
         device::*,
-        feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         interface::{
             InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
@@ -199,28 +198,26 @@ pub fn process_update_device_interface(
             return Err(DoubleZeroError::NotAllowed.into());
         }
 
-        if is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-            let seg_ext = segment_routing_ids_ext.ok_or(DoubleZeroError::InvalidArgument)?;
+        let seg_ext = segment_routing_ids_ext.ok_or(DoubleZeroError::InvalidArgument)?;
 
-            let (expected_seg_pda, _, _) =
-                get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
-            validate_program_account!(
-                seg_ext,
-                program_id,
-                writable = true,
-                pda = &expected_seg_pda,
-                "SegmentRoutingIds"
-            );
+        let (expected_seg_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
+        validate_program_account!(
+            seg_ext,
+            program_id,
+            writable = true,
+            pda = &expected_seg_pda,
+            "SegmentRoutingIds"
+        );
 
-            // Deallocate old value if non-zero
-            if iface.node_segment_idx != 0 {
-                deallocate_id(seg_ext, iface.node_segment_idx);
-            }
+        // Deallocate old value if non-zero
+        if iface.node_segment_idx != 0 {
+            deallocate_id(seg_ext, iface.node_segment_idx);
+        }
 
-            // Allocate new value if non-zero
-            if node_segment_idx != 0 {
-                allocate_specific_id(seg_ext, node_segment_idx)?;
-            }
+        // Allocate new value if non-zero
+        if node_segment_idx != 0 {
+            allocate_specific_id(seg_ext, node_segment_idx)?;
         }
 
         iface.node_segment_idx = node_segment_idx;

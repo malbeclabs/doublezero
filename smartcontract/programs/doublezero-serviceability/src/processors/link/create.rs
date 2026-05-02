@@ -269,13 +269,11 @@ pub fn process_create_link(
     if let Some((device_tunnel_block_ext, link_ids_ext)) = resource_extension_accounts {
         if link.status == LinkStatus::Pending {
             // activate here, but do not activate if LinkStatus::Requested
-            let globalstate_ref = GlobalState::try_from(globalstate_account)?;
             resource_onchain_helpers::validate_and_allocate_link_resources(
                 program_id,
                 &mut link,
                 device_tunnel_block_ext,
                 link_ids_ext,
-                &globalstate_ref,
             )?;
 
             // Validate interfaces are Unlinked (required for activation)

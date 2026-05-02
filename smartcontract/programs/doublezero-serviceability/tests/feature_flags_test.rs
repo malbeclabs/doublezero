@@ -33,8 +33,8 @@ async fn test_set_feature_flags_success() {
     let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate.feature_flags, 0);
 
-    // Set feature flags with OnChainAllocation enabled
-    let feature_flags = FeatureFlag::OnChainAllocation.to_mask();
+    // Set feature flags with bit 0 (deprecated OnChainAllocation slot) toggled.
+    let feature_flags = FeatureFlag::OnChainAllocationDeprecated.to_mask();
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -51,7 +51,7 @@ async fn test_set_feature_flags_success() {
     assert!(
         doublezero_serviceability::state::feature_flags::is_feature_enabled(
             globalstate.feature_flags,
-            FeatureFlag::OnChainAllocation,
+            FeatureFlag::OnChainAllocationDeprecated,
         )
     );
 
@@ -91,7 +91,7 @@ async fn test_set_feature_flags_non_foundation_fails() {
     )
     .await;
 
-    let feature_flags = FeatureFlag::OnChainAllocation.to_mask();
+    let feature_flags = FeatureFlag::OnChainAllocationDeprecated.to_mask();
     let result = execute_transaction_expect_failure(
         &mut banks_client,
         recent_blockhash,
@@ -128,7 +128,7 @@ async fn test_feature_flags_persistence() {
     .await;
 
     // Set feature flags
-    let feature_flags = FeatureFlag::OnChainAllocation.to_mask();
+    let feature_flags = FeatureFlag::OnChainAllocationDeprecated.to_mask();
     execute_transaction(
         &mut banks_client,
         recent_blockhash,

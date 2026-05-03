@@ -126,15 +126,17 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/device_interface_create_3": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
 	"write/device_interface_create_4": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
 
-	// RFC-18 mandatory upgrade boundary: all operations that read device accounts
-	// (set_unlinked, link create/update/delete) require a CLI that understands the new
-	// InterfaceV3 format (flex_algo_node_segments). v0.17.0 was released before RFC-18
-	// and sends InterfaceV1, so it is incompatible. set_unlinked uses cascadeKnownFail
-	// so that downstream link phases are skipped rather than run-and-fail.
-	"write/device_interface_set_unlinked":   {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/device_interface_set_unlinked_2": {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/device_interface_set_unlinked_3": {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/device_interface_set_unlinked_4": {ranges: []versionRange{{before: "0.19.0"}}},
+	// device interface set-unlinked: v0.12.0–0.15.x cascade-fail because their
+	// MTU-2048 creates leave no interface for set-unlinked to update. v0.16.0+
+	// can update interfaces against the current (V2-default) program.
+	"write/device_interface_set_unlinked":   {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_set_unlinked_2": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_set_unlinked_3": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+	"write/device_interface_set_unlinked_4": {ranges: []versionRange{{from: "0.12.0", before: "0.16.0"}}},
+
+	// RFC-18 mandatory upgrade boundary: link operations that read device accounts
+	// require a CLI that understands the new account layout. v0.18.0 and earlier
+	// were released before RFC-18 and are incompatible.
 	"write/link_create_wan":                 {ranges: []versionRange{{before: "0.19.0"}}},
 	"write/link_create_dzx":                 {ranges: []versionRange{{before: "0.19.0"}}},
 	"write/link_accept_dzx":                 {ranges: []versionRange{{before: "0.19.0"}}},

@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Smartcontract
+  - Stop writing `InterfaceV3` from `CreateDeviceInterface` and `UpdateDeviceInterface`; `CurrentInterfaceVersion` is now `InterfaceV2`. `MigrateDeviceInterfaces` and `BackfillTopology` continue to write `InterfaceV3` since they are admin-controlled and need the `flex_algo_node_segments` field
+
 ## [v0.21.0](https://github.com/malbeclabs/doublezero/compare/client/v0.20.0...client/v0.21.0) - 2026-05-01
 
 ### Breaking

@@ -126,12 +126,12 @@ pub fn process_topology_backfill(
         let mut device = Device::try_from(&device_account.data.borrow()[..])?;
         let mut modified = false;
         for iface in device.interfaces.iter_mut() {
-            let iface_v2 = iface.into_current_version();
-            if iface_v2.loopback_type != LoopbackType::Vpnv4 {
+            let ifc = iface.into_v3();
+            if ifc.loopback_type != LoopbackType::Vpnv4 {
                 continue;
             }
             // Skip if already has a segment for this topology (idempotent)
-            if iface_v2
+            if ifc
                 .flex_algo_node_segments
                 .iter()
                 .any(|s| &s.topology == topology_key)
@@ -151,7 +151,7 @@ pub fn process_topology_backfill(
                     });
                 }
                 _ => {
-                    let mut upgraded = iface.into_current_version();
+                    let mut upgraded = iface.into_v3();
                     upgraded.flex_algo_node_segments.push(FlexAlgoNodeSegment {
                         topology: *topology_key,
                         node_segment_idx,

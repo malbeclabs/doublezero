@@ -765,7 +765,7 @@ async fn test_migrate_device_interfaces_legacy_account() {
         matches!(migrated_device.interfaces[0], Interface::V3(_)),
         "Migrated interface must be V3"
     );
-    let migrated_iface = migrated_device.interfaces[0].into_current_version();
+    let migrated_iface = migrated_device.interfaces[0].into_v3();
     assert_eq!(
         migrated_iface.flex_algo_node_segments.len(),
         0,

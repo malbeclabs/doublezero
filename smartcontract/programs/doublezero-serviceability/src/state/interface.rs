@@ -373,6 +373,29 @@ impl TryFrom<&InterfaceV1> for InterfaceV2 {
     }
 }
 
+impl TryFrom<&InterfaceV3> for InterfaceV2 {
+    type Error = ProgramError;
+
+    fn try_from(data: &InterfaceV3) -> Result<Self, Self::Error> {
+        Ok(Self {
+            status: data.status,
+            name: data.name.clone(),
+            interface_type: data.interface_type,
+            interface_cyoa: data.interface_cyoa,
+            interface_dia: data.interface_dia,
+            loopback_type: data.loopback_type,
+            bandwidth: data.bandwidth,
+            cir: data.cir,
+            mtu: data.mtu,
+            routing_mode: data.routing_mode,
+            vlan_id: data.vlan_id,
+            ip_net: data.ip_net,
+            node_segment_idx: data.node_segment_idx,
+            user_tunnel_endpoint: data.user_tunnel_endpoint,
+        })
+    }
+}
+
 impl Default for InterfaceV2 {
     fn default() -> Self {
         Self {
@@ -496,10 +519,18 @@ impl borsh::BorshDeserialize for Interface {
     }
 }
 
-pub type CurrentInterfaceVersion = InterfaceV3;
+pub type CurrentInterfaceVersion = InterfaceV2;
 
 impl Interface {
     pub fn into_current_version(&self) -> CurrentInterfaceVersion {
+        match self {
+            Interface::V1(v1) => v1.try_into().unwrap_or_default(),
+            Interface::V2(v2) => v2.clone(),
+            Interface::V3(v3) => v3.try_into().unwrap_or_default(),
+        }
+    }
+
+    pub fn into_v3(&self) -> InterfaceV3 {
         match self {
             Interface::V1(v1) => v1.try_into().unwrap_or_default(),
             Interface::V2(v2) => v2.clone().into(),

@@ -13,7 +13,6 @@ use doublezero_serviceability::{
     processors::{
         contributor::create::ContributorCreateArgs,
         device::{
-            activate::DeviceActivateArgs,
             create::DeviceCreateArgs,
             interface::{
                 create::DeviceInterfaceCreateArgs, delete::DeviceInterfaceDeleteArgs,
@@ -125,6 +124,10 @@ async fn setup_device(
     // Create Device
     let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
     let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
 
     execute_transaction(
         banks_client,
@@ -138,7 +141,7 @@ async fn setup_device(
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -146,6 +149,9 @@ async fn setup_device(
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         payer,
     )
@@ -253,27 +259,13 @@ async fn setup_device_with_interface(
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-
-    // Activate Device
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(globalconfig_pubkey, false),
             AccountMeta::new(tunnel_ids_pda, false),
@@ -300,12 +292,20 @@ async fn setup_device_with_interface(
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds).0,
+                false,
+            ),
         ],
         payer,
     )
@@ -334,7 +334,7 @@ async fn test_create_loopback_vpnv4_with_onchain_allocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -412,7 +412,7 @@ async fn test_create_loopback_non_vpnv4_with_onchain_allocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -492,7 +492,7 @@ async fn test_create_loopback_with_onchain_allocation_honors_supplied_ip_net() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -578,7 +578,7 @@ async fn test_create_physical_with_onchain_allocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -643,116 +643,6 @@ async fn test_create_physical_with_onchain_allocation() {
     println!("test_create_physical_with_onchain_allocation PASSED");
 }
 
-/// Test backward compatibility: use_onchain_allocation=false creates Pending interface
-#[tokio::test]
-async fn test_create_interface_backward_compat() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    let (device_pubkey, contributor_pubkey) =
-        setup_device(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
-
-    // Create loopback without onchain allocation (legacy)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
-            name: "Loopback0".to_string(),
-            loopback_type: LoopbackType::Vpnv4,
-            interface_cyoa: InterfaceCYOA::None,
-            interface_dia: InterfaceDIA::None,
-            bandwidth: 0,
-            cir: 0,
-            ip_net: None,
-            mtu: 9000,
-            routing_mode: RoutingMode::Static,
-            vlan_id: 0,
-            user_tunnel_endpoint: false,
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let device = get_device(&mut banks_client, device_pubkey)
-        .await
-        .expect("Device not found");
-    let iface = device.interfaces[0].into_current_version();
-
-    assert_eq!(iface.status, InterfaceStatus::Pending);
-    assert_eq!(iface.ip_net, NetworkV4::default());
-    assert_eq!(iface.node_segment_idx, 0);
-
-    println!("test_create_interface_backward_compat PASSED");
-}
-
-/// Test that atomic create fails when OnChainAllocation feature flag is disabled
-#[tokio::test]
-async fn test_create_interface_feature_flag_disabled() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // Do NOT enable OnChainAllocation feature flag
-
-    let (device_pubkey, contributor_pubkey) =
-        setup_device(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
-
-    let (device_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-    let (segment_routing_ids_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
-
-    let result = execute_transaction_expect_failure(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
-            name: "Loopback0".to_string(),
-            loopback_type: LoopbackType::Vpnv4,
-            interface_cyoa: InterfaceCYOA::None,
-            interface_dia: InterfaceDIA::None,
-            bandwidth: 0,
-            cir: 0,
-            ip_net: None,
-            mtu: 9000,
-            routing_mode: RoutingMode::Static,
-            vlan_id: 0,
-            user_tunnel_endpoint: false,
-            use_onchain_allocation: true,
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(segment_routing_ids_pda, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let err = result.expect_err("Expected error with feature flag disabled");
-    match err {
-        BanksClientError::TransactionError(TransactionError::InstructionError(
-            _,
-            InstructionError::Custom(code),
-        )) => {
-            assert_eq!(DoubleZeroError::FeatureNotEnabled, code.into());
-        }
-        _ => panic!("Unexpected error type: {:?}", err),
-    }
-
-    println!("test_create_interface_feature_flag_disabled PASSED");
-}
-
 /// Test: Delete loopback with onchain deallocation → interface removed, resources deallocated
 #[tokio::test]
 async fn test_delete_loopback_with_onchain_deallocation() {
@@ -766,7 +656,7 @@ async fn test_delete_loopback_with_onchain_deallocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -867,7 +757,7 @@ async fn test_delete_physical_with_onchain_deallocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -954,95 +844,6 @@ async fn test_delete_physical_with_onchain_deallocation() {
     println!("test_delete_physical_with_onchain_deallocation PASSED");
 }
 
-/// Test backward compatibility: use_onchain_deallocation=false uses legacy path (status = Deleting)
-#[tokio::test]
-async fn test_delete_interface_backward_compat() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // Enable OnChainAllocation feature flag (for create)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
-        }),
-        vec![AccountMeta::new(globalstate_pubkey, false)],
-        &payer,
-    )
-    .await;
-
-    let (device_pubkey, contributor_pubkey) =
-        setup_device(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
-
-    let (device_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-    let (segment_routing_ids_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
-
-    // Create with onchain allocation (Activated)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
-            name: "Loopback0".to_string(),
-            loopback_type: LoopbackType::Vpnv4,
-            interface_cyoa: InterfaceCYOA::None,
-            interface_dia: InterfaceDIA::None,
-            bandwidth: 0,
-            cir: 0,
-            ip_net: None,
-            mtu: 9000,
-            routing_mode: RoutingMode::Static,
-            vlan_id: 0,
-            user_tunnel_endpoint: false,
-            use_onchain_allocation: true,
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(segment_routing_ids_pda, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Legacy delete (use_onchain_deallocation=false)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
-            name: "Loopback0".to_string(),
-            use_onchain_deallocation: false,
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Verify status is Deleting (legacy behavior), interface still exists
-    let device = get_device(&mut banks_client, device_pubkey)
-        .await
-        .expect("Device not found");
-    assert_eq!(device.interfaces.len(), 1);
-    assert_eq!(
-        device.interfaces[0].into_current_version().status,
-        InterfaceStatus::Deleting
-    );
-
-    println!("test_delete_interface_backward_compat PASSED");
-}
-
 // =============================================================================
 // UpdateDeviceInterface onchain allocation tests (node_segment_idx)
 // =============================================================================
@@ -1060,7 +861,7 @@ async fn test_update_interface_node_segment_idx_onchain_alloc() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -1128,7 +929,7 @@ async fn test_update_interface_node_segment_idx_change_value() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -1221,7 +1022,7 @@ async fn test_update_interface_node_segment_idx_clear() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -1297,54 +1098,7 @@ async fn test_update_interface_node_segment_idx_clear() {
     );
 }
 
-/// Test: update node_segment_idx with feature flag OFF (legacy behavior, no resource account)
-#[tokio::test]
-async fn test_update_interface_node_segment_idx_legacy() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // Do NOT enable OnChainAllocation feature flag
-
-    let (device_pubkey, contributor_pubkey, _segment_routing_ids_pda) =
-        setup_device_with_interface(
-            &mut banks_client,
-            recent_blockhash,
-            program_id,
-            globalstate_pubkey,
-            globalconfig_pubkey,
-            &payer,
-        )
-        .await;
-
-    // Update node_segment_idx without resource account (legacy)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
-            name: "loopback0".to_string(),
-            node_segment_idx: Some(42),
-            ..Default::default()
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Verify device interface has node_segment_idx = 42
-    let device = get_device(&mut banks_client, device_pubkey)
-        .await
-        .expect("Device not found");
-    let iface = device.interfaces[0].into_current_version();
-    assert_eq!(iface.node_segment_idx, 42);
-}
-
-/// Test: update node_segment_idx with feature flag ON but missing resource account fails
+/// Test: update node_segment_idx with missing resource account fails
 #[tokio::test]
 async fn test_update_interface_node_segment_idx_missing_resource_account() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
@@ -1357,7 +1111,7 @@ async fn test_update_interface_node_segment_idx_missing_resource_account() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -1419,7 +1173,7 @@ async fn test_update_interface_node_segment_idx_duplicate_allocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -1453,12 +1207,20 @@ async fn test_update_interface_node_segment_idx_duplicate_allocation() {
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds).0,
+                false,
+            ),
         ],
         &payer,
     )

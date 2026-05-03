@@ -11,7 +11,6 @@ use crate::{
         accounttype::AccountType,
         contributor::Contributor,
         device::*,
-        feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         interface::{InterfaceStatus, InterfaceType, LoopbackType},
     },
@@ -52,24 +51,20 @@ pub fn process_delete_device_interface(
     accounts: &[AccountInfo],
     value: &DeviceInterfaceDeleteArgs,
 ) -> ProgramResult {
+    if !value.use_onchain_deallocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let device_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for onchain deallocation (before payer)
-    // Account layout WITH deallocation (use_onchain_deallocation = true):
-    //   [device, contributor, globalstate, device_tunnel_block, segment_routing_ids, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_deallocation = false):
-    //   [device, contributor, globalstate, payer, system]
-    let deallocation_accounts = if value.use_onchain_deallocation {
-        let device_tunnel_block_ext = next_account_info(accounts_iter)?;
-        let segment_routing_ids_ext = next_account_info(accounts_iter)?;
-        Some((device_tunnel_block_ext, segment_routing_ids_ext))
-    } else {
-        None
-    };
+    // Account layout: [device, contributor, globalstate, device_tunnel_block,
+    //                  segment_routing_ids, payer, system]
+    let device_tunnel_block_ext = next_account_info(accounts_iter)?;
+    let segment_routing_ids_ext = next_account_info(accounts_iter)?;
 
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -127,62 +122,47 @@ pub fn process_delete_device_interface(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    if let Some((device_tunnel_block_ext, segment_routing_ids_ext)) = deallocation_accounts {
-        // Atomic delete+deallocate path
-        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-            return Err(DoubleZeroError::FeatureNotEnabled.into());
+    let (expected_dtb_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
+    validate_program_account!(
+        device_tunnel_block_ext,
+        program_id,
+        writable = true,
+        pda = &expected_dtb_pda,
+        "DeviceTunnelBlock"
+    );
+
+    let (expected_sr_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
+    validate_program_account!(
+        segment_routing_ids_ext,
+        program_id,
+        writable = true,
+        pda = &expected_sr_pda,
+        "SegmentRoutingIds"
+    );
+
+    // Deallocate resources if this is a loopback interface
+    if iface.interface_type == InterfaceType::Loopback {
+        // Deallocate ip_net if it was allocated
+        if iface.ip_net != NetworkV4::default() {
+            deallocate_ip(device_tunnel_block_ext, iface.ip_net);
         }
 
-        let (expected_dtb_pda, _, _) =
-            get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
-        validate_program_account!(
-            device_tunnel_block_ext,
-            program_id,
-            writable = true,
-            pda = &expected_dtb_pda,
-            "DeviceTunnelBlock"
-        );
-
-        let (expected_sr_pda, _, _) =
-            get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
-        validate_program_account!(
-            segment_routing_ids_ext,
-            program_id,
-            writable = true,
-            pda = &expected_sr_pda,
-            "SegmentRoutingIds"
-        );
-
-        // Deallocate resources if this is a loopback interface
-        if iface.interface_type == InterfaceType::Loopback {
-            // Deallocate ip_net if it was allocated
-            if iface.ip_net != NetworkV4::default() {
-                deallocate_ip(device_tunnel_block_ext, iface.ip_net);
-            }
-
-            // Deallocate node_segment_idx if it was allocated (only for Vpnv4 loopbacks)
-            if iface.loopback_type == LoopbackType::Vpnv4 && iface.node_segment_idx != 0 {
-                deallocate_id(segment_routing_ids_ext, iface.node_segment_idx);
-            }
+        // Deallocate node_segment_idx if it was allocated (only for Vpnv4 loopbacks)
+        if iface.loopback_type == LoopbackType::Vpnv4 && iface.node_segment_idx != 0 {
+            deallocate_id(segment_routing_ids_ext, iface.node_segment_idx);
         }
-
-        // Atomic close: remove interface immediately
-        device.interfaces.remove(idx);
-
-        #[cfg(test)]
-        msg!(
-            "DeleteDeviceInterface (atomic): deallocated and removed {}",
-            value.name
-        );
-    } else {
-        // Legacy path: just mark as Deleting
-        let mut iface = iface;
-        iface.status = InterfaceStatus::Deleting;
-        device.interfaces[idx] = iface.to_interface();
-
-        #[cfg(test)]
-        msg!("Deleting interface: {} from {:?}", value.name, device);
     }
+
+    // Atomic close: remove interface immediately
+    device.interfaces.remove(idx);
+
+    #[cfg(test)]
+    msg!(
+        "DeleteDeviceInterface (atomic): deallocated and removed {}",
+        value.name
+    );
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

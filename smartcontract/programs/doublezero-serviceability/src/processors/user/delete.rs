@@ -233,7 +233,7 @@ pub fn process_delete_user(
             return Err(ProgramError::InvalidAccountData);
         }
 
-        // Deallocate resources via helper (checks feature flag, validates PDAs)
+        // Deallocate resources via helper (validates PDAs)
         resource_onchain_helpers::validate_and_deallocate_user_resources(
             program_id,
             &user,
@@ -241,7 +241,6 @@ pub fn process_delete_user(
             multicast_publisher_block_ext.as_ref().map(|a| *a),
             device_tunnel_ids_ext,
             &dz_prefix_accounts,
-            &globalstate,
         )?;
 
         // Decrement tenant reference count if user has tenant assigned

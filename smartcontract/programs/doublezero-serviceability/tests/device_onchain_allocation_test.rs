@@ -4,7 +4,6 @@
 //! ResourceExtension accounts (TunnelIds + DzPrefixBlocks) in a single instruction.
 
 use doublezero_serviceability::{
-    error::DoubleZeroError,
     instructions::*,
     pda::*,
     processors::{
@@ -15,11 +14,8 @@ use doublezero_serviceability::{
     resource::ResourceType,
     state::{device::*, feature_flags::FeatureFlag},
 };
-use solana_program::instruction::InstructionError;
 use solana_program_test::*;
-use solana_sdk::{
-    instruction::AccountMeta, pubkey::Pubkey, signer::Signer, transaction::TransactionError,
-};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
 
 mod test_helpers;
 use test_helpers::*;
@@ -119,7 +115,7 @@ async fn test_create_device_atomic_with_onchain_allocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -188,128 +184,6 @@ async fn test_create_device_atomic_with_onchain_allocation() {
     println!("test_create_device_atomic_with_onchain_allocation PASSED");
 }
 
-/// Test backward compatibility: resource_count=0 creates Pending device
-#[tokio::test]
-async fn test_create_device_atomic_backward_compat() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    let (location_pubkey, exchange_pubkey, contributor_pubkey) = setup_device_prerequisites(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
-
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
-            code: "dz1".to_string(),
-            device_type: DeviceType::Hybrid,
-            public_ip: [8, 8, 8, 8].into(),
-            dz_prefixes: "110.1.0.0/23".parse().unwrap(),
-            metrics_publisher_pk: Pubkey::default(),
-            mgmt_vrf: "mgmt".to_string(),
-            desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Verify device is Pending (legacy behavior)
-    let device = get_device(&mut banks_client, device_pubkey)
-        .await
-        .expect("Device not found");
-    assert_eq!(device.status, DeviceStatus::Pending);
-
-    println!("test_create_device_atomic_backward_compat PASSED");
-}
-
-/// Test that atomic create fails when OnChainAllocation feature flag is disabled
-#[tokio::test]
-async fn test_create_device_atomic_feature_flag_disabled() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // Do NOT enable OnChainAllocation feature flag
-
-    let (location_pubkey, exchange_pubkey, contributor_pubkey) = setup_device_prerequisites(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        &payer,
-    )
-    .await;
-
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
-    let (tunnel_ids_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
-    let (dz_prefix_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
-
-    let result = execute_transaction_expect_failure(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
-            code: "dz1".to_string(),
-            device_type: DeviceType::Hybrid,
-            public_ip: [8, 8, 8, 8].into(),
-            dz_prefixes: "110.1.0.0/23".parse().unwrap(),
-            metrics_publisher_pk: Pubkey::default(),
-            mgmt_vrf: "mgmt".to_string(),
-            desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 2,
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(tunnel_ids_pda, false),
-            AccountMeta::new(dz_prefix_pda, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let err = result.expect_err("Expected error with feature flag disabled");
-    match err {
-        BanksClientError::TransactionError(TransactionError::InstructionError(
-            _,
-            InstructionError::Custom(code),
-        )) => {
-            assert_eq!(DoubleZeroError::FeatureNotEnabled, code.into());
-        }
-        _ => panic!("Unexpected error type: {:?}", err),
-    }
-
-    println!("test_create_device_atomic_feature_flag_disabled PASSED");
-}
-
 /// Test atomic create with multiple dz_prefixes (1 TunnelIds + 2 DzPrefixBlocks)
 #[tokio::test]
 async fn test_create_device_atomic_multiple_dz_prefixes() {
@@ -323,7 +197,7 @@ async fn test_create_device_atomic_multiple_dz_prefixes() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,

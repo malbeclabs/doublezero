@@ -11,7 +11,6 @@ use crate::{
         accounttype::AccountType,
         contributor::Contributor,
         device::*,
-        feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         interface::{
             CurrentInterfaceVersion, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType,
@@ -78,24 +77,20 @@ pub fn process_create_device_interface(
     accounts: &[AccountInfo],
     value: &DeviceInterfaceCreateArgs,
 ) -> ProgramResult {
+    if !value.use_onchain_allocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let device_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for onchain allocation (before payer)
-    // Account layout WITH ResourceExtension (use_onchain_allocation = true):
-    //   [device, contributor, globalstate, device_tunnel_block, segment_routing_ids, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_allocation = false):
-    //   [device, contributor, globalstate, payer, system]
-    let resource_accounts = if value.use_onchain_allocation {
-        let device_tunnel_block_ext = next_account_info(accounts_iter)?;
-        let segment_routing_ids_ext = next_account_info(accounts_iter)?;
-        Some((device_tunnel_block_ext, segment_routing_ids_ext))
-    } else {
-        None
-    };
+    // Account layout: [device, contributor, globalstate, device_tunnel_block,
+    //                  segment_routing_ids, payer, system]
+    let device_tunnel_block_ext = next_account_info(accounts_iter)?;
+    let segment_routing_ids_ext = next_account_info(accounts_iter)?;
 
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
@@ -174,55 +169,47 @@ pub fn process_create_device_interface(
         return Err(DoubleZeroError::InterfaceAlreadyExists.into());
     }
 
-    let mut status = InterfaceStatus::Pending;
     let mut ip_net = value.ip_net.unwrap_or_default();
     let mut node_segment_idx: u16 = 0;
 
-    // Atomic create+allocate+activate if onchain allocation is enabled
-    if let Some((device_tunnel_block_ext, segment_routing_ids_ext)) = resource_accounts {
-        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-            return Err(DoubleZeroError::FeatureNotEnabled.into());
+    let (expected_dtb_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
+    validate_program_account!(
+        device_tunnel_block_ext,
+        program_id,
+        writable = true,
+        pda = &expected_dtb_pda,
+        "DeviceTunnelBlock"
+    );
+
+    let (expected_sr_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
+    validate_program_account!(
+        segment_routing_ids_ext,
+        program_id,
+        writable = true,
+        pda = &expected_sr_pda,
+        "SegmentRoutingIds"
+    );
+
+    let status = if interface_type == InterfaceType::Loopback {
+        // Allocate IP from DeviceTunnelBlock only if the caller did not supply one.
+        // Honoring a caller-supplied ip_net lets user-tunnel-endpoint loopbacks land
+        // on a globally routable IP rather than a private device-tunnel-block IP.
+        if ip_net == NetworkV4::default() {
+            ip_net = allocate_ip(device_tunnel_block_ext, 1)?;
         }
 
-        let (expected_dtb_pda, _, _) =
-            get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
-        validate_program_account!(
-            device_tunnel_block_ext,
-            program_id,
-            writable = true,
-            pda = &expected_dtb_pda,
-            "DeviceTunnelBlock"
-        );
-
-        let (expected_sr_pda, _, _) =
-            get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
-        validate_program_account!(
-            segment_routing_ids_ext,
-            program_id,
-            writable = true,
-            pda = &expected_sr_pda,
-            "SegmentRoutingIds"
-        );
-
-        if interface_type == InterfaceType::Loopback {
-            // Allocate IP from DeviceTunnelBlock only if the caller did not supply one.
-            // Honoring a caller-supplied ip_net lets user-tunnel-endpoint loopbacks land
-            // on a globally routable IP rather than a private device-tunnel-block IP.
-            if ip_net == NetworkV4::default() {
-                ip_net = allocate_ip(device_tunnel_block_ext, 1)?;
-            }
-
-            // Allocate segment routing ID for Vpnv4 loopbacks
-            if value.loopback_type == LoopbackType::Vpnv4 {
-                node_segment_idx = allocate_id(segment_routing_ids_ext)?;
-            }
-
-            status = InterfaceStatus::Activated;
-        } else {
-            // Physical interfaces go directly to Unlinked
-            status = InterfaceStatus::Unlinked;
+        // Allocate segment routing ID for Vpnv4 loopbacks
+        if value.loopback_type == LoopbackType::Vpnv4 {
+            node_segment_idx = allocate_id(segment_routing_ids_ext)?;
         }
-    }
+
+        InterfaceStatus::Activated
+    } else {
+        // Physical interfaces go directly to Unlinked
+        InterfaceStatus::Unlinked
+    };
 
     device.interfaces.push(
         CurrentInterfaceVersion {

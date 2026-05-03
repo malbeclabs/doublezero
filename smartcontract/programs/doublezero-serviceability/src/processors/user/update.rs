@@ -9,12 +9,7 @@ use crate::{
     },
     resource::ResourceType,
     serializer::try_acc_write,
-    state::{
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        globalstate::GlobalState,
-        tenant::Tenant,
-        user::*,
-    },
+    state::{globalstate::GlobalState, tenant::Tenant, user::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -151,11 +146,6 @@ pub fn process_update_user(
         ref dz_prefix_accounts,
     )) = resource_accounts
     {
-        // Resource accounts provided — require feature flag
-        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-            return Err(DoubleZeroError::FeatureNotEnabled.into());
-        }
-
         // Validate UserTunnelBlock PDA
         let (expected_user_tunnel_pda, _, _) =
             get_resource_extension_pda(program_id, ResourceType::UserTunnelBlock);

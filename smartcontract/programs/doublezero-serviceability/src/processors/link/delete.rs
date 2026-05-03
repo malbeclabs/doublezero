@@ -51,38 +51,27 @@ pub fn process_delete_link(
     accounts: &[AccountInfo],
     value: &LinkDeleteArgs,
 ) -> ProgramResult {
+    if !value.use_onchain_deallocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let link_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: additional accounts for atomic deallocation (before payer)
-    // Account layout WITH deallocation (use_onchain_deallocation = true):
-    //   [link, contributor, globalstate, side_a, side_z, device_tunnel_block, link_ids, owner,
-    //    topology_0..topology_N (writable), payer, system]
-    // Where N = link.link_topologies.len(); the topology accounts are used to decrement
-    // each referenced topology's reference_count before the link is closed.
-    // Account layout WITHOUT (legacy, use_onchain_deallocation = false):
-    //   [link, contributor, globalstate, payer, system]
-    let deallocation_accounts = if value.use_onchain_deallocation {
-        let side_a_account = next_account_info(accounts_iter)?;
-        let side_z_account = next_account_info(accounts_iter)?;
-        let device_tunnel_block_ext = next_account_info(accounts_iter)?;
-        let link_ids_ext = next_account_info(accounts_iter)?;
-        let owner_account = next_account_info(accounts_iter)?;
-        Some((
-            side_a_account,
-            side_z_account,
-            device_tunnel_block_ext,
-            link_ids_ext,
-            owner_account,
-        ))
-    } else {
-        None
-    };
+    // Account layout: [link, contributor, globalstate, side_a, side_z, device_tunnel_block,
+    //                  link_ids, owner, topology_0..topology_N (writable), payer, system]
+    // N = link.link_topologies.len(); the topology accounts decrement each referenced topology's
+    // reference_count before the link is closed.
+    let side_a_account = next_account_info(accounts_iter)?;
+    let side_z_account = next_account_info(accounts_iter)?;
+    let device_tunnel_block_ext = next_account_info(accounts_iter)?;
+    let link_ids_ext = next_account_info(accounts_iter)?;
+    let owner_account = next_account_info(accounts_iter)?;
 
-    // Remaining accounts: (optional topology union when use_onchain_deallocation) + payer + system.
+    // Remaining accounts: topology union + payer + system.
     let rest: Vec<&AccountInfo> = accounts_iter.collect();
     if rest.len() < 2 {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -129,7 +118,7 @@ pub fn process_delete_link(
     }
 
     // Any link can be deleted by its contributor or foundation allowlist
-    let mut link: Link = Link::try_from(link_account)?;
+    let link: Link = Link::try_from(link_account)?;
 
     if matches!(link.status, LinkStatus::Activated | LinkStatus::Deleting) {
         return Err(DoubleZeroError::InvalidStatus.into());
@@ -139,102 +128,84 @@ pub fn process_delete_link(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    if let Some((
-        side_a_account,
-        side_z_account,
+    // Validate additional accounts
+    validate_program_account!(side_a_account, program_id, writable = true, "SideA");
+    validate_program_account!(side_z_account, program_id, writable = true, "SideZ");
+
+    // Validate link references match accounts
+    if link.owner != *owner_account.key
+        || link.side_a_pk != *side_a_account.key
+        || link.side_z_pk != *side_z_account.key
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Deallocate resources via helper (validates PDAs)
+    resource_onchain_helpers::validate_and_deallocate_link_resources(
+        program_id,
+        &link,
         device_tunnel_block_ext,
         link_ids_ext,
-        owner_account,
-    )) = deallocation_accounts
-    {
-        // Validate additional accounts
-        validate_program_account!(side_a_account, program_id, writable = true, "SideA");
-        validate_program_account!(side_z_account, program_id, writable = true, "SideZ");
+    )?;
 
-        // Validate link references match accounts
-        if link.owner != *owner_account.key
-            || link.side_a_pk != *side_a_account.key
-            || link.side_z_pk != *side_z_account.key
-        {
-            return Err(ProgramError::InvalidAccountData);
+    // Reset interfaces to Unlinked
+    let mut side_a_dev = Device::try_from(side_a_account)?;
+    let mut side_z_dev = Device::try_from(side_z_account)?;
+
+    if let Ok((idx_a, side_a_iface)) = side_a_dev.find_interface(&link.side_a_iface_name) {
+        let mut updated_iface = side_a_iface.clone();
+        updated_iface.status = InterfaceStatus::Unlinked;
+        // Preserve user-provided ip_net for CYOA/DIA physical interfaces.
+        let has_user_ip = updated_iface.interface_type == InterfaceType::Physical
+            && (updated_iface.interface_cyoa != InterfaceCYOA::None
+                || updated_iface.interface_dia != InterfaceDIA::None);
+        if !has_user_ip {
+            updated_iface.ip_net = NetworkV4::default();
         }
-
-        // Deallocate resources via helper (checks feature flag, validates PDAs)
-        resource_onchain_helpers::validate_and_deallocate_link_resources(
-            program_id,
-            &link,
-            device_tunnel_block_ext,
-            link_ids_ext,
-            &globalstate,
-        )?;
-
-        // Reset interfaces to Unlinked
-        let mut side_a_dev = Device::try_from(side_a_account)?;
-        let mut side_z_dev = Device::try_from(side_z_account)?;
-
-        if let Ok((idx_a, side_a_iface)) = side_a_dev.find_interface(&link.side_a_iface_name) {
-            let mut updated_iface = side_a_iface.clone();
-            updated_iface.status = InterfaceStatus::Unlinked;
-            // Preserve user-provided ip_net for CYOA/DIA physical interfaces.
-            let has_user_ip = updated_iface.interface_type == InterfaceType::Physical
-                && (updated_iface.interface_cyoa != InterfaceCYOA::None
-                    || updated_iface.interface_dia != InterfaceDIA::None);
-            if !has_user_ip {
-                updated_iface.ip_net = NetworkV4::default();
-            }
-            side_a_dev.interfaces[idx_a] = updated_iface.to_interface();
-        }
-
-        if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface(&link.side_z_iface_name) {
-            let mut updated_iface = side_z_iface.clone();
-            updated_iface.status = InterfaceStatus::Unlinked;
-            let has_user_ip = updated_iface.interface_type == InterfaceType::Physical
-                && (updated_iface.interface_cyoa != InterfaceCYOA::None
-                    || updated_iface.interface_dia != InterfaceDIA::None);
-            if !has_user_ip {
-                updated_iface.ip_net = NetworkV4::default();
-            }
-            side_z_dev.interfaces[idx_z] = updated_iface.to_interface();
-        }
-
-        // Decrement reference counts
-        contributor.reference_count = contributor.reference_count.saturating_sub(1);
-        side_a_dev.reference_count = side_a_dev.reference_count.saturating_sub(1);
-        side_z_dev.reference_count = side_z_dev.reference_count.saturating_sub(1);
-
-        try_acc_write(&contributor, contributor_account, payer_account, accounts)?;
-        try_acc_write(&side_a_dev, side_a_account, payer_account, accounts)?;
-        try_acc_write(&side_z_dev, side_z_account, payer_account, accounts)?;
-
-        // Decrement reference_count on every Topology this link was tagged into.
-        // Caller must provide exactly one writable account per entry in link.link_topologies.
-        if !link.link_topologies.is_empty() {
-            let mut acc_map: BTreeMap<Pubkey, &AccountInfo> = BTreeMap::new();
-            for acc in topology_accounts.iter() {
-                validate_program_account!(*acc, program_id, writable = true, "Topology");
-                acc_map.insert(*acc.key, *acc);
-            }
-            for pk in &link.link_topologies {
-                let acc = *acc_map.get(pk).ok_or(DoubleZeroError::InvalidArgument)?;
-                let mut topo = TopologyInfo::try_from(acc)?;
-                topo.reference_count = topo.reference_count.saturating_sub(1);
-                try_acc_write(&topo, acc, payer_account, accounts)?;
-            }
-        }
-
-        try_acc_close(link_account, owner_account)?;
-
-        #[cfg(test)]
-        msg!("DeleteLink (atomic): Link deallocated and closed");
-    } else {
-        // Legacy path: just mark as Deleting
-        link.status = LinkStatus::Deleting;
-
-        try_acc_write(&link, link_account, payer_account, accounts)?;
-
-        #[cfg(test)]
-        msg!("Deleting: {:?}", link);
+        side_a_dev.interfaces[idx_a] = updated_iface.to_interface();
     }
+
+    if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface(&link.side_z_iface_name) {
+        let mut updated_iface = side_z_iface.clone();
+        updated_iface.status = InterfaceStatus::Unlinked;
+        let has_user_ip = updated_iface.interface_type == InterfaceType::Physical
+            && (updated_iface.interface_cyoa != InterfaceCYOA::None
+                || updated_iface.interface_dia != InterfaceDIA::None);
+        if !has_user_ip {
+            updated_iface.ip_net = NetworkV4::default();
+        }
+        side_z_dev.interfaces[idx_z] = updated_iface.to_interface();
+    }
+
+    // Decrement reference counts
+    contributor.reference_count = contributor.reference_count.saturating_sub(1);
+    side_a_dev.reference_count = side_a_dev.reference_count.saturating_sub(1);
+    side_z_dev.reference_count = side_z_dev.reference_count.saturating_sub(1);
+
+    try_acc_write(&contributor, contributor_account, payer_account, accounts)?;
+    try_acc_write(&side_a_dev, side_a_account, payer_account, accounts)?;
+    try_acc_write(&side_z_dev, side_z_account, payer_account, accounts)?;
+
+    // Decrement reference_count on every Topology this link was tagged into.
+    // Caller must provide exactly one writable account per entry in link.link_topologies.
+    if !link.link_topologies.is_empty() {
+        let mut acc_map: BTreeMap<Pubkey, &AccountInfo> = BTreeMap::new();
+        for acc in topology_accounts.iter() {
+            validate_program_account!(*acc, program_id, writable = true, "Topology");
+            acc_map.insert(*acc.key, *acc);
+        }
+        for pk in &link.link_topologies {
+            let acc = *acc_map.get(pk).ok_or(DoubleZeroError::InvalidArgument)?;
+            let mut topo = TopologyInfo::try_from(acc)?;
+            topo.reference_count = topo.reference_count.saturating_sub(1);
+            try_acc_write(&topo, acc, payer_account, accounts)?;
+        }
+    }
+
+    try_acc_close(link_account, owner_account)?;
+
+    #[cfg(test)]
+    msg!("DeleteLink (atomic): Link deallocated and closed");
 
     Ok(())
 }

@@ -9,9 +9,7 @@ use doublezero_serviceability::{
     processors::{
         accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
-        device::{
-            activate::DeviceActivateArgs, create::DeviceCreateArgs, update::DeviceUpdateArgs,
-        },
+        device::{create::DeviceCreateArgs, update::DeviceUpdateArgs},
         exchange::create::ExchangeCreateArgs,
         globalconfig::set::SetGlobalConfigArgs,
         location::create::LocationCreateArgs,
@@ -209,7 +207,7 @@ async fn setup() -> BgpStatusTestEnv {
             metrics_publisher_pk,
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -217,6 +215,9 @@ async fn setup() -> BgpStatusTestEnv {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
         &payer,
     )
@@ -236,22 +237,6 @@ async fn setup() -> BgpStatusTestEnv {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
         &payer,
     )
@@ -630,7 +615,7 @@ async fn test_bgp_status_user_device_mismatch() {
             metrics_publisher_pk: payer.pubkey(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey_2, false),
@@ -638,6 +623,9 @@ async fn test_bgp_status_user_device_mismatch() {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_2, false),
+            AccountMeta::new(dz_prefix_2, false),
         ],
         &payer,
     )
@@ -657,22 +645,6 @@ async fn test_bgp_status_user_device_mismatch() {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_pubkey_2, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(tunnel_ids_2, false),
-            AccountMeta::new(dz_prefix_2, false),
         ],
         &payer,
     )

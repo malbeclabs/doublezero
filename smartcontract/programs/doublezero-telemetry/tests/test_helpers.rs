@@ -10,7 +10,6 @@ use doublezero_serviceability::{
     processors::{
         contributor::create::ContributorCreateArgs,
         device::{
-            activate::DeviceActivateArgs,
             create::DeviceCreateArgs,
             interface::{create::DeviceInterfaceCreateArgs, unlink::DeviceInterfaceUnlinkArgs},
             sethealth::DeviceSetHealthArgs,
@@ -995,6 +994,32 @@ impl ServiceabilityProgramHelper {
         let index = self.get_next_global_state_index().await?;
         let (device_pk, _) = get_device_pda(&self.program_id, index);
 
+        let dz_prefix_count = device.dz_prefixes.len();
+        let resource_count: u8 = (1 + dz_prefix_count) as u8;
+
+        let mut accounts = vec![
+            AccountMeta::new(device_pk, false),
+            AccountMeta::new(contributor_pk, false),
+            AccountMeta::new(location_pk, false),
+            AccountMeta::new(exchange_pk, false),
+            AccountMeta::new(self.global_state_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&self.program_id, ResourceType::TunnelIds(device_pk, 0))
+                    .0,
+                false,
+            ),
+        ];
+        for idx in 0..dz_prefix_count {
+            accounts.push(AccountMeta::new(
+                get_resource_extension_pda(
+                    &self.program_id,
+                    ResourceType::DzPrefixBlock(device_pk, idx),
+                )
+                .0,
+                false,
+            ));
+        }
+
         self.execute_transaction(
             DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
                 code: device.code,
@@ -1004,70 +1029,19 @@ impl ServiceabilityProgramHelper {
                 metrics_publisher_pk: device.metrics_publisher_pk,
                 mgmt_vrf: device.mgmt_vrf,
                 desired_status: Some(DeviceDesiredStatus::Activated),
-                resource_count: 0,
+                resource_count,
             }),
-            vec![
-                AccountMeta::new(device_pk, false),
-                AccountMeta::new(contributor_pk, false),
-                AccountMeta::new(location_pk, false),
-                AccountMeta::new(exchange_pk, false),
-                AccountMeta::new(self.global_state_pubkey, false),
-            ],
+            accounts,
         )
         .await?;
 
         Ok(device_pk)
     }
 
-    pub async fn activate_device(
+    pub async fn set_device_ready_for_users(
         &mut self,
         device_pk: Pubkey,
-        contributor_pk: Pubkey,
-        resource_count: usize,
     ) -> Result<(), BanksClientError> {
-        let (globalconfig_pda, _) = get_globalconfig_pda(&self.program_id);
-        let mut resources = vec![];
-        resources.push(AccountMeta::new(
-            get_resource_extension_pda(&self.program_id, ResourceType::TunnelIds(device_pk, 0)).0,
-            false,
-        ));
-        for i in 1..resource_count {
-            resources.push(AccountMeta::new(
-                get_resource_extension_pda(
-                    &self.program_id,
-                    ResourceType::DzPrefixBlock(device_pk, i - 1),
-                )
-                .0,
-                false,
-            ));
-        }
-        self.execute_transaction(
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count }),
-            [
-                vec![
-                    AccountMeta::new(device_pk, false),
-                    AccountMeta::new(self.global_state_pubkey, false),
-                    AccountMeta::new(globalconfig_pda, false),
-                ],
-                resources,
-            ]
-            .concat(),
-        )
-        .await?;
-
-        self.execute_transaction(
-            DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                desired_status: Some(DeviceDesiredStatus::Activated),
-                ..Default::default()
-            }),
-            vec![
-                AccountMeta::new(device_pk, false),
-                AccountMeta::new(contributor_pk, false),
-                AccountMeta::new(self.global_state_pubkey, false),
-            ],
-        )
-        .await?;
-
         self.execute_transaction(
             DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
                 health: DeviceHealth::ReadyForUsers,
@@ -1193,12 +1167,10 @@ impl ServiceabilityProgramHelper {
         location_pk: Pubkey,
         exchange_pk: Pubkey,
     ) -> Result<Pubkey, BanksClientError> {
-        let resource_count = 1 + device.dz_prefixes.len();
         let device_pk = self
             .create_device(device, contributor_pk, location_pk, exchange_pk)
             .await?;
-        self.activate_device(device_pk, contributor_pk, resource_count)
-            .await?;
+        self.set_device_ready_for_users(device_pk).await?;
         Ok(device_pk)
     }
 

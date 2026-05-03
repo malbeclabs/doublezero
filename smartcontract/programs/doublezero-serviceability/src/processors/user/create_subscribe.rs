@@ -1,7 +1,7 @@
 use crate::{
     seeds::{SEED_PREFIX, SEED_USER},
     serializer::{try_acc_create, try_acc_write},
-    state::{globalstate::GlobalState, user::*},
+    state::user::*,
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -127,7 +127,6 @@ pub fn process_create_subscribe_user(
         dz_prefix_accounts,
     )) = resource_extension_accounts
     {
-        let globalstate_ref = GlobalState::try_from(globalstate_account)?;
         resource_onchain_helpers::validate_and_allocate_user_resources(
             program_id,
             &mut result.user,
@@ -135,7 +134,6 @@ pub fn process_create_subscribe_user(
             multicast_publisher_block_ext,
             device_tunnel_ids_ext,
             &dz_prefix_accounts,
-            &globalstate_ref,
         )?;
 
         result.user.try_activate(&mut result.accesspass)?;

@@ -8,11 +8,7 @@ use crate::{
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
-        contributor::Contributor,
-        device::Device,
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        globalstate::GlobalState,
-        link::*,
+        contributor::Contributor, device::Device, globalstate::GlobalState, link::*,
         topology::TopologyInfo,
     },
 };
@@ -140,7 +136,13 @@ pub fn process_update_link(
         None
     };
 
-    let resource_accounts = if value.use_onchain_allocation {
+    // Tunnel reallocation must go through the onchain path. Other updates skip the resource
+    // accounts entirely; the boolean is only meaningful when tunnel fields are being changed.
+    let needs_resource_accounts = value.tunnel_id.is_some() || value.tunnel_net.is_some();
+    if needs_resource_accounts && !value.use_onchain_allocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+    let resource_accounts = if needs_resource_accounts {
         let device_tunnel_block_ext = next_account_info(accounts_iter)?;
         let link_ids_ext = next_account_info(accounts_iter)?;
         Some((device_tunnel_block_ext, link_ids_ext))
@@ -270,78 +272,66 @@ pub fn process_update_link(
         link.status = status;
     }
 
-    // Handle tunnel_id/tunnel_net reallocation (foundation-only)
+    // Handle tunnel_id/tunnel_net reallocation (foundation-only).
+    // The earlier check guarantees `resource_accounts` is `Some` when either field is set.
     if value.tunnel_id.is_some() || value.tunnel_net.is_some() {
         if !globalstate.foundation_allowlist.contains(payer_account.key) {
             msg!("tunnel field updates require foundation allowlist");
             return Err(DoubleZeroError::NotAllowed.into());
         }
 
-        if let Some((device_tunnel_block_ext, link_ids_ext)) = resource_accounts {
-            // Resource accounts provided — require feature flag
-            if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-                return Err(DoubleZeroError::FeatureNotEnabled.into());
-            }
+        let (device_tunnel_block_ext, link_ids_ext) = resource_accounts.unwrap();
 
-            // Validate DeviceTunnelBlock PDA
-            let (expected_device_tunnel_pda, _, _) =
-                get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
-            validate_program_account!(
-                device_tunnel_block_ext,
-                program_id,
-                writable = true,
-                pda = &expected_device_tunnel_pda,
-                "DeviceTunnelBlock"
-            );
+        // Validate DeviceTunnelBlock PDA
+        let (expected_device_tunnel_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
+        validate_program_account!(
+            device_tunnel_block_ext,
+            program_id,
+            writable = true,
+            pda = &expected_device_tunnel_pda,
+            "DeviceTunnelBlock"
+        );
 
-            // Validate LinkIds PDA
-            let (expected_link_ids_pda, _, _) =
-                get_resource_extension_pda(program_id, ResourceType::LinkIds);
-            validate_program_account!(
-                link_ids_ext,
-                program_id,
-                writable = true,
-                pda = &expected_link_ids_pda,
-                "LinkIds"
-            );
+        // Validate LinkIds PDA
+        let (expected_link_ids_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::LinkIds);
+        validate_program_account!(
+            link_ids_ext,
+            program_id,
+            writable = true,
+            pda = &expected_link_ids_pda,
+            "LinkIds"
+        );
 
-            // Deallocate/allocate tunnel_id
-            if let Some(new_tunnel_id) = value.tunnel_id {
-                if link.tunnel_id != 0 {
-                    deallocate_id(link_ids_ext, link.tunnel_id);
-                    #[cfg(test)]
-                    msg!("Deallocated old tunnel_id {}", link.tunnel_id);
-                }
-                if new_tunnel_id != 0 {
-                    allocate_specific_id(link_ids_ext, new_tunnel_id)?;
-                    #[cfg(test)]
-                    msg!("Allocated new tunnel_id {}", new_tunnel_id);
-                }
-                link.tunnel_id = new_tunnel_id;
+        // Deallocate/allocate tunnel_id
+        if let Some(new_tunnel_id) = value.tunnel_id {
+            if link.tunnel_id != 0 {
+                deallocate_id(link_ids_ext, link.tunnel_id);
+                #[cfg(test)]
+                msg!("Deallocated old tunnel_id {}", link.tunnel_id);
             }
+            if new_tunnel_id != 0 {
+                allocate_specific_id(link_ids_ext, new_tunnel_id)?;
+                #[cfg(test)]
+                msg!("Allocated new tunnel_id {}", new_tunnel_id);
+            }
+            link.tunnel_id = new_tunnel_id;
+        }
 
-            // Deallocate/allocate tunnel_net
-            if let Some(new_tunnel_net) = value.tunnel_net {
-                if link.tunnel_net != NetworkV4::default() {
-                    deallocate_ip(device_tunnel_block_ext, link.tunnel_net);
-                    #[cfg(test)]
-                    msg!("Deallocated old tunnel_net {}", link.tunnel_net);
-                }
-                if new_tunnel_net != NetworkV4::default() {
-                    allocate_specific_ip(device_tunnel_block_ext, new_tunnel_net)?;
-                    #[cfg(test)]
-                    msg!("Allocated new tunnel_net {}", new_tunnel_net);
-                }
-                link.tunnel_net = new_tunnel_net;
+        // Deallocate/allocate tunnel_net
+        if let Some(new_tunnel_net) = value.tunnel_net {
+            if link.tunnel_net != NetworkV4::default() {
+                deallocate_ip(device_tunnel_block_ext, link.tunnel_net);
+                #[cfg(test)]
+                msg!("Deallocated old tunnel_net {}", link.tunnel_net);
             }
-        } else {
-            // Legacy path: no resource accounts, just overwrite fields
-            if let Some(tunnel_id) = value.tunnel_id {
-                link.tunnel_id = tunnel_id;
+            if new_tunnel_net != NetworkV4::default() {
+                allocate_specific_ip(device_tunnel_block_ext, new_tunnel_net)?;
+                #[cfg(test)]
+                msg!("Allocated new tunnel_net {}", new_tunnel_net);
             }
-            if let Some(tunnel_net) = value.tunnel_net {
-                link.tunnel_net = tunnel_net;
-            }
+            link.tunnel_net = new_tunnel_net;
         }
     }
 

@@ -3,7 +3,9 @@ use std::fmt;
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FeatureFlag {
-    OnChainAllocation = 0,
+    /// Bit 0 — formerly `OnChainAllocation`, now always-on. The variant is retained so the
+    /// discriminant doesn't shift; bit 0 is reserved and must never be reused for a new flag.
+    OnChainAllocationDeprecated = 0,
     /// When set, all instructions require a Permission account for authorization.
     /// The legacy GlobalState allowlist/authority fallback is disabled.
     RequirePermissionAccounts = 1,
@@ -12,7 +14,7 @@ pub enum FeatureFlag {
 impl FeatureFlag {
     pub fn all_variants() -> &'static [FeatureFlag] {
         &[
-            FeatureFlag::OnChainAllocation,
+            FeatureFlag::OnChainAllocationDeprecated,
             FeatureFlag::RequirePermissionAccounts,
         ]
     }
@@ -25,7 +27,7 @@ impl FeatureFlag {
 impl fmt::Display for FeatureFlag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FeatureFlag::OnChainAllocation => write!(f, "onchain-allocation"),
+            FeatureFlag::OnChainAllocationDeprecated => write!(f, "onchain-allocation-deprecated"),
             FeatureFlag::RequirePermissionAccounts => write!(f, "require-permission-accounts"),
         }
     }
@@ -36,7 +38,7 @@ impl std::str::FromStr for FeatureFlag {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "onchain-allocation" => Ok(FeatureFlag::OnChainAllocation),
+            "onchain-allocation-deprecated" => Ok(FeatureFlag::OnChainAllocationDeprecated),
             "require-permission-accounts" => Ok(FeatureFlag::RequirePermissionAccounts),
             _ => Err(format!("unknown feature flag: {s}")),
         }
@@ -61,14 +63,20 @@ mod tests {
 
     #[test]
     fn test_feature_flag_mask_and_helpers() {
-        let mask = FeatureFlag::OnChainAllocation.to_mask();
+        let mask = FeatureFlag::OnChainAllocationDeprecated.to_mask();
         assert_eq!(mask, 1u128);
-        assert!(is_feature_enabled(mask, FeatureFlag::OnChainAllocation));
-        assert!(!is_feature_enabled(0u128, FeatureFlag::OnChainAllocation));
+        assert!(is_feature_enabled(
+            mask,
+            FeatureFlag::OnChainAllocationDeprecated
+        ));
+        assert!(!is_feature_enabled(
+            0u128,
+            FeatureFlag::OnChainAllocationDeprecated
+        ));
 
         let flags = enabled_flags(1u128);
         assert_eq!(flags.len(), 1);
-        assert_eq!(flags[0], FeatureFlag::OnChainAllocation);
+        assert_eq!(flags[0], FeatureFlag::OnChainAllocationDeprecated);
 
         assert_eq!(enabled_flags(0u128).len(), 0);
     }
@@ -76,12 +84,14 @@ mod tests {
     #[test]
     fn test_feature_flag_display_and_from_str() {
         assert_eq!(
-            FeatureFlag::OnChainAllocation.to_string(),
-            "onchain-allocation"
+            FeatureFlag::OnChainAllocationDeprecated.to_string(),
+            "onchain-allocation-deprecated"
         );
         assert_eq!(
-            "onchain-allocation".parse::<FeatureFlag>().unwrap(),
-            FeatureFlag::OnChainAllocation
+            "onchain-allocation-deprecated"
+                .parse::<FeatureFlag>()
+                .unwrap(),
+            FeatureFlag::OnChainAllocationDeprecated
         );
         assert!("unknown-flag".parse::<FeatureFlag>().is_err());
     }

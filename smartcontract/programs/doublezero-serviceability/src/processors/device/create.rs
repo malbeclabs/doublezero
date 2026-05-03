@@ -6,13 +6,8 @@ use crate::{
     seeds::{SEED_DEVICE, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
-        accounttype::AccountType,
-        contributor::Contributor,
-        device::*,
-        exchange::Exchange,
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        globalstate::GlobalState,
-        location::Location,
+        accounttype::AccountType, contributor::Contributor, device::*, exchange::Exchange,
+        globalstate::GlobalState, location::Location,
     },
 };
 use borsh::BorshSerialize;
@@ -169,6 +164,12 @@ pub fn process_create_device(
         }
     }
 
+    // Onchain resource allocation is mandatory: caller must pass TunnelIds plus at least one
+    // DzPrefixBlock account.
+    if value.resource_count < 2 {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let mut device = Device {
         account_type: AccountType::Device,
         owner: *payer_account.key,
@@ -183,7 +184,7 @@ pub fn process_create_device(
         public_ip: value.public_ip,
         dz_prefixes: value.dz_prefixes.clone(),
         metrics_publisher_pk: value.metrics_publisher_pk,
-        status: DeviceStatus::Pending,
+        status: DeviceStatus::Activated,
         mgmt_vrf: value.mgmt_vrf.clone(),
         interfaces: vec![],
         users_count: 0,
@@ -202,20 +203,6 @@ pub fn process_create_device(
         multicast_publishers_count: 0,
         max_multicast_publishers: 0, // Initially locked, must be set via device update
     };
-
-    // Atomic create+activate with onchain resource allocation
-    if value.resource_count > 0 {
-        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-            return Err(DoubleZeroError::FeatureNotEnabled.into());
-        }
-
-        assert!(
-            value.resource_count >= 2,
-            "Resource count must be at least 2 (TunnelIds and at least one DzPrefixBlock)"
-        );
-
-        device.status = DeviceStatus::Activated;
-    }
 
     device.check_status_transition();
 

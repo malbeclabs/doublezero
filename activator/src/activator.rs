@@ -151,7 +151,10 @@ where
 
 fn read_onchain_allocation_flag(client: &dyn DoubleZeroClient) -> eyre::Result<bool> {
     let (_, global_state) = GetGlobalStateCommand.execute(client)?;
-    let enabled = is_feature_enabled(global_state.feature_flags, FeatureFlag::OnChainAllocation);
+    let enabled = is_feature_enabled(
+        global_state.feature_flags,
+        FeatureFlag::OnChainAllocationDeprecated,
+    );
     info!(
         "Onchain allocation feature flag: {} (feature_flags={})",
         enabled, global_state.feature_flags

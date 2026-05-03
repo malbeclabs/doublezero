@@ -51,9 +51,9 @@ impl CreateLinkCommand {
             AccountMeta::new(self.side_a_pk, false),
             AccountMeta::new(self.side_z_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_topology_pda, false),
             AccountMeta::new(device_tunnel_block_ext, false),
             AccountMeta::new(link_ids_ext, false),
-            AccountMeta::new(unicast_default_topology_pda, false),
         ];
 
         client
@@ -127,9 +127,9 @@ mod tests {
                     AccountMeta::new(side_a_pk, false),
                     AccountMeta::new(side_z_pk, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(unicast_default_pda, false),
                     AccountMeta::new(device_tunnel_block_ext, false),
                     AccountMeta::new(link_ids_ext, false),
-                    AccountMeta::new(unicast_default_pda, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));

@@ -134,37 +134,25 @@ pub fn process_update_multicastgroup_roles(
     accounts: &[AccountInfo],
     value: &UpdateMulticastGroupRolesArgs,
 ) -> ProgramResult {
-    let num_accounts = accounts.len();
+    if !value.use_onchain_allocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let mgroup_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let user_account = next_account_info(accounts_iter)?;
 
-    // Account layout WITH onchain allocation (use_onchain_allocation=true):
-    //   [mgroup, accesspass, user, globalstate, multicast_publisher_block, payer, system]
-    // Account layout WITHOUT onchain allocation, WITH globalstate (num_accounts >= 6):
-    //   [mgroup, accesspass, user, globalstate, payer, system]
-    // Account layout WITHOUT onchain allocation, WITHOUT globalstate (num_accounts == 5, backward compat):
-    //   [mgroup, accesspass, user, payer, system]
-    let has_globalstate = value.use_onchain_allocation || num_accounts >= 6;
-    let globalstate_opt = if has_globalstate {
-        let gs_account = next_account_info(accounts_iter)?;
-        let (expected_globalstate_pda, _) = get_globalstate_pda(program_id);
-        assert_eq!(
-            gs_account.key, &expected_globalstate_pda,
-            "Invalid GlobalState PDA"
-        );
-        Some(GlobalState::try_from(gs_account)?)
-    } else {
-        None
-    };
-    let onchain_accounts = if value.use_onchain_allocation {
-        let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
-        Some(multicast_publisher_block_ext)
-    } else {
-        None
-    };
+    // Account layout: [mgroup, accesspass, user, globalstate, multicast_publisher_block, payer, system]
+    let gs_account = next_account_info(accounts_iter)?;
+    let (expected_globalstate_pda, _) = get_globalstate_pda(program_id);
+    assert_eq!(
+        gs_account.key, &expected_globalstate_pda,
+        "Invalid GlobalState PDA"
+    );
+    let globalstate = GlobalState::try_from(gs_account)?;
+    let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
 
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -235,22 +223,16 @@ pub fn process_update_multicastgroup_roles(
     }
 
     // The access pass must belong to the payer. If the payer differs, the payer
-    // must be in the foundation allowlist — which requires globalstate to be provided.
-    // Callers without globalstate (num_accounts < 6) are only permitted when
-    // payer == accesspass.user_payer (backward compatible with old clients).
-    if accesspass.user_payer != *payer_account.key {
-        let in_foundation = globalstate_opt
-            .as_ref()
-            .map(|gs| gs.foundation_allowlist.contains(payer_account.key))
-            .unwrap_or(false);
-        if !in_foundation {
-            msg!(
-                "AccessPass user_payer {:?} does not match payer {:?}",
-                accesspass.user_payer,
-                payer_account.key
-            );
-            return Err(DoubleZeroError::Unauthorized.into());
-        }
+    // must be in the foundation allowlist.
+    if accesspass.user_payer != *payer_account.key
+        && !globalstate.foundation_allowlist.contains(payer_account.key)
+    {
+        msg!(
+            "AccessPass user_payer {:?} does not match payer {:?}",
+            accesspass.user_payer,
+            payer_account.key
+        );
+        return Err(DoubleZeroError::Unauthorized.into());
     }
 
     let result = update_user_multicastgroup_roles(
@@ -261,53 +243,42 @@ pub fn process_update_multicastgroup_roles(
         value.subscriber,
     )?;
 
-    if let Some(multicast_publisher_block_ext) = onchain_accounts {
-        // Onchain allocation path: allocate dz_ip directly, skip Updating status
-        // Allocate dz_ip when gaining first publisher
-        if result.publisher_list_transitioned
-            && value.publisher
-            && (user.dz_ip == Ipv4Addr::UNSPECIFIED || user.dz_ip == user.client_ip)
-        {
-            let (expected_multicast_publisher_pda, _, _) =
-                get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
-            validate_program_account!(
-                multicast_publisher_block_ext,
-                program_id,
-                writable = true,
-                pda = &expected_multicast_publisher_pda,
-                "MulticastPublisherBlock"
-            );
+    // Allocate dz_ip when gaining first publisher
+    if result.publisher_list_transitioned
+        && value.publisher
+        && (user.dz_ip == Ipv4Addr::UNSPECIFIED || user.dz_ip == user.client_ip)
+    {
+        let (expected_multicast_publisher_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
+        validate_program_account!(
+            multicast_publisher_block_ext,
+            program_id,
+            writable = true,
+            pda = &expected_multicast_publisher_pda,
+            "MulticastPublisherBlock"
+        );
 
-            user.dz_ip = allocate_ip(multicast_publisher_block_ext, 1)?.ip();
-        } else if result.publisher_list_transitioned
-            && !value.publisher
-            && user.dz_ip != Ipv4Addr::UNSPECIFIED
-            && user.dz_ip != user.client_ip
-        {
-            // Deallocate dz_ip back to MulticastPublisherBlock
-            let (expected_multicast_publisher_pda, _, _) =
-                get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
-            validate_program_account!(
-                multicast_publisher_block_ext,
-                program_id,
-                writable = true,
-                pda = &expected_multicast_publisher_pda,
-                "MulticastPublisherBlock"
-            );
+        user.dz_ip = allocate_ip(multicast_publisher_block_ext, 1)?.ip();
+    } else if result.publisher_list_transitioned
+        && !value.publisher
+        && user.dz_ip != Ipv4Addr::UNSPECIFIED
+        && user.dz_ip != user.client_ip
+    {
+        // Deallocate dz_ip back to MulticastPublisherBlock
+        let (expected_multicast_publisher_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
+        validate_program_account!(
+            multicast_publisher_block_ext,
+            program_id,
+            writable = true,
+            pda = &expected_multicast_publisher_pda,
+            "MulticastPublisherBlock"
+        );
 
-            if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
-                deallocate_ip(multicast_publisher_block_ext, dz_ip_net);
-            }
-            user.dz_ip = user.client_ip;
+        if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
+            deallocate_ip(multicast_publisher_block_ext, dz_ip_net);
         }
-    } else {
-        // Legacy path: trigger activator reprocessing when publisher list transitions
-        // (gaining first publisher requires dz_ip allocation, losing last means it's no longer needed).
-        // Skip for Pending users — they haven't been activated yet so there is
-        // no dz_ip to (de)allocate and the Updating status would fail validation.
-        if result.publisher_list_transitioned && user.status != UserStatus::Pending {
-            user.status = UserStatus::Updating;
-        }
+        user.dz_ip = user.client_ip;
     }
 
     try_acc_write(&result.mgroup, mgroup_account, payer_account, accounts)?;

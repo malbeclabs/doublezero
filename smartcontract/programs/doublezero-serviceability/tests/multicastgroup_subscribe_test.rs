@@ -8,10 +8,8 @@ use doublezero_serviceability::{
         device::{
             activate::DeviceActivateArgs, create::DeviceCreateArgs, update::DeviceUpdateArgs,
         },
-        globalconfig::set::SetGlobalConfigArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         multicastgroup::{
-            activate::MulticastGroupActivateArgs,
             allowlist::{
                 publisher::add::AddMulticastGroupPubAllowlistArgs,
                 subscriber::add::AddMulticastGroupSubAllowlistArgs,
@@ -60,68 +58,17 @@ struct TestFixture {
 async fn setup_fixture() -> TestFixture {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
     // 1. Init global state
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     // 2. Set global config
     let (config_pubkey, _) = get_globalconfig_pda(&program_id);
-    let (device_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-    let (user_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-    let (multicastgroup_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
-    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
-    let (segment_routing_ids_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
-    let (multicast_publisher_block_pda, _, _) =
+    let (_link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (_multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
-    let (admin_group_bits_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
-            local_asn: 65000,
-            remote_asn: 65001,
-            device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
-            user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
-            multicastgroup_block: "224.0.0.0/16".parse().unwrap(),
-            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
-            next_bgp_community: None,
-        }),
-        vec![
-            AccountMeta::new(config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(user_tunnel_block_pda, false),
-            AccountMeta::new(multicastgroup_block_pda, false),
-            AccountMeta::new(link_ids_pda, false),
-            AccountMeta::new(segment_routing_ids_pda, false),
-            AccountMeta::new(multicast_publisher_block_pda, false),
-            AccountMeta::new(vrf_ids_pda, false),
-            AccountMeta::new(admin_group_bits_pda, false),
-        ],
-        &payer,
-    )
-    .await;
+    let (_vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     // 3. Create location
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
@@ -273,26 +220,15 @@ async fn setup_fixture() -> TestFixture {
             code: "group1".to_string(),
             max_bandwidth: 1000,
             owner: payer.pubkey(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: "224.0.0.1".parse().unwrap(),
-        }),
-        vec![
-            AccountMeta::new(mgroup1_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -308,26 +244,15 @@ async fn setup_fixture() -> TestFixture {
             code: "group2".to_string(),
             max_bandwidth: 1000,
             owner: payer.pubkey(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(mgroup2_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: "224.0.0.2".parse().unwrap(),
-        }),
-        vec![
-            AccountMeta::new(mgroup2_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -465,512 +390,6 @@ async fn setup_fixture() -> TestFixture {
     }
 }
 
-/// First publisher subscribe sets Updating (activator needs to allocate dz_ip).
-/// Second publisher subscribe does NOT set Updating.
-#[tokio::test]
-async fn test_subscribe_first_publisher_sets_updating() {
-    let f = setup_fixture().await;
-    let TestFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        recent_blockhash,
-        accesspass_pubkey,
-        user_pubkey,
-        mgroup1_pubkey,
-        globalstate_pubkey,
-        ..
-    } = f;
-
-    // Subscribe as publisher to first group
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
-            client_ip: [100, 0, 0, 1].into(),
-            publisher: true,
-            subscriber: false,
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(mgroup1_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get User")
-        .get_user()
-        .unwrap();
-    assert_eq!(
-        user.status,
-        UserStatus::Updating,
-        "First publisher subscribe should set Updating (dz_ip allocation needed)"
-    );
-    assert_eq!(user.publishers.len(), 1);
-
-    let mgroup = get_account_data(&mut banks_client, mgroup1_pubkey)
-        .await
-        .expect("Unable to get MulticastGroup")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(mgroup.publisher_count, 1);
-}
-
-/// Second publisher subscribe should NOT set Updating since dz_ip is already allocated.
-#[tokio::test]
-async fn test_subscribe_second_publisher_does_not_set_updating() {
-    let f = setup_fixture().await;
-    let TestFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        recent_blockhash,
-        accesspass_pubkey,
-        user_pubkey,
-        mgroup1_pubkey,
-        mgroup2_pubkey,
-        globalstate_pubkey,
-        ..
-    } = f;
-
-    // Subscribe as publisher to first group
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
-            client_ip: [100, 0, 0, 1].into(),
-            publisher: true,
-            subscriber: false,
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(mgroup1_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Simulate activator: re-activate the user to set status back to Activated
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 500,
-            tunnel_net: "169.254.0.0/31".parse().unwrap(),
-            dz_ip: [200, 0, 0, 1].into(),
-            dz_prefix_count: 0,
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get User")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Activated);
-
-    // Subscribe as publisher to second group
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
-            client_ip: [100, 0, 0, 1].into(),
-            publisher: true,
-            subscriber: false,
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(mgroup2_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get User")
-        .get_user()
-        .unwrap();
-    assert_eq!(
-        user.status,
-        UserStatus::Activated,
-        "Second publisher subscribe should NOT set Updating (dz_ip already allocated)"
-    );
-    assert_eq!(user.publishers.len(), 2);
-
-    let mgroup1 = get_account_data(&mut banks_client, mgroup1_pubkey)
-        .await
-        .expect("Unable to get MulticastGroup")
-        .get_multicastgroup()
-        .unwrap();
-    let mgroup2 = get_account_data(&mut banks_client, mgroup2_pubkey)
-        .await
-        .expect("Unable to get MulticastGroup")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(mgroup1.publisher_count, 1);
-    assert_eq!(mgroup2.publisher_count, 1);
-}
-
-/// Subscriber subscribe should never set Updating regardless of how many groups.
-#[tokio::test]
-async fn test_subscribe_subscriber_does_not_set_updating() {
-    let f = setup_fixture().await;
-    let TestFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        recent_blockhash,
-        accesspass_pubkey,
-        user_pubkey,
-        mgroup1_pubkey,
-        mgroup2_pubkey,
-        globalstate_pubkey,
-        ..
-    } = f;
-
-    // Subscribe as subscriber to first group
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
-            client_ip: [100, 0, 0, 1].into(),
-            publisher: false,
-            subscriber: true,
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(mgroup1_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get User")
-        .get_user()
-        .unwrap();
-    assert_eq!(
-        user.status,
-        UserStatus::Activated,
-        "Subscriber subscribe should NOT set Updating"
-    );
-    assert_eq!(user.subscribers.len(), 1);
-
-    // Subscribe as subscriber to second group
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
-            client_ip: [100, 0, 0, 1].into(),
-            publisher: false,
-            subscriber: true,
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(mgroup2_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get User")
-        .get_user()
-        .unwrap();
-    assert_eq!(
-        user.status,
-        UserStatus::Activated,
-        "Second subscriber subscribe should NOT set Updating"
-    );
-    assert_eq!(user.subscribers.len(), 2);
-
-    let mgroup1 = get_account_data(&mut banks_client, mgroup1_pubkey)
-        .await
-        .expect("Unable to get MulticastGroup")
-        .get_multicastgroup()
-        .unwrap();
-    let mgroup2 = get_account_data(&mut banks_client, mgroup2_pubkey)
-        .await
-        .expect("Unable to get MulticastGroup")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(mgroup1.subscriber_count, 1);
-    assert_eq!(mgroup2.subscriber_count, 1);
-}
-
-/// Unsubscribing the last publisher should set Updating (dz_ip no longer needed).
-#[tokio::test]
-async fn test_unsubscribe_last_publisher_sets_updating() {
-    let f = setup_fixture().await;
-    let TestFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        recent_blockhash,
-        accesspass_pubkey,
-        user_pubkey,
-        mgroup1_pubkey,
-        mgroup2_pubkey,
-        globalstate_pubkey,
-        ..
-    } = f;
-
-    // Subscribe as publisher to both groups
-    for mgroup_pk in [mgroup1_pubkey, mgroup2_pubkey] {
-        execute_transaction(
-            &mut banks_client,
-            recent_blockhash,
-            program_id,
-            DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
-                client_ip: [100, 0, 0, 1].into(),
-                publisher: true,
-                subscriber: false,
-                use_onchain_allocation: false,
-            }),
-            vec![
-                AccountMeta::new(mgroup_pk, false),
-                AccountMeta::new(accesspass_pubkey, false),
-                AccountMeta::new(user_pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-            &payer,
-        )
-        .await;
-    }
-
-    // Simulate activator: re-activate
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 500,
-            tunnel_net: "169.254.0.0/31".parse().unwrap(),
-            dz_ip: [200, 0, 0, 1].into(),
-            dz_prefix_count: 0,
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get User")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Activated);
-    assert_eq!(user.publishers.len(), 2);
-
-    // Unsubscribe from first group (still have second)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
-            client_ip: [100, 0, 0, 1].into(),
-            publisher: false,
-            subscriber: false,
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(mgroup1_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get User")
-        .get_user()
-        .unwrap();
-    assert_eq!(
-        user.status,
-        UserStatus::Activated,
-        "Unsubscribing non-last publisher should NOT set Updating"
-    );
-    assert_eq!(user.publishers.len(), 1);
-
-    // Unsubscribe from second group (now publishers is empty)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
-            client_ip: [100, 0, 0, 1].into(),
-            publisher: false,
-            subscriber: false,
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(mgroup2_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get User")
-        .get_user()
-        .unwrap();
-    assert_eq!(
-        user.status,
-        UserStatus::Updating,
-        "Unsubscribing last publisher should set Updating (dz_ip no longer needed)"
-    );
-    assert_eq!(user.publishers.len(), 0);
-}
-
-/// Duplicate publisher subscribe should be a no-op (no status change, no count increment).
-#[tokio::test]
-async fn test_duplicate_publisher_subscribe_is_noop() {
-    let f = setup_fixture().await;
-    let TestFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        recent_blockhash,
-        accesspass_pubkey,
-        user_pubkey,
-        mgroup1_pubkey,
-        globalstate_pubkey,
-        ..
-    } = f;
-
-    // Subscribe as publisher
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
-            client_ip: [100, 0, 0, 1].into(),
-            publisher: true,
-            subscriber: false,
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(mgroup1_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Re-activate to reset to Activated
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 500,
-            tunnel_net: "169.254.0.0/31".parse().unwrap(),
-            dz_ip: [200, 0, 0, 1].into(),
-            dz_prefix_count: 0,
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Subscribe again to same group
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
-            client_ip: [100, 0, 0, 1].into(),
-            publisher: true,
-            subscriber: false,
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(mgroup1_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get User")
-        .get_user()
-        .unwrap();
-    assert_eq!(
-        user.status,
-        UserStatus::Activated,
-        "Duplicate subscribe should not change status"
-    );
-    assert_eq!(user.publishers.len(), 1, "Should not duplicate publisher");
-
-    let mgroup = get_account_data(&mut banks_client, mgroup1_pubkey)
-        .await
-        .expect("Unable to get MulticastGroup")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(
-        mgroup.publisher_count, 1,
-        "Should not double-count publisher"
-    );
-}
-
 /// Foundation admin (payer != user.owner) can subscribe a user to a multicast group.
 /// Regression test for the bug where process_update_multicastgroup_roles derived the AccessPass PDA
 /// using payer_account.key instead of user.owner.
@@ -1024,13 +443,17 @@ async fn test_subscribe_foundation_admin_payer_differs_from_user_owner() {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: true,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
         ],
         &foundation_admin,
     )
@@ -1074,13 +497,17 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: true,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -1130,13 +557,17 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: false,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
         ],
         &foundation_admin,
     )
@@ -1179,61 +610,17 @@ async fn test_subscribe_unauthorized_payer_rejected() {
             client_ip: [100, 0, 0, 1].into(),
             publisher: false,
             subscriber: true,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &other_payer,
-    )
-    .await;
-
-    match result {
-        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
-            0,
-            InstructionError::Custom(22),
-        ))) => {}
-        _ => panic!("Expected Unauthorized error (Custom(22)), got {:?}", result),
-    }
-}
-
-/// A payer who is not the access pass owner is rejected even without globalstate.
-/// Old callers (5-account layout, no globalstate) are only permitted when payer == user.owner.
-#[tokio::test]
-async fn test_subscribe_unauthorized_payer_rejected_without_globalstate() {
-    let f = setup_fixture().await;
-    let TestFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        accesspass_pubkey,
-        user_pubkey,
-        mgroup1_pubkey,
-        ..
-    } = f;
-
-    let other_payer = solana_sdk::signature::Keypair::new();
-    transfer(&mut banks_client, &payer, &other_payer.pubkey(), 10_000_000).await;
-
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    let result = try_execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
-            client_ip: [100, 0, 0, 1].into(),
-            publisher: false,
-            subscriber: true,
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(mgroup1_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(user_pubkey, false),
-            // No globalstate — 5-account backward-compat layout
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
         ],
         &other_payer,
     )

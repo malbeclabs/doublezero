@@ -18,7 +18,7 @@ use doublezero_serviceability::{
         },
         exchange::create::ExchangeCreateArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
-        link::{activate::LinkActivateArgs, create::LinkCreateArgs, update::LinkUpdateArgs},
+        link::{create::LinkCreateArgs, update::LinkUpdateArgs},
         location::create::LocationCreateArgs,
         topology::{
             backfill::TopologyBackfillArgs, clear::TopologyClearArgs, create::TopologyCreateArgs,
@@ -674,12 +674,20 @@ async fn setup_wan_link(
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds).0,
+                false,
+            ),
         ],
         payer,
     )
@@ -747,12 +755,20 @@ async fn setup_wan_link(
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds).0,
+                false,
+            ),
         ],
         payer,
     )
@@ -825,7 +841,7 @@ async fn setup_wan_link(
             side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: Some("Ethernet1".to_string()),
             desired_status: Some(LinkDesiredStatus::Activated),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(link_pubkey, false),
@@ -834,31 +850,20 @@ async fn setup_wan_link(
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(unicast_default_pda, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::LinkIds).0,
+                false,
+            ),
         ],
         payer,
     )
     .await;
 
     // Activate link
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
-            tunnel_id: 500,
-            tunnel_net: "10.100.0.0/30".parse().unwrap(),
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(link_pubkey, false),
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-
     (
         link_pubkey,
         contributor_pubkey,
@@ -1662,12 +1667,20 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds).0,
+                false,
+            ),
         ],
         &payer,
     )

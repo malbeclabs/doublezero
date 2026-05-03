@@ -51,15 +51,20 @@ pub fn process_update_multicastgroup(
     accounts: &[AccountInfo],
     value: &MulticastGroupUpdateArgs,
 ) -> ProgramResult {
+    // multicast_ip changes must go through the onchain path. Other updates leave the boolean
+    // unset and skip the resource account entirely.
+    if value.multicast_ip.is_some() && !value.use_onchain_allocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let multicastgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension account for onchain allocation (before payer)
-    // Account layout WITH allocation (use_onchain_allocation = true):
+    // Account layout when the boolean is true:
     //   [mgroup, globalstate, multicast_group_block, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_allocation = false):
+    // Otherwise:
     //   [mgroup, globalstate, payer, system]
     let resource_extension_account = if value.use_onchain_allocation {
         Some(next_account_info(accounts_iter)?)

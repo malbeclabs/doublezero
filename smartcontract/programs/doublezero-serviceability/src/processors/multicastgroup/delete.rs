@@ -3,7 +3,7 @@ use crate::{
     pda::get_resource_extension_pda,
     processors::{resource::deallocate_ip, validation::validate_program_account},
     resource::ResourceType,
-    serializer::{try_acc_close, try_acc_write},
+    serializer::try_acc_close,
     state::{globalstate::GlobalState, multicastgroup::*},
 };
 use borsh::BorshSerialize;
@@ -20,8 +20,8 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct MulticastGroupDeleteArgs {
-    /// When true, atomic delete+deallocate+close in a single transaction.
-    /// Requires ResourceExtension accounts and owner account.
+    /// Onchain deallocation is mandatory; the field must be `true`.
+    /// Retained for ABI stability.
     #[incremental(default = false)]
     pub use_onchain_deallocation: bool,
 }
@@ -41,23 +41,18 @@ pub fn process_delete_multicastgroup(
     accounts: &[AccountInfo],
     value: &MulticastGroupDeleteArgs,
 ) -> ProgramResult {
+    if !value.use_onchain_deallocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let multicastgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: additional accounts for atomic deallocation (before payer)
-    // Account layout WITH deallocation (use_onchain_deallocation = true):
-    //   [mgroup, globalstate, multicast_group_block, owner, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_deallocation = false):
-    //   [mgroup, globalstate, payer, system]
-    let deallocation_accounts = if value.use_onchain_deallocation {
-        let multicast_group_block_ext = next_account_info(accounts_iter)?;
-        let owner_account = next_account_info(accounts_iter)?;
-        Some((multicast_group_block_ext, owner_account))
-    } else {
-        None
-    };
+    // Account layout: [mgroup, globalstate, multicast_group_block, owner, payer, system]
+    let multicast_group_block_ext = next_account_info(accounts_iter)?;
+    let owner_account = next_account_info(accounts_iter)?;
 
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -108,47 +103,29 @@ pub fn process_delete_multicastgroup(
         return Err(DoubleZeroError::MulticastGroupNotEmpty.into());
     }
 
-    if let Some((multicast_group_block_ext, owner_account)) = deallocation_accounts {
-        // Atomic delete+deallocate+close path
-        let (expected_pda, _, _) =
-            get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
-        validate_program_account!(
-            multicast_group_block_ext,
-            program_id,
-            writable = true,
-            pda = &expected_pda,
-            "MulticastGroupBlock"
-        );
+    let (expected_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
+    validate_program_account!(
+        multicast_group_block_ext,
+        program_id,
+        writable = true,
+        pda = &expected_pda,
+        "MulticastGroupBlock"
+    );
 
-        if multicastgroup.owner != *owner_account.key {
-            return Err(ProgramError::InvalidAccountData);
-        }
-
-        // Deallocate multicast_ip from ResourceExtension (idempotent)
-        deallocate_ip(
-            multicast_group_block_ext,
-            multicastgroup.multicast_ip.into(),
-        );
-
-        try_acc_close(multicastgroup_account, owner_account)?;
-
-        #[cfg(test)]
-        msg!("DeleteMulticastGroup (atomic): deallocated and closed");
-    } else {
-        // Legacy path: just mark as Deleting
-        let mut multicastgroup = multicastgroup;
-        multicastgroup.status = MulticastGroupStatus::Deleting;
-
-        try_acc_write(
-            &multicastgroup,
-            multicastgroup_account,
-            payer_account,
-            accounts,
-        )?;
-
-        #[cfg(test)]
-        msg!("Deleted: {:?}", multicastgroup_account);
+    if multicastgroup.owner != *owner_account.key {
+        return Err(ProgramError::InvalidAccountData);
     }
+
+    deallocate_ip(
+        multicast_group_block_ext,
+        multicastgroup.multicast_ip.into(),
+    );
+
+    try_acc_close(multicastgroup_account, owner_account)?;
+
+    #[cfg(test)]
+    msg!("DeleteMulticastGroup (atomic): deallocated and closed");
 
     Ok(())
 }

@@ -5,7 +5,6 @@ use doublezero_serviceability::{
         accesspass::set::SetAccessPassArgs,
         globalstate::setauthority::SetAuthorityArgs,
         multicastgroup::{
-            activate::MulticastGroupActivateArgs,
             allowlist::subscriber::{
                 add::AddMulticastGroupSubAllowlistArgs,
                 remove::RemoveMulticastGroupSubAllowlistArgs,
@@ -13,9 +12,8 @@ use doublezero_serviceability::{
             create::MulticastGroupCreateArgs,
         },
     },
-    state::{
-        accesspass::AccessPassType, accounttype::AccountType, multicastgroup::MulticastGroupStatus,
-    },
+    resource::ResourceType,
+    state::accesspass::AccessPassType,
 };
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Keypair, signer::Signer};
@@ -24,222 +22,17 @@ mod test_helpers;
 use test_helpers::*;
 
 #[tokio::test]
-async fn test_multicast_subscriber_allowlist() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
-
-    /***********************************************************************************************************************************/
-    println!("🟢 1. Global Initialization...");
-
-    let user_payer = payer.pubkey();
-    let client_ip = [100, 0, 0, 1].into();
-
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-
-    println!("🟢 1. Global Initialization...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    println!("✅");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 2. Create MulticastGroup...");
-
-    let globalstate = get_account_data(&mut banks_client, globalstate_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_global_state()
-        .unwrap();
-
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
-            code: "test".to_string(),
-            max_bandwidth: 100,
-            owner: payer.pubkey(),
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let mgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_multicastgroup()
-        .unwrap();
-
-    assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
-    assert_eq!(mgroup.code, "test".to_string());
-    assert_eq!(mgroup.status, MulticastGroupStatus::Pending);
-
-    println!("✅");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 3. Activate MulticastGroup...");
-
-    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: "224.254.0.1".parse().unwrap(),
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let mgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_multicastgroup()
-        .unwrap();
-
-    assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
-    assert_eq!(mgroup.multicast_ip.to_string(), "224.254.0.1");
-    assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
-
-    println!("✅");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 4. Create AccessPass...");
-
-    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-            accesspass_type: AccessPassType::Prepaid,
-            client_ip,
-            last_access_epoch: 100,
-            allow_multiple_ip: false,
-        }),
-        vec![
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_payer, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    /*****************************************************************************************************************************************************/
-    println!("🟢 5. Add Allowlist ...");
-
-    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
-            client_ip,
-            user_payer,
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_accesspass()
-        .unwrap();
-
-    assert_eq!(accesspass.account_type, AccountType::AccessPass);
-    assert!(accesspass
-        .mgroup_sub_allowlist
-        .contains(&multicastgroup_pubkey));
-
-    println!("✅");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 6. Remove Allowlist ...");
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(
-            RemoveMulticastGroupSubAllowlistArgs {
-                client_ip,
-                user_payer,
-            },
-        ),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_accesspass()
-        .unwrap();
-
-    assert_eq!(accesspass.account_type, AccountType::AccessPass);
-    assert_eq!(accesspass.mgroup_sub_allowlist.len(), 0);
-
-    println!("✅");
-    /*****************************************************************************************************************************************************/
-    println!("🟢🟢🟢  End test  🟢🟢🟢");
-}
-
-#[tokio::test]
 async fn test_multicast_subscriber_allowlist_sentinel_authority() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
     let client_ip = [100, 0, 0, 2].into();
     let user_payer = payer.pubkey();
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
     // 1. Initialize global state
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     // 2. Create a sentinel keypair and set it as sentinel authority
     let sentinel = Keypair::new();
@@ -282,26 +75,15 @@ async fn test_multicast_subscriber_allowlist_sentinel_authority() {
             code: "sentinel-test".to_string(),
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: [224, 254, 0, 2].into(),
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -433,22 +215,11 @@ async fn test_multicast_subscriber_allowlist_feed_authority() {
     let client_ip = [100, 0, 0, 3].into();
     let user_payer = payer.pubkey();
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
     // 1. Initialize global state
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     // 2. Create a feed keypair and set it as feed authority
     let feed = Keypair::new();
@@ -485,26 +256,15 @@ async fn test_multicast_subscriber_allowlist_feed_authority() {
             code: "feed-test".to_string(),
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: [224, 254, 0, 3].into(),
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -577,22 +337,11 @@ async fn test_multicast_subscriber_allowlist_feed_authority_different_user_payer
     let client_ip = [100, 0, 0, 4].into();
     let original_user_payer = payer.pubkey();
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
     // 1. Initialize global state
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     // 2. Create a feed keypair and set it as feed authority
     let feed = Keypair::new();
@@ -629,26 +378,15 @@ async fn test_multicast_subscriber_allowlist_feed_authority_different_user_payer
             code: "feed-diff-payer".to_string(),
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: [224, 254, 0, 4].into(),
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -770,21 +508,10 @@ async fn test_multicast_subscriber_allowlist_allow_multiple_ip() {
     let user_payer = payer.pubkey();
     let dynamic_ip: std::net::Ipv4Addr = [0, 0, 0, 0].into();
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     let globalstate = get_account_data(&mut banks_client, globalstate_pubkey)
         .await
@@ -803,26 +530,15 @@ async fn test_multicast_subscriber_allowlist_allow_multiple_ip() {
             code: "amip-sub".to_string(),
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: [224, 255, 1, 1].into(),
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -925,21 +641,10 @@ async fn test_multicast_subscriber_allowlist_allow_multiple_ip_real_ip_in_args()
     let dynamic_ip: std::net::Ipv4Addr = [0, 0, 0, 0].into();
     let real_ip: std::net::Ipv4Addr = [98, 46, 188, 245].into();
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     let globalstate = get_account_data(&mut banks_client, globalstate_pubkey)
         .await
@@ -958,26 +663,15 @@ async fn test_multicast_subscriber_allowlist_allow_multiple_ip_real_ip_in_args()
             code: "amip-real-ip".to_string(),
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: [224, 255, 1, 2].into(),
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -1079,21 +773,10 @@ async fn test_multicast_subscriber_allowlist_wrong_pda_rejected() {
     let ip_a: std::net::Ipv4Addr = [10, 0, 1, 3].into();
     let ip_b: std::net::Ipv4Addr = [10, 0, 1, 4].into();
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     let globalstate = get_account_data(&mut banks_client, globalstate_pubkey)
         .await
@@ -1112,26 +795,15 @@ async fn test_multicast_subscriber_allowlist_wrong_pda_rejected() {
             code: "wrong-pda".to_string(),
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: [224, 255, 1, 3].into(),
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -1214,22 +886,11 @@ async fn test_multicast_subscriber_allowlist_allow_multiple_ip_feed_authority_di
     let real_ip: std::net::Ipv4Addr = [10, 0, 7, 1].into();
     let original_user_payer = payer.pubkey();
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
     // 1. Initialize global state
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     // 2. Create a feed keypair and set it as feed authority
     let feed = Keypair::new();
@@ -1266,26 +927,15 @@ async fn test_multicast_subscriber_allowlist_allow_multiple_ip_feed_authority_di
             code: "amip-feed-diff".to_string(),
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: [224, 254, 0, 7].into(),
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -1390,22 +1040,11 @@ async fn test_multicast_subscriber_allowlist_feed_authority_remove() {
     let client_ip = [100, 0, 0, 6].into();
     let user_payer = payer.pubkey();
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
     // 1. Initialize global state
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     // 2. Create feed authority
     let feed = Keypair::new();
@@ -1442,26 +1081,15 @@ async fn test_multicast_subscriber_allowlist_feed_authority_remove() {
             code: "feed-remove".to_string(),
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: [224, 254, 0, 6].into(),
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )

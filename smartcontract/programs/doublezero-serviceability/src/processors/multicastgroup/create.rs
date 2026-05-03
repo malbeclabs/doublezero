@@ -47,21 +47,17 @@ pub fn process_create_multicastgroup(
     accounts: &[AccountInfo],
     value: &MulticastGroupCreateArgs,
 ) -> ProgramResult {
+    if !value.use_onchain_allocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let mgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension account for onchain allocation (before payer)
-    // Account layout WITH ResourceExtension (use_onchain_allocation = true):
-    //   [mgroup, globalstate, multicast_group_block, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_allocation = false):
-    //   [mgroup, globalstate, payer, system]
-    let resource_extension_account = if value.use_onchain_allocation {
-        Some(next_account_info(accounts_iter)?)
-    } else {
-        None
-    };
+    // Account layout: [mgroup, globalstate, multicast_group_block, payer, system]
+    let multicast_group_block_ext = next_account_info(accounts_iter)?;
 
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -109,35 +105,30 @@ pub fn process_create_multicastgroup(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    let mut multicastgroup = MulticastGroup {
+    // Atomic create+allocate+activate.
+    let (expected_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
+    validate_program_account!(
+        multicast_group_block_ext,
+        program_id,
+        writable = true,
+        pda = &expected_pda,
+        "MulticastGroupBlock"
+    );
+
+    let multicastgroup = MulticastGroup {
         account_type: AccountType::MulticastGroup,
         owner: value.owner,
         index: globalstate.account_index,
         bump_seed,
         tenant_pk: Pubkey::default(),
         code,
-        multicast_ip: std::net::Ipv4Addr::UNSPECIFIED,
+        multicast_ip: allocate_ip(multicast_group_block_ext, 1)?.ip(),
         max_bandwidth: value.max_bandwidth,
-        status: MulticastGroupStatus::Pending,
+        status: MulticastGroupStatus::Activated,
         publisher_count: 0,
         subscriber_count: 0,
     };
-
-    // Atomic create+allocate+activate when ResourceExtension account is provided
-    if let Some(multicast_group_block_ext) = resource_extension_account {
-        let (expected_pda, _, _) =
-            get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
-        validate_program_account!(
-            multicast_group_block_ext,
-            program_id,
-            writable = true,
-            pda = &expected_pda,
-            "MulticastGroupBlock"
-        );
-
-        multicastgroup.multicast_ip = allocate_ip(multicast_group_block_ext, 1)?.ip();
-        multicastgroup.status = MulticastGroupStatus::Activated;
-    }
 
     try_acc_create(
         &multicastgroup,

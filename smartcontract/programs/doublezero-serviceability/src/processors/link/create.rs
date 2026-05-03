@@ -61,6 +61,10 @@ pub fn process_create_link(
     accounts: &[AccountInfo],
     value: &LinkCreateArgs,
 ) -> ProgramResult {
+    if !value.use_onchain_allocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let link_account = next_account_info(accounts_iter)?;
@@ -69,20 +73,11 @@ pub fn process_create_link(
     let side_z_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for onchain allocation (before unicast-default topology)
-    // Account layout WITH ResourceExtension (use_onchain_allocation = true):
-    //   [link, contributor, side_a, side_z, globalstate, device_tunnel_block, link_ids, unicast_default, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_allocation = false):
-    //   [link, contributor, side_a, side_z, globalstate, unicast_default, payer, system]
-    let resource_extension_accounts = if value.use_onchain_allocation {
-        let device_tunnel_block_ext = next_account_info(accounts_iter)?;
-        let link_ids_ext = next_account_info(accounts_iter)?;
-        Some((device_tunnel_block_ext, link_ids_ext))
-    } else {
-        None
-    };
-
+    // Account layout: [link, contributor, side_a, side_z, globalstate, unicast_default,
+    //                  device_tunnel_block, link_ids, payer, system]
     let unicast_default_topology_account = next_account_info(accounts_iter)?;
+    let device_tunnel_block_ext = next_account_info(accounts_iter)?;
+    let link_ids_ext = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -265,53 +260,50 @@ pub fn process_create_link(
         link.link_topologies = vec![*unicast_default_topology_account.key];
     }
 
-    // Atomic create+allocate+activate if onchain allocation is enabled
-    if let Some((device_tunnel_block_ext, link_ids_ext)) = resource_extension_accounts {
-        if link.status == LinkStatus::Pending {
-            // activate here, but do not activate if LinkStatus::Requested
-            resource_onchain_helpers::validate_and_allocate_link_resources(
-                program_id,
-                &mut link,
-                device_tunnel_block_ext,
-                link_ids_ext,
-            )?;
+    // Atomic create+allocate+activate. DZX links stay in Requested until accepted by side Z;
+    // all other links activate immediately.
+    if link.status == LinkStatus::Pending {
+        resource_onchain_helpers::validate_and_allocate_link_resources(
+            program_id,
+            &mut link,
+            device_tunnel_block_ext,
+            link_ids_ext,
+        )?;
 
-            // Validate interfaces are Unlinked (required for activation)
-            let (idx_a, side_a_iface) = side_a_dev
-                .find_interface(&link.side_a_iface_name)
-                .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
-            if side_a_iface.status != InterfaceStatus::Unlinked {
+        // Validate interfaces are Unlinked (required for activation)
+        let (idx_a, side_a_iface) = side_a_dev
+            .find_interface(&link.side_a_iface_name)
+            .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
+        if side_a_iface.status != InterfaceStatus::Unlinked {
+            return Err(DoubleZeroError::InvalidStatus.into());
+        }
+
+        // Set side A interface to Activated with IP from tunnel_net
+        let mut updated_iface_a = side_a_iface.clone();
+        updated_iface_a.status = InterfaceStatus::Activated;
+        if updated_iface_a.ip_net == NetworkV4::default() {
+            updated_iface_a.ip_net =
+                NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix()).unwrap();
+        }
+        side_a_dev.interfaces[idx_a] = updated_iface_a.to_interface();
+
+        // Set side Z interface to Activated with IP from tunnel_net
+        if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface(&link.side_z_iface_name) {
+            if side_z_iface.status != InterfaceStatus::Unlinked {
                 return Err(DoubleZeroError::InvalidStatus.into());
             }
-
-            // Set side A interface to Activated with IP from tunnel_net
-            let mut updated_iface_a = side_a_iface.clone();
-            updated_iface_a.status = InterfaceStatus::Activated;
-            if updated_iface_a.ip_net == NetworkV4::default() {
-                updated_iface_a.ip_net =
-                    NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix())
+            let mut updated_iface_z = side_z_iface.clone();
+            updated_iface_z.status = InterfaceStatus::Activated;
+            if updated_iface_z.ip_net == NetworkV4::default() {
+                updated_iface_z.ip_net =
+                    NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix())
                         .unwrap();
             }
-            side_a_dev.interfaces[idx_a] = updated_iface_a.to_interface();
-
-            // Set side Z interface to Activated with IP from tunnel_net
-            if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface(&link.side_z_iface_name) {
-                if side_z_iface.status != InterfaceStatus::Unlinked {
-                    return Err(DoubleZeroError::InvalidStatus.into());
-                }
-                let mut updated_iface_z = side_z_iface.clone();
-                updated_iface_z.status = InterfaceStatus::Activated;
-                if updated_iface_z.ip_net == NetworkV4::default() {
-                    updated_iface_z.ip_net =
-                        NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix())
-                            .unwrap();
-                }
-                side_z_dev.interfaces[idx_z] = updated_iface_z.to_interface();
-            }
-
-            link.status = LinkStatus::Activated;
-            link.check_status_transition();
+            side_z_dev.interfaces[idx_z] = updated_iface_z.to_interface();
         }
+
+        link.status = LinkStatus::Activated;
+        link.check_status_transition();
     }
 
     try_acc_create(

@@ -300,12 +300,20 @@ async fn setup_device_with_interface(
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds).0,
+                false,
+            ),
         ],
         payer,
     )
@@ -643,56 +651,6 @@ async fn test_create_physical_with_onchain_allocation() {
     println!("test_create_physical_with_onchain_allocation PASSED");
 }
 
-/// Test backward compatibility: use_onchain_allocation=false creates Pending interface
-#[tokio::test]
-async fn test_create_interface_backward_compat() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    let (device_pubkey, contributor_pubkey) =
-        setup_device(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
-
-    // Create loopback without onchain allocation (legacy)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
-            name: "Loopback0".to_string(),
-            loopback_type: LoopbackType::Vpnv4,
-            interface_cyoa: InterfaceCYOA::None,
-            interface_dia: InterfaceDIA::None,
-            bandwidth: 0,
-            cir: 0,
-            ip_net: None,
-            mtu: 9000,
-            routing_mode: RoutingMode::Static,
-            vlan_id: 0,
-            user_tunnel_endpoint: false,
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let device = get_device(&mut banks_client, device_pubkey)
-        .await
-        .expect("Device not found");
-    let iface = device.interfaces[0].into_current_version();
-
-    assert_eq!(iface.status, InterfaceStatus::Pending);
-    assert_eq!(iface.ip_net, NetworkV4::default());
-    assert_eq!(iface.node_segment_idx, 0);
-
-    println!("test_create_interface_backward_compat PASSED");
-}
-
 /// Test: Delete loopback with onchain deallocation → interface removed, resources deallocated
 #[tokio::test]
 async fn test_delete_loopback_with_onchain_deallocation() {
@@ -892,95 +850,6 @@ async fn test_delete_physical_with_onchain_deallocation() {
     );
 
     println!("test_delete_physical_with_onchain_deallocation PASSED");
-}
-
-/// Test backward compatibility: use_onchain_deallocation=false uses legacy path (status = Deleting)
-#[tokio::test]
-async fn test_delete_interface_backward_compat() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // Enable OnChainAllocation feature flag (for create)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
-        }),
-        vec![AccountMeta::new(globalstate_pubkey, false)],
-        &payer,
-    )
-    .await;
-
-    let (device_pubkey, contributor_pubkey) =
-        setup_device(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
-
-    let (device_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-    let (segment_routing_ids_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
-
-    // Create with onchain allocation (Activated)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
-            name: "Loopback0".to_string(),
-            loopback_type: LoopbackType::Vpnv4,
-            interface_cyoa: InterfaceCYOA::None,
-            interface_dia: InterfaceDIA::None,
-            bandwidth: 0,
-            cir: 0,
-            ip_net: None,
-            mtu: 9000,
-            routing_mode: RoutingMode::Static,
-            vlan_id: 0,
-            user_tunnel_endpoint: false,
-            use_onchain_allocation: true,
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(segment_routing_ids_pda, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Legacy delete (use_onchain_deallocation=false)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
-            name: "Loopback0".to_string(),
-            use_onchain_deallocation: false,
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Verify status is Deleting (legacy behavior), interface still exists
-    let device = get_device(&mut banks_client, device_pubkey)
-        .await
-        .expect("Device not found");
-    assert_eq!(device.interfaces.len(), 1);
-    assert_eq!(
-        device.interfaces[0].into_current_version().status,
-        InterfaceStatus::Deleting
-    );
-
-    println!("test_delete_interface_backward_compat PASSED");
 }
 
 // =============================================================================
@@ -1346,12 +1215,20 @@ async fn test_update_interface_node_segment_idx_duplicate_allocation() {
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds).0,
+                false,
+            ),
         ],
         &payer,
     )

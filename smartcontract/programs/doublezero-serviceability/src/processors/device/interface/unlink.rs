@@ -77,10 +77,7 @@ pub fn process_unlink_device_interface(
         .find_interface(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
 
-    if iface.status != InterfaceStatus::Activated
-        && iface.status != InterfaceStatus::Pending
-        && iface.status != InterfaceStatus::Unlinked
-    {
+    if iface.status != InterfaceStatus::Activated && iface.status != InterfaceStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 

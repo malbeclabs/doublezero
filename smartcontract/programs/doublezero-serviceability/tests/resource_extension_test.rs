@@ -18,7 +18,6 @@ use doublezero_serviceability::{
     processors::{
         contributor::create::ContributorCreateArgs,
         device::{
-            activate::DeviceActivateArgs,
             closeaccount::DeviceCloseAccountArgs,
             create::DeviceCreateArgs,
             delete::DeviceDeleteArgs,
@@ -918,9 +917,13 @@ async fn setup_device_for_dz_prefix_tests(
     )
     .await;
 
-    // Create device with dz_prefixes
+    // Create device with dz_prefixes (atomic create+activate; allocates TunnelIds + DzPrefixBlock)
     let globalstate = get_globalstate(banks_client, globalstate_pubkey).await;
     let (device_pubkey, _) = get_device_pda(&program_id, globalstate.account_index + 1);
+    let (tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
 
     execute_transaction(
         banks_client,
@@ -934,7 +937,7 @@ async fn setup_device_for_dz_prefix_tests(
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -942,6 +945,9 @@ async fn setup_device_for_dz_prefix_tests(
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         payer,
     )
@@ -962,6 +968,7 @@ async fn test_create_dz_prefix_block_resource() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
+    // The DzPrefixBlock resource is created atomically by CreateDevice (onchain allocation).
     let (device_pubkey, _, _, _) = setup_device_for_dz_prefix_tests(
         &mut banks_client,
         &payer,
@@ -971,29 +978,9 @@ async fn test_create_dz_prefix_block_resource() {
     )
     .await;
 
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
     // Get PDA for DzPrefixBlock with device pubkey and index 0
     let (resource_pubkey, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
-
-    // Create DzPrefixBlock resource
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_type: ResourceType::DzPrefixBlock(device_pubkey, 0),
-        }),
-        vec![
-            AccountMeta::new(resource_pubkey, false),
-            AccountMeta::new(device_pubkey, false), // associated_account IS the device for DzPrefixBlock
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
 
     let resource = get_resource_extension_data(&mut banks_client, resource_pubkey)
         .await
@@ -1011,46 +998,6 @@ async fn test_create_dz_prefix_block_resource() {
     );
 
     println!("[PASS] test_create_dz_prefix_block_resource");
-}
-
-async fn activate_device(
-    banks_client: &mut BanksClient,
-    payer: &solana_sdk::signature::Keypair,
-    program_id: Pubkey,
-    globalstate_pubkey: Pubkey,
-    globalconfig_pubkey: Pubkey,
-    device_pubkey: Pubkey,
-    resource_count: usize,
-) {
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    let mut resource_accounts = vec![];
-    for idx in 0..resource_count {
-        let resource_type = match idx {
-            0 => ResourceType::TunnelIds(device_pubkey, 0),
-            _ => ResourceType::DzPrefixBlock(device_pubkey, idx - 1),
-        };
-        let (pda, _, _) = get_resource_extension_pda(&program_id, resource_type);
-        resource_accounts.push(AccountMeta::new(pda, false));
-    }
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count }),
-        [
-            vec![
-                AccountMeta::new(device_pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-                AccountMeta::new(globalconfig_pubkey, false),
-            ],
-            resource_accounts,
-        ]
-        .concat(),
-        payer,
-    )
-    .await;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1209,24 +1156,7 @@ async fn test_allocate_dz_prefix_block_with_device_pubkey() {
     let (resource_pubkey, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
 
-    // Create resource
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_type: ResourceType::DzPrefixBlock(device_pubkey, 0),
-        }),
-        vec![
-            AccountMeta::new(resource_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
+    // The DzPrefixBlock resource is already created by CreateDevice (onchain allocation).
     // Allocate from DzPrefixBlock
     execute_transaction(
         &mut banks_client,
@@ -1323,30 +1253,9 @@ async fn test_device_create_update_close_manages_resources() {
     let (pda_2, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 1));
 
-    assert!(
-        get_resource_extension_data(&mut banks_client, pda_0)
-            .await
-            .is_none(),
-        "Resource extension (TunnelIds) should not exist before activation"
-    );
-    assert!(
-        get_resource_extension_data(&mut banks_client, pda_1)
-            .await
-            .is_none(),
-        "Resource extension (DzPrefixBlock) should not exist before activation"
-    );
-
-    activate_device(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        device_pubkey,
-        2, // resource_count
-    )
-    .await;
-
+    // After CreateDevice with onchain allocation, the TunnelIds + DzPrefixBlock 0 resources
+    // already exist (allocated atomically). DzPrefixBlock 1 doesn't exist yet because the
+    // device was created with a single /24 dz_prefix.
     let _ = get_resource_extension_data(&mut banks_client, pda_0)
         .await
         .expect("Resource extension (TunnelIds) should exist");
@@ -1619,25 +1528,14 @@ async fn test_dz_prefix_block_reserves_first_ip_on_creation() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    // Setup device
+    // Setup device — onchain allocation in CreateDevice atomically creates the DzPrefixBlock
+    // resource and reserves the first IP for the device tunnel endpoint.
     let (device_pubkey, _, _, _) = setup_device_for_dz_prefix_tests(
         &mut banks_client,
         &payer,
         program_id,
         globalstate_pubkey,
         globalconfig_pubkey,
-    )
-    .await;
-
-    // Activate device - this creates the DzPrefixBlock resource
-    activate_device(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        device_pubkey,
-        2, // resource_count: TunnelIds + 1 DzPrefixBlock
     )
     .await;
 
@@ -1673,25 +1571,14 @@ async fn test_user_allocation_from_dz_prefix_block_skips_first_ip() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    // Setup device
+    // Setup device — onchain allocation in CreateDevice atomically creates the DzPrefixBlock
+    // resource and reserves the first IP for the device tunnel endpoint.
     let (device_pubkey, _, _, _) = setup_device_for_dz_prefix_tests(
         &mut banks_client,
         &payer,
         program_id,
         globalstate_pubkey,
         globalconfig_pubkey,
-    )
-    .await;
-
-    // Activate device - this creates DzPrefixBlock with first IP reserved
-    activate_device(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        device_pubkey,
-        2,
     )
     .await;
 
@@ -1748,24 +1635,13 @@ async fn test_device_update_dz_prefixes_shrink_closes_orphaned_blocks() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    // Step 1: Create a device with 1 prefix and activate it.
+    // Step 1: Create a device with 1 prefix (atomic create+activate via onchain allocation).
     let (device_pubkey, location_pubkey, _, contributor_pubkey) = setup_device_for_dz_prefix_tests(
         &mut banks_client,
         &payer,
         program_id,
         globalstate_pubkey,
         globalconfig_pubkey,
-    )
-    .await;
-
-    activate_device(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        device_pubkey,
-        2, // TunnelIds + 1 DzPrefixBlock
     )
     .await;
 
@@ -1780,7 +1656,7 @@ async fn test_device_update_dz_prefixes_shrink_closes_orphaned_blocks() {
         get_resource_extension_data(&mut banks_client, pda_block0)
             .await
             .is_some(),
-        "DzPrefixBlock[0] should exist after activation"
+        "DzPrefixBlock[0] should exist after CreateDevice"
     );
     assert!(
         get_resource_extension_data(&mut banks_client, pda_block1)

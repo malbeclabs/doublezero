@@ -114,6 +114,10 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
     // Create device A with clean interface
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_a_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (device_a_tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_a_pubkey, 0));
+    let (device_a_dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_a_pubkey, 0));
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -126,7 +130,7 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -134,6 +138,9 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(device_a_tunnel_ids_pda, false),
+            AccountMeta::new(device_a_dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -213,6 +220,10 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
     // Create device Z with clean interface
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_z_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (device_z_tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_z_pubkey, 0));
+    let (device_z_dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_z_pubkey, 0));
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -225,7 +236,7 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
@@ -233,6 +244,9 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(device_z_tunnel_ids_pda, false),
+            AccountMeta::new(device_z_dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -545,6 +559,10 @@ async fn setup_link_env() -> (
     // Device A
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_a_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (device_a_tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_a_pubkey, 0));
+    let (device_a_dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_a_pubkey, 0));
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -557,7 +575,7 @@ async fn setup_link_env() -> (
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -565,6 +583,9 @@ async fn setup_link_env() -> (
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(device_a_tunnel_ids_pda, false),
+            AccountMeta::new(device_a_dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -641,6 +662,10 @@ async fn setup_link_env() -> (
     // Device Z
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_z_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (device_z_tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_z_pubkey, 0));
+    let (device_z_dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_z_pubkey, 0));
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -653,7 +678,7 @@ async fn setup_link_env() -> (
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
@@ -661,6 +686,9 @@ async fn setup_link_env() -> (
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(device_z_tunnel_ids_pda, false),
+            AccountMeta::new(device_z_dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -991,6 +1019,10 @@ async fn test_link_activation_succeeds_without_unicast_default() {
     // Device A + Ethernet0
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_a_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (device_a_tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_a_pubkey, 0));
+    let (device_a_dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_a_pubkey, 0));
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1003,7 +1035,7 @@ async fn test_link_activation_succeeds_without_unicast_default() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -1011,6 +1043,9 @@ async fn test_link_activation_succeeds_without_unicast_default() {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(device_a_tunnel_ids_pda, false),
+            AccountMeta::new(device_a_dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -1087,6 +1122,10 @@ async fn test_link_activation_succeeds_without_unicast_default() {
     // Device Z + Ethernet1
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_z_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (device_z_tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_z_pubkey, 0));
+    let (device_z_dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_z_pubkey, 0));
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1099,7 +1138,7 @@ async fn test_link_activation_succeeds_without_unicast_default() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
@@ -1107,6 +1146,9 @@ async fn test_link_activation_succeeds_without_unicast_default() {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(device_z_tunnel_ids_pda, false),
+            AccountMeta::new(device_z_dz_prefix_pda, false),
         ],
         &payer,
     )

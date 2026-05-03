@@ -5,10 +5,7 @@ use doublezero_serviceability::{
     pda::get_resource_extension_pda,
     processors::link::update::LinkUpdateArgs,
     resource::ResourceType,
-    state::{
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        link::{LinkDesiredStatus, LinkLinkType, LinkStatus},
-    },
+    state::link::{LinkDesiredStatus, LinkLinkType, LinkStatus},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -33,7 +30,7 @@ pub struct UpdateLinkCommand {
 
 impl UpdateLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
+        let (globalstate_pubkey, _) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
@@ -55,12 +52,8 @@ impl UpdateLinkCommand {
             .transpose()
             .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 
+        // Tunnel reallocation requires the resource extension accounts; other field updates skip them.
         let updating_tunnel_resources = self.tunnel_id.is_some() || self.tunnel_net.is_some();
-
-        let use_onchain_allocation = is_feature_enabled(
-            globalstate.feature_flags,
-            FeatureFlag::OnChainAllocationDeprecated,
-        ) && updating_tunnel_resources;
 
         let mut accounts = vec![
             AccountMeta::new(self.pubkey, false),
@@ -74,17 +67,14 @@ impl UpdateLinkCommand {
             accounts.push(AccountMeta::new(link.side_z_pk, false));
         }
 
-        if use_onchain_allocation {
-            // DeviceTunnelBlock (global)
+        if updating_tunnel_resources {
             let (device_tunnel_block_ext, _, _) = get_resource_extension_pda(
                 &client.get_program_id(),
                 ResourceType::DeviceTunnelBlock,
             );
-            accounts.push(AccountMeta::new(device_tunnel_block_ext, false));
-
-            // LinkIds (global)
             let (link_ids_ext, _, _) =
                 get_resource_extension_pda(&client.get_program_id(), ResourceType::LinkIds);
+            accounts.push(AccountMeta::new(device_tunnel_block_ext, false));
             accounts.push(AccountMeta::new(link_ids_ext, false));
         }
 
@@ -117,7 +107,7 @@ impl UpdateLinkCommand {
                 desired_status: self.desired_status,
                 tunnel_id: self.tunnel_id,
                 tunnel_net: self.tunnel_net,
-                use_onchain_allocation,
+                use_onchain_allocation: updating_tunnel_resources,
                 link_topologies: self.link_topologies.clone(),
                 unicast_drained: self.unicast_drained,
             }),

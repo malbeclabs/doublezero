@@ -136,6 +136,7 @@ mod tests {
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
             accounttype::AccountType,
+            device::Device,
             tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
             user::{User, UserCYOA, UserStatus, UserType},
         },
@@ -187,6 +188,7 @@ mod tests {
 
         let tenant_pubkey = Pubkey::new_unique();
         let user_pubkey = Pubkey::new_unique();
+        let device_pk = Pubkey::new_unique();
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
         let (vrf_ids_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
@@ -199,7 +201,7 @@ mod tests {
             index: 1,
             tenant_pk: tenant_pubkey,
             user_type: UserType::IBRL,
-            device_pk: Pubkey::default(),
+            device_pk,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip,
             dz_ip: client_ip,
@@ -291,11 +293,27 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(|_| Ok(HashMap::new()));
 
-        // 4. DeleteUserCommand internally: execute_transaction(DeleteUser)
+        // 4. DeleteUserCommand internally: get(device_pk) for dz_prefixes count
+        let device = Device {
+            account_type: AccountType::Device,
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(device_pk))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
+
+        // 5. DeleteUserCommand internally: execute_transaction(DeleteUser)
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs::default())),
+                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+                    dz_prefix_count: 1,
+                    multicast_publisher_count: 1,
+                })),
                 predicate::always(),
             )
             .times(1)

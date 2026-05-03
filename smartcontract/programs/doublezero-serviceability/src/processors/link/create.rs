@@ -262,7 +262,7 @@ pub fn process_create_link(
 
     // Atomic create+allocate+activate. DZX links stay in Requested until accepted by side Z;
     // all other links activate immediately.
-    if link.status == LinkStatus::Pending {
+    if link.status != LinkStatus::Requested {
         resource_onchain_helpers::validate_and_allocate_link_resources(
             program_id,
             &mut link,

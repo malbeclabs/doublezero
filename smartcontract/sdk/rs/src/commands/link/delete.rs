@@ -3,11 +3,8 @@ use crate::{
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::get_resource_extension_pda,
-    processors::link::delete::LinkDeleteArgs,
-    resource::ResourceType,
-    state::feature_flags::{is_feature_enabled, FeatureFlag},
+    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
+    processors::link::delete::LinkDeleteArgs, resource::ResourceType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -18,14 +15,9 @@ pub struct DeleteLinkCommand {
 
 impl DeleteLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
+        let (globalstate_pubkey, _) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        let use_onchain_deallocation = is_feature_enabled(
-            globalstate.feature_flags,
-            FeatureFlag::OnChainAllocationDeprecated,
-        );
 
         let (_, link) = GetLinkCommand {
             pubkey_or_code: self.pubkey.to_string(),
@@ -33,36 +25,29 @@ impl DeleteLinkCommand {
         .execute(client)
         .map_err(|_err| eyre::eyre!("Link not found"))?;
 
+        let (device_tunnel_block_ext, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::DeviceTunnelBlock);
+        let (link_ids_ext, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::LinkIds);
         let mut accounts = vec![
             AccountMeta::new(self.pubkey, false),
             AccountMeta::new(link.contributor_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(link.side_a_pk, false),
+            AccountMeta::new(link.side_z_pk, false),
+            AccountMeta::new(device_tunnel_block_ext, false),
+            AccountMeta::new(link_ids_ext, false),
+            AccountMeta::new(link.owner, false),
         ];
-
-        if use_onchain_deallocation {
-            let (device_tunnel_block_ext, _, _) = get_resource_extension_pda(
-                &client.get_program_id(),
-                ResourceType::DeviceTunnelBlock,
-            );
-            let (link_ids_ext, _, _) =
-                get_resource_extension_pda(&client.get_program_id(), ResourceType::LinkIds);
-
-            accounts.push(AccountMeta::new(link.side_a_pk, false));
-            accounts.push(AccountMeta::new(link.side_z_pk, false));
-            accounts.push(AccountMeta::new(device_tunnel_block_ext, false));
-            accounts.push(AccountMeta::new(link_ids_ext, false));
-            accounts.push(AccountMeta::new(link.owner, false));
-
-            // Topology accounts for reference_count decrement — one writable account
-            // per entry in link.link_topologies.
-            for topology_pk in &link.link_topologies {
-                accounts.push(AccountMeta::new(*topology_pk, false));
-            }
+        // Topology accounts for reference_count decrement — one writable account
+        // per entry in link.link_topologies.
+        for topology_pk in &link.link_topologies {
+            accounts.push(AccountMeta::new(*topology_pk, false));
         }
 
         client.execute_transaction(
             DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
-                use_onchain_deallocation,
+                use_onchain_deallocation: true,
             }),
             accounts,
         )
@@ -73,7 +58,7 @@ impl DeleteLinkCommand {
 mod tests {
     use crate::{
         commands::link::delete::DeleteLinkCommand, tests::utils::create_test_client,
-        DoubleZeroClient, MockDoubleZeroClient,
+        DoubleZeroClient,
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
@@ -83,8 +68,6 @@ mod tests {
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
-            feature_flags::FeatureFlag,
-            globalstate::GlobalState,
             link::{Link, LinkDesiredStatus, LinkHealth, LinkLinkType, LinkStatus},
         },
     };
@@ -120,78 +103,18 @@ mod tests {
     }
 
     #[test]
-    fn test_commands_link_delete_legacy() {
+    fn test_commands_link_delete() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let program_id = client.get_program_id();
+        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let (device_tunnel_block_ext, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+        let (link_ids_ext, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
         let link_pubkey = Pubkey::new_unique();
         let side_a_pk = Pubkey::new_unique();
         let side_z_pk = Pubkey::new_unique();
         let link = make_test_link(client.get_payer(), side_a_pk, side_z_pk);
-        let contributor_pk = link.contributor_pk;
-
-        client
-            .expect_get()
-            .with(predicate::eq(link_pubkey))
-            .returning(move |_| Ok(AccountData::Link(link.clone())));
-
-        client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
-                    use_onchain_deallocation: false,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(link_pubkey, false),
-                    AccountMeta::new(contributor_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
-
-        let res = DeleteLinkCommand {
-            pubkey: link_pubkey,
-        }
-        .execute(&client);
-
-        assert!(res.is_ok());
-    }
-
-    #[test]
-    fn test_commands_link_delete_with_onchain_deallocation() {
-        let mut client = MockDoubleZeroClient::new();
-
-        let payer = Pubkey::new_unique();
-        client.expect_get_payer().returning(move || payer);
-        let program_id = Pubkey::new_unique();
-        client.expect_get_program_id().returning(move || program_id);
-
-        let (globalstate_pubkey, bump_seed) = get_globalstate_pda(&program_id);
-        let globalstate = GlobalState {
-            account_type: AccountType::GlobalState,
-            bump_seed,
-            account_index: 0,
-            foundation_allowlist: vec![],
-            _device_allowlist: vec![],
-            _user_allowlist: vec![],
-            activator_authority_pk: Pubkey::new_unique(),
-            sentinel_authority_pk: Pubkey::new_unique(),
-            contributor_airdrop_lamports: 1_000_000_000,
-            user_airdrop_lamports: 40_000,
-            health_oracle_pk: Pubkey::new_unique(),
-            qa_allowlist: vec![],
-            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
-            feed_authority_pk: Pubkey::default(),
-        };
-        client
-            .expect_get()
-            .with(predicate::eq(globalstate_pubkey))
-            .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
-
-        let link_pubkey = Pubkey::new_unique();
-        let side_a_pk = Pubkey::new_unique();
-        let side_z_pk = Pubkey::new_unique();
-        let link = make_test_link(payer, side_a_pk, side_z_pk);
         let contributor_pk = link.contributor_pk;
         let owner = link.owner;
 
@@ -199,10 +122,6 @@ mod tests {
             .expect_get()
             .with(predicate::eq(link_pubkey))
             .returning(move |_| Ok(AccountData::Link(link.clone())));
-
-        let (device_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-        let (link_ids_ext, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
 
         client
             .expect_execute_transaction()

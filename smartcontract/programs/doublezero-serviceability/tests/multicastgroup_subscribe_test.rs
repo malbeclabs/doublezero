@@ -5,9 +5,7 @@ use doublezero_serviceability::{
         accesspass::set::SetAccessPassArgs,
         allowlist::foundation::add::AddFoundationAllowlistArgs,
         contributor::create::ContributorCreateArgs,
-        device::{
-            activate::DeviceActivateArgs, create::DeviceCreateArgs, update::DeviceUpdateArgs,
-        },
+        device::{create::DeviceCreateArgs, update::DeviceUpdateArgs},
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         multicastgroup::{
             allowlist::{
@@ -161,7 +159,7 @@ async fn setup_fixture() -> TestFixture {
             desired_status: Some(
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             ),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -169,6 +167,9 @@ async fn setup_fixture() -> TestFixture {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -188,22 +189,6 @@ async fn setup_fixture() -> TestFixture {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(config_pubkey, false),
-            AccountMeta::new(tunnel_ids_pda, false),
-            AccountMeta::new(dz_prefix_pda, false),
         ],
         &payer,
     )

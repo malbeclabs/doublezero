@@ -20,9 +20,7 @@ use doublezero_serviceability::{
     processors::{
         accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
-        device::{
-            activate::DeviceActivateArgs, create::DeviceCreateArgs, update::DeviceUpdateArgs,
-        },
+        device::{create::DeviceCreateArgs, update::DeviceUpdateArgs},
         exchange::create::ExchangeCreateArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         location::create::LocationCreateArgs,
@@ -177,9 +175,13 @@ async fn setup_user_onchain_allocation_test(
     )
     .await;
 
-    // Create Device with dz_prefixes
+    // Create Device with dz_prefixes (atomic create+activate via onchain allocation)
     let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_pubkey, _) = get_device_pda(&program_id, globalstate.account_index + 1);
+    let (tunnel_ids_pubkey, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_block_pubkey, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
 
     execute_transaction(
         &mut banks_client,
@@ -193,7 +195,7 @@ async fn setup_user_onchain_allocation_test(
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -201,6 +203,9 @@ async fn setup_user_onchain_allocation_test(
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
         &payer,
     )
@@ -221,30 +226,6 @@ async fn setup_user_onchain_allocation_test(
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(location_pubkey, false), // new_location same as current
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Compute resource PDAs for device activation
-    // ActivateDevice now creates TunnelIds and DzPrefixBlock resources
-    let (tunnel_ids_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
-    let (dz_prefix_block_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
-
-    // Activate Device with resource_count: 2 (TunnelIds + 1 DzPrefixBlock)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
         &payer,
     )
@@ -1100,9 +1081,13 @@ async fn setup_user_infra_without_user(
     )
     .await;
 
-    // Create Device
+    // Create Device (atomic create+activate via onchain allocation)
     let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_pubkey, _) = get_device_pda(&program_id, globalstate.account_index + 1);
+    let (tunnel_ids_pubkey, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_block_pubkey, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
 
     execute_transaction(
         &mut banks_client,
@@ -1116,7 +1101,7 @@ async fn setup_user_infra_without_user(
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1124,6 +1109,9 @@ async fn setup_user_infra_without_user(
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
         &payer,
     )
@@ -1144,28 +1132,6 @@ async fn setup_user_infra_without_user(
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Activate Device (creates TunnelIds and DzPrefixBlock)
-    let (tunnel_ids_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
-    let (dz_prefix_block_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
         &payer,
     )

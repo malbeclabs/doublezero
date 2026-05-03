@@ -8,10 +8,7 @@ use doublezero_serviceability::{
     pda::get_resource_extension_pda,
     processors::device::interface::DeviceInterfaceUpdateArgs,
     resource::ResourceType,
-    state::{
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LoopbackType, RoutingMode},
-    },
+    state::interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LoopbackType, RoutingMode},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -35,7 +32,7 @@ pub struct UpdateDeviceInterfaceCommand {
 
 impl UpdateDeviceInterfaceCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
+        let (globalstate_pubkey, _) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
@@ -50,14 +47,8 @@ impl UpdateDeviceInterfaceCommand {
             AccountMeta::new(globalstate_pubkey, false),
         ];
 
-        // Include SegmentRoutingIds resource account when updating node_segment_idx
-        // with onchain allocation enabled
-        if self.node_segment_idx.is_some()
-            && is_feature_enabled(
-                globalstate.feature_flags,
-                FeatureFlag::OnChainAllocationDeprecated,
-            )
-        {
+        // Updating node_segment_idx requires the SegmentRoutingIds resource account.
+        if self.node_segment_idx.is_some() {
             let (seg_routing_pda, _, _) = get_resource_extension_pda(
                 &client.get_program_id(),
                 ResourceType::SegmentRoutingIds,
@@ -89,15 +80,13 @@ impl UpdateDeviceInterfaceCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{tests::utils::create_test_client, MockDoubleZeroClient};
+    use crate::tests::utils::create_test_client;
     use doublezero_serviceability::{
         pda::get_globalstate_pda,
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
             device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
-            feature_flags::FeatureFlag,
-            globalstate::GlobalState,
         },
     };
     use mockall::predicate;
@@ -198,37 +187,15 @@ mod tests {
         assert!(res.is_ok());
     }
 
-    /// Test that node_segment_idx update with OnChainAllocation includes the resource account
+    /// node_segment_idx update includes the SegmentRoutingIds resource account.
     #[test]
-    fn test_commands_device_interface_update_node_segment_idx_onchain() {
-        let mut client = MockDoubleZeroClient::new();
+    fn test_commands_device_interface_update_node_segment_idx() {
+        let mut client = create_test_client();
 
-        let program_id = Pubkey::new_unique();
-        client.expect_get_program_id().returning(move || program_id);
-        let payer = Pubkey::new_unique();
-        client.expect_get_payer().returning(move || payer);
-
-        let (globalstate_pubkey, bump_seed) = get_globalstate_pda(&program_id);
-        let globalstate = GlobalState {
-            account_type: AccountType::GlobalState,
-            bump_seed,
-            account_index: 0,
-            foundation_allowlist: vec![],
-            _device_allowlist: vec![],
-            _user_allowlist: vec![],
-            activator_authority_pk: Pubkey::new_unique(),
-            sentinel_authority_pk: Pubkey::new_unique(),
-            contributor_airdrop_lamports: 1_000_000_000,
-            user_airdrop_lamports: 40_000,
-            health_oracle_pk: Pubkey::new_unique(),
-            qa_allowlist: vec![],
-            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
-            feed_authority_pk: Pubkey::default(),
-        };
-        client
-            .expect_get()
-            .with(predicate::eq(globalstate_pubkey))
-            .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
+        let program_id = client.get_program_id();
+        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let (seg_routing_pda, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
 
         let device_pubkey = Pubkey::new_unique();
         let device = make_test_device();
@@ -238,9 +205,6 @@ mod tests {
             .expect_get()
             .with(predicate::eq(device_pubkey))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
-
-        let (seg_routing_pda, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
 
         client
             .expect_execute_transaction()
@@ -257,61 +221,6 @@ mod tests {
                     AccountMeta::new(contributor_pk, false),
                     AccountMeta::new(globalstate_pubkey, false),
                     AccountMeta::new(seg_routing_pda, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
-
-        let update_command = UpdateDeviceInterfaceCommand {
-            pubkey: device_pubkey,
-            name: "loopback0".to_string(),
-            node_segment_idx: Some(42),
-            loopback_type: None,
-            interface_cyoa: None,
-            interface_dia: None,
-            bandwidth: None,
-            cir: None,
-            mtu: None,
-            routing_mode: None,
-            vlan_id: None,
-            user_tunnel_endpoint: None,
-            status: None,
-            ip_net: None,
-        };
-
-        let res = update_command.execute(&client);
-        assert!(res.is_ok());
-    }
-
-    /// Test that node_segment_idx update without OnChainAllocation does NOT include resource account
-    #[test]
-    fn test_commands_device_interface_update_node_segment_idx_legacy() {
-        let mut client = create_test_client();
-
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-
-        let device_pubkey = Pubkey::new_unique();
-        let device = make_test_device();
-        let contributor_pk = device.contributor_pk;
-
-        client
-            .expect_get()
-            .with(predicate::eq(device_pubkey))
-            .returning(move |_| Ok(AccountData::Device(device.clone())));
-
-        client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateDeviceInterface(
-                    DeviceInterfaceUpdateArgs {
-                        name: "loopback0".to_string(),
-                        node_segment_idx: Some(42),
-                        ..Default::default()
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(device_pubkey, false),
-                    AccountMeta::new(contributor_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));

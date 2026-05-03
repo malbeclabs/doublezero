@@ -4,7 +4,6 @@ use doublezero_serviceability::{
     processors::{
         contributor::create::ContributorCreateArgs,
         device::{
-            activate::DeviceActivateArgs,
             create::*,
             interface::{create::*, unlink::*},
         },
@@ -117,9 +116,14 @@ async fn setup_two_devices_with_link() -> (
         .unwrap();
     assert_eq!(contributor.status, ContributorStatus::Activated);
 
-    // Create device A with interface Ethernet0
+    // Create device A with interface Ethernet0 (atomic create+activate via onchain allocation)
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_a_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (tunnel_ids_pda_a, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_a_pubkey, 0));
+    let (dz_prefix_pda_a, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_a_pubkey, 0));
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -132,31 +136,13 @@ async fn setup_two_devices_with_link() -> (
             metrics_publisher_pk: Default::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let (tunnel_ids_pda_a, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_a_pubkey, 0));
-    let (dz_prefix_pda_a, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_a_pubkey, 0));
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(config_pubkey, false),
             AccountMeta::new(tunnel_ids_pda_a, false),
@@ -211,9 +197,14 @@ async fn setup_two_devices_with_link() -> (
     )
     .await;
 
-    // Create device Z with interface Ethernet1
+    // Create device Z with interface Ethernet1 (atomic create+activate via onchain allocation)
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_z_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (tunnel_ids_pda_z, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_z_pubkey, 0));
+    let (dz_prefix_pda_z, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_z_pubkey, 0));
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -226,31 +217,13 @@ async fn setup_two_devices_with_link() -> (
             metrics_publisher_pk: Default::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let (tunnel_ids_pda_z, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_z_pubkey, 0));
-    let (dz_prefix_pda_z, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_z_pubkey, 0));
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(config_pubkey, false),
             AccountMeta::new(tunnel_ids_pda_z, false),
@@ -295,36 +268,7 @@ async fn setup_two_devices_with_link() -> (
     )
     .await;
 
-    // Unlink both interfaces (Pending → Unlinked) to prepare for linking
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "Ethernet0".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "Ethernet1".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    // Physical interfaces are created in Unlinked state already, no explicit Unlink required.
 
     // Create a WAN link between the two devices
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;

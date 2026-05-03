@@ -121,10 +121,7 @@ pub fn process_activate_device_interface(
         .find_interface(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
 
-    if iface.status != InterfaceStatus::Pending
-        && iface.status != InterfaceStatus::Unlinked
-        && iface.status != InterfaceStatus::Activated
-    {
+    if iface.status != InterfaceStatus::Pending && iface.status != InterfaceStatus::Unlinked {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 

@@ -208,7 +208,7 @@ async fn test_user_migration() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -216,6 +216,9 @@ async fn test_user_migration() {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -228,7 +231,7 @@ async fn test_user_migration() {
         .unwrap();
     assert_eq!(device_la.account_type, AccountType::Device);
     assert_eq!(device_la.code, "la".to_string());
-    assert_eq!(device_la.status, DeviceStatus::Pending);
+    assert_eq!(device_la.status, DeviceStatus::Activated);
 
     execute_transaction(
         &mut banks_client,
@@ -256,26 +259,7 @@ async fn test_user_migration() {
         .unwrap();
     assert_eq!(device_la.max_users, 128);
 
-    println!("✅ Device initialized successfully",);
-    /*****************************************************************************************************************************************************/
-    println!("🟢 6. Testing Activate Device...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(device::activate::DeviceActivateArgs {
-            resource_count: 2,
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(config_pubkey, false),
-            AccountMeta::new(tunnel_ids_pda, false),
-            AccountMeta::new(dz_prefix_pda, false),
-        ],
-        &payer,
-    )
-    .await;
+    println!("✅ Device initialized and activated successfully",);
 
     let device_la = get_account_data(&mut banks_client, device_pubkey)
         .await

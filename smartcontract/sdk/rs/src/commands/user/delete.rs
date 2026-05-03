@@ -14,11 +14,8 @@ use crate::{
 };
 use backon::{BlockingRetryable, ExponentialBuilder};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::get_resource_extension_pda,
-    processors::user::delete::UserDeleteArgs,
-    resource::ResourceType,
-    state::feature_flags::{is_feature_enabled, FeatureFlag},
+    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
+    processors::user::delete::UserDeleteArgs, resource::ResourceType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -29,14 +26,9 @@ pub struct DeleteUserCommand {
 
 impl DeleteUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
+        let (globalstate_pubkey, _) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        let use_onchain_deallocation = is_feature_enabled(
-            globalstate.feature_flags,
-            FeatureFlag::OnChainAllocationDeprecated,
-        );
 
         let user = client
             .get(self.pubkey)
@@ -111,69 +103,52 @@ impl DeleteUserCommand {
         })
         .ok_or_else(|| eyre::eyre!("You have no Access Pass"))?;
 
+        let (_, device) = GetDeviceCommand {
+            pubkey_or_code: user.device_pk.to_string(),
+        }
+        .execute(client)
+        .map_err(|_| eyre::eyre!("Device not found"))?;
+        let dz_prefix_count = device.dz_prefixes.len();
+
+        let (user_tunnel_block_ext, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
+        let (multicast_publisher_block_ext, _, _) = get_resource_extension_pda(
+            &client.get_program_id(),
+            ResourceType::MulticastPublisherBlock,
+        );
+        let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
+            &client.get_program_id(),
+            ResourceType::TunnelIds(user.device_pk, 0),
+        );
+
         let mut accounts = vec![
             AccountMeta::new(self.pubkey, false),
             AccountMeta::new(accesspass_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user.device_pk, false),
+            AccountMeta::new(user_tunnel_block_ext, false),
+            AccountMeta::new(multicast_publisher_block_ext, false),
+            AccountMeta::new(device_tunnel_ids_ext, false),
         ];
 
-        let (dz_prefix_count, multicast_publisher_count) = if use_onchain_deallocation {
-            let (_, device) = GetDeviceCommand {
-                pubkey_or_code: user.device_pk.to_string(),
-            }
-            .execute(client)
-            .map_err(|_| eyre::eyre!("Device not found"))?;
-
-            let count = device.dz_prefixes.len();
-
-            // Device account (writable)
-            accounts.push(AccountMeta::new(user.device_pk, false));
-
-            // UserTunnelBlock (global)
-            let (user_tunnel_block_ext, _, _) =
-                get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
-            accounts.push(AccountMeta::new(user_tunnel_block_ext, false));
-
-            // MulticastPublisherBlock (global) — always include for deallocation
-            let (multicast_publisher_block_ext, _, _) = get_resource_extension_pda(
+        for idx in 0..dz_prefix_count {
+            let (dz_prefix_ext, _, _) = get_resource_extension_pda(
                 &client.get_program_id(),
-                ResourceType::MulticastPublisherBlock,
+                ResourceType::DzPrefixBlock(user.device_pk, idx),
             );
-            accounts.push(AccountMeta::new(multicast_publisher_block_ext, false));
+            accounts.push(AccountMeta::new(dz_prefix_ext, false));
+        }
 
-            // TunnelIds (per-device)
-            let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
-                &client.get_program_id(),
-                ResourceType::TunnelIds(user.device_pk, 0),
-            );
-            accounts.push(AccountMeta::new(device_tunnel_ids_ext, false));
+        if user.tenant_pk != Pubkey::default() {
+            accounts.push(AccountMeta::new(user.tenant_pk, false));
+        }
 
-            // DzPrefixBlock accounts (per-device)
-            for idx in 0..count {
-                let (dz_prefix_ext, _, _) = get_resource_extension_pda(
-                    &client.get_program_id(),
-                    ResourceType::DzPrefixBlock(user.device_pk, idx),
-                );
-                accounts.push(AccountMeta::new(dz_prefix_ext, false));
-            }
-
-            // Optional tenant
-            if user.tenant_pk != Pubkey::default() {
-                accounts.push(AccountMeta::new(user.tenant_pk, false));
-            }
-
-            // Owner account
-            accounts.push(AccountMeta::new(user.owner, false));
-
-            (count as u8, 1u8)
-        } else {
-            (0u8, 0u8)
-        };
+        accounts.push(AccountMeta::new(user.owner, false));
 
         client.execute_transaction(
             DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-                dz_prefix_count,
-                multicast_publisher_count,
+                dz_prefix_count: dz_prefix_count as u8,
+                multicast_publisher_count: 1,
             }),
             accounts,
         )
@@ -202,7 +177,6 @@ mod tests {
             accountdata::AccountData,
             accounttype::AccountType,
             device::Device,
-            feature_flags::FeatureFlag,
             globalstate::GlobalState,
             multicastgroup::{MulticastGroup, MulticastGroupStatus},
             user::{User, UserCYOA, UserStatus, UserType},
@@ -216,9 +190,11 @@ mod tests {
     fn test_delete_multicast_user_retries_until_status_activated() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let program_id = client.get_program_id();
+        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
         let user_pubkey = Pubkey::new_unique();
-        let (mgroup_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let device_pk = Pubkey::new_unique();
+        let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
         // User with one subscriber - triggers the retry logic
@@ -229,7 +205,7 @@ mod tests {
             index: 1,
             tenant_pk: Pubkey::default(),
             user_type: UserType::Multicast,
-            device_pk: Pubkey::default(),
+            device_pk,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip,
             dz_ip: client_ip,
@@ -350,6 +326,8 @@ mod tests {
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone1.clone())));
 
         // Execute transaction for UpdateMulticastGroupRolesCommand (unsubscribe)
+        let (multicast_publisher_block_ext_unsub, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
         client
             .expect_execute_transaction()
             .with(
@@ -358,7 +336,7 @@ mod tests {
                         publisher: false,
                         subscriber: false,
                         client_ip,
-                        use_onchain_allocation: false,
+                        use_onchain_allocation: true,
                     },
                 )),
                 predicate::eq(vec![
@@ -366,6 +344,7 @@ mod tests {
                     AccountMeta::new(accesspass_pubkey, false),
                     AccountMeta::new(user_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(multicast_publisher_block_ext_unsub, false),
                 ]),
             )
             .times(1)
@@ -399,15 +378,47 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone2.clone())));
 
+        // Call 9: Device fetch for DeleteUserCommand
+        let device = Device {
+            account_type: AccountType::Device,
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(device_pk))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
+
+        let (user_tunnel_block_ext, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+        let (multicast_publisher_block_ext, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+        let (device_tunnel_ids_ext, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pk, 0));
+        let (dz_prefix_ext, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
+        let user_owner = client.get_payer();
+
         // Execute transaction for DeleteUser
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs::default())),
+                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+                    dz_prefix_count: 1,
+                    multicast_publisher_count: 1,
+                })),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
                     AccountMeta::new(accesspass_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(device_pk, false),
+                    AccountMeta::new(user_tunnel_block_ext, false),
+                    AccountMeta::new(multicast_publisher_block_ext, false),
+                    AccountMeta::new(device_tunnel_ids_ext, false),
+                    AccountMeta::new(dz_prefix_ext, false),
+                    AccountMeta::new(user_owner, false),
                 ]),
             )
             .times(1)
@@ -426,9 +437,11 @@ mod tests {
     fn test_delete_multicast_user_pub_and_sub_same_group_deduplicates() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let program_id = client.get_program_id();
+        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
         let user_pubkey = Pubkey::new_unique();
-        let (mgroup_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let device_pk = Pubkey::new_unique();
+        let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
         // User is both publisher and subscriber of the same group
@@ -439,7 +452,7 @@ mod tests {
             index: 1,
             tenant_pk: Pubkey::default(),
             user_type: UserType::Multicast,
-            device_pk: Pubkey::default(),
+            device_pk,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip,
             dz_ip: client_ip,
@@ -557,6 +570,8 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone1.clone())));
 
+        let (multicast_publisher_block_ext_unsub, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
         client
             .expect_execute_transaction()
             .with(
@@ -565,7 +580,7 @@ mod tests {
                         publisher: false,
                         subscriber: false,
                         client_ip,
-                        use_onchain_allocation: false,
+                        use_onchain_allocation: true,
                     },
                 )),
                 predicate::eq(vec![
@@ -573,6 +588,7 @@ mod tests {
                     AccountMeta::new(accesspass_pubkey, false),
                     AccountMeta::new(user_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(multicast_publisher_block_ext_unsub, false),
                 ]),
             )
             .times(1)
@@ -605,15 +621,47 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone2.clone())));
 
+        // Device fetch for DeleteUser
+        let device = Device {
+            account_type: AccountType::Device,
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(device_pk))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
+
+        let (user_tunnel_block_ext, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+        let (multicast_publisher_block_ext, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+        let (device_tunnel_ids_ext, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pk, 0));
+        let (dz_prefix_ext, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
+        let user_owner = client.get_payer();
+
         // DeleteUser transaction
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs::default())),
+                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+                    dz_prefix_count: 1,
+                    multicast_publisher_count: 1,
+                })),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
                     AccountMeta::new(accesspass_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(device_pk, false),
+                    AccountMeta::new(user_tunnel_block_ext, false),
+                    AccountMeta::new(multicast_publisher_block_ext, false),
+                    AccountMeta::new(device_tunnel_ids_ext, false),
+                    AccountMeta::new(dz_prefix_ext, false),
+                    AccountMeta::new(user_owner, false),
                 ]),
             )
             .times(1)
@@ -684,6 +732,7 @@ mod tests {
             flags: 0,
         };
 
+        let device_pk = Pubkey::new_unique();
         let user_with_sub = User {
             account_type: AccountType::User,
             owner: user_owner,
@@ -691,7 +740,7 @@ mod tests {
             index: 1,
             tenant_pk: Pubkey::default(),
             user_type: UserType::Multicast,
-            device_pk: Pubkey::default(),
+            device_pk,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip,
             dz_ip: client_ip,
@@ -792,6 +841,8 @@ mod tests {
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone1.clone())));
 
         // Call 6: Execute unsubscribe transaction
+        let (multicast_publisher_block_ext_unsub, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
         client
             .expect_execute_transaction()
             .with(
@@ -800,7 +851,7 @@ mod tests {
                         publisher: false,
                         subscriber: false,
                         client_ip,
-                        use_onchain_allocation: false,
+                        use_onchain_allocation: true,
                     },
                 )),
                 predicate::eq(vec![
@@ -808,6 +859,7 @@ mod tests {
                     AccountMeta::new(accesspass_pubkey, false),
                     AccountMeta::new(user_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(multicast_publisher_block_ext_unsub, false),
                 ]),
             )
             .times(1)
@@ -841,15 +893,46 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone2.clone())));
 
+        // Call 8c: Device fetch for DeleteUserCommand
+        let device = Device {
+            account_type: AccountType::Device,
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(device_pk))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
+
+        let (user_tunnel_block_ext, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+        let (multicast_publisher_block_ext, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+        let (device_tunnel_ids_ext, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pk, 0));
+        let (dz_prefix_ext, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
+
         // Call 9: Execute DeleteUser transaction
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs::default())),
+                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+                    dz_prefix_count: 1,
+                    multicast_publisher_count: 1,
+                })),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
                     AccountMeta::new(accesspass_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(device_pk, false),
+                    AccountMeta::new(user_tunnel_block_ext, false),
+                    AccountMeta::new(multicast_publisher_block_ext, false),
+                    AccountMeta::new(device_tunnel_ids_ext, false),
+                    AccountMeta::new(dz_prefix_ext, false),
+                    AccountMeta::new(user_owner, false),
                 ]),
             )
             .times(1)
@@ -866,34 +949,11 @@ mod tests {
 
     #[test]
     fn test_delete_user_with_onchain_deallocation() {
-        let mut client = MockDoubleZeroClient::new();
+        let mut client = create_test_client();
 
-        let payer = Pubkey::new_unique();
-        client.expect_get_payer().returning(move || payer);
-        let program_id = Pubkey::new_unique();
-        client.expect_get_program_id().returning(move || program_id);
-
-        let (globalstate_pubkey, bump_seed) = get_globalstate_pda(&program_id);
-        let globalstate = GlobalState {
-            account_type: AccountType::GlobalState,
-            bump_seed,
-            account_index: 0,
-            foundation_allowlist: vec![],
-            _device_allowlist: vec![],
-            _user_allowlist: vec![],
-            activator_authority_pk: Pubkey::new_unique(),
-            sentinel_authority_pk: Pubkey::new_unique(),
-            contributor_airdrop_lamports: 1_000_000_000,
-            user_airdrop_lamports: 40_000,
-            health_oracle_pk: Pubkey::new_unique(),
-            qa_allowlist: vec![],
-            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
-            feed_authority_pk: Pubkey::default(),
-        };
-        client
-            .expect_get()
-            .with(predicate::eq(globalstate_pubkey))
-            .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
         let user_pubkey = Pubkey::new_unique();
         let device_pk = Pubkey::new_unique();

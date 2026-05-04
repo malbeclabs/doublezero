@@ -1426,7 +1426,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-revenue-distribution"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "bincode",
  "borsh",

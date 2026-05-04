@@ -2,12 +2,17 @@
 
 ## Unreleased
 
+## [v0.3.6]
+
+- validate destination authority in withdraw integration rewards handler (#119)
+
+## [v0.3.5]
+
 - register rewards integrations (#113)
 - simplify already-registered rejection (#114)
 - scaffold integration harvesting (#115)
-- collect integration rewards (#116)
 - track collected integrations via inline bitmap on distribution (#117)
-- validate destination authority in withdraw integration rewards handler (#119)
+- collect integration rewards (#116)
 
 ## [v0.3.4]
 - withdraw deposited SOL (#111)
@@ -95,3 +100,5 @@
 [v0.3.2]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.3.2
 [v0.3.3]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.3.3
 [v0.3.4]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.3.4
+[v0.3.5]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.3.5
+[v0.3.6]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.3.6

@@ -104,13 +104,19 @@ func (n Netlink) TunnelUp(t *Tunnel) error {
 
 // RouteAdd adds a route to the kernel routing table via netlink.
 func (n Netlink) RouteAdd(r *Route) error {
-	return nl.RouteReplace(&nl.Route{
+	return nl.RouteReplace(routeToNetlink(r))
+}
+
+func routeToNetlink(r *Route) *nl.Route {
+	return &nl.Route{
 		Table:    r.Table,
 		Src:      r.Src,
 		Dst:      r.Dst,
 		Gw:       r.NextHop,
 		Protocol: nl.RouteProtocol(r.Protocol),
-	})
+		MTU:      GREMTU,
+		MTULock:  true,
+	}
 }
 
 // RouteDelete deletes a route from the kernel routing table via netlink.

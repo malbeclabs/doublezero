@@ -12,6 +12,7 @@ use solana_account_info::AccountInfo;
 use solana_instruction::AccountMeta;
 use solana_msg::msg;
 use solana_program_error::ProgramError;
+use solana_program_pack::Pack;
 use solana_pubkey::Pubkey;
 
 use crate::state::Distribution;
@@ -118,9 +119,11 @@ impl From<WithdrawIntegrationRewardsAccounts> for Vec<AccountMeta> {
 
 /// Handler-side view of [`WithdrawIntegrationRewardsAccounts`]. Integration
 /// programs peel this out of their `accounts_iter` in one call, which
-/// enforces the slot ordering, contract-level writable/signer flags, and
-/// that the parent `Distribution`'s `dz_epoch` matches the integration's
-/// local epoch.
+/// enforces the slot ordering, contract-level writable/signer flags, that
+/// the parent `Distribution`'s `dz_epoch` matches the integration's local
+/// epoch, and that the destination token account's authority is the parent
+/// `Distribution` (so the bucket can only flow back to a token account the
+/// parent controls).
 pub struct WithdrawIntegrationRewardsHandlerAccounts<'a, 'b> {
     pub integration_distribution_info: (usize, &'a AccountInfo<'b>),
     pub integration_2z_bucket_info: (usize, &'a AccountInfo<'b>),
@@ -167,6 +170,17 @@ impl<'a, 'b> TryNextAccounts<'a, 'b, crate::types::DoubleZeroEpoch>
                 "DZ epoch mismatch: integration={}, parent={}",
                 integration_dz_epoch,
                 parent_distribution.dz_epoch,
+            );
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        let destination_token_account = spl_token_interface::state::Account::unpack(
+            &destination_token_account_info.1.data.borrow()[..],
+        )?;
+        if destination_token_account.owner != *parent_distribution.info.key {
+            msg!(
+                "Destination token account (account {}) authority must be parent distribution",
+                destination_token_account_info.0,
             );
             return Err(ProgramError::InvalidAccountData);
         }

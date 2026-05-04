@@ -7,6 +7,7 @@
 - scaffold integration harvesting (#115)
 - collect integration rewards (#116)
 - track collected integrations via inline bitmap on distribution (#117)
+- validate destination authority in withdraw integration rewards handler (#119)
 
 ## [v0.3.4]
 - withdraw deposited SOL (#111)

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- chore(contributor-rewards): bump to v0.5.1 ([#356](https://github.com/doublezerofoundation/doublezero-offchain/pull/356))
 - fix(contributor-rewards): subscriber decoding ([#353](https://github.com/doublezerofoundation/doublezero-offchain/pull/353))
 
 ## [0.5.0](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.5.0) - 2026-04-24

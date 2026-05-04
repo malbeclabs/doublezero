@@ -135,8 +135,11 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/device_interface_set_unlinked_2": {ranges: []versionRange{{before: "0.19.0"}}},
 	"write/device_interface_set_unlinked_3": {ranges: []versionRange{{before: "0.19.0"}}},
 	"write/device_interface_set_unlinked_4": {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/link_create_wan":                 {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/link_create_dzx":                 {ranges: []versionRange{{before: "0.19.0"}}},
+	// link_create_wan / link_create_dzx: the OnChainAllocation feature flag was deprecated
+	// and the program now requires use_onchain_allocation=true on CreateLink. Older CLIs
+	// (≤ v0.21.0) send false and fail with InvalidArgument.
+	"write/link_create_wan":                 {ranges: []versionRange{{before: "0.22.0"}}},
+	"write/link_create_dzx":                 {ranges: []versionRange{{before: "0.22.0"}}},
 	"write/link_accept_dzx":                 {ranges: []versionRange{{before: "0.19.0"}}},
 	"write/link_update":                     {ranges: []versionRange{{before: "0.19.0"}}},
 	"write/link_set_health":                 {ranges: []versionRange{{before: "0.19.0"}}},

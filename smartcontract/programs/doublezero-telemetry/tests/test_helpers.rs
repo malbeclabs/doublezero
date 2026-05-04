@@ -11,7 +11,7 @@ use doublezero_serviceability::{
         contributor::create::ContributorCreateArgs,
         device::{
             create::DeviceCreateArgs,
-            interface::{create::DeviceInterfaceCreateArgs, unlink::DeviceInterfaceUnlinkArgs},
+            interface::create::DeviceInterfaceCreateArgs,
             sethealth::DeviceSetHealthArgs,
             update::DeviceUpdateArgs,
         },
@@ -151,7 +151,7 @@ impl LinkCreateArgsExt for LinkCreateArgs {
             side_a_iface_name: String::default(),
             side_z_iface_name: Some(String::default()),
             desired_status: Some(LinkDesiredStatus::Activated),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }
     }
 }
@@ -378,7 +378,7 @@ impl LedgerHelper {
                     side_a_iface_name: "Ethernet0".to_string(),
                     side_z_iface_name: Some("Ethernet1".to_string()),
                     desired_status: Some(LinkDesiredStatus::Activated),
-                    use_onchain_allocation: false,
+                    use_onchain_allocation: true,
                 },
                 contributor_pk,
                 origin_device_pk,
@@ -996,6 +996,7 @@ impl ServiceabilityProgramHelper {
 
         let dz_prefix_count = device.dz_prefixes.len();
         let resource_count: u8 = (1 + dz_prefix_count) as u8;
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&self.program_id);
 
         let mut accounts = vec![
             AccountMeta::new(device_pk, false),
@@ -1003,6 +1004,7 @@ impl ServiceabilityProgramHelper {
             AccountMeta::new(location_pk, false),
             AccountMeta::new(exchange_pk, false),
             AccountMeta::new(self.global_state_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
             AccountMeta::new(
                 get_resource_extension_pda(&self.program_id, ResourceType::TunnelIds(device_pk, 0))
                     .0,
@@ -1035,13 +1037,46 @@ impl ServiceabilityProgramHelper {
         )
         .await?;
 
+        // CreateDevice now atomically activates the device (status=Activated). To preserve
+        // the legacy contract of `create_device` (which left the device non-activated until
+        // `set_device_ready_for_users` was invoked), demote it back to Pending here.
+        // Tests that need an activated device call `create_and_activate_device`, which
+        // re-activates after this step.
+        self.execute_transaction(
+            DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+                status: Some(doublezero_serviceability::state::device::DeviceStatus::Pending),
+                ..Default::default()
+            }),
+            vec![
+                AccountMeta::new(device_pk, false),
+                AccountMeta::new(contributor_pk, false),
+                AccountMeta::new(self.global_state_pubkey, false),
+            ],
+        )
+        .await?;
+
         Ok(device_pk)
     }
 
     pub async fn set_device_ready_for_users(
         &mut self,
         device_pk: Pubkey,
+        contributor_pk: Pubkey,
     ) -> Result<(), BanksClientError> {
+        // Bring the device back to Activated (create_device demoted it to Pending) and set
+        // the health oracle status. Foundation members may set any status.
+        self.execute_transaction(
+            DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+                status: Some(doublezero_serviceability::state::device::DeviceStatus::Activated),
+                ..Default::default()
+            }),
+            vec![
+                AccountMeta::new(device_pk, false),
+                AccountMeta::new(contributor_pk, false),
+                AccountMeta::new(self.global_state_pubkey, false),
+            ],
+        )
+        .await?;
         self.execute_transaction(
             DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
                 health: DeviceHealth::ReadyForUsers,
@@ -1088,9 +1123,13 @@ impl ServiceabilityProgramHelper {
         contributor_pk: Pubkey,
         name: String,
     ) -> Result<(), BanksClientError> {
+        let (device_tunnel_block_pda, _, _) =
+            get_resource_extension_pda(&self.program_id, ResourceType::DeviceTunnelBlock);
+        let (segment_routing_ids_pda, _, _) =
+            get_resource_extension_pda(&self.program_id, ResourceType::SegmentRoutingIds);
         self.execute_transaction(
             DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
-                name: name.clone(),
+                name,
                 interface_dia: InterfaceDIA::None,
                 loopback_type: LoopbackType::None,
                 interface_cyoa: InterfaceCYOA::None,
@@ -1101,20 +1140,14 @@ impl ServiceabilityProgramHelper {
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
-                use_onchain_allocation: false,
+                use_onchain_allocation: true,
             }),
             vec![
                 AccountMeta::new(device_pk, false),
                 AccountMeta::new(contributor_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
-            ],
-        )
-        .await?;
-        self.execute_transaction(
-            DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs { name }),
-            vec![
-                AccountMeta::new(device_pk, false),
-                AccountMeta::new(self.global_state_pubkey, false),
+                AccountMeta::new(device_tunnel_block_pda, false),
+                AccountMeta::new(segment_routing_ids_pda, false),
             ],
         )
         .await
@@ -1170,7 +1203,8 @@ impl ServiceabilityProgramHelper {
         let device_pk = self
             .create_device(device, contributor_pk, location_pk, exchange_pk)
             .await?;
-        self.set_device_ready_for_users(device_pk).await?;
+        self.set_device_ready_for_users(device_pk, contributor_pk)
+            .await?;
         Ok(device_pk)
     }
 
@@ -1184,6 +1218,11 @@ impl ServiceabilityProgramHelper {
         let index = self.get_next_global_state_index().await?;
         let (link_pk, _) = get_link_pda(&self.program_id, index);
 
+        let (device_tunnel_block_pda, _, _) =
+            get_resource_extension_pda(&self.program_id, ResourceType::DeviceTunnelBlock);
+        let (link_ids_pda, _, _) =
+            get_resource_extension_pda(&self.program_id, ResourceType::LinkIds);
+
         self.execute_transaction(
             DoubleZeroInstruction::CreateLink(LinkCreateArgs {
                 code: link.code,
@@ -1195,7 +1234,7 @@ impl ServiceabilityProgramHelper {
                 side_a_iface_name: link.side_a_iface_name,
                 side_z_iface_name: link.side_z_iface_name,
                 desired_status: Some(LinkDesiredStatus::Activated),
-                use_onchain_allocation: false,
+                use_onchain_allocation: true,
             }),
             vec![
                 AccountMeta::new(link_pk, false),
@@ -1204,6 +1243,8 @@ impl ServiceabilityProgramHelper {
                 AccountMeta::new(side_z_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
                 AccountMeta::new(self.unicast_default_topology_pubkey, false),
+                AccountMeta::new(device_tunnel_block_pda, false),
+                AccountMeta::new(link_ids_pda, false),
             ],
         )
         .await?;
@@ -1220,17 +1261,24 @@ impl ServiceabilityProgramHelper {
         tunnel_id: u16,
         tunnel_net: NetworkV4,
     ) -> Result<(), BanksClientError> {
+        let (device_tunnel_block_pda, _, _) =
+            get_resource_extension_pda(&self.program_id, ResourceType::DeviceTunnelBlock);
+        let (link_ids_pda, _, _) =
+            get_resource_extension_pda(&self.program_id, ResourceType::LinkIds);
+
         self.execute_transaction(
             DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                 tunnel_id,
                 tunnel_net,
-                use_onchain_allocation: false,
+                use_onchain_allocation: true,
             }),
             vec![
                 AccountMeta::new(link_pk, false),
                 AccountMeta::new(side_a_pk, false),
                 AccountMeta::new(side_z_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
+                AccountMeta::new(device_tunnel_block_pda, false),
+                AccountMeta::new(link_ids_pda, false),
             ],
         )
         .await?;
@@ -1322,21 +1370,15 @@ impl ServiceabilityProgramHelper {
         contributor_pk: Pubkey,
         side_a_pk: Pubkey,
         side_z_pk: Pubkey,
-        tunnel_id: u16,
-        tunnel_net: NetworkV4,
+        _tunnel_id: u16,
+        _tunnel_net: NetworkV4,
     ) -> Result<Pubkey, BanksClientError> {
+        // CreateLink now performs atomic create+allocate+activate (tunnel_id/tunnel_net
+        // are allocated from on-chain ResourceExtension accounts), so the caller-supplied
+        // values are ignored and no follow-up ActivateLink/UpdateLink is required.
         let link_pk = self
             .create_link(link, contributor_pk, side_a_pk, side_z_pk)
             .await?;
-        self.activate_link(
-            link_pk,
-            contributor_pk,
-            side_a_pk,
-            side_z_pk,
-            tunnel_id,
-            tunnel_net,
-        )
-        .await?;
         Ok(link_pk)
     }
 

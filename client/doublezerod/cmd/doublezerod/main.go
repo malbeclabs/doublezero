@@ -50,7 +50,7 @@ var (
 	routeLivenessDetectMult        = flag.Uint("route-liveness-detect-mult", defaultRouteLivenessDetectMult, "route liveness detect mult")
 	routeLivenessMinTxFloor        = flag.Duration("route-liveness-min-tx-floor", defaultRouteLivenessMinTxFloor, "route liveness min tx floor")
 	routeLivenessMaxTxCeil         = flag.Duration("route-liveness-max-tx-ceil", defaultRouteLivenessMaxTxCeil, "route liveness max tx ceil")
-	routeLivenessReconcileInterval = flag.Duration("route-liveness-reconcile-interval", 30*time.Second, "interval for periodic kernel route reconciliation; 0 disables")
+	routeLivenessReconcileInterval = flag.Duration("route-liveness-reconcile-interval", defaultRouteLivenessReconcileInterval, "interval for periodic kernel route reconciliation; 0 disables")
 	routeLivenessPeerMetrics       = flag.Bool("route-liveness-peer-metrics", false, "enables per peer metrics for route liveness (high cardinality)")
 	routeLivenessDebug             = flag.Bool("route-liveness-debug", false, "enables debug logging for route liveness")
 
@@ -67,12 +67,13 @@ var (
 )
 
 const (
-	defaultOnchainRPCTimeout       = 30 * time.Second
-	defaultRouteLivenessTxMin      = 1 * time.Second
-	defaultRouteLivenessRxMin      = 1 * time.Second
-	defaultRouteLivenessDetectMult = 3
-	defaultRouteLivenessMinTxFloor = 50 * time.Millisecond
-	defaultRouteLivenessMaxTxCeil  = 3 * time.Second
+	defaultOnchainRPCTimeout              = 30 * time.Second
+	defaultRouteLivenessTxMin             = 1 * time.Second
+	defaultRouteLivenessRxMin             = 1 * time.Second
+	defaultRouteLivenessDetectMult        = 3
+	defaultRouteLivenessMinTxFloor        = 50 * time.Millisecond
+	defaultRouteLivenessMaxTxCeil         = 3 * time.Second
+	defaultRouteLivenessReconcileInterval = 30 * time.Second
 
 	defaultRouteLivenessBindIP = "0.0.0.0"
 )

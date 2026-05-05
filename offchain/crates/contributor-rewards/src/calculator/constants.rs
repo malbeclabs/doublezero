@@ -18,18 +18,3 @@ pub const SEC_TO_US: f64 = 1_000_000.0;
 
 // max unit share
 pub const MAX_UNIT_SHARE: f64 = 1_000_000_000.0;
-
-// default traffic per receiver in Gbps
-pub const DEMAND_TRAFFIC: f64 = 0.15;
-
-// default demand type
-pub const DEMAND_TYPE: u32 = 1;
-
-// default multicast enabled?
-pub const DEMAND_MULTICAST_ENABLED: bool = false;
-
-// shred demand type
-pub const DEMAND_TYPE_SHRED: u32 = 2;
-
-// shred multicast enabled
-pub const DEMAND_MULTICAST_SHRED: bool = true;

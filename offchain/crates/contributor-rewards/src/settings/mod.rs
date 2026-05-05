@@ -21,6 +21,9 @@ pub struct Settings {
     pub network: Network,
     /// Shapley value calculation parameters
     pub shapley: ShapleySettings,
+    /// Demand generation parameters
+    #[serde(default)]
+    pub demand: DemandSettings,
     /// RPC endpoint configuration
     pub rpc: RpcSettings,
     /// Solana program IDs
@@ -54,6 +57,37 @@ pub struct ShapleySettings {
     /// Multiplier for demand-based rewards
     /// Increases rewards in high-demand areas
     pub demand_multiplier: f64,
+}
+
+/// Demand generation parameters for Shapley inputs
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DemandSettings {
+    /// Traffic per receiver in Gbps, used for both IBRL and shred demands
+    pub traffic: f64,
+    /// Priority for IBRL validator-to-validator demands
+    pub priority: f64,
+    /// Demand kind/type for IBRL demands
+    pub kind: u32,
+    /// Multicast flag for IBRL demands
+    pub multicast_enabled: bool,
+    /// Demand kind/type for shred demands
+    pub shred_kind: u32,
+    /// Multicast flag for shred demands
+    pub shred_multicast_enabled: bool,
+}
+
+impl Default for DemandSettings {
+    fn default() -> Self {
+        Self {
+            traffic: 0.15,
+            priority: 0.0,
+            kind: 1,
+            multicast_enabled: false,
+            shred_kind: 2,
+            shred_multicast_enabled: true,
+        }
+    }
 }
 
 /// RPC endpoint configuration for blockchain interactions
@@ -249,6 +283,12 @@ impl fmt::Display for Settings {
              \tShapley Operator Uptime: {}\n\
              \tShapley Contiguity Bonus: {}\n\
              \tShapley Demand Multiplier: {}\n\
+             \tDemand Traffic: {}\n\
+             \tDemand Priority: {}\n\
+             \tDemand Kind: {}\n\
+             \tDemand Multicast Enabled: {}\n\
+             \tDemand Shred Kind: {}\n\
+             \tDemand Shred Multicast Enabled: {}\n\
              }}",
             self.network,
             self.log_level,
@@ -259,6 +299,163 @@ impl fmt::Display for Settings {
             self.shapley.operator_uptime,
             self.shapley.contiguity_bonus,
             self.shapley.demand_multiplier,
+            self.demand.traffic,
+            self.demand.priority,
+            self.demand.kind,
+            self.demand.multicast_enabled,
+            self.demand.shred_kind,
+            self.demand.shred_multicast_enabled,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{io::Write, sync::Mutex};
+
+    use super::*;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    const DEMAND_ENV_KEYS: &[&str] = &[
+        "DZ__DEMAND__TRAFFIC",
+        "DZ__DEMAND__PRIORITY",
+        "DZ__DEMAND__KIND",
+        "DZ__DEMAND__SHRED_KIND",
+        "DZ__DEMAND__MULTICAST_ENABLED",
+        "DZ__DEMAND__SHRED_MULTICAST_ENABLED",
+    ];
+
+    struct DemandEnvCleanup;
+
+    impl Drop for DemandEnvCleanup {
+        fn drop(&mut self) {
+            clear_demand_env();
+        }
+    }
+
+    fn clear_demand_env() {
+        for key in DEMAND_ENV_KEYS {
+            unsafe {
+                std::env::remove_var(key);
+            }
+        }
+    }
+
+    fn base_config(extra: &str) -> String {
+        format!(
+            r#"
+network = "testnet"
+log_level = "info"
+
+[shapley]
+operator_uptime = 0.98
+contiguity_bonus = 5.0
+demand_multiplier = 1.2
+
+[rpc]
+dz_url = "https://test.com"
+solana_read_url = "https://test.com"
+solana_write_url = "https://test.com"
+commitment = "confirmed"
+rps_limit = 10
+
+[programs]
+serviceability_program_id = "test"
+telemetry_program_id = "test"
+
+[prefixes]
+device_telemetry = "device"
+internet_telemetry = "internet"
+contributor_rewards = "rewards"
+reward_input = "input"
+
+[inet_lookback]
+min_coverage_threshold = 0.8
+max_epochs_lookback = 5
+min_samples_per_link = 20
+enable_accumulator = true
+dedup_window_us = 10000000
+
+[telemetry_defaults]
+missing_data_threshold = 0.7
+private_default_latency_ms = 1000.0
+enable_previous_epoch_lookup = true
+
+[scheduler]
+interval_seconds = 300
+state_file = "/tmp/test.state"
+snapshot_dir = "/tmp/snapshots"
+enable_dry_run = false
+storage_backend = "local-file"
+{extra}
+"#
+        )
+    }
+
+    fn write_config(contents: &str) -> tempfile::TempPath {
+        let mut file = tempfile::Builder::new().suffix(".toml").tempfile().unwrap();
+        file.write_all(contents.as_bytes()).unwrap();
+        file.flush().unwrap();
+        file.into_temp_path()
+    }
+
+    #[test]
+    fn demand_settings_default_when_section_missing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        let path = write_config(&base_config(""));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert_eq!(settings.demand, DemandSettings::default());
+    }
+
+    #[test]
+    fn demand_settings_partial_section_uses_defaults() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        let path = write_config(&base_config(
+            r#"
+[demand]
+traffic = 0.2
+kind = 7
+shred_multicast_enabled = false
+"#,
+        ));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert_eq!(settings.demand.traffic, 0.2);
+        assert_eq!(settings.demand.priority, 0.0);
+        assert_eq!(settings.demand.kind, 7);
+        assert!(!settings.demand.multicast_enabled);
+        assert_eq!(settings.demand.shred_kind, 2);
+        assert!(!settings.demand.shred_multicast_enabled);
+    }
+
+    #[test]
+    fn demand_settings_env_overrides_toml() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        unsafe {
+            std::env::set_var("DZ__DEMAND__PRIORITY", "4.25");
+            std::env::set_var("DZ__DEMAND__KIND", "9");
+        }
+        let path = write_config(&base_config(
+            r#"
+[demand]
+priority = 1.0
+kind = 3
+"#,
+        ));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert_eq!(settings.demand.priority, 4.25);
+        assert_eq!(settings.demand.kind, 9);
     }
 }

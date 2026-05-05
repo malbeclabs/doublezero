@@ -4,10 +4,13 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 use anyhow::Result;
 use common::create_test_settings;
-use doublezero_contributor_rewards::ingestor::{
-    demand,
-    epoch::LeaderSchedule,
-    types::{FetchData, apply_json_compat_migrations},
+use doublezero_contributor_rewards::{
+    ingestor::{
+        demand::{self, CityStat},
+        epoch::LeaderSchedule,
+        types::{FetchData, apply_json_compat_migrations},
+    },
+    settings::DemandSettings,
 };
 use doublezero_serviceability::state::user::{UserStatus, UserType};
 use serde_json::Value;
@@ -108,6 +111,55 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn test_demand_generation_uses_configured_settings() {
+        let mut city_stats = BTreeMap::new();
+        city_stats.insert(
+            "AAA".to_string(),
+            CityStat {
+                validator_count: 1,
+                total_stake_proxy: 1,
+                subscriber_count: 0,
+                city_price: 0,
+            },
+        );
+        city_stats.insert(
+            "BBB".to_string(),
+            CityStat {
+                validator_count: 2,
+                total_stake_proxy: 2,
+                subscriber_count: 3,
+                city_price: 42,
+            },
+        );
+        let demand_settings = DemandSettings {
+            traffic: 0.42,
+            priority: 7.0,
+            kind: 11,
+            multicast_enabled: true,
+            shred_kind: 22,
+            shred_multicast_enabled: false,
+        };
+
+        let demands = demand::generate(&city_stats, &demand_settings);
+
+        let ibrl = demands
+            .iter()
+            .find(|d| d.kind == demand_settings.kind)
+            .expect("expected IBRL demand");
+        assert_eq!(ibrl.traffic, demand_settings.traffic);
+        assert_eq!(ibrl.priority, demand_settings.priority);
+        assert_eq!(ibrl.multicast, demand_settings.multicast_enabled);
+
+        let shred = demands
+            .iter()
+            .find(|d| d.kind == demand_settings.shred_kind)
+            .expect("expected shred demand");
+        assert_eq!(shred.traffic, demand_settings.traffic);
+        assert_eq!(shred.priority, 42.0);
+        assert_eq!(shred.multicast, demand_settings.shred_multicast_enabled);
     }
 
     #[test]

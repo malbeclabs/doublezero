@@ -626,6 +626,16 @@ pub struct AllRewardsOutput {
     pub rewards: Vec<RewardEntry>,
 }
 
+fn format_unit_share_proportion(unit_share: u32, total_units: u32) -> String {
+    let proportion = if total_units == 0 {
+        0.0
+    } else {
+        unit_share as f64 / total_units as f64 * 100.0
+    };
+
+    format!("{proportion:.4}%")
+}
+
 /// Print a rewards summary table (epoch, merkle root, contributors, unit shares)
 pub fn print_rewards_summary(
     shapley_storage: &ShapleyOutputStorage,
@@ -672,6 +682,8 @@ pub fn print_rewards_summary(
         pubkey: String,
         #[tabled(rename = "Unit Share")]
         unit_share: u32,
+        #[tabled(rename = "Proportion")]
+        proportion: String,
     }
 
     let reward_rows: Vec<RewardRow> = shapley_storage
@@ -686,6 +698,10 @@ pub fn print_rewards_summary(
                 contributor,
                 pubkey: r.contributor_key.to_string(),
                 unit_share: r.unit_share,
+                proportion: format_unit_share_proportion(
+                    r.unit_share,
+                    shapley_storage.total_unit_shares,
+                ),
             }
         })
         .collect();
@@ -1143,4 +1159,20 @@ pub async fn try_fetch_contributor_labels(
             Ok((contributor.owner, contributor.code))
         })
         .collect::<Result<HashMap<_, _>>>()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_unit_share_proportion;
+
+    #[test]
+    fn formats_unit_share_proportion() {
+        assert_eq!(format_unit_share_proportion(250, 1000), "25.0000%");
+        assert_eq!(format_unit_share_proportion(1, 3), "33.3333%");
+    }
+
+    #[test]
+    fn formats_zero_total_units_as_zero_percent() {
+        assert_eq!(format_unit_share_proportion(1, 0), "0.0000%");
+    }
 }

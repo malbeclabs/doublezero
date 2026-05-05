@@ -23,6 +23,15 @@ operator_uptime = 0.98
 contiguity_bonus = 5.0
 demand_multiplier = 1.2
 
+# ========== Demand Generation Parameters ==========
+[demand]
+traffic = 0.15
+priority = 0.0
+kind = 1
+shred_kind = 2
+multicast_enabled = false
+shred_multicast_enabled = true
+
 # ========== Program IDs ==========
 [programs]
 serviceability_program_id = "DZServ1111111111111111111111111111111111111"

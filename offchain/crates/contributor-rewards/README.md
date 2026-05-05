@@ -99,6 +99,23 @@ contiguity_bonus = 5.0
 # Increases rewards in high-demand areas
 demand_multiplier = 1.2
 
+# ========== Demand Generation Parameters ==========
+[demand]
+# Traffic per receiver in Gbps, used for both IBRL and shred demands
+traffic = 0.15
+
+# Priority for IBRL validator-to-validator demands
+# Shred demand priority remains derived from metro price
+priority = 0.0
+
+# Demand kind/type values written into Shapley demand rows
+kind = 1
+shred_kind = 2
+
+# Multicast flags for IBRL and shred demands
+multicast_enabled = false
+shred_multicast_enabled = true
+
 # ========== Program IDs ==========
 [programs]
 # DZ Serviceability program ID

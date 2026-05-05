@@ -7,16 +7,12 @@ use rayon::prelude::*;
 use tracing::info;
 
 use crate::{
-    calculator::constants::{
-        DEMAND_MULTICAST_ENABLED, DEMAND_MULTICAST_SHRED, DEMAND_TRAFFIC, DEMAND_TYPE,
-        DEMAND_TYPE_SHRED,
-    },
     ingestor::{
         epoch::{EpochFinder, LeaderSchedule},
         fetcher::Fetcher,
         types::FetchData,
     },
-    settings::{Settings, network::Network},
+    settings::{DemandSettings, Settings, network::Network},
 };
 
 // key: location code, val: city stat
@@ -108,7 +104,7 @@ pub fn build_with_schedule(
     }
 
     // Generate demands
-    let demands = generate(&city_stats);
+    let demands = generate(&city_stats, &settings.demand);
     if demands.is_empty() {
         bail!("Could not build any demands!")
     }
@@ -287,7 +283,7 @@ pub fn build_city_stats(
 }
 
 /// Generates demand entries for cities (IBRL + shred rows)
-pub fn generate(city_stats: &CityStats) -> Demands {
+pub fn generate(city_stats: &CityStats, demand_settings: &DemandSettings) -> Demands {
     // Source cities: cities with validators (used for both IBRL and shred)
     let cities_with_validators: Vec<(&String, &CityStat)> = city_stats
         .iter()
@@ -318,10 +314,10 @@ pub fn generate(city_stats: &CityStats) -> Demands {
                         start: start_city_upper.clone(),
                         end: end_city_upper,
                         receivers: end_stats.validator_count as u32,
-                        traffic: DEMAND_TRAFFIC,
-                        priority: 0.0,
-                        kind: DEMAND_TYPE,
-                        multicast: DEMAND_MULTICAST_ENABLED,
+                        traffic: demand_settings.traffic,
+                        priority: demand_settings.priority,
+                        kind: demand_settings.kind,
+                        multicast: demand_settings.multicast_enabled,
                     })
                 })
                 .collect::<Vec<_>>()
@@ -341,10 +337,10 @@ pub fn generate(city_stats: &CityStats) -> Demands {
                     start: start_city_upper.clone(),
                     end: end_city.to_uppercase(),
                     receivers: end_stats.subscriber_count as u32,
-                    traffic: DEMAND_TRAFFIC,
+                    traffic: demand_settings.traffic,
                     priority: end_stats.city_price as f64,
-                    kind: DEMAND_TYPE_SHRED,
-                    multicast: DEMAND_MULTICAST_SHRED,
+                    kind: demand_settings.shred_kind,
+                    multicast: demand_settings.shred_multicast_enabled,
                 })
                 .collect::<Vec<_>>()
         })

@@ -28,6 +28,29 @@ pub fn validate_config(settings: &Settings) -> Result<()> {
         );
     }
 
+    // Validate demand settings
+    if settings.demand.traffic <= 0.0 {
+        bail!(
+            "Demand traffic must be positive, got {}",
+            settings.demand.traffic
+        );
+    }
+
+    if settings.demand.priority < 0.0 {
+        bail!(
+            "Demand priority must be non-negative, got {}",
+            settings.demand.priority
+        );
+    }
+
+    if settings.demand.kind == 0 {
+        bail!("Demand kind must be non-zero");
+    }
+
+    if settings.demand.shred_kind == 0 {
+        bail!("Demand shred_kind must be non-zero");
+    }
+
     // Validate RPC settings
     if settings.rpc.dz_url.is_empty() {
         bail!("DZ RPC URL cannot be empty");
@@ -176,8 +199,8 @@ mod tests {
 
     use super::*;
     use crate::settings::{
-        InetLookbackSettings, MetricsSettings, PrefixSettings, ProgramSettings, RpcSettings,
-        SchedulerSettings, ShapleySettings, TelemetryDefaultSettings,
+        DemandSettings, InetLookbackSettings, MetricsSettings, PrefixSettings, ProgramSettings,
+        RpcSettings, SchedulerSettings, ShapleySettings, TelemetryDefaultSettings,
         aws::{AwsSettings, StorageBackend},
         network::Network,
     };
@@ -191,6 +214,7 @@ mod tests {
                 contiguity_bonus: 5.0,
                 demand_multiplier: 1.2,
             },
+            demand: DemandSettings::default(),
             rpc: RpcSettings {
                 dz_url: "https://api.mainnet-beta.solana.com".to_string(),
                 solana_read_url: "https://api.mainnet-beta.solana.com".to_string(),
@@ -255,6 +279,29 @@ mod tests {
         assert!(validate_config(&config).is_err());
 
         config.shapley.operator_uptime = -0.1;
+        assert!(validate_config(&config).is_err());
+    }
+
+    #[test]
+    fn test_invalid_demand_settings() {
+        let mut config = create_valid_config();
+        config.demand.traffic = 0.0;
+        assert!(validate_config(&config).is_err());
+
+        config = create_valid_config();
+        config.demand.traffic = -0.1;
+        assert!(validate_config(&config).is_err());
+
+        config = create_valid_config();
+        config.demand.priority = -0.1;
+        assert!(validate_config(&config).is_err());
+
+        config = create_valid_config();
+        config.demand.kind = 0;
+        assert!(validate_config(&config).is_err());
+
+        config = create_valid_config();
+        config.demand.shred_kind = 0;
         assert!(validate_config(&config).is_err());
     }
 

@@ -14,6 +14,7 @@ pub fn create_test_settings(
             contiguity_bonus: 5.0,
             demand_multiplier: 1.2,
         },
+        demand: settings::DemandSettings::default(),
         rpc: settings::RpcSettings {
             dz_url: "https://test.com".to_string(),
             solana_read_url: "https://test.com".to_string(),

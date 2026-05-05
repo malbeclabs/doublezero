@@ -45,13 +45,14 @@ var (
 	stateDir                    = flag.String("state-dir", "/var/lib/doublezerod", "directory for persistent state files")
 
 	// Route liveness configuration flags.
-	routeLivenessTxMin       = flag.Duration("route-liveness-tx-min", defaultRouteLivenessTxMin, "route liveness tx min")
-	routeLivenessRxMin       = flag.Duration("route-liveness-rx-min", defaultRouteLivenessRxMin, "route liveness rx min")
-	routeLivenessDetectMult  = flag.Uint("route-liveness-detect-mult", defaultRouteLivenessDetectMult, "route liveness detect mult")
-	routeLivenessMinTxFloor  = flag.Duration("route-liveness-min-tx-floor", defaultRouteLivenessMinTxFloor, "route liveness min tx floor")
-	routeLivenessMaxTxCeil   = flag.Duration("route-liveness-max-tx-ceil", defaultRouteLivenessMaxTxCeil, "route liveness max tx ceil")
-	routeLivenessPeerMetrics = flag.Bool("route-liveness-peer-metrics", false, "enables per peer metrics for route liveness (high cardinality)")
-	routeLivenessDebug       = flag.Bool("route-liveness-debug", false, "enables debug logging for route liveness")
+	routeLivenessTxMin             = flag.Duration("route-liveness-tx-min", defaultRouteLivenessTxMin, "route liveness tx min")
+	routeLivenessRxMin             = flag.Duration("route-liveness-rx-min", defaultRouteLivenessRxMin, "route liveness rx min")
+	routeLivenessDetectMult        = flag.Uint("route-liveness-detect-mult", defaultRouteLivenessDetectMult, "route liveness detect mult")
+	routeLivenessMinTxFloor        = flag.Duration("route-liveness-min-tx-floor", defaultRouteLivenessMinTxFloor, "route liveness min tx floor")
+	routeLivenessMaxTxCeil         = flag.Duration("route-liveness-max-tx-ceil", defaultRouteLivenessMaxTxCeil, "route liveness max tx ceil")
+	routeLivenessReconcileInterval = flag.Duration("route-liveness-reconcile-interval", 30*time.Second, "interval for periodic kernel route reconciliation; 0 disables")
+	routeLivenessPeerMetrics       = flag.Bool("route-liveness-peer-metrics", false, "enables per peer metrics for route liveness (high cardinality)")
+	routeLivenessDebug             = flag.Bool("route-liveness-debug", false, "enables debug logging for route liveness")
 
 	// TODO(snormore): These flags are temporary for initial rollout testing.
 	// They will be superceded by a single `route-liveness-enable` flag, where false means
@@ -178,6 +179,8 @@ func main() {
 			MaxTxCeil:  *routeLivenessMaxTxCeil,
 
 			EnablePeerMetrics: *routeLivenessPeerMetrics,
+
+			RouteReconcileInterval: *routeLivenessReconcileInterval,
 
 			// Default to treating peers that advertise passive mode as passive. That is, we will
 			// install their routes immediately and never uninstall them on down events.

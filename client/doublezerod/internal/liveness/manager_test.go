@@ -1650,6 +1650,130 @@ func metricHasLabels(m *prom.Metric, labels prometheus.Labels) bool {
 	return true
 }
 
+func TestClient_Liveness_Manager_ReconcileRoutes_ReinstallsMissing(t *testing.T) {
+	t.Parallel()
+
+	addCalls := 0
+	mock := &MockRouteReaderWriter{
+		RouteAddFunc: func(r *routing.Route) error {
+			addCalls++
+			return nil
+		},
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) {
+			// Return empty — no routes in kernel.
+			return nil, nil
+		},
+	}
+
+	m, reg, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = mock
+		cfg.PassiveMode = true
+		cfg.RouteReconcileInterval = -1 // disable ticker; we call manually
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(nil)
+	err = m.RegisterRoute(r, "lo", m.LocalAddr().Port)
+	require.NoError(t, err)
+
+	// RegisterRoute in PassiveMode calls RouteAdd once.
+	mock.mu.Lock()
+	addCalls = 0
+	mock.mu.Unlock()
+
+	m.reconcileRoutes()
+
+	mock.mu.Lock()
+	require.Equal(t, 1, addCalls, "expected one RouteAdd call to reinstall the missing route")
+	mock.mu.Unlock()
+
+	reinstalls := getCounterValue(t, reg, "doublezero_liveness_route_reinstalls_total",
+		prometheus.Labels{LabelIface: "lo", LabelLocalIP: r.Src.To4().String()})
+	require.Equal(t, float64(1), reinstalls)
+}
+
+func TestClient_Liveness_Manager_ReconcileRoutes_SkipsPresent(t *testing.T) {
+	t.Parallel()
+
+	r := newTestRoute(nil)
+	addCalls := 0
+	mock := &MockRouteReaderWriter{
+		RouteAddFunc: func(rr *routing.Route) error {
+			addCalls++
+			return nil
+		},
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) {
+			// Return the route as present in kernel.
+			return []*routing.Route{&r.Route}, nil
+		},
+	}
+
+	m, _, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = mock
+		cfg.PassiveMode = true
+		cfg.RouteReconcileInterval = -1
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	err = m.RegisterRoute(r, "lo", m.LocalAddr().Port)
+	require.NoError(t, err)
+
+	// Reset after RegisterRoute's install.
+	mock.mu.Lock()
+	addCalls = 0
+	mock.mu.Unlock()
+
+	m.reconcileRoutes()
+
+	mock.mu.Lock()
+	require.Equal(t, 0, addCalls, "should not reinstall a route that is present in the kernel")
+	mock.mu.Unlock()
+}
+
+func TestClient_Liveness_Manager_ReconcileRoutes_SkipsUninstalled(t *testing.T) {
+	t.Parallel()
+
+	addCalls := 0
+	mock := &MockRouteReaderWriter{
+		RouteAddFunc: func(r *routing.Route) error {
+			addCalls++
+			return nil
+		},
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) {
+			return nil, nil
+		},
+	}
+
+	// Active mode: route is registered but not installed until session goes Up.
+	m, _, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = mock
+		cfg.PassiveMode = false
+		cfg.RouteReconcileInterval = -1
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+	err = m.RegisterRoute(r, "lo", m.LocalAddr().Port)
+	require.NoError(t, err)
+
+	// In active mode, installed[rk] is false until session goes Up.
+	mock.mu.Lock()
+	addCalls = 0
+	mock.mu.Unlock()
+
+	m.reconcileRoutes()
+
+	mock.mu.Lock()
+	require.Equal(t, 0, addCalls, "should not reinstall a route that was never installed")
+	mock.mu.Unlock()
+}
+
 func getHistogramCount(t *testing.T, reg *prometheus.Registry, name string, labels prometheus.Labels) float64 {
 	t.Helper()
 

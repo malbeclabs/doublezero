@@ -255,28 +255,29 @@ mod tests {
         tunnel_endpoint_ips: Vec<Ipv4Addr>,
     ) -> (Pubkey, Device) {
         let pubkey = Pubkey::new_unique();
-        let interfaces: Vec<Interface> = tunnel_endpoint_ips
+        let v2_ifaces: Vec<CurrentInterfaceVersion> = tunnel_endpoint_ips
             .into_iter()
             .enumerate()
-            .map(|(i, ip)| {
-                Interface::V2(CurrentInterfaceVersion {
-                    status: InterfaceStatus::Activated,
-                    name: format!("Loopback{}", i),
-                    interface_type: InterfaceType::Loopback,
-                    loopback_type: LoopbackType::None,
-                    interface_cyoa: InterfaceCYOA::None,
-                    interface_dia: InterfaceDIA::None,
-                    bandwidth: 0,
-                    cir: 0,
-                    mtu: 1500,
-                    routing_mode: RoutingMode::Static,
-                    vlan_id: 0,
-                    ip_net: NetworkV4::new(ip, 32).unwrap(),
-                    node_segment_idx: 0,
-                    user_tunnel_endpoint: true,
-                })
+            .map(|(i, ip)| CurrentInterfaceVersion {
+                status: InterfaceStatus::Activated,
+                name: format!("Loopback{}", i),
+                interface_type: InterfaceType::Loopback,
+                loopback_type: LoopbackType::None,
+                interface_cyoa: InterfaceCYOA::None,
+                interface_dia: InterfaceDIA::None,
+                bandwidth: 0,
+                cir: 0,
+                mtu: 1500,
+                routing_mode: RoutingMode::Static,
+                vlan_id: 0,
+                ip_net: NetworkV4::new(ip, 32).unwrap(),
+                node_segment_idx: 0,
+                user_tunnel_endpoint: true,
             })
             .collect();
+        let interfaces: Vec<Interface> =
+            v2_ifaces.iter().map(|v| Interface::V2(v.clone())).collect();
+        let new_interfaces = v2_ifaces.iter().map(|v| v.try_into().unwrap()).collect();
         (
             pubkey,
             Device {
@@ -295,6 +296,7 @@ mod tests {
                 contributor_pk: Pubkey::default(),
                 mgmt_vrf: "default".to_string(),
                 interfaces,
+                new_interfaces,
                 reference_count: 0,
                 users_count,
                 max_users: 1,

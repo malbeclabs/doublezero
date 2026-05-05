@@ -285,6 +285,7 @@ mod tests {
                 ..Default::default()
             }
             .to_interface()],
+            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -330,6 +331,7 @@ mod tests {
                 ..Default::default()
             }
             .to_interface()],
+            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -375,6 +377,7 @@ mod tests {
                 ..Default::default()
             }
             .to_interface()],
+            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -555,6 +558,7 @@ mod tests {
                 ..Default::default()
             }
             .to_interface()],
+            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -599,6 +603,7 @@ mod tests {
                 ..Default::default()
             }
             .to_interface()],
+            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -691,6 +696,7 @@ mod tests {
                 ..Default::default()
             }
             .to_interface()],
+            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -734,6 +740,7 @@ mod tests {
                 ..Default::default()
             }
             .to_interface()],
+            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,

@@ -344,6 +344,7 @@ mod tests {
             status: DeviceStatus::Activated,
             mgmt_vrf: String::default(),
             interfaces: vec![],
+            new_interfaces: vec![],
             users_count: 0,
             max_users: 100,
             owner: Pubkey::default(),

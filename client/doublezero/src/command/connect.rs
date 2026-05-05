@@ -1337,6 +1337,7 @@ mod tests {
                 dz_prefixes: format!("10.{}.0.0/24", device_number).parse().unwrap(),
                 mgmt_vrf: "default".to_string(),
                 interfaces: vec![],
+                new_interfaces: vec![],
                 max_users: 255,
                 users_count: 0,
                 device_health:

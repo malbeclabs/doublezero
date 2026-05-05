@@ -33,7 +33,7 @@ impl DeleteDeviceInterfaceCliCommand {
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
         let (_, iface) = device
-            .find_interface(&self.name)
+            .find_interface_legacy(&self.name)
             .map_err(|err| eyre::eyre!(err))?;
 
         // if a physical interface is Activated, it's part of a link and shouldn't be deleted.
@@ -129,6 +129,7 @@ mod tests {
                 }
                 .to_interface(),
             ],
+            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,

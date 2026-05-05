@@ -151,6 +151,7 @@ mod tests {
                 ..Default::default()
             }
             .to_interface()],
+            new_interfaces: vec![],
             device_type: DeviceType::Hybrid,
             public_ip: "127.0.0.1".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -199,6 +200,7 @@ mod tests {
                 ..Default::default()
             }
             .to_interface()],
+            new_interfaces: vec![],
             location_pk: Pubkey::default(),
             exchange_pk: Pubkey::default(),
             device_type: doublezero_sdk::DeviceType::Hybrid,

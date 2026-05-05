@@ -1718,18 +1718,19 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
     tx.try_sign(&[&payer], recent_blockhash).unwrap();
     banks_client.process_transaction(tx).await.unwrap();
 
-    // Verify: loopback now has 1 segment pointing to the topology
+    // Verify: loopback now has 1 segment pointing to the topology.
+    // Post-#3665, segments live in `new_interfaces`.
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found after backfill");
-    let iface = device.interfaces[0].into_v3();
+    let new_iface = &device.new_interfaces[0];
     assert_eq!(
-        iface.flex_algo_node_segments.len(),
+        new_iface.flex_algo_node_segments.len(),
         1,
         "Expected one flex_algo_node_segment after BackfillTopology"
     );
     assert_eq!(
-        iface.flex_algo_node_segments[0].topology, topology_pda,
+        new_iface.flex_algo_node_segments[0].topology, topology_pda,
         "Segment should point to the backfilled topology"
     );
 
@@ -1749,9 +1750,9 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found after second backfill");
-    let iface = device.interfaces[0].into_v3();
+    let new_iface = &device.new_interfaces[0];
     assert_eq!(
-        iface.flex_algo_node_segments.len(),
+        new_iface.flex_algo_node_segments.len(),
         1,
         "Idempotent: BackfillTopology must not add a duplicate segment"
     );
@@ -2097,25 +2098,27 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     banks_client.process_transaction(tx).await.unwrap();
 
     // Verify: backfill stored a flex-algo segment with the next SR ID (2).
+    // Post-#3665, segments live in `new_interfaces` (the legacy `interfaces` slot
+    // is always V2-projected on save and so does not carry segments).
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found after backfill");
-    let iface = device.interfaces[0].into_v3();
+    let new_iface = &device.new_interfaces[0];
     assert_eq!(
-        iface.node_segment_idx, 1,
+        new_iface.node_segment_idx, 1,
         "Base node_segment_idx must remain 1"
     );
     assert_eq!(
-        iface.flex_algo_node_segments.len(),
+        new_iface.flex_algo_node_segments.len(),
         1,
         "Expected one flex_algo_node_segment after backfill"
     );
     assert_eq!(
-        iface.flex_algo_node_segments[0].topology, topology_pda,
+        new_iface.flex_algo_node_segments[0].topology, topology_pda,
         "Segment should point to the backfilled topology"
     );
     assert_eq!(
-        iface.flex_algo_node_segments[0].node_segment_idx, 2,
+        new_iface.flex_algo_node_segments[0].node_segment_idx, 2,
         "flex-algo SID should be the next free ID (2) — base SID 1 is already \
          marked in use in the SR resource from onchain activation"
     );

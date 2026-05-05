@@ -78,7 +78,7 @@ impl UpdateDeviceInterfaceCliCommand {
             })?;
 
         let (_, interface) = device
-            .find_interface(&self.name)
+            .find_interface_legacy(&self.name)
             .map_err(|e| eyre::eyre!(e.to_string()))?;
 
         // Prevent setting a loopback type on physical interfaces
@@ -262,6 +262,7 @@ mod tests {
                 }
                 .to_interface(),
             ],
+            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -378,6 +379,7 @@ mod tests {
                 user_tunnel_endpoint: false,
             }
             .to_interface()],
+            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -426,6 +428,7 @@ mod tests {
                 user_tunnel_endpoint: false,
             }
             .to_interface()],
+            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -522,6 +525,7 @@ mod tests {
                 user_tunnel_endpoint: true,
             }
             .to_interface()],
+            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,

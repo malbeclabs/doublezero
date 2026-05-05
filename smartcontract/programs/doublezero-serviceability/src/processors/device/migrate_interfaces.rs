@@ -4,7 +4,10 @@ use crate::{
     processors::validation::validate_program_account,
     serializer::try_acc_write,
     state::{
-        accounttype::AccountType, device::Device, globalstate::GlobalState, interface::Interface,
+        accounttype::AccountType,
+        device::Device,
+        globalstate::GlobalState,
+        interface::{Interface, InterfaceV2, NewInterface},
     },
 };
 use borsh::BorshSerialize;
@@ -117,6 +120,22 @@ fn deserialize_device_legacy(data: &[u8]) -> Result<Device, ProgramError> {
         return Err(ProgramError::InvalidAccountData);
     }
 
+    // Legacy on-disk format has no trailing `new_interfaces` vec; rebuild it
+    // from the legacy enum vec via per-variant TryFrom (V3 → V2 → NewInterface).
+    let new_interfaces = interfaces
+        .iter()
+        .map(|iface| -> Result<NewInterface, ProgramError> {
+            match iface {
+                Interface::V1(v1) => v1.try_into(),
+                Interface::V2(v2) => v2.try_into(),
+                Interface::V3(v3) => {
+                    let v2: InterfaceV2 = v3.try_into()?;
+                    (&v2).try_into()
+                }
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     Ok(Device {
         account_type,
         owner,
@@ -145,6 +164,7 @@ fn deserialize_device_legacy(data: &[u8]) -> Result<Device, ProgramError> {
         reserved_seats,
         multicast_publishers_count,
         max_multicast_publishers,
+        new_interfaces,
     })
 }
 
@@ -234,7 +254,25 @@ pub fn process_migrate_device_interfaces(
         .iter()
         .map(|iface| Interface::V3(iface.into_v3()))
         .collect();
+    // Mirror the migration into `new_interfaces` so the custom Device serializer
+    // (which projects the legacy on-disk slot from `new_interfaces`) doesn't drop
+    // the V3 conversion. V3's `flex_algo_node_segments` is empty after migration,
+    // so projecting through V2 is lossless here.
+    let migrated_new: Vec<NewInterface> = migrated
+        .iter()
+        .map(|iface| -> Result<NewInterface, ProgramError> {
+            match iface {
+                Interface::V1(v1) => v1.try_into(),
+                Interface::V2(v2) => v2.try_into(),
+                Interface::V3(v3) => {
+                    let v2: InterfaceV2 = v3.try_into()?;
+                    (&v2).try_into()
+                }
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     device.interfaces = migrated;
+    device.new_interfaces = migrated_new;
 
     // Write back with the V3 format — each interface now includes the
     // (empty) flex_algo_node_segments vec in its serialized form.

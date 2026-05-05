@@ -125,11 +125,11 @@ pub fn process_activate_link(
     }
 
     let (idx_a, side_a_iface) = side_a_dev
-        .find_interface(&link.side_a_iface_name)
+        .find_interface_legacy(&link.side_a_iface_name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
 
     let (idx_z, side_z_iface) = side_z_dev
-        .find_interface(&link.side_z_iface_name)
+        .find_interface_legacy(&link.side_z_iface_name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
 
     if side_a_iface.status != InterfaceStatus::Unlinked
@@ -191,7 +191,7 @@ pub fn process_activate_link(
         updated_iface_a.ip_net =
             NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix()).unwrap();
     }
-    side_a_dev.interfaces[idx_a] = updated_iface_a.to_interface();
+    side_a_dev.replace_interface(idx_a, (&updated_iface_a).try_into()?);
 
     let mut updated_iface_z = side_z_iface.clone();
     updated_iface_z.status = InterfaceStatus::Activated;
@@ -201,7 +201,7 @@ pub fn process_activate_link(
         updated_iface_z.ip_net =
             NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix()).unwrap();
     }
-    side_z_dev.interfaces[idx_z] = updated_iface_z.to_interface();
+    side_z_dev.replace_interface(idx_z, (&updated_iface_z).try_into()?);
 
     //TODO: This should be changed once the Health Oracle is finalized.
     //link.status = LinkStatus::Provisioning;

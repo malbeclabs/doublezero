@@ -134,6 +134,7 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
             interfaces: Vec::new(),
+            new_interfaces: Vec::new(),
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
             max_users: 255,
             users_count: 0,

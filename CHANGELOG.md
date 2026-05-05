@@ -110,6 +110,7 @@ All notable changes to this project will be documented in this file.
 
 - Client
   - Add a `--no-wait` flag to `doublezero disconnect` that skips waiting for the daemon to tear down the tunnel(s), exiting once the onchain user deletion is confirmed. (#3911)
+  - Add periodic kernel route reconciliation to `doublezerod` that detects and reinstalls missing routes, with a metric tracking install failures ([#3669](https://github.com/malbeclabs/doublezero/issues/3669))
 - CLI
   - `doublezero user subscribe` can now remove multicast roles: `--publisher`/`--subscriber` accept an explicit value (`--publisher false` / `--subscriber false`) to drop a role, an omitted flag preserves the user's current role for the group, and the command errors when neither flag is given. Bare `--publisher`/`--subscriber` still mean `true`. (#3914)
   - Add hidden `migrate flex-algo` (RFC-18 link-topology and Vpnv4 loopback FlexAlgoNodeSegment backfill); the prior `migrate` command is now `migrate user-pda`. Moved from `doublezero-admin`.

@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - Smartcontract
   - Stop writing `InterfaceV3` from `CreateDeviceInterface` and `UpdateDeviceInterface`; `CurrentInterfaceVersion` is now `InterfaceV2`. `MigrateDeviceInterfaces` and `BackfillTopology` continue to write `InterfaceV3` since they are admin-controlled and need the `flex_algo_node_segments` field
+  - Add forward-compatible `NewInterface` struct in `state/interface.rs` with a `size: u16` + `version: u8` on-disk prefix, V3-shaped body, and `flex_algo_node_segments`. Older readers can use the size prefix to skip past unknown future versions in constant time. Additive only — no callers, processors, or SDKs change in this PR ([#3666](https://github.com/malbeclabs/doublezero/pull/3666))
 
 ## [v0.21.0](https://github.com/malbeclabs/doublezero/compare/client/v0.20.0...client/v0.21.0) - 2026-05-01
 

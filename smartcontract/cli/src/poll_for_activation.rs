@@ -3,8 +3,8 @@ use doublezero_sdk::{
         device::get::GetDeviceCommand, link::get::GetLinkCommand,
         multicastgroup::get::GetMulticastGroupCommand, user::get::GetUserCommand,
     },
-    Device, DeviceStatus, InterfaceStatus, Link, LinkStatus, MulticastGroup, MulticastGroupStatus,
-    NewInterface, User, UserStatus,
+    Device, DeviceStatus, Link, LinkStatus, MulticastGroup, MulticastGroupStatus, NewInterface,
+    User, UserStatus,
 };
 use solana_sdk::pubkey::Pubkey;
 
@@ -87,15 +87,7 @@ pub fn poll_for_device_interface_activated(
                     .iter()
                     .find(|iface| iface.name.to_lowercase() == interface_name.to_lowercase())
                 {
-                    if iface.status != InterfaceStatus::Pending {
-                        return Ok(iface.clone());
-                    } else {
-                        last_error = Some(eyre::eyre!(
-                            "Interface '{}' found but not activated (status: {:?})",
-                            interface_name,
-                            iface.status
-                        ));
-                    }
+                    return Ok(iface.clone());
                 } else {
                     last_error = Some(eyre::eyre!(
                         "Interface '{}' not found on device '{}'",

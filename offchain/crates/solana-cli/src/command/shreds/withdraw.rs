@@ -80,19 +80,36 @@ impl WithdrawCommand {
         let (client_seat_key, _) = state::find_client_seat_address(&device, client_ip_bits);
         let (escrow_key, _) = state::find_payment_escrow_address(&client_seat_key, &wallet_key);
         let (program_config_key, _) = state::find_program_config_address();
+        let (allocation_request_key, _) =
+            state::find_instant_allocation_request_address(&device, client_ip_bits);
 
-        // Fetch client seat, payment escrow, and program config in a single RPC.
+        // Fetch client seat, payment escrow, program config, and any in-flight
+        // instant seat allocation request in a single RPC.
         let mut accounts = wallet
             .connection
-            .get_multiple_accounts(&[client_seat_key, escrow_key, program_config_key])
+            .get_multiple_accounts(&[
+                client_seat_key,
+                escrow_key,
+                program_config_key,
+                allocation_request_key,
+            ])
             .await?;
 
-        // Pop in reverse order: program_config (2), escrow (1), seat (0).
+        // Pop in reverse order: allocation_request (3), program_config (2), escrow (1), seat (0).
+        let allocation_request_in_flight = accounts.pop().flatten().is_some();
         let prorated_service_enabled = accounts
             .pop()
             .flatten()
             .is_some_and(|a| state::is_prorated_service_enabled(&a.data));
         let escrow_exists = accounts.pop().flatten().is_some();
+
+        if allocation_request_in_flight {
+            bail!(
+                "Instant seat allocation request {allocation_request_key} is in flight for \
+                 client seat {client_seat_key}. Wait for the oracle to ack or reject it before \
+                 withdrawing."
+            );
+        }
 
         let seat_data = accounts
             .pop()

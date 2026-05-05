@@ -139,7 +139,7 @@ pub fn process_remove_device_interface(
         }
     }
 
-    device.interfaces.remove(idx);
+    device.remove_interface(idx);
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

@@ -249,7 +249,7 @@ pub fn process_update_device_interface(
 
     updated_interface.validate()?;
 
-    device.interfaces[idx] = updated_interface;
+    device.replace_interface(idx, iface)?;
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

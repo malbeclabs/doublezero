@@ -138,6 +138,7 @@ mod tests {
                 user_tunnel_endpoint: true,
             }
             .to_interface()],
+            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,

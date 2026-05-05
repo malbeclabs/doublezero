@@ -323,9 +323,14 @@ fn generate_device(dir: &Path) {
                 ip_net: "172.16.0.1/30".parse().unwrap(),
                 node_segment_idx: 200,
                 user_tunnel_endpoint: true,
-                flex_algo_node_segments: vec![],
             }),
         ],
+        // Empty for now: regenerating with my custom Device serializer would
+        // V2-project the legacy slot from new_interfaces, dropping the V1 form
+        // and breaking SDK fixtures that pin Interface0 to V1. Existing
+        // device.bin remains in the legacy format and continues to pass SDK
+        // tests via the legacy fallback path in `Device::TryFrom`.
+        new_interfaces: vec![],
         reference_count: 12,
         users_count: 5,
         max_users: 100,

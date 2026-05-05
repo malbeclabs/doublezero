@@ -118,7 +118,7 @@ pub fn process_activate_device_interface(
     let mut device: Device = Device::try_from(device_account)?;
 
     let (idx, iface) = device
-        .find_interface(&value.name)
+        .find_interface_legacy(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
 
     if iface.status != InterfaceStatus::Pending && iface.status != InterfaceStatus::Unlinked {
@@ -148,7 +148,7 @@ pub fn process_activate_device_interface(
         updated_iface.node_segment_idx = value.node_segment_idx;
     }
 
-    device.interfaces[idx] = updated_iface.to_interface();
+    device.replace_interface(idx, updated_iface)?;
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

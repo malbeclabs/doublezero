@@ -141,6 +141,10 @@ async fn test_delete_cyoa_interface_with_invalid_sibling() {
         contributor_pk: contributor_pubkey,
         mgmt_vrf: "mgmt".to_string(),
         interfaces: vec![iface_a.to_interface(), iface_b.to_interface()],
+        new_interfaces: vec![
+            (&iface_a).try_into().unwrap(),
+            (&iface_b).try_into().unwrap(),
+        ],
         reference_count: 0,
         users_count: 0,
         max_users: 128,
@@ -373,6 +377,10 @@ async fn test_update_cyoa_interface_with_invalid_sibling() {
         contributor_pk: contributor_pubkey,
         mgmt_vrf: "mgmt".to_string(),
         interfaces: vec![iface_a.to_interface(), iface_b.to_interface()],
+        new_interfaces: vec![
+            (&iface_a).try_into().unwrap(),
+            (&iface_b).try_into().unwrap(),
+        ],
         reference_count: 0,
         users_count: 0,
         max_users: 128,

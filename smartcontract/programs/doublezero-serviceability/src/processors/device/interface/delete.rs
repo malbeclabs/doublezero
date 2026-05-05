@@ -167,7 +167,7 @@ pub fn process_delete_device_interface(
         }
 
         // Atomic close: remove interface immediately
-        device.interfaces.remove(idx);
+        device.remove_interface(idx);
 
         #[cfg(test)]
         msg!(
@@ -178,7 +178,7 @@ pub fn process_delete_device_interface(
         // Legacy path: just mark as Deleting
         let mut iface = iface;
         iface.status = InterfaceStatus::Deleting;
-        device.interfaces[idx] = iface.to_interface();
+        device.replace_interface(idx, iface)?;
 
         #[cfg(test)]
         msg!("Deleting interface: {} from {:?}", value.name, device);

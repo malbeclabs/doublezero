@@ -224,25 +224,22 @@ pub fn process_create_device_interface(
         }
     }
 
-    device.interfaces.push(
-        CurrentInterfaceVersion {
-            status,
-            name,
-            interface_type,
-            loopback_type: value.loopback_type,
-            interface_cyoa: value.interface_cyoa,
-            interface_dia: value.interface_dia,
-            bandwidth: value.bandwidth,
-            cir: value.cir,
-            mtu: value.mtu,
-            routing_mode: value.routing_mode,
-            vlan_id: value.vlan_id,
-            ip_net,
-            node_segment_idx,
-            user_tunnel_endpoint: value.user_tunnel_endpoint,
-        }
-        .to_interface(),
-    );
+    device.push_interface(CurrentInterfaceVersion {
+        status,
+        name,
+        interface_type,
+        loopback_type: value.loopback_type,
+        interface_cyoa: value.interface_cyoa,
+        interface_dia: value.interface_dia,
+        bandwidth: value.bandwidth,
+        cir: value.cir,
+        mtu: value.mtu,
+        routing_mode: value.routing_mode,
+        vlan_id: value.vlan_id,
+        ip_net,
+        node_segment_idx,
+        user_tunnel_endpoint: value.user_tunnel_endpoint,
+    })?;
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

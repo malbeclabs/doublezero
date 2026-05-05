@@ -176,7 +176,7 @@ pub fn process_closeaccount_link(
         deallocate_id(link_ids_ext, link.tunnel_id);
     }
 
-    if let Ok((idx_a, side_a_iface)) = side_a_dev.find_interface(&link.side_a_iface_name) {
+    if let Ok((idx_a, side_a_iface)) = side_a_dev.find_interface_legacy(&link.side_a_iface_name) {
         let mut updated_iface = side_a_iface.clone();
         updated_iface.status = InterfaceStatus::Unlinked;
         // Preserve user-provided ip_net for CYOA/DIA physical interfaces.
@@ -188,10 +188,10 @@ pub fn process_closeaccount_link(
         if !has_user_ip {
             updated_iface.ip_net = NetworkV4::default();
         }
-        side_a_dev.interfaces[idx_a] = updated_iface.to_interface();
+        side_a_dev.replace_interface(idx_a, updated_iface)?;
     }
 
-    if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface(&link.side_z_iface_name) {
+    if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface_legacy(&link.side_z_iface_name) {
         let mut updated_iface = side_z_iface.clone();
         updated_iface.status = InterfaceStatus::Unlinked;
         // Preserve user-provided ip_net for CYOA/DIA physical interfaces.
@@ -203,7 +203,7 @@ pub fn process_closeaccount_link(
         if !has_user_ip {
             updated_iface.ip_net = NetworkV4::default();
         }
-        side_z_dev.interfaces[idx_z] = updated_iface.to_interface();
+        side_z_dev.replace_interface(idx_z, updated_iface)?;
     }
 
     contributor.reference_count = contributor.reference_count.saturating_sub(1);

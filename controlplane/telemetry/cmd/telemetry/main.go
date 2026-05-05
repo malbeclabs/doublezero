@@ -17,6 +17,8 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
 	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
+	gpb "github.com/openconfig/gnmi/proto/gnmi"
+
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/bgpstatus"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/gnmitunnel"
@@ -379,7 +381,7 @@ func main() {
 	var bgpStatusErrCh <-chan error
 	if *bgpStatusEnable {
 		bgpStatusErrCh = startBGPStatusSubmitter(ctx, cancel, log, keypair, localDevicePK,
-			serviceabilityProgramID, localNet, *bgpNamespace, cachedSvcClient, rpcClient)
+			serviceabilityProgramID, cachedSvcClient, rpcClient)
 	}
 
 	// Wait for the context to be done or an error to be returned.
@@ -412,20 +414,36 @@ func startBGPStatusSubmitter(
 	keypair solana.PrivateKey,
 	localDevicePK solana.PublicKey,
 	serviceabilityProgramID solana.PublicKey,
-	localNet netutil.LocalNet,
-	bgpNamespace string,
 	svcClient telemetrysvc.ProgramDataProvider,
 	rpcClient *solanarpc.Client,
 ) <-chan error {
 	executor := serviceability.NewExecutor(log, rpcClient, &keypair, serviceabilityProgramID)
 
+	const gnmiSocketPath = "/var/run/gnmiServer.sock"
+	gnmiConn, err := grpc.NewClient(
+		"passthrough:///"+gnmiSocketPath,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(dialCtx context.Context, _ string) (net.Conn, error) {
+			if *managementNamespace != "" {
+				return netns.RunInNamespace(*managementNamespace, func() (net.Conn, error) {
+					return (&net.Dialer{}).DialContext(dialCtx, "unix", gnmiSocketPath)
+				})
+			}
+			return (&net.Dialer{}).DialContext(dialCtx, "unix", gnmiSocketPath)
+		}),
+	)
+	if err != nil {
+		log.Error("failed to create gNMI client connection for BGP status", "error", err)
+		os.Exit(1)
+	}
+	gnmiClient := gpb.NewGNMIClient(gnmiConn)
+
 	sub, err := bgpstatus.NewSubmitter(bgpstatus.Config{
 		Log:                     log,
 		Executor:                executor,
 		ServiceabilityClient:    svcClient,
-		Collector:               bgpstatus.DefaultCollector(localNet),
+		Collector:               bgpstatus.GNMICollector(gnmiClient),
 		LocalDevicePK:           localDevicePK,
-		BGPNamespace:            bgpNamespace,
 		Interval:                *bgpStatusInterval,
 		PeriodicRefreshInterval: *bgpStatusRefreshInterval,
 		DownGracePeriod:         *bgpStatusDownGracePeriod,

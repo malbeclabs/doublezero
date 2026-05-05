@@ -225,7 +225,10 @@ pub fn process_create_device_interface(
         }
     }
 
-    let mut new_iface = NewInterface {
+    // size is intentionally left at 0 — the NewInterface serializer derives the
+    // on-disk size fresh from the body bytes and ignores this field. It only
+    // gets populated on deserialize, from the wire prefix.
+    device.push_interface(NewInterface {
         size: 0,
         version: CURRENT_INTERFACE_SCHEMA_VERSION,
         status,
@@ -243,9 +246,7 @@ pub fn process_create_device_interface(
         node_segment_idx,
         user_tunnel_endpoint: value.user_tunnel_endpoint,
         flex_algo_node_segments: vec![],
-    };
-    new_iface.size = new_iface.compute_on_disk_size()?;
-    device.push_interface(new_iface);
+    });
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

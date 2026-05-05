@@ -1881,8 +1881,6 @@ mod test_device_new_interfaces_vec {
         device.new_interfaces[0]
             .flex_algo_node_segments
             .push(segment.clone());
-        // Keep the on-disk size field consistent with the populated body.
-        device.new_interfaces[0].size = device.new_interfaces[0].compute_on_disk_size().unwrap();
 
         let bytes = borsh::to_vec(&device).unwrap();
         let decoded = Device::try_from(&bytes[..]).unwrap();

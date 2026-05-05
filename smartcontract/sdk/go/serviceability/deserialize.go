@@ -89,7 +89,10 @@ func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
 //	2 — reserved, never written
 //	3 — V3: V2 fields + flex_algo_node_segments (RFC-18)
 //
-// MigrateDeviceInterfaces converts discriminant-1 accounts to discriminant-3.
+// The on-chain Device serializer projects the legacy interfaces slot as V2
+// (per #3653); discriminant-3 entries seen here are residual from older
+// accounts. Newer flex_algo_node_segments data lives in the trailing
+// new_interfaces vec on Device, not in this slot.
 func DeserializeInterface(reader *ByteReader, iface *Interface) {
 	iface.Version = reader.ReadU8()
 

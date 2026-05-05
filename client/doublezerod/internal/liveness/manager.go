@@ -915,7 +915,7 @@ func (m *manager) reconcileRoutes() {
 		route *Route
 	}
 	m.mu.Lock()
-	var toCheck []installedRoute
+	toCheck := make([]installedRoute, 0, len(m.installed))
 	for rk, ok := range m.installed {
 		if !ok {
 			continue
@@ -966,6 +966,7 @@ func (m *manager) reconcileRoutes() {
 		if err := m.cfg.Netlinker.RouteAdd(&ir.route.Route); err != nil {
 			m.log.Error("liveness: error reinstalling route",
 				"error", err, "route", ir.route.String())
+			m.metrics.RouteInstallFailures.WithLabelValues(ir.rk.Interface, ir.rk.SrcIP).Inc()
 		} else {
 			m.metrics.routeReinstall(ir.rk.Interface, ir.rk.SrcIP)
 		}

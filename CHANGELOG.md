@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - Smartcontract
   - Migrate read callers in the CLI, sentinel, client, controlplane admin, and Rust SDK topology helper to read interfaces from `Device::new_interfaces` instead of the legacy `interfaces` enum vec, and adopt the `Device::find_interface` signature that returns `&NewInterface`. The legacy `interfaces` slot is still written on-disk via the per-write V2 projection from #3667; this PR only migrates reads. The temporary `Device::find_interface_legacy` helper is retained for the smartcontract program processors, which migrate in a later issue. Activator is intentionally excluded — it is deprecated ([#3659](https://github.com/malbeclabs/doublezero/issues/3659))
+- Client
+  - Add periodic kernel route reconciliation to `doublezerod` that detects and reinstalls missing routes, with a metric tracking install failures ([#3669](https://github.com/malbeclabs/doublezero/issues/3669))
 - Activator
   - Delete the `activator/` crate from the workspace; onchain allocation (RFC-11) supersedes it. The deployed activator was frozen in Phase 1 ([#3608](https://github.com/malbeclabs/doublezero/pull/3608), [#3628](https://github.com/malbeclabs/doublezero/pull/3628)) and removed from e2e in Phase 2 ([#3609](https://github.com/malbeclabs/doublezero/pull/3609), [#3610](https://github.com/malbeclabs/doublezero/pull/3610), [#3611](https://github.com/malbeclabs/doublezero/pull/3611), [#3629](https://github.com/malbeclabs/doublezero/pull/3629)). The `*/activate`, `*/reject`, and `*/closeaccount` onchain instructions and their SDK command modules remain in place for older CLIs until the min-version gate ([#3612](https://github.com/malbeclabs/doublezero/issues/3612))
 - Smartcontract
